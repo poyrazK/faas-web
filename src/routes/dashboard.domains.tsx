@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
-import { CopyIconButton } from '@/components/ui/copy-button';
 import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useAddDomain,
@@ -16,15 +17,18 @@ import {
   useDomains,
   useRetryDomain,
 } from '@/lib/api/queries';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
+import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
 const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
@@ -59,18 +63,14 @@ interface DomainRow {
   /** Project environment the route is scoped to; carried through a re-add. */
   environment: string | null;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
 }
 
 /** Re-read the domains this long after a retry is queued. */
 const RECHECK_DELAYS_MS = [5_000, 20_000];
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleDateString();
-}
 
 function DomainsPage() {
   const { toast } = useToast();
@@ -90,6 +90,8 @@ function DomainsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const doctorFor = search.doctor;
+  // The doctor is a preview capability; off, there is nothing to open.
+  const doctorAccess = useCapabilityAccess('domain-doctor').access;
   const select = (patch: Partial<typeof search>, replace = false) =>
     void navigate({
       search: (current) => ({ ...current, ...patch }),
@@ -117,6 +119,7 @@ function DomainsPage() {
       appId: d.app_id,
       environment: d.environment ?? null,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
@@ -157,7 +160,7 @@ function DomainsPage() {
       recheckTimers.current = RECHECK_DELAYS_MS.map((ms) => setTimeout(() => void refetch(), ms));
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 409)) {
-        toast({ kind: 'error', title: 'Could not check again', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not check again', error: err });
         return;
       }
       // A failed refetch keeps the previous data, so check the error, not the rows.
@@ -208,28 +211,39 @@ function DomainsPage() {
       toast({
         kind: 'error',
         title: 'Could not get a new TXT record',
-        description: errorMessage(err),
+        error: err,
       });
     } finally {
       setRearming(null);
     }
   };
 
+  // A domain can be made its app's default only once verified, and there is
+  // nothing to do for one that already is. Each eligible domain gets its own
+  // command, so every app with a candidate is covered.
+  const defaultCandidates = rows
+    .filter((row) => row.verified && !row.isDefault)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
       // One line from md up. On a phone the column is narrow, so the name may
-      // break, but only before a dot, never mid-label.
+      // break, but only before a dot, never mid-label. Marked so it is clear why
+      // the default is missing from set-default below.
       render: (d) => (
-        <span className="font-mono [overflow-wrap:normal] md:whitespace-nowrap md:[&_wbr]:hidden">
-          {d.domain.split('.').map((label, i) => (
-            <Fragment key={i}>
-              {i > 0 && <wbr />}
-              {i > 0 && '.'}
-              {label}
-            </Fragment>
-          ))}
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono [overflow-wrap:normal] md:whitespace-nowrap md:[&_wbr]:hidden">
+            {d.domain.split('.').map((label, i) => (
+              <Fragment key={i}>
+                {i > 0 && <wbr />}
+                {i > 0 && '.'}
+                {label}
+              </Fragment>
+            ))}
+          </span>
+          {d.isDefault && <Pill label="default" />}
         </span>
       ),
     },
@@ -264,9 +278,14 @@ function DomainsPage() {
             This verification expired. Get a new TXT record, then publish that value instead.
           </span>
         ) : (
-          <code className="select-all text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {d.txtRecord ?? '—'}
-          </code>
+          <span className="flex items-center gap-1">
+            <code className="select-all text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {d.txtRecord ?? '—'}
+            </code>
+            {d.txtRecord && (
+              <CopyIconButton text={d.txtRecord} label={`TXT record ${d.txtRecord}`} />
+            )}
+          </span>
         ),
     },
     {
@@ -274,7 +293,7 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => <span className="whitespace-nowrap">{formatDate(d.verifiedAt)}</span>,
+      render: (d) => <Timestamp value={d.verifiedAt} />,
     },
     {
       key: 'id',
@@ -308,14 +327,16 @@ function DomainsPage() {
               </Button>
             ))}
 
-          <IconButton
-            type="button"
-            aria-label={`Diagnose ${d.domain}`}
-            onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Activity className="h-3.5 w-3.5" />
-          </IconButton>
+          {doctorAccess !== 'off' && (
+            <IconButton
+              type="button"
+              aria-label={`Diagnose ${d.domain}`}
+              onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Activity className="h-3.5 w-3.5" />
+            </IconButton>
+          )}
 
           <IconButton
             type="button"
@@ -338,7 +359,7 @@ function DomainsPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -373,9 +394,7 @@ function DomainsPage() {
             : undefined,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not add domain', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
   };
 
   return (
@@ -531,6 +550,23 @@ function DomainsPage() {
             </div>
           </div>
         </Modal>
+      )}
+      {defaultCandidates.length > 0 && (
+        <Panel
+          title="Set a default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
+        >
+          <div className="flex flex-col gap-3">
+            {defaultCandidates.map((row) => (
+              <CliCommand
+                key={row.domain}
+                label={`Make ${row.domain} the default domain for ${row.app}`}
+                copyLabel={`set-default command for ${row.domain}`}
+                command={cliDomainSetDefaultCommand(row.domain)}
+              />
+            ))}
+          </div>
+        </Panel>
       )}
 
       {doctorFor && (

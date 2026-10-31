@@ -6,6 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { FIELD, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
+import { Timestamp } from '@/components/ui/timestamp';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -25,6 +26,8 @@ import type { components } from '@/lib/api/schema';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import type { JobsSelectionProps } from './jobs-search';
+import { CancelCronRunButton, CronOccurrences } from './cron-occurrences';
+import { Tabs, tabId } from './tabs';
 import { ScheduleField, useScheduleClock } from './schedule-field';
 import { EditCronDialog } from './cron-edit-dialog';
 import {
@@ -80,6 +83,9 @@ interface CronRow {
   schedule: string;
   /** The HTTP path, or `$ argv…` for a command cron, which has no path. */
   target: string;
+  /** Command crons run app tasks, which can be cancelled; HTTP runs cannot. */
+  command: boolean;
+  suspended: boolean;
   enabled: boolean;
   lastFiredAt: string | null;
   description: string;
@@ -110,6 +116,7 @@ function RunHistory({
   search,
   onSelection,
 }: { cron: CronRow; onClose: () => void } & JobsSelectionProps) {
+  const [view, setView] = useState<'runs' | 'occurrences'>('runs');
   const runs = useCronRuns(cron.id, search.execution);
   const execution = runs.data?.runs.find((run) => run.id === search.execution);
   const runsPhase = queryPhase({
@@ -122,66 +129,101 @@ function RunHistory({
       open
       onClose={onClose}
       title={`${cron.schedule} → ${cron.target}`}
-      description="Recent runs, newest first."
+      description="Recent runs, newest first, and the scheduler’s decision for each fire time."
       width="max-w-2xl"
     >
-      {search.execution && runs.data && !execution && <p role="status">Execution not found</p>}
-      {execution && (
-        <Panel title={`Execution ${execution.id}`}>
-          <dl className="text-sm">
-            <dt>Outcome</dt>
-            <dd>{execution.outcome}</dd>
-            <dt>Started</dt>
-            <dd>{execution.started_at}</dd>
-            <dt>Duration</dt>
-            <dd>{execution.duration_ms != null ? `${execution.duration_ms} ms` : '—'}</dd>
-            <dt>Attempts</dt>
-            <dd>{execution.attempts}</dd>
-            {execution.error && (
-              <>
-                <dt>Error</dt>
-                <dd>{execution.error}</dd>
-              </>
-            )}
-          </dl>
-        </Panel>
-      )}
-      {runsPhase !== 'ready' ? (
-        <InlinePhase
-          phase={runsPhase}
-          error={runs.error}
-          loadingMessage="Loading runs…"
-          emptyMessage="This cron has not run yet."
-          onRetry={() => void runs.refetch()}
-        />
+      <Tabs
+        label="Cron history"
+        value={view}
+        options={[
+          { key: 'runs', label: 'Runs' },
+          { key: 'occurrences', label: 'Occurrences' },
+        ]}
+        onChange={setView}
+        panelId="cron-history"
+        className="mb-4"
+      />
+      {view === 'occurrences' ? (
+        <div id="cron-history" role="tabpanel" aria-labelledby={tabId('cron-history', view)}>
+          <CronOccurrences
+            cron={cron}
+            onOpenRun={(execution) => {
+              setView('runs');
+              onSelection({ execution });
+            }}
+          />
+        </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {(runs.data?.runs ?? []).map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
-              <button
-                type="button"
-                aria-pressed={search.execution === r.id}
-                onClick={() =>
-                  onSelection({ execution: search.execution === r.id ? undefined : r.id })
-                }
-                className="font-mono text-xs hover:underline"
-              >
-                Execution {r.id}
-              </button>
-              <Pill label={r.outcome} color={OUTCOME_COLOR[r.outcome]} />
-              <span className="text-xs text-muted-foreground">{formatWhen(r.started_at)}</span>
-              <span className="font-mono text-xs [font-variant-numeric:tabular-nums]">
-                {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
-              </span>
-              {r.attempts > 1 && (
-                <span className="text-xs text-muted-foreground">{r.attempts} attempts</span>
-              )}
-              {r.error && (
-                <span className="font-mono text-xs text-muted-foreground">{r.error}</span>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div id="cron-history" role="tabpanel" aria-labelledby={tabId('cron-history', view)}>
+          {search.execution && runs.data && !execution && <p role="status">Execution not found</p>}
+          {execution && (
+            <Panel title={`Execution ${execution.id}`}>
+              <dl className="text-sm">
+                <dt>Outcome</dt>
+                <dd>{execution.outcome}</dd>
+                <dt>Started</dt>
+                <dd>
+                  <Timestamp value={execution.started_at} />
+                </dd>
+                <dt>Duration</dt>
+                <dd>{execution.duration_ms != null ? `${execution.duration_ms} ms` : '—'}</dd>
+                <dt>Attempts</dt>
+                <dd>{execution.attempts}</dd>
+                {execution.error && (
+                  <>
+                    <dt>Error</dt>
+                    <dd>{execution.error}</dd>
+                  </>
+                )}
+              </dl>
+            </Panel>
+          )}
+          {runsPhase !== 'ready' ? (
+            <InlinePhase
+              phase={runsPhase}
+              error={runs.error}
+              loadingMessage="Loading runs…"
+              emptyMessage="This cron has not run yet."
+              onRetry={() => void runs.refetch()}
+            />
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {(runs.data?.runs ?? []).map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={search.execution === r.id}
+                    onClick={() =>
+                      onSelection({ execution: search.execution === r.id ? undefined : r.id })
+                    }
+                    className="font-mono text-xs hover:underline"
+                  >
+                    Execution {r.id}
+                  </button>
+                  <Pill label={r.outcome} color={OUTCOME_COLOR[r.outcome]} />
+                  <Timestamp value={r.started_at} className="text-xs text-muted-foreground" />
+                  <span className="font-mono text-xs [font-variant-numeric:tabular-nums]">
+                    {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
+                  </span>
+                  {r.attempts > 1 && (
+                    <span className="text-xs text-muted-foreground">{r.attempts} attempts</span>
+                  )}
+                  {r.error && (
+                    <span className="font-mono text-xs text-muted-foreground">{r.error}</span>
+                  )}
+                  {cron.command && r.outcome === 'running' && (
+                    <span className="ml-auto">
+                      <CancelCronRunButton cronId={cron.id} runId={r.task_id ?? r.id} />
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </Modal>
   );
@@ -239,6 +281,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       app: bySlug.get(c.app_id) ?? c.app_id,
       schedule: c.schedule,
       target: c.path ?? (c.command?.length ? `$ ${c.command.join(' ')}` : '—'),
+      command: c.kind === 'command',
+      suspended: Boolean(c.suspended_reason),
       enabled: c.enabled,
       lastFiredAt: c.last_fired_at ?? null,
       timezone: c.timezone || 'UTC',
@@ -257,9 +301,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     void updateCron
       .mutateAsync({ id: c.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Cron resumed' : 'Cron paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<CronRow>[] = [
     {
@@ -368,7 +410,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   setFireRequest(fired.request_id);
                 })
                 .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not fire', description: errorMessage(err) })
+                  toast({ kind: 'error', title: 'Could not fire', error: err })
                 );
             }}
             className="text-muted-foreground transition-colors hover:text-foreground"
@@ -395,7 +437,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}

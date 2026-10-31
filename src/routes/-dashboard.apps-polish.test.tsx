@@ -8,10 +8,14 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConfirmProvider } from '@/components/ui/confirm';
+import { spyApi } from '@/test/api';
 import { Route as Apps } from './dashboard.apps.index';
 
 let empty = true;
+let metricsUnavailable = false;
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'account-a' } }) }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({
@@ -27,7 +31,20 @@ vi.mock('@/lib/store', () => ({
             invocations24h: 3,
             avgDurationMs: 42,
             errorRatePct: 0,
+            lastDeployedAt: Date.now() - 86_400_000,
+            metricsUnavailable,
+          },
+          {
+            id: 'beta',
+            name: 'beta',
+            runtime: 'node',
+            state: 'running',
+            memoryMb: 256,
+            invocations24h: 0,
+            avgDurationMs: 0,
+            errorRatePct: 0,
             lastDeployedAt: Date.now(),
+            metricsUnavailable,
           },
         ],
     loading: false,
@@ -35,9 +52,16 @@ vi.mock('@/lib/store', () => ({
     refresh: vi.fn(),
   }),
 }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 beforeEach(() => {
   empty = true;
+  spyApi('GET').mockResolvedValue({
+    data: { account_id: 'account-a', apps: [], evaluated_at: '2026-10-31T12:00:00Z' },
+    response: new Response(),
+  });
+  metricsUnavailable = false;
 });
+afterEach(() => vi.restoreAllMocks());
 async function mount(entry = '/dashboard/apps') {
   const root = createRootRoute({ component: Outlet });
   const route = createRoute({
@@ -57,7 +81,13 @@ async function mount(entry = '/dashboard/apps') {
   });
   await router.load();
   await act(async () => {
-    render(<RouterProvider router={router} />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
   });
   return router;
 }
@@ -95,15 +125,44 @@ describe('Apps polish', () => {
     expect(await screen.findByRole('heading', { name: 'New app wizard' })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
+  it('names the 24h count for what it is: HTTP requests, not async invocations', async () => {
+    empty = false;
+    await mount();
+    expect(screen.getByRole('columnheader', { name: /Requests 24h/ })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Invocations/ })).toBeNull();
+  });
   it('uses the App noun and compact detail access without hiding state', async () => {
     empty = false;
     await mount();
     expect(screen.getByRole('columnheader', { name: 'App' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Avg duration' })).toHaveClass(
+    expect(screen.getByRole('columnheader', { name: 'p50 latency' })).toHaveClass(
       'hidden',
       'md:table-cell'
     );
     expect(screen.getByRole('columnheader', { name: 'State' })).not.toHaveClass('hidden');
     expect(screen.getByText('More details for alpha')).toBeInTheDocument();
+  });
+  it('keeps recently deleted apps restorable from the Apps page', async () => {
+    await mount();
+    expect(screen.getByRole('heading', { name: 'Recently deleted' })).toBeInTheDocument();
+    expect(await screen.findByText('No apps deleted in the last 7 days.')).toBeInTheDocument();
+  });
+  it('shows unknown request metrics as missing, not as zero traffic', async () => {
+    empty = false;
+    metricsUnavailable = true;
+    await mount();
+    const row = screen.getByRole('button', { name: /alpha/ }).closest('tr')!;
+    expect(row).not.toHaveTextContent('0.00%');
+    expect(row).not.toHaveTextContent('42ms');
+    expect(row.textContent).toContain('—');
+  });
+  it('orders apps by latest deploy when request metrics are unknown', async () => {
+    empty = false;
+    metricsUnavailable = true;
+    await mount();
+    const names = screen
+      .getAllByRole('button', { name: /^(alpha|beta)/ })
+      .map((b) => b.textContent);
+    expect(names[0]).toMatch(/^beta/);
   });
 });

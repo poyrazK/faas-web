@@ -32,6 +32,27 @@ the mock go `pending → building → imaging → snapshotting → live` over ab
 seconds; `MOCK_BUILD_FAIL=1` makes new source builds fail at the dependency
 install instead.
 
+### Compatibility to first response
+
+The landing page's **Will it run?** form opens `/will-it-run` for a public GitHub
+repository. A green preflight offers **Deploy this commit**; the canonical
+repository and exact checked SHA travel through signup/sign-in into the app
+wizard (or onboarding for a new account). The check is static analysis, not a
+promise that the application will run. Amber/red results offer a recheck.
+
+Wizard source fields live in the URL. OAuth and GitHub installation round trips
+also use tab-scoped session storage to restore the destination; installation
+handoffs expire after one hour. The connected installation must have access to
+the selected repository. The first build uses the checked SHA, while the binding
+uses the backend's default branch when the ref is a commit.
+
+Once the API reports a live deployment, **Verify your API** lets the user send
+an explicit, credential-free GET to a read-only path on the assigned HTTPS
+endpoint. Only a readable 2xx response is marked successful. Requests time out
+after 20 seconds and previews are bounded to 16 KB. CORS restrictions or redirects
+may prevent browser verification; the public URL and a copyable curl command
+remain available. No request is sent automatically.
+
 ## Scripts
 
 | Command              | What it does                                        |
@@ -275,7 +296,7 @@ usage with a quote that is labelled an estimate, crossed usage alerts, and
 usage statements (snapshot a UTC month, confirmed finalize, handoff receipt
 read) — and **Consumer plans**, whose limits and alert thresholds are the only
 plan fields the API has. Account-level **Customers** (`/dashboard/customers`,
-under Operate) are platform tenants: register idempotently by external
+under Monetize) are platform tenants: register idempotently by external
 reference, link existing consumers and surfaces, suspend or resume (which
 blocks linked credentials and hostnames), set immutable tenant prices, and
 read cross-app usage, statements and credential metadata. Every page shows
@@ -341,7 +362,7 @@ publication revision, so the UI states that limit.
 Mock mode includes these screens; `MOCK_AUTOMATIONS_DISABLED=1` exercises the
 runtime-disabled presentation. No mock data ships in the preview build.
 
-**Events** (`/dashboard/events`, under Operate) reads the account's event
+**Events** (`/dashboard/events`, under Messaging) reads the account's event
 router: waiting consumers with exact counts and their dominant waiting reason,
 retained storage against plan limits, and retention health. A consumer opens
 its oldest waiting recipients, each with a fresh routing-blocker read. Receipt
@@ -502,6 +523,28 @@ Config for the common hosts is committed:
 - **Vercel** — `vercel.json`, which also sets far-future caching on the
   content-hashed `/assets/*` and `no-cache` on `index.html`.
 
+**Browser security headers have one source of truth:** `src/lib/security-headers.ts`.
+`npm run dev` and `npm run preview` apply it from the module, and `vercel.json`
+carries a literal copy of the production set that `src/hosting-contract.test.ts`
+checks for equality — on a mismatch, regenerate the literal from the module.
+The policy is first-party with one named exception: `script-src 'self'`,
+`font-src 'self'`, and `connect-src 'self' https://s3.gregale.dev`, because
+object uploads PUT the file straight to a signed URL on the branded S3 gateway
+(`lib/api/object-storage.ts`). Fonts are self-hosted from `src/fonts/` for the
+same reason (provenance and licenses in its README); Vite content-hashes them
+into `/assets/`, which the immutable cache rule covers. The one keyword
+allowance is `style-src 'unsafe-inline'`: the prerendered public pages carry
+React's `style=""` attributes in their markup, and the overview search's
+border-beam package renders a `<style>` element, so a strict `style-src` blanks
+both until build-time hashes exist. A new external origin is a policy change,
+not a tag in `index.html`, and the dev server blocks it until the module allows
+it; the policy tests name each allowed host and why.
+
+`npm run build:mock` then `npm run preview:mock` serve a built console with the
+mock API behind it under the production headers; point `npm run tour` at
+`http://localhost:4173` before changing the policy — the tour fails on any
+Content-Security-Policy violation.
+
 OAuth uses full-page GETs through `/v1/auth/google` and `/v1/auth/github`,
 including their callback paths. If the API is behind a WAF or bot check, those
 paths must be allowed to reach `api.gregale.dev` without an interactive
@@ -646,7 +689,11 @@ calling a function with the wrong type.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
-  reachable everywhere at once.
+  reachable everywhere at once. The sidebar lists account-wide pages only,
+  grouped by resource category (Compute, Storage, Networking, Messaging,
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
+  instead (`APP_TABS`). The reasoning is in
+  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 

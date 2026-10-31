@@ -3,6 +3,7 @@ import { CheckCircle, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
+import { Timestamp } from '@/components/ui/timestamp';
 import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { ScheduleField } from './schedule-field';
@@ -1078,7 +1079,7 @@ export function AutomationEditor({
             )}
             {validation.next_fire_at && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Next scheduled start: {validation.next_fire_at}
+                Next scheduled start: <Timestamp value={validation.next_fire_at} />
               </p>
             )}
           </div>

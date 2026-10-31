@@ -530,6 +530,22 @@ describe('automation editor write boundaries', () => {
     );
     expect(mocks.write).not.toHaveBeenCalled();
   });
+  it('shows the next scheduled start as a time, with the exact time on hover', async () => {
+    mocks.validate.mockResolvedValue({
+      valid: true,
+      issues: [],
+      step_order: ['process'],
+      next_fire_at: '2026-10-21T09:00:00Z',
+    });
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Validate definition' }));
+    await screen.findByText(/Next scheduled start/);
+
+    const next = screen.getByRole('time');
+    expect(next).toHaveAttribute('dateTime', '2026-10-21T09:00:00.000Z');
+    expect(next).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(next.textContent).not.toContain('2026-10-21T09:00:00Z');
+  });
   it('suggests observed app routes for handler paths while keeping free text', async () => {
     mocks.routes = ['POST /orders', 'GET /orders', 'GET /health', '__route_other__'];
     mount();

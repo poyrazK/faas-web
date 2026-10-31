@@ -18,6 +18,10 @@ import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendControl } from '@/components/dashboard/spend-control';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { AppCapacity } from '@/components/dashboard/app-capacity';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { OrgUsage } from '@/components/dashboard/org-billing';
+import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -36,9 +40,7 @@ export const Route = createFileRoute('/dashboard/usage')({
  */
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(cents);
 }
 
 /**
@@ -240,7 +242,24 @@ function PerAppUsagePanel() {
   );
 }
 
+/**
+ * In a company workspace the page reads the organization's billing subject;
+ * the allowance, forecast and cap below belong to the signed-in account.
+ */
 function UsagePage() {
+  const { org, label, ready } = useWorkspaceTarget();
+  // Until the workspace is bound, a chosen company reads as null: wait.
+  if (!ready) return <PageHeader title="Usage" />;
+  if (!org) return <PersonalUsage />;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Usage" description={`What ${label} uses this billing period.`} />
+      <OrgUsage org={org} label={label} />
+    </div>
+  );
+}
+
+function PersonalUsage() {
   const { data, isPending, error, refetch } = useUsageSummary();
   const { account } = useAuth();
   // The shared precedence: an unreachable API is an outage to wait out, not a
@@ -305,7 +324,7 @@ function UsagePage() {
 
           <SpendControl overageCents={data?.overage_cents} />
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
             <StatTile
               label="Egress"
@@ -315,8 +334,9 @@ function UsagePage() {
               label="Ingress"
               value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
             />
-            <StatTile label="Apps" value={String(account?.app_count ?? '—')} />
           </div>
+
+          <AppCapacity />
 
           <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />

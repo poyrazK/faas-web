@@ -532,6 +532,29 @@ const probes = new Map<string, S['OutboundBindingProbePolicy']>(
       ]
 );
 
+/** Usage counters added upstream that the mock does not model (all zero). */
+const ZERO_AI_COUNTERS = {
+  bad_feedback: 0,
+  cache_saved_millicents: 0,
+  cached_requests: 0,
+  code_session_gb: 0,
+  empty_requests: 0,
+  evaluated_requests: 0,
+  evaluation_errors: 0,
+  evaluation_score_sum: 0,
+  file_searches: 0,
+  good_feedback: 0,
+  input_audio_tokens: 0,
+  invalid_json_requests: 0,
+  output_audio_tokens: 0,
+  prompt_cache_saved_millicents: 0,
+  refused_requests: 0,
+  tool_error_requests: 0,
+  truncated_requests: 0,
+  video_seconds: 0,
+  web_searches: 0,
+} satisfies Partial<S['OutboundAIUsageItem']>;
+
 const aiRoutes: S['OutboundAIRoute'][] = EMPTY
   ? []
   : [
@@ -539,6 +562,7 @@ const aiRoutes: S['OutboundAIRoute'][] = EMPTY
         id: '6a0e3f4d-2b1c-4e8f-9a7b-5c6d7e8f9a01',
         name: 'chat-default',
         format: 'openai',
+        strategy: 'ordered',
         targets: [{ integration_id: '0d4c9a52-5a3e-4b8e-9f61-2b7f1c6e0a12', model: 'gpt-4o-mini' }],
         created_at: '2026-09-02T09:14:00Z',
         updated_at: '2026-09-20T16:40:00Z',
@@ -877,6 +901,7 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
           images: 0,
           audio_seconds: 0,
           characters: 0,
+          ...ZERO_AI_COUNTERS,
         }))
       : [];
     const tokens = items.reduce((sum, i) => sum + i.input_tokens + i.output_tokens, 0);
@@ -903,6 +928,7 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
               budget: 'daily_tokens',
               app_id: null,
               end_user: null,
+              tag: null,
               period_start: iso(now() - 86_400_000).slice(0, 10),
               threshold_percent: 80,
               limit: found.ai_daily_token_limit,

@@ -62,3 +62,17 @@ export function useActiveOrg(): string | null {
     () => null
   );
 }
+
+/**
+ * Whether the store is bound to the signed-in account yet. Until it is, the
+ * active org reads as null even when a company is chosen, so a page that shows
+ * the personal account's numbers must wait for this rather than read null as
+ * "personal".
+ */
+export function workspaceBound(): boolean {
+  return bound.accountId !== '';
+}
+
+export function useWorkspaceBound(): boolean {
+  return useSyncExternalStore(subscribe, workspaceBound, () => false);
+}

@@ -29,6 +29,7 @@ const fixtures = vi.hoisted(() => ({
     created_at: '2026-09-11T00:00:00Z',
     min_instances: 0,
     traffic_percent: 0,
+    commit_sha: undefined as string | undefined,
   },
   build: {
     id: 'build-1',
@@ -54,6 +55,12 @@ const fixtures = vi.hoisted(() => ({
   traffic: vi.fn(),
   sbom: vi.fn(),
   toast: vi.fn(),
+}));
+// The capability registry needs an account; this harness has none, so gates read as on.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: fixtures.toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
@@ -184,6 +191,14 @@ class Stream {
   }
 }
 
+/** The clickable row. Its copy buttons are buttons too, with the same ID in
+ * their names, so a name match alone finds several. */
+function listRow(name: RegExp) {
+  const row = screen.getAllByRole('button', { name }).find((el) => el.tagName === 'TR');
+  if (!row) throw new Error(`No table row matches ${String(name)}`);
+  return row;
+}
+
 async function mount(entry = '/dashboard/releases') {
   const root = createRootRoute({ component: Outlet });
   const dashboard = createRoute({
@@ -226,6 +241,7 @@ beforeEach(() => {
   fixtures.build.status = 'failed';
   fixtures.deployment.id = 'dep-1';
   fixtures.deployment.image_digest = 'sha256:aaaa';
+  fixtures.deployment.commit_sha = undefined;
   Stream.instances = [];
   vi.stubGlobal('EventSource', Stream);
   fixtures.retry.mockReset().mockResolvedValue({ id: 'retry-1' });
@@ -255,20 +271,78 @@ describe('Releases hub', () => {
     fixtures.deployment.id = '0123456789abcdef0123456789abcdef';
     fixtures.deployment.image_digest = `sha256:${'a'.repeat(64)}`;
     const router = await mount(`/dashboard/releases?q=${fixtures.deployment.image_digest}`);
-    const row = screen.getByRole('button', { name: /01234567…cdef/ });
+    const row = listRow(/0123456789ab…/);
     expect(row).not.toHaveTextContent(fixtures.deployment.image_digest);
     expect(within(row).getByTitle(fixtures.deployment.id)).toBeInTheDocument();
     await userEvent.clear(screen.getByRole('searchbox'));
     await userEvent.type(screen.getByRole('searchbox'), fixtures.deployment.id);
-    await userEvent.click(screen.getByRole('button', { name: /01234567…cdef/ }));
+    await userEvent.click(listRow(/0123456789ab…/));
     expect(router.state.location.search).toMatchObject({ deployment: fixtures.deployment.id });
     const details = await screen.findByRole('region', { name: 'Release details' });
     expect(
-      within(details).getByText(fixtures.deployment.id, { selector: 'dd' })
+      within(details).getByText(fixtures.deployment.id, { selector: 'dd *' })
     ).toBeInTheDocument();
     expect(
-      within(details).getByText(fixtures.deployment.image_digest, { selector: 'dd' })
+      within(details).getByText(fixtures.deployment.image_digest, { selector: 'dd *' })
     ).not.toHaveClass('truncate');
+    for (const [label, value] of [
+      ['deployment ID', fixtures.deployment.id],
+      ['build ID', fixtures.deployment.build_id],
+      ['image digest', fixtures.deployment.image_digest],
+    ]) {
+      expect(
+        within(details).getByRole('button', { name: `Copy: ${label} ${value}` })
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('copies the full deployment ID from the list without opening the release', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    fixtures.deployment.id = '0123456789abcdef0123456789abcdef';
+    const router = await mount();
+    await user.click(
+      screen.getByRole('button', { name: `Copy: deployment ID ${fixtures.deployment.id}` })
+    );
+    expect(writeText).toHaveBeenCalledWith(fixtures.deployment.id);
+    expect(router.state.location.search.deployment).toBeUndefined();
+  });
+
+  it('shows the commit as seven characters, copyable in full, and a dash when unknown', async () => {
+    fixtures.deployment.commit_sha = 'abcdef0123456789abcdef0123456789abcdef01';
+    await mount();
+    expect(screen.getByRole('columnheader', { name: 'Commit' })).toBeInTheDocument();
+    expect(screen.getByText('abcdef0…')).toHaveAttribute('title', fixtures.deployment.commit_sha);
+    expect(
+      screen.getByRole('button', { name: `Copy: commit ${fixtures.deployment.commit_sha}` })
+    ).toBeInTheDocument();
+  });
+
+  it('shows an em dash in the Commit column when the deployment has no commit', async () => {
+    await mount();
+    const cell = screen.getByRole('columnheader', { name: 'Commit' });
+    const index = Array.from(cell.parentElement!.children).indexOf(cell);
+    const row = listRow(/dep-1\b/);
+    expect(row.children[index]).toHaveTextContent('—');
+    expect(screen.queryByRole('button', { name: /^Copy: commit/ })).not.toBeInTheDocument();
+  });
+
+  it('has no Commit column in the Builds view', async () => {
+    await mount('/dashboard/releases?view=builds');
+    expect(screen.queryByRole('columnheader', { name: 'Commit' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['releases', '/dashboard/releases'],
+    ['builds', '/dashboard/releases?view=builds'],
+  ])('sizes the %s columns to exactly 100% on desktop', async (_view, url) => {
+    await mount(url);
+    const total = screen
+      .getAllByRole('columnheader')
+      .flatMap((th) => Array.from(th.className.matchAll(/(?:^|\s)md:w-\[(\d+)%\]/g)))
+      .reduce((sum, match) => sum + Number(match[1]), 0);
+    expect(total).toBe(100);
   });
 
   it('offers actual status values and preserves unrelated URL state when filtering', async () => {
@@ -281,7 +355,7 @@ describe('Releases hub', () => {
     expect(router.state.location.hash).toBe('details');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status filter' }), '');
     expect(router.state.location.search.status).toBeUndefined();
-    expect(screen.getByRole('button', { name: /dep-1\b/ })).toBeInTheDocument();
+    expect(listRow(/dep-1\b/)).toBeInTheDocument();
   });
 
   it('names the active Builds view when filters match nothing', async () => {
@@ -311,15 +385,32 @@ describe('Releases hub', () => {
     );
   });
 
+  it('shows PR previews on the Releases view only', async () => {
+    const router = await mount();
+    expect(screen.getByRole('heading', { name: 'PR previews' })).toBeInTheDocument();
+    await act(() => router.navigate({ to: '/dashboard/releases', search: { view: 'builds' } }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'PR previews' })).not.toBeInTheDocument()
+    );
+  });
+
   it('keeps deployment status and identity primary while preserving compact build facts', async () => {
     await mount();
-    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
     expect(screen.getByRole('table')).toHaveClass('table-fixed');
     expect(screen.getByRole('columnheader', { name: 'Build / source' })).toHaveClass(
       'hidden',
       'md:table-cell'
     );
     expect(screen.getByRole('columnheader', { name: 'Process' })).not.toHaveClass('hidden');
+  });
+
+  it('shows when a release was created, with the exact time on hover', async () => {
+    await mount();
+    const when = (await screen.findAllByRole('time'))[0];
+    expect(when).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
+    expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(when).toHaveTextContent(/ago$/);
   });
 
   it('shows each release as a process with its current phase', async () => {
@@ -366,10 +457,10 @@ describe('Releases hub', () => {
       const router = await mount(entry);
       const row =
         kind === 'build'
-          ? screen.getByRole('button', { name: /build-only/ })
+          ? listRow(/build-only/)
           : kind === 'app release'
             ? screen.getByRole('button', { name: /image aaaa/ })
-            : screen.getByRole('button', { name: /dep-1\b/ });
+            : listRow(/dep-1\b/);
       const select = async () => {
         if (input === 'pointer') await userEvent.click(row);
         else {
@@ -403,7 +494,7 @@ describe('Releases hub', () => {
   ])('distinguishes %s build status in the list and shared detail', async (status, color) => {
     fixtures.build.status = status;
     await mount('/dashboard/releases');
-    const row = screen.getByRole('button', { name: /dep-1\b/ });
+    const row = listRow(/dep-1\b/);
     expect(within(row).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
     await userEvent.click(row);
     const details = await screen.findByRole('region', { name: 'Release details' });
@@ -415,7 +506,7 @@ describe('Releases hub', () => {
   it('resolves joined build evidence even when its record is outside the loaded build page', async () => {
     fixtures.omitBuildFromHistory = true;
     await mount();
-    const row = screen.getByRole('button', { name: /dep-1\b/ });
+    const row = listRow(/dep-1\b/);
     expect(row).toHaveTextContent('oom');
     expect(row).toHaveTextContent('42s');
     expect(within(row).getAllByText('failed')).toHaveLength(2);
@@ -423,7 +514,7 @@ describe('Releases hub', () => {
   it('joins deployment rows to their build status, duration, failure and source', async () => {
     await mount();
     expect(screen.getByRole('heading', { name: 'Releases' })).toBeInTheDocument();
-    const row = screen.getByRole('button', { name: /dep-1\b/ });
+    const row = listRow(/dep-1\b/);
     expect(row).toHaveTextContent('oom');
     expect(row).toHaveTextContent('42s');
     expect(row).toHaveTextContent('github');
@@ -433,7 +524,7 @@ describe('Releases hub', () => {
   it('keeps unattached builds discoverable with source size and zero duration', async () => {
     await mount();
     await userEvent.click(screen.getByRole('link', { name: 'Builds' }));
-    const row = screen.getByRole('button', { name: /build-only/ });
+    const row = listRow(/build-only/);
     expect(row).toHaveTextContent('4.0 KB');
     expect(row).toHaveTextContent('0s');
     await userEvent.click(row);
@@ -460,7 +551,7 @@ describe('Releases hub', () => {
 
   it('restores selected detail and section after Back, Forward and a copied URL', async () => {
     const router = await mount('/dashboard/releases?campaign=handoff#details');
-    await userEvent.click(screen.getByRole('button', { name: /dep-1\b/ }));
+    await userEvent.click(listRow(/dep-1\b/));
     await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({

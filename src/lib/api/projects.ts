@@ -2,6 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { retryPolicy } from './queries';
 import type { components } from './schema';
+import { useWorkspaceTarget } from './workspace-apps';
 export type ProjectSummary = components['schemas']['ProjectSummaryResponse'];
 export type ProjectDetail = components['schemas']['ProjectResponse'];
 export type ProjectEnvironment = components['schemas']['ProjectEnvironmentResponse'];
@@ -15,11 +16,26 @@ export const projectKeys = {
   list: (accountId: string) => ['projects', accountId] as const,
   detail: (accountId: string, slug: string) => ['projects', accountId, slug] as const,
 };
+/**
+ * The projects of the active workspace. `GET /v1/projects` is account-only
+ * (faas handlers_projects.go:29), so a company workspace reads
+ * `/v1/orgs/{organization}/projects` (same shape), which includes projects a
+ * teammate created. Nothing is read until the workspace is known.
+ */
 export function useProjects(accountId: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: projectKeys.list(accountId),
-    queryFn: ({ signal }) => unwrap(api.GET('/v1/projects', { signal })),
-    enabled: Boolean(accountId),
+    queryKey: org ? [...projectKeys.list(accountId), 'org', org] : projectKeys.list(accountId),
+    queryFn: ({ signal }) =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects', {
+              params: { path: { organization: org } },
+              signal,
+            })
+          )
+        : unwrap(api.GET('/v1/projects', { signal })),
+    enabled: Boolean(accountId) && ready,
     retry: retryPolicy,
     staleTime: 30_000,
   });
@@ -90,12 +106,26 @@ export function useEnvironmentDiff(
     staleTime: 30_000,
   });
 }
+/** One project's detail, under the organization in a company workspace (same shape). */
+function readProject(org: string | null, slug: string, signal?: AbortSignal) {
+  return org
+    ? unwrap(
+        api.GET('/v1/orgs/{organization}/projects/{slug}', {
+          params: { path: { organization: org, slug } },
+          signal,
+        })
+      )
+    : unwrap(api.GET('/v1/projects/{slug}', { params: { path: { slug } }, signal }));
+}
+
 export function useProject(accountId: string, slug: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: projectKeys.detail(accountId, slug),
-    queryFn: ({ signal }) =>
-      unwrap(api.GET('/v1/projects/{slug}', { params: { path: { slug } }, signal })),
-    enabled: Boolean(accountId && slug),
+    queryKey: org
+      ? [...projectKeys.detail(accountId, slug), 'org', org]
+      : projectKeys.detail(accountId, slug),
+    queryFn: ({ signal }) => readProject(org, slug, signal),
+    enabled: Boolean(accountId && slug) && ready,
     retry: retryPolicy,
     staleTime: 30_000,
   });
@@ -111,14 +141,14 @@ export function useProject(accountId: string, slug: string) {
  * must never be shown as standalone just because its project is slow.
  */
 export function useProjectMembership(accountId: string) {
+  const { org } = useWorkspaceTarget();
   const list = useProjects(accountId);
   const details = useQueries({
     queries: (list.data ?? []).map((project) => ({
-      queryKey: projectKeys.detail(accountId, project.slug),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        unwrap(
-          api.GET('/v1/projects/{slug}', { params: { path: { slug: project.slug } }, signal })
-        ),
+      queryKey: org
+        ? [...projectKeys.detail(accountId, project.slug), 'org', org]
+        : projectKeys.detail(accountId, project.slug),
+      queryFn: ({ signal }: { signal: AbortSignal }) => readProject(org, project.slug, signal),
       enabled: Boolean(accountId),
       retry: retryPolicy,
       staleTime: 30_000,

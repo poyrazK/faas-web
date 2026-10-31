@@ -26,6 +26,9 @@ vi.mock('@/components/dashboard/resource-table', () => ({
   ResourceTable: () => null,
 }));
 vi.mock('@/components/dashboard/domain-doctor', () => ({ DomainDoctor: () => null }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 
 const { Route } = await import('./dashboard.domains');
 const DomainsPage = (Route as unknown as { component: React.ComponentType }).component;

@@ -143,6 +143,7 @@ const BUDGET_LABELS: Record<OutboundAIAlert['budget'], string> = {
   monthly_cost: 'Monthly cost',
   user_daily_tokens: 'End-user daily tokens',
   user_daily_cost: 'End-user daily cost',
+  tag_daily_cost: 'Tag daily cost',
 };
 
 function AIGatewayContent({

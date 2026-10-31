@@ -4,10 +4,11 @@ import { BorderBeam } from 'border-beam';
 import { GitBranch, Plus, Search, Upload } from 'iconoir-react';
 import { Kbd } from '@/components/ui/kbd';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
-import { NAV_ITEMS, type NavIcon } from './nav-config';
+import { NAV_ITEMS, railGroupFor, visibleNavItems, type NavIcon } from './nav-config';
 import { fuzzyMatch, highlightSegments } from '@/lib/fuzzy';
 import type { Workflow } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useCapabilityOff } from './nav-access';
 
 /**
  * The overview's search, answered in place.
@@ -23,6 +24,8 @@ interface Item {
   id: string;
   label: string;
   group: string;
+  /** Matched at a discount, never rendered: the rail heading a page is filed under. */
+  keywords?: string;
   icon: NavIcon;
   go: () => void;
 }
@@ -37,6 +40,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
 
+  const isOff = useCapabilityOff();
   const items = useMemo<Item[]>(
     () => [
       ...workflows.map((w) => ({
@@ -71,15 +75,18 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         icon: Upload,
         go: () => void navigate({ to: '/dashboard/import' }),
       },
-      ...NAV_ITEMS.filter((n) => n.to !== '/dashboard').map((n) => ({
-        id: `nav-${n.to}-${n.label}`,
-        label: n.label,
-        group: 'Page',
-        icon: n.icon,
-        go: () => void navigate(n.search ? { to: n.to, search: n.search } : { to: n.to }),
-      })),
+      ...visibleNavItems(NAV_ITEMS, isOff)
+        .filter((n) => n.to !== '/dashboard')
+        .map((n) => ({
+          id: `nav-${n.to}-${n.label}`,
+          label: n.label,
+          group: 'Page',
+          keywords: railGroupFor(n),
+          icon: n.icon,
+          go: () => void navigate(n.search ? { to: n.to, search: n.search } : { to: n.to }),
+        })),
     ],
-    [workflows, navigate]
+    [workflows, navigate, isOff]
   );
 
   const results = useMemo(() => {
@@ -90,8 +97,12 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
     }
     return items
       .map((item) => {
-        const m = fuzzyMatch(item.label, q);
-        return m ? { item, indices: m.indices, score: m.score } : null;
+        // Same discount as the palette's: a label hit always outranks a
+        // heading hit, and only the label's match is highlighted.
+        const onLabel = fuzzyMatch(item.label, q);
+        const onKeywords = item.keywords ? fuzzyMatch(item.keywords, q) : null;
+        const score = Math.max(onLabel?.score ?? -Infinity, (onKeywords?.score ?? -Infinity) - 30);
+        return score === -Infinity ? null : { item, indices: onLabel?.indices ?? [], score };
       })
       .filter((r): r is { item: Item; indices: number[]; score: number } => r !== null)
       .sort((a, b) => b.score - a.score)
