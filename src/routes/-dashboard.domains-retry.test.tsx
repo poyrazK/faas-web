@@ -16,6 +16,9 @@ import { spyApi } from '@/test/api';
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 
 const APP_ID = '0123456789abcdef0123456789abcdef';
 const OLD_TXT = '_gregale-challenge.alpha.example.com TXT "old-token"';
