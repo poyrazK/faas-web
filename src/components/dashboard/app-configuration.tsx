@@ -5,7 +5,6 @@ import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import {
   useApp,
   useAppDiff,
@@ -19,6 +18,7 @@ import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
 import { GatedSupplyChainPanel } from './supply-chain-gate';
+import { DeployTokensPanel } from './deploy-tokens';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
@@ -26,9 +26,11 @@ import { appNameError } from './new-app-validation';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
 import { configurationEffects } from '@/lib/api/runtime-policy';
+import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
 import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
+import { AppReleaseSettings } from './app-release-settings';
 
 /**
  * The app's own settings, editable.
@@ -252,9 +254,7 @@ function ConfigForm({ app }: { app: App }) {
           description: 'Runtime application is verified separately below.',
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
   };
 
   return (
@@ -281,7 +281,7 @@ function ConfigForm({ app }: { app: App }) {
                     toast({
                       kind: 'error',
                       title: 'Could not preview',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
               }
@@ -656,7 +656,7 @@ function RenamePanel({ app }: { app: App }) {
               });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not rename', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not rename', error: err })
             );
         }}
       >
@@ -707,9 +707,9 @@ function DangerZone({ app }: { app: App }) {
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            The app is hidden from active lists and enters a 7-day grace window before permanent
-            cleanup. Restore it through the API during that window; this console has no restore
-            action. Delete any object storage buckets first.
+            The app is hidden from active lists and enters a {APP_DELETE_GRACE_DAYS}-day grace
+            window before permanent cleanup. Restore it from Recently deleted on the Apps page
+            during that window. Delete any object storage buckets first.
           </p>
         </div>
         <Button
@@ -720,8 +720,7 @@ function DangerZone({ app }: { app: App }) {
             if (
               !(await confirm({
                 title: `Delete ${app.slug}?`,
-                description:
-                  'Traffic to this app stops. Use the restore API within 7 days to recover the app; after the grace window it is eligible for permanent cleanup.',
+                description: `Traffic to this app stops. Restore it from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days; after the grace window it is eligible for permanent cleanup.`,
                 confirmLabel: 'Delete app',
                 destructive: true,
                 typeToConfirm: app.slug,
@@ -734,12 +733,12 @@ function DangerZone({ app }: { app: App }) {
                 toast({
                   kind: 'success',
                   title: 'App deletion scheduled',
-                  description: `${app.slug} can be restored through the API within 7 days.`,
+                  description: `${app.slug} can be restored from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days.`,
                 });
                 void navigate({ to: '/dashboard/apps' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
         >
@@ -808,8 +807,10 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
+      <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
       <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
+      <DeployTokensPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

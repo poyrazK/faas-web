@@ -3,7 +3,7 @@ import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDestroyPreview } from '@/lib/api/queries';
 
 /**
@@ -53,7 +53,7 @@ export function useTearDownPreview(slug: string) {
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not tear down', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not tear down', error: err });
     }
   };
 

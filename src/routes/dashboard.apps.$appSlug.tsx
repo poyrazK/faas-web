@@ -48,6 +48,7 @@ import {
 import { RoutesBody } from './dashboard.routes';
 import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
+import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
@@ -68,6 +69,7 @@ import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
+import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
@@ -688,6 +690,12 @@ function FunctionDetailPage() {
                   >
                     <SecretsBody slug={fn.id} />
                   </EnvironmentSection>
+                  <EnvironmentSection
+                    title="History"
+                    description="Every change to variables and secrets is a revision you can roll back to, and the config guard undoes a change that breaks the app."
+                  >
+                    <ConfigHistory slug={fn.id} />
+                  </EnvironmentSection>
                 </>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
@@ -733,6 +741,8 @@ function FunctionDetailPage() {
 
               {tab === 'Configuration' && (
                 <>
+                  {/* Source first: AppConfiguration ends in the danger zone. */}
+                  <GitHubConnectionPanel slug={fn.id} />
                   <AppConfiguration slug={fn.id} />
                   <PrewarmPanel slug={fn.id} />
                 </>

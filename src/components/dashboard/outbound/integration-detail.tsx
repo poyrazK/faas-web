@@ -9,6 +9,7 @@ import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { errorMessage } from '@/lib/api/errors';
 import {
   outboundKey,
@@ -176,7 +177,7 @@ function Overview({
             </span>{' '}
             <span className="text-muted-foreground">
               of {formatLimit(usage.data.daily_request_limit, 'requests').toLowerCase()} · resets{' '}
-              <span className="font-mono text-xs">{usage.data.resets_at}</span>
+              <Timestamp value={usage.data.resets_at} className="font-mono text-xs" />
             </span>
           </p>
         ) : (

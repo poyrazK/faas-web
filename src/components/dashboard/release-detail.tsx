@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/dashboard/tabs';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, InlinePhase, LoadingState, UnreachableState, queryPhase } from './primitives';
 import { LogStreamRecovery } from './log-stream-recovery';
@@ -214,10 +215,31 @@ export function ReleaseDetailPanel({
                     ) : null}
                     <EvidenceFields
                       values={[
-                        ['Deployment ID', deployment.id],
+                        [
+                          'Deployment ID',
+                          <CopyableId value={deployment.id} label="deployment ID" full />,
+                        ],
                         ['Kind', deployment.kind],
-                        ['Build ID', deployment.build_id ?? build?.id ?? '—'],
-                        ['Image', deployment.image_digest || '—'],
+                        [
+                          'Build ID',
+                          (deployment.build_id ?? build?.id) ? (
+                            <CopyableId
+                              value={(deployment.build_id ?? build?.id)!}
+                              label="build ID"
+                              full
+                            />
+                          ) : (
+                            '—'
+                          ),
+                        ],
+                        [
+                          'Image',
+                          deployment.image_digest ? (
+                            <CopyableId value={deployment.image_digest} label="image digest" full />
+                          ) : (
+                            '—'
+                          ),
+                        ],
                         ['Created', relativeTime(deployment.created_at)],
                         ['Error code', deployment.error_code ?? '—'],
                         [
