@@ -119,7 +119,7 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   };
 
   const submit = () => {
-    if (create.isPending) return;
+    if (create.isPending || rotate.isPending) return;
     const trimmed = label.trim();
     const body: { label?: string; expires_at?: string } = {};
     if (trimmed) body.label = trimmed;
@@ -243,7 +243,13 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
               ))}
             </Select>
           </label>
-          <Button type="submit" size="sm" className="gap-1.5" busy={create.isPending}>
+          <Button
+            type="submit"
+            size="sm"
+            className="gap-1.5"
+            busy={create.isPending}
+            disabled={rotate.isPending}
+          >
             <Plus className="h-3.5 w-3.5" />
             Create token
           </Button>
@@ -293,7 +299,8 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
                       {state !== 'expired' && (
                         <IconButton
                           aria-label={`Rotate ${name}`}
-                          disabled={rotate.isPending}
+                          // One reveal serves both: never mint two secrets at once.
+                          disabled={rotate.isPending || create.isPending}
                           onClick={(event) => void rotateToken(token, event.currentTarget)}
                           className="text-muted-foreground transition-colors hover:text-foreground"
                         >

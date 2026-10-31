@@ -132,6 +132,17 @@ describe('DeployTokensPanel', () => {
     expect(screen.queryByRole('region', { name: 'New deploy token' })).toBeNull();
   });
 
+  it('holds Rotate while a create is in flight, so a one-time secret cannot be dropped', async () => {
+    // Create and rotate share one reveal; a rotate that lands mid-create would
+    // replace the create's secret, minting a token nobody ever saw.
+    spyApi('POST').mockImplementation(() => new Promise(() => {}));
+    mount();
+    await screen.findByRole('listitem', { name: /github-actions/ });
+    await userEvent.type(screen.getByLabelText('Label'), 'ci');
+    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    expect(screen.getByRole('button', { name: /^Rotate github-actions/ })).toBeDisabled();
+  });
+
   it('sends an explicit expiry when one other than the 90-day default is picked', async () => {
     const post = spyApi('POST').mockResolvedValue(
       ok({ ...active, plaintext: SECRET }, 201) as never
