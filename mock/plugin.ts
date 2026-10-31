@@ -12,6 +12,12 @@ import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import {
+  isMockProblem,
+  readRequestAudit,
+  readRouteCustomers,
+  type MockProblem,
+} from './request-audit';
 import { readWakeAhead, writeWakeAhead } from './wake-ahead';
 import { projects, projectSummaries } from './projects';
 import {
@@ -2607,6 +2613,21 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
 }
 
 route('GET', '/v1/apps/{slug}/analytics/timeseries', analyticsTimeseries);
+
+// Request audit (ADR-242) and route customer usage. MOCK_PLAN=free shows the
+// route-customers plan gate; billing-recon answers capacity_unavailable.
+function answerOrThrow<T>(out: T | MockProblem): T {
+  if (isMockProblem(out)) throw new Problem(out.status, out.code, out.detail);
+  return out;
+}
+route('GET', '/v1/apps/{slug}/audit/requests', ({ params, query }) =>
+  answerOrThrow(readRequestAudit(app(params.slug), query))
+);
+route('GET', '/v1/apps/{slug}/analytics/route-customers', ({ params, query }) =>
+  answerOrThrow(
+    readRouteCustomers(app(params.slug), query, process.env.MOCK_PLAN ?? db.account.plan)
+  )
+);
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();

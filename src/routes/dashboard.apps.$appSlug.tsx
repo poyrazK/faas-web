@@ -55,6 +55,7 @@ import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
+import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
@@ -743,6 +744,7 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
               {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
