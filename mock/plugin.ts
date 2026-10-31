@@ -640,6 +640,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
@@ -851,19 +857,49 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
   );
 });
-route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
+// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
+// superseded deployment; an explicit target may also be a live row at 0%
+// traffic. The target row itself goes live again; no new row is written.
+route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   const a = app(params.slug);
-  const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];
-  if (!previous) throw new Problem(409, 'no_previous_deployment', 'Nothing to roll back to.');
-  const dep: db.Deployment = {
-    ...previous,
-    id: db.id(),
-    status: 'active',
-    created_at: db.iso(0),
-    traffic_percent: 100,
-  };
-  db.deployments.unshift(dep);
-  return status(202, dep);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
+  let target: db.Deployment | undefined;
+  if (ref) {
+    target = rows.find((d) => d.id === ref);
+    if (!target)
+      throw new Problem(
+        404,
+        'rollback_target_not_found',
+        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
+      );
+    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
+    if (target.status === 'live' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_already_live',
+        `Deployment "${ref}" is already the current live deployment.`
+      );
+    if (target.status !== 'superseded' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_ineligible',
+        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
+      );
+  } else {
+    target = rows.find((d) => d.status === 'superseded');
+    if (!target)
+      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
+  }
+  const scope = target.scope ?? 'prod';
+  for (const d of rows) {
+    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
+    d.status = 'superseded';
+    d.traffic_percent = 0;
+  }
+  target.status = 'live';
+  target.traffic_percent = 100;
+  return status(202, target);
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -5597,20 +5633,48 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
 });
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  return [
+  const seeded = [
     { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
     { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
     { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
     { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
   ];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
 });
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
-  requireGitHub();
+const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
+route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
+  const bound = repoBindings.get(params.slug);
+  const installed = Boolean(db.account.github_install_id);
   return {
-    binding_id: hex(32),
+    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
+    health: installed ? 'healthy' : 'not_connected',
+    connected: installed,
+    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
+    last_reconcile_repository_count: 4,
+    last_reconcile_detached_count: 0,
+    ...bound,
+  };
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const bound = {
     repo_full_name: String(body.repo_full_name ?? ''),
     production_branch: String(body.production_branch ?? 'main'),
   };
+  repoBindings.set(params.slug, bound);
+  return { binding_id: hex(32), ...bound };
 });
 
 // --- Organisations, org keys, invitations ---
@@ -5732,6 +5796,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_disable',
   'set_password',
   'connect_github',
+  'bind_app_to_repo',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';

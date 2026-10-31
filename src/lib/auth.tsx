@@ -224,6 +224,12 @@ interface AuthValue {
    * rather than leaving every panel to report the same outage separately.
    */
   apiReachable: boolean;
+  /**
+   * True once the API has rejected a session this browser believed was signed
+   * in. Lets the console say why it is sending the user to sign in, which a
+   * deliberate sign-out never sets.
+   */
+  sessionExpired: boolean;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -233,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => readSession());
   const sessionGeneration = useRef(0);
   const [apiReachable, setReachable] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
   // Only the boot check blocks; later refreshes happen behind the current UI.
   const [loading, setLoading] = useState<boolean>(
     () => readSession() !== null || hasOAuthPending()
@@ -252,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (next: User | null) => {
       writeSession(next);
       setUser(next);
+      if (next) setSessionExpired(false);
       if (!next) {
         sessionGeneration.current++;
         void queryClient.cancelQueries({ queryKey: ['account'] });
@@ -285,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // With no backend there is no cookie, so every call is a 401; under the
       // dev bypass that must not bounce the designer back to sign-in.
       if (isDevBypass()) return;
+      if (readSession()) setSessionExpired(true);
       sessionGeneration.current++;
       writeSession(null);
       setUser(null);
@@ -375,6 +384,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       refreshAccount,
       apiReachable,
+      sessionExpired,
     }),
     [
       user,
@@ -386,6 +396,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       refreshAccount,
       apiReachable,
+      sessionExpired,
     ]
   );
 

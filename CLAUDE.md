@@ -64,6 +64,8 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   imports it. It is the sanctioned way to see populated console states while
   `apid` is down — the "no fixture data" rule above is about `src/`, and still
   holds. An unmocked path answers `404 not_mocked` and logs to the dev server.
+  `MOCK_REPOS=<n>` gives the GitHub installation n repositories (the New app
+  list as a large account sees it).
   `MOCK_EMPTY=1` boots the same account with nothing in it, and `MOCK_LATENCY`
   slows responses — between them every read state can be seen on demand.
   `MOCK_HAS_PASSWORD=1` boots with a password already set

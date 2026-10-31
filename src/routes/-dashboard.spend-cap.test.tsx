@@ -27,6 +27,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+vi.mock('@/components/auth/mfa-provider', () => ({ useMfa: () => ({ openMfa: vi.fn() }) }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => null,
 }));
