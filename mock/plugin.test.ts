@@ -403,8 +403,30 @@ describe('POST /v1/apps/{slug}/rollback', () => {
   it('rolls back to the newest superseded deployment, as apid does', async () => {
     const { live, older } = await app('roll-default');
     const res = await json('/v1/apps/roll-default/rollback', { method: 'POST' });
+    // apid accepts the intent (202) and reports a rollback_operation; the
+    // target serves only once its readiness check passes.
     expect(res.status).toBe(202);
-    expect(res.body).toMatchObject({ id: older.id, status: 'live', traffic_percent: 100 });
+    expect(res.body).toMatchObject({
+      id: older.id,
+      rollback_operation: {
+        target_deployment_id: older.id,
+        current_deployment_id: live.id,
+        status: 'preparing',
+      },
+    });
+    expect(live).toMatchObject({ status: 'live', traffic_percent: 100 });
+    const operation = (res.body.rollback_operation as { id: string }).id;
+
+    // Past the mock's readiness and routing windows, the operation completes
+    // and the target serves in place of the release it replaced.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 10_000);
+    const done = await json(`/v1/apps/roll-default/rollbacks/${operation}`).finally(() =>
+      clock.mockRestore()
+    );
+    expect(done.status).toBe(200);
+    expect(done.body).toMatchObject({ id: operation, status: 'complete' });
+    expect(older).toMatchObject({ status: 'live', traffic_percent: 100 });
     expect(live).toMatchObject({ status: 'superseded', traffic_percent: 0 });
   });
 

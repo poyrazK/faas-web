@@ -7,6 +7,7 @@ import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import { mockCapabilities } from './capabilities';
+import * as deploymentDetail from './deployment-detail';
 import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -91,7 +92,9 @@ class Problem extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    readonly detail?: string
+    readonly detail?: string,
+    /** Typed Problem extensions, such as `bindings_check` or `crossed_releases`. */
+    readonly extra?: Record<string, unknown>
   ) {
     super(detail ?? code);
   }
@@ -1158,49 +1161,89 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
   );
 });
-// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
-// superseded deployment; an explicit target may also be a live row at 0%
-// traffic. The target row itself goes live again; no new row is written.
 route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
+  // Plain rollback (handlers_ext.go:2376): restore the named release, or the
+  // newest superseded one, and answer 202 with its rollback_operation.
   const a = app(params.slug);
   const rows = db.deployments.filter((d) => d.app_id === a.id);
   const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
-  let target: db.Deployment | undefined;
-  if (ref) {
-    target = rows.find((d) => d.id === ref);
-    if (!target)
-      throw new Problem(
-        404,
-        'rollback_target_not_found',
-        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
-      );
-    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
-    if (target.status === 'live' && !zeroTrafficLive)
-      throw new Problem(
-        409,
-        'rollback_target_already_live',
-        `Deployment "${ref}" is already the current live deployment.`
-      );
-    if (target.status !== 'superseded' && !zeroTrafficLive)
-      throw new Problem(
-        409,
-        'rollback_target_ineligible',
-        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
-      );
-  } else {
-    target = rows.find((d) => d.status === 'superseded');
-    if (!target)
-      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
-  }
-  const scope = target.scope ?? 'prod';
-  for (const d of rows) {
-    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
-    d.status = 'superseded';
-    d.traffic_percent = 0;
-  }
-  target.status = 'live';
-  target.traffic_percent = 100;
-  return status(202, target);
+  const target = ref
+    ? rows.find((d) => d.id === ref || `v${d.revision}` === ref)
+    : rows.find((d) => d.status === 'superseded');
+  if (ref && !target)
+    throw new Problem(404, 'rollback_target_not_found', `no rollback-eligible deployment "${ref}"`);
+  if (!target) throw new Problem(409, 'no_rollback_target', 'Nothing to roll back to.');
+  if (target.status === 'live' && (target.traffic_percent ?? 0) > 0)
+    throw new Problem(
+      409,
+      'rollback_target_already_live',
+      `deployment "${ref}" is already the current live deployment`
+    );
+  if (target.status !== 'superseded' && target.status !== 'live')
+    throw new Problem(
+      409,
+      'rollback_target_ineligible',
+      `deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back`
+    );
+  // The oldest seeded release of the first app ran release commands since
+  // it last served, so its rollback is refused until acknowledged (ADR-1448).
+  const newer = rows.filter((d) => Date.parse(d.created_at) > Date.parse(target.created_at));
+  if (a.slug === db.apps[0].slug && newer.length >= 3 && body.acknowledge_releases !== true)
+    throw new Problem(
+      409,
+      'rollback_crosses_release',
+      'This rollback crosses release commands that ran after its target last served.',
+      {
+        crossed_releases: newer.slice(-2).map((d) => ({
+          deployment_id: d.id,
+          ...(d.revision ? { revision: d.revision } : {}),
+          status: 'succeeded',
+          started_at: d.created_at,
+        })),
+      }
+    );
+  const current = rows.find(
+    (d) => d.status === 'live' && (d.traffic_percent ?? 0) > 0 && d.scope === target.scope
+  );
+  const rollback_operation = deploymentDetail.startRollback(a.id, target, current);
+  return status(202, { ...target, rollback_operation });
+});
+route('GET', '/v1/apps/{slug}/rollbacks/{operation}', ({ params }) => {
+  app(params.slug);
+  const op = deploymentDetail.readRollback(db.deployments, params.operation);
+  if (!op) throw new Problem(404, 'not_found', 'No such rollback operation for this app.');
+  return op;
+});
+route('GET', '/v1/apps/{slug}/deployments/{id}/summary', ({ params }) => {
+  const a = app(params.slug);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const d = rows.find((x) => x.id === params.id);
+  if (!d) throw new Problem(404, 'not_found', 'no such deployment');
+  const previous =
+    rows
+      .filter((x) => Date.parse(x.created_at) < Date.parse(d.created_at))
+      .sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at))[0] ?? null;
+  const target = rows.find((x) => x.status === 'superseded');
+  return {
+    deployment: d,
+    previous,
+    changes:
+      previous && previous.min_instances !== d.min_instances
+        ? [
+            {
+              field: 'min_instances' as const,
+              before: previous.min_instances ?? 0,
+              after: d.min_instances ?? 0,
+            },
+          ]
+        : [],
+    ...(target
+      ? {
+          rollback_target_id: target.id,
+          ...(target.revision ? { rollback_target_revision: target.revision } : {}),
+        }
+      : {}),
+  } satisfies components['schemas']['DeploymentSummaryResponse'];
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -4518,6 +4561,117 @@ function deploymentById(id: string) {
   const d = db.deployments.find((x) => x.id === id);
   if (!d) throw new Problem(404, 'not_found', 'no such deployment');
   return d;
+}
+
+route('GET', '/v1/deployments/{id}/diff', ({ params, query }) => {
+  const d = deploymentById(params.id);
+  const ref = query.get('against');
+  const against = ref ? db.deployments.find((x) => x.id === ref) : undefined;
+  if (ref && (!against || against.app_id !== d.app_id))
+    throw new Problem(404, 'not_found', 'no such deployment of this app');
+  if (against?.id === d.id)
+    throw new Problem(422, 'validation_failed', 'compare a release with a different release');
+  return {
+    ...deploymentDetail.releaseDiff(db.deployments, d, against),
+    app: db.slugById(d.app_id),
+  };
+});
+route('GET', '/v1/deployments/{id}/runtime', ({ params }) => {
+  const d = deploymentById(params.id);
+  const a = db.apps.find((x) => x.id === d.app_id);
+  return deploymentDetail.runtimeFor(a?.type ?? 'app', a?.runtime, d);
+});
+route('GET', '/v1/deployments/{id}/runtime/upgrade-preview', ({ params, query }) => {
+  const d = deploymentById(params.id);
+  const target = query.get('target') ?? '';
+  if (!/^[0-9a-f]{64}$/.test(target))
+    throw new Problem(422, 'validation_failed', 'target must be a runtime release ID');
+  const a = db.apps.find((x) => x.id === d.app_id);
+  const runtime = deploymentDetail.runtimeFor(a?.type ?? 'app', a?.runtime, d);
+  const release = runtime.releases.find((r) => r.id === target);
+  if (!release) throw new Problem(404, 'not_found', 'no such runtime release');
+  return deploymentDetail.runtimePreview(runtime, release);
+});
+route('POST', '/v1/deployments/{id}/promote', ({ params }) => promote(params.id, false));
+route('POST', '/v1/deployments/{id}/promote-with-application-ack', ({ params }) =>
+  promote(params.id, true)
+);
+route('GET', '/v1/apps/{slug}/rollouts/{id}/observation', ({ params, query }) => {
+  const a = app(params.slug);
+  const selectors = [...query.keys()];
+  if (selectors.length !== 1 || (query.has('scope') && query.get('scope') !== 'default'))
+    throw new Problem(
+      422,
+      'validation_failed',
+      'select exactly one telemetry environment or scope=default'
+    );
+  const d = db.deployments.find((x) => x.id === params.id && x.app_id === a.id);
+  const scope = query.get('environment') ?? 'default';
+  if (!d || (d.scope ?? 'default') !== scope)
+    throw new Problem(404, 'not_found', 'no such deployment in selected environment');
+  if (a.manifest?.execution_mode !== 'worker')
+    throw new Problem(422, 'validation_failed', 'observation requires a worker deployment');
+  return deploymentDetail.workerObservation(d);
+});
+
+/**
+ * Binding-checked promotion (handlers_binding_promotion.go). The strict route
+ * fails for the first app: its seeded orders database binding has no
+ * application acknowledgement, which is what most real apps look like.
+ */
+function promote(id: string, strict: boolean) {
+  const d = deploymentById(id);
+  if (d.status !== 'live')
+    throw new Problem(
+      409,
+      'conflict',
+      'the app needs a live deployment with a materialized runtime image before it can run a task'
+    );
+  if (d.rollout_state === 'pending' || d.rollout_state === 'rolling_out')
+    throw new Problem(
+      409,
+      'traffic_change_during_canary',
+      'traffic cannot be changed directly while a canary rollout is pending or running; advance or recover the rollout, then retry.'
+    );
+  if (d.scheduled_release?.state === 'scheduled')
+    throw new Problem(409, 'release_scheduled', 'this release waits for its scheduled start');
+  const check = {
+    app: db.slugById(d.app_id),
+    scope: d.scope ?? 'default',
+    deployment_id: d.id,
+    checked_at: new Date().toISOString(),
+    inventory_generated_at: new Date().toISOString(),
+    max_verification_age: '10m',
+    allow_unsupported: false,
+    require_application_ack: strict,
+    passed: true,
+    coverage: 'complete',
+    bindings: [],
+    runtime: [],
+    issues: [],
+    blockers: [] as components['schemas']['BindingCheckFinding'][],
+    warnings: [],
+  };
+  if (strict && d.app_id === db.apps[0].id) {
+    check.passed = false;
+    check.blockers.push({
+      code: 'application_ack_missing',
+      type: 'postgres',
+      binding: 'orders-db',
+      scope: check.scope,
+      message: 'The candidate has not acknowledged applying the current secret version.',
+    });
+    throw new Problem(
+      409,
+      'bindings_check_failed',
+      'Resolve the binding check blockers and verify this deployment before promoting.',
+      { bindings_check: check }
+    );
+  }
+  return {
+    ...deploymentDetail.promoteDeployment(db.deployments, d),
+    bindings_check: check,
+  } satisfies components['schemas']['BindingPromotionResponse'];
 }
 
 route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
@@ -8375,6 +8529,7 @@ function problem(res: ServerResponse, p: Problem) {
       code: p.code,
       title: p.code.replace(/_/g, ' '),
       detail: p.detail,
+      ...p.extra,
     })
   );
 }

@@ -1,9 +1,8 @@
 import { Button } from '@/components/ui/button';
-import { useConfirm } from '@/components/ui/confirm';
-import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
-import { useDeploymentSummary, useRollback, type DeploymentSummary } from '@/lib/api/queries';
+import { useDeploymentSummary, type DeploymentSummary } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
+import { RollbackStatus, useRollbackFlow } from './rollback-status';
 
 type ChangeValue = DeploymentSummary['changes'][number]['before'];
 
@@ -29,39 +28,14 @@ export function DeploymentReleaseSummary({
   deploymentId: string;
 }) {
   const summary = useDeploymentSummary(appSlug, deploymentId);
-  const rollback = useRollback();
-  const confirm = useConfirm();
-  const { toast } = useToast();
+  // The drawer's own rollback flow: confirmation, cross-release check, status.
+  const rollback = useRollbackFlow(appSlug);
   const phase = queryPhase({ error: summary.error, loading: summary.isPending });
   const targetId = summary.data?.rollback_target_id ?? undefined;
-
-  const onRollback = async () => {
-    if (!targetId) return;
-    if (
-      !(await confirm({
-        title: 'Roll back this app?',
-        description: `The platform brings back superseded release ${targetId}. The current release remains in history.`,
-        confirmLabel: 'Roll back',
-        destructive: true,
-      }))
-    )
-      return;
-
-    try {
-      const result = await rollback.mutateAsync({
-        slug: appSlug,
-        targetDeploymentId: targetId,
-      });
-      void summary.refetch();
-      toast({
-        kind: 'success',
-        title: 'Rollback queued',
-        description: `Returning to deployment ${result.id.slice(0, 12)}. It serves once its readiness check passes.`,
-      });
-    } catch (err) {
-      toast({ kind: 'error', title: 'Could not roll back', error: err });
-    }
-  };
+  const targetRevision = summary.data?.rollback_target_revision;
+  const targetLabel = targetRevision ? `v${targetRevision}` : targetId?.slice(0, 8);
+  // A superseded release carries its own "Roll back to vN" in the drawer.
+  const offerRollback = summary.data?.deployment.status.toLowerCase() !== 'superseded';
 
   let body: React.ReactNode;
   if (phase === 'loading') {
@@ -101,17 +75,28 @@ export function DeploymentReleaseSummary({
                 may differ from the selected release above.
               </p>
             </div>
-            <Button
-              size="xs"
-              variant="destructive"
-              busy={rollback.isPending}
-              onClick={() => void onRollback()}
-            >
-              Roll back to {targetId.slice(0, 8)}
-            </Button>
+            {offerRollback && targetLabel && (
+              <Button
+                size="xs"
+                variant="destructive"
+                busy={rollback.isPending}
+                onClick={() => void rollback.start(targetId, targetLabel)}
+              >
+                Roll back to {targetLabel}
+              </Button>
+            )}
           </div>
         )}
       </div>
+      {rollback.operation && (
+        <div className="mt-3">
+          <RollbackStatus
+            slug={appSlug}
+            operation={rollback.operation}
+            targetLabel={rollback.operationLabel}
+          />
+        </div>
+      )}
       <div className="mt-4">{body}</div>
     </div>
   );

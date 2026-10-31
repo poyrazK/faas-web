@@ -26,6 +26,12 @@ import { FailurePanel } from './failure-panel';
 import { ReleaseProcess } from './release-process';
 import { CanaryHealth } from './canary-health';
 import { releaseProcess } from '@/lib/release-process';
+import { DeploymentDiff } from './deployment-diff';
+import { PromoteDeployment } from './deployment-promote';
+import { DeploymentRolloutState } from './deployment-rollout-state';
+import { DeploymentRuntime } from './deployment-runtime';
+import { RollbackToRelease } from './rollback-status';
+import { RolloutObservation } from './rollout-observation';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -258,6 +264,7 @@ export function ReleaseDetailPanel({
                         {deployment.error}
                       </p>
                     )}
+                    <DeploymentRolloutState deployment={deployment} />
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -310,6 +317,12 @@ export function ReleaseDetailPanel({
                 {!deploymentUnavailable && deployment && slug && (
                   <DeploymentReleaseSummary appSlug={slug} deploymentId={deployment.id} />
                 )}
+                {!deploymentUnavailable && deployment && (
+                  <DeploymentDiff deploymentId={deployment.id} />
+                )}
+                {!deploymentUnavailable && deployment && slug && (
+                  <RollbackToRelease slug={slug} deployment={deployment} />
+                )}
               </>
             )}
             {activeSection === 'output' && (
@@ -353,6 +366,8 @@ export function ReleaseDetailPanel({
                 <ReorderDeploymentControl deployment={deployment} />
                 <DeploymentLifecycle key={deployment.id} deployment={deployment} />
                 {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
+                <PromoteDeployment deployment={deployment} />
+                {slug && <RolloutObservation slug={slug} deployment={deployment} />}
                 <DeploymentStages deploymentId={deployment.id} />
               </>
             )}
@@ -362,6 +377,9 @@ export function ReleaseDetailPanel({
                 deployment={deployment}
                 version={deployment.id}
               />
+            )}
+            {!deploymentUnavailable && deployment && activeSection === 'runtime' && (
+              <DeploymentRuntime deploymentId={deployment.id} />
             )}
             {!deploymentUnavailable && deployment && activeSection === 'audit' && (
               <>

@@ -555,6 +555,87 @@ apps.push({
 }
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
+// The deployment drawer's newer fields (GET /v1/deployments/{id}): revision
+// handles, why the first app's canary waits, the evidence behind another
+// app's last rollout, and a zero-traffic release whose schedule could not
+// start, so promote and the rollout-state panel have rows to show.
+{
+  const canary = deployments.find(
+    (d) => d.app_id === apps[0].id && d.rollout_state === 'rolling_out' && !d.scope
+  );
+  if (canary)
+    canary.rollout_hold = {
+      kind: 'hold',
+      rule: 'hold_insufficient_samples',
+      summary:
+        'this release 3 requests, the current one 41 (20 each needed); probes 4 and 3 so far',
+      step: 1,
+      traffic_percent: 10,
+      window_start: iso(3 * 60 * 1000),
+      window_end: iso(30 * 1000),
+      candidate: { requests: 3, server_errors: 0, probe_requests: 4, probe_server_errors: 0 },
+      stable: { requests: 41, server_errors: 0, probe_requests: 3, probe_server_errors: 0 },
+      decided_at: iso(30 * 1000),
+    };
+  const decided = deployments.find((d) => d.app_id === apps[2].id && d.status === 'live');
+  if (decided)
+    Object.assign(decided, {
+      rollout_state: 'complete',
+      rollout_decision: {
+        kind: 'advance',
+        rule: 'advance_healthy',
+        summary: 'this release 0/212 5xx, the current one 1/1890',
+        step: 2,
+        traffic_percent: 50,
+        candidate: { requests: 212, server_errors: 0, p95_latency_ms: 184 },
+        stable: { requests: 1890, server_errors: 1, p95_latency_ms: 191 },
+        decided_at: iso(50 * 60 * 1000),
+      },
+    } satisfies Partial<Deployment>);
+  const serving = deployments.find((d) => d.app_id === apps[1].id && d.status === 'live');
+  if (serving) {
+    const at = iso(40 * 60 * 1000);
+    const dark: Deployment = {
+      ...serving,
+      id: id(),
+      build_id: undefined,
+      created_at: at,
+      traffic_percent: 0,
+      scheduled_release: {
+        id: crypto.randomUUID(),
+        app: apps[1].slug,
+        deployment_id: '',
+        release_at: iso(20 * 60 * 1000),
+        state: 'blocked',
+        outcome_code: 'release_frozen',
+        outcome_detail: 'A deploy freeze was active at the scheduled time.',
+        notify_channels: [],
+        scheduled_by: 'design@gregale.dev',
+        created_at: at,
+        updated_at: iso(20 * 60 * 1000),
+      },
+      configuration: {
+        complete: false,
+        crons: {
+          status: 'pending',
+          reason: 'awaiting_full_traffic',
+          message: 'Cron schedule changes in this release apply once it serves all traffic.',
+          hint: 'This finishes on its own after promotion.',
+        },
+      },
+    };
+    dark.scheduled_release!.deployment_id = dark.id;
+    deployments.unshift(dark);
+    deployments.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  }
+  for (const app of apps) {
+    const own = deployments
+      .filter((d) => d.app_id === app.id)
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    own.forEach((d, i) => (d.revision = 40 + i));
+  }
+}
+
 // --- Metrics -----------------------------------------------------------------
 
 const SCALE: Record<string, number> = {
