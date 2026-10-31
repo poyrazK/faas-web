@@ -923,3 +923,73 @@ describe('workspace app mock contract', () => {
     expect(unknown.status).toBe(404);
   });
 });
+
+describe('billing identity, status and invoice history mock contract', () => {
+  const patchBilling = (body: unknown) =>
+    fetch(`${origin}/v1/account/billing`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const backfill = (query = '') =>
+    fetch(`${origin}/v1/invoices/backfill${query}`, { method: 'POST' });
+  const savedBilling = process.env.MOCK_BILLING;
+  afterEach(() => {
+    if (savedBilling === undefined) delete process.env.MOCK_BILLING;
+    else process.env.MOCK_BILLING = savedBilling;
+  });
+
+  it('reports a live Stripe attachment, and billing off on demand', async () => {
+    const live = await get('/v1/billing/status');
+    expect(live.response.status).toBe(200);
+    expect(live.body).toMatchObject({
+      mode: 'live',
+      enabled: true,
+      provider: 'stripe',
+      customer_configured: true,
+      usage_reconciliation_enabled: false,
+    });
+    process.env.MOCK_BILLING = 'disabled';
+    const off = await get('/v1/billing/status');
+    expect(off.body).toMatchObject({ mode: 'disabled', enabled: false });
+  });
+
+  it('patches the identity partially, trims, clears with an empty string and reads back', async () => {
+    expect((await patchBilling({})).status).toBe(400);
+    expect((await patchBilling({ business_name: 'é'.repeat(129) })).status).toBe(400);
+
+    const saved = await patchBilling({ business_name: '  Gregale Labs AG ', tax_id: 'DE123' });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ business_name: 'Gregale Labs AG', tax_id: 'DE123' });
+
+    expect((await patchBilling({ tax_id: '' })).status).toBe(200);
+    const { body } = await get('/v1/account');
+    expect(body.business_name).toBe('Gregale Labs AG');
+    expect(body).not.toHaveProperty('tax_id');
+  });
+
+  it('imports missing provider invoices once and skips them on replay', async () => {
+    const before = (await get('/v1/invoices')).body.items.length;
+    expect((await backfill('?limit=26')).status).toBe(400);
+    expect((await backfill('?page=2')).status).toBe(400);
+
+    const first = await backfill();
+    expect(first.status).toBe(200);
+    const page = await first.json();
+    expect(page).toMatchObject({ provider: 'stripe', has_more: false });
+    expect(page.imported).toBeGreaterThan(0);
+    expect(page.scanned).toBe(page.imported + page.skipped);
+    expect((await get('/v1/invoices')).body.items).toHaveLength(before + page.imported);
+
+    const replay = await (await backfill()).json();
+    expect(replay.imported).toBe(0);
+    expect(replay.skipped).toBe(page.scanned);
+  });
+
+  it('answers 501 when billing is off', async () => {
+    process.env.MOCK_BILLING = 'disabled';
+    const response = await backfill();
+    expect(response.status).toBe(501);
+    expect((await response.json()).code).toBe('not_implemented');
+  });
+});

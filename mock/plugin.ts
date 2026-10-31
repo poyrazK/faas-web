@@ -5873,6 +5873,128 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
 });
 
 // --- Billing & account controls ---
+// MOCK_BILLING=disabled models FAAS_BILLING_MODE=disabled: status reports it,
+// and provider operations answer 501 (faas pkg/billing/mode.go).
+const billingOff = () => process.env.MOCK_BILLING === 'disabled';
+route('GET', '/v1/billing/status', () => ({
+  mode: billingOff() ? 'disabled' : 'live',
+  enabled: !billingOff(),
+  provider: 'stripe',
+  plan: db.account.plan,
+  account_status: db.account.status,
+  customer_configured: true,
+  subscription_configured: db.account.plan !== 'free',
+  // Stripe lacks CapUsageReconcile (faas pkg/billing/provider.go:722).
+  usage_reconciliation_enabled: false,
+}));
+// apid trims each field, treats empty as clear, and caps UTF-8 bytes
+// (handlers_billing_identity.go). The route sits behind a five-minute step-up.
+const BILLING_FIELDS = { business_name: 256, billing_address: 1000, tax_id: 128 } as const;
+route('PATCH', '/v1/account/billing', ({ body }) => {
+  const present = Object.keys(BILLING_FIELDS).filter((k) => typeof body[k] === 'string');
+  if (present.length === 0)
+    throw new Problem(400, 'validation_failed', 'at least one billing field is required');
+  if (Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS) {
+    if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+      throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
+    if (mockAuth.mfaEnrolled)
+      throw new Problem(403, 'step_up_required', 'verify your authenticator first');
+  }
+  const next: Record<string, string> = {};
+  for (const key of present) {
+    const value = String(body[key]).trim();
+    const max = BILLING_FIELDS[key as keyof typeof BILLING_FIELDS];
+    if (Buffer.byteLength(value, 'utf8') > max)
+      throw new Problem(
+        400,
+        'validation_failed',
+        `${key} must be valid UTF-8 and at most ${max} bytes`
+      );
+    next[key] = value;
+  }
+  const record = db.account as Record<string, unknown>;
+  for (const [key, value] of Object.entries(next)) {
+    if (value) record[key] = value;
+    else delete record[key];
+  }
+  return { ...db.account, app_count: db.apps.length };
+});
+// The provider's history: the seeded invoices plus four older documents the
+// console has never stored, so the first backfill imports something.
+const providerInvoiceHistory: S_['Invoice'][] = [
+  ...db.invoices.map((i) => ({ ...i })),
+  ...Array.from({ length: 4 }, (_, k) => {
+    const end = new Date(db.NOW);
+    end.setUTCDate(1);
+    end.setUTCMonth(end.getUTCMonth() - (db.invoices.length + k));
+    const start = new Date(end);
+    start.setUTCMonth(start.getUTCMonth() - 1);
+    const n = 1042 - db.invoices.length - k;
+    return {
+      id: crypto.randomUUID(),
+      provider: 'stripe' as const,
+      provider_invoice_id: `in_mockhistory${String(k).padStart(4, '0')}`,
+      number: `GRG-${end.getUTCFullYear()}${String(end.getUTCMonth() + 1).padStart(2, '0')}-${String(n).padStart(4, '0')}`,
+      status: 'paid' as const,
+      period_start: start.toISOString(),
+      period_end: end.toISOString(),
+      subtotal_cents: 4900,
+      tax_cents: 931,
+      total_cents: 5831,
+      amount_paid_cents: 5831,
+      currency: 'eur' as const,
+      pdf_available: true,
+      created_at: end.toISOString(),
+    };
+  }),
+];
+route('POST', '/v1/invoices/backfill', ({ query }) => {
+  const keys = [...query.keys()];
+  const limitRaw = query.get('limit');
+  const limit = limitRaw === null ? 25 : Number(limitRaw);
+  if (
+    keys.some((k) => k !== 'cursor' && k !== 'limit') ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 25
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Provide only an optional cursor and page limit; the request has no body.'
+    );
+  if (billingOff())
+    throw new Problem(
+      501,
+      'not_implemented',
+      'The active billing provider does not support invoice history discovery.'
+    );
+  const cursor = query.get('cursor');
+  const offset = cursor ? Number(cursor.replace(/^mock-history-/, '')) : 0;
+  if (!Number.isInteger(offset) || offset < 0)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'The cursor is malformed or belongs to another provider customer.'
+    );
+  const page = providerInvoiceHistory.slice(offset, offset + limit);
+  let imported = 0;
+  for (const doc of page) {
+    if (db.invoices.some((i) => i.provider_invoice_id === doc.provider_invoice_id)) continue;
+    db.invoices.push({ ...doc });
+    imported++;
+  }
+  const end = offset + page.length;
+  const hasMore = end < providerInvoiceHistory.length;
+  return {
+    provider: 'stripe',
+    scanned: page.length,
+    imported,
+    skipped: page.length - imported,
+    has_more: hasMore,
+    ...(hasMore ? { next_cursor: `mock-history-${end}` } : {}),
+  };
+});
 let overageCapCents: number | null = 2000;
 // apid audits every cap change (old/new cents, "null" for no cap) and, at most
 // once a day, the cap being reached (pkg/sched/overage.go).
