@@ -67,9 +67,14 @@ export function renderWithProviders(ui: ReactNode) {
 }
 
 /** Stand-in for `useCapability('api-monetization')`; set `.state` per test. */
+const ACCESS: Record<string, string> = { available: 'on', unknown: 'off' };
+/** One mocked capability for both `useCapability` (view state) and `useCapabilityAccess`. */
 export const capability = {
   accountId: 'acct-1',
   state: 'available' as string,
   capability: undefined as unknown,
   refresh: vi.fn(),
+  get access() {
+    return ACCESS[this.state] ?? this.state;
+  },
 };

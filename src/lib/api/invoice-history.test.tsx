@@ -35,7 +35,7 @@ it('passes the invoice timestamp cursor through while loading older pages', asyn
   await waitFor(() => expect(result.current.hasNextPage).toBe(false));
   const cached = client.getQueryData<{
     pages: Array<{ items: Array<{ id: string }> }>;
-  }>(['invoices', 'history', 2]);
+  }>(['invoices', 'history', 'personal', 2]);
   expect(cached?.pages.flatMap((page) => page.items).map((invoice) => invoice.id)).toEqual([
     'invoice-1',
     'invoice-2',

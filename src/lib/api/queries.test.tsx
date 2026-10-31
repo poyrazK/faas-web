@@ -83,6 +83,56 @@ describe('analytics query contracts', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('leaves production_branch out of the bind body when no branch is given', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/v1/auth/csrf') {
+        return new Response(JSON.stringify({ csrf_token: 'bind-proof' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const body = await request.json();
+      expect(body).toEqual({
+        installation_id: 42,
+        repo_full_name: 'poyrazK/imgpipe',
+        csrf_token: 'bind-proof',
+      });
+      expect(body).not.toHaveProperty('production_branch');
+      return response();
+    });
+    stubApiFetch(fetchMock);
+    const { useBindRepo } = await import('./queries');
+    const hook = renderHook(() => useBindRepo('imgpipe-gateway'), {
+      wrapper: queryWrapper(new QueryClient()),
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync({ installationId: 42, repo: 'poyrazK/imgpipe' });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('restarts an app with fresh=true so new secrets apply', async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      const url = urlOf(request);
+      expect(request.method).toBe('POST');
+      expect(url.pathname).toBe('/v1/apps/imgpipe-gateway/restart');
+      expect(url.searchParams.get('fresh')).toBe('true');
+      return new Response(JSON.stringify({ wake_id: 'w1' }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    stubApiFetch(fetchMock);
+    const { useFreshRestart } = await import('./queries');
+    const hook = renderHook(() => useFreshRestart('imgpipe-gateway'), {
+      wrapper: queryWrapper(new QueryClient()),
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync();
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('does not submit a repository binding when CSRF issuance fails', async () => {
     const fetchMock = vi
       .fn()
