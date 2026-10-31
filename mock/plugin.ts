@@ -2534,6 +2534,25 @@ route('DELETE', '/v1/apps/{slug}/prewarms/{id}', ({ params }) => {
   return NO_CONTENT;
 });
 // --- Log drains ---
+/**
+ * apid's two Datadog refusals (faas capability_gate.go:169): the operator flag
+ * off (MOCK_DATADOG_UNAVAILABLE=1) and the capability hidden for the account
+ * (MOCK_HIDDEN_CAPABILITIES=datadog-integration).
+ */
+function datadogDrainsAllowed() {
+  if (process.env.MOCK_DATADOG_UNAVAILABLE === '1')
+    throw new Problem(
+      503,
+      'datadog_integration_unavailable',
+      'the Datadog integration is not enabled for this deployment'
+    );
+  if (hiddenCapabilities.has('datadog-integration') || hiddenCapabilities.has('log-drains'))
+    throw new Problem(
+      403,
+      'capability_not_released',
+      'datadog destinations needs the Datadog integration capability, which is not available to this account; remove it or contact support for access.'
+    );
+}
 function drainOf(slug: string, id: string) {
   app(slug);
   const drain = logDrainMock.drains.get(slug)?.find((d) => d.id === id);
@@ -2546,29 +2565,57 @@ route('GET', '/v1/apps/{slug}/log-drains', ({ params }) => {
 });
 route('POST', '/v1/apps/{slug}/log-drains', ({ params, body }) => {
   const a = app(params.slug);
-  const url = String(body.target_url ?? '');
-  if (!/^https?:\/\//.test(url))
-    throw new Problem(400, 'validation_failed', 'target_url must be an http(s) URL.');
+  const plan = process.env.MOCK_PLAN ?? db.account.plan;
+  const cap = logDrainMock.PER_APP[plan] ?? 0;
+  if (!cap)
+    throw new Problem(
+      402,
+      'plan_log_drains_not_allowed',
+      `the ${plan} plan does not include customer log drains; upgrade to Hobby or above to export runtime logs.`
+    );
+  const url = typeof body.target_url === 'string' ? body.target_url.trim() : '';
+  const invalid = logDrainMock.invalidDrain(body.kind, url, body.auth_header ?? '', true);
+  if (invalid) throw new Problem(400, 'app_log_drain_invalid', invalid);
+  if (body.kind === 'datadog') datadogDrainsAllowed();
+  const existing = logDrainMock.drains.get(a.slug) ?? [];
+  if (existing.length >= cap)
+    throw new Problem(
+      403,
+      'plan_log_drain_quota',
+      `${plan} plan caps log drains at ${cap} for this app; you have ${existing.length}. Delete one to add another.`
+    );
+  if (existing.some((d) => d.target_url === url))
+    throw new Problem(
+      400,
+      'app_log_drain_invalid',
+      'a log drain for this app already targets this URL'
+    );
   const drain: components['schemas']['AppLogDrainResponse'] = {
     id: db.id(),
     app_id: a.id,
     account_id: db.ACCOUNT_ID,
-    kind: body.kind === 'otlp' ? 'otlp' : 'http_json',
+    kind: logDrainMock.isKind(body.kind) ? body.kind : 'http_json',
     target_url: url,
     auth_header_masked: body.auth_header ? '***' : '',
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
-  logDrainMock.drains.set(a.slug, [...(logDrainMock.drains.get(a.slug) ?? []), drain]);
+  logDrainMock.drains.set(a.slug, [...existing, drain]);
   return status(201, drain);
 });
 route('GET', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => drainOf(params.slug, params.id));
 route('PATCH', '/v1/apps/{slug}/log-drains/{id}', ({ params, body }) => {
   const drain = drainOf(params.slug, params.id);
+  const kind = body.kind ?? drain.kind;
+  const url = typeof body.target_url === 'string' ? body.target_url.trim() : drain.target_url;
+  const switching = kind === 'datadog' && drain.kind !== 'datadog';
+  const invalid = logDrainMock.invalidDrain(kind, url, body.auth_header, switching);
+  if (invalid) throw new Problem(400, 'app_log_drain_invalid', invalid);
+  if (switching) datadogDrainsAllowed();
   if (typeof body.enabled === 'boolean') drain.enabled = body.enabled;
-  if (typeof body.target_url === 'string') drain.target_url = body.target_url;
-  if (body.kind === 'otlp' || body.kind === 'http_json') drain.kind = body.kind;
+  drain.target_url = url;
+  if (logDrainMock.isKind(kind)) drain.kind = kind;
   if (typeof body.auth_header === 'string')
     drain.auth_header_masked = body.auth_header ? '***' : '';
   drain.updated_at = db.iso(0);
