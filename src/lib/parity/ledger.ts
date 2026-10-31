@@ -224,7 +224,8 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Pull-request previews',
     status: 'partial',
     surfaces: ['/dashboard/releases'],
-    gap: 'Create a preview; preview by slug; previews of a company project',
+    capability: 'pr-previews',
+    gap: 'Previews of a company project',
     wave: 1,
   },
   // B28 · preview

@@ -199,7 +199,7 @@ export const account: S['AccountResponse'] = {
     vcpu: 2,
     max_concurrency: 64,
     deployed_apps: 25,
-    preview_apps: 10,
+    preview_apps: 5,
     deploys_per_hour: 60,
     developer_apps: 3,
     included_gb_hours: 2000,
