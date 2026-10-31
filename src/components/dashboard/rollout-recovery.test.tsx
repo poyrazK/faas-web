@@ -24,8 +24,6 @@ function deployment(over: Partial<Deployment> = {}): Deployment {
     kind: 'github',
     status: 'live',
     created_at: '2026-09-08T09:00:00Z',
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
     rollout_state: 'rolling_out',
     canary_step: 1,
     canary_total_steps: 3,
@@ -71,7 +69,10 @@ describe('RolloutRecovery', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'info',
-        description: expect.stringContaining('use promote instead'),
+        // The toast shows the error's own message (and its code and docs link).
+        error: expect.objectContaining({
+          message: expect.stringContaining('use promote instead'),
+        }),
       })
     );
   });

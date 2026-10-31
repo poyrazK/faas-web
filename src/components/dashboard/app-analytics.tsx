@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react';
 import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { SegmentedControl } from './tabs';
 import { Select } from '@/components/ui/field';
 import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
@@ -12,17 +13,42 @@ import {
 } from '@/lib/api/queries';
 
 const WINDOWS = ['24h', '3d', '7d'] as const;
-const GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
+/** Every grouping the selector offers; the routes' search validation reads it too. */
+export const ANALYTICS_GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
   { value: 'route', label: 'Route' },
   { value: 'country', label: 'Country' },
   { value: 'referrer_host', label: 'Referrer' },
   { value: 'ua_family', label: 'Client' },
   { value: 'status', label: 'Status' },
+  { value: 'consumer_id', label: 'Consumer' },
 ];
-const CHART_CONFIG = {
-  requests: { label: 'Requests', color: 'green' as const },
-  error_requests: { label: 'Errors', color: 'red' as const },
-};
+/**
+ * What the hourly chart plots. Every series comes from the same zero-filled
+ * hourly buckets. Latency leaves out hours with no requests: a zero-filled
+ * bucket has no latency, and plotting 0 ms would invent a fast hour.
+ */
+const CHART_METRICS = {
+  traffic: {
+    label: 'Traffic',
+    config: {
+      requests: { label: 'Requests', color: 'green' as const },
+      error_requests: { label: 'Errors', color: 'red' as const },
+    },
+  },
+  latency: {
+    label: 'Latency',
+    config: {
+      p50_ms: { label: 'p50 ms', color: 'green' as const },
+      p95_ms: { label: 'p95 ms', color: 'orange' as const },
+      p99_ms: { label: 'p99 ms', color: 'red' as const },
+    },
+  },
+  cold: {
+    label: 'Cold starts',
+    config: { cold_boots: { label: 'Cold starts', color: 'blue' as const } },
+  },
+} as const;
+type ChartMetric = keyof typeof CHART_METRICS;
 
 type AnalyticsMethod = NonNullable<AppAnalyticsTimeseriesOptions['method']>;
 
@@ -67,11 +93,19 @@ export function AppAnalyticsBody({
   const data = analytics.data;
   const enabled = Boolean(slug);
   const planGateError = [analytics.error, series.error].find(isPlanGate);
-  const points = (series.data?.points ?? []).map((point) => ({
-    at: hourLabel(point.start),
-    requests: point.requests,
-    error_requests: point.error_requests,
-  }));
+  const [metric, setMetric] = useState<ChartMetric>('traffic');
+  const points = (series.data?.points ?? [])
+    .filter((point) => metric !== 'latency' || point.requests > 0)
+    .map((point) => ({
+      at: hourLabel(point.start),
+      requests: point.requests,
+      error_requests: point.error_requests,
+      p50_ms: point.p50_ms,
+      p95_ms: point.p95_ms,
+      p99_ms: point.p99_ms,
+      cold_boots: point.cold_boots,
+    }));
+  const chart = CHART_METRICS[metric];
   const analyticsPhase = queryPhase({
     error: analytics.error,
     loading: enabled && analytics.isPending,
@@ -80,7 +114,9 @@ export function AppAnalyticsBody({
   const seriesPhase = queryPhase({
     error: series.error,
     loading: enabled && series.isPending,
-    isEmpty: points.length < 2,
+    // The unfiltered series decides whether there is a chart at all: the
+    // latency view drops idle hours, and must not hide the metric switch.
+    isEmpty: (series.data?.points ?? []).length < 2,
   });
   const groupsPhase = queryPhase({
     error: analytics.error,
@@ -134,7 +170,7 @@ export function AppAnalyticsBody({
               aria-label="Group by"
               className="h-8 text-xs"
             >
-              {GROUPS.map((group) => (
+              {ANALYTICS_GROUPS.map((group) => (
                 <option key={group.value} value={group.value}>
                   {group.label}
                 </option>
@@ -196,15 +232,40 @@ export function AppAnalyticsBody({
 
             {seriesPhase === 'ready' ? (
               <div>
-                <p className="label-mono mb-2 text-muted-foreground">Hourly</p>
-                <AreaChart data={points} config={CHART_CONFIG} className="h-48 w-full">
-                  <Grid />
-                  <XAxis dataKey="at" />
-                  <YAxis />
-                  <Tooltip />
-                  <Area dataKey="requests" />
-                  <Area dataKey="error_requests" />
-                </AreaChart>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="label-mono text-muted-foreground">Hourly</p>
+                  <SegmentedControl
+                    label="Chart metric"
+                    value={metric}
+                    options={(Object.keys(CHART_METRICS) as ChartMetric[]).map((key) => ({
+                      key,
+                      label: CHART_METRICS[key].label,
+                    }))}
+                    onChange={setMetric}
+                  />
+                </div>
+                {points.length ? (
+                  <AreaChart data={points} config={chart.config} className="h-48 w-full">
+                    <Grid />
+                    <XAxis dataKey="at" />
+                    <YAxis />
+                    <Tooltip />
+                    {Object.keys(chart.config).map((key) => (
+                      <Area key={key} dataKey={key} />
+                    ))}
+                  </AreaChart>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {metric === 'latency'
+                      ? 'No requests in this window, so there is no latency to plot.'
+                      : 'No hourly points in this window yet.'}
+                  </p>
+                )}
+                {metric === 'latency' && points.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Hours without requests are left out.
+                  </p>
+                )}
               </div>
             ) : (
               <InlinePhase
@@ -218,7 +279,9 @@ export function AppAnalyticsBody({
               <div className="overflow-x-auto">
                 <p className="label-mono mb-2 text-muted-foreground">
                   Top by{' '}
-                  {GROUPS.find((group) => group.value === data.group_by)?.label.toLowerCase()}
+                  {ANALYTICS_GROUPS.find(
+                    (group) => group.value === data.group_by
+                  )?.label.toLowerCase()}
                 </p>
                 <table className="w-full text-xs">
                   <thead>

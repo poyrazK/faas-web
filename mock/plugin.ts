@@ -1,9 +1,38 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
-import type { Plugin } from 'vite';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import { registerMonetizationMock } from './monetization';
+import * as logDrainMock from './log-drains';
+import { mockCapabilities } from './capabilities';
+import { registerEventMocks } from './events';
+import { mockOpenAPIPreview } from './openapi-preview';
+import { isDigestPinnedImage } from '../src/lib/oci-image';
+import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import { projects, projectSummaries } from './projects';
+import {
+  mockPromotionPreview,
+  mockPromotionHistory,
+  mockPromotionReceipt,
+  mockApprovalId,
+} from './environment-readiness';
+import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
+import {
+  advanceDeployments,
+  buildLogAt,
+  stagesAt,
+  startDeployment,
+  trackedDeployment,
+} from './deploy-lifecycle';
+import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
+import {
+  environmentInventory,
+  environmentState,
+  environmentDiff,
+  previewSet,
+} from './environments';
 import {
   FREE_TRIGGER_ERROR_CODE,
   KAFKA_SASL_MECHANISMS,
@@ -72,6 +101,85 @@ const NO_CONTENT = Symbol('no-content');
 const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
+
+const HIDDEN_AT_BOOT = new Set(
+  (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
+);
+const hiddenCapabilities = new Set(HIDDEN_AT_BOOT);
+
+route('GET', '/v1/capabilities', ({ res }) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const raw = process.env.MOCK_PLAN ?? db.account.plan;
+  const plan = raw === 'free' || raw === 'hobby' || raw === 'pro' || raw === 'scale' ? raw : 'pro';
+  const registry = mockCapabilities(
+    plan,
+    (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')
+  );
+  // Catalog ids whose platform flag is off for the account, as apid lists them
+  // (internal ones included); the console hides those tabs and pages.
+  const hidden = [...hiddenCapabilities];
+  return hidden.length ? { ...registry, hidden_capabilities: hidden } : registry;
+});
+
+// Self-serve previews (faas ADR-20261021080640). Joining one turns its
+// capability on, so a page hidden by MOCK_HIDDEN_CAPABILITIES appears.
+const PREVIEWS = [
+  {
+    key: 'events',
+    capability: 'events',
+    label: 'Events',
+    description: 'Publish, subscribe to and replay application events.',
+    retire_by: '2027-03-31',
+    eligible: true,
+  },
+  {
+    key: 'realtime',
+    capability: 'realtime',
+    label: 'Realtime',
+    description: 'Channels, presence and occupancy for live clients.',
+    eligible: true,
+  },
+  {
+    key: 'gitlab',
+    capability: 'gitlab-deploys',
+    label: 'GitLab deploys',
+    description: 'Connect GitLab projects and deploy on push.',
+    eligible: false,
+  },
+];
+const joinedPreviews = new Set<string>();
+function previewView(p: (typeof PREVIEWS)[number]) {
+  const joined = joinedPreviews.has(p.key);
+  return {
+    key: p.key,
+    label: p.label,
+    description: p.description,
+    ...(p.retire_by ? { retire_by: p.retire_by } : {}),
+    joined,
+    eligible: p.eligible,
+    enabled: joined || !hiddenCapabilities.has(p.capability),
+  };
+}
+function changePreview(key: string, join: boolean) {
+  const p = PREVIEWS.find((x) => x.key === key);
+  if (!p) throw new Problem(404, 'preview_not_offered', 'Not a preview open to self-serve.');
+  if (join && !p.eligible)
+    throw new Problem(403, 'preview_plan_not_eligible', 'Your plan cannot join this preview.');
+  if (join) {
+    joinedPreviews.add(key);
+    hiddenCapabilities.delete(p.capability);
+  } else {
+    joinedPreviews.delete(key);
+    if (HIDDEN_AT_BOOT.has(p.capability)) hiddenCapabilities.add(p.capability);
+  }
+  return previewView(p);
+}
+route('GET', '/v1/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/previews/{key}', ({ params }) => changePreview(params.key, false));
+route('GET', '/v1/orgs/{slug}/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, false));
 
 // --- Public status -----------------------------------------------------------
 
@@ -334,7 +442,16 @@ const login: Handler = ({ body, res }) => {
 route('POST', '/login', login);
 route('POST', '/signup', login);
 route('POST', '/login/forgot', () => ({}));
-route('POST', '/v1/auth/logout', ({ res }) => {
+// apid revokes the session only against a double-submitted `auth.logout`
+// token (ADR-039 / ADR-140). Refusing here keeps a console that forgets the
+// token from looking signed out in dev while apid would keep the session.
+route('POST', '/v1/auth/logout', ({ body, res }) => {
+  if (body.csrf_token !== 'mock-csrf')
+    throw new Problem(
+      400,
+      'csrf_mismatch',
+      "the form's csrf_token does not match the bound action"
+    );
   res.setHeader('Set-Cookie', ['faas_sid=; Path=/; Max-Age=0', 'faas_csrf=; Path=/; Max-Age=0']);
   return NO_CONTENT;
 });
@@ -418,12 +535,189 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
-const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
+// Deleted apps wait out their grace window here, keyed by ID like apid's
+// tombstones (faas pkg/apid/apprecovery/handlers.go). `GET /v1/deleted-apps`
+// lists them; restore goes by exact ID, or by slug through the legacy route.
+type DeletedRecord = {
+  app: db.App;
+  deletedAt: number | null;
+  expiresAt: number | null;
+  purgeStarted?: boolean;
+};
+const deletedApps = new Map<string, DeletedRecord>();
+const GRACE_MS = 7 * 86400e3; // AppDeleteGraceDays, faas pkg/api/limits.go:2416
+
+function seedDeleted(slug: string, deletedAgoMs: number, extra: Partial<DeletedRecord> = {}) {
+  const deletedAt = db.NOW - deletedAgoMs;
+  const app: db.App = {
+    ...db.apps[0],
+    id: db.id(),
+    slug,
+    status: 'deleted',
+    url: `https://${slug}.gregale.app`,
+    canonical_url: `https://${slug}.gregale.app`,
+  };
+  deletedApps.set(app.id, { app, deletedAt, expiresAt: deletedAt + GRACE_MS, ...extra });
+}
+// Independent records; no live seeded app is deleted to make them. One reuses
+// an active app's name, so its restore answers `conflict`.
+if (!db.EMPTY) {
+  seedDeleted('checkout-preview', 2 * 3600e3);
+  seedDeleted('api-gateway', 2 * 86400e3);
+  seedDeleted('old-webhooks', 6 * 86400e3 + 20 * 3600e3);
+  seedDeleted('legacy-cron', 9 * 86400e3);
+  seedDeleted('nightly-report', 8 * 86400e3, { purgeStarted: true });
+}
+
+function deletedSummary(record: DeletedRecord, now: number): S_['DeletedAppSummary'] {
+  const blocker = record.purgeStarted
+    ? 'purge_started'
+    : record.deletedAt === null || record.expiresAt === null
+      ? 'metadata_unavailable'
+      : record.expiresAt <= now
+        ? 'grace_expired'
+        : '';
+  return {
+    account_id: db.account.id,
+    id: record.app.id,
+    slug: record.app.slug,
+    deleted_at: record.deletedAt === null ? null : new Date(record.deletedAt).toISOString(),
+    delete_grace_until: record.expiresAt === null ? null : new Date(record.expiresAt).toISOString(),
+    restore_eligible: blocker === '',
+    restore_blocker: blocker,
+    evaluated_at: new Date(now).toISOString(),
+  };
+}
+
+function restoreDeleted(record: DeletedRecord) {
+  const now = Date.now();
+  if (!deletedSummary(record, now).restore_eligible)
+    throw new Problem(409, 'app_not_restorable', 'the deletion grace window has ended.');
+  const current = db.appBySlug(record.app.slug);
+  if (current && current.id !== record.app.id)
+    throw new Problem(409, 'conflict', "the retained app's slug belongs to an active app.");
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free' && db.apps.length >= 1)
+    throw new Problem(
+      403,
+      'plan_limit_apps',
+      `free plan allows 1 deployed app(s); you have ${db.apps.length}.`
+    );
+  record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
+    ? 'active'
+    : 'undeployed';
+  db.apps.push(record.app);
+  deletedApps.delete(record.app.id);
+  return record.app;
+}
+
+route('GET', '/v1/deleted-apps', ({ query }) => {
+  for (const [key] of query)
+    if ((key !== 'limit' && key !== 'cursor') || query.getAll(key).length !== 1)
+      throw new Problem(400, 'validation_failed', 'only one limit and cursor are supported.');
+  const limit = query.has('limit') ? Number(query.get('limit')) : 25;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Problem(400, 'validation_failed', 'limit must be 1..50');
+  const at = (r: DeletedRecord) => r.deletedAt ?? 0;
+  let before: { at: number; id: string } | null = null;
+  const cursor = query.get('cursor');
+  if (cursor) {
+    try {
+      before = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+      if (!before || !Number.isFinite(before.at) || typeof before.id !== 'string')
+        throw new Error();
+    } catch {
+      throw new Problem(
+        400,
+        'validation_failed',
+        "invalid deleted-app cursor; restart this account's inventory"
+      );
+    }
+  }
+  const rows = [...deletedApps.values()]
+    .sort((a, b) => at(b) - at(a) || b.app.id.localeCompare(a.app.id))
+    .filter((r) => !before || at(r) < before.at || (at(r) === before.at && r.app.id < before.id));
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  const now = Date.now();
+  return {
+    account_id: db.account.id,
+    apps: page.map((r) => deletedSummary(r, now)),
+    evaluated_at: new Date(now).toISOString(),
+    ...(rows.length > limit && last
+      ? {
+          next_cursor: Buffer.from(JSON.stringify({ at: at(last), id: last.app.id })).toString(
+            'base64url'
+          ),
+        }
+      : {}),
+  };
+});
+function deletedRecord(id: string) {
+  const record = deletedApps.get(id);
+  if (!record) throw new Problem(404, 'not_found', 'no such deleted app');
+  return record;
+}
+route('GET', '/v1/deleted-apps/{id}', ({ params }) =>
+  deletedSummary(deletedRecord(params.id), Date.now())
+);
+route('POST', '/v1/deleted-apps/{id}/restore', ({ params, body }) => {
+  if (body && Object.keys(body).length > 0)
+    throw new Problem(400, 'validation_failed', 'restore accepts no fields; use an empty body');
+  return restoreDeleted(deletedRecord(params.id));
+});
 
 function app(slug: string) {
   const found = db.appBySlug(slug);
   if (!found) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
   return found;
+}
+
+/** A blank deployment row for `a`; `startDeployment` sets its t=0 status. */
+function newDeployment(a: db.App, kind: string): db.Deployment {
+  return {
+    id: db.id(),
+    app_id: a.id,
+    build_id: null,
+    image_digest: `sha256:${db.id()}${db.id()}`,
+    kind,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    traffic_percent: 0,
+    scan: null,
+  };
+}
+
+/**
+ * A deployment that builds from source, with its build row, on the timed
+ * lifecycle in `deploy-lifecycle.ts`. `MOCK_BUILD_FAIL=1` (read per request,
+ * so it can be flipped in a test) makes the build fail installing dependencies.
+ */
+function startSourceDeployment(
+  a: db.App,
+  kind: 'github' | 'tarball',
+  source: string,
+  extra: Partial<db.Deployment> = {}
+): db.Deployment {
+  const deployment: db.Deployment = { ...newDeployment(a, kind), ...extra, build_id: db.id() };
+  const build: db.Build = {
+    id: deployment.build_id!,
+    deployment_id: deployment.id,
+    kind: kind === 'github' ? 'railpack' : 'tarball',
+    source_bytes: 1_843_200,
+    status: 'queued',
+    enqueued_at: deployment.created_at,
+  };
+  db.deployments.unshift(deployment);
+  db.builds.unshift(build);
+  startDeployment({
+    deployment,
+    app: a,
+    build,
+    fail: process.env.MOCK_BUILD_FAIL === '1',
+    now: Date.now(),
+    source,
+  });
+  return deployment;
 }
 
 route('GET', '/v1/apps', () => db.apps);
@@ -436,11 +730,48 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
     apps: Object.fromEntries(db.apps.map((a) => [a.slug, db.metricsFor(a, range)])),
   };
 });
-route('POST', '/v1/apps', ({ body }) => {
+const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
+const imageDeployReceipts = new Map<string, db.Deployment>();
+const workerImageReads = new Map<string, number>();
+/**
+ * Shared by `POST /v1/apps` and `POST /v1/orgs/{slug}/apps`: the request body
+ * is the same CreateAppRequest, and only the attribution differs.
+ */
+function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receipt = key && imageAppReceipts.get(key);
+  if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
+    if (receipt.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
+    return status(201, receipt.app);
+  }
+  const worker = body.execution_mode === 'worker';
+  const plan = process.env.MOCK_PLAN ?? db.account.plan;
+  if (worker && plan === 'free') throw new Problem(403, 'plan_worker_pools_not_allowed');
+  const restartPolicy = String(body.restart_policy ?? 'always');
+  if (worker) {
+    const limit =
+      plan === 'hobby'
+        ? { deadline: 30, retries: 5 }
+        : plan === 'pro'
+          ? { deadline: 60, retries: 10 }
+          : { deadline: 120, retries: 20 };
+    const deadline = Number(body.startup_deadline_s ?? 0);
+    const retries = Number(body.max_retries ?? 0);
+    if (
+      !Number.isInteger(deadline) ||
+      deadline < 0 ||
+      deadline > limit.deadline ||
+      !Number.isInteger(retries) ||
+      retries < 0 ||
+      retries > limit.retries ||
+      !['always', 'on-failure', 'unless-stopped', 'no'].includes(restartPolicy)
+    )
+      throw new Problem(422, 'invalid_lifecycle_configuration');
+  }
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug) || deletedApps.has(slug))
+  if (db.appBySlug(slug) || [...deletedApps.values()].some((r) => r.app.slug === slug))
     throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
@@ -450,26 +781,188 @@ route('POST', '/v1/apps', ({ body }) => {
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
-    status: 'pending',
-    url: `https://${slug}.gregale.app`,
+    status: 'active',
+    ...(worker
+      ? {
+          workload_class: undefined,
+          manifest: {
+            entrypoint: ['/worker'],
+            execution_mode: 'worker' as const,
+            restart_policy: restartPolicy as db.App['manifest']['restart_policy'],
+            startup_deadline_s: Number(body.startup_deadline_s ?? 0),
+            max_retries: Number(body.max_retries ?? 0),
+            head_wakes: false,
+            crawler_policy: 'wake' as const,
+          },
+        }
+      : {}),
+    visibility: body.visibility === 'internal' ? 'internal' : 'public',
+    url: body.visibility === 'internal' ? '' : db.appUrlFor(slug),
+    service_bindings: Array.isArray(body.service_binding_targets)
+      ? body.service_binding_targets
+          .filter((value): value is string => typeof value === 'string')
+          .map((service) => ({
+            service,
+            binding: `GREGALE_SERVICE_${service.toUpperCase().replace(/-/g, '_')}_URL`,
+          }))
+      : [],
+    service_binding_policy: body.service_binding_policy === 'declared' ? 'declared' : 'account',
+    service_binding_transport: body.service_binding_transport === 'https' ? 'https' : 'http',
+    ...(Array.isArray(body.allowed_service_callers)
+      ? { allowed_service_callers: body.allowed_service_callers as string[] }
+      : {}),
+    ...(body.allowed_service_call_scopes && typeof body.allowed_service_call_scopes === 'object'
+      ? {
+          allowed_service_call_scopes:
+            body.allowed_service_call_scopes as db.App['allowed_service_call_scopes'],
+        }
+      : {}),
   };
+  // Newest first in a workspace inventory, like apid.
+  Object.assign(created, { created_at: new Date().toISOString() });
   db.apps.push(created);
+  if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
   return status(201, created);
+}
+route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
+route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
+  const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
+  if (a.type !== 'app')
+    throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
+  if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
+    throw new Problem(400, 'image_not_digest_pinned', 'Use a digest-pinned image.');
+  const key = `${a.id}:${String(req.headers['idempotency-key'] ?? '')}`;
+  const prior = imageDeployReceipts.get(key);
+  if (prior && !['failed', 'cancelled', 'superseded'].includes(prior.status))
+    return status(202, prior);
+  const deployment: db.Deployment = {
+    id: db.id(),
+    app_id: a.id,
+    image_digest: body.image.slice(body.image.indexOf('@')),
+    kind: 'image',
+    status: 'imaging',
+    build_id: null,
+    created_at: new Date().toISOString(),
+  };
+  db.deployments.unshift(deployment);
+  // Worker images keep their read-count characterization in GET /v1/deployments/{id}.
+  if (a.manifest?.execution_mode !== 'worker')
+    startDeployment({ deployment, app: a, now: Date.now() });
+  imageDeployReceipts.set(key, deployment);
+  return status(202, deployment);
+});
+// A sync invoke answers at once with what a small JSON handler would return.
+route('POST', '/v1/apps/{slug}/invoke', ({ params, body }) => {
+  const a = app(params.slug);
+  const method = typeof body.method === 'string' ? body.method : 'POST';
+  const path = typeof body.path === 'string' ? body.path : '/';
+  return { id: db.id(), status: 'completed', result: { ok: true, app: a.slug, method, path } };
+});
+const imageRegistryMetadata = new Map<
+  string,
+  components['schemas']['AppRegistryCredentialResponse'][]
+>();
+route('GET', '/v1/apps/{slug}/registry-credentials', ({ params }) => {
+  const a = app(params.slug);
+  const credentials = imageRegistryMetadata.get(a.id) ?? [];
+  return { credentials, quota_max: 20, count: credentials.length };
+});
+route('PUT', '/v1/apps/{slug}/registry-credentials', ({ params, body }) => {
+  const a = app(params.slug);
+  if (
+    typeof body.registry !== 'string' ||
+    typeof body.username !== 'string' ||
+    typeof body.password !== 'string' ||
+    !body.password
+  )
+    throw new Problem(422, 'invalid_registry_credentials');
+  let parsed: URL;
+  try {
+    parsed = new URL(body.registry);
+  } catch {
+    throw new Problem(422, 'invalid_registry');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  )
+    throw new Problem(422, 'invalid_registry');
+  const metadata = {
+    registry: parsed.host,
+    username: body.username,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const rows = imageRegistryMetadata.get(a.id) ?? [];
+  imageRegistryMetadata.set(a.id, [
+    ...rows.filter((item) => item.registry !== metadata.registry),
+    metadata,
+  ]);
+  return metadata;
 });
 route('GET', '/v1/apps/{slug}', ({ params }) => app(params.slug));
+route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
+  const a = app(params.slug);
+  const partial = a.slug === 'billing-recon';
+  return {
+    app: a.slug,
+    ...(query.get('scope') ? { scope: query.get('scope') } : {}),
+    generated_at: new Date().toISOString(),
+    complete: !partial,
+    bindings: (a.service_bindings ?? []).map((binding) => ({
+      type: 'service',
+      name: binding.service,
+      binding: binding.binding,
+      scope: 'app',
+      access: a.service_binding_policy ?? 'account',
+      state: 'configured',
+      runtime_status: 'not_observed',
+      verification_status: 'unknown',
+      http_url: `http://${binding.service}.svc.gregale:10081`,
+      https_url: `https://${binding.service}.internal`,
+      transport: a.service_binding_transport ?? 'http',
+    })),
+    ...(partial
+      ? {
+          issues: [
+            {
+              type: 'postgres',
+              code: 'partial_read',
+              severity: 'warning',
+              message: 'Managed PostgreSQL inventory could not be read.',
+            },
+          ],
+        }
+      : {}),
+  };
+});
+route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
+  mockRuntimePolicy(app(params.slug).id)
+);
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
-  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
+  const deletedAt = Date.now();
+  deletedApps.set(a.id, { app: a, deletedAt, expiresAt: deletedAt + GRACE_MS });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/wake', ({ params }) => {
-  app(params.slug).status = 'active';
+  db.setScenario(app(params.slug), 'healthy');
   return NO_CONTENT;
 });
 route('POST', '/v1/apps/{slug}/park', ({ params }) => {
-  app(params.slug).status = 'parked';
+  db.setScenario(app(params.slug), 'parked');
   return NO_CONTENT;
 });
 const PATCHABLE = [
@@ -489,8 +982,56 @@ const PATCHABLE = [
 ] as const;
 route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
   const a = app(params.slug);
+  const policyFields = [
+    'allowed_service_callers',
+    'allowed_service_call_scopes',
+    'service_binding_targets',
+    'service_binding_policy',
+    'service_binding_transport',
+  ];
+  if (
+    policyFields.some((key) => key in body && body[key] !== null) &&
+    (Boolean(a.preview_of_slug) ||
+      projects.some((project) => project.workloads.some((workload) => workload.slug === a.slug)))
+  )
+    throw new Problem(
+      409,
+      'service_policy_source_managed',
+      'Edit this service policy in the project source.'
+    );
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
+  if (body.visibility === 'internal' || body.visibility === 'public') {
+    a.visibility = body.visibility;
+    a.url = body.visibility === 'internal' ? '' : db.appUrlFor(a.slug);
+  }
+  if ('allowed_service_callers' in body) {
+    if (body.allowed_service_callers === null) delete a.allowed_service_callers;
+    else if (Array.isArray(body.allowed_service_callers))
+      a.allowed_service_callers = body.allowed_service_callers as string[];
+  }
+  if ('allowed_service_call_scopes' in body) {
+    if (body.allowed_service_call_scopes === null) delete a.allowed_service_call_scopes;
+    else if (
+      body.allowed_service_call_scopes &&
+      typeof body.allowed_service_call_scopes === 'object'
+    )
+      a.allowed_service_call_scopes =
+        body.allowed_service_call_scopes as db.App['allowed_service_call_scopes'];
+  }
+  if (Array.isArray(body.service_binding_targets))
+    a.service_bindings = body.service_binding_targets
+      .filter((value): value is string => typeof value === 'string')
+      .map((service) => ({
+        service,
+        binding: `GREGALE_SERVICE_${service.toUpperCase().replace(/-/g, '_')}_URL`,
+      }));
+  if (body.service_binding_policy === 'account' || body.service_binding_policy === 'declared')
+    a.service_binding_policy = body.service_binding_policy;
+  if (body.service_binding_transport === 'http' || body.service_binding_transport === 'https')
+    a.service_binding_transport = body.service_binding_transport;
+  // Deliberately mixed evidence in the dev fixture; mutation acceptance is not convergence.
+  advancePolicy(a.id, ['request_policy', 'egress_allowlist', 'cpu_limit', 'scheduler_scaling']);
   return a;
 });
 route('POST', '/v1/apps/{slug}/rename', ({ params, body }) => {
@@ -506,36 +1047,54 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
-  const dep: db.Deployment = {
-    id: db.id(),
-    app_id: a.id,
-    build_id: db.id(),
-    image_digest: `sha256:${db.id()}${db.id()}`,
-    kind: 'github',
-    status: 'building',
-    created_at: db.iso(0),
-    traffic_percent: 0,
-    rollback_on_5xx: false,
-    first_5xx_count: 0,
-    scan: null,
-  };
-  db.deployments.unshift(dep);
-  a.status = 'deploying';
-  return status(202, dep);
+  return status(
+    202,
+    startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
+  );
 });
-route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
+// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
+// superseded deployment; an explicit target may also be a live row at 0%
+// traffic. The target row itself goes live again; no new row is written.
+route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   const a = app(params.slug);
-  const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];
-  if (!previous) throw new Problem(409, 'no_previous_deployment', 'Nothing to roll back to.');
-  const dep: db.Deployment = {
-    ...previous,
-    id: db.id(),
-    status: 'active',
-    created_at: db.iso(0),
-    traffic_percent: 100,
-  };
-  db.deployments.unshift(dep);
-  return status(202, dep);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
+  let target: db.Deployment | undefined;
+  if (ref) {
+    target = rows.find((d) => d.id === ref);
+    if (!target)
+      throw new Problem(
+        404,
+        'rollback_target_not_found',
+        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
+      );
+    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
+    if (target.status === 'live' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_already_live',
+        `Deployment "${ref}" is already the current live deployment.`
+      );
+    if (target.status !== 'superseded' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_ineligible',
+        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
+      );
+  } else {
+    target = rows.find((d) => d.status === 'superseded');
+    if (!target)
+      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
+  }
+  const scope = target.scope ?? 'prod';
+  for (const d of rows) {
+    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
+    d.status = 'superseded';
+    d.traffic_percent = 0;
+  }
+  target.status = 'live';
+  target.traffic_percent = 100;
+  return status(202, target);
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -557,13 +1116,21 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   const existing = list.find((s) => s.key === params.key);
   const now = db.iso(0);
   if (existing) {
+    // A new value is a new delivery version; the mock delivers it at once.
     existing.updated_at = now;
+    existing.delivery_version += 1;
+    existing.delivered_version = existing.delivery_version;
+    existing.delivery_status = 'delivered';
     return existing;
   }
-  const created = {
+  const created: (typeof list)[number] = {
     key: params.key,
     scope: 'default',
+    secret_class: 'persistent',
     kid: db.id().slice(0, 8),
+    delivery_version: 1,
+    delivered_version: 1,
+    delivery_status: 'delivered',
     created_at: now,
     updated_at: now,
   };
@@ -636,19 +1203,6 @@ route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
   envValues.delete(envValueKey(params.slug, scope, params.key));
   return NO_CONTENT;
 });
-route('POST', '/v1/apps/{slug}/env-export', ({ params, query, body }) => {
-  if (body.acknowledge_sensitive_values !== true) throw new Problem(400, 'validation_error');
-  const scope = envScope(query);
-  const rows = listOf(db.env, params.slug).filter((row) => row.scope === scope);
-  return {
-    app_slug: params.slug,
-    scope,
-    values: Object.fromEntries(
-      rows.map((row) => [row.key, envValues.get(envValueKey(params.slug, scope, row.key)) ?? ''])
-    ),
-  };
-});
-
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
   const upstreams = listOf(db.upstreams, params.slug);
   return { upstreams, quota_max: 16, count: upstreams.length };
@@ -929,6 +1483,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     percent,
     enabled: true,
     include_body: body.include_body === true,
+    allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
     always_stripped_headers: ['Authorization', 'Cookie'],
     created_at: db.iso(0),
@@ -1183,6 +1738,15 @@ route('GET', '/v1/apps/{slug}/openapi', ({ params, query, res }) => {
   res.setHeader('X-Faas-Cache', 'miss');
   res.setHeader('X-OpenAPI-Doc-Annotations-Count', String(rules.length));
   return merged;
+});
+route('GET', '/v1/apps/{slug}/openapi/preview', ({ params }) => {
+  const a = app(params.slug);
+  return mockOpenAPIPreview(
+    a.id,
+    db.appOpenAPIDocs.get(a.slug),
+    db.routesFor(a).routes,
+    db.edgeRules.filter((rule) => rule.app_id === a.id)
+  );
 });
 route('POST', '/v1/apps/{slug}/openapi', ({ params, body }) => {
   const a = app(params.slug);
@@ -1556,6 +2120,11 @@ const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   referrer_host: ['acme.example', 'news.example', '(direct)'],
   ua_family: ['Chrome', 'Safari', 'curl', 'Googlebot'],
   status: ['200', '404', '500'],
+  consumer_id: [
+    '3f6c2a1e-8b4d-4c7a-9e21-5d0f7b3a6c48',
+    'a91d4e07-2c5b-4f8e-b3a6-7e14c9d02f5b',
+    'c2e8f5b3-6a1d-4e9c-8f07-1b4d3a7e9c26',
+  ],
 };
 const ANALYTICS_METHODS = new Set<AnalyticsMethod>([
   'GET',
@@ -1627,6 +2196,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
     routes: ANALYTICS_GROUPS.route.map(group),
     routes_limit: 50,
     routes_truncated: false,
+    dependencies_truncated: false,
     as_of: analyticsIso(0),
   };
 });
@@ -1804,10 +2374,18 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
 });
 
 route('DELETE', '/v1/apps/{slug}/cache', ({ params, query }) => {
-  app(params.slug);
+  const a = app(params.slug);
   const path = query.get('path');
-  if (path !== null && !path.startsWith('/'))
+  const tag = query.get('tag');
+  if (path !== null && tag !== null)
+    throw new Problem(422, 'validation_failed', 'Path and tag are mutually exclusive.');
+  if (path !== null && path !== '*' && !path.startsWith('/'))
     throw new Problem(422, 'validation_failed', 'a path glob starts with "/".');
+  if (path !== null && new TextEncoder().encode(path).length > 1024)
+    throw new Problem(422, 'validation_failed', 'a path glob is at most 1024 bytes.');
+  if (tag !== null && (tag.length > 128 || !/^[A-Za-z0-9._:/-]+$/.test(tag)))
+    throw new Problem(422, 'validation_failed', 'a cache tag is invalid.');
+  advancePolicy(a.id, ['response_cache']);
   return NO_CONTENT;
 });
 
@@ -1828,18 +2406,412 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const deleted = deletedApps.get(params.slug);
+  const deleted = [...deletedApps.values()].find((r) => r.app.slug === params.slug);
   if (!deleted) {
     app(params.slug);
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
   }
-  if (deleted.expiresAt <= Date.now())
-    throw new Problem(409, 'app_not_restorable', 'the app deletion grace window has expired.');
-  const a = deleted.app;
-  a.status = 'active';
-  db.apps.push(a);
-  deletedApps.delete(params.slug);
-  return a;
+  return restoreDeleted(deleted);
+});
+
+// --- App observability: health, awake routes, dependency latency ---
+type S_ = components['schemas'];
+function healthFor(a: db.App): S_['AppHealthResponse'] {
+  const scenario = db.scenarioOf(a);
+  const status =
+    scenario === 'failing' ? 'unhealthy' : scenario === 'deploying' ? 'degraded' : 'healthy';
+  const phase = scenario === 'parked' ? 'idle' : scenario === 'deploying' ? 'deploying' : 'serving';
+  const failing = scenario === 'failing';
+  return {
+    app_id: a.id,
+    status,
+    phase,
+    summary: failing
+      ? 'The latest deployment fails readiness; no healthy instance serves traffic.'
+      : scenario === 'parked'
+        ? 'Parked at zero instances; the next request wakes it.'
+        : scenario === 'deploying'
+          ? 'A new release is starting alongside the serving one.'
+          : 'Serving normally.',
+    scope: 'app',
+    evaluated_at: db.iso(30_000),
+    valid_for_seconds: 60,
+    serving_deployment_ids: [],
+    capacity: {
+      known: true,
+      required: scenario === 'parked' ? 0 : 1,
+      ready: failing || scenario === 'parked' ? 0 : 1,
+      starting: scenario === 'deploying' ? 1 : 0,
+      unready: failing ? 1 : 0,
+      unknown: 0,
+    },
+    checks: [
+      {
+        code: 'readiness',
+        status: failing ? 'fail' : 'pass',
+        detail: failing
+          ? 'Readiness probe on :8080/health timed out after 30 s.'
+          : 'Readiness probe passing.',
+        ...(failing ? { action: 'logs' as const } : {}),
+      },
+      {
+        code: 'requests',
+        status: failing ? 'warning' : 'pass',
+        detail: failing
+          ? '7.1% of requests returned 5xx in the last 15 minutes.'
+          : 'Error rate normal.',
+      },
+    ],
+  };
+}
+route('GET', '/v1/apps/{slug}/health', ({ params }) => healthFor(app(params.slug)));
+route('GET', '/v1/apps/{slug}/health/history', ({ params }) => {
+  const a = app(params.slug);
+  const now = healthFor(a);
+  const entries: S_['AppHealthHistoryEntry'][] = [
+    {
+      id: 'h3',
+      kind: 'transition',
+      observed_at: db.iso(40 * 60_000),
+      previous_status: 'healthy',
+      assessment: now,
+    },
+    {
+      id: 'h2',
+      kind: 'gap',
+      observed_at: db.iso(5 * 3600_000),
+      assessment: { ...now, status: 'unknown' },
+    },
+    {
+      id: 'h1',
+      kind: 'baseline',
+      observed_at: db.iso(26 * 3600_000),
+      assessment: { ...now, status: 'healthy' },
+    },
+  ];
+  return {
+    app_id: a.id,
+    scope: 'app',
+    entries: db.scenarioOf(a) === 'healthy' ? entries.slice(1) : entries,
+    collector_fresh: true,
+    interval_seconds: 60,
+  };
+});
+route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
+  const a = app(params.slug);
+  const since = query.get('since') ?? '168h';
+  const windowSeconds = since.endsWith('d') ? Number(since.slice(0, -1)) * 86400 : 7 * 86400;
+  const routes = [
+    {
+      method: 'GET',
+      route: '/health',
+      requests: 10_080,
+      share: 0.62,
+      wakes: 2,
+      pattern: 'periodic',
+      interval: 60,
+    },
+    {
+      method: 'POST',
+      route: '/v1/orders',
+      requests: 4_210,
+      share: 0.21,
+      wakes: 31,
+      pattern: 'bursty',
+    },
+    {
+      method: 'GET',
+      route: '/v1/orders/{id}',
+      requests: 9_884,
+      share: 0.12,
+      wakes: 4,
+      pattern: 'steady',
+    },
+  ];
+  const gbPerShare = (a.ram_mb / 1024) * (windowSeconds / 3600);
+  return {
+    slug: a.slug,
+    from: db.iso(windowSeconds * 1000),
+    until: db.iso(0),
+    idle_timeout_seconds: 60,
+    window_seconds: windowSeconds,
+    awake_seconds: Math.round(windowSeconds * 0.95),
+    awake_share: 0.95,
+    mb_seconds: Math.round(a.ram_mb * windowSeconds * 0.95),
+    gb_hours: gbPerShare * 0.95,
+    wakes: 37,
+    unattributed_seconds: 0,
+    other_routes_seconds: 0,
+    routes_limit: 20,
+    routes: routes.map((r) => ({
+      method: r.method,
+      route: r.route,
+      requests: r.requests,
+      wakes: r.wakes,
+      awake_seconds: Math.round(windowSeconds * r.share),
+      awake_share: r.share,
+      gb_hours: gbPerShare * r.share,
+      pattern: r.pattern,
+      ...(r.interval ? { interval_seconds: r.interval } : {}),
+      if_removed: {
+        awake_seconds_saved: Math.round(windowSeconds * r.share * 0.8),
+        gb_hours_saved: gbPerShare * r.share * 0.8,
+        wakes_change: r.pattern === 'periodic' ? 140 : 3,
+      },
+      ...(r.pattern === 'periodic'
+        ? {
+            suggestion: {
+              kind: 'exclude_from_idle',
+              message:
+                'An uptime probe keeps the app awake. Point it at a route your edge answers, or exclude it from the idle timer.',
+            },
+          }
+        : {}),
+    })),
+  };
+});
+route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
+  const a = app(params.slug);
+  const dep = (
+    type: string,
+    name: string,
+    calls: number,
+    errors: number,
+    p95: number,
+    base: number
+  ): S_['DebugDependencyLatencyItem'] => ({
+    type: type as S_['DebugDependencyLatencyItem']['type'],
+    kind: name.split(' ')[0].replace(/[^a-z0-9]/g, ''),
+    name,
+    calls,
+    error_calls: errors,
+    error_rate_pct: (errors / calls) * 100,
+    p50_ms: Math.round(p95 * 0.4),
+    p95_ms: p95,
+    p99_ms: Math.round(p95 * 1.6),
+    baseline_p95_ms: base,
+    current_p95_ms: p95,
+    p95_delta_ms: p95 - base,
+    regression: p95 > base * 1.5,
+    failure_regression: false,
+  });
+  return {
+    app_id: a.id,
+    since: query.get('since') ?? '24h',
+    window_start: db.iso(86400_000),
+    window_end: db.iso(0),
+    retention_clamped: false,
+    complete: true,
+    truncated: false,
+    telemetry_rows: 4_200,
+    represented_requests: 18_400,
+    span_samples: 9_100,
+    dependencies: [
+      dep('app_dependency', 'postgres orders', 12_400, 3, 412, 140),
+      dep('app_dependency', 'api.stripe.com', 2_100, 12, 380, 360),
+      dep('managed_binding', 'redis sessions', 30_200, 0, 4, 3),
+    ],
+    edges: [],
+  };
+});
+
+// --- Prewarm intents ---
+const prewarms = new Map<string, components['schemas']['PrewarmIntentResponse'][]>();
+route('GET', '/v1/apps/{slug}/prewarms', ({ params }) => {
+  app(params.slug);
+  return prewarms.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/prewarm', ({ params, body }) => {
+  const a = app(params.slug);
+  const count = Number(body.count);
+  const wakeAt = Date.parse(String(body.wake_at ?? ''));
+  const expiresAt = Date.parse(String(body.expires_at ?? ''));
+  if (!Number.isInteger(count) || count < 1)
+    throw new Problem(400, 'validation_failed', 'count must be a positive integer.');
+  if (Number.isNaN(wakeAt) || Number.isNaN(expiresAt) || expiresAt <= wakeAt)
+    throw new Problem(400, 'validation_failed', 'expires_at must be after wake_at.');
+  const intent: components['schemas']['PrewarmIntentResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    count,
+    wake_at: new Date(wakeAt).toISOString(),
+    expires_at: new Date(expiresAt).toISOString(),
+    trigger: 'calendar',
+    status: 'pending',
+    created_at: db.iso(0),
+  };
+  prewarms.set(a.slug, [...(prewarms.get(a.slug) ?? []), intent]);
+  return status(202, intent);
+});
+route('DELETE', '/v1/apps/{slug}/prewarms/{id}', ({ params }) => {
+  const intent = prewarms.get(params.slug)?.find((p) => p.id === params.id);
+  if (!intent) throw new Problem(404, 'prewarm_not_found');
+  intent.status = 'cancelled';
+  return NO_CONTENT;
+});
+// --- Log drains ---
+function drainOf(slug: string, id: string) {
+  app(slug);
+  const drain = logDrainMock.drains.get(slug)?.find((d) => d.id === id);
+  if (!drain) throw new Problem(404, 'log_drain_not_found');
+  return drain;
+}
+route('GET', '/v1/apps/{slug}/log-drains', ({ params }) => {
+  app(params.slug);
+  return logDrainMock.drains.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/log-drains', ({ params, body }) => {
+  const a = app(params.slug);
+  const url = String(body.target_url ?? '');
+  if (!/^https?:\/\//.test(url))
+    throw new Problem(400, 'validation_failed', 'target_url must be an http(s) URL.');
+  const drain: components['schemas']['AppLogDrainResponse'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    kind: body.kind === 'otlp' ? 'otlp' : 'http_json',
+    target_url: url,
+    auth_header_masked: body.auth_header ? '***' : '',
+    enabled: body.enabled !== false,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  logDrainMock.drains.set(a.slug, [...(logDrainMock.drains.get(a.slug) ?? []), drain]);
+  return status(201, drain);
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => drainOf(params.slug, params.id));
+route('PATCH', '/v1/apps/{slug}/log-drains/{id}', ({ params, body }) => {
+  const drain = drainOf(params.slug, params.id);
+  if (typeof body.enabled === 'boolean') drain.enabled = body.enabled;
+  if (typeof body.target_url === 'string') drain.target_url = body.target_url;
+  if (body.kind === 'otlp' || body.kind === 'http_json') drain.kind = body.kind;
+  if (typeof body.auth_header === 'string')
+    drain.auth_header_masked = body.auth_header ? '***' : '';
+  drain.updated_at = db.iso(0);
+  return drain;
+});
+route('DELETE', '/v1/apps/{slug}/log-drains/{id}', ({ params }) => {
+  drainOf(params.slug, params.id);
+  logDrainMock.drains.set(
+    params.slug,
+    (logDrainMock.drains.get(params.slug) ?? []).filter((d) => d.id !== params.id)
+  );
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
+  logDrainMock.healthFor(drainOf(params.slug, params.id))
+);
+route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
+  logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
+);
+// --- Canary route health: candidate vs stable per critical route ---
+function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
+  const deployment = db.deployments.find((d) => d.id === deploymentId);
+  const stable = db.deployments.find(
+    (d) => d.app_id === a.id && d.id !== deploymentId && d.status === 'superseded'
+  );
+  const counts = (requests: number, errors: number, p95: number) => ({
+    requests,
+    server_errors: errors,
+    error_rate: requests ? errors / requests : 0,
+    p95_latency_ms: p95,
+  });
+  const route = (
+    method: string,
+    path: string,
+    canaryErrors: number,
+    delta: number
+  ): S_['RouteHealthFinding'] => ({
+    method,
+    path,
+    status: canaryErrors > 3 ? 'regressed' : 'healthy',
+    reason:
+      canaryErrors > 3
+        ? 'Candidate 5xx rate exceeds stable by more than the allowed margin.'
+        : 'Within the error and latency budget.',
+    check_latency: true,
+    windows: [
+      {
+        start: db.iso(120_000),
+        end: db.iso(60_000),
+        candidate: counts(180, canaryErrors, 120 + delta),
+        stable: counts(1620, 2, 120),
+        status: canaryErrors > 3 ? 'regressed' : 'healthy',
+        reason: '',
+        latency_delta_ms: delta,
+        latency_factor: (120 + delta) / 120,
+      },
+    ],
+  });
+  return {
+    app_id: a.id,
+    deployment_id: deploymentId,
+    candidate_commit_sha: 'a1b2c3d',
+    stable_deployment_id: stable?.id ?? '',
+    stable_commit_sha: stable ? 'e4f5a6b' : '',
+    canary_step: deployment?.canary_step ?? 1,
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    checked_at: db.iso(20_000),
+    coverage: 'observed_only',
+    status: 'healthy',
+    reason: 'Every critical route met its budget in both windows.',
+    minimum_requests: 50,
+    routes: [route('POST', '/v1/orders', 1, 8), route('GET', '/v1/orders/{id}', 0, -3)],
+  };
+}
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}', ({ params }) =>
+  routeHealthFor(app(params.slug), params.deployment)
+);
+route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}/history', ({ params }) => {
+  const a = app(params.slug);
+  const report = routeHealthFor(a, params.deployment);
+  const decision = (
+    status: S_['RouteHealthDecision']['status'],
+    reason: string
+  ): S_['RouteHealthDecision'] => ({
+    mode: 'enforce',
+    on_regression: 'hold',
+    revision: 3,
+    deployment_id: params.deployment,
+    stable_deployment_id: report.stable_deployment_id,
+    status,
+    reason,
+    checked_at: db.iso(25 * 60_000),
+  });
+  return {
+    app_id: a.id,
+    deployment_id: params.deployment,
+    entries: [
+      {
+        version: 1,
+        id: 'rh-2',
+        checked_at: db.iso(20 * 60_000),
+        source: 'worker',
+        traffic_percent: 1,
+        requested_traffic_percent: 10,
+        policy: {
+          version: 1,
+          windows: 2,
+          window_seconds: 60,
+          ingestion_lag_seconds: 15,
+          minimum_requests: 50,
+          minimum_errors: 3,
+          error_rate_floor: 0.01,
+          error_rate_delta: 0.01,
+          error_rate_factor: 2,
+          minimum_latency_requests: 50,
+          latency_quantile: 0.95,
+          latency_factor: 1.5,
+          latency_delta_ms: 100,
+          comparison_epsilon: 0.0001,
+        },
+        decision: decision('allowed', 'Both windows healthy at 1%; advancing to 10%.'),
+        report,
+      },
+    ],
+  } satisfies S_['RouteHealthHistoryPage'];
 });
 
 route('GET', '/v1/apps/{slug}/upstreams/history', ({ params, query }) => {
@@ -1910,19 +2882,64 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   const type = String(req.headers['content-type'] ?? '');
   if (!type.startsWith('multipart/form-data'))
     throw new Problem(400, 'validation_failed', 'the body must be multipart/form-data.');
-  const template = db.deployments.find((d) => d.app_id === a.id);
-  const deployment = {
-    ...(template ?? db.deployments[0]),
-    id: db.id(),
-    app_id: a.id,
-    kind: 'tarball',
-    status: 'building',
-    error: null,
-    error_code: null,
-    created_at: new Date().toISOString(),
+  return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
+});
+
+// Resumable upload sessions (POST/PATCH/GET /v1/uploads, commit), the route
+// the console deploys tarballs through. Bytes are counted, not kept.
+const uploads = new Map<
+  string,
+  { slug: string; total: number; received: number; deployment?: unknown }
+>();
+const UPLOAD_CHUNK = 1_048_576;
+const uploadExpiry = () => new Date(Date.now() + 3_600_000).toISOString();
+function uploadSession(id: string) {
+  const u = uploads.get(id);
+  if (!u) throw new Problem(404, 'not_found', 'No such upload session.');
+  return u;
+}
+route('POST', '/v1/uploads', ({ body }) => {
+  const a = app(String(body.app_slug));
+  const id = crypto.randomUUID();
+  uploads.set(id, { slug: a.slug, total: Number(body.total_size), received: 0 });
+  return status(201, {
+    upload_id: id,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: Number(body.total_size),
+    expires_at: uploadExpiry(),
+  });
+});
+route('GET', '/v1/uploads/{id}', ({ params }) => {
+  const u = uploadSession(params.id);
+  return {
+    upload_id: params.id,
+    app_slug: u.slug,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: u.total,
+    received_bytes: u.received,
+    status: u.received >= u.total ? 'complete' : 'open',
+    expires_at: uploadExpiry(),
   };
-  db.deployments.unshift(deployment);
-  return status(202, deployment);
+});
+route('PATCH', '/v1/uploads/{id}', ({ params, req }) => {
+  const u = uploadSession(params.id);
+  if (Number(req.headers['upload-offset']) !== u.received)
+    throw new Problem(
+      409,
+      'upload_session_offset_conflict',
+      'Upload-Offset does not match the received bytes.'
+    );
+  // readBody has consumed the stream as text; the header carries the byte count.
+  u.received += Number(req.headers['content-length'] ?? 0);
+  return {};
+});
+route('POST', '/v1/uploads/{id}/commit', ({ params }) => {
+  const u = uploadSession(params.id);
+  if (u.deployment) return status(202, u.deployment);
+  if (u.received < u.total) throw new Problem(409, 'conflict', 'The upload is incomplete.');
+  const a = app(u.slug);
+  u.deployment = startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`);
+  return status(201, u.deployment);
 });
 
 route('GET', '/v1/account/object-storage-usage', () => ({
@@ -2179,6 +3196,74 @@ route('POST', '/v1/postgres/databases', ({ body }) => {
   return status(201, database);
 });
 route('GET', '/v1/postgres/databases/{id}', ({ params }) => pgDatabase(params.id));
+// A company's databases (faas org_postgres_routes.go): its own list, separate
+// from the signed-in account's. acme-corp starts with one.
+const orgPg = new Map<string, Record<string, unknown>[]>([
+  [
+    'acme-corp',
+    [
+      {
+        id: 'pg-acme-ledger',
+        name: 'acme-ledger',
+        region: 'fra',
+        postgres_major: 16,
+        service_class: 'production',
+        availability: 'single_zone',
+        scale_to_zero: false,
+        storage_limit_bytes: 20 * 1024 ** 3,
+        restore_window_seconds: 7 * 24 * 3600,
+        restore_source_database_id: null,
+        restore_point_in_time: null,
+        state: 'available',
+        last_error_code: null,
+        created_at: '2026-10-05T10:00:00Z',
+        updated_at: '2026-10-05T10:00:00Z',
+      },
+    ],
+  ],
+]);
+const orgDatabases = (org: string) => {
+  requireOrgRole(org, ANY_MEMBER);
+  if (!orgPg.has(org)) orgPg.set(org, []);
+  return orgPg.get(org)!;
+};
+route('GET', '/v1/orgs/{organization}/postgres/databases', ({ params }) => {
+  pgGate();
+  return { items: orgDatabases(params.organization) };
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) => {
+  pgGate();
+  const list = orgDatabases(params.organization);
+  const now = new Date().toISOString();
+  const database = {
+    id: db.id(),
+    name: String(body.name ?? '').trim(),
+    region: String(body.region ?? 'fra'),
+    postgres_major: Number(body.postgres_major ?? 16),
+    service_class: String(body.service_class ?? 'development'),
+    availability: String(body.availability ?? 'single_zone'),
+    scale_to_zero: body.scale_to_zero !== false,
+    storage_limit_bytes: Number(body.storage_limit_bytes ?? 10 * 1024 ** 3),
+    restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
+    restore_source_database_id: null,
+    restore_point_in_time: null,
+    state: 'available',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(database);
+  return status(201, database);
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) => {
+  const row = orgDatabases(params.organization).find((d) => d.id === params.id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return row;
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/bindings', ({ params }) => {
+  orgDatabases(params.organization);
+  return { items: [] };
+});
 route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
   const database = pgDatabase(params.id);
   database.state = 'deleting';
@@ -2287,7 +3372,371 @@ route('DELETE', '/v1/postgres/bindings/{id}', ({ params }) => {
   return binding;
 });
 
+type MockInboundEndpoint = components['schemas']['InboundWebhookEndpointResponse'];
+type MockWebhookBinding = components['schemas']['WebhookAutomationBindingResponse'];
+const inboundEndpoints = new Map<string, MockInboundEndpoint[]>();
+const webhookBindings = new Map<string, MockWebhookBinding>();
+function inboundEndpoint(slug: string, id: string) {
+  app(slug);
+  const endpoint = (inboundEndpoints.get(slug) ?? []).find((item) => item.id === id);
+  if (!endpoint) throw new Problem(404, 'inbound_webhook_not_found', 'No such endpoint.');
+  return endpoint;
+}
+route('GET', '/v1/apps/{slug}/inbound-webhooks', ({ params }) => {
+  app(params.slug);
+  return inboundEndpoints.get(params.slug) ?? [];
+});
+route('POST', '/v1/apps/{slug}/inbound-webhooks', ({ params, body }) => {
+  const owner = app(params.slug);
+  const name = String(body.name ?? '');
+  const path = String(body.delivery_path ?? '/');
+  const secret = String(body.signing_secret ?? '');
+  if (
+    body.provider !== 'stripe' ||
+    !/^[a-z][a-z0-9-]{0,62}$/.test(name) ||
+    !path.startsWith('/') ||
+    /[?#]/.test(path) ||
+    !secret ||
+    new TextEncoder().encode(secret).length > 256
+  )
+    throw new Problem(422, 'invalid_inbound_webhook', 'Invalid Stripe endpoint settings.');
+  const list = inboundEndpoints.get(params.slug) ?? [];
+  if (list.some((item) => item.name === name))
+    throw new Problem(409, 'inbound_webhook_exists', 'An endpoint already uses that name.');
+  const now = new Date().toISOString();
+  const endpoint: MockInboundEndpoint = {
+    id: db.id(),
+    app_id: owner.id,
+    account_id: db.ACCOUNT_ID,
+    name,
+    provider: 'stripe',
+    delivery_path: path,
+    enabled: body.enabled !== false,
+    signing_secret_masked: '***',
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(endpoint);
+  inboundEndpoints.set(params.slug, list);
+  // The opaque token is disclosed only on this one response, never stored in metadata.
+  return status(201, {
+    ...endpoint,
+    endpoint_url: `https://hooks.example.test/stripe/${endpoint.id}/${randomBytes(18).toString('hex')}`,
+  });
+});
+route('GET', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params }) =>
+  inboundEndpoint(params.slug, params.id)
+);
+route('PATCH', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params, body }) => {
+  const endpoint = inboundEndpoint(params.slug, params.id);
+  if ('delivery_path' in body) {
+    const path = String(body.delivery_path ?? '');
+    if (!path.startsWith('/') || /[?#]/.test(path) || path.length > 256)
+      throw new Problem(422, 'invalid_delivery_path');
+    endpoint.delivery_path = path;
+  }
+  if ('signing_secret' in body && !String(body.signing_secret ?? ''))
+    throw new Problem(422, 'invalid_signing_secret');
+  if ('enabled' in body) endpoint.enabled = Boolean(body.enabled);
+  endpoint.updated_at = new Date().toISOString();
+  return endpoint;
+});
+route('DELETE', '/v1/apps/{slug}/inbound-webhooks/{id}', ({ params }) => {
+  inboundEndpoint(params.slug, params.id);
+  inboundEndpoints.set(
+    params.slug,
+    (inboundEndpoints.get(params.slug) ?? []).filter((item) => item.id !== params.id)
+  );
+  webhookBindings.delete(params.id);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params }) => {
+  inboundEndpoint(params.slug, params.id);
+  const binding = webhookBindings.get(params.id);
+  if (!binding) throw new Problem(404, 'webhook_automation_binding_not_found');
+  return binding;
+});
+route('PUT', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params, body }) => {
+  inboundEndpoint(params.slug, params.id);
+  const prior = webhookBindings.get(params.id);
+  if ((prior?.version ?? 0) !== body.expected_version)
+    throw new Problem(409, 'webhook_automation_binding_conflict', 'Refresh the binding.');
+  const name = String(body.workflow_name ?? '');
+  if (
+    !body.take_over_delivery ||
+    !automationMock.definitions
+      .get(params.slug)
+      ?.some((item) => item.name === name && item.published)
+  )
+    throw new Problem(422, 'automation_unpublished', 'Choose a published automation in this app.');
+  const binding: MockWebhookBinding = {
+    endpoint_id: params.id,
+    workflow_name: name,
+    event_type: String(body.event_type ?? ''),
+    filter: (body.filter ?? {}) as Record<string, unknown>,
+    version: (prior?.version ?? 0) + 1,
+    updated_at: new Date().toISOString(),
+  };
+  webhookBindings.set(params.id, binding);
+  return binding;
+});
+route('DELETE', '/v1/apps/{slug}/inbound-webhooks/{id}/automation-binding', ({ params, query }) => {
+  inboundEndpoint(params.slug, params.id);
+  const binding = webhookBindings.get(params.id);
+  if (!binding) throw new Problem(404, 'webhook_automation_binding_not_found');
+  if (binding.version !== Number(query.get('expected_version')))
+    throw new Problem(409, 'webhook_automation_binding_conflict', 'Refresh the binding.');
+  webhookBindings.delete(params.id);
+  return NO_CONTENT;
+});
+route(
+  'GET',
+  '/v1/apps/{slug}/inbound-webhooks/{id}/automation-receipts/{event_id}',
+  ({ params }) => {
+    inboundEndpoint(params.slug, params.id);
+    const binding = webhookBindings.get(params.id);
+    if (
+      !binding ||
+      !['evt_mock_pending', 'evt_mock_duplicate', 'evt_mock_failed'].includes(params.event_id)
+    )
+      throw new Problem(404, 'webhook_automation_receipt_not_found');
+    return {
+      receipt_id: db.id(),
+      endpoint_id: params.id,
+      provider_event_id: params.event_id,
+      workflow_name: binding.workflow_name,
+      status: 'accepted' as const,
+      duplicate: params.event_id === 'evt_mock_duplicate',
+      accepted_at: new Date().toISOString(),
+      event_source: `gregale.inbound.stripe.${params.id}`,
+      routing_status:
+        params.event_id === 'evt_mock_failed'
+          ? ('failed' as const)
+          : params.event_id === 'evt_mock_duplicate'
+            ? ('enqueued' as const)
+            : ('pending' as const),
+    };
+  }
+);
+
 route('GET', '/v1/apps/{slug}/webhooks', ({ params }) => listOf(db.webhooks, params.slug));
+
+// --- Instrumented Issues -----------------------------------------------------
+
+type MockIssue = components['schemas']['Issue'];
+type MockToken = components['schemas']['IssueIngestToken'];
+const mockIssues = new Map<string, MockIssue[]>();
+const mockIssueTokens = new Map<string, MockToken[]>();
+function issuesFor(slug: string) {
+  const selected = app(slug);
+  let items = mockIssues.get(slug);
+  if (!items) {
+    items = [
+      {
+        id: db.id(),
+        app_id: selected.id,
+        environment: 'application',
+        fingerprint: 'payment-error',
+        grouping_version: 1,
+        title: 'PaymentError',
+        state: 'open',
+        first_seen_at: db.iso(48 * 3600_000),
+        last_seen_at: db.iso(3600_000),
+        event_count: 9,
+        regression_count: 2,
+        impact_24h: { identified_customers: 3, observed_events: 4, unattributed_events: 1 },
+      },
+      {
+        id: db.id(),
+        app_id: selected.id,
+        environment: 'application',
+        fingerprint: 'timeout-error',
+        grouping_version: 1,
+        title: 'TimeoutError',
+        state: 'resolved',
+        first_seen_at: db.iso(96 * 3600_000),
+        last_seen_at: db.iso(48 * 3600_000),
+        event_count: 2,
+        regression_count: 0,
+        impact_24h: { identified_customers: 0, observed_events: 0, unattributed_events: 0 },
+      },
+    ];
+    mockIssues.set(slug, items);
+  }
+  return items;
+}
+function issueFor(slug: string, id: string) {
+  const found = issuesFor(slug).find((item) => item.id === id);
+  if (!found) throw new Problem(404, 'issue_not_found');
+  return found;
+}
+route('GET', '/v1/apps/{slug}/issues', ({ params, query }) => {
+  let items = issuesFor(params.slug).filter(
+    (item) => !query.get('state') || item.state === query.get('state')
+  );
+  if (query.get('environment'))
+    items = items.filter((item) => item.environment === query.get('environment'));
+  if (query.get('assignee') === 'me')
+    items = items.filter((item) => item.assignee_account_id === db.ACCOUNT_ID);
+  if (query.get('assignee') === 'unassigned')
+    items = items.filter((item) => !item.assignee_account_id);
+  const minimum = Number(query.get('min_customers') ?? 0);
+  items = items.filter((item) => (item.impact_24h?.identified_customers ?? 0) >= minimum);
+  if (query.get('sort') === 'impact')
+    items = [...items].sort(
+      (a, b) =>
+        (b.impact_24h?.identified_customers ?? 0) - (a.impact_24h?.identified_customers ?? 0)
+    );
+  const filters = query.toString().replace(/(?:^|&)cursor=[^&]*/, '');
+  let offset = 0;
+  if (query.get('cursor')) {
+    try {
+      const decoded = JSON.parse(Buffer.from(query.get('cursor')!, 'base64url').toString()) as {
+        filters: string;
+        offset: number;
+      };
+      if (decoded.filters !== filters) throw new Error('changed');
+      offset = decoded.offset;
+    } catch {
+      throw new Problem(
+        400,
+        'invalid_issue_cursor',
+        'Keep filters and ordering unchanged while paging.'
+      );
+    }
+  }
+  const page = items.slice(offset, offset + 1);
+  return {
+    items: page,
+    next_cursor:
+      offset + 1 < items.length
+        ? Buffer.from(JSON.stringify({ filters, offset: offset + 1 })).toString('base64url')
+        : undefined,
+  };
+});
+route('GET', '/v1/apps/{slug}/issues/{issue_id}', ({ params, query }) => {
+  const issue = issueFor(params.slug, params.issue_id);
+  const deployment = db.deployments.find((item) => item.app_id === issue.app_id);
+  if (!deployment) throw new Problem(404, 'deployment_not_found');
+  const event = (older: boolean) => ({
+    id: older ? 'mock-event-older' : 'mock-event-newer',
+    event_id: db.id(),
+    deployment_id: deployment.id,
+    received_at: db.iso(older ? 3 * 3600_000 : 3600_000),
+    occurred_at: db.iso(older ? 3 * 3600_000 : 3600_000),
+    exception_type: issue.title,
+    message: 'Sanitized mock exception',
+    attribution: older ? 'unattributed' : 'verified',
+  });
+  const olderEvents = query.get('event_cursor') === 'mock-event-next';
+  const olderReleases = query.get('release_cursor') === 'mock-release-next';
+  const olderActivity = query.get('activity_cursor') === 'mock-activity-next';
+  return {
+    issue,
+    impact: {
+      window_start: db.iso(24 * 3600_000),
+      window_end: db.iso(0),
+      identified_customers: issue.impact_24h?.identified_customers ?? 0,
+      observed_events: issue.impact_24h?.observed_events ?? 0,
+      unattributed_events: issue.impact_24h?.unattributed_events ?? 0,
+      coverage: 'retained_verified',
+    },
+    events: [event(olderEvents)],
+    next_event_cursor: olderEvents ? undefined : 'mock-event-next',
+    releases: [
+      {
+        deployment_id: deployment.id,
+        event_count: olderReleases ? 1 : issue.event_count,
+        first_seen_at: db.iso(48 * 3600_000),
+        last_seen_at: db.iso(3600_000),
+      },
+    ],
+    next_release_cursor: olderReleases ? undefined : 'mock-release-next',
+    activity: [
+      {
+        id: olderActivity ? 'mock-action-older' : 'mock-action-newer',
+        action: olderActivity ? 'reopened' : issue.state,
+        created_at: db.iso(3600_000),
+        details: {},
+      },
+    ],
+    next_activity_cursor: olderActivity ? undefined : 'mock-activity-next',
+  };
+});
+route('POST', '/v1/apps/{slug}/issues/{issue_id}/actions', ({ params, body }) => {
+  const issue = issueFor(params.slug, params.issue_id);
+  const action = String(body.action ?? '');
+  if (action === 'assign')
+    issue.assignee_account_id = body.assignee_account_id
+      ? String(body.assignee_account_id)
+      : undefined;
+  else if (action === 'reopen') issue.state = 'open';
+  else if (action === 'ignore') {
+    if (!body.ignored_until || Date.parse(String(body.ignored_until)) <= Date.now())
+      throw new Problem(422, 'invalid_ignore_deadline');
+    issue.state = 'ignored';
+    issue.ignored_until = String(body.ignored_until);
+  } else if (action === 'resolve') {
+    const deployment = db.deployments.find(
+      (item) => item.id === body.fixed_deployment_id && item.app_id === issue.app_id
+    );
+    if (!deployment) throw new Problem(422, 'invalid_fix_deployment');
+    issue.state = 'resolved';
+    issue.fixed_deployment_id = deployment.id;
+  } else throw new Problem(422, 'invalid_issue_action');
+  return issue;
+});
+route('GET', '/v1/apps/{slug}/issue-ingest-tokens', ({ params }) => {
+  app(params.slug);
+  return {
+    items: (mockIssueTokens.get(params.slug) ?? []).map(
+      ({ token: _secret, ...metadata }) => metadata
+    ),
+  };
+});
+route('POST', '/v1/apps/{slug}/issue-ingest-tokens', ({ params, body, res }) => {
+  const selected = app(params.slug);
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(403, 'plan_not_entitled');
+  const deployment = db.deployments.find(
+    (item) => item.id === body.deployment_id && item.app_id === selected.id
+  );
+  if (
+    !deployment ||
+    body.environment !== 'application' ||
+    !body.name ||
+    !body.expires_at ||
+    Date.parse(String(body.expires_at)) <= Date.now() ||
+    Date.parse(String(body.expires_at)) > Date.now() + 90 * 24 * 3600_000
+  )
+    throw new Problem(422, 'invalid_issue_token_scope');
+  const tokens = mockIssueTokens.get(params.slug) ?? [];
+  if (
+    tokens.filter((item) => !item.revoked_at && Date.parse(item.expires_at) > Date.now()).length >=
+    5
+  )
+    throw new Problem(409, 'issue_quota_exceeded');
+  const created: MockToken = {
+    id: db.id(),
+    app_id: selected.id,
+    deployment_id: deployment.id,
+    environment: 'application',
+    name: String(body.name),
+    expires_at: String(body.expires_at),
+    token: `g_issue_${randomBytes(24).toString('base64url')}`,
+  };
+  tokens.unshift(created);
+  mockIssueTokens.set(params.slug, tokens);
+  res.setHeader('Cache-Control', 'no-store');
+  return status(201, created);
+});
+route('DELETE', '/v1/apps/{slug}/issue-ingest-tokens/{token_id}', ({ params }) => {
+  app(params.slug);
+  const token = mockIssueTokens.get(params.slug)?.find((item) => item.id === params.token_id);
+  if (!token) throw new Problem(404, 'issue_token_not_found');
+  token.revoked_at = new Date().toISOString();
+  return NO_CONTENT;
+});
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
   const url = String(body.target_url ?? '');
@@ -2305,6 +3754,7 @@ route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
       ? (body.event_filter as (typeof list)[number]['event_filter'])
       : [],
     retry_policy: (body.retry_policy ?? 'default') as (typeof list)[number]['retry_policy'],
+    delivery_format: body.delivery_format === 'cloudevents' ? 'cloudevents' : 'json',
     enabled: body.enabled !== false,
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -2380,9 +3830,22 @@ route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
     'readiness',
   ];
   if (!stages.includes(String(body.from_stage ?? ''))) throw new Problem(400, 'invalid_from_stage');
-  const copy = { ...d, id: db.id(), status: 'building', created_at: new Date().toISOString() };
-  db.deployments.unshift(copy);
-  return copy;
+  const a = db.apps.find((x) => x.id === d.app_id);
+  if (!a) throw new Problem(404, 'app_not_found');
+  const carried = { min_instances: d.min_instances, scope: d.scope };
+  if (!d.build_id) {
+    const copy: db.Deployment = {
+      ...newDeployment(a, d.kind),
+      ...carried,
+      image_digest: d.image_digest,
+      build_id: null,
+    };
+    db.deployments.unshift(copy);
+    startDeployment({ deployment: copy, app: a, now: Date.now() });
+    return copy;
+  }
+  const source = trackedDeployment(d.id)?.source ?? a.slug;
+  return startSourceDeployment(a, d.kind === 'tarball' ? 'tarball' : 'github', source, carried);
 });
 
 // Deployment control (ADR-117 stages, ADR-122 canary + audit + preview URL,
@@ -2424,6 +3887,8 @@ function deploymentById(id: string) {
 
 route('GET', '/v1/deployments/{id}/stages', ({ params }) => {
   const d = deploymentById(params.id);
+  const rec = trackedDeployment(d.id);
+  if (rec && rec.written === d.status) return stagesAt(rec, Date.now());
   const started = Date.parse(d.created_at);
   const at = (i: number) => STAGE_MS.slice(0, i).reduce((sum, ms) => sum + ms, 0);
   const row = (i: number, stageStatus: 'completed' | 'failed', reason?: string) => ({
@@ -2566,6 +4031,245 @@ route('POST', '/v1/apps/{slug}/deployments/clear-obsolete', ({ params, body }) =
   return { app_slug: a.slug, count, older_than: olderThan };
 });
 
+type MockQueueBinding = components['schemas']['QueueBindingResponse'];
+const queueBindings = new Map<string, MockQueueBinding[]>();
+const queueBindingReceipts = new Map<string, { body: string; binding: MockQueueBinding }>();
+const queueNow = () => new Date().toISOString();
+
+function workerBindings(a: db.App): MockQueueBinding[] {
+  let rows = queueBindings.get(a.id);
+  if (rows) return rows;
+  rows =
+    a.slug === 'search-indexer'
+      ? [
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'default',
+            queue_name: 'orders',
+            mode: 'push',
+            workload_class: 'worker',
+            enabled: true,
+            max_concurrency: 2,
+            created_at: db.iso(2 * 3_600_000),
+            updated_at: db.iso(2 * 3_600_000),
+          },
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'exports',
+            queue_name: 'exports',
+            mode: 'pull',
+            workload_class: 'worker',
+            enabled: true,
+            max_concurrency: 1,
+            created_at: db.iso(3_600_000),
+            updated_at: db.iso(3_600_000),
+          },
+          {
+            id: db.id(),
+            app_id: a.id,
+            account_id: db.account.id,
+            name: 'paused',
+            queue_name: 'paused',
+            mode: 'push',
+            workload_class: 'worker',
+            enabled: false,
+            max_concurrency: 1,
+            created_at: db.iso(3_600_000),
+            updated_at: db.iso(3_600_000),
+          },
+        ]
+      : [];
+  queueBindings.set(a.id, rows);
+  return rows;
+}
+
+function gateWorkerWrite(a: db.App) {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      403,
+      'plan_worker_pools_not_allowed',
+      'Worker pools require Hobby or higher.'
+    );
+  if (!['worker', 'job', 'http'].includes(a.workload_class ?? ''))
+    throw new Problem(
+      422,
+      'workload_class_uncharacterized',
+      'Deploy and characterize the workload first.'
+    );
+}
+
+function mockBinding(a: db.App, id: string) {
+  const found = workerBindings(a).find((row) => row.id === id);
+  if (!found) throw new Problem(404, 'not_found', 'Queue binding not found.');
+  return found;
+}
+
+route('GET', '/v1/apps/{slug}/queue-bindings', ({ params, query }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  return workerBindings(a);
+});
+route('GET', '/v1/apps/{slug}/queue-bindings/{id}', ({ params }) =>
+  mockBinding(app(params.slug), params.id)
+);
+route('GET', '/v1/apps/{slug}/queue-bindings/{id}/status', ({ params }) => {
+  const row = mockBinding(app(params.slug), params.id);
+  const pull = row.mode === 'pull';
+  return {
+    binding_id: row.id,
+    name: row.name,
+    queue_name: row.queue_name,
+    mode: row.mode,
+    workload_class: row.workload_class,
+    enabled: row.enabled,
+    consumer_state: pull ? 'external' : row.enabled ? 'active' : 'paused',
+    consumer_liveness: pull ? 'external' : row.enabled ? 'stale' : 'not_observed',
+    ...(pull ? {} : { last_poll_at: db.iso(2 * 60_000) }),
+    lag_messages: pull ? null : row.enabled ? 4 : null,
+    lag_age_seconds: pull ? null : row.enabled ? 90 : null,
+    depth: row.name === 'default' ? 5 : 0,
+    in_flight: row.name === 'default' ? 2 : 0,
+    dead_letter: row.name === 'default' ? 1 : 0,
+    generated_at: queueNow(),
+  };
+});
+route('POST', '/v1/apps/{slug}/queue-bindings', ({ params, query, body, req }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  gateWorkerWrite(a);
+  const key = String(req.headers['idempotency-key'] ?? '');
+  const receiptKey = `${a.id}:${key}`;
+  const prior = key ? queueBindingReceipts.get(receiptKey) : undefined;
+  if (prior) {
+    if (prior.body !== JSON.stringify(body)) throw new Problem(409, 'idempotency_conflict');
+    return status(201, prior.binding);
+  }
+  const name = String(body.name ?? '');
+  const queueName = String(body.queue_name ?? '');
+  const mode = body.mode;
+  const workloadClass = body.workload_class;
+  const maxConcurrency = Number(body.max_concurrency);
+  if (
+    !/^[a-z][a-z0-9-]{0,62}$/.test(name) ||
+    !/^[a-z][a-z0-9-]{0,62}$/.test(queueName) ||
+    !['pull', 'push'].includes(String(mode)) ||
+    workloadClass !== a.workload_class ||
+    (workloadClass === 'http' && mode === 'pull') ||
+    !Number.isInteger(maxConcurrency) ||
+    maxConcurrency < 1 ||
+    maxConcurrency > 10000
+  )
+    throw new Problem(422, 'validation_failed', 'Invalid queue binding.');
+  if (workerBindings(a).some((row) => row.name === name))
+    throw new Problem(409, 'binding_conflict', 'Binding name already exists.');
+  const row: MockQueueBinding = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.account.id,
+    name,
+    queue_name: queueName,
+    mode: mode as MockQueueBinding['mode'],
+    workload_class: workloadClass as MockQueueBinding['workload_class'],
+    enabled: body.enabled !== false,
+    max_concurrency: maxConcurrency,
+    created_at: queueNow(),
+    updated_at: queueNow(),
+  };
+  workerBindings(a).push(row);
+  if (key) queueBindingReceipts.set(receiptKey, { body: JSON.stringify(body), binding: row });
+  return status(201, row);
+});
+route('PATCH', '/v1/apps/{slug}/queue-bindings/{id}', ({ params, body }) => {
+  const a = app(params.slug);
+  gateWorkerWrite(a);
+  const row = mockBinding(a, params.id);
+  if (body.queue_name !== undefined) {
+    const queueName = String(body.queue_name);
+    if (!/^[a-z][a-z0-9-]{0,62}$/.test(queueName)) throw new Problem(422, 'validation_failed');
+    row.queue_name = queueName;
+  }
+  if (body.mode !== undefined) {
+    if (body.mode !== 'pull' && body.mode !== 'push') throw new Problem(422, 'validation_failed');
+    row.mode = body.mode;
+  }
+  if (body.max_concurrency !== undefined) {
+    const max = Number(body.max_concurrency);
+    if (!Number.isInteger(max) || max < 1 || max > 10000)
+      throw new Problem(422, 'validation_failed');
+    row.max_concurrency = max;
+  }
+  if (body.enabled !== undefined) row.enabled = body.enabled === true;
+  row.updated_at = queueNow();
+  return row;
+});
+route('DELETE', '/v1/apps/{slug}/queue-bindings/{id}', ({ params }) => {
+  const a = app(params.slug);
+  gateWorkerWrite(a);
+  const rows = workerBindings(a);
+  const index = rows.findIndex((row) => row.id === params.id);
+  if (index < 0) throw new Problem(404, 'not_found');
+  rows.splice(index, 1);
+  return NO_CONTENT;
+});
+route('PUT', '/v1/apps/{slug}/queue-workload', ({ params, body, query }) => {
+  const a = app(params.slug);
+  if (query.has('stage') || query.has('scope')) throw new Problem(400, 'invalid_scope');
+  gateWorkerWrite(a);
+  if (a.workload_class !== 'worker' && a.workload_class !== 'job')
+    throw new Problem(422, 'workload_class_incompatible');
+  const queueName = String(body.queue_name || 'default');
+  const maxConcurrency = Number(body.max_concurrency || 1);
+  const targetDepth = Number(body.target_depth || 10);
+  if (
+    !/^[a-z][a-z0-9-]{0,62}$/.test(queueName) ||
+    !Number.isInteger(maxConcurrency) ||
+    maxConcurrency < 1 ||
+    maxConcurrency > 10000 ||
+    !Number.isFinite(targetDepth) ||
+    targetDepth <= 0
+  )
+    throw new Problem(422, 'validation_failed');
+  const rows = workerBindings(a);
+  const defaults = rows.filter((row) => row.name === 'default');
+  if (defaults.length > 1) throw new Problem(409, 'binding_conflict');
+  if (defaults[0] && defaults[0].queue_name !== queueName && body.force !== true)
+    throw new Problem(409, 'binding_conflict', 'Default binding points at another queue.');
+  const created = defaults.length === 0;
+  const row: MockQueueBinding = defaults[0] ?? {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.account.id,
+    name: 'default',
+    queue_name: queueName,
+    mode: 'push',
+    workload_class: a.workload_class,
+    enabled: true,
+    max_concurrency: maxConcurrency,
+    created_at: queueNow(),
+    updated_at: queueNow(),
+  };
+  row.queue_name = queueName;
+  row.mode = 'push';
+  row.enabled = true;
+  row.max_concurrency = maxConcurrency;
+  row.updated_at = queueNow();
+  if (created) rows.push(row);
+  a.scaling_policy = {
+    min_instances: 0,
+    target: { metric: 'queue_depth', value: targetDepth } as never,
+  };
+  return status(created ? 201 : 200, {
+    app: a,
+    binding: row,
+    scaling_policy: a.scaling_policy,
+    created,
+  });
+});
+
 route('GET', '/v1/apps/{slug}/queues/state', ({ params }) => db.queueState(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/peek', ({ params }) => db.queuePeek(app(params.slug)));
 route('GET', '/v1/apps/{slug}/queues/dead_letter', ({ params }) =>
@@ -2639,7 +4343,7 @@ route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
   }
 
   // A parked app has nothing to say; the stream ends the way the real one does.
-  if (a.status === 'parked') {
+  if (db.scenarioOf(a) === 'parked') {
     send(
       'log',
       JSON.stringify({
@@ -2720,6 +4424,72 @@ route('GET', '/v1/apps/{slug}/deployments', ({ params, query }) => {
   return { items, next_before: ordered.length > limit ? items.at(-1)!.created_at : null };
 });
 
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/promotion-preview',
+  ({ params, query }) => {
+    const view = mockPromotionPreview(params.slug, params.environment, query.get('from') ?? '');
+    if (!view)
+      throw new Problem(
+        404,
+        'not_found',
+        'Registered source and target environments are required.'
+      );
+    if (query.get('sync_config') && query.get('sync_config') !== 'false')
+      throw new Problem(
+        400,
+        'validation_failed',
+        'This fixture supports read-only target-scoped previews.'
+      );
+    return view;
+  }
+);
+route('GET', '/v1/projects/{slug}/environments/{environment}/promotions', ({ params, query }) => {
+  const rows = mockPromotionHistory(params.slug, params.environment);
+  if (!rows) throw new Problem(404, 'not_found');
+  if (query.get('before'))
+    throw new Problem(400, 'validation_failed', 'No further fixture page exists.');
+  const limit = Number(query.get('limit') ?? 50);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Problem(400, 'validation_failed');
+  return {
+    items: rows
+      .filter(
+        (row) =>
+          (!query.get('from') || row.from_environment === query.get('from')) &&
+          (!query.get('status') || row.status === query.get('status'))
+      )
+      .slice(0, limit),
+  };
+});
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/promotions/{promotion}',
+  ({ params }) => {
+    const view = mockPromotionReceipt(params.slug, params.environment, params.promotion);
+    if (!view) throw new Problem(404, 'not_found');
+    return view;
+  }
+);
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/approvals/{approval}',
+  ({ params }) => {
+    if (
+      params.approval !== mockApprovalId ||
+      !environmentInventory(params.slug)?.some((row) => row.slug === params.environment)
+    )
+      throw new Problem(404, 'not_found');
+    return {
+      approval_id: mockApprovalId,
+      environment: params.environment,
+      token_kind: 'promotion',
+      status: 'expired',
+      created_at: db.iso(30 * 60 * 60 * 1000),
+      expires_at: db.iso(6 * 60 * 60 * 1000),
+    } satisfies components['schemas']['ProjectEnvironmentApprovalStatusResponse'];
+  }
+);
 route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,
@@ -2740,6 +4510,19 @@ route('GET', '/v1/deployments/latest-by-app', () => {
 route('GET', '/v1/deployments/{id}', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
+  const workerApp = db.apps.find(
+    (item) => item.id === d.app_id && item.manifest?.execution_mode === 'worker'
+  );
+  if (workerApp && d.kind === 'image' && d.status === 'imaging') {
+    const reads = (workerImageReads.get(d.id) ?? 0) + 1;
+    workerImageReads.set(d.id, reads);
+    // The mock completes characterization after a second status read. A live
+    // release permits binding setup; it is not evidence of consumer liveness.
+    if (reads >= 2) {
+      d.status = 'live';
+      workerApp.workload_class = 'worker';
+    }
+  }
   return d;
 });
 route('GET', '/v1/builds', () => ({ items: db.builds }));
@@ -2761,6 +4544,29 @@ route('GET', '/v1/deployments/{id}/logs', ({ params, query, req, res }) => {
   });
   res.write(': mock build log\n\n');
   const send = (event: string, data: string) => res.write(`event: ${event}\ndata: ${data}\n\n`);
+
+  // A deployment created through the mock writes its output as it goes.
+  const rec = trackedDeployment(dep.id);
+  if (rec?.build) {
+    const first = buildLogAt(rec, Date.now());
+    const limit = Number(query.get('limit') ?? 0);
+    for (const frame of limit > 0 ? first.frames.slice(-limit) : first.frames)
+      send('log', JSON.stringify(frame));
+    let sent = first.frames.length;
+    const flush = () => {
+      const { frames, done } = buildLogAt(rec, Date.now());
+      for (const frame of frames.slice(sent)) send('log', JSON.stringify(frame));
+      sent = frames.length;
+      if (!done && rec.deployment.status !== 'cancelled') return false;
+      send('end', '');
+      res.end();
+      return true;
+    };
+    if (flush()) return undefined;
+    const poll = setInterval(() => flush() && clearInterval(poll), 400);
+    req.on('close', () => clearInterval(poll));
+    return undefined;
+  }
 
   const lines = db.buildLog(
     app?.slug ?? 'app',
@@ -2838,7 +4644,7 @@ route('GET', '/v1/builds/{id}/sbom', ({ params, res }) => {
 route('GET', '/v1/deployments/{id}/scan', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
-  if (d.status === 'building')
+  if (d.status === 'pending' || d.status === 'building')
     return {
       status: 'pending',
       severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
@@ -3329,7 +5135,8 @@ const triggerSeed = [
 
 // Typed as the API's read shape so a created trigger can join the seeded ones
 // without a cast fighting the literal types inferred from the seed.
-const triggers: Record<string, unknown>[] = triggerSeed.map((t, i) => ({
+// An empty workspace (MOCK_EMPTY=1) has no apps to attach a trigger to.
+const triggers: Record<string, unknown>[] = (db.EMPTY ? [] : triggerSeed).map((t, i) => ({
   id: db.id(),
   account_id: 'acct-1',
   app_id: db.apps[i % db.apps.length].id,
@@ -3683,6 +5490,7 @@ route('POST', '/v1/crons', ({ body }) => {
   const cron = {
     id: db.id(),
     app_id: a.id,
+    kind: 'http' as const,
     schedule,
     path: String(body.path ?? '/'),
     enabled: body.enabled !== false,
@@ -3773,7 +5581,7 @@ route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
 });
 
 /** jwt and ip are paid; geo is allowed on free with a tighter quota. */
-const PAID_KINDS = new Set(['jwt', 'ip']);
+const PAID_KINDS = new Set(['jwt', 'ip', 'cache']);
 const QUOTA_PER_APP = 12;
 const FREE_GEO_QUOTA = 2;
 
@@ -3828,6 +5636,10 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     match_host: String(body.match_host ?? ''),
     match_path: String(body.match_path ?? '/*'),
     match_methods: Array.isArray(body.match_methods) ? (body.match_methods as string[]) : [],
+    match_headers:
+      body.match_headers && typeof body.match_headers === 'object'
+        ? (body.match_headers as Record<string, string>)
+        : {},
     priority: Number(body.priority ?? 100),
     enabled: body.enabled !== false,
     kind: kind as (typeof db.edgeRules)[number]['kind'],
@@ -3968,30 +5780,105 @@ function requireOrgRole(slug: string, roles: string[], mutable = false) {
   if (!role || !roles.includes(role)) throw new Problem(403, 'org_role_forbidden');
   return org;
 }
+// Company billing (faas org_billing_routes.go): status and usage for any
+// member, invoices for owners and billing admins. MOCK_ORG_ROLE overrides the
+// signed-in member's role, to see a refusal.
+function requireOrgBillingRole(slug: string, roles: string[]) {
+  const forced = process.env.MOCK_ORG_ROLE;
+  if (forced && !roles.includes(forced)) throw new Problem(403, 'org_role_forbidden');
+  return requireOrgRole(slug, forced ? [...roles, forced] : roles);
+}
+const ANY_MEMBER = ['owner', 'admin', 'developer', 'viewer', 'billing', 'member'];
+route('GET', '/v1/orgs/{slug}/billing/status', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return {
+    mode: 'live',
+    enabled: true,
+    provider: 'stripe',
+    plan: 'pro',
+    account_status: 'active',
+    customer_configured: true,
+    subscription_configured: true,
+    usage_reconciliation_enabled: true,
+  };
+});
+route('GET', '/v1/orgs/{slug}/usage', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return inventoryForOrg(params.slug).map((app, i) => ({
+    app_id: app.id,
+    mb_seconds: 3_686_400 * (i + 2),
+    requests: 12_400 * (i + 1),
+    included_gb_hours: 1000,
+    cold_boots: 4 + i,
+  }));
+});
+route('GET', '/v1/orgs/{slug}/invoices', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  return {
+    items: [
+      {
+        id: 'org-inv-1',
+        number: 'ACME-0042',
+        provider: 'stripe',
+        provider_invoice_id: 'in_acme_0042',
+        status: 'paid',
+        period_start: '2026-09-01T00:00:00Z',
+        period_end: '2026-09-30T23:59:59Z',
+        subtotal_cents: 4900,
+        tax_cents: 0,
+        total_cents: 4900,
+        amount_paid_cents: 4900,
+        currency: 'usd',
+        pdf_available: true,
+        created_at: '2026-10-01T00:00:00Z',
+      },
+    ],
+    next_before: null,
+  };
+});
+route('GET', '/v1/orgs/{slug}/billing/portal', ({ params }) => {
+  requireOrgBillingRole(params.slug, ['owner']);
+  return { url: 'https://billing.example.test/portal/acme', payment_method: 'card' };
+});
+
 route('GET', '/v1/orgs', () => ({
   orgs: db.orgs
     .filter((org) => org.status !== 'deleted_pending')
     .sort((a, b) => a.slug.localeCompare(b.slug)),
 }));
 
+/** App slug → workspace slug, for apps created through `POST /v1/orgs/{slug}/apps`. */
+const appWorkspace = new Map<string, string>();
 function inventoryForOrg(slug: string) {
   const org = requireOrgRole(slug, ['owner', 'admin', 'developer', 'viewer', 'billing']);
-  return db.apps.filter((app) =>
-    org.personal
+  return db.apps.filter((app) => {
+    const attributed = appWorkspace.get(app.slug);
+    if (attributed) return attributed === slug;
+    return org.personal
       ? app.slug !== 'search-indexer'
-      : slug === 'acme-corp' && app.slug === 'search-indexer'
-  );
+      : slug === 'acme-corp' && app.slug === 'search-indexer';
+  });
 }
+const createdAt = (app: db.App) =>
+  (app as { created_at?: string }).created_at ?? new Date(Date.UTC(2026, 8, 1)).toISOString();
 route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
-  apps: inventoryForOrg(params.slug).map(({ id, slug, type, runtime, status }) => ({
-    id,
-    slug,
-    type,
-    runtime,
-    status,
-    created_at: new Date(Date.UTC(2026, 8, 1)).toISOString(),
-  })),
+  apps: inventoryForOrg(params.slug)
+    .map((app) => ({
+      id: app.id,
+      slug: app.slug,
+      type: app.type,
+      runtime: app.runtime,
+      status: app.status,
+      created_at: createdAt(app),
+    }))
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
 }));
+route('POST', '/v1/orgs/{slug}/apps', ({ params, body, req }) => {
+  requireOrgRole(params.slug, ['owner', 'admin', 'developer']);
+  const result = createMockApp(body, req);
+  appWorkspace.set((result.body as db.App).slug, params.slug);
+  return result;
+});
 route('GET', '/v1/orgs/{slug}/activity', ({ params, query }) => {
   const apps = new Set(inventoryForOrg(params.slug).map((app) => app.id));
   const identity = (value: string) => value.replaceAll('-', '').toLowerCase();
@@ -4092,11 +5979,10 @@ route('DELETE', '/v1/orgs/{slug}/members/{user_id}', ({ params }) => {
   members.splice(i, 1);
   return NO_CONTENT;
 });
-route('DELETE', '/v1/orgs/{slug}/invitations/{token}', ({ params }) => {
+route('DELETE', '/v1/orgs/{slug}/invitations/{invitation_id}', ({ params }) => {
   requireOrgRole(params.slug, ['owner', 'admin']);
-  const hash = createHash('sha256').update(Buffer.from(params.token, 'base64url')).digest('hex');
   const inv = db.invitations.find(
-    (x) => invitationTokenHashes.get(x.id) === hash && x.org_slug === params.slug
+    (x) => x.id === params.invitation_id && x.org_slug === params.slug
   );
   if (!inv || inv.status !== 'pending' || Date.parse(inv.expires_at) <= Date.now())
     throw new Problem(410, 'org_invitation_invalid');
@@ -4108,17 +5994,69 @@ const hex = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
 // --- GitHub installation repos + app binding ---
-route('POST', '/v1/install/repos/list', () => [
-  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-]);
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => ({
-  binding_id: hex(32),
-  repo_full_name: String(body.repo_full_name ?? ''),
-  production_branch: String(body.production_branch ?? 'main'),
-}));
+function requireGitHub() {
+  if (!db.account.github_install_id)
+    throw new Problem(403, 'github_login_required', 'Connect GitHub before choosing a repository.');
+}
+// The native form post apid answers with a redirect to GitHub. The mock grants
+// the installation and redirects to where GitHub's callback would land.
+route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
+  if (body.csrf_token !== 'mock-csrf') {
+    res.setHeader('Location', CONNECT_FORBIDDEN);
+    return status(303, '');
+  }
+  db.account.github_install_id = MOCK_INSTALL_ID;
+  res.setHeader(
+    'Location',
+    connectReturnTarget(body.return_to, req.headers.referer, req.headers.host)
+  );
+  return status(303, '');
+});
+route('POST', '/v1/install/repos/list', () => {
+  requireGitHub();
+  const seeded = [
+    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+  ];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
+});
+const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
+route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
+  const bound = repoBindings.get(params.slug);
+  const installed = Boolean(db.account.github_install_id);
+  return {
+    state: bound ? 'bound' : installed ? 'installed' : 'not_installed',
+    health: installed ? 'healthy' : 'not_connected',
+    connected: installed,
+    ...(installed ? { installation_id: Number(MOCK_INSTALL_ID) } : {}),
+    last_reconcile_repository_count: 4,
+    last_reconcile_detached_count: 0,
+    ...bound,
+  };
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const bound = {
+    repo_full_name: String(body.repo_full_name ?? ''),
+    production_branch: String(body.production_branch ?? 'main'),
+  };
+  repoBindings.set(params.slug, bound);
+  return { binding_id: hex(32), ...bound };
+});
 
 // --- Organisations, org keys, invitations ---
 route('GET', '/v1/orgs/{slug}', ({ params }) => mockOrg(params.slug));
@@ -4239,6 +6177,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_disable',
   'set_password',
   'connect_github',
+  'bind_app_to_repo',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -4318,15 +6257,245 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
   return status(302, '');
 });
 
+// --- Per-app deploy tokens --------------------------------------------------
+// apid (handlers_deploy_tokens.go): deploy:write only, plaintext once on create
+// and rotate, rotation revokes the predecessor with no grace window, and
+// minting needs a step-up from the last 5 minutes on a session cookie. The
+// mock shares the set-password step-up stamp, so verifying once covers both.
+type DeployTokenRow = components['schemas']['DeployTokenResponse'];
+const deployTokens = new Map<string, DeployTokenRow[]>();
+const DEPLOY_TOKEN_DAY = 86_400_000;
+function deployTokenRows(a: db.App): DeployTokenRow[] {
+  let rows = deployTokens.get(a.id);
+  if (rows) return rows;
+  const at = (days: number) => new Date(Date.now() + days * DEPLOY_TOKEN_DAY).toISOString();
+  const row = (fields: Partial<DeployTokenRow>): DeployTokenRow => ({
+    id: randomUUID(),
+    app_id: a.id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: at(-30),
+    expires_at: at(60),
+    ...fields,
+  });
+  // The first app has history; the rest start empty, as a new app would.
+  if (a.slug === db.apps[0]?.slug) {
+    const old = row({
+      label: 'github-actions',
+      status: 'revoked',
+      created_at: at(-120),
+      expires_at: at(-30),
+      last_used_at: at(-41),
+      revoked_at: at(-40),
+    });
+    rows = [
+      row({
+        label: 'github-actions',
+        created_at: at(-40),
+        expires_at: at(50),
+        last_used_at: at(-0.1),
+        rotated_from_id: old.id,
+      }),
+      row({ label: 'buildkite-nightly', created_at: at(-84), expires_at: at(6) }),
+      old,
+    ];
+  } else rows = [];
+  deployTokens.set(a.id, rows);
+  return rows;
+}
+function requireMintStepUp() {
+  if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+    throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
+  if (Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS)
+    throw new Problem(
+      403,
+      'step_up_required',
+      'step-up MFA required for this action: complete /v1/account/mfa/verify to refresh'
+    );
+}
+function deployTokenExpiry(raw: unknown): string {
+  if (raw === undefined || raw === '')
+    return new Date(Date.now() + 90 * DEPLOY_TOKEN_DAY).toISOString();
+  const ms = Date.parse(String(raw));
+  if (Number.isNaN(ms) || ms <= Date.now())
+    throw new Problem(400, 'validation_failed', 'expires_at must be a future RFC3339 timestamp');
+  if (ms > Date.now() + 365 * DEPLOY_TOKEN_DAY)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'expires_at cannot be more than 365 days in the future'
+    );
+  return new Date(ms).toISOString();
+}
+function deployTokenLabel(raw: unknown): string | undefined {
+  const label = typeof raw === 'string' ? raw : '';
+  if (label.length > 100)
+    throw new Problem(400, 'validation_failed', 'label must be at most 100 characters');
+  return label || undefined;
+}
+const deployTokenPlaintext = () => `fp_deploy_${randomBytes(32).toString('hex')}`;
+route('GET', '/v1/apps/{slug}/deploy-tokens', ({ params }) => ({
+  tokens: [...deployTokenRows(app(params.slug))].sort((x, y) =>
+    y.created_at.localeCompare(x.created_at)
+  ),
+}));
+route('POST', '/v1/apps/{slug}/deploy-tokens', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const label = deployTokenLabel(body.label);
+  const token: DeployTokenRow = {
+    id: randomUUID(),
+    app_id: app(params.slug).id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    ...(label ? { label } : {}),
+  };
+  rows.push(token);
+  return status(201, { ...token, plaintext: deployTokenPlaintext() });
+});
+route('DELETE', '/v1/apps/{slug}/deploy-tokens/{id}', ({ params }) => {
+  const token = deployTokenRows(app(params.slug)).find((t) => t.id === params.id);
+  if (!token) throw new Problem(404, 'not_found', 'no such deploy token');
+  token.status = 'revoked';
+  token.revoked_at ??= new Date().toISOString();
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/deploy-tokens/{id}/rotate', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const old = rows.find((t) => t.id === params.id);
+  if (!old || old.status === 'revoked') throw new Problem(404, 'not_found', 'no such deploy token');
+  if (Date.parse(old.expires_at) <= Date.now())
+    throw new Problem(
+      401,
+      'api_key_expired',
+      'the bearer key has expired; rotate it and use the new plaintext'
+    );
+  const label = deployTokenLabel(body.label) ?? old.label;
+  const next: DeployTokenRow = {
+    ...old,
+    id: randomUUID(),
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    rotated_from_id: old.id,
+    last_used_at: undefined,
+    revoked_at: undefined,
+    ...(label ? { label } : {}),
+  };
+  old.status = 'revoked';
+  old.revoked_at = new Date().toISOString();
+  rows.push(next);
+  return status(201, {
+    token: next,
+    token_plaintext: deployTokenPlaintext(),
+    old_token_id: old.id,
+    old_token_expires_at: old.expires_at,
+  });
+});
+
 // --- Billing & account controls ---
-let overageCapCents: number | null = null;
+let overageCapCents: number | null = 2000;
+// apid audits every cap change (old/new cents, "null" for no cap) and, at most
+// once a day, the cap being reached (pkg/sched/overage.go).
+const overageEvents: components['schemas']['AuditEventResponse'][] = [
+  {
+    id: '2001',
+    at: new Date(Date.now() - 9 * 86400e3).toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: 'null', new_cents: 2000, actor: 'self' },
+  },
+];
 route('GET', '/v1/account/overage-cap', () => ({ overage_cap_cents: overageCapCents }));
 route('POST', '/v1/account/overage-cap', ({ body }) => {
   const cap = body.overage_cap_cents ?? null;
   if (cap !== null && (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 0))
     throw new Problem(400, 'validation_failed', 'Cap must be non-negative integer cents or null.');
+  overageEvents.unshift({
+    id: String(2002 + overageEvents.length),
+    at: new Date().toISOString(),
+    actor: 'design@gregale.dev',
+    kind: 'overage.cap_changed',
+    subject: db.account.id,
+    severity: 'info',
+    data: { old_cents: overageCapCents ?? 'null', new_cents: cap ?? 'null', actor: 'self' },
+  });
   overageCapCents = cap;
   return { ...db.account, app_count: db.apps.length };
+});
+route('GET', '/v1/billing/forecast', () => {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const meter = (name: string, projected?: number, reason?: string) => ({
+    meter: name,
+    coverage: {
+      complete: !reason,
+      fresh: true,
+      expected_minutes: 1440,
+      complete_minutes: reason ? 900 : 1440,
+      unpriced_quantity: 0,
+      non_billable_quantity: 0,
+      reasons: reason ? [reason] : [],
+    },
+    accrued: {
+      meter: name,
+      quantity: 0,
+      included_quantity: 0,
+      net_millicents: 0,
+      allowance_method: 'monthly',
+      contracts: [],
+    },
+    forecast: {
+      method: 'linear_daily',
+      available: projected !== undefined,
+      ...(reason ? { reason } : {}),
+      account_id: db.account.id,
+      period_start: start.toISOString(),
+      period_end: end.toISOString(),
+      complete_through: now.toISOString(),
+      price_version: 'v1',
+      meter: name,
+      currency: 'EUR',
+      ...(projected !== undefined
+        ? { projected_quantity: 0, projected_net_millicents: projected }
+        : {}),
+    },
+    price_contracts: [],
+  });
+  return {
+    period_start: start.toISOString(),
+    period_end: end.toISOString(),
+    as_of: now.toISOString(),
+    currency: 'EUR',
+    meters: [
+      meter('gb_hours', 1_480_000),
+      meter('egress_gb', undefined, 'egress has less than 7 days of complete history'),
+    ],
+    bill_estimate_available: false,
+    missing_bill_components: ['egress_gb', 'tax'],
+  };
+});
+// The dev mock answers JSON for every format; apid serves ZIP/CSV/JSON.
+route('GET', '/v1/billing/focus', ({ query }) => {
+  const month = query.get('month') ?? '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw new Problem(400, 'validation_failed', 'month must be YYYY-MM.');
+  return {
+    focus_version: '1.4',
+    dataset: 'invoice_detail',
+    month,
+    partial: true,
+    invoices_included: 1,
+    invoices_excluded_draft_or_void: 0,
+  };
 });
 route('POST', '/v1/billing/cancel', () => ({
   cancel_scheduled: true,
@@ -4518,7 +6687,7 @@ route('GET', '/v1/cron-fire-now-requests/{request_id}', ({ params }) => {
 const ERR_FP = 'fp_5c1a9b2e77d34fa0';
 route('GET', '/v1/apps/{slug}/errors/summary', ({ params }) => {
   const a = db.apps.find((x) => x.slug === params.slug);
-  const failing = a?.status === 'error';
+  const failing = a !== undefined && db.scenarioOf(a) === 'failing';
   return {
     generated_at: new Date().toISOString(),
     app_id: a?.id ?? 'unknown',
@@ -4693,7 +6862,15 @@ const AUTH_EVENTS = [
     data: { attempts: 3, locked: false },
   },
 ];
-route('GET', '/v1/audit-events', () => ({ events: AUTH_EVENTS, limit: 50 }));
+route('GET', '/v1/audit-events', ({ query }) => {
+  const prefix = query.get('kind_prefix') ?? '';
+  const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
+  const events = [...overageEvents, ...AUTH_EVENTS]
+    .filter((event) => event.kind.startsWith(prefix))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, limit);
+  return { events, limit };
+});
 route('GET', '/v1/audit-events/{id}', ({ params }) => {
   if (!/^[0-9]+$/.test(params.id))
     throw new Problem(400, 'validation_failed', 'id must be a positive integer.');
@@ -4768,6 +6945,220 @@ const MOCK_PLAN = {
 };
 
 route('POST', '/v1/projects/scan', () => MOCK_PLAN);
+
+type PlanWorkload = components['schemas']['PlanWorkload'];
+
+/**
+ * What a scan of each installable repo (`/v1/install/repos/list`) finds, so
+ * the new-app wizard's hints can be seen: storefront builds its own
+ * Dockerfile, webhook-router and nightly-etl are single runtime services, and
+ * checkout is a Compose repository with several services.
+ */
+const SOURCE_REF_SCANS: Record<
+  string,
+  { scan_source: components['schemas']['PlanResponse']['scan_source']; workloads: PlanWorkload[] }
+> = {
+  'acme-corp/storefront': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'storefront',
+        root_dir: '',
+        dockerfile: 'Dockerfile',
+        command: [],
+        class: 'http',
+        ports: [8080],
+        source: 'Dockerfile',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/webhook-router': {
+    scan_source: 'procfile',
+    workloads: [
+      {
+        name: 'web',
+        root_dir: '',
+        command: ['node', 'server.js'],
+        class: 'http',
+        ports: [],
+        source: 'Procfile: web',
+        tier: 'convention',
+        detected_by: { detector: 'procfile', marker: 'Procfile', priority: 40 },
+      },
+    ],
+  },
+  'acme-corp/nightly-etl': {
+    scan_source: 'single',
+    workloads: [
+      {
+        name: 'nightly-etl',
+        root_dir: '',
+        command: ['python', '-m', 'etl'],
+        class: 'http',
+        ports: [8080],
+        source: 'pyproject.toml',
+        tier: 'single',
+      },
+    ],
+  },
+  'acme-corp/checkout': {
+    scan_source: 'compose',
+    workloads: ['api', 'worker', 'web'].map((name) => ({
+      name,
+      root_dir: name === 'web' ? 'frontend' : '',
+      dockerfile: 'Dockerfile',
+      command: name === 'worker' ? ['node', 'worker.js'] : [],
+      class: name === 'worker' ? ('worker' as const) : ('http' as const),
+      ports: name === 'worker' ? [] : [8080],
+      source: `compose.yaml: ${name}`,
+      tier: 'compose' as const,
+      detected_by: { detector: 'compose' as const, marker: 'compose.yaml', priority: 80 },
+    })),
+  },
+};
+
+route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
+  const repo = String(body.repo ?? '');
+  const ref = String(body.ref ?? '');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !ref)
+    throw new Problem(400, 'validation_failed', 'repo and ref are required.');
+  const scan = SOURCE_REF_SCANS[repo];
+  if (!scan) throw new Problem(404, 'not_found', 'The installation cannot read that repository.');
+  return {
+    project_slug: String(body.project_slug ?? ''),
+    repo_full_name: repo,
+    scan_source: scan.scan_source,
+    tier: db.account.plan,
+    workloads: scan.workloads,
+    managed: [],
+    crons: [],
+    observed_apps: db.apps.length,
+    observed_crons: 0,
+    limit_apps: 25,
+    limit_crons: 20,
+    can_apply: true,
+    plan_token: `mock-source-ref-${hex(8)}`,
+  } satisfies components['schemas']['PlanResponse'];
+});
+route('GET', '/v1/projects', () => projectSummaries());
+// A company's projects (faas org_project_routes.go), including one a teammate
+// created: GET /v1/projects lists only the signed-in account's own.
+const teammateProject = {
+  slug: 'acme-billing',
+  workload_count: 1,
+  created_at: '2026-10-02T09:00:00Z',
+} as const;
+route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
+  const org = requireOrgRole(params.organization, ANY_MEMBER);
+  if (org.personal) return projectSummaries();
+  return params.organization === 'acme-corp'
+    ? [{ ...projectSummaries()[0], ...teammateProject }]
+    : [];
+});
+route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
+  requireOrgRole(params.organization, ANY_MEMBER);
+  const found = projects.find((p) => p.slug === params.slug);
+  if (found) return found;
+  if (params.slug === teammateProject.slug && projects[0])
+    return { ...projects[0], slug: teammateProject.slug, name: 'acme-billing' };
+  throw new Problem(404, 'not_found', `project ${params.slug} not found`);
+});
+route('GET', '/v1/projects/{slug}', ({ params }) => {
+  const project = projects.find((item) => item.slug === params.slug);
+  if (!project) throw new Problem(404, 'not_found', 'Project not found.');
+  return project;
+});
+route('GET', '/v1/projects/{slug}/environments', ({ params }) => {
+  const items = environmentInventory(params.slug);
+  if (!items) throw new Problem(404, 'not_found', 'Project not found.');
+  return items;
+});
+route('GET', '/v1/projects/{slug}/environments/{environment}', ({ params }) => {
+  const item = environmentInventory(params.slug)?.find((env) => env.slug === params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+route('GET', '/v1/projects/{slug}/environments/{environment}/state', ({ params }) => {
+  const item = environmentState(params.slug, params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+function stageQueueTarget(params: Record<string, string>) {
+  const environment = environmentInventory(params.slug)?.find(
+    (item) => item.slug === params.environment
+  );
+  const project = projects.find((item) => item.slug === params.slug);
+  if (
+    !environment ||
+    !project?.workloads.some((item) => item.slug === params.workload) ||
+    !db.apps.some((item) => item.slug === params.workload)
+  )
+    throw new Problem(404, 'not_found', 'Stage workload not found in this project.');
+  if (params.environment === 'production')
+    throw new Problem(400, 'validation_failed', 'Use the app queue-bindings API for production.');
+  return environment;
+}
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings',
+  ({ params, res }) => {
+    stageQueueTarget(params);
+    const record = getStageQueueRecord({
+      project: params.slug,
+      environment: params.environment,
+      workload: params.workload,
+    });
+    if (record) return record;
+    res.setHeader('X-Gregale-Workload-Revision', '0');
+    throw new Problem(
+      409,
+      'environment_queue_collection_unavailable',
+      'Initialize a complete stage binding list using workload revision 0.'
+    );
+  }
+);
+route(
+  'PUT',
+  '/v1/projects/{slug}/environments/{environment}/workloads/{workload}/queue-bindings',
+  ({ params, body }) => {
+    const environment = stageQueueTarget(params);
+    if (environment.protected)
+      throw new Problem(409, 'conflict', 'Protected stage settings require a project plan.');
+    if (!Number.isSafeInteger(body.expected_revision) || !Array.isArray(body.bindings))
+      throw new Problem(
+        400,
+        'validation_failed',
+        'Expected revision and a complete bindings list are required.'
+      );
+    try {
+      return putStageQueueRecord(
+        { project: params.slug, environment: params.environment, workload: params.workload },
+        body as components['schemas']['ReplaceProjectEnvironmentQueueBindingsRequest']
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid stage binding list.';
+      throw new Problem(
+        message.includes('revision') ? 409 : 400,
+        message.includes('revision') ? 'conflict' : 'validation_failed',
+        message
+      );
+    }
+  }
+);
+route('GET', '/v1/projects/{slug}/environments/{environment}/diff', ({ params, query }) => {
+  const source = query.get('from') ?? '';
+  if (source === params.environment)
+    throw new Problem(400, 'validation', 'Select a different source environment.');
+  const item = environmentDiff(params.slug, source, params.environment);
+  if (!item) throw new Problem(404, 'not_found', 'Environment not found.');
+  return item;
+});
+route('GET', '/v1/preview/{slug}/environment', ({ params }) => {
+  const item = previewSet(params.slug);
+  if (!item) throw new Problem(404, 'preview_environment_not_found', 'No recorded preview set.');
+  return item;
+});
 route('POST', '/v1/projects', () => ({
   ...MOCK_PLAN,
   project_id: 'proj_mock01',
@@ -4856,6 +7247,45 @@ route('PUT', '/v1/apps/{slug}/automations/{name}/enabled', ({ params, body }) =>
   item.enabled = Boolean(body.enabled);
   item.version += 1;
   return item;
+});
+route('DELETE', '/v1/apps/{slug}/automations/{name}', ({ params, query }) => {
+  const item = mockAutomation(params.slug, params.name);
+  assertAutomationVersion(item, Number(query.get('expected_version')));
+  if (item.source === 'manifest')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest owns this automation.'
+    );
+  const key = `${params.slug}/${params.name}`;
+  const yaml = automationMock.manifest.get(key);
+  if (yaml && query.get('restore_manifest') !== 'true')
+    throw new Problem(
+      409,
+      'automation_ownership_conflict',
+      'The app manifest also defines this automation. Confirm returning ownership to it.'
+    );
+  const rest = (automationMock.definitions.get(params.slug) ?? []).filter(
+    (row) => row.name !== params.name
+  );
+  automationMock.definitions.set(
+    params.slug,
+    yaml
+      ? [
+          ...rest,
+          {
+            name: params.name,
+            version: item.version + 1,
+            source: 'manifest',
+            draft: yaml,
+            published: yaml,
+            enabled: item.enabled,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : rest
+  );
+  return NO_CONTENT;
 });
 route('GET', '/v1/apps/{slug}/automations/{name}/health', ({ params }) =>
   automationMock.health(params.slug, params.name)
@@ -4953,6 +7383,8 @@ route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
   };
 });
 
+registerEventMocks(route, Problem, NO_CONTENT);
+
 // --- Plumbing ------------------------------------------------------------------
 
 // JSON for the `/v1` surface; form-encoded for apid's own dashboard posts
@@ -4997,74 +7429,84 @@ function problem(res: ServerResponse, p: Problem) {
   );
 }
 
+registerMonetizationMock({ route, Problem, status });
+
 const MOCKED_PREFIXES = [
   '/v1/',
   '/status/slo.json',
   '/login',
   '/signup',
   '/dashboard/account/set-password',
+  '/dashboard/install/connect',
 ];
 
+/** What the installer needs from either Vite server; dev and preview both have it. */
+type MockHost = { config: { logger: Logger }; middlewares: Connect.Server };
+
 export function mockApi(): Plugin {
+  const install = (server: MockHost) => {
+    server.config.logger.info(
+      `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
+    );
+    server.middlewares.use((req, res, next) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const method = req.method ?? 'GET';
+      // GET /login and /signup are this app's own pages; only the POSTs are the API's.
+      const isApi =
+        url.pathname.startsWith('/v1/') ||
+        url.pathname === '/status/slo.json' ||
+        (method !== 'GET' &&
+          MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
+      if (!isApi) return next();
+
+      const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
+      if (!match) {
+        server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
+        return problem(
+          res,
+          new Problem(
+            404,
+            'not_mocked',
+            `The mock API has no handler for ${method} ${url.pathname}.`
+          )
+        );
+      }
+
+      const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
+
+      void (async () => {
+        const body = method === 'GET' ? {} : await readBody(req);
+        await new Promise((r) => setTimeout(r, latency()));
+        // Deployments created here move along their lifecycle as time passes.
+        advanceDeployments(Date.now());
+        try {
+          const out = await match.handler({ params, query: url.searchParams, body, req, res });
+          if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
+          if (out === NO_CONTENT) {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          if (out && typeof out === 'object' && '__status' in out) {
+            const s = out as { __status: number; body: unknown };
+            return json(res, s.__status, s.body);
+          }
+          json(res, 200, out);
+        } catch (err) {
+          if (err instanceof Problem) return problem(res, err);
+          server.config.logger.error(`  mock api: ${method} ${url.pathname} threw: ${String(err)}`);
+          problem(res, new Problem(500, 'mock_error', String(err)));
+        }
+      })();
+    });
+  };
   return {
     name: 'gregale-mock-api',
     apply: 'serve',
-    configureServer(server) {
-      server.config.logger.info(
-        `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
-      );
-      server.middlewares.use((req, res, next) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const method = req.method ?? 'GET';
-        // GET /login and /signup are this app's own pages; only the POSTs are the API's.
-        const isApi =
-          url.pathname.startsWith('/v1/') ||
-          url.pathname === '/status/slo.json' ||
-          (method !== 'GET' &&
-            MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
-        if (!isApi) return next();
-
-        const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
-        if (!match) {
-          server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
-          return problem(
-            res,
-            new Problem(
-              404,
-              'not_mocked',
-              `The mock API has no handler for ${method} ${url.pathname}.`
-            )
-          );
-        }
-
-        const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
-        const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
-
-        void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
-          await new Promise((r) => setTimeout(r, latency()));
-          try {
-            const out = await match.handler({ params, query: url.searchParams, body, req, res });
-            if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
-            if (out === NO_CONTENT) {
-              res.statusCode = 204;
-              res.end();
-              return;
-            }
-            if (out && typeof out === 'object' && '__status' in out) {
-              const s = out as { __status: number; body: unknown };
-              return json(res, s.__status, s.body);
-            }
-            json(res, 200, out);
-          } catch (err) {
-            if (err instanceof Problem) return problem(res, err);
-            server.config.logger.error(
-              `  mock api: ${method} ${url.pathname} threw: ${String(err)}`
-            );
-            problem(res, new Problem(500, 'mock_error', String(err)));
-          }
-        })();
-      });
-    },
+    configureServer: install,
+    // `vite preview` serves the built bundle; with the mock installed here too,
+    // `npm run preview:mock` tours a real build under the production headers.
+    configurePreviewServer: install,
   };
 }

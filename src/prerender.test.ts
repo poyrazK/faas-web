@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -212,6 +212,24 @@ describeBuilt('prerendered pages', () => {
  * measurement boundary stripped off, and an "open source" description of a
  * repository whose LICENSE is proprietary.
  */
+describeBuilt('fonts', () => {
+  // Self-hosted and content-hashed: every @font-face in the built CSS points at
+  // /assets/<name>-<hash>.woff2, which vercel.json caches for a year, and no
+  // rule still points at the unhashed /fonts/ path or at a CDN.
+  it('are served as hashed assets from this origin', () => {
+    const css = readdirSync('dist/assets')
+      .filter((f) => f.endsWith('.css'))
+      .map((f) => readFileSync(`dist/assets/${f}`, 'utf8'))
+      .join('\n');
+    const refs = css.match(/url\(\/assets\/[a-z0-9-]+-[A-Za-z0-9_-]+\.woff2\)/g) ?? [];
+    expect(new Set(refs).size).toBe(8);
+    expect(css).not.toMatch(/\/fonts\/|googleapis|gstatic|fontshare/);
+    for (const ref of new Set(refs)) {
+      expect(existsSync(`dist${ref.slice('url('.length, -1)}`), ref).toBe(true);
+    }
+  });
+});
+
 describeBuilt('structured data', () => {
   const ld = built
     ? (readFileSync('dist/index.html', 'utf8').match(

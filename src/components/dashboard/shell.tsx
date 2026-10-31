@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
@@ -14,7 +14,9 @@ import {
   Xmark,
 } from 'iconoir-react';
 import { useData } from '@/lib/store';
-import { readWorkspace, useAuth } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
+import { useProjectMembership } from '@/lib/api/projects';
+import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { useToast } from '@/components/ui/toast';
 import { ConfirmProvider } from '@/components/ui/confirm';
@@ -37,6 +39,7 @@ import {
   isDisclosureHub,
   matchesNavPath,
   NAV_GROUPS,
+  visibleNavGroups,
   type NavHub,
   type NavItem,
   SECTION_LABELS,
@@ -46,6 +49,7 @@ import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
+import { useCapabilityOff } from './nav-access';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
@@ -302,6 +306,8 @@ function SidebarBody({
   const reduce = useReducedMotion();
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
+  const isOff = useCapabilityOff();
+  const groups = useMemo(() => visibleNavGroups(NAV_GROUPS, isOff), [isOff]);
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -370,7 +376,7 @@ function SidebarBody({
         aria-label="Main"
         className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
       >
-        {NAV_GROUPS.map((group, gi) => (
+        {groups.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it
                 wears — the heading when wide, a hairline when narrow — so
@@ -467,51 +473,39 @@ function SidebarBody({
 function Breadcrumbs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { workflows } = useData();
-  const workspace = readWorkspace();
+  const { account } = useAuth();
 
   const segments = pathname
     .replace(/^\/dashboard\/?/, '')
     .split('/')
     .filter(Boolean);
   const [section, detail] = segments;
+  const appPage = section === 'apps' && Boolean(detail) && detail !== 'new';
+  // Only an app page needs to know its project; elsewhere this stays idle.
+  const membership = useProjectMembership(appPage ? (account?.id ?? '') : '');
+  const project = appPage ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
   const trail: { label: string; to?: string }[] = [];
   if (hub && (hub.label !== pageLabel || detail)) {
     trail.push({ label: hub.label, to: hub.to });
   }
-  if (!(section === 'workflows' && detail)) trail.push({ label: pageLabel });
-  if (section === 'workflows' && detail) {
+  if (!(['apps', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });
+  if (section === 'projects' && detail) trail.push({ label: detail });
+  if (project)
+    trail.push({ label: project, to: `/dashboard/projects/${encodeURIComponent(project)}` });
+  if (section === 'apps' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
     });
   }
-
-  const workspaceIdentity = (
-    <>
-      <span className="flex h-5 w-5 items-center justify-center rounded bg-brand/20 text-[9px] font-semibold uppercase text-brand">
-        {workspace.charAt(0)}
-      </span>
-      <span className="hidden text-muted-foreground sm:inline">{workspace}</span>
-    </>
-  );
 
   return (
     <nav
       aria-label="Breadcrumb"
       className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
     >
-      {section ? (
-        <Link
-          to="/dashboard"
-          activeOptions={{ exact: true }}
-          className="pressable flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted"
-        >
-          {workspaceIdentity}
-        </Link>
-      ) : (
-        <span className="flex shrink-0 items-center gap-2 px-1.5 py-1">{workspaceIdentity}</span>
-      )}
+      <WorkspaceSwitcher />
 
       {trail.map(({ label, to }, i) => {
         const last = i === trail.length - 1;
@@ -696,10 +690,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     // section is one line away from a shortcut.
     const CHORDS = {
       o: '/dashboard',
-      a: '/dashboard/workflows',
+      a: '/dashboard/apps',
       t: '/dashboard/templates',
       i: '/dashboard/import',
-      d: '/dashboard/deployments',
+      d: '/dashboard/releases',
       b: '/dashboard/builds',
       c: '/dashboard/crons',
       q: '/dashboard/queues',

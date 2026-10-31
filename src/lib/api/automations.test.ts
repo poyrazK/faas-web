@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { startAutomationRun, writeAutomation } from './automations';
+import { deleteAutomation, startAutomationRun, writeAutomation } from './automations';
 import { newDefinition } from '@/components/dashboard/automation-definition';
-const calls = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
+const calls = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn(), delete: vi.fn() }));
 vi.mock('./client', () => ({
-  api: { POST: calls.post, PUT: calls.put },
+  api: { POST: calls.post, PUT: calls.put, DELETE: calls.delete },
   unwrap: async (value: unknown) => value,
 }));
 beforeEach(() => vi.clearAllMocks());
@@ -36,4 +36,17 @@ it('reuses the caller idempotency key when starting the same run after a lost re
     body: { id: 1 },
   });
   expect(calls.post.mock.calls[1]).toEqual(calls.post.mock.calls[0]);
+});
+it('deletes at the observed revision and restores the manifest only when asked', async () => {
+  await deleteAutomation('alpha', 'orders', 7);
+  expect(calls.delete).toHaveBeenLastCalledWith('/v1/apps/{slug}/automations/{name}', {
+    params: { path: { slug: 'alpha', name: 'orders' }, query: { expected_version: 7 } },
+  });
+  await deleteAutomation('alpha', 'orders', 7, true);
+  expect(calls.delete).toHaveBeenLastCalledWith('/v1/apps/{slug}/automations/{name}', {
+    params: {
+      path: { slug: 'alpha', name: 'orders' },
+      query: { expected_version: 7, restore_manifest: true },
+    },
+  });
 });

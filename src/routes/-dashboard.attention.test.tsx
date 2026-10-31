@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { bindWorkspaceAccount } from '@/lib/workspace';
 import { render, screen } from '@testing-library/react';
 import {
   createMemoryHistory,
@@ -19,6 +21,12 @@ const ready = (data: unknown) => ({
   error: null,
   refetch: vi.fn(),
 });
+// The capability registry is a query; these pages render without a client here.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: 'free', status: 'active' }, user: { name: 'Ada' } }),
 }));
@@ -56,16 +64,23 @@ async function mount() {
   const router = createRouter({
     routeTree: root.addChildren([
       overview,
-      leaf('/dashboard/workflows'),
-      leaf('/dashboard/workflows/$workflowId'),
-      leaf('/dashboard/workflows/new'),
-      leaf('/dashboard/deployments'),
+      leaf('/dashboard/apps'),
+      leaf('/dashboard/apps/$appSlug'),
+      leaf('/dashboard/apps/new'),
+      leaf('/dashboard/releases'),
       leaf('/dashboard/usage'),
     ]),
     history: createMemoryHistory({ initialEntries: ['/dashboard/'] }),
   });
   await router.load();
-  render(<RouterProvider router={router} />);
+  // The shell binds the workspace and provides a query client; the overview's
+  // allowance waits for the first and reads through the second.
+  bindWorkspaceAccount('account-attention');
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
 beforeEach(() => {

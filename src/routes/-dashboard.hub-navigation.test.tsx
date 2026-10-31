@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardShell } from '@/components/dashboard/shell';
-import { Route as Releases } from './dashboard.deployments';
+import { Route as Releases } from './dashboard.releases';
 import { Route as Builds } from './dashboard.builds';
 import { Route as Jobs } from './dashboard.jobs';
 import { Route as Crons } from './dashboard.crons';
@@ -61,7 +61,7 @@ async function mount(entry: string) {
   const routes = [Releases, Builds, Jobs, Crons, Triggers].map((route, index) =>
     createRoute({
       getParentRoute: () => dashboard,
-      path: ['deployments', 'builds', 'jobs', 'crons', 'triggers'][index],
+      path: ['releases', 'builds', 'jobs', 'crons', 'triggers'][index],
       component: route.options.component,
       validateSearch: route.options.validateSearch,
       beforeLoad: (context) => route.options.beforeLoad?.(context as never),
@@ -91,7 +91,7 @@ function expectActiveHub(label: string) {
 
 describe('canonical hub navigation inside the dashboard shell', () => {
   it.each([
-    '/dashboard/deployments?view=builds&q=alpha&campaign=handoff#evidence',
+    '/dashboard/releases?view=builds&q=alpha&campaign=handoff#evidence',
     '/dashboard/builds?q=alpha&campaign=handoff#evidence',
   ])('switches Releases views without competing legacy links from %s', async (entry) => {
     const router = await mount(entry);
@@ -99,7 +99,7 @@ describe('canonical hub navigation inside the dashboard shell', () => {
       expect(
         await screen.findByText(view === 'builds' ? 'No builds yet.' : 'No releases yet.')
       ).toBeInTheDocument();
-      expect(router.state.location.pathname).toBe('/dashboard/deployments');
+      expect(router.state.location.pathname).toBe('/dashboard/releases');
       expect(router.state.location.search).toMatchObject({ view, q: 'alpha', campaign: 'handoff' });
       expect(router.state.location.hash).toBe('evidence');
       expect(screen.getByRole('searchbox', { name: 'Filter resources' })).toHaveValue('alpha');

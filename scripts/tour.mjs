@@ -36,15 +36,15 @@ try {
 /** Account-level pages, plus the per-app routes that still resolve standalone. */
 const PAGES = [
   '',
-  'workflows',
-  'deployments',
+  'apps',
+  'releases',
   'builds',
   'crons',
-  'workers',
+  'instances',
   'domains',
   'edge-rules',
   'storage',
-  'traces',
+  'invocations',
   'audit',
   'usage',
   'invoices',
@@ -57,9 +57,9 @@ const PAGES = [
   'env',
   'logs',
   'metrics',
-  'apis',
+  'routes',
   'queues',
-  'databases',
+  'upstreams',
   'alerts',
   'webhooks',
 ];
@@ -69,8 +69,7 @@ const APP_TABS = [
   'Deployments',
   'Logs',
   'Routes',
-  'Secrets',
-  'Env',
+  'Environment',
   'Queues',
   'Upstreams',
   'Alerts',
@@ -87,6 +86,17 @@ const failures = [];
 const pageErrors = [];
 const unmocked = new Set();
 page.on('pageerror', (e) => pageErrors.push(String(e).split('\n')[0]));
+// A blocked font, fetch, style or script is invisible to the DOM checks below
+// and to a user with no console open. Chromium reports each one as a console
+// error naming the directive; the dev server and `vite preview` both send the
+// policy (see src/lib/security-headers.ts), so this is checked on every tour.
+const cspViolations = [];
+page.on('console', (msg) => {
+  const text = msg.text();
+  if (msg.type() === 'error' && /Content Security Policy/.test(text)) {
+    cspViolations.push(text.replace(/\s+/g, ' ').slice(0, 200));
+  }
+});
 page.on('response', (r) => {
   if (r.url().includes('/v1/') && r.status() === 404) unmocked.add(new URL(r.url()).pathname);
 });
@@ -211,7 +221,7 @@ const slug = await page.evaluate(async (base) => {
 
 if (slug && !OVERVIEW_ONLY) {
   for (const tab of APP_TABS)
-    await visit(`${BASE}/dashboard/workflows/${slug}?tab=${tab}`, `app.${tab}`);
+    await visit(`${BASE}/dashboard/apps/${slug}?tab=${tab}`, `app.${tab}`);
 } else if (!OVERVIEW_ONLY) {
   console.log(
     'tour: no apps in this workspace — skipped the app tabs (expected under MOCK_EMPTY=1)'
@@ -224,6 +234,7 @@ const problems = [
   ...failures,
   ...[...unmocked].map((p) => `unmocked path: ${p}`),
   ...pageErrors.map((e) => `page error: ${e}`),
+  ...[...new Set(cspViolations)].map((v) => `csp violation: ${v}`),
 ];
 
 if (problems.length) {

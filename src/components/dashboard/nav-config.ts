@@ -4,8 +4,11 @@ import {
   Activity,
   Antenna,
   Coins,
+  DataTransferBoth,
   Database,
+  Folder,
   CreditCard,
+  Community,
   Cube,
   GitFork as WorkflowIcon,
   Github,
@@ -15,6 +18,7 @@ import {
   HardDrive,
   Journal,
   Key,
+  Network,
   Package,
   Play,
   Rocket,
@@ -38,6 +42,8 @@ export interface NavItem {
   sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
+  /** Catalog id (faas pkg/productcap/catalog.json); the item hides when apid hides it. */
+  capability?: string;
 }
 
 export interface NavGroup {
@@ -70,15 +76,26 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-brand/80',
   },
   {
-    to: '/dashboard/workflows',
-    label: 'Apps',
-    icon: WorkflowIcon,
+    // Projects are the way in: apps live inside them (standalone apps are a
+    // group on the Projects page), so there is no separate Apps row. The app
+    // list and app pages still resolve and belong to this hub.
+    to: '/dashboard/projects',
+    label: 'Projects',
+    icon: Folder,
     sidebarIconClassName: 'text-cat-compute/80',
     sections: [
-      { to: '/dashboard/workflows', label: 'Apps', icon: WorkflowIcon },
+      { to: '/dashboard/projects', label: 'Projects', icon: Folder },
       { to: '/dashboard/templates', label: 'Templates', icon: Cube },
       { to: '/dashboard/import', label: 'Import', icon: Upload },
     ],
+  },
+  {
+    // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
+    // breadcrumb and ⌘K entry.
+    to: '/dashboard/apps',
+    label: 'Apps',
+    icon: WorkflowIcon,
+    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     to: '/dashboard/jobs',
@@ -99,21 +116,15 @@ export const NAV_HUBS: NavHub[] = [
     ],
   },
   {
-    to: '/dashboard/deployments',
+    to: '/dashboard/releases',
     label: 'Releases',
     icon: Rocket,
     sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
-      { to: '/dashboard/deployments', label: 'Deployments', icon: Rocket },
+      { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
       { to: '/dashboard/builds', label: 'Builds', icon: Package },
     ],
-  },
-  {
-    to: '/dashboard/workers',
-    label: 'Instances',
-    icon: Server,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     to: '/dashboard/domains',
@@ -122,14 +133,48 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Your end customers across apps (platform tenants). Operate rather than
+    // Account: they are resources you run — consumers, hostnames, prices —
+    // next to Domains, not settings of your own Gregale account, and Billing
+    // there is what Gregale charges you, not what you charge them.
+    to: '/dashboard/customers',
+    label: 'Customers',
+    icon: Community,
+    capability: 'platform-tenants',
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     to: '/dashboard/storage',
     label: 'Data',
     icon: HardDrive,
     sidebarIconClassName: 'text-cat-storage/80',
     sections: [
-      { to: '/dashboard/storage', label: 'Storage', icon: HardDrive },
-      { to: '/dashboard/postgres', label: 'Postgres', icon: Database },
+      { to: '/dashboard/storage', label: 'Storage', icon: HardDrive, capability: 'object-storage' },
+      {
+        to: '/dashboard/postgres',
+        label: 'Postgres',
+        icon: Database,
+        capability: 'managed-postgres',
+      },
     ],
+  },
+  {
+    // Account-wide: the event router has no per-app read for its backlog,
+    // storage, or receipts, so this is its own hub rather than an app tab.
+    to: '/dashboard/events',
+    label: 'Events',
+    icon: DataTransferBoth,
+    capability: 'events',
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
+    // Outbound integrations are account-owned; apps bind to them, but the
+    // integration, its credential, and its budget exist once per account.
+    to: '/dashboard/integrations',
+    label: 'Integrations',
+    icon: Network,
+    capability: 'outbound-integrations',
+    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     to: '/dashboard/analytics',
@@ -144,7 +189,8 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-security/80',
     sections: [
       { to: '/dashboard/debug', label: 'Debugger', icon: Search },
-      { to: '/dashboard/traces', label: 'Invocations', icon: Activity },
+      { to: '/dashboard/invocations', label: 'Invocations', icon: Activity },
+      { to: '/dashboard/instances', label: 'Instances', icon: Server },
       { to: '/dashboard/audit', label: 'Audit Log', icon: Journal },
     ],
   },
@@ -192,8 +238,11 @@ export const NAV_HUBS: NavHub[] = [
  */
 const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
-  { title: 'Build', hubs: ['Apps', 'Jobs', 'Releases', 'Instances'] },
-  { title: 'Operate', hubs: ['Domains', 'Data', 'Analytics', 'Observe'] },
+  { title: 'Build', hubs: ['Projects', 'Jobs', 'Releases'] },
+  {
+    title: 'Operate',
+    hubs: ['Domains', 'Customers', 'Data', 'Events', 'Integrations', 'Analytics', 'Observe'],
+  },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
@@ -207,6 +256,33 @@ export const NAV_GROUPS: NavGroup[] = SIDEBAR_GROUPS.map(({ title, hubs }) => ({
     return hub;
   }),
 }));
+
+/**
+ * The rail without what apid hides for this account: an item whose capability
+ * is off goes, and so does a hub whose every section went.
+ */
+export function visibleNavGroups(groups: NavGroup[], isOff: (id: string) => boolean): NavGroup[] {
+  const shown = (item: NavItem) => !item.capability || !isOff(item.capability);
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.flatMap((hub) => {
+        if (!shown(hub)) return [];
+        if (!hub.sections?.length) return [hub];
+        const sections = hub.sections.filter(shown);
+        return sections.length ? [{ ...hub, sections }] : [];
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/** Searchable items (palette, overview search) without what apid hides. */
+export function visibleNavItems<T extends NavItem>(
+  items: T[],
+  isOff: (id: string) => boolean
+): T[] {
+  return items.filter((item) => !item.capability || !isOff(item.capability));
+}
 
 /**
  * The sections a hub contributes to the rail as nested rows.
@@ -253,11 +329,11 @@ export function isDisclosureHub(hub: NavHub): boolean {
 export const APP_TABS: { tab: string; segment: string }[] = [
   { tab: 'Metrics', segment: 'metrics' },
   { tab: 'Logs', segment: 'logs' },
-  { tab: 'Routes', segment: 'apis' },
+  { tab: 'Routes', segment: 'routes' },
   { tab: 'Secrets', segment: 'secrets' },
   { tab: 'Env vars', segment: 'env' },
   { tab: 'Queues', segment: 'queues' },
-  { tab: 'Upstreams', segment: 'databases' },
+  { tab: 'Upstreams', segment: 'upstreams' },
   { tab: 'Alerts', segment: 'alerts' },
   { tab: 'Webhooks', segment: 'webhooks' },
   { tab: 'Edge rules', segment: 'edge-rules' },
@@ -301,12 +377,13 @@ export function findNavHub(pathname: string): NavHub | undefined {
       matchesNavPath(pathname, item) ||
       item.sections?.some((section) => matchesNavPath(pathname, section))
   );
-  // Debugger belongs to Observe globally, even though it also has an app tab.
+  // Apps live under Projects: the app list, app pages and standalone app
+  // sections all light the Projects row. Debugger belongs to Observe
+  // globally, even though it also has an app tab.
+  const projects = NAV_HUBS.find((item) => item.label === 'Projects');
+  if (hub?.label === 'Apps') return projects;
   return (
-    hub ??
-    (APP_SECTIONS.some((item) => matchesNavPath(pathname, item))
-      ? NAV_HUBS.find((item) => item.label === 'Apps')
-      : undefined)
+    hub ?? (APP_SECTIONS.some((item) => matchesNavPath(pathname, item)) ? projects : undefined)
   );
 }
 
@@ -322,6 +399,9 @@ export const SECTION_LABELS: Record<string, string> = {
       i.label,
     ])
   ),
+  // The Releases page keeps "Deployments" as a searchable section name, but its
+  // title is the page's own.
+  releases: 'Releases',
   team: 'Team',
   keys: 'API Keys',
   account: 'Account',

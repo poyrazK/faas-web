@@ -1,22 +1,25 @@
-import { useState } from 'react';
-import { Pause, Play, Plus, WarningTriangle } from 'iconoir-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Pause, Play, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
 import { InlinePhase, Panel, queryPhase, StatTile } from './primitives';
+import { Tabs, tabId } from './tabs';
 import { ResourceTable, type Column } from './resource-table';
 import { AutomationEditor, JsonField, JsonReadout } from './automation-editor';
 import { AutomationStatus, Pagination } from './automation-primitives';
 import { AutomationRuns } from './automation-runs';
 import { availabilityMessage, jsonValue } from './automation-definition';
 import { useAuth } from '@/lib/auth';
-import { errorMessage } from '@/lib/api/errors';
+import { useCapability } from '@/lib/api/capabilities';
+import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useAutomations,
   useAutomationHealth,
   useAutomationRevisions,
+  useDeleteAutomation,
   useWriteAutomation,
   useStartAutomationRun,
   type Automation,
@@ -123,7 +126,17 @@ function AppAutomations({
   onSelection,
 }: JobsSelectionProps & { account: string; slug: string; appId: string }) {
   const q = useAutomations(account, slug);
+  const { toast } = useToast();
+  // The stage comes from the capability registry; nothing is claimed until it answers.
+  // Automations is internal, so the registry omits it and no stage label shows.
+  const { capability } = useCapability('automations');
+  const maturity =
+    capability?.maturity === 'preview' ? 'preview' : capability?.maturity === 'beta' ? 'beta' : '';
   const [reloadKey, setReloadKey] = useState(0);
+  // Set once a delete succeeds. The workspace (and the editor's unsaved-edits
+  // guard with it) unmounts first, then the effect below returns to the list,
+  // so leaving does not ask to discard edits to a definition that is gone.
+  const [deleted, setDeleted] = useState('');
   const phase = queryPhase({ loading: q.isPending, error: q.error });
   const rows = (q.data?.automations ?? []).map((automation) => ({
     ...automation,
@@ -131,26 +144,49 @@ function AppAutomations({
     trigger: automation.published?.trigger?.type ?? automation.draft.trigger?.type ?? 'manual',
     publication: automation.published ? 'published' : 'draft',
   }));
-  const selected = q.data?.automations.find((automation) => automation.name === search.automation);
+  const selected = q.data?.automations.find(
+    (automation) => automation.name === search.automation && automation.name !== deleted
+  );
+  const left = useRef('');
+  useEffect(() => {
+    if (!deleted || search.automation !== deleted || left.current === deleted) return;
+    left.current = deleted;
+    onSelection({
+      automation: undefined,
+      automationView: undefined,
+      automationRun: undefined,
+      automationNew: undefined,
+    });
+  }, [deleted, search.automation, onSelection]);
   const isNew = search.automationNew === true;
   const blocked = q.data
     ? availabilityMessage(q.data.runtime_enabled, q.data.unavailable_reason)
     : undefined;
   const atLimit = Boolean(q.data && rows.length >= q.data.max_definitions);
-  const create = () =>
+  // Choosing anything again forgets the deletion, so a new definition reusing
+  // the name is shown.
+  const forget = () => {
+    setDeleted('');
+    left.current = '';
+  };
+  const create = () => {
+    forget();
     onSelection({
       automation: undefined,
       automationView: undefined,
       automationRun: undefined,
       automationNew: true,
     });
-  const select = (name: string, view?: 'editor' | 'runs' | 'revisions', run?: string) =>
+  };
+  const select = (name: string, view?: 'editor' | 'runs' | 'revisions', run?: string) => {
+    forget();
     onSelection({
       automation: name,
       automationView: view,
       automationRun: run,
       automationNew: undefined,
     });
+  };
   type Row = (typeof rows)[number];
   const columns: Column<Row>[] = [
     {
@@ -234,7 +270,8 @@ function AppAutomations({
         )}
         {q.data && (
           <p className="mb-4 text-xs text-muted-foreground">
-            {rows.length} of {q.data.max_definitions} definitions used · Automations preview
+            {rows.length} of {q.data.max_definitions} definitions used
+            {maturity && ` · Automations ${maturity}`}
             {atLimit ? ' · Definition limit reached' : ''}
           </p>
         )}
@@ -264,19 +301,37 @@ function AppAutomations({
           account={account}
           slug={slug}
           onClose={() => onSelection({ automationNew: undefined })}
-          onSaved={(next) => select(next.name)}
+          onSaved={(next, outcome) => {
+            if (outcome?.error)
+              toast({
+                kind: 'error',
+                title: `${next.name}: draft saved`,
+                description: outcome.error,
+              });
+            else if (outcome?.published)
+              toast({
+                kind: 'success',
+                title: `${next.name} published`,
+                description: 'Future runs use this definition.',
+              });
+            select(next.name);
+          }}
           onReload={() => {
             setReloadKey((key) => key + 1);
           }}
         />
       )}
-      {phase === 'ready' && search.automation && !isNew && !selected && (
-        <Panel title="Automation unavailable">
-          <p className="text-sm text-muted-foreground">
-            This definition is no longer in the app inventory.
-          </p>
-        </Panel>
-      )}
+      {phase === 'ready' &&
+        search.automation &&
+        !isNew &&
+        !selected &&
+        search.automation !== deleted && (
+          <Panel title="Automation unavailable">
+            <p className="text-sm text-muted-foreground">
+              This definition is no longer in the app inventory.
+            </p>
+          </Panel>
+        )}
       {phase === 'ready' && selected && (
         <AutomationWorkspace
           key={selected.name}
@@ -291,6 +346,16 @@ function AppAutomations({
           onReload={() => {
             void q.refetch().then((result) => {
               if (!result.error) setReloadKey((key) => key + 1);
+            });
+          }}
+          onDeleted={(name, restoredManifest) => {
+            setDeleted(name);
+            toast({
+              kind: 'success',
+              title: `${name} deleted`,
+              description: restoredManifest
+                ? 'The app manifest owns this automation again.'
+                : undefined,
             });
           }}
         />
@@ -309,6 +374,7 @@ function AutomationWorkspace({
   onSelection,
   reloadKey,
   onReload,
+  onDeleted,
 }: JobsSelectionProps & {
   account: string;
   slug: string;
@@ -317,13 +383,17 @@ function AutomationWorkspace({
   blocked?: string;
   reloadKey: number;
   onReload: () => void;
+  onDeleted: (name: string, restoredManifest: boolean) => void;
 }) {
   const confirm = useConfirm();
   const { toast } = useToast();
   const write = useWriteAutomation(account, slug);
+  const remove = useDeleteAutomation(account, slug);
+  const [deleteError, setDeleteError] = useState('');
   const health = useAutomationHealth(account, slug, automation.name);
   const [runOpen, setRunOpen] = useState(false);
   const view = search.automationView ?? 'editor';
+  const panelId = useId();
   const trigger = automation.published?.trigger?.type ?? 'manual';
   const toggle = async () => {
     if (
@@ -346,9 +416,56 @@ function AutomationWorkspace({
       toast({
         kind: 'error',
         title: 'Could not change automatic starts',
-        description: errorMessage(err),
+        error: err,
       });
     }
+  };
+  const manifestOwned = automation.source === 'manifest';
+  const deleteAutomation = async () => {
+    const { name, version } = automation;
+    if (!(await confirm(deleteConfirmation(automation, slug)))) return;
+    setDeleteError('');
+    const attempt = async (restoreManifest: boolean): Promise<void> => {
+      try {
+        await remove.mutateAsync({ name, expectedVersion: version, restoreManifest });
+        onDeleted(name, restoreManifest);
+      } catch (err) {
+        const code = err instanceof ApiError ? err.code : '';
+        if (code === 'automation_not_found') {
+          onDeleted(name, false);
+          return;
+        }
+        if (code === 'automation_ownership_conflict' && !restoreManifest) {
+          if (
+            await confirm({
+              title: `Return ${name} to the app manifest?`,
+              description: `${name} is also defined in ${slug}'s YAML manifest. Deleting the dashboard definition hands ownership back to that YAML definition, and future runs use it.`,
+              confirmLabel: 'Delete and restore YAML',
+              destructive: true,
+            })
+          )
+            return attempt(true);
+          return;
+        }
+        if (code === 'automation_version_conflict') {
+          setDeleteError(
+            `${name} was not deleted: it changed after you opened it. The latest revision is loaded — review it, then delete again if you still want to.`
+          );
+          onReload();
+          return;
+        }
+        // A lost response may have deleted it; read again before anything else.
+        if (!(err instanceof ApiError) || err.isRetryable) {
+          setDeleteError(
+            `The delete outcome is unknown. The list was refreshed — check whether ${name} is still there before trying again.`
+          );
+          onReload();
+          return;
+        }
+        setDeleteError(errorMessage(err));
+      }
+    };
+    await attempt(false);
   };
   return (
     <>
@@ -378,92 +495,76 @@ function AutomationWorkspace({
               <Play className="h-4 w-4" />
               Run now
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[color:var(--status-critical)]"
+              busy={remove.isPending}
+              disabled={manifestOwned}
+              title={
+                manifestOwned
+                  ? 'Defined in the app manifest. Remove it from the YAML and deploy to delete it.'
+                  : undefined
+              }
+              onClick={() => void deleteAutomation()}
+            >
+              <Trash className="h-4 w-4" />
+              Delete automation
+            </Button>
           </>
         }
       >
-        <InlinePhase
-          phase={queryPhase({ error: health.error, loading: health.isPending })}
-          error={health.error}
-          loadingMessage="Loading automation health…"
-          onRetry={() => void health.refetch()}
-        />
-        {health.data && !health.error && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <StatTile label="Runs · last 7 days" value={health.data.run_count} />
-              <StatTile
-                label="Success rate"
-                value={
-                  health.data.completed_run_count
-                    ? `${(health.data.success_rate * 100).toFixed(1)}%`
-                    : 'No completed runs'
-                }
-              />
-              <StatTile label="Active now" value={health.data.active_run_count} />
-              <StatTile label="Queued now" value={health.data.queued_run_count} />
-            </div>
-            {health.data.failed_steps.length > 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Frequently failed steps:{' '}
-                {health.data.failed_steps
-                  .map((step) => `${step.step_name} (${step.failed_run_count})`)
-                  .join(', ')}
-              </p>
-            )}
-          </>
+        {deleteError && (
+          <p role="alert" className="mb-3 text-sm" style={{ color: 'var(--status-critical)' }}>
+            {deleteError}
+          </p>
         )}
-        <nav
-          aria-label="Automation views"
-          className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4"
-        >
-          {(['editor', 'runs', 'revisions'] as const).map((next) => (
-            <Button
-              key={next}
-              size="sm"
-              variant={view === next ? 'secondary' : 'ghost'}
-              aria-current={view === next ? 'page' : undefined}
-              onClick={() => onSelection({ automationView: next })}
-            >
-              {next === 'editor'
-                ? 'Definition'
-                : next === 'runs'
-                  ? 'Run history'
-                  : 'Published revisions'}
-            </Button>
-          ))}
-        </nav>
+        <HealthSummary health={health} />
+        <Tabs
+          label="Automation views"
+          className="mt-5"
+          value={view}
+          panelId={panelId}
+          options={VIEWS}
+          onChange={(next) => onSelection({ automationView: next })}
+        />
       </Panel>
-      {view === 'editor' && (
-        <AutomationEditor
-          key={`${automation.name}-${reloadKey}`}
-          account={account}
-          slug={slug}
-          automation={automation}
-          onSaved={() => {}}
-          onReload={onReload}
-        />
-      )}
-      {view === 'runs' && (
-        <AutomationRuns
-          account={account}
-          slug={slug}
-          appId={appId}
-          name={automation.name}
-          selectedId={search.automationRun}
-          onSelect={(automationRun) => onSelection({ automationRun })}
-        />
-      )}
-      {view === 'revisions' && (
-        <RevisionHistory
-          account={account}
-          slug={slug}
-          automation={automation}
-          onRestored={() => {
-            onReload();
-            onSelection({ automationView: 'editor' });
-          }}
-        />
-      )}
+      <div role="tabpanel" id={panelId} aria-labelledby={tabId(panelId, view)}>
+        {view === 'editor' && (
+          <AutomationEditor
+            key={`${automation.name}-${reloadKey}`}
+            account={account}
+            slug={slug}
+            automation={automation}
+            onSaved={() => {}}
+            onReload={onReload}
+          />
+        )}
+        {view === 'runs' && (
+          <div className="flex flex-col gap-5">
+            <HealthDetails health={health} />
+            <AutomationRuns
+              account={account}
+              slug={slug}
+              appId={appId}
+              name={automation.name}
+              selectedId={search.automationRun}
+              onSelect={(automationRun) => onSelection({ automationRun })}
+            />
+          </div>
+        )}
+        {view === 'revisions' && (
+          <RevisionHistory
+            account={account}
+            slug={slug}
+            automation={automation}
+            onRestored={() => {
+              onReload();
+              onSelection({ automationView: 'editor' });
+            }}
+          />
+        )}
+      </div>
       {runOpen && (
         <RunAutomationDialog
           account={account}
@@ -477,6 +578,101 @@ function AutomationWorkspace({
         />
       )}
     </>
+  );
+}
+
+/** Says what goes: a never-published draft affects nothing, a publication stops future starts. */
+export function deleteConfirmation(automation: Automation, slug: string) {
+  const { name, version } = automation;
+  if (!automation.published)
+    return {
+      title: `Delete ${name}?`,
+      description: `This deletes the saved draft (revision ${version}) from ${slug}. It was never published, so no starts or runs depend on it.`,
+      confirmLabel: 'Delete draft',
+      destructive: true,
+    };
+  return {
+    title: `Delete ${name}?`,
+    description: `This deletes the saved draft and the published definition${
+      automation.published_version === undefined
+        ? ''
+        : ` (revision ${automation.published_version})`
+    } from ${slug}. It stops starting — on schedule, from events, or by hand. Runs that already started keep their captured definition.`,
+    confirmLabel: 'Delete automation',
+    destructive: true,
+    typeToConfirm: name,
+  };
+}
+
+const VIEWS = [
+  { key: 'editor', label: 'Definition' },
+  { key: 'runs', label: 'Run history' },
+  { key: 'revisions', label: 'Published revisions' },
+] as const;
+
+type Health = ReturnType<typeof useAutomationHealth>;
+
+/** One line of health in the header; the tiles live with the run history. */
+function HealthSummary({ health }: { health: Health }) {
+  if (health.isPending)
+    return <p className="text-xs text-muted-foreground">Loading automation health…</p>;
+  if (health.error)
+    return (
+      <button
+        type="button"
+        className="text-xs text-muted-foreground underline"
+        title={errorMessage(health.error)}
+        onClick={() => void health.refetch()}
+      >
+        Health unavailable · retry
+      </button>
+    );
+  const data = health.data!;
+  return (
+    <p className="text-xs text-muted-foreground">
+      {data.run_count} {data.run_count === 1 ? 'run' : 'runs'} in the last 7 days
+      {data.completed_run_count ? ` · ${(data.success_rate * 100).toFixed(1)}% succeeded` : ''}
+      {data.active_run_count ? ` · ${data.active_run_count} active` : ''}
+      {data.queued_run_count ? ` · ${data.queued_run_count} queued` : ''}
+    </p>
+  );
+}
+
+function HealthDetails({ health }: { health: Health }) {
+  return (
+    <Panel title="Health">
+      <InlinePhase
+        phase={queryPhase({ error: health.error, loading: health.isPending })}
+        error={health.error}
+        loadingMessage="Loading automation health…"
+        onRetry={() => void health.refetch()}
+      />
+      {health.data && !health.error && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <StatTile label="Runs · last 7 days" value={health.data.run_count} />
+            <StatTile
+              label="Success rate"
+              value={
+                health.data.completed_run_count
+                  ? `${(health.data.success_rate * 100).toFixed(1)}%`
+                  : 'No completed runs'
+              }
+            />
+            <StatTile label="Active now" value={health.data.active_run_count} />
+            <StatTile label="Queued now" value={health.data.queued_run_count} />
+          </div>
+          {health.data.failed_steps.length > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Frequently failed steps:{' '}
+              {health.data.failed_steps
+                .map((step) => `${step.step_name} (${step.failed_run_count})`)
+                .join(', ')}
+            </p>
+          )}
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -631,15 +827,22 @@ function RunAutomationDialog({
         </>
       }
     >
-      <JsonField
-        label="Run input (JSON)"
-        value={input}
-        onChange={(value) => {
-          setInput(value);
-          setKey(crypto.randomUUID());
-          setError('');
-        }}
-      />
+      <details className="rounded-md border border-border p-3" open={input !== '{}'}>
+        <summary className="cursor-pointer text-sm text-muted-foreground">
+          Run input {input.trim() === '{}' ? '· empty object' : '· custom'}
+        </summary>
+        <div className="mt-3">
+          <JsonField
+            label="Run input (JSON)"
+            value={input}
+            onChange={(value) => {
+              setInput(value);
+              setKey(crypto.randomUUID());
+              setError('');
+            }}
+          />
+        </div>
+      </details>
       {error && (
         <p role="alert" className="mt-3 text-sm" style={{ color: 'var(--status-critical)' }}>
           {error}

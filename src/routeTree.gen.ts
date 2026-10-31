@@ -26,13 +26,18 @@ import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
+import { Route as DashboardCustomersRouteImport } from './routes/dashboard.customers'
 import { Route as DashboardDatabasesRouteImport } from './routes/dashboard.databases'
 import { Route as DashboardDebugRouteImport } from './routes/dashboard.debug'
 import { Route as DashboardDeploymentsRouteImport } from './routes/dashboard.deployments'
 import { Route as DashboardDomainsRouteImport } from './routes/dashboard.domains'
 import { Route as DashboardEdgeRulesRouteImport } from './routes/dashboard.edge-rules'
 import { Route as DashboardEnvRouteImport } from './routes/dashboard.env'
+import { Route as DashboardEventsRouteImport } from './routes/dashboard.events'
 import { Route as DashboardImportRouteImport } from './routes/dashboard.import'
+import { Route as DashboardInstancesRouteImport } from './routes/dashboard.instances'
+import { Route as DashboardIntegrationsRouteImport } from './routes/dashboard.integrations'
+import { Route as DashboardInvocationsRouteImport } from './routes/dashboard.invocations'
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
 import { Route as DashboardJobsRouteImport } from './routes/dashboard.jobs'
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
@@ -42,7 +47,10 @@ import { Route as DashboardMirrorsRouteImport } from './routes/dashboard.mirrors
 import { Route as DashboardOpenapiRouteImport } from './routes/dashboard.openapi'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardPostgresRouteImport } from './routes/dashboard.postgres'
+import { Route as DashboardProjectsRouteImport } from './routes/dashboard.projects'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
+import { Route as DashboardReleasesRouteImport } from './routes/dashboard.releases'
+import { Route as DashboardRoutesRouteImport } from './routes/dashboard.routes'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
 import { Route as DashboardSecurityRouteImport } from './routes/dashboard.security'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
@@ -52,18 +60,24 @@ import { Route as DashboardTemplatesRouteImport } from './routes/dashboard.templ
 import { Route as DashboardTenantSurfacesRouteImport } from './routes/dashboard.tenant-surfaces'
 import { Route as DashboardTracesRouteImport } from './routes/dashboard.traces'
 import { Route as DashboardTriggersRouteImport } from './routes/dashboard.triggers'
+import { Route as DashboardUpstreamsRouteImport } from './routes/dashboard.upstreams'
 import { Route as DashboardUsageRouteImport } from './routes/dashboard.usage'
 import { Route as DashboardWebhooksRouteImport } from './routes/dashboard.webhooks'
 import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
+import { Route as DocsSplatRouteImport } from './routes/docs.$'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as DashboardAppsIndexRouteImport } from './routes/dashboard.apps.index'
+import { Route as DashboardAppsAppSlugRouteImport } from './routes/dashboard.apps.$appSlug'
+import { Route as DashboardAppsNewRouteImport } from './routes/dashboard.apps.new'
+import { Route as DashboardProjectsIndexRouteImport } from './routes/dashboard.projects.index'
+import { Route as DashboardProjectsProjectSlugRouteImport } from './routes/dashboard.projects.$projectSlug'
 import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboard.triggers.$triggerId'
 import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
-import { Route as DashboardWorkflowsWorkflowIdRouteImport } from './routes/dashboard.workflows.$workflowId'
-import { Route as DashboardWorkflowsNewRouteImport } from './routes/dashboard.workflows.new'
+import { Route as DashboardWorkflowsSplatRouteImport } from './routes/dashboard.workflows.$'
 import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -151,6 +165,11 @@ const DashboardCronsRoute = DashboardCronsRouteImport.update({
   path: '/crons',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardCustomersRoute = DashboardCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardDatabasesRoute = DashboardDatabasesRouteImport.update({
   id: '/databases',
   path: '/databases',
@@ -181,9 +200,29 @@ const DashboardEnvRoute = DashboardEnvRouteImport.update({
   path: '/env',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardEventsRoute = DashboardEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardImportRoute = DashboardImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardInstancesRoute = DashboardInstancesRouteImport.update({
+  id: '/instances',
+  path: '/instances',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardIntegrationsRoute = DashboardIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardInvocationsRoute = DashboardInvocationsRouteImport.update({
+  id: '/invocations',
+  path: '/invocations',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardInvoicesRoute = DashboardInvoicesRouteImport.update({
@@ -231,9 +270,24 @@ const DashboardPostgresRoute = DashboardPostgresRouteImport.update({
   path: '/postgres',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardProjectsRoute = DashboardProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardQueuesRoute = DashboardQueuesRouteImport.update({
   id: '/queues',
   path: '/queues',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardReleasesRoute = DashboardReleasesRouteImport.update({
+  id: '/releases',
+  path: '/releases',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardRoutesRoute = DashboardRoutesRouteImport.update({
+  id: '/routes',
+  path: '/routes',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardSecretsRoute = DashboardSecretsRouteImport.update({
@@ -281,6 +335,11 @@ const DashboardTriggersRoute = DashboardTriggersRouteImport.update({
   path: '/triggers',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardUpstreamsRoute = DashboardUpstreamsRouteImport.update({
+  id: '/upstreams',
+  path: '/upstreams',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUsageRoute = DashboardUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
@@ -301,6 +360,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DocsRoute,
 } as any)
+const DocsSplatRoute = DocsSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => DocsRoute,
+} as any)
 const DocsSlugRoute = DocsSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
@@ -316,6 +380,32 @@ const StatusIndexRoute = StatusIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StatusRoute,
 } as any)
+const DashboardAppsIndexRoute = DashboardAppsIndexRouteImport.update({
+  id: '/apps/',
+  path: '/apps/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAppsAppSlugRoute = DashboardAppsAppSlugRouteImport.update({
+  id: '/apps/$appSlug',
+  path: '/apps/$appSlug',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAppsNewRoute = DashboardAppsNewRouteImport.update({
+  id: '/apps/new',
+  path: '/apps/new',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardProjectsIndexRoute = DashboardProjectsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardProjectsRoute,
+} as any)
+const DashboardProjectsProjectSlugRoute =
+  DashboardProjectsProjectSlugRouteImport.update({
+    id: '/$projectSlug',
+    path: '/$projectSlug',
+    getParentRoute: () => DashboardProjectsRoute,
+  } as any)
 const DashboardTriggersTriggerIdRoute =
   DashboardTriggersTriggerIdRouteImport.update({
     id: '/$triggerId',
@@ -332,15 +422,9 @@ const DashboardWorkflowsIndexRoute = DashboardWorkflowsIndexRouteImport.update({
   path: '/workflows/',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardWorkflowsWorkflowIdRoute =
-  DashboardWorkflowsWorkflowIdRouteImport.update({
-    id: '/workflows/$workflowId',
-    path: '/workflows/$workflowId',
-    getParentRoute: () => DashboardRoute,
-  } as any)
-const DashboardWorkflowsNewRoute = DashboardWorkflowsNewRouteImport.update({
-  id: '/workflows/new',
-  path: '/workflows/new',
+const DashboardWorkflowsSplatRoute = DashboardWorkflowsSplatRouteImport.update({
+  id: '/workflows/$',
+  path: '/workflows/$',
   getParentRoute: () => DashboardRoute,
 } as any)
 const StatusIncidentsIdRoute = StatusIncidentsIdRouteImport.update({
@@ -366,13 +450,18 @@ export interface FileRoutesByFullPath {
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
+  '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
+  '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
@@ -382,7 +471,10 @@ export interface FileRoutesByFullPath {
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
+  '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/releases': typeof DashboardReleasesRoute
+  '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -392,19 +484,25 @@ export interface FileRoutesByFullPath {
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
+  '/dashboard/upstreams': typeof DashboardUpstreamsRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
+  '/dashboard/apps/new': typeof DashboardAppsNewRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
-  '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
-  '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/apps/': typeof DashboardAppsIndexRoute
+  '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -421,13 +519,18 @@ export interface FileRoutesByTo {
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
+  '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
+  '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
@@ -438,6 +541,8 @@ export interface FileRoutesByTo {
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/releases': typeof DashboardReleasesRoute
+  '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -447,19 +552,25 @@ export interface FileRoutesByTo {
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
+  '/dashboard/upstreams': typeof DashboardUpstreamsRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/status': typeof StatusIndexRoute
+  '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
+  '/dashboard/apps/new': typeof DashboardAppsNewRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
-  '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
-  '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/apps': typeof DashboardAppsIndexRoute
+  '/dashboard/projects': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRoutesById {
@@ -480,13 +591,18 @@ export interface FileRoutesById {
   '/dashboard/audit': typeof DashboardAuditRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
+  '/dashboard/customers': typeof DashboardCustomersRoute
   '/dashboard/databases': typeof DashboardDatabasesRoute
   '/dashboard/debug': typeof DashboardDebugRoute
   '/dashboard/deployments': typeof DashboardDeploymentsRoute
   '/dashboard/domains': typeof DashboardDomainsRoute
   '/dashboard/edge-rules': typeof DashboardEdgeRulesRoute
   '/dashboard/env': typeof DashboardEnvRoute
+  '/dashboard/events': typeof DashboardEventsRoute
   '/dashboard/import': typeof DashboardImportRoute
+  '/dashboard/instances': typeof DashboardInstancesRoute
+  '/dashboard/integrations': typeof DashboardIntegrationsRoute
+  '/dashboard/invocations': typeof DashboardInvocationsRoute
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
@@ -496,7 +612,10 @@ export interface FileRoutesById {
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
+  '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/releases': typeof DashboardReleasesRoute
+  '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
   '/dashboard/security': typeof DashboardSecurityRoute
   '/dashboard/settings': typeof DashboardSettingsRoute
@@ -506,19 +625,25 @@ export interface FileRoutesById {
   '/dashboard/tenant-surfaces': typeof DashboardTenantSurfacesRoute
   '/dashboard/traces': typeof DashboardTracesRoute
   '/dashboard/triggers': typeof DashboardTriggersRouteWithChildren
+  '/dashboard/upstreams': typeof DashboardUpstreamsRoute
   '/dashboard/usage': typeof DashboardUsageRoute
   '/dashboard/webhooks': typeof DashboardWebhooksRoute
   '/dashboard/workers': typeof DashboardWorkersRoute
+  '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
+  '/dashboard/apps/new': typeof DashboardAppsNewRoute
+  '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
-  '/dashboard/workflows/$workflowId': typeof DashboardWorkflowsWorkflowIdRoute
-  '/dashboard/workflows/new': typeof DashboardWorkflowsNewRoute
+  '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/apps/': typeof DashboardAppsIndexRoute
+  '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
 }
 export interface FileRouteTypes {
@@ -540,13 +665,18 @@ export interface FileRouteTypes {
     | '/dashboard/audit'
     | '/dashboard/builds'
     | '/dashboard/crons'
+    | '/dashboard/customers'
     | '/dashboard/databases'
     | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
+    | '/dashboard/instances'
+    | '/dashboard/integrations'
+    | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
@@ -556,7 +686,10 @@ export interface FileRouteTypes {
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
+    | '/dashboard/projects'
     | '/dashboard/queues'
+    | '/dashboard/releases'
+    | '/dashboard/routes'
     | '/dashboard/secrets'
     | '/dashboard/security'
     | '/dashboard/settings'
@@ -566,19 +699,25 @@ export interface FileRouteTypes {
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
+    | '/dashboard/upstreams'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/apps/$appSlug'
+    | '/dashboard/apps/new'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
-    | '/dashboard/workflows/$workflowId'
-    | '/dashboard/workflows/new'
+    | '/dashboard/workflows/$'
     | '/status/incidents/$id'
+    | '/dashboard/apps/'
+    | '/dashboard/projects/'
     | '/dashboard/workflows/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -595,13 +734,18 @@ export interface FileRouteTypes {
     | '/dashboard/audit'
     | '/dashboard/builds'
     | '/dashboard/crons'
+    | '/dashboard/customers'
     | '/dashboard/databases'
     | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
+    | '/dashboard/instances'
+    | '/dashboard/integrations'
+    | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
@@ -612,6 +756,8 @@ export interface FileRouteTypes {
     | '/dashboard/plans'
     | '/dashboard/postgres'
     | '/dashboard/queues'
+    | '/dashboard/releases'
+    | '/dashboard/routes'
     | '/dashboard/secrets'
     | '/dashboard/security'
     | '/dashboard/settings'
@@ -621,19 +767,25 @@ export interface FileRouteTypes {
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
+    | '/dashboard/upstreams'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard'
     | '/docs'
     | '/status'
+    | '/dashboard/apps/$appSlug'
+    | '/dashboard/apps/new'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
-    | '/dashboard/workflows/$workflowId'
-    | '/dashboard/workflows/new'
+    | '/dashboard/workflows/$'
     | '/status/incidents/$id'
+    | '/dashboard/apps'
+    | '/dashboard/projects'
     | '/dashboard/workflows'
   id:
     | '__root__'
@@ -653,13 +805,18 @@ export interface FileRouteTypes {
     | '/dashboard/audit'
     | '/dashboard/builds'
     | '/dashboard/crons'
+    | '/dashboard/customers'
     | '/dashboard/databases'
     | '/dashboard/debug'
     | '/dashboard/deployments'
     | '/dashboard/domains'
     | '/dashboard/edge-rules'
     | '/dashboard/env'
+    | '/dashboard/events'
     | '/dashboard/import'
+    | '/dashboard/instances'
+    | '/dashboard/integrations'
+    | '/dashboard/invocations'
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
@@ -669,7 +826,10 @@ export interface FileRouteTypes {
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
+    | '/dashboard/projects'
     | '/dashboard/queues'
+    | '/dashboard/releases'
+    | '/dashboard/routes'
     | '/dashboard/secrets'
     | '/dashboard/security'
     | '/dashboard/settings'
@@ -679,19 +839,25 @@ export interface FileRouteTypes {
     | '/dashboard/tenant-surfaces'
     | '/dashboard/traces'
     | '/dashboard/triggers'
+    | '/dashboard/upstreams'
     | '/dashboard/usage'
     | '/dashboard/webhooks'
     | '/dashboard/workers'
+    | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/apps/$appSlug'
+    | '/dashboard/apps/new'
+    | '/dashboard/projects/$projectSlug'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
-    | '/dashboard/workflows/$workflowId'
-    | '/dashboard/workflows/new'
+    | '/dashboard/workflows/$'
     | '/status/incidents/$id'
+    | '/dashboard/apps/'
+    | '/dashboard/projects/'
     | '/dashboard/workflows/'
   fileRoutesById: FileRoutesById
 }
@@ -829,6 +995,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardCronsRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/customers': {
+      id: '/dashboard/customers'
+      path: '/customers'
+      fullPath: '/dashboard/customers'
+      preLoaderRoute: typeof DashboardCustomersRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/databases': {
       id: '/dashboard/databases'
       path: '/databases'
@@ -871,11 +1044,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardEnvRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/events': {
+      id: '/dashboard/events'
+      path: '/events'
+      fullPath: '/dashboard/events'
+      preLoaderRoute: typeof DashboardEventsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/import': {
       id: '/dashboard/import'
       path: '/import'
       fullPath: '/dashboard/import'
       preLoaderRoute: typeof DashboardImportRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/instances': {
+      id: '/dashboard/instances'
+      path: '/instances'
+      fullPath: '/dashboard/instances'
+      preLoaderRoute: typeof DashboardInstancesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/integrations': {
+      id: '/dashboard/integrations'
+      path: '/integrations'
+      fullPath: '/dashboard/integrations'
+      preLoaderRoute: typeof DashboardIntegrationsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/invocations': {
+      id: '/dashboard/invocations'
+      path: '/invocations'
+      fullPath: '/dashboard/invocations'
+      preLoaderRoute: typeof DashboardInvocationsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/invoices': {
@@ -941,11 +1142,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardPostgresRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/projects': {
+      id: '/dashboard/projects'
+      path: '/projects'
+      fullPath: '/dashboard/projects'
+      preLoaderRoute: typeof DashboardProjectsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/queues': {
       id: '/dashboard/queues'
       path: '/queues'
       fullPath: '/dashboard/queues'
       preLoaderRoute: typeof DashboardQueuesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/releases': {
+      id: '/dashboard/releases'
+      path: '/releases'
+      fullPath: '/dashboard/releases'
+      preLoaderRoute: typeof DashboardReleasesRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/routes': {
+      id: '/dashboard/routes'
+      path: '/routes'
+      fullPath: '/dashboard/routes'
+      preLoaderRoute: typeof DashboardRoutesRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/secrets': {
@@ -1011,6 +1233,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardTriggersRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/upstreams': {
+      id: '/dashboard/upstreams'
+      path: '/upstreams'
+      fullPath: '/dashboard/upstreams'
+      preLoaderRoute: typeof DashboardUpstreamsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/usage': {
       id: '/dashboard/usage'
       path: '/usage'
@@ -1039,6 +1268,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsIndexRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/docs/$': {
+      id: '/docs/$'
+      path: '/$'
+      fullPath: '/docs/$'
+      preLoaderRoute: typeof DocsSplatRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/docs/$slug': {
       id: '/docs/$slug'
       path: '/$slug'
@@ -1059,6 +1295,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/status/'
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
+    }
+    '/dashboard/apps/': {
+      id: '/dashboard/apps/'
+      path: '/apps'
+      fullPath: '/dashboard/apps/'
+      preLoaderRoute: typeof DashboardAppsIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/apps/$appSlug': {
+      id: '/dashboard/apps/$appSlug'
+      path: '/apps/$appSlug'
+      fullPath: '/dashboard/apps/$appSlug'
+      preLoaderRoute: typeof DashboardAppsAppSlugRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/apps/new': {
+      id: '/dashboard/apps/new'
+      path: '/apps/new'
+      fullPath: '/dashboard/apps/new'
+      preLoaderRoute: typeof DashboardAppsNewRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/projects/': {
+      id: '/dashboard/projects/'
+      path: '/'
+      fullPath: '/dashboard/projects/'
+      preLoaderRoute: typeof DashboardProjectsIndexRouteImport
+      parentRoute: typeof DashboardProjectsRoute
+    }
+    '/dashboard/projects/$projectSlug': {
+      id: '/dashboard/projects/$projectSlug'
+      path: '/$projectSlug'
+      fullPath: '/dashboard/projects/$projectSlug'
+      preLoaderRoute: typeof DashboardProjectsProjectSlugRouteImport
+      parentRoute: typeof DashboardProjectsRoute
     }
     '/dashboard/triggers/$triggerId': {
       id: '/dashboard/triggers/$triggerId'
@@ -1081,18 +1352,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardWorkflowsIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/dashboard/workflows/$workflowId': {
-      id: '/dashboard/workflows/$workflowId'
-      path: '/workflows/$workflowId'
-      fullPath: '/dashboard/workflows/$workflowId'
-      preLoaderRoute: typeof DashboardWorkflowsWorkflowIdRouteImport
-      parentRoute: typeof DashboardRoute
-    }
-    '/dashboard/workflows/new': {
-      id: '/dashboard/workflows/new'
-      path: '/workflows/new'
-      fullPath: '/dashboard/workflows/new'
-      preLoaderRoute: typeof DashboardWorkflowsNewRouteImport
+    '/dashboard/workflows/$': {
+      id: '/dashboard/workflows/$'
+      path: '/workflows/$'
+      fullPath: '/dashboard/workflows/$'
+      preLoaderRoute: typeof DashboardWorkflowsSplatRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/status/incidents/$id': {
@@ -1104,6 +1368,19 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface DashboardProjectsRouteChildren {
+  DashboardProjectsProjectSlugRoute: typeof DashboardProjectsProjectSlugRoute
+  DashboardProjectsIndexRoute: typeof DashboardProjectsIndexRoute
+}
+
+const DashboardProjectsRouteChildren: DashboardProjectsRouteChildren = {
+  DashboardProjectsProjectSlugRoute: DashboardProjectsProjectSlugRoute,
+  DashboardProjectsIndexRoute: DashboardProjectsIndexRoute,
+}
+
+const DashboardProjectsRouteWithChildren =
+  DashboardProjectsRoute._addFileChildren(DashboardProjectsRouteChildren)
 
 interface DashboardTriggersRouteChildren {
   DashboardTriggersTriggerIdRoute: typeof DashboardTriggersTriggerIdRoute
@@ -1126,13 +1403,18 @@ interface DashboardRouteChildren {
   DashboardAuditRoute: typeof DashboardAuditRoute
   DashboardBuildsRoute: typeof DashboardBuildsRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
+  DashboardCustomersRoute: typeof DashboardCustomersRoute
   DashboardDatabasesRoute: typeof DashboardDatabasesRoute
   DashboardDebugRoute: typeof DashboardDebugRoute
   DashboardDeploymentsRoute: typeof DashboardDeploymentsRoute
   DashboardDomainsRoute: typeof DashboardDomainsRoute
   DashboardEdgeRulesRoute: typeof DashboardEdgeRulesRoute
   DashboardEnvRoute: typeof DashboardEnvRoute
+  DashboardEventsRoute: typeof DashboardEventsRoute
   DashboardImportRoute: typeof DashboardImportRoute
+  DashboardInstancesRoute: typeof DashboardInstancesRoute
+  DashboardIntegrationsRoute: typeof DashboardIntegrationsRoute
+  DashboardInvocationsRoute: typeof DashboardInvocationsRoute
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
   DashboardJobsRoute: typeof DashboardJobsRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
@@ -1142,7 +1424,10 @@ interface DashboardRouteChildren {
   DashboardOpenapiRoute: typeof DashboardOpenapiRoute
   DashboardPlansRoute: typeof DashboardPlansRoute
   DashboardPostgresRoute: typeof DashboardPostgresRoute
+  DashboardProjectsRoute: typeof DashboardProjectsRouteWithChildren
   DashboardQueuesRoute: typeof DashboardQueuesRoute
+  DashboardReleasesRoute: typeof DashboardReleasesRoute
+  DashboardRoutesRoute: typeof DashboardRoutesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
   DashboardSecurityRoute: typeof DashboardSecurityRoute
   DashboardSettingsRoute: typeof DashboardSettingsRoute
@@ -1152,12 +1437,15 @@ interface DashboardRouteChildren {
   DashboardTenantSurfacesRoute: typeof DashboardTenantSurfacesRoute
   DashboardTracesRoute: typeof DashboardTracesRoute
   DashboardTriggersRoute: typeof DashboardTriggersRouteWithChildren
+  DashboardUpstreamsRoute: typeof DashboardUpstreamsRoute
   DashboardUsageRoute: typeof DashboardUsageRoute
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
-  DashboardWorkflowsWorkflowIdRoute: typeof DashboardWorkflowsWorkflowIdRoute
-  DashboardWorkflowsNewRoute: typeof DashboardWorkflowsNewRoute
+  DashboardAppsAppSlugRoute: typeof DashboardAppsAppSlugRoute
+  DashboardAppsNewRoute: typeof DashboardAppsNewRoute
+  DashboardWorkflowsSplatRoute: typeof DashboardWorkflowsSplatRoute
+  DashboardAppsIndexRoute: typeof DashboardAppsIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
 }
 
@@ -1169,13 +1457,18 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAuditRoute: DashboardAuditRoute,
   DashboardBuildsRoute: DashboardBuildsRoute,
   DashboardCronsRoute: DashboardCronsRoute,
+  DashboardCustomersRoute: DashboardCustomersRoute,
   DashboardDatabasesRoute: DashboardDatabasesRoute,
   DashboardDebugRoute: DashboardDebugRoute,
   DashboardDeploymentsRoute: DashboardDeploymentsRoute,
   DashboardDomainsRoute: DashboardDomainsRoute,
   DashboardEdgeRulesRoute: DashboardEdgeRulesRoute,
   DashboardEnvRoute: DashboardEnvRoute,
+  DashboardEventsRoute: DashboardEventsRoute,
   DashboardImportRoute: DashboardImportRoute,
+  DashboardInstancesRoute: DashboardInstancesRoute,
+  DashboardIntegrationsRoute: DashboardIntegrationsRoute,
+  DashboardInvocationsRoute: DashboardInvocationsRoute,
   DashboardInvoicesRoute: DashboardInvoicesRoute,
   DashboardJobsRoute: DashboardJobsRoute,
   DashboardKeysRoute: DashboardKeysRoute,
@@ -1185,7 +1478,10 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardOpenapiRoute: DashboardOpenapiRoute,
   DashboardPlansRoute: DashboardPlansRoute,
   DashboardPostgresRoute: DashboardPostgresRoute,
+  DashboardProjectsRoute: DashboardProjectsRouteWithChildren,
   DashboardQueuesRoute: DashboardQueuesRoute,
+  DashboardReleasesRoute: DashboardReleasesRoute,
+  DashboardRoutesRoute: DashboardRoutesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,
   DashboardSecurityRoute: DashboardSecurityRoute,
   DashboardSettingsRoute: DashboardSettingsRoute,
@@ -1195,12 +1491,15 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardTenantSurfacesRoute: DashboardTenantSurfacesRoute,
   DashboardTracesRoute: DashboardTracesRoute,
   DashboardTriggersRoute: DashboardTriggersRouteWithChildren,
+  DashboardUpstreamsRoute: DashboardUpstreamsRoute,
   DashboardUsageRoute: DashboardUsageRoute,
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,
   DashboardIndexRoute: DashboardIndexRoute,
-  DashboardWorkflowsWorkflowIdRoute: DashboardWorkflowsWorkflowIdRoute,
-  DashboardWorkflowsNewRoute: DashboardWorkflowsNewRoute,
+  DashboardAppsAppSlugRoute: DashboardAppsAppSlugRoute,
+  DashboardAppsNewRoute: DashboardAppsNewRoute,
+  DashboardWorkflowsSplatRoute: DashboardWorkflowsSplatRoute,
+  DashboardAppsIndexRoute: DashboardAppsIndexRoute,
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,
 }
 
@@ -1209,11 +1508,13 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 )
 
 interface DocsRouteChildren {
+  DocsSplatRoute: typeof DocsSplatRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsIndexRoute: typeof DocsIndexRoute
 }
 
 const DocsRouteChildren: DocsRouteChildren = {
+  DocsSplatRoute: DocsSplatRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsIndexRoute: DocsIndexRoute,
 }

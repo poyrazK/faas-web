@@ -16,6 +16,24 @@ function problemResponse(status: number, body: unknown): Response {
 }
 
 describe('toApiError', () => {
+  it('shows secret finding locations without including credential snippets', () => {
+    const error = new ApiError({
+      code: 'secret_scan_strict',
+      status: 422,
+      title: 'Source contains a possible secret',
+      secret_findings: [
+        {
+          file: 'scripts/smoke.sh',
+          line: 40,
+          provider: 'high_entropy',
+          severity: 'medium',
+          snippet: 'DO_NOT_DISPLAY',
+        },
+      ],
+    });
+    expect(errorMessage(error)).toContain('scripts/smoke.sh:40 (high_entropy)');
+    expect(errorMessage(error)).not.toContain('DO_NOT_DISPLAY');
+  });
   it('reads the stable code out of an RFC 7807 body', async () => {
     const error = await toApiError(
       problemResponse(401, {
@@ -126,6 +144,47 @@ describe('toApiError', () => {
 
     expect(stripe.billingUrl).toBe('https://billing.example/portal');
     expect(paddle.billingUrl).toBe('https://paddle.example/checkout');
+  });
+
+  it('prefers the provider-neutral checkout_url over the legacy and portal links', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        checkout_url: 'https://checkout.example/session',
+        billing_portal_url: 'https://billing.example/portal',
+        paddle_checkout_url: 'https://paddle.example/checkout',
+      })
+    );
+    expect(error.billingUrl).toBe('https://checkout.example/session');
+  });
+});
+
+describe('billingUrl with empty links', () => {
+  it('skips an empty billing_portal_url instead of returning it', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        billing_portal_url: '',
+        paddle_checkout_url: 'https://paddle.example/checkout',
+      })
+    );
+    expect(error.billingUrl).toBe('https://paddle.example/checkout');
+  });
+
+  it('is undefined when every link is empty', async () => {
+    const error = await toApiError(
+      problemResponse(402, {
+        title: 'Payment required',
+        status: 402,
+        code: 'payment_required',
+        billing_portal_url: '',
+      })
+    );
+    expect(error.billingUrl).toBeUndefined();
   });
 });
 

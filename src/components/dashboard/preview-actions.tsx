@@ -3,7 +3,7 @@ import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDestroyPreview } from '@/lib/api/queries';
 
 /**
@@ -20,12 +20,12 @@ export function isPreviewSlug(slug: string): boolean {
   return PREVIEW_SLUG.test(slug);
 }
 
-export function TearDownPreviewButton({ slug }: { slug: string }) {
+/** Preview teardown with its typed confirmation, for a button or a menu item. */
+export function useTearDownPreview(slug: string) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
   const destroy = useDestroyPreview();
-  if (!isPreviewSlug(slug)) return null;
 
   const onDestroy = async () => {
     if (
@@ -42,7 +42,7 @@ export function TearDownPreviewButton({ slug }: { slug: string }) {
     try {
       await destroy.mutateAsync(slug);
       toast({ kind: 'success', title: `Preview ${slug} torn down` });
-      void navigate({ to: '/dashboard/workflows' });
+      void navigate({ to: '/dashboard/apps' });
     } catch (err) {
       if (err instanceof ApiError && err.code === 'preview_not_found') {
         toast({
@@ -53,17 +53,23 @@ export function TearDownPreviewButton({ slug }: { slug: string }) {
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not tear down', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not tear down', error: err });
     }
   };
 
+  return { available: isPreviewSlug(slug), run: onDestroy, pending: destroy.isPending };
+}
+
+export function TearDownPreviewButton({ slug }: { slug: string }) {
+  const tearDown = useTearDownPreview(slug);
+  if (!tearDown.available) return null;
   return (
     <Button
       variant="outline"
       size="sm"
       className="gap-1.5"
-      onClick={() => void onDestroy()}
-      disabled={destroy.isPending}
+      onClick={() => void tearDown.run()}
+      disabled={tearDown.pending}
     >
       <Trash className="h-3.5 w-3.5" />
       Tear down preview

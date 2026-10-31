@@ -4,15 +4,13 @@ import {
   clearWorkspace,
   clearOAuthPending,
   consumeOnboardingGitHubReturn,
-  DEFAULT_WORKSPACE,
   hasOnboarded,
   hasOAuthPending,
   isValidEmail,
   markOAuthPending,
+  readOAuthReturnTo,
   markOnboarded,
   readSession,
-  readWorkspace,
-  saveWorkspace,
 } from './auth';
 
 describe('isValidEmail', () => {
@@ -51,6 +49,23 @@ describe('session storage', () => {
 });
 
 describe('OAuth handoff marker', () => {
+  it('retains a safe deployment destination across the provider redirect and clears it afterward', () => {
+    const next = '/dashboard/apps/new?source=git&repo=team%2Fapi&ref=feature%2Fstart';
+    markOAuthPending(next);
+    expect(readOAuthReturnTo()).toBe(next);
+    clearOAuthPending();
+    expect(readOAuthReturnTo()).toBeUndefined();
+  });
+
+  it('does not retain external destinations or reuse an earlier OAuth destination', () => {
+    markOAuthPending('/dashboard/apps/new?source=git');
+    markOAuthPending('https://attacker.example');
+    expect(readOAuthReturnTo()).toBeUndefined();
+    markOAuthPending('/dashboard');
+    markOAuthPending();
+    expect(readOAuthReturnTo()).toBeUndefined();
+  });
+
   it('round-trips the callback marker through session storage', () => {
     expect(hasOAuthPending()).toBe(false);
     markOAuthPending();
@@ -76,15 +91,12 @@ describe('onboarding flag', () => {
   });
 });
 
-describe('workspace', () => {
-  it('falls back to the default when unset', () => {
-    expect(readWorkspace()).toBe(DEFAULT_WORKSPACE);
-  });
-
-  it('round-trips a saved slug and returns to the default when cleared', () => {
-    saveWorkspace('my-team');
-    expect(readWorkspace()).toBe('my-team');
+describe('clearWorkspace', () => {
+  it('forgets the onboarding hint and the legacy workspace label', () => {
+    window.localStorage.setItem('gregale.workspace', 'acme-corp');
+    markOnboarded();
     clearWorkspace();
-    expect(readWorkspace()).toBe(DEFAULT_WORKSPACE);
+    expect(window.localStorage.getItem('gregale.workspace')).toBeNull();
+    expect(hasOnboarded()).toBe(false);
   });
 });

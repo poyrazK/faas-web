@@ -23,8 +23,8 @@ export function DeploymentGate({ slug, resource }: { slug: string; resource: key
         message={copy.message}
         action={
           <Link
-            to="/dashboard/workflows/$workflowId"
-            params={{ workflowId: slug }}
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: slug }}
             search={{ tab: 'Deployments' }}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
           >

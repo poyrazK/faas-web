@@ -99,7 +99,7 @@ export function AppScope({
         message={`${resource[0].toUpperCase()}${resource.slice(1)} belong to an app, and this workspace has none yet.`}
         action={
           <Button asChild size="sm" variant="outline" className="gap-1.5">
-            <Link to="/dashboard/workflows/new">
+            <Link to="/dashboard/apps/new">
               <Plus className="h-3.5 w-3.5" />
               Create an app
             </Link>

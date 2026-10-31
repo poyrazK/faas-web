@@ -99,7 +99,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         availability: 'Preview',
         diagram: 'objects',
         caption: 'Object buckets, not persistent VM disks.',
-        doc: 'object-storage',
       },
     ],
   },

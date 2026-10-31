@@ -1,18 +1,33 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { FUNCTION_STARTERS } from '@/lib/function-starters';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
+import { ApiError } from '@/lib/api/errors';
+import type { ProjectPlan } from '@/lib/api/queries';
 
 const mocks = vi.hoisted(() => ({
+  workspace: { org: null as string | null, label: 'Personal' },
   addWorkflow: vi.fn(),
   bindRepo: vi.fn(),
   deployFromRef: vi.fn(),
+  deployFunction: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
   issueCSRF: vi.fn(),
+  readPrivate: vi.fn(),
   deploymentStatus: 'building',
+  appVisibility: 'public' as 'public' | 'internal',
+  deploymentApp: 'app-1',
+  retry: vi.fn(),
+  confirm: vi.fn(),
+  scan: vi.fn(),
+  capabilityState: 'available',
+  apps: [] as { id: string; slug: string; url?: string }[],
   account: {
+    id: 'account-1',
     plan: 'hobby' as 'free' | 'hobby' | 'pro' | 'scale',
     app_count: 0,
     github_install_id: '42',
@@ -20,25 +35,65 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@tanstack/react-router', () => ({
+vi.mock('@tanstack/react-router', async (importOriginal) => ({
+  // newAppPath writes the URL a GitHub connection returns to with the real one.
+  defaultStringifySearch: (await importOriginal<typeof import('@tanstack/react-router')>())
+    .defaultStringifySearch,
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => vi.fn(),
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
+vi.mock('./image-deploy-form', () => ({
+  ImageDeployForm: ({ kind }: { kind?: string }) => (
+    <div>{kind === 'worker' ? 'OCI worker setup' : 'HTTP image setup'}</div>
+  ),
+}));
+vi.mock('./project-import', () => ({ ProjectImport: () => null }));
+// jsdom has no CompressionStream; the archive is checked uncompressed.
+vi.mock('@/lib/tar', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/tar')>()),
+  gzip: async (bytes: Uint8Array<ArrayBuffer>) => new Blob([bytes]),
+}));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
-vi.mock('@/components/dashboard/repo-picker', () => ({
-  RepoPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <input
-      aria-label="Repository"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  ),
-}));
+vi.mock('@/components/dashboard/repo-picker', async () => {
+  const { useEffect } = await import('react');
+  return {
+    // The real picker forwards id/name/form/ARIA to its control; so does this,
+    // so label association is asserted through the wizard's own <label>. Its
+    // installation lists every repository except team/hidden.
+    RepoPicker: ({
+      onChange,
+      onAvailabilityChange,
+      className: _className,
+      variant: _variant,
+      labelledBy: _labelledBy,
+      unlistedNote: _unlistedNote,
+      ...control
+    }: {
+      value: string;
+      onChange: (value: string) => void;
+      onAvailabilityChange?: (available: boolean) => void;
+      className?: string;
+      variant?: string;
+      labelledBy?: string;
+      unlistedNote?: string;
+    }) => {
+      useEffect(() => {
+        onAvailabilityChange?.(control.value !== 'team/hidden');
+      }, [control.value, onAvailabilityChange]);
+      return <input {...control} onChange={(event) => onChange(event.target.value)} />;
+    },
+  };
+});
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
+}));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => mocks.workspace,
 }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({ addWorkflow: mocks.addWorkflow }),
@@ -46,11 +101,34 @@ vi.mock('@/lib/store', () => ({
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ loading: false, account: mocks.account }),
 }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({
+    accountId: mocks.account.id,
+    state: mocks.capabilityState,
+    refresh: vi.fn(),
+  }),
+}));
+vi.mock('@/lib/api/bindings', () => ({ readPrivateAppCreateContext: mocks.readPrivate }));
 vi.mock('@/lib/api/queries', () => ({
-  useDeployment: () => ({
+  useApp: () => ({
     data: {
-      id: 'deployment-1',
-      app_id: 'app-1',
+      id: 'app-1',
+      slug: 'demo-app',
+      visibility: mocks.appVisibility,
+      url: 'https://demo-app.example',
+      runtime: 'node22',
+      ram_mb: 128,
+    },
+    isPending: false,
+    isError: false,
+  }),
+  useApps: () => ({ data: mocks.apps }),
+  useRetryDeployment: () => ({ mutateAsync: mocks.retry, isPending: false }),
+  useCancelDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeployment: (id: string) => ({
+    data: {
+      id,
+      app_id: mocks.deploymentApp,
       image_digest: '',
       kind: 'tarball',
       created_at: '2026-09-12T00:00:00Z',
@@ -60,40 +138,795 @@ vi.mock('@/lib/api/queries', () => ({
   }),
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
+  useDeployFunctionSourceFor: () => ({ mutateAsync: mocks.deployFunction }),
+  useInvokeApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
+  useSourceRefScan: (input: unknown) => mocks.scan(input),
   // The wizard reads the starter catalog to prefill from a `?template=` name.
   useTemplates: () => ({ data: [], isPending: false, error: null }),
 }));
 vi.mock('@/lib/api/client', () => ({ issueCSRF: mocks.issueCSRF }));
 
+/** Choosing a repository prefills the name; replace it with an explicit one. */
+async function nameApp(user: ReturnType<typeof userEvent.setup>, value: string) {
+  const field = await screen.findByLabelText('App name');
+  await user.clear(field);
+  await user.type(field, value);
+}
+
 async function submitGitApp(onDeploymentAccepted = vi.fn()) {
   const user = userEvent.setup();
   const view = render(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
-  await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+  await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
   await user.click(screen.getByRole('button', { name: /continue/i }));
-  await user.type(await screen.findByLabelText(/app name/i), 'demo-app');
+  await nameApp(user, 'demo-app');
   await user.click(screen.getByRole('button', { name: /review/i }));
   await user.click(await screen.findByRole('button', { name: /deploy app/i }));
   return { onDeploymentAccepted, ...view };
 }
 
 beforeEach(() => {
+  mocks.workspace = { org: null, label: 'Personal' };
   vi.clearAllMocks();
+  mocks.account.id = 'account-1';
   mocks.account.plan = 'hobby';
   mocks.account.app_count = 0;
   mocks.account.github_install_id = '42';
   mocks.account.limits = { ram_mb: 512, deployed_apps: 10 };
   mocks.deploymentStatus = 'building';
+  mocks.appVisibility = 'public';
+  mocks.deploymentApp = 'app-1';
+  mocks.confirm.mockResolvedValue(true);
+  mocks.retry.mockResolvedValue({ id: 'b'.repeat(32), app_id: 'app-1' });
   mocks.addWorkflow.mockResolvedValue({ id: 'demo-app', url: 'https://demo-app.example' });
   mocks.bindRepo.mockResolvedValue({ binding_id: 'bind-1' });
   mocks.deployFromRef.mockResolvedValue({ id: 'deployment-1' });
   mocks.updateApp.mockResolvedValue({});
   mocks.issueCSRF.mockResolvedValue('wizard-proof');
+  mocks.readPrivate.mockResolvedValue(undefined);
+  mocks.scan.mockReturnValue({ plan: undefined, error: null, scanning: false });
+  mocks.capabilityState = 'available';
+  mocks.apps = [{ id: 'app-0', slug: 'existing-app' }];
 });
 
 afterEach(() => vi.restoreAllMocks());
 
+describe('NewAppWizard source picker', () => {
+  it('leads with Git and lists the other ways to start, each named by its title', () => {
+    render(<NewAppWizard />);
+    const others = screen.getByRole('group', { name: 'Other ways to start' });
+    within(others)
+      .getAllByRole('button')
+      .forEach((card, index) =>
+        expect(card).toHaveAccessibleName(
+          ['Function', 'Template', 'Empty app', 'Container image', 'Long-lived worker', 'Import'][
+            index
+          ]
+        )
+      );
+    const importCard = within(others).getByRole('button', { name: 'Import' });
+    expect(importCard).toHaveAccessibleDescription(
+      'Turn a repository with several services into a project.'
+    );
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
+      'Build and deploy a function or an app from a branch, tag, or commit.'
+    );
+  });
+
+  it('gathers what you chose into the review', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    await user.type(await screen.findByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByLabelText('App name');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Repository').nextElementSibling).toHaveTextContent(
+      'gregale/demo@main'
+    );
+    expect(screen.getByText('Memory').nextElementSibling).toHaveTextContent('128 MB');
+  });
+
+  it('moves to the chosen source’s own station, and back to the sources', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    expect(await screen.findByText(/Pick a starter to prefill your app/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Git repository' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
+    expect(await screen.findByRole('button', { name: 'Template' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
+  it('opens a container image inside the wizard, not on another page', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Container image' }));
+    expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Container image' })).toBeInTheDocument();
+  });
+
+  it('goes straight to Configure for an empty app', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    expect(await screen.findByLabelText('App name')).toBeInTheDocument();
+  });
+
+  it('preselects Git when GitHub is connected', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    // Git's fields are on its own station: its card goes there.
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    expect(await screen.findByLabelText('Repository')).toBeInTheDocument();
+  });
+
+  it('leaves the choice open without a GitHub connection', () => {
+    mocks.account.github_install_id = '';
+    render(<NewAppWizard />);
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(7);
+    expect(screen.queryByRole('button', { pressed: true })).not.toBeInTheDocument();
+  });
+
+  it('keeps the container images and isolated runs disclosure', async () => {
+    render(<NewAppWizard />);
+    const toggle = screen.getByRole('button', { name: 'Container images and isolated runs' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('heading', { name: 'Isolated runs' })).toBeInTheDocument();
+  });
+});
+
+function scanPlan(workloads: Partial<ProjectPlan['workloads'][number]>[]): ProjectPlan {
+  return {
+    project_slug: 'demo',
+    scan_source: workloads.length > 1 ? 'compose' : 'single',
+    tier: 'hobby',
+    workloads: workloads.map((w, i) => ({
+      name: `svc-${i}`,
+      root_dir: '',
+      command: [],
+      ports: [8080],
+      ...w,
+    })),
+    managed: [],
+    crons: [],
+    observed_apps: 0,
+    observed_crons: 0,
+    limit_apps: 10,
+    limit_crons: 10,
+    can_apply: true,
+    plan_token: 'token',
+  };
+}
+
+describe('NewAppWizard repository prefill', () => {
+  it('names the app after the chosen repository, slug-safe', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/My_Demo.API');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    expect(await screen.findByLabelText('App name')).toHaveValue('my-demo-api');
+  });
+
+  it('keeps a name the user typed when the repository changes', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/first');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'my-own-name');
+    await user.click(screen.getByRole('button', { name: 'Back to Setup' }));
+    const repository = await screen.findByLabelText('Repository');
+    await user.clear(repository);
+    await user.type(repository, 'gregale/second');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    expect(await screen.findByLabelText('App name')).toHaveValue('my-own-name');
+  });
+
+  it('flags a prefilled name the account already uses before Deploy', async () => {
+    mocks.apps = [{ id: 'app-0', slug: 'webhook-router' }];
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'acme/webhook-router');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const name = await screen.findByLabelText('App name');
+    expect(name).toHaveValue('webhook-router');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(name).toHaveFocus();
+    expect(name).toHaveAccessibleDescription(
+      'You already have an app named webhook-router. Choose another name.'
+    );
+    expect(screen.queryByRole('button', { name: 'Deploy app' })).not.toBeInTheDocument();
+  });
+
+  it('scans the chosen repository at its ref and prefills what one service reports', async () => {
+    mocks.scan.mockImplementation((input: { enabled: boolean }) => ({
+      plan: input.enabled ? scanPlan([{ dockerfile: 'Dockerfile' }]) : undefined,
+      error: null,
+      scanning: false,
+    }));
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    expect(mocks.scan).toHaveBeenLastCalledWith({
+      repo: 'gregale/demo',
+      ref: 'main',
+      installId: 42,
+      projectSlug: 'demo',
+      enabled: true,
+    });
+    expect(screen.getByText(/One service detected \(Single service\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    const type = await screen.findByLabelText('Type');
+    expect(type).toHaveValue('app');
+    expect(screen.getByText(/Detected from Single service/)).toBeInTheDocument();
+    await user.selectOptions(type, 'function');
+    expect(type).toHaveValue('function');
+    expect(screen.queryByText(/Detected from Single service/)).not.toBeInTheDocument();
+  });
+
+  it('suggests Import for a multi-service repository and carries the slug and ref over', async () => {
+    mocks.scan.mockImplementation((input: { enabled: boolean }) => ({
+      plan: input.enabled
+        ? scanPlan([{ name: 'api' }, { name: 'worker' }, { name: 'web' }])
+        : undefined,
+      error: null,
+      scanning: false,
+    }));
+    const onSearchChange = vi.fn();
+    const user = userEvent.setup();
+    render(<NewAppWizard search={{ source: 'git' }} onSearchChange={onSearchChange} />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/shop');
+    await user.clear(screen.getByLabelText('Ref'));
+    await user.type(screen.getByLabelText('Ref'), 'develop');
+    expect(
+      screen.getByText(
+        'This repository has 3 services. Import it as a project to create them together.'
+      )
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Import as a project' }));
+    expect(onSearchChange).toHaveBeenLastCalledWith({
+      source: 'import',
+      slug: 'shop',
+      branch: 'develop',
+    });
+  });
+
+  it('degrades quietly when the scan fails, without blocking Continue', async () => {
+    mocks.scan.mockImplementation((input: { enabled: boolean }) => ({
+      plan: undefined,
+      error: input.enabled
+        ? new ApiError({ status: 413, code: 'source_too_large', title: 'Too large' })
+        : null,
+      scanning: false,
+    }));
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    const note = screen.getByText(/too large to scan here/);
+    expect(note).not.toHaveAttribute('role', 'alert');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    expect(await screen.findByLabelText('Type')).toHaveValue('function');
+    expect(mocks.toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewAppWizard validation', () => {
+  // On Git's own page without GitHub, the way on is the connect notice; a
+  // Continue there could only fail on a control that is no longer on screen.
+  it('asks for a GitHub connection instead of doing nothing', async () => {
+    mocks.account.github_install_id = '';
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Git repository' }));
+    expect(await screen.findByText('Connect GitHub first')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+  });
+
+  it('offers Continue on the template page only once a template is picked', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Template' }));
+    await screen.findByText(/Pick a starter to prefill your app/);
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+  });
+
+  it('shows an inline error on the repository and focuses it', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const repository = screen.getByLabelText('Repository');
+    expect(repository).toHaveFocus();
+    expect(repository).toHaveAttribute('aria-invalid', 'true');
+    expect(repository).toHaveAccessibleDescription('Choose a repository to deploy.');
+    await user.type(repository, 'not a repo');
+    expect(repository).toHaveAccessibleDescription('Use owner/name, like acme/api.');
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  });
+
+  it('focuses an invalid ref once the repository is fine', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    const ref = screen.getByLabelText('Ref');
+    await user.clear(ref);
+    await user.type(ref, 'bad..ref');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(ref).toHaveFocus();
+    expect(ref).toHaveAccessibleDescription(/Use a valid branch, tag, or commit SHA/);
+  });
+
+  it('labels every Git and Configure field by its visible label', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    expect(screen.getByLabelText('Repository')).toHaveAttribute('name', 'repository');
+    expect(screen.getByLabelText('Ref')).toHaveValue('main');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByLabelText('App name')).toHaveValue('demo');
+    expect(screen.getByLabelText('Type')).toHaveValue('function');
+    expect(screen.getByLabelText('Runtime')).toHaveValue('node22');
+    expect(screen.getByLabelText('App visibility')).toHaveAccessibleDescription(
+      /Internal apps have no public platform URL/
+    );
+  });
+
+  it('says why Deploy is unavailable on review', async () => {
+    mocks.capabilityState = 'unavailable';
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.selectOptions(await screen.findByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    const deploy = await screen.findByRole('button', { name: 'Deploy app' });
+    expect(deploy).toBeDisabled();
+    expect(deploy).toHaveAccessibleDescription(/Internal-only apps are not confirmed/);
+  });
+});
+
+describe('NewAppWizard review', () => {
+  async function reviewGit(user: ReturnType<typeof userEvent.setup>) {
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'orders-api');
+  }
+
+  it('shows the public URL the app will get, under the zone its siblings use', async () => {
+    mocks.apps = [
+      { id: 'a', slug: 'private-thing' },
+      { id: 'b', slug: 'storefront', url: 'https://storefront.gregale.app' },
+    ];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'https://orders-api.gregale.app'
+    );
+    expect(screen.queryByText('Assigned on create')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the documented platform zone for a first app', async () => {
+    mocks.apps = [];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'https://orders-api.gregale.dev'
+    );
+  });
+
+  it('says an internal app has no public URL', async () => {
+    mocks.apps = [{ id: 'b', slug: 'storefront', url: 'https://storefront.gregale.app' }];
+    const user = userEvent.setup();
+    await reviewGit(user);
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'None (internal service only)'
+    );
+    expect(screen.queryByText(/gregale\.app/)).not.toBeInTheDocument();
+  });
+});
+
 describe('NewAppWizard Git submission', () => {
+  it('omits the function runtime when a Git source is configured as an App', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'poyrazK/imgpipe');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'imgpipe-gateway');
+    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
+    expect(screen.queryByLabelText('Runtime')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    expect(screen.queryByText('go124')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() => expect(mocks.addWorkflow).toHaveBeenCalledOnce());
+    const input = mocks.addWorkflow.mock.calls[0][0];
+    expect(input).toMatchObject({ name: 'imgpipe-gateway', type: 'app' });
+    expect(input).not.toHaveProperty('runtime');
+    await waitFor(() => expect(mocks.deployFromRef).toHaveBeenCalledOnce());
+  });
+
+  it('retains the selected function runtime when switching back from App', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'team/function');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'go-function');
+    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'function');
+    expect(screen.getByLabelText('Runtime')).toHaveValue('go124');
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() =>
+      expect(mocks.addWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'function', runtime: 'go124' })
+      )
+    );
+  });
+
+  it('keeps a restored internal deployment endpoint non-clickable after it becomes live', () => {
+    mocks.appVisibility = 'internal';
+    mocks.deploymentStatus = 'live';
+    render(
+      <NewAppWizard
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy app endpoint' })).not.toBeInTheDocument();
+  });
+  it('reviews internal-only creation and rechecks private-app capability before POST', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'demo-app');
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    const deploy = await screen.findByRole('button', { name: 'Deploy app' });
+    expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
+      'None (internal service only)'
+    );
+    expect(screen.getByText(/Internal apps get no public URL/)).toBeInTheDocument();
+    await user.click(deploy);
+    await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mocks.addWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: 'internal' })
+      )
+    );
+    expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+  });
+  it('does not create an internal app after account context changes during capability recheck', async () => {
+    let release!: () => void;
+    mocks.readPrivate.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    const view = render(<NewAppWizard onboarding />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'demo-app');
+    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
+    mocks.account.id = 'account-2';
+    view.rerender(<NewAppWizard onboarding />);
+    release();
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/Creation choices changed/i) })
+      )
+    );
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+  it('offers container setup without a GitHub installation', async () => {
+    mocks.account.github_install_id = '';
+    render(<NewAppWizard />);
+    const container = screen.getByRole('button', { name: 'Container image' });
+    expect(container).toHaveAccessibleDescription('Run an HTTP image you already built.');
+    await userEvent.click(container);
+    expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
+    expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
+  });
+  it('offers a direct worker source without HTTP setup', async () => {
+    render(<NewAppWizard search={{ source: 'worker' }} />);
+    expect(await screen.findByText('OCI worker setup')).toBeInTheDocument();
+    expect(screen.queryByText('HTTP image setup')).not.toBeInTheDocument();
+  });
+  it.each(['submitting', 'unknown'] as const)(
+    'restores %s without automatically resending a deployment',
+    (phase) => {
+      mocks.deploymentStatus = 'failed';
+      render(
+        <NewAppWizard
+          onboarding
+          search={{
+            recovery: {
+              app: 'demo-app',
+              repo: 'team/api',
+              ref: 'main',
+              deployment: 'a'.repeat(32),
+              phase,
+            },
+          }}
+        />
+      );
+      expect(screen.getByText(/outcome is unknown/i)).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Retry original deployment' })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Deploy a fix' })).not.toBeInTheDocument();
+      expect(mocks.retry).not.toHaveBeenCalled();
+      expect(mocks.deployFromRef).not.toHaveBeenCalled();
+      expect(mocks.addWorkflow).not.toHaveBeenCalled();
+    }
+  );
+
+  it('follows the new ID after an accepted original retry', async () => {
+    mocks.deploymentStatus = 'failed';
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Retry original deployment' }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: {
+            app: 'demo-app',
+            repo: 'team/api',
+            ref: 'main',
+            deployment: 'b'.repeat(32),
+            phase: undefined,
+          },
+        }),
+        { replace: true }
+      )
+    );
+    expect(mocks.retry).toHaveBeenCalledWith({ id: 'a'.repeat(32), from_stage: 'source_download' });
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: 'not-an-id', app_id: 'app-1' },
+    { id: 'a'.repeat(32), app_id: 'app-1' },
+    { id: 'b'.repeat(32), app_id: 'other-app' },
+  ])('does not follow an invalid fixed-ref response %j', async (response) => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockResolvedValueOnce(response);
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Deploy fixed ref' })).toBeDisabled();
+    expect(mocks.deployFromRef).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the original attempt source when a proposed fixed ref is rejected', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockRejectedValueOnce(
+      new ApiError({ status: 422, code: 'source_invalid', title: 'Ref not found' })
+    );
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.clear(screen.getByLabelText('Branch, tag, or commit'));
+    await userEvent.type(screen.getByLabelText('Branch, tag, or commit'), 'missing-fix');
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: expect.objectContaining({
+            deployment: 'a'.repeat(32),
+            ref: 'main',
+            phase: 'rejected',
+          }),
+        }),
+        { replace: true }
+      )
+    );
+  });
+
+  it('keeps correction available when the server explicitly rejects an original retry', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.retry.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'source_invalid', title: 'Source expired' })
+    );
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Retry original deployment' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Deploy a fix' })).toBeEnabled());
+    expect(screen.queryByText(/outcome is unknown/i)).not.toBeInTheDocument();
+  });
+
+  it('deploys an explicitly chosen fixed ref into the saved app, without replaying the checked SHA', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockResolvedValueOnce({ id: 'c'.repeat(32), app_id: 'app-1' });
+    const onSearchChange = vi.fn();
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: {
+            app: 'demo-app',
+            repo: 'team/api',
+            ref: 'a'.repeat(40),
+            deployment: 'a'.repeat(32),
+          },
+        }}
+        onSearchChange={onSearchChange}
+      />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/api');
+    expect(screen.getByLabelText('Branch, tag, or commit')).toHaveValue('');
+    await user.type(screen.getByLabelText('Branch, tag, or commit'), 'feature/fix');
+    await user.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/api',
+        ref: 'feature/fix',
+        format: 'tarball',
+      })
+    );
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          app: 'demo-app',
+          deployment: 'c'.repeat(32),
+          ref: 'feature/fix',
+        }),
+      }),
+      { replace: true }
+    );
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+    expect(mocks.bindRepo).not.toHaveBeenCalled();
+  });
+
+  it('does not resubmit after an ambiguous fixed-ref response', async () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deployFromRef.mockRejectedValueOnce(new TypeError('Network connection lost'));
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy a fix' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Retry original deployment' })
+    ).not.toBeInTheDocument();
+    expect(mocks.deployFromRef).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves the existing app pointer even when initial source submission is rejected', async () => {
+    mocks.deployFromRef.mockRejectedValueOnce(
+      new ApiError({ status: 422, code: 'source_invalid', title: 'Invalid source' })
+    );
+    const onSearchChange = vi.fn();
+    const onAppCreated = vi.fn();
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<NewAppSearch>({ source: 'git' });
+      return (
+        <NewAppWizard
+          onboarding
+          search={search}
+          onAppCreated={onAppCreated}
+          onSearchChange={(next, options) => {
+            onSearchChange(next, options);
+            setSearch(next);
+          }}
+        />
+      );
+    }
+    render(<Journey />);
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
+    await nameApp(user, 'demo-app');
+    await user.click(screen.getByRole('button', { name: /review/i }));
+    await user.click(await screen.findByRole('button', { name: /deploy app/i }));
+    await waitFor(() =>
+      expect(onSearchChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recovery: { app: 'demo-app', repo: 'gregale/demo', ref: 'main', phase: 'rejected' },
+        }),
+        { replace: true }
+      )
+    );
+    expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
+    expect(onAppCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes the failed attempt from a recovery URL without creating another app', () => {
+    mocks.deploymentStatus = 'failed';
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.getByRole('heading', { name: 'Deployment failed' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry original deployment' })).toBeVisible();
+    expect(mocks.addWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('does not offer recovery actions for an attempt belonging to another app', () => {
+    mocks.deploymentStatus = 'failed';
+    mocks.deploymentApp = 'different-app';
+    render(
+      <NewAppWizard
+        onboarding
+        search={{
+          recovery: { app: 'demo-app', repo: 'team/api', ref: 'main', deployment: 'a'.repeat(32) },
+        }}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/does not belong to this app/i);
+    expect(
+      screen.queryByRole('button', { name: 'Retry original deployment' })
+    ).not.toBeInTheDocument();
+  });
+
   it('connects GitHub with proof and preserves the onboarding return marker', async () => {
     mocks.account.github_install_id = '';
     const onConnectGitHub = vi.fn();
@@ -113,10 +946,46 @@ describe('NewAppWizard Git submission', () => {
     expect(posted?.get('return_to')).toBe('/dashboard/settings?section=integrations');
   });
 
+  it('returns a GitHub connection started from New app to the Git source', async () => {
+    mocks.account.github_install_id = '';
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      posted = new FormData(this);
+    });
+    render(<NewAppWizard search={{ source: 'git' }} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(posted?.get('return_to')).toBe('/dashboard/apps/new?source=git');
+  });
+
+  // A repository and commit carried in from a compatibility check survive the
+  // round trip through GitHub, instead of returning to an empty Git page.
+  it('returns from GitHub with the checked repository and commit', async () => {
+    mocks.account.github_install_id = '';
+    let posted: FormData | undefined;
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (
+      this: HTMLFormElement
+    ) {
+      posted = new FormData(this);
+    });
+    const sha = 'c'.repeat(40);
+    render(<NewAppWizard search={{ source: 'git', repo: 'team/api', ref: sha }} />);
+    expect(screen.getByText(`team/api@${sha}`)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(posted?.get('return_to')).toBe(
+      `/dashboard/apps/new?source=git&repo=team%2Fapi&ref=${sha}`
+    );
+  });
+
   it('keeps resource defaults available behind a named disclosure', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const summary = await screen.findByText('Resource settings');
     const details = summary.closest('details');
@@ -132,9 +1001,9 @@ describe('NewAppWizard Git submission', () => {
   it('preserves chosen resources through review and back', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await nameApp(user, 'demo-app');
     await user.click(screen.getByText('Resource settings'));
     await user.click(screen.getByRole('button', { name: '256 MB' }));
     await user.click(screen.getByRole('switch', { name: /scale to zero/i }));
@@ -143,7 +1012,7 @@ describe('NewAppWizard Git submission', () => {
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('256 MB')).toBeInTheDocument();
     expect(screen.getByText('One instance kept resident')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await waitFor(() =>
       expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible()
     );
@@ -157,9 +1026,9 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.app_count = 10;
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await nameApp(user, 'demo-app');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     expect(await screen.findByRole('button', { name: 'Deploy app' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('plan limit of 10 apps');
@@ -169,9 +1038,9 @@ describe('NewAppWizard Git submission', () => {
   it('does not present a made-up per-invocation cost on review', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    await user.type(await screen.findByLabelText('App name'), 'demo-app');
+    await nameApp(user, 'demo-app');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.queryByText(/Estimated cost at 100k invocations/)).not.toBeInTheDocument();
@@ -181,10 +1050,11 @@ describe('NewAppWizard Git submission', () => {
   it('lets a user reach Configure without an immediate name error', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const name = await screen.findByLabelText('App name');
     expect(name).not.toHaveAttribute('aria-invalid');
+    await user.clear(name);
     await user.click(screen.getByRole('button', { name: 'Review' }));
     expect(name).toHaveFocus();
     expect(name).toHaveAttribute('aria-invalid', 'true');
@@ -197,9 +1067,10 @@ describe('NewAppWizard Git submission', () => {
   it('validates on blur and submits Configure with Enter without creating an app', async () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     const name = await screen.findByLabelText('App name');
+    await user.clear(name);
     await user.type(name, '-ab');
     expect(name).not.toHaveAttribute('aria-invalid');
     await user.tab();
@@ -219,12 +1090,17 @@ describe('NewAppWizard Git submission', () => {
       screen.queryByRole('link', { name: 'https://demo-app.example' })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
     mocks.deploymentStatus = 'live';
     rerender(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
+    // `publicAppUrl` normalises through `new URL`, hence the trailing slash.
     expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
-      'https://demo-app.example'
+      'https://demo-app.example/'
     );
+    const callIt = screen.getByRole('region', { name: 'Call it' });
+    expect(callIt).toHaveTextContent('curl -i https://demo-app.example');
+    expect(callIt).toHaveTextContent('gregale logs demo-app --follow');
   });
 
   it('prevents Free accounts from requesting a resident instance', async () => {
@@ -232,7 +1108,7 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.limits = { ram_mb: 128, deployed_apps: 3 };
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
-    await user.type(screen.getByLabelText(/repository/i), 'gregale/demo');
+    await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
 
     await user.click(await screen.findByText('Resource settings'));
@@ -284,17 +1160,112 @@ describe('NewAppWizard Git submission', () => {
 
   it('completes onboarding when retry later receives a deployment id', async () => {
     mocks.deployFromRef
-      .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce({ id: 'deployment-2' });
+      .mockRejectedValueOnce(
+        new ApiError({ status: 422, code: 'source_invalid', title: 'Source unavailable' })
+      )
+      .mockResolvedValueOnce({ id: 'b'.repeat(32), app_id: 'app-1' });
     const { onDeploymentAccepted } = await submitGitApp();
 
-    const retry = await screen.findByRole('button', { name: /try again/i });
+    const retry = await screen.findByRole('button', { name: 'Deploy a fix' });
     expect(onDeploymentAccepted).not.toHaveBeenCalled();
     await userEvent.setup().click(retry);
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy fixed ref' }));
 
     await waitFor(() => expect(onDeploymentAccepted).toHaveBeenCalledTimes(1));
-    expect(mocks.bindRepo).toHaveBeenCalledTimes(2);
+    expect(mocks.bindRepo).toHaveBeenCalledTimes(1);
     expect(mocks.deployFromRef).toHaveBeenCalledTimes(2);
     expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NewAppWizard function written here', () => {
+  it('writes, configures and deploys a function with no repository', async () => {
+    mocks.deployFunction.mockResolvedValue({ id: 'dep-1', status: 'pending' });
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Function' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Write a function' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+
+    // An untouched starter follows the language.
+    await user.click(screen.getByRole('radio', { name: 'Python' }));
+    const editor = screen.getByRole('textbox', { name: 'handler.py' });
+    expect(editor).toHaveValue(FUNCTION_STARTERS.python.code);
+
+    // Nothing to deploy is said where it is fixed.
+    await user.clear(editor);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveAccessibleDescription(/Write the handler, or upload a file\./);
+    await user.type(editor, 'async def handler(event, ctx):{enter}    return {{}}');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    // Configure: a function by construction, on this language's versions.
+    await nameApp(user, 'hello-fn');
+    expect(screen.queryByLabelText('Type')).not.toBeInTheDocument();
+    const runtimes = [...(screen.getByLabelText('Runtime') as HTMLSelectElement).options];
+    expect(runtimes.map((o) => o.value)).toEqual(['python312', 'python313']);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(await screen.findByText('First deploy')).toBeInTheDocument();
+    expect(screen.getByText('First deploy').nextElementSibling).toHaveTextContent(
+      'handler.py, right after create'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create app' }));
+
+    await waitFor(() => expect(mocks.deployFunction).toHaveBeenCalledTimes(1));
+    expect(mocks.addWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'hello-fn', type: 'function', runtime: 'python312' })
+    );
+    const { slug, runtime, archive } = mocks.deployFunction.mock.calls[0][0];
+    expect(slug).toBe('demo-app');
+    expect(runtime).toBe('python312');
+    const tar = new TextDecoder().decode(await (archive as Blob).arrayBuffer());
+    expect(tar).toContain('handler.py');
+    expect(tar).toContain('async def handler(event, ctx):\n    return {}');
+  });
+});
+
+describe('NewAppWizard repository from a compatibility check', () => {
+  it('deploys the checked commit without binding auto-deploys to a SHA', async () => {
+    const user = userEvent.setup();
+    function Journey() {
+      const [search, setSearch] = useState<NewAppSearch>({
+        source: 'git',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+      });
+      return <NewAppWizard onboarding search={search} onSearchChange={setSearch} />;
+    }
+    render(<Journey />);
+    expect(screen.getByLabelText('Repository')).toHaveValue('team/checked-api');
+    expect(screen.getByLabelText('Ref')).toHaveValue('a'.repeat(40));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'checked-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'team/checked-api',
+        ref: 'a'.repeat(40),
+        format: 'tarball',
+      })
+    );
+    expect(mocks.bindRepo).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: 'team/checked-api', branch: '' })
+    );
+  });
+
+  it('stops on a repository the installation cannot see, and says why', async () => {
+    const user = userEvent.setup();
+    render(<NewAppWizard onboarding search={{ source: 'git', repo: 'team/hidden' }} />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    const repository = screen.getByLabelText('Repository');
+    expect(repository).toHaveFocus();
+    expect(repository).toHaveAccessibleDescription(/installation cannot see this repository/);
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
 });

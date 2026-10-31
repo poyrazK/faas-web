@@ -35,6 +35,11 @@
       "dest": "https://api.gregale.dev/status/slo.json"
     },
     {
+      "src": "^/\\.well-known/security\\.txt$",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://api.gregale.dev/.well-known/security.txt"
+    },
+    {
       "src": "^/auth(?:/(.*))?$",
       "methods": ["GET", "HEAD", "POST", "OPTIONS"],
       "dest": "https://api.gregale.dev/auth/$1"
@@ -62,31 +67,117 @@
     {
       "src": "^/(.*)$",
       "headers": {
-        "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://github.com; script-src 'self' 'sha256-MNBQwotLG5DJJPjqm7mmsrZ5jFzjP9gENmE8qh74Ajo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; font-src 'self' data: https://fonts.gstatic.com https://cdn.fontshare.com; img-src 'self' data: blob: https:; connect-src 'self' https:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'none'; upgrade-insecure-requests",
+        "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self' https://github.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://s3.gregale.dev; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests",
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
         "Access-Control-Allow-Origin": "https://gregale.dev"
       },
       "continue": true
     },
     {
       "src": "^/assets/(.*)$",
-      "headers": { "Cache-Control": "public, max-age=31536000, immutable" },
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      },
       "continue": true
     },
     {
       "src": "^/index\\.html$",
-      "headers": { "Cache-Control": "no-cache" },
+      "headers": {
+        "Cache-Control": "no-cache"
+      },
       "continue": true
     },
     {
       "src": "^/status/incidents/[^/]+$",
       "dest": "/status/incidents/index.html",
-      "headers": { "X-Robots-Tag": "noindex, follow" }
+      "headers": {
+        "X-Robots-Tag": "noindex, follow"
+      }
     },
-    { "handle": "filesystem" },
+    {
+      "src": "^/docs/build/source/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/deploy-from-github"
+      }
+    },
+    {
+      "src": "^/docs/build/source-ref/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/deploy-from-source"
+      }
+    },
+    {
+      "src": "^/docs/builds/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/build"
+      }
+    },
+    {
+      "src": "^/docs/deployments/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/deploy-from-github"
+      }
+    },
+    {
+      "src": "^/docs/deploys/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/deploy-from-github"
+      }
+    },
+    {
+      "src": "^/docs/domains/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/custom-domains"
+      }
+    },
+    {
+      "src": "^/docs/dpa/subprocessors/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/subprocessors"
+      }
+    },
+    {
+      "src": "^/docs/gdpr/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/account"
+      }
+    },
+    {
+      "src": "^/docs/orgs/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/account"
+      }
+    },
+    {
+      "src": "^/docs/sidecars/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/companions"
+      }
+    },
+    {
+      "src": "^/docs/([^/]+)/.+$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/$1"
+      }
+    },
+    {
+      "handle": "filesystem"
+    },
     {
       "src": "^/docs(?:/.*)?$",
       "status": 404,
@@ -96,7 +187,7 @@
       }
     },
     {
-      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|audit|builds|crons|databases|debug|deployments|domains|edge-rules|env|import|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|queues|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
+      "src": "^/dashboard(?:/(?:account|alerts|analytics|apis|apps(?:/[^/]+)?|audit|builds|crons|customers|databases|debug|deployments|domains|edge-rules|env|events|import|integrations|instances|invocations|invoices|jobs|keys|logs|metrics|mirrors|openapi|plans|postgres|projects(?:/[^/]+)?|queues|releases|routes|secrets|security|settings|storage|team|templates|tenant-surfaces|traces|triggers(?:/[^/]+)?|upstreams|usage|webhooks|workers|workflows(?:/[^/]+)?))?/?$",
       "dest": "/index.html"
     },
     {

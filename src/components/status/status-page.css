@@ -327,6 +327,10 @@
   background: var(--status-critical);
 }
 
+.status-day--pre_release {
+  background: var(--border-secondary);
+}
+
 .status-day--unknown {
   background: repeating-linear-gradient(135deg, var(--border-secondary) 0 3px, transparent 3px 6px);
   outline: 1px solid var(--border);

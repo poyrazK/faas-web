@@ -12,7 +12,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { api } from '@/lib/api/client';
 import { Route as Storage } from './dashboard.storage';
+import { mockedApi, spyApi } from '@/test/api';
 
+// The page is gated on object-storage; this suite covers its body.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/components/dashboard/object-storage', () => ({
   ObjectStorage: () => <h2>Object storage</h2>,
 }));
@@ -21,7 +27,7 @@ let fails: boolean;
 beforeEach(() => {
   fails = false;
   account = { plan: 'free', app_count: 1, limits: { deployed_apps: 3 } };
-  vi.spyOn(api, 'GET').mockImplementation(async (path) => {
+  spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/account') {
       if (fails) throw new Error('Account capacity unavailable');
       return { data: account, response: new Response() } as never;
@@ -85,7 +91,7 @@ it('does not invent a zero count while loading, and supports retry after failure
 });
 
 it('keeps quota numbers hidden until the account response arrives', async () => {
-  vi.mocked(api.GET).mockImplementation(() => new Promise(() => {}));
+  mockedApi('GET').mockImplementation(() => new Promise(() => {}));
   await mount();
   expect(screen.getByText('Loading app capacity…')).toBeInTheDocument();
   expect(screen.queryByRole('meter')).not.toBeInTheDocument();

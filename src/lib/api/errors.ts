@@ -71,10 +71,18 @@ export class ApiError extends Error {
 
   /**
    * A 402 carries a link to whichever billing provider the box runs on, so the
-   * UI can send the customer straight there instead of to a dead end.
+   * UI can send the customer straight there instead of to a dead end:
+   * `checkout_url` when a new subscription is needed, `billing_portal_url` when
+   * an existing one must change, and the legacy Paddle field last.
    */
   get billingUrl(): string | undefined {
-    return this.problem.billing_portal_url ?? this.problem.paddle_checkout_url;
+    // `billing_portal_url` is an empty string, not absent, when billing has no
+    // portal configured (handlers_ext.go changePlan), so `??` would return it.
+    return [
+      this.problem.checkout_url,
+      this.problem.billing_portal_url,
+      this.problem.paddle_checkout_url,
+    ].find((url) => typeof url === 'string' && url !== '');
   }
 }
 
@@ -144,7 +152,18 @@ function asProblem(value: unknown): Problem | undefined {
  * connection, and both read the same way to the person at the keyboard.
  */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.code === 'secret_scan_strict' && error.problem.secret_findings?.length) {
+      // Locations and detector names explain the rejection without copying
+      // secret snippets into toasts or deployment recovery state.
+      const findings = error.problem.secret_findings;
+      const locations = findings
+        .slice(0, 5)
+        .map((finding) => `${finding.file}:${finding.line} (${finding.provider})`);
+      return `${error.message} ${locations.join('; ')}${findings.length > 5 ? `; and ${findings.length - 5} more` : ''}.`;
+    }
+    return error.message;
+  }
   if (error instanceof Error && error.name === 'AbortError') return 'Request cancelled.';
   if (error instanceof TypeError) return 'Could not reach the API. Check your connection.';
   return error instanceof Error ? error.message : 'Something went wrong.';

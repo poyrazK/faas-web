@@ -43,6 +43,33 @@ beforeEach(() => {
 });
 
 describe('DeploymentLifecycle', () => {
+  it('records the pending retry before sending it so reloads cannot blindly repeat it', async () => {
+    const onRetryRequested = vi.fn();
+    retry.mockImplementation(async () => {
+      expect(onRetryRequested).toHaveBeenCalledOnce();
+      return { id: 'a'.repeat(32) };
+    });
+    render(
+      <DeploymentLifecycle
+        deployment={deployment('failed')}
+        onRetryStateChange={onRetryRequested}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    await waitFor(() => expect(onRetryRequested).toHaveBeenCalledOnce());
+    expect(onRetryRequested).toHaveBeenCalledWith('submitting');
+  });
+
+  it('hands a confirmed new retry back to the first-deployment flow', async () => {
+    const onRetried = vi.fn();
+    retry.mockResolvedValue({ id: 'a'.repeat(32), app_id: 'app1' });
+    render(<DeploymentLifecycle deployment={deployment('failed')} onRetried={onRetried} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    await waitFor(() =>
+      expect(onRetried).toHaveBeenCalledWith({ id: 'a'.repeat(32), app_id: 'app1' })
+    );
+  });
+
   it('confirms an immutable full retry and links to the new record', async () => {
     retry.mockResolvedValue({ id: 'new-deployment' });
     render(<DeploymentLifecycle deployment={deployment('failed')} />);
@@ -56,7 +83,7 @@ describe('DeploymentLifecycle', () => {
     expect(retry).toHaveBeenCalledWith({ id: 'd'.repeat(32), from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?deployment=new-deployment&releaseSection=overview'
+      '/dashboard/releases?deployment=new-deployment&releaseSection=overview'
     );
     expect(screen.getByRole('status')).toHaveTextContent('failed record is unchanged');
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
@@ -230,7 +257,7 @@ describe('DeploymentLifecycle', () => {
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Check deployment history' })).toHaveAttribute(
       'href',
-      '/dashboard/deployments?'
+      '/dashboard/releases?'
     );
   });
 

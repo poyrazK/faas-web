@@ -49,6 +49,11 @@ describe('toRunState', () => {
     expect(toRunState('stopped')).toBe('idle');
   });
 
+  it("reads apid's current statuses: evicted_cold is parked, undeployed is undeployed", () => {
+    expect(toRunState('evicted_cold')).toBe('idle');
+    expect(toRunState('undeployed')).toBe('undeployed');
+  });
+
   it('maps the failure vocabulary onto error', () => {
     expect(toRunState('failed')).toBe('error');
     expect(toRunState('crashed')).toBe('error');
@@ -99,6 +104,29 @@ describe('toWorkflow', () => {
     expect(workflow.errorRatePct).toBe(0);
   });
 
+  it('marks metrics unknown when the rollup is absent or degraded, so the zeros are not shown as readings', () => {
+    const degraded = {
+      range: '24h',
+      source: 'degraded: prometheus unreachable',
+      as_of: '2026-08-01T10:00:00Z',
+      apps: null,
+    } as unknown as AppsMetrics;
+    expect(toWorkflow(app(), undefined).metricsUnavailable).toBe(true);
+    expect(toWorkflow(app(), degraded).metricsUnavailable).toBe(true);
+  });
+
+  it('treats an app missing from a healthy rollup as a real zero', () => {
+    const healthy = {
+      range: '24h',
+      source: 'prometheus',
+      as_of: '2026-08-01T10:00:00Z',
+      apps: {},
+    } as unknown as AppsMetrics;
+    const workflow = toWorkflow(app(), healthy);
+    expect(workflow.metricsUnavailable).toBeFalsy();
+    expect(workflow.invocations24h).toBe(0);
+  });
+
   it('takes version and deploy time from the deployment, not the app row', () => {
     // AppResponse defines neither field; the spec's example is misleading.
     const workflow = toWorkflow(app(), undefined, deployment());
@@ -118,8 +146,51 @@ describe('toWorkflow', () => {
     expect(toWorkflow(app(), undefined, deployment()).state).toBe('running');
   });
 
+  it.each([
+    ['failed', 'error'],
+    ['cancelled', 'error'],
+    ['building', 'deploying'],
+    ['imaging', 'deploying'],
+    ['unknown', 'undeployed'],
+  ])('does not report Running for a first deployment that is %s', (status, state) => {
+    const workflow = toWorkflow(
+      app({ deployment_availability: 'no_live_deployment' }),
+      undefined,
+      deployment({ status })
+    );
+    expect(workflow.state).toBe(state);
+  });
+
+  it('keeps an existing live release serving after a newer deployment fails', () => {
+    expect(
+      toWorkflow(
+        app({ deployment_availability: 'live' }),
+        undefined,
+        deployment({ status: 'failed' })
+      ).state
+    ).toBe('running');
+  });
+
   it('falls back to the app type when there is no runtime', () => {
     expect(toWorkflow(app({ type: 'app', runtime: undefined })).runtime).toBe('app');
+  });
+
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'keeps legacy container Apps classified as App when runtime is %s',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'app', runtime })).runtime).toBe('app');
+    }
+  );
+
+  it.each(['node22', 'python312', 'go124'] as const)(
+    'preserves the managed runtime %s for a Function',
+    (runtime) => {
+      expect(toWorkflow(app({ type: 'function', runtime })).runtime).toBe(runtime);
+    }
+  );
+
+  it('preserves internal visibility so app views do not advertise a public endpoint', () => {
+    expect(toWorkflow(app({ visibility: 'internal' })).visibility).toBe('internal');
   });
 });
 

@@ -7,12 +7,13 @@ import {
   sidebarSectionsFor,
 } from './nav-config';
 import { validateSettingsSearch } from './settings-search';
+import { TabNav, tabClassName } from './tabs';
 
 /** Route navigation uses native links: Tab/Enter, new tabs and history all work. */
 export function SecondaryNavigation({ label, items }: { label: string; items: NavItem[] }) {
   const { pathname, hash, search } = useRouterState({ select: (s) => s.location });
   return (
-    <nav aria-label={label} className="flex flex-wrap gap-1 border-b border-border pb-1">
+    <TabNav label={label}>
       {items.map((item) => {
         const currentPath = matchesNavPath(pathname, { ...item, exact: true });
         if (item.search) {
@@ -26,12 +27,13 @@ export function SecondaryNavigation({ label, items }: { label: string; items: Na
               search={(previous) => ({ ...previous, ...item.search })}
               hash={hash}
               aria-current={active ? 'page' : undefined}
-              className={`pressable rounded-t-md border-b-2 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${active ? 'border-brand text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              className={tabClassName(active)}
             >
               {item.label}
             </Link>
           );
         }
+        const active = matchesNavPath(pathname, { ...item, exact: item.exact ?? false });
         return (
           <Link
             key={item.to}
@@ -39,18 +41,14 @@ export function SecondaryNavigation({ label, items }: { label: string; items: Na
             // Reselecting this page must not discard a bookmarked filter/detail.
             search={currentPath ? true : undefined}
             hash={currentPath ? hash : undefined}
-            activeOptions={{ exact: item.exact ?? false, includeSearch: false }}
-            activeProps={{ 'aria-current': 'page', className: 'border-brand text-foreground' }}
-            inactiveProps={{
-              className: 'border-transparent text-muted-foreground hover:text-foreground',
-            }}
-            className="pressable rounded-t-md border-b-2 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            aria-current={active ? 'page' : undefined}
+            className={tabClassName(active)}
           >
             {item.label}
           </Link>
         );
       })}
-    </nav>
+    </TabNav>
   );
 }
 
@@ -59,8 +57,9 @@ export function DashboardSecondaryNavigation() {
   const hub = findNavHub(pathname);
   if (!hub?.sections || hub.pageOwnsNavigation) return null;
   const appSection = APP_SECTIONS.some((item) => matchesNavPath(pathname, item));
-  // Keep this navigation scoped to standalone app pages, not the All apps list.
-  const showAppSections = hub.label === 'Apps' && appSection;
+  // Standalone per-app pages (logs, routes, …) keep their strip; the app list
+  // and app detail pages are not among them.
+  const showAppSections = appSection;
   // A hub whose sections are nested rows in the rail must not restate them as
   // a tab strip: two controls for one choice, one of which silently scrolls
   // away. Settings keeps its strip — its eight `?section=` panels are the

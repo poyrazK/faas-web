@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { createFileRoute } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -19,14 +21,54 @@ import {
   useWebhookDeliveries,
   useWebhooks,
 } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth';
+import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import type { components } from '@/lib/api/schema';
+
+export function validateWebhookSearch(search: Record<string, unknown>): {
+  direction?: 'inbound' | 'outbound';
+} {
+  return { direction: search.direction === 'inbound' ? 'inbound' : undefined };
+}
 
 export const Route = createFileRoute('/dashboard/webhooks')({
   component: WebhooksPage,
   head: () => consoleHead('webhooks'),
+  validateSearch: validateWebhookSearch,
 });
+
+export function WebhooksHub({
+  accountId,
+  slug,
+  direction,
+  onDirection,
+}: {
+  accountId: string;
+  slug: string;
+  direction: 'inbound' | 'outbound';
+  onDirection: (direction: 'inbound' | 'outbound') => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <SegmentedControl
+        label="Webhook direction"
+        value={direction}
+        options={[
+          { key: 'outbound', label: 'Outbound' },
+          { key: 'inbound', label: 'Inbound' },
+        ]}
+        onChange={onDirection}
+      />
+      {direction === 'inbound' ? (
+        <InboundWebhooks accountId={accountId} slug={slug} />
+      ) : (
+        <WebhooksBody slug={slug} />
+      )}
+    </div>
+  );
+}
 
 interface WebhookRow {
   id: string;
@@ -55,6 +97,15 @@ const EVENTS = [
   'budget.threshold',
 ] as const;
 type Event = (typeof EVENTS)[number];
+/**
+ * The spec's `event_filter` enum is narrower than apid's canonical list
+ * (`state.AllAppWebhookEvents`): every event above is accepted by the server,
+ * but 11 of them, `app.created` among them, are missing from the spec. The
+ * server is the authority here, so the cast happens once, at the request.
+ */
+type SpecEventFilter = NonNullable<
+  components['schemas']['CreateAppWebhookRequest']['event_filter']
+>;
 type RetryPolicy = 'default' | 'aggressive' | 'none';
 
 function isHttpsUrl(value: string): boolean {
@@ -144,7 +195,7 @@ function Deliveries({
                         toast({
                           kind: 'error',
                           title: 'Could not retry',
-                          description: errorMessage(err),
+                          error: err,
                         })
                       )
                   }
@@ -183,6 +234,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>('default');
   const [viewing, setViewing] = useState<WebhookRow | null>(null);
+  const [rotating, setRotating] = useState<WebhookRow | null>(null);
   const validation = useFormValidation<'target' | 'secret'>();
   const targetError =
     target.trim().length > 2048
@@ -213,9 +265,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
     void update
       .mutateAsync({ id: w.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Webhook enabled' : 'Webhook paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<WebhookRow>[] = [
     {
@@ -265,27 +315,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
           <button
             type="button"
             aria-label={`Rotate secret for ${w.target}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: 'Rotate this webhook secret?',
-                  description:
-                    'A new HMAC secret is minted server-side. Deliveries signed with the old one stop verifying immediately — update the receiver first.',
-                  confirmLabel: 'Rotate secret',
-                }))
-              )
-                return;
-              void rotate
-                .mutateAsync(w.id)
-                .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not rotate',
-                    description: errorMessage(err),
-                  })
-                );
-            }}
+            onClick={() => setRotating(w)}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             <Refresh className="h-3.5 w-3.5" />
@@ -310,7 +340,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -344,7 +374,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
               .mutateAsync({
                 target_url: target.trim(),
                 webhook_secret: secret,
-                event_filter: events,
+                event_filter: events as SpecEventFilter,
                 retry_policy: retryPolicy,
                 enabled: true,
               })
@@ -356,7 +386,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Webhook added' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not add', error: err })
               );
           }}
         >
@@ -453,6 +483,17 @@ export function WebhooksBody({ slug }: { slug: string }) {
       />
 
       <Deliveries slug={slug} hook={viewing} onClose={() => setViewing(null)} />
+      {rotating && (
+        <RotateSecretDialog
+          name={rotating.target}
+          onClose={() => setRotating(null)}
+          onRotate={(webhookSecret) =>
+            rotate
+              .mutateAsync({ id: rotating.id, webhookSecret })
+              .then(() => toast({ kind: 'success', title: 'Secret rotated' }))
+          }
+        />
+      )}
     </div>
   );
 }
@@ -460,15 +501,29 @@ export function WebhooksBody({ slug }: { slug: string }) {
 function WebhooksPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
+  const { account } = useAuth();
+  const { direction } = Route.useSearch();
+  const navigate = Route.useNavigate();
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Webhooks"
-        description="Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries."
+        description={
+          direction === 'inbound'
+            ? 'Stripe events enter through verified, durable inbound endpoints.'
+            : 'Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries.'
+        }
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="webhooks">
-        <WebhooksBody slug={slug} />
+        <WebhooksHub
+          accountId={account?.id ?? ''}
+          slug={slug}
+          direction={direction ?? 'outbound'}
+          onDirection={(next) =>
+            void navigate({ search: { direction: next === 'inbound' ? 'inbound' : undefined } })
+          }
+        />
       </AppScope>
     </div>
   );

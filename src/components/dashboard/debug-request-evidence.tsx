@@ -261,24 +261,24 @@ export function DebugRequestEvidence({
                   aria-label="Request context"
                   className="flex flex-wrap gap-4 text-sm underline underline-offset-4"
                 >
-                  <a href={`/dashboard/workflows/${encodeURIComponent(slug)}`}>Open app</a>
+                  <a href={`/dashboard/apps/${encodeURIComponent(slug)}`}>Open app</a>
                   {data.request.deployment_id && (
                     <a
-                      href={`/dashboard/deployments?${new URLSearchParams({ deployment: data.request.deployment_id })}`}
+                      href={`/dashboard/releases?${new URLSearchParams({ deployment: data.request.deployment_id })}`}
                     >
                       Open release
                     </a>
                   )}
                   {buildId && (
                     <a
-                      href={`/dashboard/deployments?${new URLSearchParams({ view: 'builds', build: buildId })}`}
+                      href={`/dashboard/releases?${new URLSearchParams({ view: 'builds', build: buildId })}`}
                     >
                       Open build
                     </a>
                   )}
                   <a href={`/dashboard/logs?${new URLSearchParams({ app: slug })}`}>App logs</a>
-                  <a href="/dashboard/traces">Browse invocations</a>
-                  <a href="/dashboard/workers">Browse instances</a>
+                  <a href="/dashboard/invocations">Browse invocations</a>
+                  <a href="/dashboard/instances">Browse instances</a>
                 </nav>
                 <p className="text-xs text-muted-foreground">
                   Logs open for this app. Invocations and instances open their lists; request, trace

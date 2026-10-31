@@ -3,13 +3,13 @@ import { Link } from '@tanstack/react-router';
 import { Popover as PopoverPrimitive } from 'radix-ui';
 import { CheckCircle, WarningTriangle, Xmark } from 'iconoir-react';
 import type { App, Deployment } from '@/lib/api/queries';
-import { useApps, useDeployments, useUsageSummary } from '@/lib/api/queries';
+import { useApps, useDeployments, useOverageCap } from '@/lib/api/queries';
 import { Tooltip } from '@/components/ui/tooltip';
-import type { components } from '@/lib/api/schema';
-import { toRunState } from '@/lib/api/adapters';
 import { formatUsageNumber } from '@/lib/usage-format';
 import { formatRelative } from '@/lib/mock-data';
 import { queryPhase, type QueryPhase } from './primitives';
+import { useWorkspaceUsageSummary, type WorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 
 const DAY = 86_400_000;
 const DISPLAY_LIMIT = 3;
@@ -30,12 +30,12 @@ export interface NeedsAttentionProps {
     items: Pick<Deployment, 'id' | 'app_id' | 'status' | 'created_at'>[];
     next_before?: string | null;
   }>;
+  /** The workspace's allowance; a company's may be unknown (no usage rows yet). */
   usage: ReadResult<
-    Pick<
-      components['schemas']['UsageSummaryResponse'],
-      'month' | 'used_gb_hours' | 'included_gb_hours'
-    >
+    Pick<WorkspaceUsageSummary, 'month' | 'used_gb_hours' | 'included_gb_hours' | 'overage_cents'>
   >;
+  /** The monthly spend cap. Optional so callers without it keep their checks. */
+  spendCap?: ReadResult<{ overage_cap_cents: number | null }>;
 }
 
 function readPhase(result: ReadResult<unknown>, invalid = false): QueryPhase {
@@ -105,6 +105,7 @@ export function NeedsAttentionContent({
   apps,
   deployments,
   usage,
+  spendCap,
   onNavigate,
 }: NeedsAttentionProps) {
   const [now, setNow] = useState(Date.now);
@@ -120,18 +121,12 @@ export function NeedsAttentionContent({
     usage,
     Boolean(
       usage.data &&
-      [usage.data.used_gb_hours, usage.data.included_gb_hours].some(
+      [usage.data.used_gb_hours, usage.data.included_gb_hours ?? 0].some(
         (value) => !Number.isFinite(value) || value < 0
       )
     )
   );
   // A failed refresh must not present cached issues as current observations.
-  const appFailures =
-    appsPhase === 'ready'
-      ? (apps.data ?? [])
-          .filter((app) => !app.deleted_at && toRunState(app.status) === 'error')
-          .sort((a, b) => a.slug.localeCompare(b.slug))
-      : [];
   const failedDeployments =
     deploymentsPhase === 'ready'
       ? (deployments.data?.items ?? [])
@@ -148,26 +143,42 @@ export function NeedsAttentionContent({
           .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       : [];
   const allowance = usagePhase === 'ready' ? usage.data : undefined;
+  // An unknown allowance (a company with no usage yet) raises nothing.
+  const included = allowance?.included_gb_hours ?? null;
   const lowAllowance = Boolean(
-    allowance && allowance.used_gb_hours >= allowance.included_gb_hours * 0.8
+    allowance && included !== null && allowance.used_gb_hours >= included * 0.8
   );
-  const exhausted = Boolean(allowance && allowance.used_gb_hours >= allowance.included_gb_hours);
+  const exhausted = Boolean(allowance && included !== null && allowance.used_gb_hours >= included);
+  // A reached cap parks running apps and refuses new wakes (ADR-1162), so it
+  // outranks a low allowance. $0 is reached as soon as the allowance is gone.
+  const capPhase = spendCap ? readPhase(spendCap) : 'ready';
+  const capCents = capPhase === 'ready' ? spendCap?.data?.overage_cap_cents : undefined;
+  const overageCents = allowance?.overage_cents ?? 0;
+  const capReached = Boolean(
+    allowance &&
+    typeof capCents === 'number' &&
+    overageCents >= capCents &&
+    (capCents > 0 || exhausted)
+  );
+  // apid reports no failed state for an app (its statuses are active,
+  // evicted_cold, deleted and undeployed), so failures are read from
+  // deployments. The app list only names them.
   const noIssues =
-    appsPhase === 'ready' &&
     deploymentsPhase === 'ready' &&
     usagePhase === 'ready' &&
-    appFailures.length === 0 &&
     failedDeployments.length === 0 &&
-    !lowAllowance;
+    !lowAllowance &&
+    capPhase === 'ready' &&
+    !capReached;
   // Resolve names only from a successful accessible app inventory. A deleted
   // app's historical release still has a safe, exact deployment detail link.
   const appNames = new Map(
     appsPhase === 'ready' ? (apps.data ?? []).map((app) => [app.id, app.slug]) : []
   );
-  const issueCount = appFailures.length + failedDeployments.length + Number(lowAllowance);
+  const issueCount = failedDeployments.length + Number(lowAllowance) + Number(capReached);
   const SummaryIcon = noIssues ? CheckCircle : WarningTriangle;
   const summaryColor = noIssues ? 'var(--status-good)' : 'var(--status-warning)';
-  const checksUnavailable = [appsPhase, deploymentsPhase, usagePhase].some(
+  const checksUnavailable = [deploymentsPhase, usagePhase, capPhase].some(
     (phase) => phase === 'error' || phase === 'unreachable'
   );
 
@@ -201,17 +212,7 @@ export function NeedsAttentionContent({
             </p>
           </div>
         </div>
-        <dl className="mt-5 grid grid-cols-3 gap-3 border-t border-border pt-4 text-xs">
-          <div>
-            <dt className="text-muted-foreground">App failures</dt>
-            <dd className="mt-1 font-medium">
-              {appsPhase === 'ready'
-                ? appFailures.length
-                : appsPhase === 'loading'
-                  ? 'Checking…'
-                  : 'Unavailable'}
-            </dd>
-          </div>
+        <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 text-xs">
           <div>
             <dt className="text-muted-foreground">Failed in 24h</dt>
             <dd className="mt-1 font-medium">
@@ -226,9 +227,11 @@ export function NeedsAttentionContent({
             <dt className="text-muted-foreground">Allowance used</dt>
             <dd className="mt-1 font-medium">
               {allowance
-                ? allowance.included_gb_hours > 0
-                  ? `${formatUsageNumber((allowance.used_gb_hours / allowance.included_gb_hours) * 100, 1)}%`
-                  : 'None included'
+                ? included === null
+                  ? 'Not known yet'
+                  : included > 0
+                    ? `${formatUsageNumber((allowance.used_gb_hours / included) * 100, 1)}%`
+                    : 'None included'
                 : usagePhase === 'loading'
                   ? 'Checking…'
                   : 'Unavailable'}
@@ -237,45 +240,6 @@ export function NeedsAttentionContent({
         </dl>
       </div>
       <div className="flex flex-col gap-6">
-        {(appsPhase !== 'ready' || appFailures.length > 0) && (
-          <section aria-label="App failures">
-            <h3 className="mb-3 text-xs font-medium text-muted-foreground">App failures</h3>
-            {appsPhase !== 'ready' ? (
-              <ReadNotice label="App status" phase={appsPhase} retry={apps.refetch} />
-            ) : (
-              <>
-                <ul className="divide-y divide-border">
-                  {appFailures.slice(0, DISPLAY_LIMIT).map((app) => (
-                    <AttentionRow
-                      key={app.id}
-                      title={app.slug}
-                      detail={`Reported status: ${app.status}. Inspect the app logs.`}
-                    >
-                      <Link
-                        onClick={onNavigate}
-                        to="/dashboard/workflows/$workflowId"
-                        params={{ workflowId: app.slug }}
-                        search={{ tab: 'Logs' }}
-                        aria-label={`View logs for ${app.slug}`}
-                        className={ACTION_CLASS}
-                      >
-                        View logs
-                      </Link>
-                    </AttentionRow>
-                  ))}
-                </ul>
-                {appFailures.length > DISPLAY_LIMIT && (
-                  <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>Showing 3 of {appFailures.length} failing apps.</span>
-                    <Link onClick={onNavigate} to="/dashboard/workflows" className={ACTION_CLASS}>
-                      View all apps
-                    </Link>
-                  </p>
-                )}
-              </>
-            )}
-          </section>
-        )}
         {(deploymentsPhase !== 'ready' || failedDeployments.length > 0) && (
           <section aria-label="Recent failed deployments">
             <h3 className="mb-3 text-xs font-medium text-muted-foreground">
@@ -298,7 +262,7 @@ export function NeedsAttentionContent({
                     >
                       <Link
                         onClick={onNavigate}
-                        to="/dashboard/deployments"
+                        to="/dashboard/releases"
                         search={{ deployment: deployment.id }}
                         aria-label={`View deployment ${deployment.id}`}
                         title={deployment.id}
@@ -327,17 +291,37 @@ export function NeedsAttentionContent({
               <ul>
                 <AttentionRow
                   title={
-                    allowance.included_gb_hours === 0
+                    included === 0
                       ? 'No compute allowance included'
                       : exhausted
                         ? 'Compute allowance exhausted'
                         : 'Compute allowance running low'
                   }
                   tone={exhausted ? 'critical' : 'warning'}
-                  detail={`${formatUsageNumber(allowance.used_gb_hours, 3)} of ${formatUsageNumber(allowance.included_gb_hours, 3)} GB-h used for ${allowance.month}. ${formatUsageNumber(Math.max(0, allowance.included_gb_hours - allowance.used_gb_hours), 3)} GB-h remaining.`}
+                  detail={`${formatUsageNumber(allowance.used_gb_hours, 3)} of ${formatUsageNumber(included ?? 0, 3)} GB-h used for ${allowance.month}. ${formatUsageNumber(Math.max(0, (included ?? 0) - allowance.used_gb_hours), 3)} GB-h remaining.`}
                 >
                   <Link onClick={onNavigate} to="/dashboard/usage" className={ACTION_CLASS}>
                     Review usage
+                  </Link>
+                </AttentionRow>
+              </ul>
+            )}
+          </section>
+        )}
+        {spendCap && (capPhase !== 'ready' || capReached) && (
+          <section aria-label="Spend cap">
+            <h3 className="mb-3 text-xs font-medium text-muted-foreground">Spend cap</h3>
+            {capPhase !== 'ready' ? (
+              <ReadNotice label="Spend cap" phase={capPhase} retry={spendCap.refetch} />
+            ) : (
+              <ul>
+                <AttentionRow
+                  title="Spend cap reached"
+                  tone="critical"
+                  detail={`New wakes beyond the allowance are refused and running apps park until the cap is raised or ${allowance?.month ?? 'the period'} ends.`}
+                >
+                  <Link onClick={onNavigate} to="/dashboard/usage" className={ACTION_CLASS}>
+                    Review spend cap
                   </Link>
                 </AttentionRow>
               </ul>
@@ -348,7 +332,7 @@ export function NeedsAttentionContent({
           <span>
             Deployment checks cover at most the latest 50 deployments, not the full history.
           </span>
-          <Link onClick={onNavigate} to="/dashboard/deployments" className={ACTION_CLASS}>
+          <Link onClick={onNavigate} to="/dashboard/releases" className={ACTION_CLASS}>
             Open deployment history
           </Link>
         </p>
@@ -360,12 +344,17 @@ export function NeedsAttentionContent({
 function LiveAttention({ onNavigate }: { onNavigate: () => void }) {
   const apps = useApps({ refetchInterval: 15_000 });
   const deployments = useDeployments(50, { refetchInterval: 10_000 });
-  const usage = useUsageSummary();
+  // The workspace's allowance; a company has no spend cap route, so its cap
+  // check does not run rather than reading the signed-in account's cap.
+  const { org } = useWorkspaceTarget();
+  const usage = useWorkspaceUsageSummary();
+  const spendCap = useOverageCap({ enabled: !org });
   return (
     <NeedsAttentionContent
       apps={apps}
       deployments={deployments}
       usage={usage}
+      spendCap={org ? undefined : spendCap}
       onNavigate={onNavigate}
     />
   );

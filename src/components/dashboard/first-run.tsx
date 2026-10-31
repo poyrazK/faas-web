@@ -37,13 +37,13 @@ export function FirstRun() {
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
           <Button asChild variant="cta">
-            <Link to="/dashboard/workflows/new" search={{ source: 'git' }}>
+            <Link to="/dashboard/apps/new" search={{ source: 'git' }}>
               <Github aria-hidden />
               Deploy from GitHub
             </Link>
           </Button>
           <Button asChild variant="outline">
-            <Link to="/dashboard/workflows/new" search={{ source: 'template' }}>
+            <Link to="/dashboard/apps/new" search={{ source: 'template' }}>
               Explore templates
             </Link>
           </Button>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -18,9 +18,11 @@ import {
   type EdgeRule,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
+import { CapabilityNotice } from '@/components/dashboard/capability-notice';
+import { useCapability } from '@/lib/api/capabilities';
+import { useAuth } from '@/lib/auth';
 
 export const Route = createFileRoute('/dashboard/edge-rules')({
   component: EdgeRulesPage,
@@ -37,6 +39,7 @@ export const Route = createFileRoute('/dashboard/edge-rules')({
 
 interface EdgeRuleRow {
   id: string;
+  accountId: string;
   priority: number;
   kind: string;
   app: string;
@@ -56,11 +59,25 @@ interface EdgeRuleRow {
  */
 export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const { toast } = useToast();
+  const { account } = useAuth();
+  const accountId = account?.id ?? '';
+  const cacheCapability = useCapability('declarative-response-caching');
+  const cacheAllowed =
+    Boolean(accountId) &&
+    cacheCapability.accountId === accountId &&
+    cacheCapability.state === 'available' &&
+    account?.plan !== 'free';
+  const writeIdentity = JSON.stringify([accountId, scoped, cacheAllowed]);
+  const liveWrite = useRef({ identity: writeIdentity, epoch: 0 });
+  useLayoutEffect(() => {
+    if (liveWrite.current.identity !== writeIdentity)
+      liveWrite.current = { identity: writeIdentity, epoch: liveWrite.current.epoch + 1 };
+  }, [writeIdentity]);
   const confirm = useConfirm();
-  const accountRules = useEdgeRules(!scoped);
-  const appRules = useAppEdgeRules(scoped ?? '');
+  const accountRules = useEdgeRules(!scoped, accountId);
+  const appRules = useAppEdgeRules(scoped ?? '', accountId);
   const { data, isPending, error, refetch } = scoped ? appRules : accountRules;
-  const { data: apps } = useApps();
+  const { data: apps } = useApps(undefined, accountId);
   const deleteRule = useDeleteEdgeRule();
   const updateRule = useUpdateEdgeRule();
 
@@ -68,7 +85,13 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const [creating, setCreating] = useState(false);
   const [targetApp, setTargetApp] = useState<string | undefined>(undefined);
 
-  const rules = useMemo(() => [...(data ?? [])].sort((a, b) => a.priority - b.priority), [data]);
+  const rules = useMemo(
+    () =>
+      (data ?? [])
+        .filter((rule) => accountId && rule.account_id === accountId)
+        .sort((a, b) => a.priority - b.priority),
+    [data, accountId]
+  );
   const byId = useMemo(() => new Map(rules.map((r) => [r.id, r])), [rules]);
   const nextPriority = rules.length ? Math.max(...rules.map((r) => r.priority)) + 10 : 10;
   const slug = scoped ?? targetApp ?? apps?.[0]?.slug ?? '';
@@ -77,6 +100,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     const bySlug = slugIndex(apps ?? []);
     return rules.map((r) => ({
       id: r.id,
+      accountId: r.account_id,
       priority: r.priority,
       kind: r.kind,
       app: bySlug.get(r.app_id) ?? r.app_id,
@@ -88,13 +112,16 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     }));
   }, [rules, apps]);
 
-  const setEnabled = (r: EdgeRuleRow, enabled: boolean) =>
+  const canWriteRule = (r: EdgeRuleRow) =>
+    r.accountId === accountId && (r.kind !== 'cache' || cacheAllowed);
+
+  const setEnabled = (r: EdgeRuleRow, enabled: boolean) => {
+    if (!canWriteRule(r)) return;
     void updateRule
       .mutateAsync({ id: r.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Rule enabled' : 'Rule paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
+  };
 
   /**
    * Priority is the evaluation order, so moving a rule means swapping its
@@ -104,14 +131,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     const index = rules.findIndex((x) => x.id === r.id);
     const neighbour = rules[index + direction];
     if (!neighbour) return;
+    const neighbourRow = rows.find((row) => row.id === neighbour.id);
+    if (!canWriteRule(r) || !neighbourRow || !canWriteRule(neighbourRow)) return;
     void Promise.all([
       updateRule.mutateAsync({ id: r.id, priority: neighbour.priority }),
       updateRule.mutateAsync({ id: neighbour.id, priority: r.priority }),
     ])
       .then(() => toast({ kind: 'success', title: 'Order changed' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not reorder', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not reorder', error: err }));
   };
 
   const columns: Column<EdgeRuleRow>[] = [
@@ -155,6 +182,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
             size="sm"
             checked={r.enabled}
             onCheckedChange={(on) => setEnabled(r, on)}
+            disabled={!canWriteRule(r)}
             aria-label={`${r.enabled ? 'Pause' : 'Enable'} rule ${r.priority}`}
             className="data-[state=checked]:bg-brand"
           />
@@ -167,12 +195,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   // hand-written stopPropagation.
   const rowActionsFor = (r: EdgeRuleRow) => {
     const index = rules.findIndex((x) => x.id === r.id);
+    const previous = rows[index - 1];
+    const next = rows[index + 1];
     return (
       <>
         <button
           type="button"
           aria-label={`Move rule ${r.priority} earlier`}
-          disabled={index === 0}
+          disabled={index === 0 || !canWriteRule(r) || !previous || !canWriteRule(previous)}
           onClick={() => move(r, -1)}
           className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
         >
@@ -181,7 +211,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         <button
           type="button"
           aria-label={`Move rule ${r.priority} later`}
-          disabled={index === rules.length - 1}
+          disabled={index === rules.length - 1 || !canWriteRule(r) || !next || !canWriteRule(next)}
           onClick={() => move(r, 1)}
           className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
         >
@@ -190,7 +220,10 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         <button
           type="button"
           aria-label={`Delete rule ${r.id}`}
+          disabled={!canWriteRule(r)}
           onClick={async () => {
+            if (!canWriteRule(r)) return;
+            const writeEpoch = liveWrite.current.epoch;
             if (
               !(await confirm({
                 title: 'Delete this edge rule?',
@@ -200,6 +233,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
               }))
             )
               return;
+            if (liveWrite.current.epoch !== writeEpoch || !canWriteRule(r)) return;
             void deleteRule
               .mutateAsync(r.id)
               .then(() => toast({ kind: 'success', title: 'Rule deleted' }))
@@ -207,7 +241,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
                 toast({
                   kind: 'error',
                   title: 'Could not delete',
-                  description: errorMessage(err),
+                  error: err,
                 })
               );
           }}
@@ -253,6 +287,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         </Button>
       </div>
 
+      {!cacheAllowed && rules.some((rule) => rule.kind === 'cache') && (
+        <CapabilityNotice
+          capability={cacheCapability.capability}
+          state={cacheCapability.state}
+          onRetry={cacheCapability.refresh}
+        />
+      )}
+
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -276,7 +318,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       {(creating || editing) && (
         <EdgeRuleDialog
           // Remounts per rule so the draft reseeds without an effect.
-          key={editing?.id ?? 'new'}
+          key={`${accountId}:${slug}:${editing?.id ?? 'new'}`}
           open
           rule={editing}
           slug={editing ? (rows.find((r) => r.id === editing.id)?.app ?? slug) : slug}

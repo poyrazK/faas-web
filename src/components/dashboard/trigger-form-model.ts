@@ -47,16 +47,18 @@ export interface TriggerDraft {
   limits: TriggerLimits;
 }
 
-const BROKER_KINDS: BrokerKind[] = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'];
+/** Kinds the console creates. sqs_compat is refused (faas d69c41b965); realtime is Wave 3. */
+export type CreatableBrokerKind = Extract<BrokerKind, 'kafka' | 'nats' | 'redis_streams' | 'queue'>;
+const CREATABLE: CreatableBrokerKind[] = ['kafka', 'nats', 'redis_streams', 'queue'];
 
-export function allowedBrokerKinds(limits: TriggerLimits): BrokerKind[] {
+export function allowedBrokerKinds(limits: TriggerLimits): CreatableBrokerKind[] {
   if (!limits.triggers_allowed) return [];
-  return limits.trigger_kinds.filter((kind): kind is BrokerKind =>
-    BROKER_KINDS.includes(kind as BrokerKind)
+  return limits.trigger_kinds.filter((kind): kind is CreatableBrokerKind =>
+    CREATABLE.includes(kind as CreatableBrokerKind)
   );
 }
 
-export function sourceDraft(kind: BrokerKind): TriggerSourceDraft {
+export function sourceDraft(kind: CreatableBrokerKind): TriggerSourceDraft {
   switch (kind) {
     case 'kafka':
       return {
@@ -80,8 +82,6 @@ export function sourceDraft(kind: BrokerKind): TriggerSourceDraft {
       return { kind, url: '', stream: '', subject: '', durable: '' };
     case 'redis_streams':
       return { kind, addr: '', stream: '', group: '' };
-    case 'sqs_compat':
-      return { kind, queueUrl: '', longPollSecs: '' };
     case 'queue':
       return { kind, mode: 'queue' };
   }
@@ -127,7 +127,7 @@ export function validateTriggerDraft(draft: TriggerDraft): Record<string, string
   if (!/^[a-z0-9][a-z0-9-]*$/.test(draft.slug.trim())) {
     errors.slug = 'Use lower-case letters, digits, and dashes.';
   }
-  if (!allowedBrokerKinds(draft.limits).includes(draft.source.kind)) {
+  if (!(allowedBrokerKinds(draft.limits) as string[]).includes(draft.source.kind)) {
     errors.kind = 'This source kind is not included in the current plan.';
   }
 
