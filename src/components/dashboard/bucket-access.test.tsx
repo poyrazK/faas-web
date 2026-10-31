@@ -92,6 +92,26 @@ describe('BucketAccess', () => {
   });
 });
 
+describe('BucketAccess S3 keys owned by an app binding', () => {
+  it('leaves out a credential that belongs to an app binding, which is shown as that connection', () => {
+    const credential = (id: string, label: string) => ({
+      id,
+      bucket_id: 'b',
+      access_key_id: `GRGA${id}`,
+      label,
+      permission: 'read',
+      status: 'active',
+      created_at: '2026-10-01T00:00:00Z',
+    });
+    useBucketS3Credentials.mockReturnValue(
+      ready({ items: [credential('bound', 'compute'), credential('mine', 'ci-backup')] })
+    );
+    render(wrap(<BucketAccess slug="api" bucketId="b" hiddenCredentials={new Set(['bound'])} />));
+    expect(screen.getByText('ci-backup')).toBeInTheDocument();
+    expect(screen.queryByText('compute')).not.toBeInTheDocument();
+  });
+});
+
 describe('BucketAccess grants', () => {
   it('shows the key’s own status beside the grant, since a revoked key grants nothing', () => {
     render(wrap(<BucketAccess slug="api" bucketId="b17c0ffee0000000000000000000dead" />));

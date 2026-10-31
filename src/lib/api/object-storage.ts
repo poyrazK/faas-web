@@ -66,6 +66,29 @@ export function signStoredObject(
   );
 }
 
+/**
+ * A request to a signed URL goes to the storage host, not to the API, so a
+ * network failure there is not "could not reach the API": the API just
+ * answered with the URL. `errorMessage` shows this message as it is.
+ */
+export class StorageUnreachableError extends Error {
+  constructor() {
+    super('Could not reach the storage endpoint. Check your connection and try again.');
+    this.name = 'StorageUnreachableError';
+  }
+}
+
+/** fetch against a signed URL, with its network failures named for the storage host. */
+async function fetchSigned(url: string, init: RequestInit) {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    // fetch rejects with a TypeError for CORS, DNS and dropped connections.
+    if (error instanceof TypeError) throw new StorageUnreachableError();
+    throw error;
+  }
+}
+
 /** Direct provider request: never use the authenticated Gregale client. */
 export async function uploadSignedObject(
   signed: components['schemas']['ObjectSignedRequest'],
@@ -74,7 +97,7 @@ export async function uploadSignedObject(
   const headers = new Headers(signed.headers);
   // fetch sets this forbidden header from the File body, matching the signature.
   headers.delete('Content-Length');
-  const response = await fetch(signed.url, {
+  const response = await fetchSigned(signed.url, {
     method: 'PUT',
     headers,
     body: file,
@@ -166,6 +189,99 @@ export function revokeBucketS3Credential(slug: string, bucket: string, credentia
       params: { path: { slug, bucket, credential } },
     })
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Compute bindings: the owning app's runtime reaching its bucket
+ * ------------------------------------------------------------------ */
+
+export type BucketBinding = components['schemas']['ObjectStorageComputeBinding'];
+export type BindingPermission =
+  components['schemas']['CreateObjectStorageComputeBindingRequest']['permission'];
+
+export const bindingKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 'compute-bindings'] as const;
+
+/** Bindings for one bucket. Secret values are never returned, only their names. */
+export function useBucketBindings(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: bindingKey(slug, bucket),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/compute-bindings', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    // A rotation keeps the previous key until the rolling refresh drains; poll until it settles.
+    refetchInterval: (query) =>
+      query.state.data?.items.some((b) => b.rotation_pending) ? 5_000 : false,
+  });
+}
+
+/**
+ * Inject a least-privilege credential for this bucket into the app as sealed
+ * secrets. Without a prefix, apid names them GREGALE_S3_<BUCKET>_*.
+ */
+export function createBucketBinding(
+  slug: string,
+  bucket: string,
+  input: { permission: BindingPermission; prefix?: string }
+) {
+  return unwrap(
+    api.POST('/v1/apps/{slug}/buckets/{bucket}/compute-bindings', {
+      params: { path: { slug, bucket } },
+      body: { permission: input.permission, ...(input.prefix ? { prefix: input.prefix } : {}) },
+    })
+  );
+}
+
+export function rotateBucketBinding(slug: string, bucket: string, binding: string) {
+  return unwrap(
+    api.POST('/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}/rotate', {
+      params: { path: { slug, bucket, binding } },
+    })
+  );
+}
+
+export function revokeBucketBinding(slug: string, bucket: string, binding: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/buckets/{bucket}/compute-bindings/{binding}', {
+      params: { path: { slug, bucket, binding } },
+    })
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Bucket settings, read-only here
+ * ------------------------------------------------------------------ */
+
+export function useBucketVersioning(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'buckets', bucket, 'versioning'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/versioning', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    retry: false,
+  });
+}
+
+export function useBucketLifecycle(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: ['apps', slug, 'buckets', bucket, 'lifecycle'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/lifecycle', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    retry: false,
+  });
 }
 
 /** Account-wide object-storage accounting, with the policy caps it is measured against. */

@@ -75,15 +75,23 @@ export function BucketAccess({
   slug,
   bucketId,
   provisioningEnabled = true,
+  hiddenCredentials,
 }: {
   slug: string;
   bucketId: string;
   provisioningEnabled?: boolean;
+  /** Credentials owned by an app binding; they are shown as that connection instead. */
+  hiddenCredentials?: ReadonlySet<string>;
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <AccessGrants slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
-      <S3Credentials slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
+      <S3Credentials
+        slug={slug}
+        bucket={bucketId}
+        provisioningEnabled={provisioningEnabled}
+        hidden={hiddenCredentials}
+      />
     </div>
   );
 }
@@ -252,15 +260,24 @@ function S3Credentials({
   slug,
   bucket,
   provisioningEnabled,
+  hidden,
 }: {
   slug: string;
   bucket: string;
   provisioningEnabled: boolean;
+  hidden?: ReadonlySet<string>;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
-  const credentials = useBucketS3Credentials(slug, bucket);
+  const query = useBucketS3Credentials(slug, bucket);
+  const credentials = {
+    ...query,
+    data: query.data && {
+      ...query.data,
+      items: query.data.items.filter((c) => !hidden?.has(c.id)),
+    },
+  };
   const [label, setLabel] = useState('');
   const [permission, setPermission] = useState<Permission>('read');
   const [secret, setSecret] = useState<OneTimeSecret | null>(null);

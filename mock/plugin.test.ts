@@ -190,6 +190,112 @@ describe('a deployment created through the mock', () => {
   });
 });
 
+describe('object storage buckets in the mock', () => {
+  it('binds a bucket to its app under the default prefix, and counts the credential once', async () => {
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug: 'media-api', type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+    const bucket = await json('/v1/apps/media-api/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'user-uploads', scope: 'default', region: 'us-east-1' }),
+    });
+    expect(bucket.status).toBe(201);
+    const id = bucket.body.id as string;
+
+    const bound = await json(`/v1/apps/media-api/buckets/${id}/compute-bindings`, {
+      method: 'POST',
+      body: JSON.stringify({ permission: 'read_write' }),
+    });
+    expect(bound.status).toBe(201);
+    expect(bound.body.prefix).toBe('GREGALE_S3_USER_UPLOADS');
+    expect(bound.body.secret_keys.secret_access_key).toBe(
+      'GREGALE_S3_USER_UPLOADS_SECRET_ACCESS_KEY'
+    );
+
+    const keys = await json(`/v1/apps/media-api/buckets/${id}/s3-credentials`);
+    expect(keys.body.items.map((c: { id: string }) => c.id)).toContain(bound.body.credential.id);
+
+    const revoked = await fetch(
+      `${base}/v1/apps/media-api/buckets/${id}/compute-bindings/${bound.body.id}`,
+      { method: 'DELETE' }
+    );
+    expect(revoked.status).toBe(204);
+    expect((await json(`/v1/apps/media-api/buckets/${id}/compute-bindings`)).body.items).toEqual(
+      []
+    );
+  });
+
+  it('refuses to delete a bucket that still holds objects', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'full-bucket', type: 'app', runtime: 'node24' }),
+    });
+    const { body } = await json('/v1/apps/full-bucket/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'docs' }),
+    });
+    const signed = await json(`/v1/apps/full-bucket/buckets/${body.id}/signed-url`, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'PUT', key: 'a.txt', size_bytes: 3 }),
+    });
+    await fetch(signed.body.url, { method: 'PUT', body: 'abc' });
+    const res = await fetch(`${base}/v1/apps/full-bucket/buckets/${body.id}`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('answers a signed upload on the dev origin, and only records what was sent', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'upload-app', type: 'app', runtime: 'node24' }),
+    });
+    const { body } = await json('/v1/apps/upload-app/buckets', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'media' }),
+    });
+    const objects = async () =>
+      (await json(`/v1/apps/upload-app/buckets/${body.id}/objects`)).body.items as {
+        key: string;
+        size_bytes: number;
+      }[];
+    const sign = async (method: string, key: string) =>
+      (
+        await json(`/v1/apps/upload-app/buckets/${body.id}/signed-url`, {
+          method: 'POST',
+          body: JSON.stringify({ method, key, size_bytes: 11, content_type: 'text/plain' }),
+        })
+      ).body.url as string;
+
+    const put = await sign('PUT', 'notes/hello world.txt');
+    // Same origin as the console, so the browser can PUT without CORS.
+    expect(new URL(put).origin).toBe(base);
+    // Signing is a promise to accept bytes, not an upload.
+    expect(await objects()).toEqual([]);
+
+    const sent = await fetch(put, { method: 'PUT', body: 'hello there' });
+    expect(sent.status).toBe(200);
+    expect(await objects()).toMatchObject([{ key: 'notes/hello world.txt', size_bytes: 11 }]);
+
+    const got = await fetch(await sign('GET', 'notes/hello world.txt'));
+    expect(got.status).toBe(200);
+    expect(await got.text()).toBe('hello there');
+
+    // A URL signed for reading does not take writes, and a forged one takes nothing.
+    const read = await sign('GET', 'other.txt');
+    expect((await fetch(read, { method: 'PUT', body: 'x' })).status).toBe(403);
+    const forged = new URL(put);
+    forged.searchParams.set('X-Amz-Signature', 'forged');
+    expect((await fetch(forged, { method: 'PUT', body: 'x' })).status).toBe(403);
+    expect((await objects()).map((o) => o.key)).toEqual(['notes/hello world.txt']);
+  });
+});
+
 describe('app release settings through PATCH /v1/apps/{slug}', () => {
   const patch = (slug: string, body: unknown) =>
     json(`/v1/apps/${slug}`, { method: 'PATCH', body: JSON.stringify(body) });
