@@ -1,6 +1,7 @@
 import { Panel, StatTile } from '@/components/dashboard/primitives';
 import { errorMessage } from '@/lib/api/errors';
 import { useObjectStorageUsage } from '@/lib/api/object-storage';
+import { ACCOUNT_CURRENCY } from '@/lib/money';
 
 /**
  * Object-storage accounting for the account, against the caps it is measured
@@ -25,9 +26,9 @@ function bytes(value: number): string {
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
 
-// `ObjectStorageUsage.cost_millicents` is documented as EUR; only the
-// `charges` block carries a currency of its own.
-function money(millicents: number, currency = 'EUR'): string {
+// `ObjectStorageUsage.cost_millicents` is account money, USD (faas
+// pkg/financial/currency.go, ADR-1430); the `charges` block names its own.
+function money(millicents: number, currency: string = ACCOUNT_CURRENCY): string {
   const amount = millicents / 100_000;
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
