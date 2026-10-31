@@ -6,11 +6,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NO_ASYNC_OPTIONS, type AsyncInvokeOptions } from '@/lib/api/async-invocations';
 import { spyApi } from '@/test/api';
 
-const cap = vi.hoisted(() => ({ access: 'on' as string }));
+const cap = vi.hoisted(() => ({ access: 'on' as string, workPolicies: 'on' as string }));
 vi.mock('@/lib/api/capabilities', () => ({
-  useCapabilityAccess: () => ({
-    access: cap.access,
-    capability: { key: 'async-invocations', maturity: 'beta' },
+  useCapabilityAccess: (id: string) => ({
+    access: id === 'work-policies' ? cap.workPolicies : cap.access,
+    capability: { key: id, maturity: id === 'work-policies' ? 'preview' : 'beta' },
     refresh: vi.fn(),
   }),
 }));
@@ -55,6 +55,7 @@ function routes(policies: unknown[]) {
 
 beforeEach(() => {
   cap.access = 'on';
+  cap.workPolicies = 'on';
   latest.mockReset();
 });
 afterEach(() => vi.restoreAllMocks());
@@ -112,4 +113,14 @@ it('renders nothing when async invocations are not available to the account', ()
   mount();
   expect(screen.queryByText(/Work policy/)).not.toBeInTheDocument();
   expect(get).not.toHaveBeenCalled();
+});
+
+it('leaves out work policies, and never reads them, while that capability is hidden', async () => {
+  cap.workPolicies = 'off';
+  const get = routes([{ name: 'document-index', revision: 3 }]);
+  mount();
+  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  expect(await screen.findByLabelText('On failure')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Work policy')).not.toBeInTheDocument();
+  expect(get).not.toHaveBeenCalledWith('/v1/apps/{slug}/work-policies', expect.anything());
 });

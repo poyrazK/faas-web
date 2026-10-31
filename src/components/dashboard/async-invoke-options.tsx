@@ -49,7 +49,8 @@ function Fields({
   value: AsyncInvokeOptions;
   onChange: (next: AsyncInvokeOptions) => void;
 }) {
-  const policies = useAppWorkPolicies(slug);
+  const policiesOn = useCapabilityAccess('work-policies').access === 'on';
+  const policies = useAppWorkPolicies(slug, policiesOn);
   const hooks = useWebhooks(slug);
   const set = (patch: Partial<AsyncInvokeOptions>) => onChange({ ...value, ...patch });
   const policyList = policies.data ?? [];
@@ -76,30 +77,32 @@ function Fields({
 
   return (
     <div className="grid gap-4 border-t border-border p-3 sm:grid-cols-2">
-      <label className="flex min-w-0 flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Work policy</span>
-        <select
-          aria-label="Work policy"
-          value={value.policy}
-          onChange={(e) => set({ policy: e.target.value })}
-          disabled={policies.isPending}
-          className={FIELD}
-        >
-          <option value="">None</option>
-          {policyList.map((policy) => (
-            <option key={policy.name} value={policy.name}>
-              {policy.name}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-muted-foreground">
-          {policies.error
-            ? errorMessage(policies.error)
-            : policies.isSuccess && policyList.length === 0
-              ? 'This app has no work policies. Declare them under work_policies in gregale.yaml.'
-              : 'Work with the same key runs in order, one at a time.'}
-        </span>
-      </label>
+      {policiesOn && (
+        <label className="flex min-w-0 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Work policy</span>
+          <select
+            aria-label="Work policy"
+            value={value.policy}
+            onChange={(e) => set({ policy: e.target.value })}
+            disabled={policies.isPending}
+            className={FIELD}
+          >
+            <option value="">None</option>
+            {policyList.map((policy) => (
+              <option key={policy.name} value={policy.name}>
+                {policy.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            {policies.error
+              ? errorMessage(policies.error)
+              : policies.isSuccess && policyList.length === 0
+                ? 'This app has no work policies. Declare them under work_policies in gregale.yaml.'
+                : 'Work with the same key runs in order, one at a time.'}
+          </span>
+        </label>
+      )}
       <label className="flex min-w-0 flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Deadline (optional)</span>
         <input
@@ -114,7 +117,7 @@ function Fields({
           to the plan limit.
         </span>
       </label>
-      {value.policy && (
+      {policiesOn && value.policy && (
         <>
           <label className="flex min-w-0 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Work key</span>

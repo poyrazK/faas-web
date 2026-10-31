@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { Refresh } from 'iconoir-react';
 import { Pill } from '@/components/dashboard/resource-table';
-import { Timestamp } from '@/components/dashboard/events/event-format';
+import { Timestamp } from '@/components/ui/timestamp';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import {
-  replayErrorMessage,
+  replayErrorDescription,
   replayPath,
   useReplayKeyedInvocation,
   type Invocation,
@@ -43,6 +43,7 @@ export function ReplayInvocationButton({
   const plain = useReplayInvocation();
   const keyed = useReplayKeyedInvocation();
   const path = replayPath(invocation);
+  const busy = plain.isPending || keyed.isPending;
 
   if (path.kind === 'none') {
     return variant === 'full' ? (
@@ -71,7 +72,12 @@ export function ReplayInvocationButton({
       const child = await mutation.mutateAsync(invocation.id);
       toast({ kind: 'success', title: 'Replay queued', description: child.id });
     } catch (error) {
-      toast({ kind: 'error', title: 'Could not replay', description: replayErrorMessage(error) });
+      toast({
+        kind: 'error',
+        title: 'Could not replay',
+        description: replayErrorDescription(error),
+        error,
+      });
     }
   };
 
@@ -80,11 +86,12 @@ export function ReplayInvocationButton({
       <button
         type="button"
         aria-label={`Replay invocation ${invocation.id}`}
+        disabled={busy}
         onClick={(event) => {
           event.stopPropagation();
           void replay();
         }}
-        className="text-muted-foreground transition-colors hover:text-foreground"
+        className="text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
       >
         <Refresh className="h-3.5 w-3.5" />
       </button>
@@ -92,12 +99,7 @@ export function ReplayInvocationButton({
   }
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Button
-        size="sm"
-        variant="outline"
-        busy={plain.isPending || keyed.isPending}
-        onClick={() => void replay()}
-      >
+      <Button size="sm" variant="outline" busy={busy} onClick={() => void replay()}>
         {path.kind === 'keyed' ? 'Replay in lane' : 'Replay'}
       </Button>
       <p className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -161,9 +163,9 @@ export function InvocationDelivery({
     // Pending expiry exists only when the policy sets one (expires_after_ms).
     [
       'Pending expiry',
-      invocation.work_expires_at ? <Timestamp iso={invocation.work_expires_at} /> : null,
+      invocation.work_expires_at ? <Timestamp value={invocation.work_expires_at} /> : null,
     ],
-    ['Deadline', <Timestamp key="deadline" iso={invocation.deadline_at} />],
+    ['Deadline', <Timestamp key="deadline" value={invocation.deadline_at} />],
     ['On success', target(invocation.on_success_destination_id)],
     ['On failure', target(invocation.on_failure_destination_id)],
   ];

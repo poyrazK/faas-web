@@ -128,6 +128,40 @@ describe('ReplayInvocationButton', () => {
     );
     expect(await screen.findByText('Could not replay')).toBeInTheDocument();
     expect(screen.getByText(/pending lifetime has passed/)).toBeInTheDocument();
+    // The error itself goes to the toast, so its code and help come with it.
+    expect(screen.getByText(/keyed_replay_expired/)).toBeInTheDocument();
+  });
+
+  it('shows the server prose and code for a refusal without its own copy', async () => {
+    spyApi('POST').mockImplementation(() =>
+      problem(409, 'invocation_not_replayable', 'invocation is completed')
+    );
+    mount(<ReplayInvocationButton invocation={invocation()} />);
+    await userEvent.click(screen.getByRole('button', { name: /Replay invocation/ }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Replay' })
+    );
+    expect(await screen.findByText('invocation is completed')).toBeInTheDocument();
+    expect(screen.getByText(/invocation_not_replayable/)).toBeInTheDocument();
+  });
+
+  it('disables the icon while its replay is in flight', async () => {
+    let settle: (value: unknown) => void = () => undefined;
+    spyApi('POST').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        })
+    );
+    mount(<ReplayInvocationButton invocation={invocation()} />);
+    const icon = screen.getByRole('button', { name: /Replay invocation/ });
+    await userEvent.click(icon);
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Replay' })
+    );
+    await waitFor(() => expect(icon).toBeDisabled());
+    settle({ data: { id: CHILD, status_url: '' }, response: new Response() });
+    await waitFor(() => expect(icon).not.toBeDisabled());
   });
 
   it('offers no icon for work that cannot be replayed here', () => {

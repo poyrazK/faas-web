@@ -7,7 +7,7 @@ import { ApiError } from './errors';
 import {
   asyncInvokeExtras,
   parseWorkKey,
-  replayErrorMessage,
+  replayErrorDescription,
   replayPath,
   useAppWorkPolicies,
   useReplayKeyedInvocation,
@@ -121,27 +121,28 @@ describe('asyncInvokeExtras', () => {
   });
 });
 
-describe('replayErrorMessage', () => {
+describe('replayErrorDescription', () => {
   const err = (code: string) =>
     new ApiError({ status: 409, code, title: code, detail: `server detail for ${code}` });
 
   it('explains an expired keyed lane', () => {
-    expect(replayErrorMessage(err('keyed_replay_expired'))).toMatch(/pending lifetime/);
+    expect(replayErrorDescription(err('keyed_replay_expired'))).toMatch(/pending lifetime/);
   });
 
   it('explains a replay that is no longer retained', () => {
-    expect(replayErrorMessage(err('keyed_replay_unavailable'))).toMatch(/no longer retained/);
-    expect(replayErrorMessage(err('invocation_replay_unavailable'))).toMatch(/no longer retained/);
+    expect(replayErrorDescription(err('keyed_replay_unavailable'))).toMatch(/no longer retained/);
+    expect(replayErrorDescription(err('invocation_replay_unavailable'))).toMatch(
+      /no longer retained/
+    );
   });
 
   it('explains a full event delivery budget', () => {
-    expect(replayErrorMessage(err('event_delivery_capacity_exhausted'))).toMatch(/drain/);
+    expect(replayErrorDescription(err('event_delivery_capacity_exhausted'))).toMatch(/drain/);
   });
 
-  it('falls back to the server prose for other codes', () => {
-    expect(replayErrorMessage(err('invocation_not_replayable'))).toBe(
-      'server detail for invocation_not_replayable'
-    );
+  it('adds nothing for other codes, so the toast shows the server prose and its help', () => {
+    expect(replayErrorDescription(err('invocation_not_replayable'))).toBeUndefined();
+    expect(replayErrorDescription(new Error('offline'))).toBeUndefined();
   });
 });
 

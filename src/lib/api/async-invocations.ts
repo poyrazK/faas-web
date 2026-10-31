@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import { ApiError, errorMessage } from './errors';
+import { ApiError } from './errors';
 import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
 
@@ -54,8 +54,12 @@ export function useReplayKeyedInvocation() {
   });
 }
 
-/** An app's named work policies, for the async invoke form. */
-export function useAppWorkPolicies(slug: string) {
+/**
+ * An app's named work policies, for the async invoke form. The route belongs
+ * to the `work-policies` capability (catalog.json:5738), so callers pass
+ * whether it is on; a hidden capability answers 404.
+ */
+export function useAppWorkPolicies(slug: string, enabled = true) {
   return useQuery({
     queryKey: ['apps', slug, 'work-policies'],
     queryFn: async ({ signal }) =>
@@ -64,12 +68,15 @@ export function useAppWorkPolicies(slug: string) {
           api.GET('/v1/apps/{slug}/work-policies', { params: { path: { slug } }, signal })
         )
       ).policies,
-    enabled: Boolean(slug),
+    enabled: enabled && Boolean(slug),
     retry: retryPolicy,
   });
 }
 
-/** Replay refusals worth more than the server's one-line detail. */
+/**
+ * Replay refusals worth more than the server's one-line detail. The toast
+ * still gets the error, so its code and help show underneath.
+ */
 const REPLAY_ERRORS: Record<string, string> = {
   keyed_replay_expired:
     'Its original pending lifetime has passed, so it cannot be replayed. Send the work again to give it a fresh lifetime.',
@@ -81,9 +88,8 @@ const REPLAY_ERRORS: Record<string, string> = {
     'Event delivery capacity is full. Try again once pending deliveries drain.',
 };
 
-export function replayErrorMessage(error: unknown): string {
-  if (error instanceof ApiError && REPLAY_ERRORS[error.code]) return REPLAY_ERRORS[error.code];
-  return errorMessage(error);
+export function replayErrorDescription(error: unknown): string | undefined {
+  return error instanceof ApiError ? REPLAY_ERRORS[error.code] : undefined;
 }
 
 /**
