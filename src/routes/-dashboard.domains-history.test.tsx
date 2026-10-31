@@ -15,6 +15,10 @@ import { spyApi } from '@/test/api';
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+const doctor = vi.hoisted(() => ({ access: 'on' }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: doctor.access, refresh: () => {} }),
+}));
 let empty: boolean;
 let doctorFails: boolean;
 let noApps: boolean;
@@ -86,6 +90,17 @@ async function mount(
 }
 
 describe('Domains operational state', () => {
+  it('offers no Diagnose action when the domain doctor is not enabled for the account', async () => {
+    doctor.access = 'off';
+    try {
+      await mount('/dashboard/domains');
+      expect(await screen.findByText('alpha.example.com')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Diagnose alpha.example.com' })).toBeNull();
+    } finally {
+      doctor.access = 'on';
+    }
+  });
+
   it('opens diagnostics in a modal and restores focus and filters on Escape', async () => {
     const router = await mount('/dashboard/domains?q=alpha&campaign=handoff#dns');
     const trigger = await screen.findByRole('button', { name: 'Diagnose alpha.example.com' });
