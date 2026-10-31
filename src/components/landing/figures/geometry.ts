@@ -182,10 +182,8 @@ const MESH = 20;
 const RING = 2.6;
 const STREET = 0.6;
 
-function routeWidth(k: number) {
-  const t = STREET + 1.6 * k;
-  return t > STREET + 0.02 ? t : 0;
-}
+/** A route grows from nothing over its faint street, so the woken patch fades in at its edge. */
+export const routeWidth = (k: number) => 2.2 * k;
 
 export const DOMAINS: Field = {
   name: 'custom-domains',

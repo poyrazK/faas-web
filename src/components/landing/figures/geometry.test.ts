@@ -20,6 +20,7 @@ import {
   deployStroke,
   hash,
   influence,
+  routeWidth,
   sealSize,
   slotFill,
   spanHeight,
@@ -124,6 +125,12 @@ describe('custom domains', () => {
       expect(row.street).not.toBe('');
       expect(row.ring).not.toBe('');
     }
+  });
+
+  it('grows routes from nothing, so the woken patch has no hard edge', () => {
+    expect(routeWidth(0)).toBe(0);
+    expect(routeWidth(0.01)).toBeLessThan(0.05);
+    expect(routeWidth(1)).toBeCloseTo(2.2);
   });
 
   it('seals junctions and draws routes around the pointer', () => {
