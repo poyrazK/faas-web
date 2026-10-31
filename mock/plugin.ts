@@ -1876,6 +1876,107 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
   return NO_CONTENT;
 });
 
+// PR previews from the console (faas handlers_preview_create.go,
+// handlers_preview_status.go): pr-{N}-{parent}, undeployed, with a lease; a
+// repeat for the same PR renews it. The plan caps open PR environments.
+route('POST', '/v1/apps/{slug}/previews', ({ params, body }) => {
+  const parent = app(params.slug);
+  if (parent.preview_of_slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'a preview cannot be used as the parent for another preview'
+    );
+  const pr = Number(body.pr_number);
+  if (!Number.isInteger(pr) || pr <= 0)
+    throw new Problem(400, 'validation_failed', 'pr_number must be greater than zero');
+  const ttl = Number(body.ttl_hours ?? 0);
+  if (ttl !== 0 && (!Number.isInteger(ttl) || ttl < 1 || ttl > 720))
+    throw new Problem(400, 'validation_failed', 'ttl_hours must be between 1 and 720');
+  const slug = `pr-${pr}-${parent.slug}`;
+  if (slug.length > 63)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'the generated preview slug must be at most 63 characters'
+    );
+  const expires = new Date(Date.now() + (ttl || 168) * 3_600_000).toISOString();
+  const existing = db.appBySlug(slug);
+  if (existing) {
+    if (existing.preview_of_slug !== parent.slug || existing.preview_pr_number !== pr)
+      throw new Problem(
+        409,
+        'validation_failed',
+        `generated preview slug "${slug}" is already in use`
+      );
+    Object.assign(existing, { preview_pr_state: 'open', preview_expires_at: expires });
+    return existing;
+  }
+  const open = new Set(
+    db.apps
+      .filter((a) => (a.preview_pr_number ?? 0) > 0 && a.preview_pr_state === 'open')
+      .map((a) => `${a.preview_of_slug}:${a.preview_pr_number}`)
+  );
+  if (open.size >= db.account.limits.preview_apps)
+    throw new Problem(
+      403,
+      'plan_limit_apps',
+      `${db.account.plan} plan allows ${db.account.limits.preview_apps} open PR preview environment(s); you have ${open.size}. Close a pull request or run \`gregale preview destroy\` on one of its previews.`
+    );
+  const created: db.App = {
+    ...parent,
+    id: db.id(),
+    slug,
+    url: parent.url.replace(`//${parent.slug}.`, `//${slug}.`),
+    canonical_url: undefined,
+    preview_of_slug: parent.slug,
+    preview_pr_number: pr,
+    preview_pr_state: 'open',
+    preview_expires_at: expires,
+    min_instances: 0,
+    status: 'undeployed',
+  };
+  db.apps.push(created);
+  return status(201, created);
+});
+route('GET', '/v1/preview/{slug}', ({ params }) => {
+  const a = app(params.slug);
+  if (!a.preview_of_slug)
+    throw new Problem(
+      404,
+      'preview_not_found',
+      'the slug does not identify a preview app; use the app endpoint for a production app'
+    );
+  const latest = (id: string) => db.deployments.find((d) => d.app_id === id);
+  const parent = db.appBySlug(a.preview_of_slug);
+  const candidate = latest(a.id);
+  const production = parent && latest(parent.id);
+  const artifact = (d?: db.Deployment) =>
+    d ? { deployment_id: d.id, status: d.status, image_digest: d.image_digest || undefined } : {};
+  return {
+    app: a,
+    parent,
+    latest_deployment: candidate,
+    production_deployment: production,
+    changes_from_production: {
+      artifact_changed: Boolean(
+        candidate?.image_digest &&
+        production?.image_digest &&
+        candidate.image_digest !== production.image_digest
+      ),
+      preview_artifact: artifact(candidate),
+      production_artifact: artifact(production),
+      configuration_changed_groups: [],
+    },
+    links: {
+      url: a.canonical_url || a.url,
+      logs: `/v1/apps/${a.slug}/logs`,
+      metrics: `/v1/apps/${a.slug}/metrics`,
+      configuration: `/v1/apps/${a.slug}`,
+    },
+  };
+});
+
 // Request analytics, request evidence, app lifecycle, upstream history,
 // rollout recovery and the tarball deploy.
 type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResponse'];

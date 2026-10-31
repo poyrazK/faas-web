@@ -311,6 +311,15 @@ describe('Releases hub', () => {
     );
   });
 
+  it('shows PR previews on the Releases view only', async () => {
+    const router = await mount();
+    expect(screen.getByRole('heading', { name: 'PR previews' })).toBeInTheDocument();
+    await router.navigate({ to: '/dashboard/releases', search: { view: 'builds' } });
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'PR previews' })).not.toBeInTheDocument()
+    );
+  });
+
   it('keeps deployment status and identity primary while preserving compact build facts', async () => {
     await mount();
     expect(screen.getAllByRole('columnheader')).toHaveLength(5);
