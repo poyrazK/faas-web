@@ -99,7 +99,14 @@ describe('BillingIdentityPanel', () => {
     expect(patches[0].init.headers['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
     expect(await screen.findByText('Gregale Labs AG')).toBeInTheDocument();
     expect(screen.getByText('DE123456789')).toBeInTheDocument();
-    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success' }));
+    // The provider sync is best-effort (faas handlers_billing_identity.go:74-78):
+    // only the saved copy is certain, so the toast does not promise more.
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'success',
+        description: expect.stringMatching(/next invoice.*check it there/i),
+      })
+    );
   });
 
   it('keeps Save disabled until something changes', async () => {

@@ -25,8 +25,8 @@ export function utf8Bytes(value: string): number {
 }
 
 /**
- * The account, read under the same key the session uses, so a saved identity
- * lands in one cache entry. The identity fields ride on `GET /v1/account`;
+ * The account, under `keys.account`, so the PATCH response written there by
+ * `useUpdateBillingIdentity` is what this read shows next. The identity fields ride on `GET /v1/account`;
  * there is no separate read.
  */
 export function useAccountRecord() {

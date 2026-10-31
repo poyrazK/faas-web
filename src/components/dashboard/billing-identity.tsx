@@ -144,7 +144,10 @@ function BillingIdentityForm({ saved, onDone }: { saved: Draft; onDone: () => vo
       toast({
         kind: 'success',
         title: 'Billing identity saved',
-        description: 'It applies to invoices issued from now on.',
+        // Saved here; the copy sent to the provider is best-effort (faas
+        // handlers_billing_identity.go:74-78), so name where to confirm it.
+        description:
+          'It applies to invoices issued from now on. Your next invoice shows exactly what the provider received — check it there.',
       });
       onDone();
     } catch (err) {
