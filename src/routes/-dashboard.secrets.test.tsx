@@ -230,7 +230,9 @@ describe('Secrets', () => {
         expect(mocks.toast).toHaveBeenCalledWith(
           expect.objectContaining({
             kind: 'error',
-            description: 'wait for the accepted restart to finish before retrying',
+            error: expect.objectContaining({
+              message: 'wait for the accepted restart to finish before retrying',
+            }),
           })
         )
       );

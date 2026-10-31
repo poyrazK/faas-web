@@ -5,7 +5,6 @@ import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import {
   useApp,
   useAppDiff,
@@ -254,9 +253,7 @@ function ConfigForm({ app }: { app: App }) {
           description: 'Runtime application is verified separately below.',
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
   };
 
   return (
@@ -283,7 +280,7 @@ function ConfigForm({ app }: { app: App }) {
                     toast({
                       kind: 'error',
                       title: 'Could not preview',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
               }
@@ -658,7 +655,7 @@ function RenamePanel({ app }: { app: App }) {
               });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not rename', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not rename', error: err })
             );
         }}
       >
@@ -740,7 +737,7 @@ function DangerZone({ app }: { app: App }) {
                 void navigate({ to: '/dashboard/apps' });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
         >
