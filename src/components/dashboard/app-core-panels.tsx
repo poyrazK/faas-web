@@ -19,6 +19,8 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from './plan-gate';
+import { AsyncInvokeOptionsFields } from './async-invoke-options';
+import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -50,6 +52,7 @@ export function InvokePanel({ slug }: { slug: string }) {
   const [path, setPath] = useState('/');
   const [payload, setPayload] = useState('{}');
   const [headers, setHeaders] = useState('{}');
+  const [asyncOptions, setAsyncOptions] = useState(NO_ASYNC_OPTIONS);
   const [output, setOutput] = useState<unknown>(null);
   const [pendingId, setPendingId] = useState('');
   const invocation = useInvocation(pendingId, true);
@@ -65,13 +68,14 @@ export function InvokePanel({ slug }: { slug: string }) {
       path: string;
       payload: Record<string, unknown>;
       headers: Record<string, unknown>;
-    };
+    } & ReturnType<typeof asyncInvokeExtras>;
     try {
       body = {
         method,
         path: path.trim() || '/',
         payload: parseObject(payload, 'Payload'),
         headers: parseObject(headers, 'Headers'),
+        ...(effectiveMode === 'async' ? asyncInvokeExtras(asyncOptions) : {}),
       };
     } catch (error) {
       toast({ kind: 'error', title: 'Invalid request', description: errorMessage(error) });
@@ -165,6 +169,9 @@ export function InvokePanel({ slug }: { slug: string }) {
             className="font-mono"
           />
         </label>
+        {effectiveMode === 'async' && (
+          <AsyncInvokeOptionsFields slug={slug} value={asyncOptions} onChange={setAsyncOptions} />
+        )}
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
           <p className="text-xs text-muted-foreground">
             {effectiveMode === 'sync'

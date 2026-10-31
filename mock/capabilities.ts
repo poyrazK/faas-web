@@ -193,6 +193,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'async-invocations',
+    name: 'Async invocations',
+    category: 'async',
+    description: 'Invoke an app asynchronously and fetch the result later.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/event-driven',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
