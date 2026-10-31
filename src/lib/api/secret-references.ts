@@ -6,6 +6,7 @@ import type { components } from './schema';
 export type SecretReferenceList = components['schemas']['AppSecretReferenceListResponse'];
 export type SecretRevocation = components['schemas']['AppSecretRevocationResponse'];
 export type SecretRevocationTarget = components['schemas']['SecretRevocationTarget'];
+type SecretList = components['schemas']['AppSecretListResponse'];
 
 /** Under `['apps', slug]`, so whatever refreshes an app refreshes these too. */
 export const secretReferencesKey = (slug: string, environment: string) =>
@@ -93,6 +94,22 @@ export function useRevokeSecret(slug: string) {
           headers: { Prefer: 'return=representation' },
         })
       )) ?? undefined,
+    // The row leaves the list at once, so a second click cannot delete it again
+    // (secret_not_found). `exact` keeps the per-environment source lists apart.
+    onMutate: async (key) => {
+      const queryKey = keys.appSecrets(slug);
+      await client.cancelQueries({ queryKey, exact: true });
+      const previous = client.getQueryData<SecretList>(queryKey);
+      if (previous)
+        client.setQueryData<SecretList>(queryKey, {
+          ...previous,
+          secrets: previous.secrets?.filter((secret) => secret.key !== key),
+        });
+      return { previous };
+    },
+    onError: (_error, _key, context) => {
+      if (context?.previous) client.setQueryData(keys.appSecrets(slug), context.previous);
+    },
     onSuccess: (revocation) => {
       if (revocation) client.setQueryData(revocationKey(slug, revocation.id), revocation);
     },
@@ -101,15 +118,29 @@ export function useRevokeSecret(slug: string) {
 }
 
 /**
+ * How long to wait for acknowledgements. The roster is snapshotted when the
+ * delete commits (faas queries.sql:890) and changes only on an ack, which is
+ * refused once the instance is gone or the key exists again (queries.sql:911-929).
+ * So an instance that stopped before acking stays pending for good.
+ */
+export const REVOCATION_WAIT_MS = 120_000;
+
+/** True while a reload-enabled runtime is pending and could still answer. */
+export function revocationWaiting(revocation: SecretRevocation | undefined, now = Date.now()) {
+  if (!revocation) return false;
+  if (now - Date.parse(revocation.created_at) > REVOCATION_WAIT_MS) return false;
+  return revocation.targets.some(
+    (target) => target.status === 'pending' && target.reload_support === 'enabled'
+  );
+}
+
+/**
  * Poll while a reload-enabled runtime can still answer. A restart-only runtime
  * never acknowledges, so a roster of only those has settled at `blocked`.
  * Guest-init rechecks secrets every 10 seconds, so 5 seconds is enough.
  */
-export function revocationPollInterval(revocation: SecretRevocation | undefined) {
-  const waiting = revocation?.targets.some(
-    (target) => target.status === 'pending' && target.reload_support === 'enabled'
-  );
-  return waiting ? 5_000 : false;
+export function revocationPollInterval(revocation: SecretRevocation | undefined, now = Date.now()) {
+  return revocationWaiting(revocation, now) ? 5_000 : false;
 }
 
 export function useSecretRevocation(slug: string, initial: SecretRevocation) {

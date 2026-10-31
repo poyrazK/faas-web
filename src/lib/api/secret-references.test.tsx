@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { routeApi } from '@/test/monetization';
 import {
+  REVOCATION_WAIT_MS,
   revocationPollInterval,
   useRemoveSecretReference,
   useRevokeSecret,
@@ -161,16 +162,20 @@ it('resolves to nothing when an older server answers the delete with 204', async
   expect(out).toBeUndefined();
 });
 
+/** Ten seconds after the fixture's created_at. */
+const SOON = Date.parse('2026-10-31T10:00:10Z');
+
 it('polls only while a reload-enabled runtime may still acknowledge', () => {
-  expect(revocationPollInterval(revocation())).toBeGreaterThan(0);
-  expect(revocationPollInterval(revocation({ status: 'complete', targets: [] }))).toBe(false);
+  expect(revocationPollInterval(revocation(), SOON)).toBeGreaterThan(0);
+  expect(revocationPollInterval(revocation({ status: 'complete', targets: [] }), SOON)).toBe(false);
   // A restart-only runtime never acknowledges: blocked is where it stays.
   expect(
     revocationPollInterval(
       revocation({
         status: 'blocked',
         targets: [{ ...revocation().targets[0], reload_support: 'disabled' }],
-      })
+      }),
+      SOON
     )
   ).toBe(false);
   // Blocked, but another runtime can still answer: keep watching it.
@@ -182,8 +187,50 @@ it('polls only while a reload-enabled runtime may still acknowledge', () => {
           { ...revocation().targets[0], reload_support: 'disabled' },
           revocation().targets[0],
         ],
-      })
+      }),
+      SOON
     )
   ).toBeGreaterThan(0);
-  expect(revocationPollInterval(undefined)).toBe(false);
+  expect(revocationPollInterval(undefined, SOON)).toBe(false);
+});
+
+it('stops polling two minutes after the delete, since a missing ack may never come', () => {
+  // Targets are snapshotted at delete (faas queries.sql:890), and an ack is refused
+  // once the instance is gone or the key is set again (queries.sql:911-929).
+  const created = Date.parse(revocation().created_at);
+  expect(revocationPollInterval(revocation(), created + REVOCATION_WAIT_MS - 1)).toBeGreaterThan(0);
+  expect(revocationPollInterval(revocation(), created + REVOCATION_WAIT_MS + 1)).toBe(false);
+  expect(REVOCATION_WAIT_MS).toBe(120_000);
+});
+
+it('removes the deleted row at once and puts it back if the delete fails', async () => {
+  let reject!: (error: unknown) => void;
+  const spies = routeApi({});
+  spies.DELETE.mockImplementation(
+    () => new Promise((_resolve, fail) => (reject = fail)) as Promise<never>
+  );
+  const { wrapper: Wrapper, client } = wrapper();
+  const list = {
+    secrets: [{ key: 'A' }, { key: 'B' }],
+    quota_max: 64,
+    count: 2,
+  };
+  client.setQueryData(['apps', 'api', 'secrets'], list);
+  // An environment's sources share the prefix and must be left alone.
+  client.setQueryData(['apps', 'api', 'secrets', 'scope', 'production'], list);
+  const { result } = renderHook(() => useRevokeSecret('api'), { wrapper: Wrapper });
+  act(() => result.current.mutate('A'));
+  await waitFor(() =>
+    expect(
+      (client.getQueryData(['apps', 'api', 'secrets']) as typeof list).secrets.map((s) => s.key)
+    ).toEqual(['B'])
+  );
+  expect(client.getQueryData(['apps', 'api', 'secrets', 'scope', 'production'])).toEqual(list);
+  await act(async () => {
+    reject(new Error('boom'));
+  });
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(
+    (client.getQueryData(['apps', 'api', 'secrets']) as typeof list).secrets.map((s) => s.key)
+  ).toEqual(['A', 'B']);
 });

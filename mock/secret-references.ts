@@ -209,6 +209,9 @@ const ROSTER: Record<
   'image-resize': [{ reload: 'disabled' }],
   // Opted in, but the app's own reload handler reports failure.
   'webhook-router': [{ reload: 'enabled', settlesAfterMs: 8_000, outcome: 'failed' }],
+  // Opted in, but stopped before it acknowledged: no ack can arrive any more
+  // (faas queries.sql:924), so it stays pending and the console stops waiting.
+  'search-indexer': [{ reload: 'enabled' }],
 };
 
 const uuid = () => db.id().replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');

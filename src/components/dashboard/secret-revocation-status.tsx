@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { errorMessage } from '@/lib/api/errors';
 import {
+  REVOCATION_WAIT_MS,
   useSecretRevocation,
   type SecretRevocation,
   type SecretRevocationTarget,
@@ -28,7 +30,7 @@ const LABEL: Record<SecretRevocation['status'], string> = {
  * opted into live reload can drop it in place, and only its own application
  * can confirm that; everything else keeps the value in memory until replaced.
  */
-function headline(r: SecretRevocation) {
+function headline(r: SecretRevocation, expired: boolean) {
   const restartOnly = r.targets.filter(
     (t) => t.status !== 'applied' && t.reload_support !== 'enabled'
   ).length;
@@ -39,6 +41,10 @@ function headline(r: SecretRevocation) {
         ? `No instance was running with ${r.key}, so nothing held it. The next boot starts without it.`
         : `All ${instances(r.target_count)} confirmed they stopped using ${r.key}.`;
     case 'pending':
+      if (expired) {
+        const silent = r.targets.filter((t) => t.status === 'pending').length;
+        return `No confirmation from ${instances(silent)} in ${REVOCATION_WAIT_MS / 60_000} minutes. An instance that stopped before confirming, or a key that was set again, never confirms, so one may still hold ${r.key} in memory. Restart or redeploy the app to make sure.`;
+      }
       return `Waiting for ${r.pending_count} of ${instances(r.target_count)} to confirm. Each one gets a secrets file without ${r.key} and its reload signal within about 10 seconds, then its application confirms.`;
     case 'blocked':
       return `${restartOnly === 1 ? 'One instance' : `${restartOnly} instances`} cannot reload secrets, so ${restartOnly === 1 ? 'it keeps' : 'each keeps'} ${r.key} in memory until it restarts. Restart or redeploy the app to finish removing it.`;
@@ -52,10 +58,27 @@ function reloadLabel(target: SecretRevocationTarget) {
   return target.reload_support === 'disabled' ? 'restart only' : 'reload unknown';
 }
 
-function targetState(target: SecretRevocationTarget) {
+function targetState(target: SecretRevocationTarget, expired: boolean) {
   if (target.status === 'applied') return 'confirmed';
   if (target.status === 'failed') return 'reload failed';
-  return target.reload_support === 'enabled' ? 'waiting' : 'until restart';
+  if (target.reload_support !== 'enabled') return 'until restart';
+  return expired ? 'no confirmation' : 'waiting';
+}
+
+/**
+ * Whether the wait for acknowledgements is over. A pending ack can never
+ * arrive once its instance is gone or the key is set again, so the card stops
+ * waiting `REVOCATION_WAIT_MS` after the delete, as the poll does.
+ */
+function useExpired(createdAt: string) {
+  const deadline = Date.parse(createdAt) + REVOCATION_WAIT_MS;
+  const [expired, setExpired] = useState(() => Date.now() > deadline);
+  useEffect(() => {
+    if (expired) return;
+    const timer = setTimeout(() => setExpired(true), Math.max(0, deadline - Date.now()));
+    return () => clearTimeout(timer);
+  }, [deadline, expired]);
+  return expired;
 }
 
 /** The delivery status of one secret deletion, watched until it settles. */
@@ -70,6 +93,8 @@ export function SecretRevocationStatus({
 }) {
   const query = useSecretRevocation(slug, revocation);
   const r = query.data;
+  const expired = useExpired(r.created_at);
+  const label = r.status === 'pending' && expired ? 'No confirmation' : LABEL[r.status];
   return (
     <section
       aria-label={`Removing ${r.key} from running instances`}
@@ -79,10 +104,17 @@ export function SecretRevocationStatus({
         <div className="min-w-0 flex-1">
           <p className="font-medium">
             <span className="font-mono text-xs">{r.key}</span> deleted{' '}
-            <span className={cn('text-xs', TONE[r.status])}>· {LABEL[r.status]}</span>
+            <span
+              className={cn(
+                'text-xs',
+                TONE[r.status === 'pending' && expired ? 'blocked' : r.status]
+              )}
+            >
+              · {label}
+            </span>
           </p>
           <p role="status" className="mt-1 text-muted-foreground">
-            {headline(r)}
+            {headline(r, expired)}
           </p>
           {query.error ? (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -116,7 +148,7 @@ export function SecretRevocationStatus({
                       : 'text-muted-foreground'
                 )}
               >
-                {targetState(target)}
+                {targetState(target, expired)}
               </span>
             </li>
           ))}

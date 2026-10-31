@@ -19,7 +19,8 @@ const revocation = (over: Partial<SecretRevocation> = {}): SecretRevocation => (
   id: '7b0c2a52-4e7f-4c1e-9d3a-0d2f5e7a9c11',
   scope: 'default',
   key: 'JWT_SIGNING_KEY',
-  created_at: '2026-10-31T10:00:00Z',
+  // Just deleted: the card stops waiting for acks two minutes after this.
+  created_at: new Date().toISOString(),
   status: 'pending',
   target_count: 2,
   acknowledged_count: 0,
@@ -138,4 +139,32 @@ it('can be dismissed', async () => {
   );
   await userEvent.setup().click(screen.getByRole('button', { name: /dismiss/i }));
   expect(onDismiss).toHaveBeenCalled();
+});
+
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+it('stops waiting after two minutes and says a restart makes sure', async () => {
+  const stale = revocation({ created_at: ago(3 * 60_000) });
+  routeApi({ [PATH]: () => stale });
+  renderWithProviders(
+    <SecretRevocationStatus slug="api" revocation={stale} onDismiss={() => {}} />
+  );
+  expect(
+    await screen.findByText(/no confirmation from 2 running instances in 2 minutes/i)
+  ).toBeInTheDocument();
+  expect(screen.getByText(/restart or redeploy the app to make sure/i)).toBeInTheDocument();
+  expect(screen.getAllByText('no confirmation')).toHaveLength(2);
+  expect(screen.queryByText(/within about 10 seconds/i)).not.toBeInTheDocument();
+});
+
+it('turns to the no-confirmation copy when the two minutes run out on screen', async () => {
+  const almost = revocation({ created_at: ago(2 * 60_000 - 400) });
+  routeApi({ [PATH]: () => almost });
+  renderWithProviders(
+    <SecretRevocationStatus slug="api" revocation={almost} onDismiss={() => {}} />
+  );
+  expect(await screen.findByText(/waiting for 2 of 2/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/no confirmation from 2 running instances/i, {}, { timeout: 3000 })
+  ).toBeInTheDocument();
 });

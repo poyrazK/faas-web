@@ -115,3 +115,11 @@ it('never shows one app another app’s revocation', () => {
   const made = recordRevocation(app('api-gateway'), 'default', 'REDIS_URL');
   expect(readRevocation(app('image-resize'), made.id)).toBeUndefined();
 });
+
+it('leaves a live-reload instance that stopped before acking pending for good', () => {
+  const now = Date.now();
+  const made = recordRevocation(app('search-indexer'), 'default', 'DATABASE_URL', now);
+  const later = readRevocation(app('search-indexer'), made.id, now + 10 * 60_000)!;
+  expect(later.status).toBe('pending');
+  expect(later.targets[0]).toMatchObject({ reload_support: 'enabled', status: 'pending' });
+});
