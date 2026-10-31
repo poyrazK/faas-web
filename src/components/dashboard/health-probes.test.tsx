@@ -41,6 +41,7 @@ const live = {
   app_id: 'app-1',
   status: 'live',
   created_at: '2026-10-30T10:00:00Z',
+  traffic_percent: 100,
   override_readiness_probe: { path: '/readyz', failure_threshold: 4 },
 };
 const deployments = (items: object[]) => accepted({ items, next_before: null });
@@ -91,11 +92,32 @@ describe('HealthProbes', () => {
     );
   });
 
-  it('says probes come from the next deploy when nothing is serving yet', async () => {
+  it('says so when no production release is serving traffic', async () => {
     spyApi('GET').mockResolvedValue(deployments([{ ...live, status: 'building' }]));
     renderWith(web);
-    expect(await screen.findByText(/no deployment is serving yet/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no production release is serving traffic/i)
+    ).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Probes' })).not.toBeInTheDocument();
+  });
+
+  it('does not take a dark release or a staging deploy for the serving one', async () => {
+    spyApi('GET').mockResolvedValue(
+      deployments([
+        { ...live, id: 'dark', traffic_percent: 0, override_liveness_probe: { path: '/dark' } },
+        {
+          ...live,
+          id: 'staging',
+          scope: 'staging',
+          override_liveness_probe: { path: '/staging' },
+        },
+      ])
+    );
+    renderWith(web);
+    expect(
+      await screen.findByText(/no production release is serving traffic/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/GET \/dark|GET \/staging/)).not.toBeInTheDocument();
   });
 
   it('reports a failed deployments read instead of guessing probes', async () => {
@@ -123,9 +145,20 @@ describe('HealthProbes', () => {
     );
     expect(screen.getByText(/marked failed as a crash loop/i)).toBeInTheDocument();
     expect(screen.getByText(/before it is killed/i)).toBeInTheDocument();
+    // Nothing is set, so there is nothing to pin: defaults stay inherited.
+    expect(screen.queryByLabelText('gregale.yaml lifecycle block')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/keys set there replace the values saved here on every deploy/i)
+    ).toBeInTheDocument();
+  });
+
+  it('never writes defaults into the gregale.yaml block, so Free gets no 30 s grace', async () => {
+    const user = userEvent.setup();
+    renderWith(web, 'free');
+    expect(screen.queryByLabelText('gregale.yaml lifecycle block')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Restart policy'), 'always');
     const yaml = screen.getByLabelText('gregale.yaml lifecycle block');
-    expect(yaml).toHaveTextContent('restart_policy: on-failure');
-    expect(yaml).toHaveTextContent('stop_grace_period_s: 30');
+    expect(yaml.textContent).toBe('lifecycle:\n  restart_policy: always');
   });
 
   it('reads stored values, and a worker has no default liveness probe', async () => {
@@ -137,6 +170,10 @@ describe('HealthProbes', () => {
     expect(
       screen.getByText(/drain_timeout in gregale.yaml sets the same value/)
     ).toBeInTheDocument();
+    // Only the stored keys; the unset ones keep inheriting.
+    expect(screen.getByLabelText('gregale.yaml lifecycle block').textContent).toBe(
+      'lifecycle:\n  restart_policy: unless-stopped\n  stop_signal: SIGINT\n  stop_grace_period_s: 45'
+    );
     const probes = await screen.findByRole('list', { name: 'Probes' });
     expect(within(probes).getByRole('listitem', { name: 'Liveness probe' })).toHaveTextContent(
       /workers and jobs have no HTTP endpoint/i

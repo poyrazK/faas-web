@@ -101,11 +101,24 @@ export function effectiveLifecycle(app: App, plan: Plan | undefined) {
   };
 }
 
-/** The deployment taking production traffic: the newest live one. */
+/**
+ * The release most production requests reach: a live row in the default
+ * scope (omitted scope is `default`) with the highest traffic_percent above 0,
+ * the newer one on a tie. A live row at 0% is a staged or scheduled release,
+ * and another scope is another environment, so neither counts; with no such
+ * row the answer is "none", not a guess.
+ */
 export function servingDeployment(deployments: Deployment[]): Deployment | undefined {
-  return [...deployments]
-    .filter((d) => d.status === 'live')
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+  return deployments
+    .filter(
+      (d) =>
+        d.status === 'live' && (d.scope ?? 'default') === 'default' && (d.traffic_percent ?? 0) > 0
+    )
+    .sort(
+      (a, b) =>
+        (b.traffic_percent ?? 0) - (a.traffic_percent ?? 0) ||
+        Date.parse(b.created_at) - Date.parse(a.created_at)
+    )[0];
 }
 
 export type ProbeView = {

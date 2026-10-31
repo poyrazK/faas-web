@@ -108,14 +108,32 @@ describe('effectiveLifecycle', () => {
 });
 
 describe('servingDeployment', () => {
-  it('picks the newest live deployment', () => {
+  const at = (day: number) => `2026-10-${day}T00:00:00Z`;
+
+  it('picks the live default-scope release carrying the most traffic', () => {
     const rows = [
-      dep({ id: 'new', status: 'building', created_at: '2026-10-31T00:00:00Z' }),
-      dep({ id: 'live', status: 'live', created_at: '2026-10-30T00:00:00Z' }),
-      dep({ id: 'old', status: 'superseded', created_at: '2026-10-29T00:00:00Z' }),
+      dep({ id: 'building', status: 'building', created_at: at(31), traffic_percent: 0 }),
+      // A newer canary at 10% is not what most requests reach.
+      dep({ id: 'canary', created_at: at(30), traffic_percent: 10 }),
+      dep({ id: 'stable', created_at: at(29), traffic_percent: 90, scope: 'default' }),
+      dep({ id: 'old', status: 'superseded', created_at: at(28), traffic_percent: 0 }),
     ];
-    expect(servingDeployment(rows)?.id).toBe('live');
-    expect(servingDeployment([rows[0], rows[2]])).toBeUndefined();
+    expect(servingDeployment(rows)?.id).toBe('stable');
+  });
+
+  it('ignores dark releases, other scopes and rows without traffic', () => {
+    const rows = [
+      // A staged or scheduled release is live at 0% (--no-traffic).
+      dep({ id: 'dark', created_at: at(31), traffic_percent: 0 }),
+      // A newer staging deploy serves its own scope, not production.
+      dep({ id: 'staging', created_at: at(30), traffic_percent: 100, scope: 'staging' }),
+      dep({ id: 'unknown', created_at: at(29) }),
+    ];
+    expect(servingDeployment(rows)).toBeUndefined();
+    expect(
+      servingDeployment([...rows, dep({ id: 'prod', created_at: at(28), traffic_percent: 100 })])
+        ?.id
+    ).toBe('prod');
   });
 });
 

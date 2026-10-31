@@ -96,7 +96,8 @@ function Probes({ app }: { app: App }) {
         />
       ) : !probes ? (
         <p className="text-sm text-muted-foreground">
-          No deployment is serving yet. Its probes are set when it deploys.
+          No production release is serving traffic, so there are no probes to show. They are set by
+          the deployment that does.
         </p>
       ) : (
         <ul aria-label="Probes" className="flex flex-col divide-y divide-border">
@@ -247,7 +248,12 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
   };
 
   const policies = RESTART_POLICIES.filter((p) => !(eff.mode === 'job' && p === 'always'));
-  const shown = (key: keyof Draft, fallback: string | number | undefined) => draft[key] || fallback;
+  // Only explicit values: a default written out would pin it (and on Free the
+  // 30 s grace default exceeds the 15 s cap ValidatePlan enforces).
+  const explicit = (Object.keys(draft) as (keyof Draft)[]).filter((key) => draft[key] !== '');
+  const yaml = explicit.length
+    ? ['lifecycle:', ...explicit.map((key) => `  ${key}: ${draft[key]}`)].join('\n')
+    : '';
   const placeholder = (value: number | undefined) =>
     value === undefined ? 'Plan default' : `${value} (default)`;
   const onPlan = (value: number | undefined, unit = '') =>
@@ -344,28 +350,26 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
       </div>
       <div className="flex flex-col gap-1.5">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          A <Code>lifecycle:</Code> block in gregale.yaml is applied on every deploy and replaces
-          what is saved here
+          The <Code>lifecycle:</Code> block in gregale.yaml takes <Code>restart_policy</Code>,{' '}
+          <Code>max_retries</Code>, <Code>startup_deadline_s</Code>, <Code>stop_signal</Code> and{' '}
+          <Code>stop_grace_period_s</Code>. Keys set there replace the values saved here on every
+          deploy; keys left out keep them
           {isWorker ? (
             <>
-              ; so do <Code>worker.drain_timeout</Code> and <Code>worker.stop_signal</Code>
+              . A worker’s <Code>worker.drain_timeout</Code> and <Code>worker.stop_signal</Code>,
+              when set, do the same
             </>
           ) : null}
-          . The same settings there:
+          .{yaml ? ' What is set explicitly here, as gregale.yaml:' : ''}
         </p>
-        <pre
-          aria-label="gregale.yaml lifecycle block"
-          className="overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed"
-        >
-          {[
-            'lifecycle:',
-            `  restart_policy: ${shown('restart_policy', defaultRestartPolicy(eff.mode))}`,
-            `  max_retries: ${shown('max_retries', limits?.maxRetries ?? 0)}`,
-            `  startup_deadline_s: ${shown('startup_deadline_s', limits?.startupDeadlineS ?? 0)}`,
-            `  stop_signal: ${shown('stop_signal', 'SIGTERM')}`,
-            `  stop_grace_period_s: ${shown('stop_grace_period_s', 30)}`,
-          ].join('\n')}
-        </pre>
+        {yaml && (
+          <pre
+            aria-label="gregale.yaml lifecycle block"
+            className="overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed"
+          >
+            {yaml}
+          </pre>
+        )}
       </div>
     </section>
   );
