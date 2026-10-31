@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps } from '@/components/ui/field';
+import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { api, unwrap } from '@/lib/api/client';
 import { useCapability } from '@/lib/api/capabilities';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useUpdateApp, type App } from '@/lib/api/queries';
@@ -79,8 +81,44 @@ function draftFrom(app: App): Draft {
 
 const NON_REQUEST_MODES = new Set(['service', 'worker', 'job']);
 
+/**
+ * An app with a release-approval policy must deploy to production through a
+ * canary (faas approval/approval.go:246); immediate removes the canary, so
+ * every deploy, GitHub pushes included, is refused with
+ * release_approval_canary_required (release_freezes.go:342-349). apid still
+ * accepts the setting, so the console asks first. No policy (404) needs no
+ * question; an unreadable one is asked about in conditional terms.
+ */
+async function confirmImmediate(slug: string, confirm: ReturnType<typeof useConfirm>) {
+  let policy: 'present' | 'absent' | 'unknown';
+  try {
+    await unwrap(
+      api.GET('/v1/apps/{slug}/release-approval-policy', { params: { path: { slug } } })
+    );
+    policy = 'present';
+  } catch (err) {
+    // No policy, or approvals not released to this account (capgate's not_found).
+    policy =
+      err instanceof ApiError &&
+      (err.code === 'release_approval_policy_not_found' || err.code === 'not_found')
+        ? 'absent'
+        : 'unknown';
+  }
+  if (policy === 'absent') return true;
+  return confirm({
+    title: 'Switch to immediate?',
+    description:
+      policy === 'present'
+        ? `${slug} requires release approvals, which need a canary. With immediate there is none, so every production deploy, GitHub pushes included, is refused until the approval policy is removed or a deploy asks for a rollout.`
+        : `If ${slug} requires release approvals, every production deploy will be refused with immediate, because approvals need a canary. The approval policy could not be read to check.`,
+    confirmLabel: 'Switch to immediate',
+    destructive: true,
+  });
+}
+
 export function AppReleaseSettings({ app }: { app: App }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const update = useUpdateApp(app.slug);
   const rollouts = useCapability('progressive-rollouts');
   const rolloutsOn = rollouts.state === 'available';
@@ -114,9 +152,11 @@ export function AppReleaseSettings({ app }: { app: App }) {
   const dirty = Object.keys(changes).length > 0;
   const blocked = Boolean(pathsError || concurrencyError);
 
-  const save = () => {
+  const save = async () => {
     if (!dirty || blocked || update.isPending) return;
     setFailure('');
+    if (changes.release_policy === 'immediate' && !(await confirmImmediate(app.slug, confirm)))
+      return;
     void update
       .mutateAsync(changes)
       .then((next) => {
@@ -142,7 +182,12 @@ export function AppReleaseSettings({ app }: { app: App }) {
       title="Releases"
       description="How a production release reaches traffic when the deploy names no rollout."
       actions={
-        <Button size="sm" disabled={!dirty || blocked} busy={update.isPending} onClick={save}>
+        <Button
+          size="sm"
+          disabled={!dirty || blocked}
+          busy={update.isPending}
+          onClick={() => void save()}
+        >
           Save release settings
         </Button>
       }

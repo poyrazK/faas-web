@@ -8,11 +8,13 @@ import { spyApi } from '@/test/api';
 import { AppReleaseSettings } from './app-release-settings';
 
 const mocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
   toast: vi.fn(),
   refresh: vi.fn(),
   state: 'available' as CapabilityViewState,
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: 'account', state: mocks.state, refresh: mocks.refresh }),
 }));
@@ -58,9 +60,43 @@ beforeEach(() => {
   mocks.toast.mockReset();
   mocks.refresh.mockReset();
   mocks.state = 'available';
+  mocks.confirm.mockReset().mockResolvedValue(true);
+  // Most apps have no approval policy: apid answers 404.
+  spyApi('GET').mockResolvedValue(
+    refused(404, 'release_approval_policy_not_found', 'No approval policy.')
+  );
 });
 
 describe('AppReleaseSettings', () => {
+  it('warns before immediate when the app requires release approvals', async () => {
+    // An approval policy needs a canary for production deploys
+    // (faas approval/approval.go:246); immediate removes it, so every push
+    // is refused with release_approval_canary_required (release_freezes.go:342).
+    spyApi('GET').mockResolvedValue(accepted({ required_approvals: 1 }));
+    const patch = spyApi('PATCH');
+    mocks.confirm.mockResolvedValue(false);
+    const user = userEvent.setup();
+    renderWith(web);
+    await user.click(screen.getByRole('button', { name: /immediate/i }));
+    await user.click(screen.getByRole('button', { name: 'Save release settings' }));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm.mock.calls[0][0].description).toMatch(/approval/i);
+    expect(mocks.confirm.mock.calls[0][0].description).toMatch(/refused/i);
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('switches to immediate without a warning when the app has no approval policy', async () => {
+    const patch = spyApi('PATCH').mockResolvedValue(
+      accepted({ ...web, release_policy: 'immediate' })
+    );
+    const user = userEvent.setup();
+    renderWith(web);
+    await user.click(screen.getByRole('button', { name: /immediate/i }));
+    await user.click(screen.getByRole('button', { name: 'Save release settings' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+
   it('shows the effective policy, what each one does, and where else it is set', () => {
     renderWith(web);
     const policy = screen.getByRole('group', { name: 'Release policy' });

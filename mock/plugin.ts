@@ -102,6 +102,29 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+// Release approval policies (faas release_approvals.go). webhook-router requires
+// approvals, so switching it to the immediate release policy is warned about.
+route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
+  if (params.slug !== 'webhook-router')
+    throw new Problem(
+      404,
+      'release_approval_policy_not_found',
+      'This app does not require approvals.'
+    );
+  return {
+    app: params.slug,
+    required_approvals: 1,
+    after_stage: 1,
+    timeout_minutes: 60,
+    approvers: ['design@gregale.dev'],
+    allow_self_approval: false,
+    notify_channels: [],
+    updated_by: 'design@gregale.dev',
+    created_at: '2026-10-20T09:00:00Z',
+    updated_at: '2026-10-20T09:00:00Z',
+  };
+});
+
 route('GET', '/v1/capabilities', ({ res }) => {
   res.setHeader('Cache-Control', 'no-store');
   const raw = process.env.MOCK_PLAN ?? db.account.plan;
