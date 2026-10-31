@@ -10,6 +10,7 @@ const remove = vi.fn();
 const update = vi.fn();
 const useEdgeRules = vi.fn();
 const workspace = vi.fn();
+const useCapability = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
 
@@ -28,6 +29,9 @@ vi.mock('@/lib/api/edge-protection', async (original) => ({
 }));
 vi.mock('@/lib/api/workspace-apps', () => ({
   useWorkspaceTarget: () => workspace() as unknown,
+}));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: (key: string) => useCapability(key) as unknown,
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct' } }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
@@ -79,6 +83,9 @@ beforeEach(() => {
     ])
   );
   workspace.mockReset().mockReturnValue({ org: null, label: 'Personal', ready: true });
+  useCapability
+    .mockReset()
+    .mockReturnValue({ capability: { key: 'cors-presets', maturity: 'beta' } });
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
 });
@@ -180,6 +187,79 @@ describe('CorsPresetsPanel', () => {
     expect((confirm.mock.calls[0][0] as { description: string }).description).toMatch(
       /no edge rule uses it/i
     );
+  });
+
+  it('labels the panel with the maturity the registry gives it', () => {
+    render(<CorsPresetsPanel slug="api" />);
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+  });
+
+  it('claims no stage when the registry does not describe the capability', () => {
+    useCapability.mockReturnValue({ capability: undefined });
+    render(<CorsPresetsPanel slug="api" />);
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
+  });
+
+  it("says it couldn't check, never that no rule uses it, when the rules read fails", async () => {
+    useEdgeRules.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      error: new Error('down'),
+      refetch: vi.fn(),
+    });
+    render(<CorsPresetsPanel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: /delete preset web-clients/i }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const asked = (confirm.mock.calls[0][0] as { description: string }).description;
+    expect(asked).toMatch(/couldn't check/i);
+    expect(asked).not.toMatch(/no edge rule uses it/i);
+  });
+
+  it('confirms an edit that reaches other rules, naming them, and saves nothing when declined', async () => {
+    confirm.mockResolvedValue(false);
+    render(<CorsPresetsPanel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit preset web-clients' }));
+    const form = screen.getByRole('form', { name: 'Edit preset web-clients' });
+    await userEvent.clear(within(form).getByLabelText('Max age seconds'));
+    await userEvent.type(within(form).getByLabelText('Max age seconds'), '60');
+    await userEvent.click(within(form).getByRole('button', { name: /save preset/i }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const asked = confirm.mock.calls[0][0] as { description: string };
+    expect(asked.description).toMatch(/api · api\.acme\.dev\/\*/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('confirms an edit when it cannot tell which rules it reaches', async () => {
+    useEdgeRules.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      error: new Error('down'),
+      refetch: vi.fn(),
+    });
+    render(<CorsPresetsPanel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit preset web-clients' }));
+    const form = screen.getByRole('form', { name: 'Edit preset web-clients' });
+    expect(within(form).getByText(/couldn't check/i)).toBeInTheDocument();
+    await userEvent.clear(within(form).getByLabelText('Max age seconds'));
+    await userEvent.type(within(form).getByLabelText('Max age seconds'), '60');
+    await userEvent.click(within(form).getByRole('button', { name: /save preset/i }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect((confirm.mock.calls[0][0] as { description: string }).description).toMatch(
+      /couldn't check/i
+    );
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('saves an edit nothing uses without asking', async () => {
+    useEdgeRules.mockReturnValue(ready([]));
+    render(<CorsPresetsPanel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit preset web-clients' }));
+    const form = screen.getByRole('form', { name: 'Edit preset web-clients' });
+    await userEvent.clear(within(form).getByLabelText('Max age seconds'));
+    await userEvent.type(within(form).getByLabelText('Max age seconds'), '60');
+    await userEvent.click(within(form).getByRole('button', { name: /save preset/i }));
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it('edits a preset, sending only what changed', async () => {

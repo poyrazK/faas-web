@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { Select } from '@/components/ui/field';
@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/toast';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
-import { useCapability, useCapabilityAccess, type Capability } from '@/lib/api/capabilities';
+import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import {
   EDGE_RANGES,
   useAttackMode,
@@ -21,7 +21,11 @@ import {
 } from '@/lib/api/edge-protection';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { formatRelative } from '@/lib/mock-data';
+import { useAuth } from '@/lib/auth';
+import { cliPreAuthCommand } from '@/lib/cli-commands';
+import { CliCommand } from '@/components/dashboard/cli-command';
+import { MaturityLabel } from '@/components/dashboard/maturity-label';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /**
  * An app's edge protection: what the edge refused, what the pre-auth guard
@@ -49,22 +53,37 @@ const DURATIONS: { seconds: number; label: string }[] = [
 const durationLabel = (seconds: number) =>
   DURATIONS.find((d) => d.seconds === seconds)?.label ?? `${Math.round(seconds / 60)} minutes`;
 
-/** The stage the registry gives a capability; nothing when it does not say. */
-function stage(capability: Capability | undefined) {
-  return capability?.maturity === 'preview' || capability?.maturity === 'beta'
-    ? capability.maturity
-    : '';
-}
-
 const DEGRADED = 'degraded:';
 const degradedReason = (source: string) =>
   source.startsWith(DEGRADED) ? source.slice(DEGRADED.length).trim() || 'unknown reason' : null;
 
 const at = (iso: string | undefined) => (iso ? Date.parse(iso) : Number.NaN);
-const absolute = (iso: string | undefined) => {
-  const t = at(iso);
-  return Number.isFinite(t) ? new Date(t).toLocaleString() : '';
-};
+
+/**
+ * Whether attack mode is on now. apid's `active` was true when it answered;
+ * polling stops well before a far end, so the end is checked again at render
+ * and a timer re-renders the panel when it passes.
+ */
+function useActiveNow(status: AttackMode | undefined) {
+  const ends = at(status?.expires_at);
+  const [now, setNow] = useState(() => Date.now());
+  const active = Boolean(status?.active) && (!Number.isFinite(ends) || ends > now);
+  useEffect(() => {
+    if (!active || !Number.isFinite(ends)) return;
+    // setTimeout overflows past ~24.8 days; attack mode lasts at most 24 hours.
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.min(ends - Date.now() + 250, 2 ** 31 - 1)
+    );
+    return () => clearTimeout(timer);
+  }, [active, ends]);
+  return active;
+}
+
+/** ADR-829's default pre-auth rate, clamped to the Free plan's 5 rps. */
+function defaultPreAuthRate(plan: string | undefined) {
+  return { rps: plan === 'free' ? 5 : 10, burst: 20 };
+}
 
 /**
  * Edge protection routes are not in faas's reviewed organization route table
@@ -75,13 +94,26 @@ function forbiddenInOrg(org: string) {
   return `In ${org}, an app's edge protection is open only to the person who created the app, while they are an owner or admin.`;
 }
 
-function useExplain() {
+function useOrgName() {
   const workspace = useWorkspaceTarget();
-  const org = workspace.org ? workspace.label : "the app's organization";
+  return workspace.org ? workspace.label : "the app's organization";
+}
+
+function useExplain() {
+  const org = useOrgName();
   return (err: unknown) =>
     err instanceof ApiError && err.code === 'org_role_forbidden'
       ? forbiddenInOrg(org)
       : errorMessage(err);
+}
+
+/** A toast's error part: the problem itself, so its help renders, worded for a company refusal. */
+function useExplainToast() {
+  const org = useOrgName();
+  return (err: unknown) =>
+    err instanceof ApiError && err.code === 'org_role_forbidden'
+      ? { error: err, description: forbiddenInOrg(org) }
+      : { error: err };
 }
 
 function Region({ label, children }: { label: string; children: ReactNode }) {
@@ -95,13 +127,12 @@ function Region({ label, children }: { label: string; children: ReactNode }) {
 export function EdgeProtectionBody({ slug }: { slug: string }) {
   const [range, setRange] = useState<EdgeRange>('1h');
   const { capability } = useCapability('edge-protection');
-  const label = stage(capability);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {label && <Pill label={`Edge protection ${label}`} />}
+          <MaturityLabel capability={capability} />
         </div>
         <label className="flex items-center gap-2">
           <span className="label-mono text-muted-foreground">Range</span>
@@ -131,20 +162,27 @@ function AttackModePanel({ slug }: { slug: string }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const explain = useExplain();
+  const explainToast = useExplainToast();
   const status = useAttackMode(slug);
   const on = useSwitchAttackModeOn(slug);
   const off = useSwitchAttackModeOff(slug);
   const { capability, state, refresh } = useCapability('edge-attack-mode');
   const { access } = useCapabilityAccess('edge-attack-mode');
+  // Attack mode is a managed challenge rule, so the edge_challenge flag must
+  // include the account too (amendment 1); its catalog id is
+  // edge-browser-challenge (faas pkg/platformflags/catalog.go:360). Only a
+  // hidden flag counts: Free has no challenge rules of its own yet may use
+  // attack mode, so plan-not-entitled does not.
+  const challenge = useCapabilityAccess('edge-browser-challenge');
   const [seconds, setSeconds] = useState(3600);
   // apid's own answer outranks the registry: 422 edge_feature_unavailable
   // means the platform flags leave this account out (amendment 1).
   const [unreleased, setUnreleased] = useState(false);
-  const label = stage(capability);
   const phase = queryPhase({ error: status.error, loading: status.isPending });
   const current: AttackMode | undefined = status.data;
-  const active = Boolean(current?.active);
-  const released = access === 'on' && !unreleased;
+  const active = useActiveNow(current);
+  const flagOff = access === 'off' || challenge.access === 'off';
+  const released = access === 'on' && !flagOff && !unreleased;
   const busy = on.isPending || off.isPending;
 
   const switchOn = async () => {
@@ -176,7 +214,7 @@ function AttackModePanel({ slug }: { slug: string }) {
         toast({ kind: 'info', title: 'Attack mode is not available yet' });
         return;
       }
-      toast({ kind: 'error', title: 'Could not switch attack mode on', description: explain(err) });
+      toast({ kind: 'error', title: 'Could not switch attack mode on', ...explainToast(err) });
     }
   };
 
@@ -197,18 +235,17 @@ function AttackModePanel({ slug }: { slug: string }) {
       toast({
         kind: 'error',
         title: 'Could not switch attack mode off',
-        description: explain(err),
+        ...explainToast(err),
       });
     }
   };
 
-  const ends = at(current?.expires_at);
   return (
     <Region label="Attack mode">
       <Panel
         title="Attack mode"
         description="One switch for a flood your rules cannot keep up with: every visitor is challenged until it ends on its own."
-        actions={label ? <Pill label={`Attack mode ${label}`} /> : null}
+        actions={<MaturityLabel capability={capability} />}
       >
         {phase !== 'ready' ? (
           <InlinePhase
@@ -221,10 +258,12 @@ function AttackModePanel({ slug }: { slug: string }) {
           <div className="flex flex-col gap-4">
             <p className="text-sm" role="status">
               {active ? (
-                <span title={absolute(current?.expires_at)}>On · ends {formatRelative(ends)}</span>
+                <span>
+                  On · ends <Timestamp value={current?.expires_at} />
+                </span>
               ) : current?.expires_at ? (
-                <span title={absolute(current.expires_at)}>
-                  Off · last ended {formatRelative(ends)}
+                <span>
+                  Off · last ended <Timestamp value={current.expires_at} />
                 </span>
               ) : (
                 'Off'
@@ -232,7 +271,7 @@ function AttackModePanel({ slug }: { slug: string }) {
               {active && current?.started_at && (
                 <span className="text-muted-foreground">
                   {' '}
-                  · started {formatRelative(at(current.started_at))}
+                  · started <Timestamp value={current.started_at} />
                 </span>
               )}
             </p>
@@ -279,7 +318,7 @@ function AttackModePanel({ slug }: { slug: string }) {
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {access === 'off' || unreleased ? (
+                {flagOff || unreleased ? (
                   <p className="text-sm text-muted-foreground">
                     Attack mode is not yet available to this account. Switching it off always works.
                   </p>
@@ -418,6 +457,7 @@ const SUGGESTION: Record<string, { title: string; color?: string }> = {
 
 function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
   const explain = useExplain();
+  const { account } = useAuth();
   const q = usePreAuthObservations(slug, range);
   const phase = queryPhase({ error: q.error, loading: q.isPending });
   const data = q.data;
@@ -444,9 +484,10 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
               No pre-auth guard is on for this app, so nothing is observed. Turn it on in observe
               mode first; it records without rejecting:
             </p>
-            <code className="w-fit max-w-full overflow-x-auto rounded-md border border-border bg-muted/40 px-2 py-1 font-mono text-xs">
-              gregale app {slug} --pre-auth observe
-            </code>
+            <CliCommand
+              command={cliPreAuthCommand(slug, 'observe', defaultPreAuthRate(account?.plan))}
+              copyLabel={`pre-auth observe command for ${slug}`}
+            />
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -463,9 +504,10 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
                 </div>
                 <p className="text-muted-foreground">{suggestion.reason}</p>
                 {suggestion.status === 'ready' && (
-                  <code className="w-fit max-w-full overflow-x-auto font-mono text-xs">
-                    gregale app {slug} --pre-auth enforce
-                  </code>
+                  <CliCommand
+                    command={cliPreAuthCommand(slug, 'enforce')}
+                    copyLabel={`pre-auth enforce command for ${slug}`}
+                  />
                 )}
               </div>
             )}

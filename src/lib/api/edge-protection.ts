@@ -143,11 +143,16 @@ export function useUpdateCorsPreset() {
   });
 }
 
+/** A CORS rule's preset reference, from either action shape. */
+function presetIdOf(action: unknown): string | null | undefined {
+  // apid sends the action wrapped by kind, {"kind":"cors","cors":{…}}
+  // (faas pkg/apid/edgerules/rules.go:46-47, pkg/state/types.go:8648); the
+  // vendored spec and older payloads have it flat.
+  const a = action as { cors?: { cors_preset_id?: string | null }; cors_preset_id?: string | null };
+  return a?.cors?.cors_preset_id ?? a?.cors_preset_id;
+}
+
 /** The CORS rules that take their policy from the preset `id`. */
 export function corsPresetUsers(rules: EdgeRule[] | undefined, id: string): EdgeRule[] {
-  return (rules ?? []).filter(
-    (rule) =>
-      rule.kind === 'cors' &&
-      (rule.action as { cors_preset_id?: string | null } | undefined)?.cors_preset_id === id
-  );
+  return (rules ?? []).filter((rule) => rule.kind === 'cors' && presetIdOf(rule.action) === id);
 }

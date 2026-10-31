@@ -149,6 +149,14 @@ describe('CORS presets', () => {
     );
   });
 
+  it('reads the action wrapped by kind, as apid sends it', () => {
+    const rules = [
+      { id: 'r1', kind: 'cors', action: { kind: 'cors', cors: { cors_preset_id: 'p1' } } },
+      { id: 'r2', kind: 'cors', action: { kind: 'cors', cors: { allow_origins: ['*'] } } },
+    ];
+    expect(corsPresetUsers(rules as never, 'p1').map((r) => r.id)).toEqual(['r1']);
+  });
+
   it('finds the CORS rules that reference a preset', () => {
     const rules = [
       { id: 'r1', kind: 'cors', action: { cors_preset_id: 'p1' } },

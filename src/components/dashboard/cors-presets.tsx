@@ -30,6 +30,8 @@ import {
 } from '@/lib/api/queries';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useAuth } from '@/lib/auth';
+import { useCapability } from '@/lib/api/capabilities';
+import { MaturityLabel } from '@/components/dashboard/maturity-label';
 import { cn } from '@/lib/utils';
 
 /**
@@ -122,6 +124,7 @@ function AccountPresets({ slug }: { slug?: string }) {
   const app = useApp(slug ?? '');
   const appId = slug ? app.data?.id : undefined;
   const presets = useCorsPresets();
+  const { capability } = useCapability('cors-presets');
   // Every rule on the account, since an edit reaches all of them.
   const rules = useEdgeRules(true, accountId);
   const { data: apps } = useApps(undefined, accountId);
@@ -130,7 +133,8 @@ function AccountPresets({ slug }: { slug?: string }) {
   const visible = (presets.data?.presets ?? []).filter(
     (p) => !p.app_id || !appId || p.app_id === appId
   );
-  // Unknown while the rules load or fail: say nothing rather than "no rules".
+  // null while the rules load or when they fail: a count that could not be
+  // established is never reported as "no rules".
   const usersOf = (id: string) =>
     rules.data ? ruleLabels(corsPresetUsers(rules.data, id), slugs) : null;
 
@@ -139,6 +143,7 @@ function AccountPresets({ slug }: { slug?: string }) {
       <Panel
         title="CORS presets"
         description="Named allow-lists a CORS edge rule can reference, so origins are kept once and edited once."
+        actions={<MaturityLabel capability={capability} />}
       >
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={() => void presets.refetch()} />
@@ -174,7 +179,7 @@ function PresetRow({ preset, users }: { preset: CorsPreset; users: string[] | nu
   const onDelete = async () => {
     const consequence =
       users === null
-        ? 'Edge rules that reference it lose the link and fail closed until they get a new preset or inline values.'
+        ? "Couldn't check which edge rules use it. Any that do lose the link and fail closed until they get a new preset or inline values."
         : users.length === 0
           ? 'No edge rule uses it.'
           : `${users.length === 1 ? 'This rule loses the link and fails' : `These ${users.length} rules lose the link and fail`} closed until given a new preset or inline values: ${users.join('; ')}.`;
@@ -265,6 +270,7 @@ function PresetForm({
   onDone?: () => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const create = useCreateCorsPreset();
   const update = useUpdateCorsPreset();
   const [name, setName] = useState(preset?.name ?? '');
@@ -314,7 +320,26 @@ function PresetForm({
     : null;
   const ready = valid && (changes === null || Object.keys(changes).length > 0);
 
+  // An edit changes the live CORS policy of every rule using the preset,
+  // account-wide, so it is confirmed whenever any might.
+  const reach =
+    users === null
+      ? "Couldn't check which edge rules use this preset; saving changes the CORS policy of any that do."
+      : users.length === 0
+        ? 'No edge rule uses this preset yet.'
+        : `Saving changes the CORS policy of ${users.length === 1 ? 'this rule' : `these ${users.length} rules`}: ${users.join('; ')}.`;
+
   const submit = async () => {
+    if (
+      preset &&
+      (users === null || users.length > 0) &&
+      !(await confirm({
+        title: `Save preset "${preset.name}"?`,
+        description: `${reach} Browsers see the new policy as soon as the gateways apply it.`,
+        confirmLabel: 'Save',
+      }))
+    )
+      return;
     try {
       if (preset && changes) {
         const saved = await update.mutateAsync({ id: preset.id, body: changes });
@@ -354,13 +379,7 @@ function PresetForm({
       }}
     >
       <p className="label-mono text-muted-foreground">{preset ? 'Edit preset' : 'New preset'}</p>
-      {preset && users !== null && (
-        <p className="text-xs text-muted-foreground">
-          {users.length === 0
-            ? 'No edge rule uses this preset yet.'
-            : `Saving changes the CORS policy of ${users.length === 1 ? 'this rule' : `these ${users.length} rules`}: ${users.join('; ')}.`}
-        </p>
-      )}
+      {preset && <p className="text-xs text-muted-foreground">{reach}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Name</span>

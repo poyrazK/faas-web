@@ -2637,7 +2637,10 @@ route('GET', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) =>
 );
 route('PUT', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params, body }) => {
   const a = app(params.slug);
-  if (hiddenCapabilities.has('edge-attack-mode'))
+  if (
+    hiddenCapabilities.has('edge-attack-mode') ||
+    hiddenCapabilities.has('edge-browser-challenge')
+  )
     throw new Problem(
       422,
       'edge_feature_unavailable',
@@ -6757,10 +6760,19 @@ route('POST', '/v1/keys/{id}/rotate', ({ params }) => {
   };
 });
 
-route('GET', '/v1/edge-rules', () => db.edgeRules);
+// Rules are stored flat, as the create body sends them, and answered the way
+// apid marshals state.EdgeRuleAction: wrapped by kind, {"kind":"cors","cors":
+// {…}} (faas pkg/apid/edgerules/rules.go:46-47, pkg/state/types.go:8638-8648).
+type EdgeRuleRow = (typeof db.edgeRules)[number];
+const wireRule = (rule: EdgeRuleRow) => ({
+  ...rule,
+  action: { kind: rule.kind, [rule.kind]: rule.action } as unknown as EdgeRuleRow['action'],
+});
+
+route('GET', '/v1/edge-rules', () => db.edgeRules.map(wireRule));
 route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
   const a = app(params.slug);
-  return db.edgeRules.filter((r) => r.app_id === a.id);
+  return db.edgeRules.filter((r) => r.app_id === a.id).map(wireRule);
 });
 
 /** jwt and ip are paid; geo is allowed on free with a tighter quota. */
@@ -6833,7 +6845,7 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     updated_at: db.iso(0),
   };
   db.edgeRules.push(rule);
-  return status(201, rule);
+  return status(201, wireRule(rule));
 });
 
 route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
@@ -6851,7 +6863,7 @@ route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
   // `action` replaces whole — there is no partial shape for it.
   if (body.action) rule.action = body.action as typeof rule.action;
   rule.updated_at = db.iso(0);
-  return rule;
+  return wireRule(rule);
 });
 
 route('GET', '/v1/apps/{slug}/throttle-suggestions', ({ params, query }) => {

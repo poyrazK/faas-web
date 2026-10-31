@@ -461,3 +461,46 @@ describe('POST /v1/apps/{slug}/rollback', () => {
     expect(res.body.code).toBe('no_rollback_target');
   });
 });
+
+describe('edge rules answer with the action wrapped by kind, as apid does', () => {
+  // apid marshals state.EdgeRuleAction: {"kind":"cors","cors":{…}}
+  // (faas pkg/apid/edgerules/rules.go:46-47, pkg/state/types.go:8638-8648).
+  it('takes a flat create body and answers wrapped, and clears a deleted preset from it', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'edge-wire', type: 'function', runtime: 'node24' }),
+    });
+    const preset = await json('/v1/cors-presets', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'wire',
+        allow_origins: ['https://a.example'],
+        allow_methods: ['GET'],
+        max_age_seconds: 60,
+      }),
+    });
+    const created = await json('/v1/apps/edge-wire/edge-rules', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'cors',
+        match_host: 'edge-wire.example',
+        match_path: '/*',
+        priority: 10,
+        action: { cors_preset_id: preset.body.id, allow_origins: [], allow_methods: [] },
+      }),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.action).toEqual({
+      kind: 'cors',
+      cors: { cors_preset_id: preset.body.id, allow_origins: [], allow_methods: [] },
+    });
+    const listed = await json('/v1/edge-rules');
+    const rule = (listed.body as { id: string; action: unknown }[]).find(
+      (r) => r.id === created.body.id
+    );
+    expect(rule?.action).toMatchObject({ kind: 'cors', cors: { cors_preset_id: preset.body.id } });
+    await fetch(`${base}/v1/cors-presets/${preset.body.id}`, { method: 'DELETE' });
+    const after = (await json('/v1/apps/edge-wire/edge-rules')).body as { action: unknown }[];
+    expect(after[0].action).toMatchObject({ kind: 'cors', cors: { cors_preset_id: null } });
+  });
+});

@@ -29,6 +29,8 @@ vi.mock('@/lib/api/capabilities', () => ({
 vi.mock('@/lib/api/workspace-apps', () => ({
   useWorkspaceTarget: () => ({ org: 'acme', label: 'Acme Inc', ready: true }),
 }));
+const account = vi.fn();
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: account() as unknown }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 
@@ -106,19 +108,22 @@ beforeEach(() => {
   useCapabilityAccess.mockReset().mockReturnValue({ access: 'on', refresh: vi.fn() });
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
+  account.mockReset().mockReturnValue({ id: 'acct', plan: 'pro' });
 });
 
 describe('EdgeProtectionBody', () => {
   it('labels the surface with the maturity the registry gives it', () => {
     render(<EdgeProtectionBody slug="api" />);
-    expect(screen.getByText('Edge protection beta')).toBeInTheDocument();
-    expect(screen.getByText('Attack mode preview')).toBeInTheDocument();
+    expect(screen.getAllByText('Beta')).toHaveLength(1);
+    expect(
+      within(screen.getByRole('region', { name: 'Attack mode' })).getByText('Preview')
+    ).toBeInTheDocument();
   });
 
   it('claims no stage when the registry does not describe the capability', () => {
     useCapability.mockReturnValue({ capability: undefined });
     render(<EdgeProtectionBody slug="api" />);
-    expect(screen.queryByText(/beta|preview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^(beta|preview)$/i)).not.toBeInTheDocument();
   });
 
   it('summarises what the edge refused over the range', () => {
@@ -222,6 +227,50 @@ describe('attack mode', () => {
     expect(screen.getByRole('button', { name: 'Switch attack mode off' })).toBeInTheDocument();
   });
 
+  it('reads an answer whose end has passed as off, though it said on', () => {
+    useAttackMode.mockReturnValue(
+      ready({
+        active: true,
+        rule_id: 'r1',
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+      })
+    );
+    render(<EdgeProtectionBody slug="api" />);
+    expect(screen.getByText(/^Off · last ended/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Switch attack mode off' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no switch when challenge rules are not released to the account', () => {
+    useCapabilityAccess.mockImplementation((key: string) => ({
+      access: key === 'edge-browser-challenge' ? 'off' : 'on',
+      refresh: vi.fn(),
+    }));
+    render(<EdgeProtectionBody slug="api" />);
+    expect(screen.getByText(/not yet available to this account/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Switch attack mode on' })).not.toBeInTheDocument();
+  });
+
+  it('still offers the switch on Free, where challenge rules are not on the plan', () => {
+    useCapabilityAccess.mockImplementation((key: string) => ({
+      access: key === 'edge-browser-challenge' ? 'plan-not-entitled' : 'on',
+      refresh: vi.fn(),
+    }));
+    render(<EdgeProtectionBody slug="api" />);
+    expect(screen.getByRole('button', { name: 'Switch attack mode on' })).toBeInTheDocument();
+  });
+
+  it('hands the failure to the toast so its help renders', async () => {
+    const err = new ApiError({ status: 503, code: 'capacity_exhausted', title: 'Unavailable' });
+    switchOn.mockRejectedValue(err);
+    render(<EdgeProtectionBody slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Switch attack mode on' }));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error', error: err }))
+    );
+  });
+
   it('says when an attack mode that ran out ended', () => {
     useAttackMode.mockReturnValue(
       ready({ active: false, rule_id: 'r1', expires_at: '2026-10-30T09:00:00Z' })
@@ -263,6 +312,17 @@ describe('pre-auth observations', () => {
     usePreAuthObservations.mockReturnValue(ready(observations({ policies: [] })));
     render(<EdgeProtectionBody slug="api" />);
     expect(screen.getByText(/no pre-auth guard is on/i)).toBeInTheDocument();
-    expect(screen.getByText('gregale app api --pre-auth observe')).toBeInTheDocument();
+    expect(
+      screen.getByText('gregale app api --pre-auth observe --pre-auth-rps 10 --pre-auth-burst 20')
+    ).toBeInTheDocument();
+  });
+
+  it("starts a Free app's guard at the plan's rate", () => {
+    account.mockReturnValue({ id: 'acct', plan: 'free' });
+    usePreAuthObservations.mockReturnValue(ready(observations({ policies: [] })));
+    render(<EdgeProtectionBody slug="api" />);
+    expect(
+      screen.getByText('gregale app api --pre-auth observe --pre-auth-rps 5 --pre-auth-burst 20')
+    ).toBeInTheDocument();
   });
 });
