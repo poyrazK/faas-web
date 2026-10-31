@@ -30,6 +30,11 @@ vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
 vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
 vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
+vi.mock('./app-release-settings', () => ({
+  AppReleaseSettings: ({ app }: { app: { slug: string } }) => (
+    <section aria-label="Releases">release settings for {app.slug}</section>
+  ),
+}));
 vi.mock('@/lib/api/queries', () => ({
   retryPolicy: () => false,
   useApp: () => ({
@@ -152,5 +157,20 @@ describe('App deletion contract copy', () => {
       expect.objectContaining({ title: 'App deletion scheduled' })
     );
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
+  });
+});
+
+describe('Release settings', () => {
+  it('renders the release policy panel for the app on the Configuration tab', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
+    expect(screen.getByRole('region', { name: 'Releases' })).toHaveTextContent(
+      'release settings for alpha'
+    );
   });
 });
