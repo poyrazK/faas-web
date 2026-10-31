@@ -11,6 +11,7 @@ import { FailurePanel } from './failure-panel';
 import { failureSummary } from './failure-summary';
 import { AppCallIt } from './call-it';
 import { FirstResponse } from './first-response';
+import { publicAppUrl } from '@/lib/app-url';
 import { cn } from '@/lib/utils';
 
 // These are server states, not a simulated percentage or a timed sequence.
@@ -94,6 +95,9 @@ export function DeploymentProgress({
   const phase = deploymentPhase(status);
   const unavailable = Boolean(deploymentId && statusQuery.isError);
   const live = phase === 'live' && !unavailable && !submissionError;
+  // Only an API-assigned http(s) destination becomes a link; the raw value is
+  // still shown and copyable beside it, so nothing is hidden.
+  const openHref = live ? publicAppUrl(endpoint) : undefined;
   useEffect(() => {
     if (live && deployment) onLive?.(deployment);
   }, [live, deployment, onLive]);
@@ -308,9 +312,9 @@ export function DeploymentProgress({
                 {live && <CopyIconButton text={endpoint} label="Copy app endpoint" />}
               </div>
             </div>
-            {live && (
+            {openHref && (
               <Button asChild variant="cta" size="sm" className="gap-1.5">
-                <a href={endpoint} target="_blank" rel="noopener noreferrer">
+                <a href={openHref} target="_blank" rel="noopener noreferrer">
                   Open app
                   <OpenNewWindow aria-hidden />
                 </a>

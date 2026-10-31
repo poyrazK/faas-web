@@ -1092,9 +1092,10 @@ describe('NewAppWizard Git submission', () => {
     expect(screen.queryByRole('region', { name: 'Call it' })).not.toBeInTheDocument();
     mocks.deploymentStatus = 'live';
     rerender(<NewAppWizard onboarding onDeploymentAccepted={onDeploymentAccepted} />);
+    // `publicAppUrl` normalises through `new URL`, hence the trailing slash.
     expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute(
       'href',
-      'https://demo-app.example'
+      'https://demo-app.example/'
     );
     const callIt = screen.getByRole('region', { name: 'Call it' });
     expect(callIt).toHaveTextContent('curl -i https://demo-app.example');

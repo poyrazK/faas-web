@@ -523,6 +523,28 @@ Config for the common hosts is committed:
 - **Vercel** — `vercel.json`, which also sets far-future caching on the
   content-hashed `/assets/*` and `no-cache` on `index.html`.
 
+**Browser security headers have one source of truth:** `src/lib/security-headers.ts`.
+`npm run dev` and `npm run preview` apply it from the module, and `vercel.json`
+carries a literal copy of the production set that `src/hosting-contract.test.ts`
+checks for equality — on a mismatch, regenerate the literal from the module.
+The policy is first-party with one named exception: `script-src 'self'`,
+`font-src 'self'`, and `connect-src 'self' https://s3.gregale.dev`, because
+object uploads PUT the file straight to a signed URL on the branded S3 gateway
+(`lib/api/object-storage.ts`). Fonts are self-hosted from `src/fonts/` for the
+same reason (provenance and licenses in its README); Vite content-hashes them
+into `/assets/`, which the immutable cache rule covers. The one keyword
+allowance is `style-src 'unsafe-inline'`: the prerendered public pages carry
+React's `style=""` attributes in their markup, and the overview search's
+border-beam package renders a `<style>` element, so a strict `style-src` blanks
+both until build-time hashes exist. A new external origin is a policy change,
+not a tag in `index.html`, and the dev server blocks it until the module allows
+it; the policy tests name each allowed host and why.
+
+`npm run build:mock` then `npm run preview:mock` serve a built console with the
+mock API behind it under the production headers; point `npm run tour` at
+`http://localhost:4173` before changing the policy — the tour fails on any
+Content-Security-Policy violation.
+
 OAuth uses full-page GETs through `/v1/auth/google` and `/v1/auth/github`,
 including their callback paths. If the API is behind a WAF or bot check, those
 paths must be allowed to reach `api.gregale.dev` without an interactive
