@@ -5,12 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
 let plan = 'hobby';
+let deployments: unknown[] = [];
 const metricsRefetch = vi.fn();
 
 vi.mock('@/lib/store', () => ({
@@ -31,7 +32,7 @@ vi.mock('@/lib/store', () => ({
         version: 'abc1234',
       },
     ],
-    deployments: [],
+    deployments,
     loading: false,
     error: null,
     refresh: vi.fn(),
@@ -131,6 +132,7 @@ function metrics(range: string, requestCount: number) {
 
 beforeEach(() => {
   plan = 'hobby';
+  deployments = [];
   metricsRefetch.mockReset();
   useAppsMetrics
     .mockReset()
@@ -237,4 +239,49 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   expect(await screen.findByText('metrics degraded — unknowns read as —')).toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
+});
+
+describe('overview deployments column', () => {
+  it.each(['pointer', 'keyboard'])(
+    'opens a recent deployment in the releases hub using %s',
+    async (input) => {
+      deployments = [
+        {
+          id: 'dep-1',
+          workflowId: 'api',
+          version: 'abc1234',
+          state: 'failed',
+          commit: 'abc1234',
+          message: 'Fix the thing',
+          author: 'ada',
+          createdAt: Date.now() - 60_000,
+        },
+      ];
+      const root = createRootRoute();
+      const overview = Route.update({
+        id: '/dashboard/',
+        path: '/dashboard',
+        getParentRoute: () => root,
+      } as never);
+      const releases = createRoute({
+        getParentRoute: () => root,
+        path: '/dashboard/releases',
+        component: () => <h1>Releases</h1>,
+      });
+      const router = createRouter({
+        routeTree: root.addChildren([overview, releases]),
+        history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
+      });
+      render(<RouterProvider router={router} />);
+      const column = (await screen.findByRole('link', { name: 'Deployments' })).closest('section')!;
+      const row = within(column).getByRole('link', { name: /api.*failed/i });
+      expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
+      if (input === 'keyboard') {
+        row.focus();
+        await userEvent.keyboard('{Enter}');
+      } else await userEvent.click(row);
+      expect(await screen.findByRole('heading', { name: 'Releases' })).toBeInTheDocument();
+      expect(router.state.location.search).toEqual({ deployment: 'dep-1' });
+    }
+  );
 });

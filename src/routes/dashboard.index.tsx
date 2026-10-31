@@ -200,19 +200,27 @@ function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
               live: true,
             };
             return (
-              <li key={d.id} className="flex items-center gap-2.5 py-2.5">
-                {/* Colour plus text, never hue alone; in-flight breathes. */}
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    state.live && 'animate-breathe'
-                  )}
-                  style={{ background: state.color }}
-                />
-                <span className="truncate font-mono text-xs">{d.workflowId}</span>
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                  {formatRelative(d.createdAt)}
-                </span>
+              <li key={d.id}>
+                <Link
+                  to="/dashboard/releases"
+                  search={{ deployment: d.id }}
+                  className="pressable group flex items-center gap-2.5 rounded py-2.5"
+                >
+                  {/* Colour plus text, never hue alone; in-flight breathes. */}
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      state.live && 'animate-breathe'
+                    )}
+                    style={{ background: state.color }}
+                  />
+                  <span className="truncate font-mono text-xs">{d.workflowId}</span>
+                  <span className="sr-only">{state.label}</span>
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    {formatRelative(d.createdAt)}
+                  </span>
+                  <NavArrowRight className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </Link>
               </li>
             );
           })}
