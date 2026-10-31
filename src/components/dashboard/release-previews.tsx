@@ -22,6 +22,7 @@ import { publicAppUrl } from '@/lib/app-url';
 import { useAuth } from '@/lib/auth';
 import { CapabilityNotice } from './capability-notice';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { TearDownPreviewButton } from './preview-actions';
 import { ReleaseStatusLabel } from './release-status-label';
 
 const HOUR = 3_600_000;
@@ -240,10 +241,13 @@ function NewPreviewForm({
         </label>
       </div>
       <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+        {/* apid copies the parent's pr-preview values and secrets on create and
+            reopen (faas ADR-20261028090000, handlers_preview_create.go:79). */}
         {slug && (
           <p>
             Creates <code className="font-mono text-foreground">{slug}</code>, undeployed, with{' '}
-            {parent}'s settings. Production environment values are not copied.
+            {parent}'s settings. Production environment values are not copied. Values and secrets in{' '}
+            {parent}'s pr-preview scope are applied to it.
           </p>
         )}
         {slugTooLong && (
@@ -268,7 +272,7 @@ function NewPreviewForm({
           <p style={{ color: 'var(--status-critical)' }}>{errorMessage(failure)}</p>
           {code === 'plan_limit_apps' && (
             <p className="text-muted-foreground">
-              Tear down a preview below, or close its pull request.{' '}
+              Open a preview below and tear it down, or close its pull request.{' '}
               <Link to="/dashboard/plans" className="text-brand underline">
                 View plans
               </Link>
@@ -409,14 +413,17 @@ function PreviewDetail({ slug, onClose }: { slug: string; onClose: () => void })
               </code>
             </p>
           )}
-          <Link
-            to="/dashboard/apps/$appSlug"
-            params={{ appSlug: slug }}
-            search={{ tab: 'Deployments' }}
-            className="self-start text-brand hover:underline"
-          >
-            Open {slug}
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: slug }}
+              search={{ tab: 'Deployments' }}
+              className="text-brand hover:underline"
+            >
+              Open {slug}
+            </Link>
+            <TearDownPreviewButton slug={slug} onDone={onClose} />
+          </div>
         </>
       )}
     </section>

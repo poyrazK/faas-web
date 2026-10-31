@@ -7,15 +7,19 @@ import { spyApi } from '@/test/api';
 
 const toast = vi.fn();
 const capability = vi.fn();
+const confirm = vi.fn();
+const navigate = vi.fn();
 
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: () => capability() }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: { id: 'acct', plan: 'pro', limits: { plan: 'pro', preview_apps: 5 } },
   }),
 }));
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
   Link: ({
     children,
     to,
@@ -100,6 +104,8 @@ async function openForm() {
 
 beforeEach(() => {
   toast.mockReset();
+  confirm.mockReset().mockResolvedValue(true);
+  navigate.mockReset();
   capability.mockReset().mockReturnValue({
     accountId: 'acct',
     state: 'available',
@@ -139,6 +145,9 @@ describe('ReleasePreviews', () => {
     expect(within(form).getByText('pr-7-checkout')).toBeInTheDocument();
     expect(form).toHaveTextContent('expires 7 days after you create it');
     expect(form).toHaveTextContent('Your Pro plan allows 5 open PR preview environments');
+    expect(form).toHaveTextContent(
+      "Values and secrets in checkout's pr-preview scope are applied to it"
+    );
   });
 
   it('refuses a lease outside 1–720 hours and a slug over 63 characters', async () => {
@@ -233,7 +242,7 @@ describe('ReleasePreviews', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Create preview' }));
     const alert = await within(form).findByRole('alert');
     expect(alert).toHaveTextContent('pro plan allows 5 open PR preview environment(s)');
-    expect(alert).toHaveTextContent('Tear down a preview below');
+    expect(alert).toHaveTextContent('Open a preview below and tear it down');
     expect(within(alert).getByRole('link', { name: 'View plans' })).toHaveAttribute(
       'href',
       '/dashboard/plans'
@@ -273,6 +282,32 @@ describe('ReleasePreviews', () => {
     );
     expect(detail).toHaveTextContent('PR #42 · open');
     expect(detail).toHaveTextContent('routing');
+  });
+
+  it('tears a preview down from its detail, with the typed confirm, and stays on Releases', async () => {
+    stubGets();
+    const post = spyApi('POST').mockResolvedValue({
+      data: undefined,
+      response: new Response(null, { status: 204 }),
+    } as never);
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: /pr-42-checkout/ }));
+    const detail = await screen.findByRole('region', { name: 'Preview pr-42-checkout' });
+    await userEvent.click(await within(detail).findByRole('button', { name: 'Tear down preview' }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ destructive: true, typeToConfirm: 'pr-42-checkout' })
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/v1/preview/{slug}/destroy', {
+        params: { path: { slug: 'pr-42-checkout' } },
+      })
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'Preview pr-42-checkout' })
+      ).not.toBeInTheDocument()
+    );
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('says so when the slug is not a preview', async () => {
