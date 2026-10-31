@@ -113,8 +113,7 @@ export function Pricing() {
                     </Reveal>
                     <Reveal y={12} delay={0.1}>
                       <p className="mt-5 max-w-sm text-base leading-relaxed text-muted-foreground">
-                        Monthly plans and usage limits from the platform catalog. Start on Free
-                        during the public beta.
+                        Monthly plans and usage limits from the platform catalog. Start on Free.
                       </p>
                     </Reveal>
                   </div>
@@ -151,8 +150,7 @@ export function Pricing() {
                 coming soon
               </h2>
               <p className="mt-7 max-w-[17rem] text-pretty text-[15px] leading-relaxed text-muted-foreground sm:max-w-[20rem] sm:text-base">
-                We’re focused on the beta experience first. Paid billing and checkout are disabled
-                during beta. Start on Free.
+                Paid billing and checkout open after the beta. Start on Free today.
               </p>
               <SweepLink
                 to="/signup"
