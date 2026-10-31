@@ -226,14 +226,22 @@ export function CancelCronRunButton({ cronId, runId }: { cronId: string; runId: 
           return;
         try {
           const task = await cancel.mutateAsync({ cronId, runId });
+          // apid answers 202 for a run that ended first, returning it as it is.
+          const finished = ['succeeded', 'failed', 'timed_out'].includes(task.status);
           toast(
             task.status === 'cancelled'
               ? { kind: 'success', title: 'Run cancelled' }
-              : {
-                  kind: 'success',
-                  title: 'Cancellation requested',
-                  description: 'The worker is stopping the run.',
-                }
+              : finished
+                ? {
+                    kind: 'info',
+                    title: 'The run had already finished',
+                    description: 'Nothing was stopped.',
+                  }
+                : {
+                    kind: 'success',
+                    title: 'Cancellation requested',
+                    description: 'The worker is stopping the run.',
+                  }
           );
         } catch (err) {
           const code = err instanceof ApiError ? err.code : undefined;

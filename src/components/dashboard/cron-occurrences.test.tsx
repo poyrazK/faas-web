@@ -187,6 +187,25 @@ describe('CancelCronRunButton', () => {
     );
   });
 
+  it.each(['succeeded', 'failed', 'timed_out'])(
+    'says a run that had already %s was not stopped',
+    async (status) => {
+      // apid answers 202 with the finished task when the run ended first
+      // (faas pgstore_app_tasks.go RequestAppTaskCancellation).
+      post().mockResolvedValue({
+        data: { id: TASK, status },
+        response: new Response(null, { status: 202 }),
+      });
+      mount(<CancelCronRunButton cronId={CRON} runId={TASK} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel run' }));
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'info', title: 'The run had already finished' })
+        )
+      );
+    }
+  );
+
   it('sends nothing when the confirm is declined', async () => {
     confirm.mockResolvedValue(false);
     const cancel = post();
