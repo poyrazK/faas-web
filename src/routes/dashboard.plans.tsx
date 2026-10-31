@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
@@ -14,8 +15,12 @@ import {
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
+import { ApiError } from '@/lib/api/errors';
+import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/plans')({
   component: PlansPage,
@@ -144,28 +149,160 @@ function BillingControlsPanel() {
   );
 }
 
+/** How often, and for how long, the page re-reads the account while a
+ * provider-deferred plan change is outstanding. `GET /v1/account` never
+ * reports the pending state, so the plan flipping is the only signal. */
+const PENDING_POLL_MS = 15_000;
+const PENDING_POLL_WINDOW_MS = 3 * 60_000;
+
+const planName = (id: Plan) => PLANS.find((p) => p.id === id)?.name ?? id;
+
+/** A company workspace shows the organization's plan; its owner changes it. */
 function PlansPage() {
+  const { org, label, ready } = useWorkspaceTarget();
+  // Until the workspace is bound, a chosen company reads as null: wait.
+  if (!ready) return <PageHeader title="Plans" />;
+  if (!org) return <PersonalPlans />;
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
+      <OrgPlanSummary org={org} label={label} />
+    </div>
+  );
+}
+
+function PersonalPlans() {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
+  const { openMfa } = useMfa();
   const changePlan = useChangePlan();
   const portal = useBillingPortal();
   const [pending, setPending] = useState<Plan | null>(null);
+  // A deferred change (202) leaves the account on its old plan, so the page
+  // remembers what was asked for until the account catches up.
+  const [requested, setRequested] = useState<{ plan: Plan; effectiveAt?: string } | null>(null);
 
   const current = account?.plan;
+  const awaiting = requested !== null && requested.plan !== current;
+
+  // Once the account reports the requested plan the note has done its job.
+  if (requested && requested.plan === current) setRequested(null);
+  useEffect(() => {
+    if (!awaiting) return;
+    const reread = () => void refreshAccount().catch(() => {});
+    const timer = window.setInterval(reread, PENDING_POLL_MS);
+    const stop = window.setTimeout(() => window.clearInterval(timer), PENDING_POLL_WINDOW_MS);
+    window.addEventListener('focus', reread);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+      window.removeEventListener('focus', reread);
+    };
+  }, [awaiting, refreshAccount]);
+
+  const openStep = (mode: 'choose' | 'verify', reason: string) =>
+    new Promise<MfaMethod | null>((resolve) =>
+      openMfa(mode, {
+        reason,
+        allowRecovery: false,
+        onVerified: (via) => resolve(via),
+        onDismissed: () => resolve(null),
+      })
+    );
+
+  /**
+   * Plan changes sit behind a five-minute step-up that only an authenticator
+   * code satisfies, and every browser session starts without one — including
+   * accounts with no MFA at all (middleware.go requireStepUp; WithStepUp is
+   * always applied to cookie sessions). No API response says whether MFA is
+   * enrolled, so the first prompt is the provider's "set up or enter a code"
+   * choice, which already falls through to verification when enrolment answers
+   * 409. Finishing enrolment and a recovery code both reissue the cookie
+   * without a stamp (handlers_mfa.go: only mfaVerify stamps), so enrolment is
+   * followed by a code and the recovery option is not offered at all.
+   */
+  const stepUp = async (): Promise<'confirmed' | 'dismissed'> => {
+    let via = await openStep('choose', 'Plan changes need multi-factor authentication.');
+    if (via === 'enrolment') {
+      via = await openStep(
+        'verify',
+        'Authenticator set up. Enter a new code from your authenticator to confirm this change.'
+      );
+    }
+    return via === 'authenticator' ? 'confirmed' : 'dismissed';
+  };
+
+  const apply = (plan: Plan, retried = false): Promise<void> =>
+    changePlan
+      .mutateAsync(plan)
+      .then(async (result) => {
+        await refreshAccount().catch(() => {});
+        if (result.pending) {
+          const target = (result.account.requested_plan as Plan | undefined) ?? plan;
+          const effectiveAt = result.account.effective_at;
+          setRequested({ plan: target, effectiveAt });
+          toast({
+            kind: 'info',
+            title: 'Plan change pending',
+            description:
+              `You stay on your current plan until the billing provider confirms ${planName(target)}.` +
+              (effectiveAt
+                ? ` It takes effect on ${new Date(effectiveAt).toLocaleDateString()}.`
+                : ''),
+          });
+        } else {
+          toast({ kind: 'success', title: `Now on the ${planName(plan)} plan` });
+        }
+      })
+      .catch(async (err: unknown) => {
+        // The session's step-up is older than five minutes: verify, then ask
+        // again — once, so a second refusal is reported rather than looped.
+        if (err instanceof ApiError && err.code === 'step_up_required') {
+          // A refusal straight after an accepted code is not the customer's to
+          // fix with another code; asking for one would read as a loop.
+          if (retried) {
+            toast({
+              kind: 'error',
+              title: 'Could not change plan',
+              description:
+                'Your code was accepted, but the change could not be confirmed. Try again in a moment.',
+            });
+            return;
+          }
+          if ((await stepUp()) === 'confirmed') return apply(plan, true);
+          toast({
+            kind: 'error',
+            title: 'Could not change plan',
+            description:
+              "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
+          });
+          return;
+        }
+        // An upgrade that needs payment answers 402 with the provider page
+        // that takes it; that is the next step, not a failure.
+        if (err instanceof ApiError && err.billingUrl) {
+          goToExternal(err.billingUrl);
+          return;
+        }
+        // payment_required with no URL: billing has no portal configured and
+        // nothing hosted to send the customer to.
+        if (err instanceof ApiError && err.code === 'payment_required') {
+          toast({
+            kind: 'error',
+            title: 'Could not change plan',
+            description:
+              'Billing has no checkout or portal page for this account, so the change cannot be completed here. Contact support to change your plan.',
+          });
+          return;
+        }
+        toast({ kind: 'error', title: 'Could not change plan', error: err });
+      });
 
   const confirm = () => {
     if (!pending) return;
-    void changePlan
-      .mutateAsync(pending)
-      .then(async () => {
-        await refreshAccount().catch(() => {});
-        toast({ kind: 'success', title: `Now on the ${pending} plan` });
-        setPending(null);
-      })
-      .catch((err: unknown) => {
-        setPending(null);
-        toast({ kind: 'error', title: 'Could not change plan', error: err });
-      });
+    const plan = pending;
+    setPending(null);
+    void apply(plan);
   };
 
   return (
@@ -199,6 +336,21 @@ function PlansPage() {
           </Button>
         }
       />
+
+      {awaiting && requested && (
+        <div
+          role="status"
+          aria-label="Plan change pending"
+          className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"
+        >
+          A change to the {planName(requested.plan)} plan was requested. You stay on{' '}
+          {current ? planName(current) : 'your current plan'} until the billing provider confirms it
+          {requested.effectiveAt
+            ? `; it takes effect on ${new Date(requested.effectiveAt).toLocaleDateString()}`
+            : ''}
+          .
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {PLANS.map((plan) => {
@@ -267,7 +419,7 @@ function PlansPage() {
             <Button variant="ghost" size="sm" onClick={() => setPending(null)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={confirm} busy={changePlan.isPending}>
+            <Button size="sm" onClick={confirm}>
               Confirm switch
             </Button>
           </div>

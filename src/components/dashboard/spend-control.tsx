@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/modal';
 import { useBillingForecast, useOverageCap, useSpendCapHistory } from '@/lib/api/queries';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { SpendCapEditor } from './spend-cap';
+import { formatCents, formatMillicents } from '@/lib/money';
 
 const METER_NAMES: Record<string, string> = {
   gb_hours: 'compute',
@@ -14,16 +15,13 @@ const METER_NAMES: Record<string, string> = {
 };
 const meterName = (meter: string) => METER_NAMES[meter] ?? meter.replace(/_/g, ' ');
 
-const eur = (cents: number) =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(cents / 100);
-
 /** How this month's overage stands against the cap. Pure, so every state can be tested. */
 export function capStanding(overageCents: number, capCents: number | null) {
   if (capCents === null)
     return {
       tone: 'var(--status-warning)',
       label: 'No cap',
-      detail: `${eur(overageCents)} of overage so far. Nothing stops overage from growing.`,
+      detail: `${formatCents(overageCents)} of overage so far. Nothing stops overage from growing.`,
       pct: null,
     };
   if (capCents === 0)
@@ -39,13 +37,13 @@ export function capStanding(overageCents: number, capCents: number | null) {
     return {
       tone: 'var(--status-critical)',
       label: 'Cap reached',
-      detail: `${eur(overageCents)} of ${eur(capCents)}. New wakes beyond the allowance are refused, and running apps park, until the cap is raised or the period ends.`,
+      detail: `${formatCents(overageCents)} of ${formatCents(capCents)}. New wakes beyond the allowance are refused, and running apps park, until the cap is raised or the period ends.`,
       pct,
     };
   return {
     tone: pct >= 80 ? 'var(--status-warning)' : 'var(--status-good)',
     label: pct >= 80 ? 'Close to the cap' : 'Within the cap',
-    detail: `${eur(overageCents)} of ${eur(capCents)} overage used.`,
+    detail: `${formatCents(overageCents)} of ${formatCents(capCents)} overage used.`,
     pct,
   };
 }
@@ -59,7 +57,7 @@ export function describeCapEvent(event: HistoryEvent): string {
     value === 'null' || value === null || value === undefined
       ? 'no cap'
       : typeof value === 'number'
-        ? eur(value)
+        ? formatCents(value)
         : String(value);
   if (event.kind === 'overage.cap_changed')
     return `Cap changed from ${money(data.old_cents)} to ${money(data.new_cents)}`;
@@ -103,7 +101,7 @@ function ForecastLine() {
       {/* period_end is exclusive: the last day of the period is the day before. */}
       Projected usage charges by{' '}
       {new Date(Date.parse(forecast.data.period_end) - 1).toLocaleDateString()}:{' '}
-      <span className="font-medium text-foreground">{eur(projected / 1000)}</span>
+      <span className="font-medium text-foreground">{formatMillicents(projected)}</span>
       {missing.length > 0 &&
         ` (excludes ${missing.map((m) => meterName(m.meter)).join(', ')}, which cannot be forecast yet)`}
       {!forecast.data.bill_estimate_available &&
@@ -186,7 +184,7 @@ export function SpendControl({ overageCents }: { overageCents: number | undefine
           open
           onClose={() => setEditing(false)}
           title="Spend cap"
-          description="Set €0 to allow no overage, or clear the cap to remove the ceiling."
+          description="Set $0 to allow no overage, or clear the cap to remove the ceiling."
           width="max-w-lg"
         >
           <div className="p-1">

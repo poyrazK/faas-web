@@ -258,7 +258,7 @@ export function TeamMembersBody({
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">
-          {i.status === 'pending' ? when(i.expiresAt).replace(' ago', '') : '—'}
+          {i.status === 'pending' ? when(i.expiresAt) : '—'}
         </span>
       ),
     },

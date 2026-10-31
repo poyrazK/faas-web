@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ArrowRight, Page, Upload } from 'iconoir-react';
+import { Check, NavArrowRight, Page, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError } from '@/components/ui/field';
-import { Panel } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { Swap } from '@/components/dashboard/motion';
 import { useToast } from '@/components/ui/toast';
@@ -11,6 +10,7 @@ import { useProjectApply, useProjectScan, type ProjectPlan } from '@/lib/api/que
 import { cn } from '@/lib/utils';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { SCAN_SOURCE_LABEL } from './scan-source';
+import { SettingRow, SettingsSection } from './new-app-settings';
 
 /**
  * Repository import — `/v1/projects/scan` + `/v1/projects`.
@@ -92,22 +92,20 @@ export function ProjectImport({
       .catch((err: unknown) => toast({ kind: 'error', title: 'Could not apply', error: err }));
   };
 
-  return (
-    <div className="flex flex-col gap-6">
-      <p className="text-sm text-muted-foreground">
-        Bring a repository from Kubernetes, Compose, Render, Fly, or serverless. Scan first, review
-        the workloads, then apply the plan to create its apps.
-      </p>
+  const plain = (label: string, value: string) => (
+    <span>
+      <span className="sr-only">{label} </span>
+      {value}
+    </span>
+  );
 
-      <Panel
-        lit
-        title="Scan a repository"
-        description="A .tar.gz of the repo root. The scan is a dry run."
-      >
-        <div className="flex flex-wrap items-end gap-3">
+  return (
+    <div className="flex flex-col gap-8">
+      <SettingsSection id="import-project" title="Project">
+        <SettingRow label="Archive" hint="A .tar.gz of the repo root. The scan is a dry run.">
           <label
             className={cn(
-              'flex h-24 min-w-64 flex-1 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm transition-colors',
+              'flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm transition-colors has-focus-visible:ring-2 has-focus-visible:ring-brand',
               file
                 ? 'border-brand/50 text-foreground'
                 : 'border-border text-muted-foreground hover:border-border-secondary'
@@ -130,192 +128,221 @@ export function ProjectImport({
               }}
             />
           </label>
-
-          <label className="flex min-w-40 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Project slug</span>
-            <input
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value.toLowerCase());
-                setApplied(null);
-              }}
-              onBlur={() => setSlugTouched(true)}
-              aria-invalid={showSlugError || undefined}
-              aria-describedby={showSlugError ? 'import-slug-error' : undefined}
-              placeholder="repo name"
-              className={cn(
-                FIELD,
-                'font-mono',
-                showSlugError && 'border-[color:var(--status-critical)]'
-              )}
-            />
-            {showSlugError && (
-              <FieldError id="import-slug-error">
-                Lowercase letters, digits, and dashes; defaults to the repo name.
-              </FieldError>
+        </SettingRow>
+        <SettingRow
+          label="Project slug"
+          htmlFor="import-slug"
+          hint="Lowercase letters, digits, and dashes; defaults to the repo name."
+        >
+          <input
+            id="import-slug"
+            value={slug}
+            onChange={(e) => {
+              setSlug(e.target.value.toLowerCase());
+              setApplied(null);
+            }}
+            onBlur={() => setSlugTouched(true)}
+            aria-invalid={showSlugError || undefined}
+            aria-describedby={showSlugError ? 'import-slug-error' : undefined}
+            placeholder="repo name"
+            className={cn(
+              FIELD,
+              'font-mono',
+              showSlugError && 'border-[color:var(--status-critical)]'
             )}
-          </label>
+          />
+          {showSlugError && (
+            <FieldError id="import-slug-error">
+              Lowercase letters, digits, and dashes; defaults to the repo name.
+            </FieldError>
+          )}
+        </SettingRow>
+        <SettingRow label="Branch" htmlFor="import-branch">
+          <input
+            id="import-branch"
+            value={branch}
+            onChange={(e) => {
+              setBranch(e.target.value);
+              setApplied(null);
+            }}
+            className={cn(FIELD, 'font-mono')}
+          />
+        </SettingRow>
+      </SettingsSection>
 
-          <label className="flex min-w-32 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Branch</span>
-            <input
-              value={branch}
-              onChange={(e) => {
-                setBranch(e.target.value);
-                setApplied(null);
-              }}
-              className={cn(FIELD, 'font-mono')}
-            />
-          </label>
-
-          <Button size="sm" onClick={runScan} disabled={!file || !slugOk} busy={scan.isPending}>
-            <Page className="h-3.5 w-3.5" />
+      {!plan && !applied && (
+        <div className="flex justify-end">
+          <Button
+            variant="cta"
+            onClick={runScan}
+            disabled={!file || !slugOk}
+            busy={scan.isPending}
+            className="h-10 gap-2 rounded-lg"
+          >
+            <Page className="h-4 w-4" />
             Scan
           </Button>
         </div>
-      </Panel>
+      )}
 
       {plan && !applied && (
         <Swap id={plan.plan_token}>
-          <div className="flex flex-col gap-6">
-            <Panel
-              title={`Plan — ${plan.project_slug}`}
-              description={`Detected from ${SCAN_SOURCE_LABEL[plan.scan_source]}.`}
-              actions={
-                <Button
-                  size="sm"
-                  onClick={runApply}
-                  disabled={!plan.can_apply}
-                  busy={apply.isPending}
-                >
-                  Apply plan
-                </Button>
-              }
-              padded={false}
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left">
-                      {['Workload', 'Class', 'Root', 'Ports', 'Schedule', 'Detected from'].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            scope="col"
-                            className="label-mono px-4 py-2.5 text-muted-foreground"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {(plan.workloads ?? []).map((w) => (
-                      <tr key={w.name}>
-                        <td className="px-4 py-2.5 font-mono text-xs">{w.name}</td>
-                        <td className="px-4 py-2.5">
-                          <Pill label={w.class ?? 'unknown'} color="var(--cat-compute)" />
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                          {w.root_dir || '/'}
-                        </td>
-                        <td className="px-4 py-2.5 text-xs [font-variant-numeric:tabular-nums]">
-                          {w.ports?.length ? w.ports.join(', ') : '—'}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-xs">{w.schedule ?? '—'}</td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                          {w.source ?? '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="flex flex-col gap-8">
+            <section aria-labelledby="import-plan" className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h2 id="import-plan" className="text-sm font-medium text-muted-foreground">
+                  Plan — {plan.project_slug}
+                </h2>
+                <p className="text-[13px] text-muted-foreground">
+                  Detected from {SCAN_SOURCE_LABEL[plan.scan_source]}.
+                </p>
               </div>
-
-              <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                {plan.observed_apps} of {plan.limit_apps} apps
-                {(plan.crons?.length ?? 0) > 0 && (
-                  <>
-                    {' · '}
-                    {plan.observed_crons} of {plan.limit_crons} crons
-                    {plan.crons_not_allowed && (
-                      <span style={{ color: 'var(--status-warning)' }}>
-                        {' '}
-                        — crons need a paid plan
-                      </span>
-                    )}
-                  </>
-                )}
-                {!plan.can_apply && (
-                  <span style={{ color: 'var(--status-critical)' }}>
-                    {' '}
-                    — over quota; the plan cannot be applied as-is
-                  </span>
-                )}
-              </p>
-            </Panel>
+              <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+                {(plan.workloads ?? []).map((w) => (
+                  <li key={w.name} className="flex flex-col gap-1 px-4 py-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-mono text-sm font-medium">{w.name}</span>
+                      <Pill label={w.class ?? 'unknown'} color="var(--cat-compute)" />
+                    </span>
+                    <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-muted-foreground [font-variant-numeric:tabular-nums]">
+                      {plain('Root', w.root_dir || '/')}
+                      {w.ports?.length ? plain('Ports', `:${w.ports.join(', :')}`) : null}
+                      {w.schedule ? plain('Schedule', w.schedule) : null}
+                      {w.source ? plain('Detected from', w.source) : null}
+                    </span>
+                  </li>
+                ))}
+                <li className="px-4 py-3 text-[13px] text-muted-foreground">
+                  {plan.observed_apps} of {plan.limit_apps} apps
+                  {(plan.crons?.length ?? 0) > 0 && (
+                    <>
+                      {' · '}
+                      {plan.observed_crons} of {plan.limit_crons} crons
+                      {plan.crons_not_allowed && (
+                        <span style={{ color: 'var(--status-warning)' }}>
+                          {' '}
+                          — crons need a paid plan
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {!plan.can_apply && (
+                    <span style={{ color: 'var(--status-critical)' }}>
+                      {' '}
+                      — over quota; the plan cannot be applied as-is
+                    </span>
+                  )}
+                </li>
+              </ul>
+            </section>
 
             {((plan.managed?.length ?? 0) > 0 || (plan.warnings?.length ?? 0) > 0) && (
-              <Panel
-                title="Not provisioned"
-                description="Services the repo declares that the platform will not create — wire them via the env hints."
-              >
-                <ul className="flex flex-col gap-2">
+              <section aria-labelledby="import-unprovisioned" className="flex flex-col gap-3">
+                <div className="flex flex-col gap-0.5">
+                  <h2
+                    id="import-unprovisioned"
+                    className="text-sm font-medium text-muted-foreground"
+                  >
+                    Not provisioned
+                  </h2>
+                  <p className="text-[13px] text-muted-foreground">
+                    Services the repo declares that the platform will not create. Wire them in with
+                    the env hints.
+                  </p>
+                </div>
+                <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
                   {plan.managed?.map((m) => (
-                    <li
-                      key={m.name}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
-                    >
-                      <span className="font-mono text-xs">{m.name}</span>
-                      <span className="text-xs text-muted-foreground">{m.kind}</span>
-                      <span className="label-mono normal-case text-muted-foreground">
+                    <li key={m.name} className="flex flex-col gap-0.5 px-4 py-3">
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-medium">{m.name}</span>
+                        <span className="text-[13px] text-muted-foreground">{m.kind}</span>
+                      </span>
+                      <span className="font-mono text-[13px] text-muted-foreground">
                         env: {m.env_hint}
                       </span>
                     </li>
                   ))}
                   {plan.warnings?.map((w) => (
-                    <li key={w} className="text-xs" style={{ color: 'var(--status-warning)' }}>
+                    <li
+                      key={w}
+                      className="px-4 py-3 text-[13px]"
+                      style={{ color: 'var(--status-warning)' }}
+                    >
                       {w}
                     </li>
                   ))}
                 </ul>
-              </Panel>
+              </section>
             )}
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={runScan}
+                disabled={!file || !slugOk}
+                busy={scan.isPending}
+              >
+                Scan again
+              </Button>
+              <Button
+                variant="cta"
+                onClick={runApply}
+                disabled={!plan.can_apply}
+                busy={apply.isPending}
+                className="h-10 rounded-lg"
+              >
+                Apply plan
+              </Button>
+            </div>
           </div>
         </Swap>
       )}
 
       {applied && (
-        <Panel
-          lit
-          title="Applied"
-          description="Builds are enqueued; each app goes live as its build lands."
-        >
-          {applied.projectSlug && (
-            <Link
-              to="/dashboard/projects/$projectSlug"
-              params={{ projectSlug: applied.projectSlug }}
-              className="mb-4 inline-flex text-sm text-brand hover:underline"
-            >
-              View project {applied.projectSlug}
-            </Link>
-          )}
-          <ul className="flex flex-col gap-1.5">
+        <section aria-labelledby="import-applied" className="flex flex-col gap-3">
+          <h2 id="import-applied" className="text-sm font-medium text-muted-foreground">
+            Applied
+          </h2>
+          <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+            <div className="flex items-start gap-3.5 px-4 py-4">
+              <span
+                aria-hidden
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand/15 text-brand"
+              >
+                <Check className="h-[18px] w-[18px]" />
+              </span>
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-base font-medium">Builds are enqueued</p>
+                <p className="text-[13px] leading-5 text-muted-foreground">
+                  Each app goes live as its build lands.
+                </p>
+                {applied.projectSlug && (
+                  <Link
+                    to="/dashboard/projects/$projectSlug"
+                    params={{ projectSlug: applied.projectSlug }}
+                    className="mt-1 w-fit text-[13px] text-brand hover:underline"
+                  >
+                    View project {applied.projectSlug}
+                  </Link>
+                )}
+              </div>
+            </div>
             {applied.apps.map((a) => (
-              <li key={a.id}>
-                <Link
-                  to="/dashboard/apps/$appSlug"
-                  params={{ appSlug: a.slug }}
-                  className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs text-brand hover:text-brand-hover"
-                >
-                  {a.slug}
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-              </li>
+              <Link
+                key={a.id}
+                to="/dashboard/apps/$appSlug"
+                params={{ appSlug: a.slug }}
+                className="group flex items-center justify-between gap-3 px-4 py-3 font-mono text-sm transition-colors last:rounded-b-[11px] hover:bg-accent/40"
+              >
+                {a.slug}
+                <NavArrowRight
+                  aria-hidden
+                  className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none"
+                />
+              </Link>
             ))}
-          </ul>
-        </Panel>
+          </div>
+        </section>
       )}
     </div>
   );

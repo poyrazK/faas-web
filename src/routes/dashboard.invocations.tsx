@@ -251,7 +251,7 @@ function InvocationsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Invocations"
-        description="Every request into your apps, and the ones you can replay with their original payload."
+        description="Async work run by your apps — invokes, queue messages, inbound webhooks, delayed tasks, and cron runs — with replay of failed ones from their original payload. HTTP requests are in the Debugger."
       />
       <ResourceTable
         rows={rows}
