@@ -136,9 +136,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 16,
     name: 'Stateless-contract checks and source review',
-    status: 'none',
-    surfaces: [],
-    gap: 'Source-review results on the deployment (open PR #168)',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Overview'],
+    gap: 'Reviewed-source deploy: the source-review pin sent as expected_source on a source-ref deploy',
     wave: 1,
   },
   // A17 · beta
