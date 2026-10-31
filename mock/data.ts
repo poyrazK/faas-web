@@ -969,7 +969,13 @@ export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
 // --- Account-wide resources --------------------------------------------------
 
 export const domains: S['CustomDomainResponse'][] = [
-  { domain: 'api.acme.dev', app_id: apps[0].id, verified: true, verified_at: iso(31 * D) },
+  {
+    domain: 'api.acme.dev',
+    app_id: apps[0].id,
+    verified: true,
+    verified_at: iso(31 * D),
+    default: true,
+  },
   { domain: 'img.acme.dev', app_id: apps[1].id, verified: true, verified_at: iso(19 * D) },
   {
     domain: 'hooks.acme.dev',

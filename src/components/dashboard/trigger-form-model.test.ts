@@ -34,8 +34,9 @@ const proLimits = {
 describe('trigger form model', () => {
   it('uses the account snapshot for allowed kinds and plan-safe defaults', () => {
     const draft = newTriggerDraft(hobbyLimits, 'app-1');
-    expect(allowedBrokerKinds(hobbyLimits)).toEqual(['sqs_compat', 'queue']);
-    expect(draft.source.kind).toBe('sqs_compat');
+    // sqs_compat is refused by apid (faas d69c41b965), so it is never offered.
+    expect(allowedBrokerKinds(hobbyLimits)).toEqual(['queue']);
+    expect(draft.source.kind).toBe('queue');
     expect(draft.delivery).toMatchObject({
       batchSizeMax: 50,
       batchWindowMs: 1000,
@@ -44,13 +45,7 @@ describe('trigger form model', () => {
       enabled: true,
     });
     expect(allowedBrokerKinds({ ...hobbyLimits, triggers_allowed: false })).toEqual([]);
-    expect(allowedBrokerKinds(proLimits)).toEqual([
-      'kafka',
-      'nats',
-      'redis_streams',
-      'sqs_compat',
-      'queue',
-    ]);
+    expect(allowedBrokerKinds(proLimits)).toEqual(['kafka', 'nats', 'redis_streams', 'queue']);
   });
 
   it('emits the exact Kafka SASL and TLS vocabulary', () => {
@@ -232,5 +227,17 @@ describe('trigger form model', () => {
     expect(update.config).not.toHaveProperty('sasl');
     expect(update.config).not.toHaveProperty('tls');
     expect(clearTriggerSecrets(draft).source).toMatchObject({ password: '', clientKey: '' });
+  });
+});
+
+describe('creatable trigger kinds', () => {
+  it('never offers sqs_compat or realtime, even if a plan lists them', () => {
+    // apid refuses sqs_compat with 422 trigger_kind_unavailable since faas
+    // d69c41b965; realtime triggers are created from the Realtime surface (Wave 3).
+    const kinds = allowedBrokerKinds({
+      triggers_allowed: true,
+      trigger_kinds: ['kafka', 'sqs_compat', 'realtime', 'queue'],
+    } as unknown as TriggerLimits);
+    expect(kinds).toEqual(['kafka', 'queue']);
   });
 });

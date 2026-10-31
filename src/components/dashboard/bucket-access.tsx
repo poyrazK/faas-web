@@ -112,7 +112,7 @@ function AccessGrants({
       toast({
         kind: 'error',
         title: 'Could not change the grant',
-        description: errorMessage(error),
+        error: error,
       }),
   });
 
@@ -272,7 +272,7 @@ function S3Credentials({
       toast({
         kind: 'error',
         title: 'Could not change the credential',
-        description: errorMessage(error),
+        error: error,
       }),
   });
 

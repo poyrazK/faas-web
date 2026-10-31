@@ -14,6 +14,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -28,6 +29,7 @@ import {
   useRestorePostgresDatabase,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
@@ -90,27 +92,28 @@ export function explainPostgres(err: unknown): {
   kind: 'info' | 'error';
   title: string;
   description?: string;
+  error?: unknown;
 } {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'managed_postgres_not_in_plan':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'managed_postgres_quota_exceeded':
-        return { kind: 'info', title: 'Database limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Database limit reached', error: err };
       case 'managed_postgres_unsupported':
         return {
           kind: 'error',
           title: 'Not supported',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_conflict':
         return {
           kind: 'error',
           title: 'That name or binding is taken',
-          description: errorMessage(err),
+          error: err,
         };
       case 'managed_postgres_invalid':
-        return { kind: 'error', title: 'The request was rejected', description: errorMessage(err) };
+        return { kind: 'error', title: 'The request was rejected', error: err };
       case 'managed_postgres_unavailable':
       case 'managed_postgres_usage_stale':
         return {
@@ -122,7 +125,7 @@ export function explainPostgres(err: unknown): {
         return { kind: 'info', title: 'Already gone', description: 'It was removed elsewhere.' };
     }
   }
-  return { kind: 'error', title: 'Could not complete that', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not complete that', error: err };
 }
 
 export function PostgresDatabases() {
@@ -258,6 +261,12 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
   };
 
   const restoreReady = restoreName.trim().length > 0 && !Number.isNaN(Date.parse(pointInTime));
+  // Same values the form submits: the trimmed name and the instant as UTC ISO.
+  const restoreCommand = cliPostgresRestoreCommand(
+    database.id,
+    restoreName.trim() || undefined,
+    Number.isNaN(Date.parse(pointInTime)) ? undefined : new Date(pointInTime).toISOString()
+  );
 
   return (
     <Panel
@@ -341,6 +350,11 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
               Restore into a new database
             </Button>
           </div>
+          <CliCommand
+            label="Or restore from the CLI"
+            copyLabel={`restore command for ${database.name}`}
+            command={restoreCommand}
+          />
         </form>
       </div>
     </Panel>

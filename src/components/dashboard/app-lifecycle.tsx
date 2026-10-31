@@ -70,7 +70,7 @@ export function useRestartAction(slug: string) {
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not restart', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not restart', error: err });
     }
   };
 
@@ -178,7 +178,7 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
         toast({
           kind: 'error',
           title: 'That purge selection was rejected',
-          description: errorMessage(err),
+          error: err,
         });
         return;
       }

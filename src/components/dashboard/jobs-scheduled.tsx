@@ -253,9 +253,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     void updateCron
       .mutateAsync({ id: c.id, enabled })
       .then(() => toast({ kind: 'success', title: enabled ? 'Cron resumed' : 'Cron paused' }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<CronRow>[] = [
     {
@@ -356,7 +354,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   setFireRequest(fired.request_id);
                 })
                 .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not fire', description: errorMessage(err) })
+                  toast({ kind: 'error', title: 'Could not fire', error: err })
                 );
             }}
             className="text-muted-foreground transition-colors hover:text-foreground"
@@ -383,7 +381,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}

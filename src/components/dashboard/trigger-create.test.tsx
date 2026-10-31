@@ -89,7 +89,8 @@ describe('CreateTrigger', () => {
     const options = [
       ...(await screen.findByLabelText('Trigger kind')).querySelectorAll('option'),
     ].map((option) => (option as HTMLOptionElement).value);
-    expect(options).toEqual(['sqs_compat', 'queue']);
+    // sqs_compat is refused by apid (faas d69c41b965), even when a plan lists it.
+    expect(options).toEqual(['queue']);
   });
 
   it('does not advance until destination fields are valid', async () => {

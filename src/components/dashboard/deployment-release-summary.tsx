@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDeploymentSummary, useRollback, type DeploymentSummary } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
 
@@ -40,7 +40,7 @@ export function DeploymentReleaseSummary({
     if (
       !(await confirm({
         title: 'Roll back this app?',
-        description: `The platform will queue a new deployment from superseded release ${targetId}. The current release remains in history.`,
+        description: `The platform brings back superseded release ${targetId}. The current release remains in history.`,
         confirmLabel: 'Roll back',
         destructive: true,
       }))
@@ -56,10 +56,10 @@ export function DeploymentReleaseSummary({
       toast({
         kind: 'success',
         title: 'Rollback queued',
-        description: `New deployment ${result.id.slice(0, 12)} is being prepared.`,
+        description: `Returning to deployment ${result.id.slice(0, 12)}. It serves once its readiness check passes.`,
       });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not roll back', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not roll back', error: err });
     }
   };
 
