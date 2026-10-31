@@ -1,6 +1,7 @@
 import { Pill } from '@/components/dashboard/resource-table';
 import type { AIProvider, OutboundIntegration } from '@/lib/api/outbound';
 import { formatNumber } from '@/lib/mock-data';
+import { formatMillicents as formatUsdMillicents } from '@/lib/money';
 
 export const AI_PROVIDER_LABELS: Record<AIProvider, string> = {
   openai: 'OpenAI-compatible',
@@ -11,10 +12,10 @@ export const AI_PROVIDER_LABELS: Record<AIProvider, string> = {
   vertex: 'Vertex AI',
 };
 
-/** Cost fields are integer millicents of a euro; the price catalog is EUR. */
+/** Cost fields are integer millicents of a US dollar (faas dbd63fcb74: USD prices). */
 export function formatMillicents(value: number | null | undefined) {
   if (value == null) return '—';
-  return (value / 100_000).toLocaleString('en-US', { style: 'currency', currency: 'EUR' });
+  return formatUsdMillicents(value);
 }
 
 export function formatLimit(value: number | null | undefined, unit: string) {

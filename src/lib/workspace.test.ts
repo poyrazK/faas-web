@@ -30,3 +30,16 @@ describe('workspace store', () => {
     expect(window.localStorage.getItem('gregale.active-org.acct-1')).toBeNull();
   });
 });
+
+describe('workspace readiness', () => {
+  it('is not ready until the signed-in account is bound, so a company choice is never read as personal', async () => {
+    const { workspaceBound } = await import('./workspace');
+    bindWorkspaceAccount('');
+    expect(workspaceBound()).toBe(false);
+    window.localStorage.setItem('gregale.active-org.acct-ready', 'acme');
+    bindWorkspaceAccount('acct-ready');
+    expect(workspaceBound()).toBe(true);
+    expect(activeOrgHeader()).toBe('acme');
+    window.localStorage.removeItem('gregale.active-org.acct-ready');
+  });
+});

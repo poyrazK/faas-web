@@ -24,6 +24,9 @@ vi.mock('@/lib/api/queries', () => ({
   useDeleteDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useVerifyDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', capability: undefined, refresh: vi.fn() }),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/domain-detail', () => ({

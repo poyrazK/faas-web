@@ -4,9 +4,11 @@ import {
   type IntegrationsView,
 } from '@/components/dashboard/outbound/integrations-body';
 import { consoleHead } from '@/lib/seo';
+import { withCapability } from '@/components/dashboard/capability-gate';
 
 export const Route = createFileRoute('/dashboard/integrations')({
-  component: IntegrationsPage,
+  // Gated like its nav item: a bookmarked URL explains itself when off.
+  component: withCapability('outbound-integrations', 'Integrations', IntegrationsPage),
   head: () => consoleHead('integrations'),
   validateSearch: (search: Record<string, unknown>): { view?: 'ai' } =>
     search.view === 'ai' ? { view: 'ai' } : {},
