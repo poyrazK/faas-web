@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader, StateBadge } from '@/components/dashboard/primitives';
+import { RecentlyDeletedApps } from '@/components/dashboard/recently-deleted-apps';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { Select } from '@/components/ui/field';
@@ -246,6 +247,10 @@ function FunctionsPage() {
           navigate({ to: '/dashboard/apps/$appSlug', params: { appSlug: fn.id } })
         }
       />
+
+      {/* Below the live inventory: deleted apps are the exception, and the
+          table above is what the page is for. */}
+      <RecentlyDeletedApps />
     </div>
   );
 }
