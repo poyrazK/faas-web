@@ -14,6 +14,10 @@ vi.mock('@/lib/api/queries', () => ({
   useRotateSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useFreshRestart: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/lib/api/secret-references', () => ({
+  useRevokeSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('@/components/dashboard/secret-references', () => ({ SecretReferences: () => null }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/env-import', () => ({ EnvImportButton: () => null }));
