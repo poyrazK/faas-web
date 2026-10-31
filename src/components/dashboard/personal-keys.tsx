@@ -12,6 +12,8 @@ import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
+import { parseTime } from '@/lib/time';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useApiKeys,
@@ -22,7 +24,6 @@ import {
   useSetGraceWindow,
 } from '@/lib/api/queries';
 import { PersonalKeyDetail } from './personal-key-detail';
-import { errorMessage } from '@/lib/api/errors';
 
 /**
  * API keys, from `/v1/keys`.
@@ -53,12 +54,6 @@ interface KeyRow {
   prefix: string;
   scopes: string;
   lastUsedAt: string | null;
-}
-
-function formatWhen(value: string | null | undefined): string {
-  if (!value) return 'Never';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? 'Never' : new Date(ms).toLocaleDateString();
 }
 
 /** How long a rotated key's predecessor keeps working. Plan default unless
@@ -94,7 +89,7 @@ function GraceWindowPanel() {
               toast({ kind: 'success', title: 'Grace window updated' });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not update', error: err })
             );
         }}
       >
@@ -134,7 +129,7 @@ function GraceWindowPanel() {
                 toast({
                   kind: 'error',
                   title: 'Could not restore default',
-                  description: errorMessage(err),
+                  error: err,
                 })
               )
           }
@@ -229,9 +224,12 @@ export function PersonalKeysBody({
       label: 'Last used',
       priority: 'secondary',
       numeric: true,
-      render: (k) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(k.lastUsedAt)}</span>
-      ),
+      render: (k) =>
+        parseTime(k.lastUsedAt) ? (
+          <Timestamp value={k.lastUsedAt} className="text-xs text-muted-foreground" />
+        ) : (
+          <span className="text-xs text-muted-foreground">Never</span>
+        ),
     },
     {
       key: 'id',
@@ -269,7 +267,7 @@ export function PersonalKeysBody({
                   toast({
                     kind: 'error',
                     title: 'Could not rotate',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 )
                 .finally(() => rotateKey.reset());
@@ -299,7 +297,7 @@ export function PersonalKeysBody({
                   toast({
                     kind: 'error',
                     title: 'Could not revoke',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -379,7 +377,7 @@ export function PersonalKeysBody({
                     toast({
                       kind: 'error',
                       title: 'Could not create key',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
                   .finally(() => createKey.reset());

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDeadLetter, useReplayDeadLetter } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 
@@ -62,7 +62,7 @@ export function DeadLetterPanel({ slug }: { slug: string }) {
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not replay', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not replay', error: err });
       });
   };
 

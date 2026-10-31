@@ -161,10 +161,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 19,
     name: 'Projects: multi-app apply, submissions, project previews',
-    status: 'partial',
-    surfaces: ['/dashboard/projects'],
-    gap: 'Update and delete projects, project previews, new fields',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/projects', '/dashboard/projects/$projectSlug'],
   },
   // A20 · preview
   {
@@ -173,7 +171,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/projects/$projectSlug'],
     capability: 'environments',
-    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps',
+    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps; environments of a company project',
     wave: 3,
   },
   // A21 · preview
@@ -198,18 +196,17 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 24,
     name: 'Rollback to a named revision',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
-    gap: 'Rollback status and named-revision detail',
-    wave: 1,
   },
   // B25 · beta
   {
     row: 25,
     name: 'Progressive rollouts: canary ladder, traffic split, automatic rollback on 5xx',
     status: 'partial',
-    surfaces: ['/dashboard/releases'],
-    gap: 'Deployment diff, runtime upgrade preview, promote, rollout observation',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Deployments'],
+    capability: 'progressive-rollouts',
+    gap: 'Promote cannot pin the release expected to be serving (expected_serving_deployment_id)',
     wave: 1,
   },
   // B26 · beta
@@ -225,9 +222,11 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 27,
     name: 'Pull-request previews',
-    status: 'full',
+    status: 'partial',
     surfaces: ['/dashboard/releases'],
     capability: 'pr-previews',
+    gap: 'Previews of a company project',
+    wave: 1,
   },
   // B28 · preview
   {
