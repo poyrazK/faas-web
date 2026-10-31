@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeft, Circle, OpenNewWindow } from 'iconoir-react';
 import { Link } from '@tanstack/react-router';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import type { Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
@@ -130,16 +131,23 @@ export function AppHeader({
               <span className="[overflow-wrap:anywhere]">{endpoint.host}</span>
             )}
             {endpoint.kind === 'live' && (
-              <a
-                href={endpoint.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Endpoint ${endpoint.host}`}
-                className="inline-flex items-center gap-1 text-brand underline-offset-2 [overflow-wrap:anywhere] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              >
-                {endpoint.host}
-                <OpenNewWindow aria-hidden className="h-3 w-3 shrink-0" />
-              </a>
+              <span className="inline-flex items-center gap-1">
+                <a
+                  href={endpoint.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Endpoint ${endpoint.host}`}
+                  className="inline-flex items-center gap-1 text-brand underline-offset-2 [overflow-wrap:anywhere] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  {endpoint.host}
+                  <OpenNewWindow aria-hidden className="h-3 w-3 shrink-0" />
+                </a>
+                <CopyIconButton
+                  text={endpoint.href}
+                  label={`endpoint ${endpoint.href}`}
+                  className="h-6 w-6"
+                />
+              </span>
             )}
           </p>
         </div>

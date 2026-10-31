@@ -189,3 +189,147 @@ describe('a deployment created through the mock', () => {
     expect((await json(`/v1/deployments/${retry.body.id}`)).body.status).toBe('live');
   });
 });
+
+describe('app release settings through PATCH /v1/apps/{slug}', () => {
+  const patch = (slug: string, body: unknown) =>
+    json(`/v1/apps/${slug}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('stores the release policy, probe paths and function concurrency it accepts', async () => {
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug: 'rel-fn', type: 'function', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+    expect((await json('/v1/apps/rel-fn')).body.release_policy).toBe('safe');
+    const saved = await patch('rel-fn', {
+      release_policy: 'fast',
+      release_probe_paths: ['/healthz', '/api/orders'],
+      function_concurrency: 4,
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({
+      release_policy: 'fast',
+      release_probe_paths: ['/healthz', '/api/orders'],
+      function_concurrency: 4,
+    });
+    // An empty list restores "/", and 0 restores one request per worker.
+    const reset = await patch('rel-fn', { release_probe_paths: [], function_concurrency: 0 });
+    expect(reset.body.release_probe_paths).toBeUndefined();
+    expect(reset.body.function_concurrency).toBeUndefined();
+  });
+
+  it('answers validation_failed for values apid refuses', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'rel-bad', type: 'function', runtime: 'python313' }),
+    });
+    for (const body of [
+      { release_policy: 'slow' },
+      { release_probe_paths: ['/a', '/b', '/c', '/d'] },
+      { release_probe_paths: ['/users/{id}'] },
+      { release_probe_paths: ['/a', '/a'] },
+      { function_concurrency: 999 },
+    ]) {
+      const res = await patch('rel-bad', body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(res.body.code).toBe('validation_failed');
+    }
+  });
+
+  it('refuses safe and probe paths while progressive rollouts are not released', async () => {
+    vi.stubEnv('MOCK_UNAVAILABLE_CAPABILITIES', 'progressive-rollouts');
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'rel-off', type: 'app', runtime: 'node24' }),
+    });
+    expect((await patch('rel-off', { release_policy: 'immediate' })).status).toBe(200);
+    const safe = await patch('rel-off', { release_policy: 'safe' });
+    expect(safe.status).toBe(403);
+    expect(safe.body.code).toBe('capability_not_released');
+    const probes = await patch('rel-off', { release_probe_paths: ['/healthz'] });
+    expect(probes.body.code).toBe('capability_not_released');
+  });
+});
+
+describe('GET /v1/auth/csrf', () => {
+  it('issues a bind_app_to_repo token, which the spec allows and install/bind needs', async () => {
+    const res = await json('/v1/auth/csrf?action=bind_app_to_repo');
+    expect(res.status).toBe(200);
+    expect(res.body.csrf_token).toEqual(expect.any(String));
+  });
+});
+
+describe('POST /v1/apps/{slug}/rollback', () => {
+  // The seeded fixture is off under MOCK_EMPTY=1; seed the rows apid would
+  // have after two deploys: the older one superseded, the newer one live.
+  function seed(slug: string) {
+    const a = db.apps.find((x) => x.slug === slug) ?? db.apps[0];
+    const base = db.deployments.find((d) => d.app_id === a.id);
+    const row = (id: string, status: string, traffic: number, ageMin: number) =>
+      ({
+        ...(base ?? {}),
+        id,
+        app_id: a.id,
+        status,
+        traffic_percent: traffic,
+        scope: 'prod',
+        created_at: new Date(Date.now() - ageMin * 60_000).toISOString(),
+      }) as (typeof db.deployments)[number];
+    const live = row('d'.repeat(32), 'live', 100, 5);
+    const older = row('e'.repeat(32), 'superseded', 0, 60);
+    const oldest = row('f'.repeat(32), 'superseded', 0, 120);
+    db.deployments.unshift(live, older, oldest);
+    return { live, older, oldest };
+  }
+
+  async function app(slug: string) {
+    const created = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    expect(created.status).toBe(201);
+    return seed(slug);
+  }
+
+  it('rolls back to the newest superseded deployment, as apid does', async () => {
+    const { live, older } = await app('roll-default');
+    const res = await json('/v1/apps/roll-default/rollback', { method: 'POST' });
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({ id: older.id, status: 'live', traffic_percent: 100 });
+    expect(live).toMatchObject({ status: 'superseded', traffic_percent: 0 });
+  });
+
+  it('rolls back to an explicit superseded target', async () => {
+    const { oldest } = await app('roll-explicit');
+    const res = await json('/v1/apps/roll-explicit/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ target_deployment_id: oldest.id }),
+    });
+    expect(res.status).toBe(202);
+    expect(res.body.id).toBe(oldest.id);
+  });
+
+  it('refuses the live deployment as a target', async () => {
+    const { live } = await app('roll-live');
+    const res = await json('/v1/apps/roll-live/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ target_deployment_id: live.id }),
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('rollback_target_already_live');
+  });
+
+  it('answers no_rollback_target when nothing was superseded', async () => {
+    const created = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'roll-none', type: 'app', runtime: 'node24' }),
+    });
+    expect(created.status).toBe(201);
+    const res = await json('/v1/apps/roll-none/rollback', { method: 'POST' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('no_rollback_target');
+  });
+});

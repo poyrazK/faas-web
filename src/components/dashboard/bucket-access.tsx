@@ -48,6 +48,29 @@ const KEY_STATUS_COLOR: Record<string, string> = {
   revoked: 'var(--status-critical)',
 };
 
+/** What the create response carries and the page keeps only until dismissed.
+ * The connection fields are required by the spec; they are optional here so
+ * a response without one shows less rather than a blank or a wrong line. */
+interface OneTimeSecret {
+  accessKeyId: string;
+  secret: string;
+  endpoint?: string;
+  region?: string;
+  addressingStyle?: string;
+}
+
+/** The environment an AWS SDK or CLI reads, one line per value present. */
+function s3EnvBlock(secret: OneTimeSecret): string {
+  return [
+    `AWS_ACCESS_KEY_ID=${secret.accessKeyId}`,
+    `AWS_SECRET_ACCESS_KEY=${secret.secret}`,
+    secret.endpoint && `AWS_ENDPOINT_URL_S3=${secret.endpoint}`,
+    secret.region && `AWS_REGION=${secret.region}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function BucketAccess({
   slug,
   bucketId,
@@ -89,7 +112,7 @@ function AccessGrants({
       toast({
         kind: 'error',
         title: 'Could not change the grant',
-        description: errorMessage(error),
+        error: error,
       }),
   });
 
@@ -240,7 +263,7 @@ function S3Credentials({
   const credentials = useBucketS3Credentials(slug, bucket);
   const [label, setLabel] = useState('');
   const [permission, setPermission] = useState<Permission>('read');
-  const [secret, setSecret] = useState<{ accessKeyId: string; secret: string } | null>(null);
+  const [secret, setSecret] = useState<OneTimeSecret | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: s3CredentialKey(slug, bucket) });
   const mutation = useMutation({
     mutationFn: (task: () => Promise<unknown>) => task(),
@@ -249,7 +272,7 @@ function S3Credentials({
       toast({
         kind: 'error',
         title: 'Could not change the credential',
-        description: errorMessage(error),
+        error: error,
       }),
   });
 
@@ -259,7 +282,13 @@ function S3Credentials({
     mutation.mutate(async () => {
       const created = await createBucketS3Credential(slug, bucket, label.trim(), permission);
       setLabel('');
-      setSecret({ accessKeyId: created.access_key_id, secret: created.secret_access_key });
+      setSecret({
+        accessKeyId: created.access_key_id,
+        secret: created.secret_access_key,
+        endpoint: created.endpoint || undefined,
+        region: created.region || undefined,
+        addressingStyle: created.addressing_style || undefined,
+      });
     });
   };
 
@@ -340,6 +369,31 @@ function S3Credentials({
           <div className="flex items-center gap-2">
             <code className="truncate font-mono">{secret.secret}</code>
             <CopyIconButton text={secret.secret} label="secret access key" />
+          </div>
+          {(secret.endpoint || secret.region || secret.addressingStyle) && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              {(
+                [
+                  ['Endpoint', secret.endpoint],
+                  ['Region', secret.region],
+                  ['Addressing style', secret.addressingStyle],
+                ] as const
+              ).map(
+                ([name, value]) =>
+                  value && (
+                    <div key={name} className="contents">
+                      <dt className="text-muted-foreground">{name}</dt>
+                      <dd className="font-mono [overflow-wrap:anywhere]">{value}</dd>
+                    </div>
+                  )
+              )}
+            </dl>
+          )}
+          <div className="flex items-start gap-2">
+            <pre className="min-w-0 flex-1 overflow-x-auto rounded-md bg-muted p-2 font-mono">
+              {s3EnvBlock(secret)}
+            </pre>
+            <CopyIconButton text={s3EnvBlock(secret)} label="S3 environment variables" />
           </div>
           <Button size="xs" variant="ghost" className="self-start" onClick={() => setSecret(null)}>
             I have copied it

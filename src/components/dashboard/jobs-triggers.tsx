@@ -14,7 +14,6 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { TriggerRecords } from '@/components/dashboard/trigger-records';
 import { TriggerDeadLetter } from '@/components/dashboard/trigger-dlq';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { useApps, useSetTriggerEnabled, useTriggerMetrics, useTriggers } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { useAuth } from '@/lib/auth';
@@ -137,9 +136,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
       .then(() =>
         toast({ kind: 'success', title: enabled ? `Resumed ${row.slug}` : `Paused ${row.slug}` })
       )
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<TriggerRow>[] = [
     {

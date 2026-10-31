@@ -993,3 +993,76 @@ describe('billing identity, status and invoice history mock contract', () => {
     expect((await response.json()).code).toBe('not_implemented');
   });
 });
+
+describe('deleted-app inventory mock contract', () => {
+  type Summary = {
+    id: string;
+    slug: string;
+    restore_eligible: boolean;
+    restore_blocker: string;
+    delete_grace_until: string | null;
+  };
+  type Page = { account_id: string; apps: Summary[]; next_cursor?: string; evaluated_at: string };
+  const list = async (query = '') => (await get(`/v1/deleted-apps${query}`)).body as Page;
+  const restore = (id: string) =>
+    fetch(`${origin}/v1/deleted-apps/${id}/restore`, { method: 'POST' });
+
+  it('pages the seeded inventory newest first through an opaque cursor', async () => {
+    const all = await list();
+    expect(all.account_id).toBeTruthy();
+    expect(all.apps.map((row) => row.restore_blocker)).toEqual(
+      expect.arrayContaining(['', 'grace_expired', 'purge_started'])
+    );
+    const first = await list('?limit=1');
+    expect(first.apps).toHaveLength(1);
+    expect(first.next_cursor).toBeTruthy();
+    const second = await list(`?limit=1&cursor=${first.next_cursor}`);
+    expect(second.apps[0].id).not.toBe(first.apps[0].id);
+    expect(second.apps[0].id).toBe(all.apps[1].id);
+    for (const query of ['?limit=51', '?cursor=not-a-cursor', '?environment=staging']) {
+      const rejected = await get(`/v1/deleted-apps${query}`);
+      expect(rejected.response.status).toBe(400);
+      expect(rejected.body).toMatchObject({ code: 'validation_failed' });
+    }
+  });
+
+  it('restores a deleted app by exact ID, once', async () => {
+    const slug = 'deleted-inventory-contract';
+    const created = await fetch(`${origin}/v1/apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await fetch(`${origin}/v1/apps/${slug}`, { method: 'DELETE' });
+    const row = (await list('?limit=50')).apps.find((r) => r.id === id);
+    expect(row).toMatchObject({ slug, restore_eligible: true, restore_blocker: '' });
+    expect((await get(`/v1/deleted-apps/${id}`)).body).toMatchObject({ id, slug });
+
+    const restored = await restore(id);
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({ id, slug });
+    expect((await list('?limit=50')).apps.some((r) => r.id === id)).toBe(false);
+    const again = await restore(id);
+    expect(again.status).toBe(404);
+    expect(await again.json()).toMatchObject({ code: 'not_found' });
+  });
+
+  it('refuses closed windows, reused names and a full plan with their codes', async () => {
+    const rows = (await list('?limit=50')).apps;
+    const expired = rows.find((r) => r.restore_blocker === 'grace_expired')!;
+    expect(await (await restore(expired.id)).json()).toMatchObject({
+      code: 'app_not_restorable',
+    });
+    const taken = rows.find((r) => r.slug === 'api-gateway')!;
+    const conflict = await restore(taken.id);
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ code: 'conflict' });
+
+    process.env.MOCK_PLAN = 'free';
+    const eligible = rows.find((r) => r.restore_eligible && r.slug !== 'api-gateway')!;
+    const limited = await restore(eligible.id);
+    expect(limited.status).toBe(403);
+    expect(await limited.json()).toMatchObject({ code: 'plan_limit_apps' });
+  });
+});

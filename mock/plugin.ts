@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
-import type { Plugin } from 'vite';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
@@ -11,6 +11,7 @@ import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import { readWakeAhead, writeWakeAhead } from './wake-ahead';
 import { projects, projectSummaries } from './projects';
 import {
   mockPromotionPreview,
@@ -27,6 +28,7 @@ import {
   trackedDeployment,
 } from './deploy-lifecycle';
 import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
+import * as configHistory from './config-history';
 import {
   environmentInventory,
   environmentState,
@@ -102,12 +104,106 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
+// Release approval policies (faas release_approvals.go). webhook-router requires
+// approvals, so switching it to the immediate release policy is warned about.
+route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
+  if (params.slug !== 'webhook-router')
+    throw new Problem(
+      404,
+      'release_approval_policy_not_found',
+      'This app does not require approvals.'
+    );
+  return {
+    app: params.slug,
+    required_approvals: 1,
+    after_stage: 1,
+    timeout_minutes: 60,
+    approvers: ['design@gregale.dev'],
+    allow_self_approval: false,
+    notify_channels: [],
+    updated_by: 'design@gregale.dev',
+    created_at: '2026-10-20T09:00:00Z',
+    updated_at: '2026-10-20T09:00:00Z',
+  };
+});
+const HIDDEN_AT_BOOT = new Set(
+  (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
+);
+const hiddenCapabilities = new Set(HIDDEN_AT_BOOT);
+
 route('GET', '/v1/capabilities', ({ res }) => {
   res.setHeader('Cache-Control', 'no-store');
   const raw = process.env.MOCK_PLAN ?? db.account.plan;
   const plan = raw === 'free' || raw === 'hobby' || raw === 'pro' || raw === 'scale' ? raw : 'pro';
-  return mockCapabilities(plan, (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(','));
+  const registry = mockCapabilities(
+    plan,
+    (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',')
+  );
+  // Catalog ids whose platform flag is off for the account, as apid lists them
+  // (internal ones included); the console hides those tabs and pages.
+  const hidden = [...hiddenCapabilities];
+  return hidden.length ? { ...registry, hidden_capabilities: hidden } : registry;
 });
+
+// Self-serve previews (faas ADR-20261021080640). Joining one turns its
+// capability on, so a page hidden by MOCK_HIDDEN_CAPABILITIES appears.
+const PREVIEWS = [
+  {
+    key: 'events',
+    capability: 'events',
+    label: 'Events',
+    description: 'Publish, subscribe to and replay application events.',
+    retire_by: '2027-03-31',
+    eligible: true,
+  },
+  {
+    key: 'realtime',
+    capability: 'realtime',
+    label: 'Realtime',
+    description: 'Channels, presence and occupancy for live clients.',
+    eligible: true,
+  },
+  {
+    key: 'gitlab',
+    capability: 'gitlab-deploys',
+    label: 'GitLab deploys',
+    description: 'Connect GitLab projects and deploy on push.',
+    eligible: false,
+  },
+];
+const joinedPreviews = new Set<string>();
+function previewView(p: (typeof PREVIEWS)[number]) {
+  const joined = joinedPreviews.has(p.key);
+  return {
+    key: p.key,
+    label: p.label,
+    description: p.description,
+    ...(p.retire_by ? { retire_by: p.retire_by } : {}),
+    joined,
+    eligible: p.eligible,
+    enabled: joined || !hiddenCapabilities.has(p.capability),
+  };
+}
+function changePreview(key: string, join: boolean) {
+  const p = PREVIEWS.find((x) => x.key === key);
+  if (!p) throw new Problem(404, 'preview_not_offered', 'Not a preview open to self-serve.');
+  if (join && !p.eligible)
+    throw new Problem(403, 'preview_plan_not_eligible', 'Your plan cannot join this preview.');
+  if (join) {
+    joinedPreviews.add(key);
+    hiddenCapabilities.delete(p.capability);
+  } else {
+    joinedPreviews.delete(key);
+    if (HIDDEN_AT_BOOT.has(p.capability)) hiddenCapabilities.add(p.capability);
+  }
+  return previewView(p);
+}
+route('GET', '/v1/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/previews/{key}', ({ params }) => changePreview(params.key, false));
+route('GET', '/v1/orgs/{slug}/previews', () => ({ items: PREVIEWS.map(previewView) }));
+route('PUT', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, true));
+route('DELETE', '/v1/orgs/{slug}/previews/{key}', ({ params }) => changePreview(params.key, false));
 
 // --- Public status -----------------------------------------------------------
 
@@ -463,21 +559,136 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
-// Deleted apps wait out their grace window here; `POST /v1/apps/{slug}/restore`
-// brings one back. apid has no customer listing of them.
-const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
-function restoreDeleted(record: { app: db.App; expiresAt: number }) {
-  if (record.expiresAt <= Date.now())
+// Deleted apps wait out their grace window here, keyed by ID like apid's
+// tombstones (faas pkg/apid/apprecovery/handlers.go). `GET /v1/deleted-apps`
+// lists them; restore goes by exact ID, or by slug through the legacy route.
+type DeletedRecord = {
+  app: db.App;
+  deletedAt: number | null;
+  expiresAt: number | null;
+  purgeStarted?: boolean;
+};
+const deletedApps = new Map<string, DeletedRecord>();
+const GRACE_MS = 7 * 86400e3; // AppDeleteGraceDays, faas pkg/api/limits.go:2416
+
+function seedDeleted(slug: string, deletedAgoMs: number, extra: Partial<DeletedRecord> = {}) {
+  const deletedAt = db.NOW - deletedAgoMs;
+  const app: db.App = {
+    ...db.apps[0],
+    id: db.id(),
+    slug,
+    status: 'deleted',
+    url: `https://${slug}.gregale.app`,
+    canonical_url: `https://${slug}.gregale.app`,
+  };
+  deletedApps.set(app.id, { app, deletedAt, expiresAt: deletedAt + GRACE_MS, ...extra });
+}
+// Independent records; no live seeded app is deleted to make them. One reuses
+// an active app's name, so its restore answers `conflict`.
+if (!db.EMPTY) {
+  seedDeleted('checkout-preview', 2 * 3600e3);
+  seedDeleted('api-gateway', 2 * 86400e3);
+  seedDeleted('old-webhooks', 6 * 86400e3 + 20 * 3600e3);
+  seedDeleted('legacy-cron', 9 * 86400e3);
+  seedDeleted('nightly-report', 8 * 86400e3, { purgeStarted: true });
+}
+
+function deletedSummary(record: DeletedRecord, now: number): S_['DeletedAppSummary'] {
+  const blocker = record.purgeStarted
+    ? 'purge_started'
+    : record.deletedAt === null || record.expiresAt === null
+      ? 'metadata_unavailable'
+      : record.expiresAt <= now
+        ? 'grace_expired'
+        : '';
+  return {
+    account_id: db.account.id,
+    id: record.app.id,
+    slug: record.app.slug,
+    deleted_at: record.deletedAt === null ? null : new Date(record.deletedAt).toISOString(),
+    delete_grace_until: record.expiresAt === null ? null : new Date(record.expiresAt).toISOString(),
+    restore_eligible: blocker === '',
+    restore_blocker: blocker,
+    evaluated_at: new Date(now).toISOString(),
+  };
+}
+
+function restoreDeleted(record: DeletedRecord) {
+  const now = Date.now();
+  if (!deletedSummary(record, now).restore_eligible)
     throw new Problem(409, 'app_not_restorable', 'the deletion grace window has ended.');
-  if (db.appBySlug(record.app.slug))
-    throw new Problem(409, 'conflict', 'An active app occupies this slug.');
+  const current = db.appBySlug(record.app.slug);
+  if (current && current.id !== record.app.id)
+    throw new Problem(409, 'conflict', "the retained app's slug belongs to an active app.");
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free' && db.apps.length >= 1)
+    throw new Problem(
+      403,
+      'plan_limit_apps',
+      `free plan allows 1 deployed app(s); you have ${db.apps.length}.`
+    );
   record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
     ? 'active'
     : 'undeployed';
   db.apps.push(record.app);
-  deletedApps.delete(record.app.slug);
+  deletedApps.delete(record.app.id);
   return record.app;
 }
+
+route('GET', '/v1/deleted-apps', ({ query }) => {
+  for (const [key] of query)
+    if ((key !== 'limit' && key !== 'cursor') || query.getAll(key).length !== 1)
+      throw new Problem(400, 'validation_failed', 'only one limit and cursor are supported.');
+  const limit = query.has('limit') ? Number(query.get('limit')) : 25;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Problem(400, 'validation_failed', 'limit must be 1..50');
+  const at = (r: DeletedRecord) => r.deletedAt ?? 0;
+  let before: { at: number; id: string } | null = null;
+  const cursor = query.get('cursor');
+  if (cursor) {
+    try {
+      before = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+      if (!before || !Number.isFinite(before.at) || typeof before.id !== 'string')
+        throw new Error();
+    } catch {
+      throw new Problem(
+        400,
+        'validation_failed',
+        "invalid deleted-app cursor; restart this account's inventory"
+      );
+    }
+  }
+  const rows = [...deletedApps.values()]
+    .sort((a, b) => at(b) - at(a) || b.app.id.localeCompare(a.app.id))
+    .filter((r) => !before || at(r) < before.at || (at(r) === before.at && r.app.id < before.id));
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  const now = Date.now();
+  return {
+    account_id: db.account.id,
+    apps: page.map((r) => deletedSummary(r, now)),
+    evaluated_at: new Date(now).toISOString(),
+    ...(rows.length > limit && last
+      ? {
+          next_cursor: Buffer.from(JSON.stringify({ at: at(last), id: last.app.id })).toString(
+            'base64url'
+          ),
+        }
+      : {}),
+  };
+});
+function deletedRecord(id: string) {
+  const record = deletedApps.get(id);
+  if (!record) throw new Problem(404, 'not_found', 'no such deleted app');
+  return record;
+}
+route('GET', '/v1/deleted-apps/{id}', ({ params }) =>
+  deletedSummary(deletedRecord(params.id), Date.now())
+);
+route('POST', '/v1/deleted-apps/{id}/restore', ({ params, body }) => {
+  if (body && Object.keys(body).length > 0)
+    throw new Problem(400, 'validation_failed', 'restore accepts no fields; use an empty body');
+  return restoreDeleted(deletedRecord(params.id));
+});
 
 function app(slug: string) {
   const found = db.appBySlug(slug);
@@ -584,7 +795,7 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug) || deletedApps.has(slug))
+  if (db.appBySlug(slug) || [...deletedApps.values()].some((r) => r.app.slug === slug))
     throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
@@ -595,6 +806,11 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
     ram_mb: Number(body.ram_mb ?? 256),
     min_instances: 0,
     status: 'active',
+    // The seeded apps' per-VM bound, which an empty workspace has no row to lend.
+    concurrency_per_vm: 5,
+    release_policy: 'safe',
+    release_probe_paths: undefined,
+    function_concurrency: undefined,
     ...(worker
       ? {
           workload_class: undefined,
@@ -640,6 +856,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
@@ -663,6 +885,13 @@ route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
     startDeployment({ deployment, app: a, now: Date.now() });
   imageDeployReceipts.set(key, deployment);
   return status(202, deployment);
+});
+// A sync invoke answers at once with what a small JSON handler would return.
+route('POST', '/v1/apps/{slug}/invoke', ({ params, body }) => {
+  const a = app(params.slug);
+  const method = typeof body.method === 'string' ? body.method : 'POST';
+  const path = typeof body.path === 'string' ? body.path : '/';
+  return { id: db.id(), status: 'completed', result: { ok: true, app: a.slug, method, path } };
 });
 const imageRegistryMetadata = new Map<
   string,
@@ -746,13 +975,29 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
       : {}),
   };
 });
+route('GET', '/v1/apps/{slug}/service-wake-ahead', ({ params }) => readWakeAhead(app(params.slug)));
+route('PUT', '/v1/apps/{slug}/service-wake-ahead', ({ params, body }) => {
+  const a = app(params.slug);
+  // The failing app models the setting store being down (ErrCapacity).
+  if (a.slug === 'billing-recon')
+    throw new Problem(503, 'capacity_unavailable', 'service wake-ahead');
+  const out = writeWakeAhead(a, body.enabled);
+  if (!out)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'body must be {"enabled": true} or {"enabled": false}'
+    );
+  return out;
+});
 route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
   mockRuntimePolicy(app(params.slug).id)
 );
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
-  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
+  const deletedAt = Date.now();
+  deletedApps.set(a.id, { app: a, deletedAt, expiresAt: deletedAt + GRACE_MS });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -764,6 +1009,67 @@ route('POST', '/v1/apps/{slug}/park', ({ params }) => {
   db.setScenario(app(params.slug), 'parked');
   return NO_CONTENT;
 });
+/**
+ * release_policy, release_probe_paths and function_concurrency, validated
+ * the way apid does before anything is written: the lifecycle check answers
+ * 400 validation_failed (faas pkg/apid/apidserver/lifecycle.go:61), and the
+ * capability gate refuses `safe` and probe paths while progressive rollouts
+ * are off (faas pkg/productcap/catalog.json:4279).
+ */
+function applyReleaseSettings(a: db.App, body: Record<string, unknown>) {
+  const policy = body.release_policy;
+  const paths = body.release_probe_paths;
+  const concurrency = body.function_concurrency;
+  if (policy != null && !['safe', 'fast', 'immediate'].includes(String(policy)))
+    throw new Problem(400, 'validation_failed', 'release_policy must be safe, fast or immediate.');
+  if (Array.isArray(paths)) {
+    if (paths.length > 3)
+      throw new Problem(400, 'validation_failed', 'release_probe_paths: at most 3 paths.');
+    const bad = paths.find(
+      (p) => typeof p !== 'string' || !p.startsWith('/') || p.length > 240 || /[?#*\\{}\s]/.test(p)
+    );
+    if (bad !== undefined)
+      throw new Problem(
+        400,
+        'validation_failed',
+        `release_probe_paths: ${JSON.stringify(bad)} must be a concrete absolute path.`
+      );
+    if (new Set(paths).size !== paths.length)
+      throw new Problem(400, 'validation_failed', 'release_probe_paths: a path is listed twice.');
+  }
+  const bound = a.concurrency_per_vm;
+  if (
+    concurrency != null &&
+    (!Number.isInteger(concurrency) || Number(concurrency) < 0 || Number(concurrency) > bound)
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      `function_concurrency must be between 0 and ${bound}.`
+    );
+  const rolloutsOff = (process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '')
+    .split(',')
+    .includes('progressive-rollouts');
+  if (
+    rolloutsOff &&
+    ((policy === 'safe' && a.release_policy !== 'safe') ||
+      (Array.isArray(paths) && paths.length > 0))
+  )
+    throw new Problem(
+      403,
+      'capability_not_released',
+      'Progressive rollouts and rollback is not released to this account.'
+    );
+  if (policy != null) a.release_policy = policy as db.App['release_policy'];
+  if (Array.isArray(paths)) {
+    if (paths.length) a.release_probe_paths = paths as string[];
+    else delete a.release_probe_paths;
+  }
+  if (concurrency != null) {
+    if (Number(concurrency) > 0) a.function_concurrency = Number(concurrency);
+    else delete a.function_concurrency;
+  }
+}
 const PATCHABLE = [
   'ram_mb',
   'idle_timeout_s',
@@ -798,6 +1104,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  applyReleaseSettings(a, body);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
@@ -851,19 +1158,49 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
     startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
   );
 });
-route('POST', '/v1/apps/{slug}/rollback', ({ params }) => {
+// apid's targets (handlers_ext.go rollbackAppCore): by default the newest
+// superseded deployment; an explicit target may also be a live row at 0%
+// traffic. The target row itself goes live again; no new row is written.
+route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   const a = app(params.slug);
-  const previous = db.deployments.filter((d) => d.app_id === a.id && d.status === 'succeeded')[0];
-  if (!previous) throw new Problem(409, 'no_previous_deployment', 'Nothing to roll back to.');
-  const dep: db.Deployment = {
-    ...previous,
-    id: db.id(),
-    status: 'active',
-    created_at: db.iso(0),
-    traffic_percent: 100,
-  };
-  db.deployments.unshift(dep);
-  return status(202, dep);
+  const rows = db.deployments.filter((d) => d.app_id === a.id);
+  const ref = typeof body.target_deployment_id === 'string' ? body.target_deployment_id.trim() : '';
+  let target: db.Deployment | undefined;
+  if (ref) {
+    target = rows.find((d) => d.id === ref);
+    if (!target)
+      throw new Problem(
+        404,
+        'rollback_target_not_found',
+        `No rollback-eligible deployment with id "${ref}" belongs to ${a.slug}.`
+      );
+    const zeroTrafficLive = target.status === 'live' && (target.traffic_percent ?? 0) === 0;
+    if (target.status === 'live' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_already_live',
+        `Deployment "${ref}" is already the current live deployment.`
+      );
+    if (target.status !== 'superseded' && !zeroTrafficLive)
+      throw new Problem(
+        409,
+        'rollback_target_ineligible',
+        `Deployment "${ref}" has status "${target.status}"; only a superseded or zero-traffic live deployment can be rolled back.`
+      );
+  } else {
+    target = rows.find((d) => d.status === 'superseded');
+    if (!target)
+      throw new Problem(409, 'no_rollback_target', 'No earlier deployment to roll back to.');
+  }
+  const scope = target.scope ?? 'prod';
+  for (const d of rows) {
+    if (d === target || d.status !== 'live' || (d.scope ?? 'prod') !== scope) continue;
+    d.status = 'superseded';
+    d.traffic_percent = 0;
+  }
+  target.status = 'live';
+  target.traffic_percent = 100;
+  return status(202, target);
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
   db.metricsFor(app(params.slug), query.get('range') ?? '24h')
@@ -880,17 +1217,20 @@ route('GET', '/v1/apps/{slug}/secrets', ({ params }) => {
   const secrets = listOf(db.secrets, params.slug);
   return { secrets, quota_max: 64, count: secrets.length };
 });
-route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
+route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params, query }) => {
   const list = listOf(db.secrets, params.slug);
   const existing = list.find((s) => s.key === params.key);
   const now = db.iso(0);
+  const before = configState(params.slug, 'default');
+  const receipt = () =>
+    recordConfigChange(params.slug, 'default', 'secret.set', params.key, before, query);
   if (existing) {
     // A new value is a new delivery version; the mock delivers it at once.
     existing.updated_at = now;
     existing.delivery_version += 1;
     existing.delivered_version = existing.delivery_version;
     existing.delivery_status = 'delivered';
-    return existing;
+    return { ...existing, config_change: receipt() };
   }
   const created: (typeof list)[number] = {
     key: params.key,
@@ -905,13 +1245,15 @@ route('PUT', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
   };
   list.push(created);
   db.secrets.set(params.slug, list);
-  return created;
+  return { ...created, config_change: receipt() };
 });
-route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params }) => {
+route('DELETE', '/v1/apps/{slug}/secrets/{key}', ({ params, query }) => {
   const list = listOf(db.secrets, params.slug);
   const i = list.findIndex((s) => s.key === params.key);
   if (i < 0) throw new Problem(404, 'secret_not_found');
+  const before = configState(params.slug, 'default');
   list.splice(i, 1);
+  recordConfigChange(params.slug, 'default', 'secret.delete', params.key, before, query);
   return NO_CONTENT;
 });
 
@@ -930,6 +1272,128 @@ const envScope = (query: URLSearchParams) => {
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(scope)) throw new Problem(400, 'env_scope_invalid');
   return scope;
 };
+
+// --- Config history and guard (faas ADR-1451) ---------------------------------
+
+/** The scope's variables and secret versions, as a revision records them. */
+function configState(slug: string, scope: string): configHistory.ConfigState {
+  const variables: Record<string, string> = {};
+  for (const row of listOf(db.env, slug))
+    if (row.scope === scope)
+      variables[row.key] = envValues.get(envValueKey(slug, scope, row.key)) ?? '';
+  const secret_versions: Record<string, number> = {};
+  for (const row of listOf(db.secrets, slug))
+    if (row.scope === scope) secret_versions[row.key] = row.delivery_version;
+  return { variables, secret_versions };
+}
+/** A guard opens only when asked (`?guard=false` opts out) and the app has a live deployment. */
+function recordConfigChange(
+  slug: string,
+  scope: string,
+  source: Parameters<typeof configHistory.recordChange>[0]['source'],
+  key: string | undefined,
+  before: configHistory.ConfigState,
+  query: URLSearchParams,
+  restored?: number
+) {
+  const a = app(slug);
+  const live = db.deployments.some((d) => d.app_id === a.id && d.status === 'live');
+  return configHistory.recordChange({
+    slug: a.slug,
+    scope,
+    source,
+    key,
+    actor: db.account.email,
+    before,
+    after: configState(slug, scope),
+    guard: query.get('guard') !== 'false' && live,
+    restored,
+  });
+}
+db.apps.forEach((a, i) =>
+  configHistory.seedHistory(a.slug, configState(a.slug, 'default'), {
+    watching: i === 0,
+    iso: db.iso,
+  })
+);
+const revisionLimit = (query: URLSearchParams) => {
+  const raw = query.get('limit');
+  if (raw == null) return 20;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 100)
+    throw new Problem(400, 'validation_failed', 'limit must be between 1 and 100');
+  return n;
+};
+route('GET', '/v1/apps/{slug}/config/revisions', ({ params, query }) =>
+  configHistory.listRevisions(app(params.slug).slug, envScope(query), revisionLimit(query))
+);
+route('GET', '/v1/apps/{slug}/config/revisions/{revision}', ({ params, query }) => {
+  const scope = envScope(query);
+  const n = Number(params.revision);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Problem(400, 'validation_failed', 'revision must be a positive integer');
+  const found = configHistory.getRevision(app(params.slug).slug, scope, n);
+  if (!found)
+    throw new Problem(
+      404,
+      'config_revision_not_found',
+      `Scope "${scope}" has no config revision ${n}.`
+    );
+  return found;
+});
+route('GET', '/v1/apps/{slug}/config/guard', ({ params, query }) => {
+  const scope = envScope(query);
+  const guard = configHistory.latestGuard(app(params.slug).slug, scope);
+  if (!guard)
+    throw new Problem(
+      404,
+      'config_guard_not_found',
+      `No config change in scope "${scope}" has been guarded.`
+    );
+  return guard;
+});
+route('POST', '/v1/apps/{slug}/config/rollback', ({ params, body, query }) => {
+  const n = Number(body.revision);
+  if (!Number.isInteger(n) || n < 1)
+    throw new Problem(400, 'validation_failed', 'body must name a positive revision');
+  const scope = envScope(query);
+  const slug = app(params.slug).slug;
+  const target = configHistory.getRevision(slug, scope, n);
+  if (!target)
+    throw new Problem(
+      404,
+      'config_revision_not_found',
+      `Scope "${scope}" has no config revision ${n}.`
+    );
+  const before = configState(slug, scope);
+  const { set, deleted } = configHistory.variablesToward(target.variables, before.variables);
+  const out: components['schemas']['ConfigRollbackResponse'] = {
+    restored_revision: n,
+    set,
+    deleted,
+    secrets_not_restored: configHistory.secretsDiffering(
+      target.secret_versions,
+      before.secret_versions
+    ),
+  };
+  if (set.length === 0 && deleted.length === 0) return out;
+  const list = listOf(db.env, slug);
+  const now = db.iso(0);
+  for (const key of set) {
+    envValues.set(envValueKey(slug, scope, key), target.variables[key]);
+    const row = list.find((r) => r.key === key && r.scope === scope);
+    if (row) row.updated_at = now;
+    else list.push({ key, scope, created_at: now, updated_at: now });
+  }
+  for (const key of deleted) {
+    const i = list.findIndex((r) => r.key === key && r.scope === scope);
+    if (i >= 0) list.splice(i, 1);
+    envValues.delete(envValueKey(slug, scope, key));
+  }
+  db.env.set(slug, list);
+  out.change = recordConfigChange(slug, scope, 'config.rollback', undefined, before, query, n);
+  return out;
+});
 route('GET', '/v1/apps/{slug}/env', ({ params, query }) => {
   const all = listOf(db.env, params.slug);
   if (query.get('scope') === '__all__')
@@ -953,23 +1417,28 @@ route('PUT', '/v1/apps/{slug}/env/{key}', ({ params, body, query }) => {
   const existing = list.find((entry) => entry.key === params.key && entry.scope === scope);
   const now = db.iso(0);
   if (!existing && list.length >= 128) throw new Problem(403, 'plan_limit_env_vars');
+  const before = configState(params.slug, scope);
   envValues.set(envValueKey(params.slug, scope, params.key), String(body.value ?? ''));
+  const receipt = () =>
+    recordConfigChange(params.slug, scope, 'env.set', params.key, before, query);
   if (existing) {
     existing.updated_at = now;
-    return existing;
+    return { ...existing, config_change: receipt() };
   }
   const created = { key: params.key, scope, created_at: now, updated_at: now };
   list.push(created);
   db.env.set(params.slug, list);
-  return created;
+  return { ...created, config_change: receipt() };
 });
 route('DELETE', '/v1/apps/{slug}/env/{key}', ({ params, query }) => {
   const scope = envScope(query);
   const list = listOf(db.env, params.slug);
   const index = list.findIndex((entry) => entry.key === params.key && entry.scope === scope);
   if (index < 0) throw new Problem(404, 'env_not_found');
+  const before = configState(params.slug, scope);
   list.splice(index, 1);
   envValues.delete(envValueKey(params.slug, scope, params.key));
+  recordConfigChange(params.slug, scope, 'env.delete', params.key, before, query);
   return NO_CONTENT;
 });
 route('GET', '/v1/apps/{slug}/upstreams', ({ params }) => {
@@ -2175,7 +2644,7 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const deleted = deletedApps.get(params.slug);
+  const deleted = [...deletedApps.values()].find((r) => r.app.slug === params.slug);
   if (!deleted) {
     app(params.slug);
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');
@@ -2654,6 +3123,63 @@ route('POST', '/v1/apps/{slug}/deployments/source-tarball', ({ params, req }) =>
   return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`));
 });
 
+// Resumable upload sessions (POST/PATCH/GET /v1/uploads, commit), the route
+// the console deploys tarballs through. Bytes are counted, not kept.
+const uploads = new Map<
+  string,
+  { slug: string; total: number; received: number; deployment?: unknown }
+>();
+const UPLOAD_CHUNK = 1_048_576;
+const uploadExpiry = () => new Date(Date.now() + 3_600_000).toISOString();
+function uploadSession(id: string) {
+  const u = uploads.get(id);
+  if (!u) throw new Problem(404, 'not_found', 'No such upload session.');
+  return u;
+}
+route('POST', '/v1/uploads', ({ body }) => {
+  const a = app(String(body.app_slug));
+  const id = crypto.randomUUID();
+  uploads.set(id, { slug: a.slug, total: Number(body.total_size), received: 0 });
+  return status(201, {
+    upload_id: id,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: Number(body.total_size),
+    expires_at: uploadExpiry(),
+  });
+});
+route('GET', '/v1/uploads/{id}', ({ params }) => {
+  const u = uploadSession(params.id);
+  return {
+    upload_id: params.id,
+    app_slug: u.slug,
+    chunk_size: UPLOAD_CHUNK,
+    total_size: u.total,
+    received_bytes: u.received,
+    status: u.received >= u.total ? 'complete' : 'open',
+    expires_at: uploadExpiry(),
+  };
+});
+route('PATCH', '/v1/uploads/{id}', ({ params, req }) => {
+  const u = uploadSession(params.id);
+  if (Number(req.headers['upload-offset']) !== u.received)
+    throw new Problem(
+      409,
+      'upload_session_offset_conflict',
+      'Upload-Offset does not match the received bytes.'
+    );
+  // readBody has consumed the stream as text; the header carries the byte count.
+  u.received += Number(req.headers['content-length'] ?? 0);
+  return {};
+});
+route('POST', '/v1/uploads/{id}/commit', ({ params }) => {
+  const u = uploadSession(params.id);
+  if (u.deployment) return status(202, u.deployment);
+  if (u.received < u.total) throw new Problem(409, 'conflict', 'The upload is incomplete.');
+  const a = app(u.slug);
+  u.deployment = startSourceDeployment(a, 'tarball', `${a.slug} (uploaded archive)`);
+  return status(201, u.deployment);
+});
+
 route('GET', '/v1/account/object-storage-usage', () => ({
   usage: {
     observed_bytes: 41_237_899_264,
@@ -2908,6 +3434,74 @@ route('POST', '/v1/postgres/databases', ({ body }) => {
   return status(201, database);
 });
 route('GET', '/v1/postgres/databases/{id}', ({ params }) => pgDatabase(params.id));
+// A company's databases (faas org_postgres_routes.go): its own list, separate
+// from the signed-in account's. acme-corp starts with one.
+const orgPg = new Map<string, Record<string, unknown>[]>([
+  [
+    'acme-corp',
+    [
+      {
+        id: 'pg-acme-ledger',
+        name: 'acme-ledger',
+        region: 'fra',
+        postgres_major: 16,
+        service_class: 'production',
+        availability: 'single_zone',
+        scale_to_zero: false,
+        storage_limit_bytes: 20 * 1024 ** 3,
+        restore_window_seconds: 7 * 24 * 3600,
+        restore_source_database_id: null,
+        restore_point_in_time: null,
+        state: 'available',
+        last_error_code: null,
+        created_at: '2026-10-05T10:00:00Z',
+        updated_at: '2026-10-05T10:00:00Z',
+      },
+    ],
+  ],
+]);
+const orgDatabases = (org: string) => {
+  requireOrgRole(org, ANY_MEMBER);
+  if (!orgPg.has(org)) orgPg.set(org, []);
+  return orgPg.get(org)!;
+};
+route('GET', '/v1/orgs/{organization}/postgres/databases', ({ params }) => {
+  pgGate();
+  return { items: orgDatabases(params.organization) };
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) => {
+  pgGate();
+  const list = orgDatabases(params.organization);
+  const now = new Date().toISOString();
+  const database = {
+    id: db.id(),
+    name: String(body.name ?? '').trim(),
+    region: String(body.region ?? 'fra'),
+    postgres_major: Number(body.postgres_major ?? 16),
+    service_class: String(body.service_class ?? 'development'),
+    availability: String(body.availability ?? 'single_zone'),
+    scale_to_zero: body.scale_to_zero !== false,
+    storage_limit_bytes: Number(body.storage_limit_bytes ?? 10 * 1024 ** 3),
+    restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
+    restore_source_database_id: null,
+    restore_point_in_time: null,
+    state: 'available',
+    last_error_code: null,
+    created_at: now,
+    updated_at: now,
+  };
+  list.push(database);
+  return status(201, database);
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) => {
+  const row = orgDatabases(params.organization).find((d) => d.id === params.id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return row;
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/bindings', ({ params }) => {
+  orgDatabases(params.organization);
+  return { items: [] };
+});
 route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
   const database = pgDatabase(params.id);
   database.state = 'deleting';
@@ -5159,6 +5753,66 @@ route('GET', '/v1/crons/{id}/runs', ({ params }) => {
   if (!db.crons.some((x) => x.id === params.id)) throw new Problem(404, 'cron_not_found');
   return { runs: db.cronRuns.get(params.id) ?? [] };
 });
+// Occurrences page newest-first by occurrence id, 50 by default and 1-200
+// allowed, as handlers_schedule_occurrences.go does.
+route('GET', '/v1/crons/{id}/occurrences', ({ params, query }) => {
+  if (!db.crons.some((x) => x.id === params.id))
+    throw new Problem(404, 'not_found', 'no such cron');
+  const raw = query.get('limit');
+  const limit = raw === null ? 50 : Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+    throw new Problem(400, 'validation_failed', 'limit must be an integer between 1 and 200');
+  const rows = db.cronOccurrences.get(params.id) ?? [];
+  const before = query.get('before') ?? '';
+  const start = before ? rows.findIndex((o) => o.id === before) + 1 : 0;
+  const page = before && start === 0 ? [] : rows.slice(start, start + limit);
+  return {
+    occurrences: page,
+    limit,
+    ...(before ? { before } : {}),
+    ...(page.length === limit ? { next_before: page[page.length - 1].id } : {}),
+  };
+});
+// Cancel a command-cron run. HTTP crons, unknown runs and another cron's runs
+// share one 404; app tasks off answers 501 (handlers_cron_run_cancel.go).
+// MOCK_UNAVAILABLE_CAPABILITIES=app-tasks turns them off.
+route('POST', '/v1/crons/{id}/runs/{run_id}/cancel', ({ params }) => {
+  if ((process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',').includes('app-tasks'))
+    throw new Problem(
+      501,
+      'not_implemented',
+      'deployment-attached app tasks are not enabled on this control-plane host'
+    );
+  const cron = db.crons.find((x) => x.id === params.id);
+  const task = db.cronTasks.get(params.run_id);
+  const run = db.cronRuns.get(params.id)?.find((r) => r.task_id === params.run_id);
+  if (!cron || cron.kind !== 'command' || !task || !run)
+    throw new Problem(404, 'not_found', 'no such cron run');
+  const now = db.iso(0);
+  if (task.status === 'queued') {
+    Object.assign(task, { status: 'cancelled', finished_at: now, updated_at: now });
+  } else if (task.status === 'restoring' || task.status === 'running') {
+    task.cancel_requested_at ??= now;
+    task.updated_at = now;
+  }
+  const answer = { ...task };
+  // The worker stops a running task promptly; the next read shows it settled.
+  if (task.status === 'running' || task.status === 'restoring') {
+    Object.assign(task, { status: 'cancelled', finished_at: now });
+  }
+  if (task.status === 'cancelled') {
+    Object.assign(run, {
+      outcome: 'cancelled',
+      completed_at: now,
+      duration_ms: Date.parse(now) - Date.parse(run.started_at),
+    });
+    const occurrence = db.cronOccurrences
+      .get(params.id)
+      ?.find((o) => o.app_task_id === params.run_id);
+    if (occurrence) Object.assign(occurrence, { status: 'cancelled', finished_at: now });
+  }
+  return status(202, answer);
+});
 route('DELETE', '/v1/crons/{id}', ({ params }) => {
   const i = db.crons.findIndex((c) => c.id === params.id);
   if (i < 0) throw new Problem(404, 'cron_not_found');
@@ -5656,22 +6310,183 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
   );
   return status(303, '');
 });
+const INSTALL_REPOS = [
+  { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
+  { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
+  { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
+  { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
+];
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  return [
-    { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
-    { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
-    { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
-    { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
-  ];
+  const seeded = [...INSTALL_REPOS];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
 });
-route('POST', '/v1/apps/{slug}/install/bind', async ({ body }) => {
-  requireGitHub();
-  return {
-    binding_id: hex(32),
-    repo_full_name: String(body.repo_full_name ?? ''),
-    production_branch: String(body.production_branch ?? 'main'),
+
+// Per-app bindings and the installation's reconcile record, as
+// handlers_github_connection.go projects them. Health is the installation's,
+// so it is shared by every app. Binding a repository the installation cannot
+// see succeeds here (apid would check first) so a sync can show a detach.
+type GitHubStatus = S_['GitHubInstallStatus'];
+const githubBindings = new Map<
+  string,
+  {
+    repo: string;
+    branch: string;
+    id: string;
+    linkedAt: string;
+    activity?: GitHubStatus['activity'];
+  }
+>();
+const githubInstall = { reconciledAt: db.iso(12 * 60_000), repoCount: 4, detached: 0 };
+const GITHUB_MANAGE_CSRF = 'mock-github-manage';
+if (!db.EMPTY) {
+  const sha = '9f2c4e1a7b3d5f60718293a4b5c6d7e8f9012345';
+  githubBindings.set('api-gateway', {
+    repo: 'acme-corp/storefront',
+    branch: 'main',
+    id: 'bind-api-gateway-acme-corp/storefront',
+    linkedAt: db.iso(6 * 86_400_000),
+    activity: {
+      webhook_deliveries: [
+        {
+          event_type: 'push',
+          status: 'succeeded',
+          commit_sha: sha,
+          received_at: db.iso(41 * 60_000),
+          processed_at: db.iso(41 * 60_000),
+          updated_at: db.iso(41 * 60_000),
+        },
+      ],
+      check_updates: [
+        {
+          deployment_id: db.id(),
+          status: 'succeeded',
+          commit_sha: sha,
+          processed_at: db.iso(38 * 60_000),
+          updated_at: db.iso(38 * 60_000),
+        },
+        {
+          deployment_id: db.id(),
+          status: 'dead',
+          commit_sha: 'c71e0b9d2a4f6e8013579bdf2468ace013579bdf',
+          processed_at: null,
+          updated_at: db.iso(26 * 3_600_000),
+        },
+      ],
+    },
+  });
+  githubBindings.set('webhook-router', {
+    repo: 'acme-corp/webhook-router',
+    branch: 'master',
+    id: 'bind-webhook-router-acme-corp/webhook-router',
+    linkedAt: db.iso(20 * 86_400_000),
+  });
+}
+function githubStatus(slug: string): GitHubStatus {
+  const installId = db.account.github_install_id;
+  if (!installId)
+    return {
+      state: 'not_installed',
+      health: 'not_connected',
+      connected: false,
+      last_reconcile_repository_count: 0,
+      last_reconcile_detached_count: 0,
+    };
+  const install = {
+    installation_id: Number(installId),
+    github_login: 'acme-corp',
+    default_branch: 'main',
+    health: 'healthy' as const,
+    last_reconciled_at: githubInstall.reconciledAt,
+    last_reconcile_repository_count: githubInstall.repoCount,
+    last_reconcile_detached_count: githubInstall.detached,
   };
+  const binding = githubBindings.get(slug);
+  if (!binding) return { state: 'installed', connected: false, ...install };
+  return {
+    state: 'bound',
+    connected: true,
+    ...install,
+    repo_full_name: binding.repo,
+    production_branch: binding.branch,
+    binding_id: binding.id,
+    linked_at: binding.linkedAt,
+    activity: binding.activity ?? { webhook_deliveries: [], check_updates: [] },
+  };
+}
+function requireGitHubManageCSRF(body: Record<string, unknown>) {
+  if (body.csrf_token !== GITHUB_MANAGE_CSRF)
+    throw new Problem(400, 'validation_failed', 'please reload the page and try again');
+}
+// GET /install and GET /install/bind are one handler in apid (server.go:5065-5066).
+const githubStatusRead: Handler = ({ params, res }) => {
+  app(params.slug);
+  res.setHeader(
+    'Set-Cookie',
+    `faas_csrf_github_install=${GITHUB_MANAGE_CSRF}; Path=/; HttpOnly; SameSite=Lax`
+  );
+  return { ...githubStatus(params.slug), csrf_token: GITHUB_MANAGE_CSRF };
+};
+route('GET', '/v1/apps/{slug}/install', githubStatusRead);
+route('GET', '/v1/apps/{slug}/install/bind', githubStatusRead);
+route('POST', '/v1/apps/{slug}/install/sync', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  app(params.slug);
+  const binding = githubBindings.get(params.slug);
+  if (!binding)
+    throw new Problem(409, 'github_not_bound', 'bind a repository before requesting a sync');
+  if (!db.account.github_install_id)
+    throw new Problem(409, 'github_install_not_found', 'reconnect GitHub before syncing this app');
+  const found = INSTALL_REPOS.some(
+    (repo) => repo.full_name.toLowerCase() === binding.repo.toLowerCase()
+  );
+  if (!found) githubBindings.delete(params.slug);
+  const syncedAt = new Date().toISOString();
+  Object.assign(githubInstall, {
+    reconciledAt: syncedAt,
+    repoCount: INSTALL_REPOS.length,
+    detached: found ? 0 : 1,
+  });
+  return {
+    ...githubStatus(params.slug),
+    sync_result: {
+      detached: !found,
+      remote_repository_count: INSTALL_REPOS.length,
+      synced_at: syncedAt,
+    },
+  };
+});
+route('DELETE', '/v1/apps/{slug}/install/bind', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  app(params.slug);
+  // Idempotent, like githubd UnbindAppRepo: no binding is not an error.
+  githubBindings.delete(params.slug);
+  return githubStatus(params.slug);
+});
+route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
+  requireGitHub();
+  const repo = String(body.repo_full_name ?? '');
+  const branch = String(body.production_branch ?? 'main');
+  const binding = {
+    repo,
+    branch,
+    id: `bind-${params.slug}-${repo}`,
+    linkedAt: new Date().toISOString(),
+  };
+  githubBindings.set(params.slug, binding);
+  return { binding_id: binding.id, repo_full_name: repo, production_branch: branch };
 });
 
 // --- Organisations, org keys, invitations ---
@@ -5793,6 +6608,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_disable',
   'set_password',
   'connect_github',
+  'bind_app_to_repo',
 ]);
 route('GET', '/v1/auth/csrf', ({ query, res }) => {
   const action = query.get('action') ?? '';
@@ -5870,6 +6686,147 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
   mockAuth.password = next;
   res.setHeader('location', '/dashboard/account');
   return status(302, '');
+});
+
+// --- Per-app deploy tokens --------------------------------------------------
+// apid (handlers_deploy_tokens.go): deploy:write only, plaintext once on create
+// and rotate, rotation revokes the predecessor with no grace window, and
+// minting needs a step-up from the last 5 minutes on a session cookie. The
+// mock shares the set-password step-up stamp, so verifying once covers both.
+type DeployTokenRow = components['schemas']['DeployTokenResponse'];
+const deployTokens = new Map<string, DeployTokenRow[]>();
+const DEPLOY_TOKEN_DAY = 86_400_000;
+function deployTokenRows(a: db.App): DeployTokenRow[] {
+  let rows = deployTokens.get(a.id);
+  if (rows) return rows;
+  const at = (days: number) => new Date(Date.now() + days * DEPLOY_TOKEN_DAY).toISOString();
+  const row = (fields: Partial<DeployTokenRow>): DeployTokenRow => ({
+    id: randomUUID(),
+    app_id: a.id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: at(-30),
+    expires_at: at(60),
+    ...fields,
+  });
+  // The first app has history; the rest start empty, as a new app would.
+  if (a.slug === db.apps[0]?.slug) {
+    const old = row({
+      label: 'github-actions',
+      status: 'revoked',
+      created_at: at(-120),
+      expires_at: at(-30),
+      last_used_at: at(-41),
+      revoked_at: at(-40),
+    });
+    rows = [
+      row({
+        label: 'github-actions',
+        created_at: at(-40),
+        expires_at: at(50),
+        last_used_at: at(-0.1),
+        rotated_from_id: old.id,
+      }),
+      row({ label: 'buildkite-nightly', created_at: at(-84), expires_at: at(6) }),
+      old,
+    ];
+  } else rows = [];
+  deployTokens.set(a.id, rows);
+  return rows;
+}
+function requireMintStepUp() {
+  if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+    throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
+  if (Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS)
+    throw new Problem(
+      403,
+      'step_up_required',
+      'step-up MFA required for this action: complete /v1/account/mfa/verify to refresh'
+    );
+}
+function deployTokenExpiry(raw: unknown): string {
+  if (raw === undefined || raw === '')
+    return new Date(Date.now() + 90 * DEPLOY_TOKEN_DAY).toISOString();
+  const ms = Date.parse(String(raw));
+  if (Number.isNaN(ms) || ms <= Date.now())
+    throw new Problem(400, 'validation_failed', 'expires_at must be a future RFC3339 timestamp');
+  if (ms > Date.now() + 365 * DEPLOY_TOKEN_DAY)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'expires_at cannot be more than 365 days in the future'
+    );
+  return new Date(ms).toISOString();
+}
+function deployTokenLabel(raw: unknown): string | undefined {
+  const label = typeof raw === 'string' ? raw : '';
+  if (label.length > 100)
+    throw new Problem(400, 'validation_failed', 'label must be at most 100 characters');
+  return label || undefined;
+}
+const deployTokenPlaintext = () => `fp_deploy_${randomBytes(32).toString('hex')}`;
+route('GET', '/v1/apps/{slug}/deploy-tokens', ({ params }) => ({
+  tokens: [...deployTokenRows(app(params.slug))].sort((x, y) =>
+    y.created_at.localeCompare(x.created_at)
+  ),
+}));
+route('POST', '/v1/apps/{slug}/deploy-tokens', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const label = deployTokenLabel(body.label);
+  const token: DeployTokenRow = {
+    id: randomUUID(),
+    app_id: app(params.slug).id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    ...(label ? { label } : {}),
+  };
+  rows.push(token);
+  return status(201, { ...token, plaintext: deployTokenPlaintext() });
+});
+route('DELETE', '/v1/apps/{slug}/deploy-tokens/{id}', ({ params }) => {
+  const token = deployTokenRows(app(params.slug)).find((t) => t.id === params.id);
+  if (!token) throw new Problem(404, 'not_found', 'no such deploy token');
+  token.status = 'revoked';
+  token.revoked_at ??= new Date().toISOString();
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/deploy-tokens/{id}/rotate', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const old = rows.find((t) => t.id === params.id);
+  if (!old || old.status === 'revoked') throw new Problem(404, 'not_found', 'no such deploy token');
+  if (Date.parse(old.expires_at) <= Date.now())
+    throw new Problem(
+      401,
+      'api_key_expired',
+      'the bearer key has expired; rotate it and use the new plaintext'
+    );
+  const label = deployTokenLabel(body.label) ?? old.label;
+  const next: DeployTokenRow = {
+    ...old,
+    id: randomUUID(),
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    rotated_from_id: old.id,
+    last_used_at: undefined,
+    revoked_at: undefined,
+    ...(label ? { label } : {}),
+  };
+  old.status = 'revoked';
+  old.revoked_at = new Date().toISOString();
+  rows.push(next);
+  return status(201, {
+    token: next,
+    token_plaintext: deployTokenPlaintext(),
+    old_token_id: old.id,
+    old_token_expires_at: old.expires_at,
+  });
 });
 
 // --- Billing & account controls ---
@@ -6638,6 +7595,28 @@ route('POST', '/v1/projects/scan/source-ref', async ({ body }) => {
   } satisfies components['schemas']['PlanResponse'];
 });
 route('GET', '/v1/projects', () => projectSummaries());
+// A company's projects (faas org_project_routes.go), including one a teammate
+// created: GET /v1/projects lists only the signed-in account's own.
+const teammateProject = {
+  slug: 'acme-billing',
+  workload_count: 1,
+  created_at: '2026-10-02T09:00:00Z',
+} as const;
+route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
+  const org = requireOrgRole(params.organization, ANY_MEMBER);
+  if (org.personal) return projectSummaries();
+  return params.organization === 'acme-corp'
+    ? [{ ...projectSummaries()[0], ...teammateProject }]
+    : [];
+});
+route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
+  requireOrgRole(params.organization, ANY_MEMBER);
+  const found = projects.find((p) => p.slug === params.slug);
+  if (found) return found;
+  if (params.slug === teammateProject.slug && projects[0])
+    return { ...projects[0], slug: teammateProject.slug, name: 'acme-billing' };
+  throw new Problem(404, 'not_found', `project ${params.slug} not found`);
+});
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
   if (!project) throw new Problem(404, 'not_found', 'Project not found.');
@@ -7014,68 +7993,73 @@ const MOCKED_PREFIXES = [
   '/dashboard/install/connect',
 ];
 
+/** What the installer needs from either Vite server; dev and preview both have it. */
+type MockHost = { config: { logger: Logger }; middlewares: Connect.Server };
+
 export function mockApi(): Plugin {
+  const install = (server: MockHost) => {
+    server.config.logger.info(
+      `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
+    );
+    server.middlewares.use((req, res, next) => {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const method = req.method ?? 'GET';
+      // GET /login and /signup are this app's own pages; only the POSTs are the API's.
+      const isApi =
+        url.pathname.startsWith('/v1/') ||
+        url.pathname === '/status/slo.json' ||
+        (method !== 'GET' &&
+          MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
+      if (!isApi) return next();
+
+      const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
+      if (!match) {
+        server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
+        return problem(
+          res,
+          new Problem(
+            404,
+            'not_mocked',
+            `The mock API has no handler for ${method} ${url.pathname}.`
+          )
+        );
+      }
+
+      const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
+
+      void (async () => {
+        const body = method === 'GET' ? {} : await readBody(req);
+        await new Promise((r) => setTimeout(r, latency()));
+        // Deployments created here move along their lifecycle as time passes.
+        advanceDeployments(Date.now());
+        try {
+          const out = await match.handler({ params, query: url.searchParams, body, req, res });
+          if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
+          if (out === NO_CONTENT) {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          if (out && typeof out === 'object' && '__status' in out) {
+            const s = out as { __status: number; body: unknown };
+            return json(res, s.__status, s.body);
+          }
+          json(res, 200, out);
+        } catch (err) {
+          if (err instanceof Problem) return problem(res, err);
+          server.config.logger.error(`  mock api: ${method} ${url.pathname} threw: ${String(err)}`);
+          problem(res, new Problem(500, 'mock_error', String(err)));
+        }
+      })();
+    });
+  };
   return {
     name: 'gregale-mock-api',
     apply: 'serve',
-    configureServer(server) {
-      server.config.logger.info(
-        `  ➜  mock api: serving /v1/* from mock/ — no backend needed${db.EMPTY ? ' (empty workspace)' : ''}`
-      );
-      server.middlewares.use((req, res, next) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const method = req.method ?? 'GET';
-        // GET /login and /signup are this app's own pages; only the POSTs are the API's.
-        const isApi =
-          url.pathname.startsWith('/v1/') ||
-          url.pathname === '/status/slo.json' ||
-          (method !== 'GET' &&
-            MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
-        if (!isApi) return next();
-
-        const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
-        if (!match) {
-          server.config.logger.warn(`  mock api: no handler for ${method} ${url.pathname}`);
-          return problem(
-            res,
-            new Problem(
-              404,
-              'not_mocked',
-              `The mock API has no handler for ${method} ${url.pathname}.`
-            )
-          );
-        }
-
-        const values = url.pathname.match(match.pattern)!.slice(1).map(decodeURIComponent);
-        const params = Object.fromEntries(match.keys.map((k, i) => [k, values[i]]));
-
-        void (async () => {
-          const body = method === 'GET' ? {} : await readBody(req);
-          await new Promise((r) => setTimeout(r, latency()));
-          // Deployments created here move along their lifecycle as time passes.
-          advanceDeployments(Date.now());
-          try {
-            const out = await match.handler({ params, query: url.searchParams, body, req, res });
-            if (res.writableEnded || res.headersSent) return; // streaming handlers own the response
-            if (out === NO_CONTENT) {
-              res.statusCode = 204;
-              res.end();
-              return;
-            }
-            if (out && typeof out === 'object' && '__status' in out) {
-              const s = out as { __status: number; body: unknown };
-              return json(res, s.__status, s.body);
-            }
-            json(res, 200, out);
-          } catch (err) {
-            if (err instanceof Problem) return problem(res, err);
-            server.config.logger.error(
-              `  mock api: ${method} ${url.pathname} threw: ${String(err)}`
-            );
-            problem(res, new Problem(500, 'mock_error', String(err)));
-          }
-        })();
-      });
-    },
+    configureServer: install,
+    // `vite preview` serves the built bundle; with the mock installed here too,
+    // `npm run preview:mock` tours a real build under the production headers.
+    configurePreviewServer: install,
   };
 }

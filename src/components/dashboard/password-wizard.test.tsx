@@ -227,7 +227,7 @@ describe('PasswordWizard', () => {
     await user.type(confirm, STRONG);
     await user.click(screen.getByRole('button', { name: /set password/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/set up two-factor/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/set up multi-factor/i);
   });
 
   it('stays on Confirm with a note when the step-up is dismissed', async () => {
