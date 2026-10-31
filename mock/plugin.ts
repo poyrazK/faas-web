@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
@@ -5809,6 +5809,147 @@ route('POST', '/dashboard/account/set-password', ({ body, res }) => {
   mockAuth.password = next;
   res.setHeader('location', '/dashboard/account');
   return status(302, '');
+});
+
+// --- Per-app deploy tokens --------------------------------------------------
+// apid (handlers_deploy_tokens.go): deploy:write only, plaintext once on create
+// and rotate, rotation revokes the predecessor with no grace window, and
+// minting needs a step-up from the last 5 minutes on a session cookie. The
+// mock shares the set-password step-up stamp, so verifying once covers both.
+type DeployTokenRow = components['schemas']['DeployTokenResponse'];
+const deployTokens = new Map<string, DeployTokenRow[]>();
+const DEPLOY_TOKEN_DAY = 86_400_000;
+function deployTokenRows(a: db.App): DeployTokenRow[] {
+  let rows = deployTokens.get(a.id);
+  if (rows) return rows;
+  const at = (days: number) => new Date(Date.now() + days * DEPLOY_TOKEN_DAY).toISOString();
+  const row = (fields: Partial<DeployTokenRow>): DeployTokenRow => ({
+    id: randomUUID(),
+    app_id: a.id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: at(-30),
+    expires_at: at(60),
+    ...fields,
+  });
+  // The first app has history; the rest start empty, as a new app would.
+  if (a.slug === db.apps[0]?.slug) {
+    const old = row({
+      label: 'github-actions',
+      status: 'revoked',
+      created_at: at(-120),
+      expires_at: at(-30),
+      last_used_at: at(-41),
+      revoked_at: at(-40),
+    });
+    rows = [
+      row({
+        label: 'github-actions',
+        created_at: at(-40),
+        expires_at: at(50),
+        last_used_at: at(-0.1),
+        rotated_from_id: old.id,
+      }),
+      row({ label: 'buildkite-nightly', created_at: at(-84), expires_at: at(6) }),
+      old,
+    ];
+  } else rows = [];
+  deployTokens.set(a.id, rows);
+  return rows;
+}
+function requireMintStepUp() {
+  if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
+    throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
+  if (Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS)
+    throw new Problem(
+      403,
+      'step_up_required',
+      'step-up MFA required for this action: complete /v1/account/mfa/verify to refresh'
+    );
+}
+function deployTokenExpiry(raw: unknown): string {
+  if (raw === undefined || raw === '')
+    return new Date(Date.now() + 90 * DEPLOY_TOKEN_DAY).toISOString();
+  const ms = Date.parse(String(raw));
+  if (Number.isNaN(ms) || ms <= Date.now())
+    throw new Problem(400, 'validation_failed', 'expires_at must be a future RFC3339 timestamp');
+  if (ms > Date.now() + 365 * DEPLOY_TOKEN_DAY)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'expires_at cannot be more than 365 days in the future'
+    );
+  return new Date(ms).toISOString();
+}
+function deployTokenLabel(raw: unknown): string | undefined {
+  const label = typeof raw === 'string' ? raw : '';
+  if (label.length > 100)
+    throw new Problem(400, 'validation_failed', 'label must be at most 100 characters');
+  return label || undefined;
+}
+const deployTokenPlaintext = () => `fp_deploy_${randomBytes(32).toString('hex')}`;
+route('GET', '/v1/apps/{slug}/deploy-tokens', ({ params }) => ({
+  tokens: [...deployTokenRows(app(params.slug))].sort((x, y) =>
+    y.created_at.localeCompare(x.created_at)
+  ),
+}));
+route('POST', '/v1/apps/{slug}/deploy-tokens', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const label = deployTokenLabel(body.label);
+  const token: DeployTokenRow = {
+    id: randomUUID(),
+    app_id: app(params.slug).id,
+    prefix: 'fp_deploy_',
+    scopes: ['deploy:write'],
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    ...(label ? { label } : {}),
+  };
+  rows.push(token);
+  return status(201, { ...token, plaintext: deployTokenPlaintext() });
+});
+route('DELETE', '/v1/apps/{slug}/deploy-tokens/{id}', ({ params }) => {
+  const token = deployTokenRows(app(params.slug)).find((t) => t.id === params.id);
+  if (!token) throw new Problem(404, 'not_found', 'no such deploy token');
+  token.status = 'revoked';
+  token.revoked_at ??= new Date().toISOString();
+  return NO_CONTENT;
+});
+route('POST', '/v1/apps/{slug}/deploy-tokens/{id}/rotate', ({ params, body }) => {
+  const rows = deployTokenRows(app(params.slug));
+  requireMintStepUp();
+  const old = rows.find((t) => t.id === params.id);
+  if (!old || old.status === 'revoked') throw new Problem(404, 'not_found', 'no such deploy token');
+  if (Date.parse(old.expires_at) <= Date.now())
+    throw new Problem(
+      401,
+      'api_key_expired',
+      'the bearer key has expired; rotate it and use the new plaintext'
+    );
+  const label = deployTokenLabel(body.label) ?? old.label;
+  const next: DeployTokenRow = {
+    ...old,
+    id: randomUUID(),
+    status: 'active',
+    created_at: new Date().toISOString(),
+    expires_at: deployTokenExpiry(body.expires_at),
+    rotated_from_id: old.id,
+    last_used_at: undefined,
+    revoked_at: undefined,
+    ...(label ? { label } : {}),
+  };
+  old.status = 'revoked';
+  old.revoked_at = new Date().toISOString();
+  rows.push(next);
+  return status(201, {
+    token: next,
+    token_plaintext: deployTokenPlaintext(),
+    old_token_id: old.id,
+    old_token_expires_at: old.expires_at,
+  });
 });
 
 // --- Billing & account controls ---
