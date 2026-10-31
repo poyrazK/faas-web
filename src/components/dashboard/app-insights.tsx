@@ -331,10 +331,10 @@ export function StaticEgressIP({ slug }: { slug: string }) {
         return;
       }
       if (err instanceof ApiError && err.code === 'plan_static_egress_ip_quota') {
-        toast({ kind: 'info', title: 'IP already pinned', description: errorMessage(err) });
+        toast({ kind: 'info', title: 'IP already pinned', error: err });
         return;
       }
-      toast({ kind: 'error', title: 'Could not pin the IP', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not pin the IP', error: err });
     }
   };
 
@@ -352,7 +352,7 @@ export function StaticEgressIP({ slug }: { slug: string }) {
       await clear.mutateAsync();
       toast({ kind: 'success', title: 'Egress pin cleared' });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not clear', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not clear', error: err });
     }
   };
 

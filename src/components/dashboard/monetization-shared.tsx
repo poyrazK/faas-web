@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { useCapability } from '@/lib/api/capabilities';
 import { useApps } from '@/lib/api/queries';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import type { UsageWindow } from '@/lib/api/monetization';
-import { CapabilityNotice } from './capability-notice';
-import { Panel } from './primitives';
+import { CapabilityGate } from './capability-gate';
 
 /**
  * Shared pieces of the monetization area: the capability gate, the error
@@ -18,33 +16,33 @@ import { Panel } from './primitives';
 export const MONETIZATION_CAPABILITY = 'api-monetization';
 
 /**
- * Renders `children` only when the capability is available, and the notice
- * otherwise. Children mount — and their queries run — only past the gate, so
- * an unavailable area never shows a spinner nothing will resolve.
+ * Renders `children` only when the account has the capability. Children mount,
+ * and their queries run, only past the gate. API monetization and platform
+ * tenants are internal capabilities, released per account: the registry never
+ * lists them, so access comes from `hidden_capabilities` (`capabilityAccess`).
  */
-export function MonetizationGate({ title, children }: { title: string; children: ReactNode }) {
-  const availability = useCapability(MONETIZATION_CAPABILITY);
-  if (availability.state === 'available') return <>{children}</>;
+export function MonetizationGate({
+  title,
+  capability = MONETIZATION_CAPABILITY,
+  children,
+}: {
+  title: string;
+  capability?: string;
+  children: ReactNode;
+}) {
   return (
-    <Panel title={title}>
-      <div className="flex flex-col gap-2">
-        <CapabilityNotice
-          capability={availability.capability}
-          state={availability.state}
-          onRetry={availability.refresh}
-        />
-        {availability.state !== 'loading' && (
-          <p className="text-sm text-muted-foreground">
-            API monetization is not available to this account, so consumers, plans, usage and
-            statements cannot be read here.
-          </p>
-        )}
-      </div>
-    </Panel>
+    <CapabilityGate capability={capability} title={title}>
+      {children}
+    </CapabilityGate>
   );
 }
 
-export type ToastSpec = { kind: 'info' | 'error'; title: string; description?: string };
+export type ToastSpec = {
+  kind: 'info' | 'error';
+  title: string;
+  description?: string;
+  error?: unknown;
+};
 
 /**
  * A failed write, in the API's own terms. Codes are the stable part of the
@@ -56,16 +54,16 @@ export function explainWrite(err: unknown, action: string, conflict?: string): T
       return {
         kind: 'error',
         title: conflict ?? `Could not ${action}: it conflicts with the current state`,
-        description: errorMessage(err),
+        error: err,
       };
     if (err.code === 'validation_failed')
       return {
         kind: 'error',
         title: `Could not ${action}: check the values`,
-        description: errorMessage(err),
+        error: err,
       };
     if (err.code.startsWith('plan_limit') || err.status === 402)
-      return { kind: 'info', title: 'Plan limit reached', description: errorMessage(err) };
+      return { kind: 'info', title: 'Plan limit reached', error: err };
     if (err.code === 'not_found')
       return {
         kind: 'info',
@@ -73,7 +71,7 @@ export function explainWrite(err: unknown, action: string, conflict?: string): T
         description: 'It was changed or removed elsewhere.',
       };
   }
-  return { kind: 'error', title: `Could not ${action}`, description: errorMessage(err) };
+  return { kind: 'error', title: `Could not ${action}`, error: err };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
