@@ -17,10 +17,9 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
-import { CliCommand } from '@/components/dashboard/cli-command';
+import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -112,18 +111,10 @@ function DomainsPage() {
     }));
   }, [data, apps]);
 
-  // A domain can be made its app's default only once verified, and there is
-  // nothing to do for one that already is. Each eligible domain gets its own
-  // command, so every app with a candidate is covered.
-  const defaultCandidates = rows
-    .filter((row) => row.verified && !row.isDefault)
-    .sort((a, b) => a.domain.localeCompare(b.domain));
-
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
-      // Marked so it is clear why the default is missing from set-default below.
       // Stacked under the hostname so it does not squeeze an already narrow column.
       render: (d) => (
         <span className="flex flex-col items-start gap-1">
@@ -212,6 +203,7 @@ function DomainsPage() {
             </Button>
           )}
 
+          <DomainDetailButton domain={d.domain} />
           {doctorAccess !== 'off' && (
             <IconButton
               type="button"
@@ -412,24 +404,6 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
-
-      {defaultCandidates.length > 0 && (
-        <Panel
-          title="Set a default domain"
-          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
-        >
-          <div className="flex flex-col gap-3">
-            {defaultCandidates.map((row) => (
-              <CliCommand
-                key={row.domain}
-                label={`Make ${row.domain} the default domain for ${row.app}`}
-                copyLabel={`set-default command for ${row.domain}`}
-                command={cliDomainSetDefaultCommand(row.domain)}
-              />
-            ))}
-          </div>
-        </Panel>
-      )}
 
       {doctorFor && (
         <Modal

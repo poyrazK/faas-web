@@ -7,6 +7,7 @@ import {
   type PreviewApp,
 } from '@/lib/api/preview-environments';
 import { useAuth } from '@/lib/auth';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { ApiError } from '@/lib/api/errors';
 import { publicAppUrl } from '@/lib/app-url';
 import { Button } from '@/components/ui/button';
@@ -209,19 +210,40 @@ export function PreviewDiscovery({ slug }: { slug: string }) {
     <PreviewAppDiscovery key={`${account.id}:${slug}`} accountId={account.id} slug={slug} />
   ) : null;
 }
-export function ProjectPreviews({
-  accountId,
-  projectSlug,
-  parents,
-  selected,
-  onSelect,
-}: {
+type ProjectPreviewsProps = {
   accountId: string;
   projectSlug: string;
   parents: string[];
   selected?: string;
   onSelect: (slug?: string) => void;
-}) {
+};
+/**
+ * Discovery reads GET /v1/apps, the signed-in account's own apps, so in a
+ * company workspace it would list personal previews. The workspace inventory
+ * (OrgAppSummary) has no preview fields and GET /v1/preview/{slug}/environment
+ * is not a route company members reach (faas pkg/apid/appaccess/routes.go),
+ * so a company's project says so and reads nothing.
+ */
+export function ProjectPreviews(props: ProjectPreviewsProps) {
+  const { org, label } = useWorkspaceTarget();
+  if (org)
+    return (
+      <Panel title="PR previews">
+        <p role="status" className="text-sm text-muted-foreground">
+          PR previews for {label}'s projects are not listed in the console yet. Each preview still
+          links from its pull request.
+        </p>
+      </Panel>
+    );
+  return <PersonalProjectPreviews {...props} />;
+}
+function PersonalProjectPreviews({
+  accountId,
+  projectSlug,
+  parents,
+  selected,
+  onSelect,
+}: ProjectPreviewsProps) {
   const [open, setOpen] = useState(Boolean(selected));
   const [limit, setLimit] = useState(10);
   const query = useProjectPreviewApps(accountId, projectSlug, open || Boolean(selected));

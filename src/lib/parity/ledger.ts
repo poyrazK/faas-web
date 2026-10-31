@@ -161,10 +161,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 19,
     name: 'Projects: multi-app apply, submissions, project previews',
-    status: 'partial',
-    surfaces: ['/dashboard/projects'],
-    gap: 'Update and delete projects, project previews, new fields',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/projects', '/dashboard/projects/$projectSlug'],
   },
   // A20 · preview
   {
@@ -173,7 +171,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/projects/$projectSlug'],
     capability: 'environments',
-    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps',
+    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps; environments of a company project',
     wave: 3,
   },
   // A21 · preview
@@ -226,7 +224,8 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Pull-request previews',
     status: 'partial',
     surfaces: ['/dashboard/releases'],
-    gap: 'Create a preview; preview by slug',
+    capability: 'pr-previews',
+    gap: 'Previews of a company project',
     wave: 1,
   },
   // B28 · preview
@@ -487,7 +486,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Custom domains with managed TLS, wildcard domains (Pro+), domain doctor',
     status: 'partial',
     surfaces: ['/dashboard/domains'],
-    gap: 'Domain detail and default (open PRs #206, #208)',
+    gap: 'Wildcard and environment-bound domains cannot be added from the form',
     wave: 1,
   },
   // D64 · GA
@@ -510,7 +509,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Service bindings, verification and probes',
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
-    gap: 'Verification runs, release policy, queue canaries',
+    gap: 'bindings_check_failed in the promote UI, runs status filter, project-wide graph runs, editing service targets',
     wave: 1,
   },
   // D67 · beta

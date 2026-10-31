@@ -22,6 +22,7 @@ import {
 import { consoleHead } from '@/lib/seo';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
 import { ReleaseProcess } from '@/components/dashboard/release-process';
+import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
 export const Route = createFileRoute('/dashboard/releases')({
@@ -435,6 +436,7 @@ export function DeploymentsPage() {
           }
         />
       )}
+      {view === 'releases' && <ReleasePreviews />}
     </div>
   );
 }
