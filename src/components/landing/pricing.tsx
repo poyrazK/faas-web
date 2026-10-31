@@ -36,12 +36,14 @@ function PlanColumn({ plan, index }: { plan: CatalogPlan; index: number }) {
       <dl className="mt-5 flex flex-col gap-3 text-sm">
         {Object.entries({
           'Deployed apps': plan.deployedApps,
+          'PR preview apps': plan.previewApps,
           'Developer apps': plan.developerApps,
           'Concurrent instances / app': plan.concurrentInstances,
           'RAM / app': `${plan.ramMb} MB`,
           'Included GB-RAM-hours': plan.includedGbHours,
           'App layer': `${plan.appLayerMb} MB`,
           'Idle timeout': plan.idleTimeout,
+          'Max request timeout': plan.maxRequestTimeout,
         }).map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3">
             <dt className="text-muted-foreground">{label}</dt>

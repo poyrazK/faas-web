@@ -52,8 +52,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: 'Node 24', href: '/docs/runtime-node', doc: 'runtime-node' },
       { label: 'Python 3.13', href: '/docs/runtime-python', doc: 'runtime-python' },
-      { label: 'Go 1.24', href: '/docs/runtime-go', doc: 'runtime-go' },
-      { label: 'Trace propagation', href: '/docs/tracing', doc: 'tracing' },
+      { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
     ],
   },
   {
@@ -78,7 +77,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/deploy-from-github',
         doc: 'deploy-from-github',
       },
-      { label: 'CLI setup', href: '/docs/cli', doc: 'cli' },
+      { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
       // Served by apid on this same origin, so it needs no absolute URL.
       { label: 'API reference', href: '/v1/openapi.yaml' },
     ],

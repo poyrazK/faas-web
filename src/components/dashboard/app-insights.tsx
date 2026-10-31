@@ -63,7 +63,14 @@ const TIER_COLOR: Record<string, string> = {
   cold_boot_fallback: 'var(--status-serious)',
 };
 
-export function WakeTimelinePanel({ slug }: { slug: string }) {
+export function WakeTimelinePanel({
+  slug,
+  onOpenWake,
+}: {
+  slug: string;
+  /** Present when the host page can open a wake in its drawer. */
+  onOpenWake?: (wakeId: string) => void;
+}) {
   const timeline = useAppWakeTimeline(slug);
   const data = timeline.data;
   const state = timeline.isPending ? 'loading' : timeline.error ? 'unavailable' : 'ready';
@@ -141,6 +148,16 @@ export function WakeTimelinePanel({ slug }: { slug: string }) {
                     <span className="w-16 text-right text-muted-foreground">
                       {relativeTime(row.at)}
                     </span>
+                    {row.wake_id && onOpenWake && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-label={`Open wake ${row.wake_id}`}
+                        onClick={() => onOpenWake(row.wake_id!)}
+                      >
+                        Open
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -331,10 +348,10 @@ export function StaticEgressIP({ slug }: { slug: string }) {
         return;
       }
       if (err instanceof ApiError && err.code === 'plan_static_egress_ip_quota') {
-        toast({ kind: 'info', title: 'IP already pinned', description: errorMessage(err) });
+        toast({ kind: 'info', title: 'IP already pinned', error: err });
         return;
       }
-      toast({ kind: 'error', title: 'Could not pin the IP', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not pin the IP', error: err });
     }
   };
 
@@ -352,7 +369,7 @@ export function StaticEgressIP({ slug }: { slug: string }) {
       await clear.mutateAsync();
       toast({ kind: 'success', title: 'Egress pin cleared' });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not clear', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not clear', error: err });
     }
   };
 

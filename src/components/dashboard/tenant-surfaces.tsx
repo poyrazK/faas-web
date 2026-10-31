@@ -15,7 +15,7 @@ import {
 } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import {
   useAddTenantHostname,
   useApp,
@@ -93,15 +93,20 @@ export function certificateLine(surface: TenantSurface): { color: string; text: 
   }
 }
 
-function explain(err: unknown): { kind: 'info' | 'error'; title: string; description?: string } {
+function explain(err: unknown): {
+  kind: 'info' | 'error';
+  title: string;
+  description?: string;
+  error?: unknown;
+} {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'tenant_surfaces_not_allowed':
-        return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
+        return { kind: 'info', title: 'Not on your plan', error: err };
       case 'tenant_surface_quota':
-        return { kind: 'info', title: 'Surface limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Surface limit reached', error: err };
       case 'tenant_hostname_quota':
-        return { kind: 'info', title: 'Hostname limit reached', description: errorMessage(err) };
+        return { kind: 'info', title: 'Hostname limit reached', error: err };
       case 'tenant_hostname_already_claimed':
         return {
           kind: 'error',
@@ -112,7 +117,7 @@ function explain(err: unknown): { kind: 'info' | 'error'; title: string; descrip
         return { kind: 'info', title: 'Already gone', description: 'It was removed elsewhere.' };
     }
   }
-  return { kind: 'error', title: 'Could not save', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not save', error: err };
 }
 
 function parseHostnames(value: string): string[] {

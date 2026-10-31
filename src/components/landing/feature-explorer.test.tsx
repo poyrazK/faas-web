@@ -52,9 +52,9 @@ describe('feature explorer', () => {
 
   it.each([
     ['PR previews', null, '/docs/preview-environments', /deployed-app limit/],
-    ['Object storage', 'Preview', '/docs/object-storage', /signed URLs/],
+    ['Object storage', 'Preview', undefined, /availability depends on the storage rollout/],
   ] as const)(
-    'explains %s and links to its guide, labelling only what is not in beta',
+    'explains %s availability, labelling only what is not in beta, and links to its guide when one is published',
     async (name, status, href, qualification) => {
       const user = userEvent.setup();
       renderFeatures();
@@ -63,10 +63,9 @@ describe('feature explorer', () => {
       if (status) expect(within(panel).getByText(status)).toBeInTheDocument();
       else expect(panel.querySelector('.feature-availability')).toBeNull();
       expect(panel).toHaveTextContent(qualification);
-      expect(within(panel).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
-        'href',
-        href
-      );
+      const guide = within(panel).queryByRole('link', { name: /read the guide/i });
+      if (href) expect(guide).toHaveAttribute('href', href);
+      else expect(guide).toBeNull();
     }
   );
 

@@ -20,3 +20,14 @@ content/docs
 # Vendored component manifests, kept byte-identical to their source.
 dither-kit.json
 components.json
+
+# Local plan workspaces (superpowers); git-ignored by their own .gitignore,
+# which Prettier does not read.
+.superpowers
+
+# Vendored upstream docs-URL catalog, pulled by `npm run docs:pull`; kept byte-identical.
+content/customer-pages.json
+
+# Vendored faas capability inventory and catalog, pulled by `npm run capabilities:pull`;
+# kept byte-identical so a refresh diffs against upstream.
+content/capabilities

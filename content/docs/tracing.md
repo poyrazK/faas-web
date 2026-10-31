@@ -1,188 +1,143 @@
-# Trace propagation — request-scoped W3C context
+# Request tracing
 
-Gregale stamps every incoming request with a W3C
-[`traceparent`](https://www.w3.org/TR/trace-context/) header and
-forwards the request-scoped context to your function (issue #555
-layer 4). You can opt into OpenTelemetry auto-instrumentation and
-the platform's trace will join your spans, all the way to the OTLP
-collector you point at
-`OTEL_EXPORTER_OTLP_ENDPOINT`.
+Request tracing shows what happened inside your app during a slow or failed
+request: database queries, cache calls and outbound HTTP requests, each with
+its duration, attached to the request in the production debugger. Turn it on
+with one setting. You don't need an API key, an exporter configuration or any
+code changes.
 
-This page is the operator's quick-start; the spec contract is in
-`docs/faas_implementation_spec.md` §16 (tracing).
-
-## What the platform gives you
-
-- **Header name (HTTP)**: `traceparent` — the standard W3C name.
-  The Gregale edge gateway already accepts and forwards it.
-- **Header metadata**: `tracestate` is forwarded when valid and within
-  the 512-byte W3C limit. `baggage` is forwarded per request when it is
-  within Gregale's 2 KiB / 16-member guest-boundary budget.
-- **Env var (runner)**: `TRACEPARENT` — a boot/wake seed for runtimes
-  that initialize tracing before serving requests. It is not updated for
-  each request on a warm instance. Format is
-  `00-<trace_id 32 hex>-<span_id 16 hex>-<flags 2 hex>`, e.g.
-  `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`.
-- **Lifetime**: the trace_id is minted at the gateway (or carried
-  in from the inbound `traceparent`); the span_id identifies the
-  specific request's `gateway.handler` span. A warm instance receives
-  fresh headers for every request.
-
-For long-lived HTTP servers, use the SDK's HTTP server instrumentation
-to extract `traceparent`, `tracestate`, and `baggage` from each request.
-Do not use `process.env.TRACEPARENT` (or expect `TRACESTATE`/`BAGGAGE`
-environment variables) for per-request correlation.
-
-You do not need to read or write `TRACEPARENT` for the platform's
-own spans to work — the platform's `sched.wake`, `vmmd.create_*`,
-`guest.resume`, and `guest.readiness` spans are joined on the same
-trace_id automatically (issue #555 layer 3, merged).
-
-## Auto-instrumentation: Node 22 / 24
-
-Add the OTel SDK and the auto-instrumentation hooks to your app's
-`dependencies`. The HTTP auto-instrumentation extracts the forwarded
-W3C headers for each request and joins the handler's child spans to the
-platform trace.
-
-```json
-// package.json
-{
-  "dependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.52.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.55.0",
-    "@opentelemetry/sdk-node": "^0.55.0"
-  }
-}
+```yaml
+# gregale.yaml
+tracing:
+  enabled: true
 ```
-
-```js
-// tracing.js — required: OTel SDK must be initialized BEFORE any
-// instrumented module (express, http, pg, etc.) is required.
-const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-
-const sdk = new NodeSDK({
-  resource: new Resource({ 'service.name': process.env.FAAS_APP_SLUG || 'app' }),
-  traceExporter: new OTLPTraceExporter({
-    // The platform forwards the env var to the runner; you can
-    // override via app.json's `env` block.
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  }),
-  instrumentations: [getNodeAutoInstrumentations()],
-});
-sdk.start();
-process.on('SIGTERM', () => sdk.shutdown());
-```
-
-> **Why this works:** the Node HTTP instrumentation extracts the
-> `traceparent`, `tracestate`, and `baggage` headers from each inbound
-> request. Set `OTEL_PROPAGATORS=tracecontext,baggage` if your image
-> overrides the SDK default; do not rely on the process-scoped
-> `TRACEPARENT` seed for warm requests.
-
-```js
-// handler.js — your existing handler, unchanged. The auto-
-// instrumentation will create child spans for each HTTP route,
-// database call, and outbound fetch under the platform's
-// trace_id.
-const express = require('express');
-const app = express();
-app.get('/', (req, res) => res.send('hi'));
-app.listen(process.env.PORT || 8080);
-```
-
-```json
-// app.json — pin the OTLP endpoint for your collector
-{
-  "env": {
-    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector.faas.svc:4318"
-  }
-}
-```
-
-That's it. A request to your function now shows up in your
-collector as a single trace with one parent (`gateway.handler`)
-and a tree of child spans: `http.server` (your route handler) →
-`pg.query` (if you hit a database) → `http.client` (any outbound
-fetch).
-
-## Auto-instrumentation: Python 3.12 / 3.13
 
 ```toml
-# pyproject.toml
-[project]
-dependencies = [
-  "opentelemetry-distro[otlp]>=0.48b0",
-  "opentelemetry-instrumentation>=0.48b0",
-]
+# gregale.toml
+[tracing]
+enabled = true
 ```
 
-```bash
-# build step
-pip install opentelemetry-bootstrap
-opentelemetry-bootstrap -a install
+The setting applies from the next deployment. Then open a request with
+`gregale debug requests get <app> <request-id>` or in the dashboard debugger;
+spans from your app appear under the request, and the evidence summary uses
+them to point at the slow dependency.
+
+## What the debugger does with spans
+
+Database, cache, HTTP, RPC and messaging calls are recognised from standard
+OpenTelemetry attributes and grouped by what they call: `postgresql
+"SELECT orders"`, `redis "GET"`, `http "api.stripe.com"`. Grouping names
+never include query values, keys, URL paths or credentials.
+
+For each route the debugger compares these dependencies on the current
+deployment with the previous one. When one slows down, the request evidence
+says so directly, for example:
+
+> postgresql "SELECT orders" slowed from 82ms to 191ms p95 since the previous deployment (v80).
+
+The same comparison is available for the whole app under dependency latency
+(`deployment_comparison`).
+
+Database dependencies are also broken down by query. Each statement is
+normalized into a pattern: literal values, placeholders, `IN` lists and
+multi-row `VALUES` are folded, so `WHERE id = 42` and `WHERE id = 43` count as
+one query. When a dependency regresses, the evidence and the regression alert
+name the query that changed:
+
+> postgresql "SELECT orders" p95 rose from 82ms to 191ms (2.3x) compared with the previous deployment (v80). The slower query is `SELECT * FROM orders WHERE customer_id = ?` (p95 40ms to 210ms).
+
+Failures are compared the same way. A span that ends with error status counts
+as a failed call, and its failure class is kept: the `error.type` attribute,
+or the type of the first recorded exception (`QueryTimeout`, `503`). Exception
+messages and stack traces are never retained, since they often contain request
+data. When a request fails while one of its dependency calls failed, the
+evidence names that call:
+
+> The request failed while its call to postgresql "SELECT orders" failed with QueryTimeout.
+
+A dependency that fails materially more often than on the previous deployment
+is flagged as `failure_regression`. That needs at least 3 failed calls, and an
+error rate at least 5 percentage points and twice above baseline:
+
+> http "api.stripe.com" fails 12.5% of calls since the previous deployment (v80), up from 0.0%.
+
+## Following a request across services
+
+`gregale trace <trace-id>` shows every retained request of one trace across
+your apps, with the logs, queued invocations and spans linked to it. The trace
+id is on each request in `gregale debug requests get`.
+
+```text
+MATCHES
+  public-api · GET /checkout · HTTP 200 · 920 ms · telemetry row …
+  billing · POST other · HTTP 200 · 900 ms · telemetry row …
+      woke by restore in 610 ms (wake …) · app ≈270 ms · other ≈20 ms
 ```
 
-```bash
-# Procfile or app.json's `command` — bootstrap must run BEFORE
-# your handler imports.
-export OTEL_PROPAGATORS=tracecontext,baggage
-exec opentelemetry-instrument \
-  --service_name "${FAAS_APP_SLUG}" \
-  --exporter_otlp_endpoint "${OTEL_EXPORTER_OTLP_ENDPOINT}" \
-  --exporter_otlp_protocol http/protobuf \
-  gunicorn app:app
+A call to another service joins the trace only when the calling code forwards
+the `traceparent` header of the request it is handling. With tracing on, the
+Node.js and Python instrumentation does this for the HTTP clients it supports;
+elsewhere, copy the header onto the outgoing request yourself. Without it, each
+service call starts a trace of its own.
+
+For a request that found its app parked, the line under it says how the app
+was woken (restored from a snapshot or cold booted) and how long the instance
+took to become ready. When the app's runtime reports its own execution time,
+as the managed function runtimes do, that is shown as app time, and the rest
+(routing, queueing and the network) as other. Latencies are kept rounded up to
+10 ms below 1 s and more coarsely above, so the split is approximate.
+
+## What is traced
+
+On the managed Node.js (22, 24) and Python (3.12, 3.13) runtimes, Gregale
+loads OpenTelemetry auto-instrumentation for you:
+
+- **Node.js:** HTTP servers and clients, Express, Fastify, Koa, NestJS,
+  PostgreSQL (`pg`), MySQL, MongoDB, Redis, gRPC and the other libraries
+  supported by `@opentelemetry/auto-instrumentations-node`.
+- **Python:** WSGI/ASGI, Django, Flask, FastAPI, `psycopg2`, `psycopg`,
+  `asyncpg`, SQLAlchemy, Redis, PyMongo, `requests`, `urllib3`, `httpx` and
+  `aiohttp` clients.
+
+Filesystem, DNS and raw socket activity is not traced.
+
+Other apps (Go, Dockerfile builds and container images) can export spans with
+any OpenTelemetry SDK they already include. Inside the app, the standard
+OTLP/HTTP endpoint `http://127.0.0.1:4318/v1/traces` accepts them; Gregale
+sets the standard `OTEL_EXPORTER_OTLP_TRACES_*` variables so most SDKs need no
+configuration.
+
+## Sampling
+
+By default every request's spans are exported. To reduce volume, set a ratio:
+
+```yaml
+tracing:
+  enabled: true
+  sample_ratio: 0.25
 ```
 
-The `opentelemetry-instrument` wrapper enables HTTP instrumentation
-that extracts the forwarded W3C headers from each request and joins
-Flask/FastAPI/Django/psycopg spans to the platform's trace. We set
-`OTEL_PROPAGATORS=tracecontext,baggage` explicitly so a custom
-propagator in the parent image doesn't silently drop the join.
+Exports also count toward your plan's request telemetry rate limit; spans that
+exceed it are dropped and the app keeps serving.
 
-## What the platform does NOT do
+## Using your own collector
 
-- **No library pre-installation.** The runner image ships with
-  the standard library only. You bring your own OTel SDK. The
-  runner sandbox is small (130 MB fleet target, ADR-040); we do
-  not pay for a 30 MB SDK on disk per app when most apps will
-  not opt in.
-- **No auto-detection.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` in
-  `app.json`'s `env` (or rely on the platform's default if the
-  operator has set one at the cluster level) to turn on export.
-  Without it, spans are still joined to the platform's
-  `gateway.handler` trace and visible via
-  `GET /v1/traces/{trace_id}` — you just don't get the
-  collector-side view.
-- **No head-based sampling override.** The platform samples
-  100% for the first 100 root spans of every new deployment
-  (acceptance #5), then falls back to the head ratio in
-  `OTEL_TRACES_SAMPLER_ARG` (default 1.0). Your handler's
-  child spans are NOT subject to the platform's sampler — the
-  parent's `SampledFlag=true` is what reaches your SDK, so
-  every child span you create is recorded.
+If your app already sets `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_TRACES_EXPORTER`, Gregale leaves
+your OpenTelemetry configuration alone, and a Python app that ships its own
+`opentelemetry-sdk` is never instrumented a second time. Your existing exporter
+keeps working; to send spans to the debugger as well, export to the public
+`/v1/otel/v1/traces` endpoint with an API key.
 
-## Cross-daemon trace query
+## Limits and behavior
 
-If you have observer access to the box, `GET /v1/traces/{trace_id}`
-returns the full span tree for any wake within the last 24 hours
-(PR #617 ring buffer, default 100k entries). The shape is the
-[`Trace` schema](../../api/openapi.yaml) — every span carries
-`trace_id`, `span_id`, `parent_span_id`, `name`, `start_time`,
-`end_time`, `status`, and an `attributes` map (`app_id`,
-`deployment_id`, `instance_id`, etc.).
-
-```bash
-curl -sH "X-Faas-Trace-Auth: $OBSERVER_TOKEN" \
-  https://faas.example.com/v1/traces/4bf92f3577b34da6a3ce929d0e0e4736 | jq
-```
-
-## See also
-
-- `docs/faas_implementation_spec.md` §16 — tracing contract
-- `docs/adr/` — architectural decisions (PR #617 / issue #555)
-- W3C TraceContext: https://www.w3.org/TR/trace-context/
+- Available on plans that include the production debugger.
+- Spans are kept with the request record for the plan's debugger retention.
+- Tracing never stops your app from starting. If instrumentation cannot load,
+  for example because of an incompatible library version, the app runs
+  untraced.
+- Instrumentation is loaded before Gregale snapshots your app, so waking from
+  a snapshot adds no startup time; only a cold boot pays the load cost.
+- Pre-fork servers such as gunicorn need OpenTelemetry's usual post-fork
+  initialization in each worker.

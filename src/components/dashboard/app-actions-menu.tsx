@@ -11,7 +11,6 @@ import {
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import type { Workflow } from '@/lib/mock-data';
-import { errorMessage } from '@/lib/api/errors';
 import { useParkApp, useWakeApp } from '@/lib/api/queries';
 import { RESTORE_CONTEXT, RESTORE_TARGET } from '@/lib/platform-claims';
 import { useData } from '@/lib/store';
@@ -62,7 +61,7 @@ export function AppActionsMenu({
       await park.mutateAsync(app.id);
       toast({ kind: 'success', title: `Parked ${app.name}` });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not park', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not park', error: err });
     }
   };
 
@@ -71,7 +70,7 @@ export function AppActionsMenu({
       await wake.mutateAsync(app.id);
       toast({ kind: 'success', title: `Waking ${app.name}` });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not wake', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not wake', error: err });
     }
   };
 
@@ -80,22 +79,24 @@ export function AppActionsMenu({
       !(await confirm({
         title: `Roll back ${app.name}?`,
         description:
-          'Traffic moves to the previous successful deployment. The current one stays available to roll forward to.',
+          'The platform brings back the most recent superseded release. The current release remains in history to roll forward to.',
         confirmLabel: 'Roll back',
+        destructive: true,
       }))
     )
       return;
-    // `POST /v1/apps/{slug}/rollback` — a real write, so the toast reports
-    // what happened rather than announcing it up front.
+    // `POST /v1/apps/{slug}/rollback` answers 202 with the earlier deployment
+    // it re-activates (apid rollbackAppCore writes no new row), and acceptance
+    // does not mean it is serving yet: a readiness check runs first.
     try {
-      await redeploy(app.id);
+      const deployment = await redeploy(app.id);
       toast({
         kind: 'success',
-        title: 'Rolled back',
-        description: `${app.name} is serving its previous deployment.`,
+        title: 'Rollback queued',
+        description: `Returning to deployment ${deployment.id.slice(0, 12)}. It serves once its readiness check passes.`,
       });
     } catch (err) {
-      toast({ kind: 'error', title: 'Rollback failed', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Rollback failed', error: err });
     }
   };
 

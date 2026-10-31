@@ -9,7 +9,13 @@ import { FeatureExplorer } from '@/components/landing/feature-explorer';
 import { PracticalQuestions } from '@/components/landing/practical-questions';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
-import { clearOAuthPending, hasOAuthPending, hasOnboarded, useAuth } from '@/lib/auth';
+import {
+  clearOAuthPending,
+  hasOAuthPending,
+  hasOnboarded,
+  readOAuthReturnTo,
+  useAuth,
+} from '@/lib/auth';
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
@@ -24,8 +30,13 @@ function LandingPage() {
   // the handoff that email/password completes inline.
   useEffect(() => {
     if (loading || !hasOAuthPending()) return;
+    const returnTo = readOAuthReturnTo();
     clearOAuthPending();
     if (!user) return;
+    if (returnTo) {
+      window.location.assign(returnTo);
+      return;
+    }
     void navigate({ to: hasOnboarded() ? '/dashboard' : '/onboarding', replace: true });
   }, [loading, navigate, user]);
 

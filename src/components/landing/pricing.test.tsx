@@ -29,7 +29,7 @@ describe('beta pricing', () => {
     expect(
       within(pricing).queryByRole('link', { name: /select|buy|upgrade/i })
     ).not.toBeInTheDocument();
-    expect(pricing).not.toHaveTextContent(/1M invocations|\$|Enterprise/);
+    expect(pricing).not.toHaveTextContent(/1M invocations|€|US\$|Enterprise/);
     expect(within(pricing).queryByRole('article')).not.toBeInTheDocument();
     expect(within(pricing).queryByRole('button')).not.toBeInTheDocument();
     expect(within(pricing).getAllByRole('link')).toHaveLength(2);
@@ -48,27 +48,41 @@ describe('beta pricing', () => {
     expect(within(pricing).queryByRole('article', { name: 'Hobby' })).not.toBeInTheDocument();
   });
 
-  it('preserves the generated euro prices and all seven plan limits beneath the blur', async () => {
+  it('preserves the generated dollar prices and all nine plan limits beneath the blur', async () => {
     renderPricing();
     const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
     const cards = within(pricing).getAllByRole('article', { hidden: true });
     const labels = [
       'Deployed apps',
+      'PR preview apps',
       'Developer apps',
       'Concurrent instances / app',
       'RAM / app',
       'Included GB-RAM-hours',
       'App layer',
       'Idle timeout',
+      'Max request timeout',
     ];
     const expected = [
-      { name: 'Free', price: '€0', limits: ['1', '1', '1', '128 MB', '5', '256 MB', '1m'] },
-      { name: 'Hobby', price: '€9', limits: ['5', '2', '2', '256 MB', '50', '512 MB', '1m'] },
-      { name: 'Pro', price: '€29', limits: ['25', '5', '5', '512 MB', '250', '1024 MB', '5m'] },
+      {
+        name: 'Free',
+        price: '$0',
+        limits: ['1', '1', '1', '1', '256 MB', '20', '256 MB', '1m', '30s'],
+      },
+      {
+        name: 'Hobby',
+        price: '$10',
+        limits: ['5', '2', '2', '2', '512 MB', '200', '512 MB', '1m', '1m'],
+      },
+      {
+        name: 'Pro',
+        price: '$30',
+        limits: ['25', '5', '5', '5', '1024 MB', '1000', '1024 MB', '5m', '5m'],
+      },
       {
         name: 'Scale',
-        price: '€99',
-        limits: ['100', '10', '20', '1024 MB', '1500', '2048 MB', '10m'],
+        price: '$99',
+        limits: ['100', '20', '10', '20', '2048 MB', '3000', '2048 MB', '10m', '15m'],
       },
     ];
     expect(cards).toHaveLength(4);
@@ -82,6 +96,7 @@ describe('beta pricing', () => {
         );
       });
     });
-    expect(pricing).not.toHaveTextContent(/1M invocations|\$|Enterprise/);
+    expect(pricing).toHaveTextContent('$0.01 per GB-RAM-hour');
+    expect(pricing).not.toHaveTextContent(/1M invocations|€|US\$|Enterprise/);
   });
 });

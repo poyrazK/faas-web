@@ -47,6 +47,12 @@ describe('consoleHead', () => {
     expect(titleOf(consoleHead('queues'))).toBe('Queues · Gregale');
   });
 
+  it('titles the regrouped rail rows by their rail labels', () => {
+    expect(titleOf(consoleHead('storage'))).toBe('Object storage · Gregale');
+    expect(titleOf(consoleHead('edge-rules'))).toBe('Edge rules · Gregale');
+    expect(titleOf(consoleHead('templates'))).toBe('Templates · Gregale');
+  });
+
   it('falls back to the raw segment for an unknown one', () => {
     expect(titleOf(consoleHead('nonexistent'))).toBe('nonexistent · Gregale');
   });

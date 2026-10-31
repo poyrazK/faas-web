@@ -10,7 +10,7 @@ import {
 } from './primitives';
 import { Pill } from './resource-table';
 import { useAppDeployments } from '@/lib/api/queries';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import { releaseProcess, releaseProcessSummary } from '@/lib/release-process';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -29,11 +29,6 @@ const STATUS_COLOR: Record<string, string> = {
 function shortDigest(digest: string): string {
   const bare = digest.includes(':') ? digest.slice(digest.indexOf(':') + 1) : digest;
   return bare.slice(0, 7);
-}
-
-function relativeTime(value: string): string {
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? value : formatRelative(timestamp);
 }
 
 export interface DeploymentHistoryTiming {
@@ -107,7 +102,7 @@ export function DeploymentHistoryPanel({
                       : `${timing.durationSeconds.toFixed(1)}s`}
                   </span>
                   <span className="w-16 text-right text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-                    {relativeTime(deployment.created_at)}
+                    <Timestamp value={deployment.created_at} />
                   </span>
                 </button>
               </li>
