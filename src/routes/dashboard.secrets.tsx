@@ -8,19 +8,20 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import { useAppSecrets, useSetSecret, useRotateSecret } from '@/lib/api/queries';
+import { useAppSecrets, useFreshRestart, useSetSecret, useRotateSecret } from '@/lib/api/queries';
 import { useRevokeSecret, type SecretRevocation } from '@/lib/api/secret-references';
 import { SecretReferences } from '@/components/dashboard/secret-references';
 import { SecretRevocationStatus } from '@/components/dashboard/secret-revocation-status';
-import { errorMessage } from '@/lib/api/errors';
 import { EnvImportButton } from '@/components/dashboard/env-import';
+import { SecretValueField } from '@/components/dashboard/secret-value-field';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import { consoleHead } from '@/lib/seo';
+import { configChangeNote } from '@/lib/config-history';
 
 export const Route = createFileRoute('/dashboard/secrets')({
   component: SecretsPage,
@@ -44,12 +45,6 @@ interface SecretRow {
   kid: string;
 }
 
-function formatWhen(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
-
 /**
  * The secrets body, without the page chrome around it.
  *
@@ -66,8 +61,19 @@ export function SecretsBody({ slug }: { slug: string }) {
   // The receipt of the last delete: which running instances still hold it.
   const [revocation, setRevocation] = useState<SecretRevocation | null>(null);
   const rotate = useRotateSecret(slug);
+  const freshRestart = useFreshRestart(slug);
+  // A write seals the value and stamps the change, but starts nothing:
+  // running instances read their environment once, at boot. Tracked per app so
+  // switching apps never carries the notice across.
+  const [unappliedFor, setUnappliedFor] = useState<string | null>(null);
+  const unapplied = unappliedFor === slug;
   const [rotating, setRotating] = useState<string | null>(null);
   const [rotateValue, setRotateValue] = useState('');
+  // Closing drops the typed value, which also puts the field back to masked.
+  const closeRotate = () => {
+    setRotating(null);
+    setRotateValue('');
+  };
 
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -76,6 +82,45 @@ export function SecretsBody({ slug }: { slug: string }) {
   // 422 after the round-trip.
   const keyOk = KEY_RULE.test(key.trim());
   const showKeyError = keyTouched && key.trim().length > 0 && !keyOk;
+
+  const saveSecret = (name: string) =>
+    void setSecret
+      .mutateAsync({ key: name, value })
+      .then((saved) => {
+        setKey('');
+        setValue('');
+        setKeyTouched(false);
+        setUnappliedFor(slug);
+        toast({
+          kind: 'success',
+          title: 'Secret saved',
+          description: configChangeNote(saved?.config_change),
+        });
+      })
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
+
+  const applyNow = async () => {
+    if (
+      !(await confirm({
+        title: 'Restart with the new values?',
+        description:
+          'Replacement instances boot from scratch with the current secrets and environment variables. Old instances stop taking new requests and drain before they are destroyed.',
+        confirmLabel: 'Restart now',
+      }))
+    )
+      return;
+    void freshRestart
+      .mutateAsync()
+      .then(() => {
+        setUnappliedFor(null);
+        toast({
+          kind: 'success',
+          title: 'Restart queued',
+          description: 'Instances are replaced in the background.',
+        });
+      })
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not restart', error: err }));
+  };
 
   const rows = useMemo<SecretRow[]>(
     () =>
@@ -105,9 +150,7 @@ export function SecretsBody({ slug }: { slug: string }) {
       key: 'updatedAt',
       label: 'Updated',
       numeric: true,
-      render: (s) => (
-        <span className="text-xs text-muted-foreground">{formatWhen(s.updatedAt)}</span>
-      ),
+      render: (s) => <Timestamp value={s.updatedAt} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'id',
@@ -131,11 +174,14 @@ export function SecretsBody({ slug }: { slug: string }) {
             void deleteSecret
               .mutateAsync(s.key)
               .then((receipt) => {
-                if (receipt) setRevocation(receipt);
+                // The revocation card says per instance whether a restart is
+                // needed; without a receipt (legacy 204), fall back to the notice.
+                if (receipt?.id) setRevocation(receipt);
+                else setUnappliedFor(slug);
                 toast({ kind: 'success', title: `Deleted ${s.key}` });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not delete', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -150,8 +196,27 @@ export function SecretsBody({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       {/* Migrations arrive as .env files; the importer takes them whole. */}
       <div className="flex justify-end">
-        <EnvImportButton slug={slug} existingKeys={rows.map((r) => r.key)} />
+        <EnvImportButton
+          slug={slug}
+          existingKeys={rows.map((r) => r.key)}
+          onChanged={() => setUnappliedFor(slug)}
+        />
       </div>
+
+      {unapplied && (
+        <div
+          role="status"
+          aria-label="Apply the new values"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+        >
+          <p className="text-sm text-muted-foreground">
+            Running instances keep the previous values until they restart.
+          </p>
+          <Button size="sm" variant="outline" busy={freshRestart.isPending} onClick={applyNow}>
+            Restart with the new values
+          </Button>
+        </div>
+      )}
 
       <Panel lit title="Set a secret">
         <form
@@ -159,17 +224,24 @@ export function SecretsBody({ slug }: { slug: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!keyOk || !value || setSecret.isPending) return;
-            void setSecret
-              .mutateAsync({ key: key.trim(), value })
-              .then(() => {
-                setKey('');
-                setValue('');
-                setKeyTouched(false);
-                toast({ kind: 'success', title: 'Secret saved' });
-              })
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not save', description: errorMessage(err) })
-              );
+            const name = key.trim();
+            const exists = rows.some((row) => row.key === name);
+            // A set on an existing name replaces its sealed value, which
+            // cannot be read back. Ask, as Rotate's own dialog effectively does.
+            void (
+              exists
+                ? confirm({
+                    title: `Replace ${name}?`,
+                    description:
+                      "Its current value is overwritten and cannot be recovered. The new value applies on the app's next cold start, or when you restart it.",
+                    confirmLabel: 'Replace secret',
+                    destructive: true,
+                  })
+                : Promise.resolve(true)
+            ).then((proceed) => {
+              if (!proceed) return;
+              saveSecret(name);
+            });
           }}
         >
           <label className="flex min-w-44 flex-1 flex-col gap-1.5">
@@ -192,17 +264,13 @@ export function SecretsBody({ slug }: { slug: string }) {
               </FieldError>
             )}
           </label>
-          <label className="flex min-w-56 flex-[2] flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Value</span>
-            <input
-              type="password"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              autoComplete="off"
-              placeholder="Never shown again once saved"
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
-            />
-          </label>
+          <SecretValueField
+            label="Value"
+            value={value}
+            onChange={setValue}
+            placeholder="Never shown again once saved"
+            className="min-w-56 flex-[2]"
+          />
           <Button
             type="submit"
             size="sm"
@@ -254,12 +322,12 @@ export function SecretsBody({ slug }: { slug: string }) {
           crosses the wire once, exactly like create, and is never echoed. */}
       <Modal
         open={rotating !== null}
-        onClose={() => setRotating(null)}
+        onClose={closeRotate}
         title={rotating ? `Rotate ${rotating}` : ''}
         description="Provide the value again; it is re-sealed under the current host key and never shown after this."
         footer={
           <>
-            <Button variant="ghost" size="sm" onClick={() => setRotating(null)}>
+            <Button variant="ghost" size="sm" onClick={closeRotate}>
               Cancel
             </Button>
             <Button
@@ -271,7 +339,8 @@ export function SecretsBody({ slug }: { slug: string }) {
                 void rotate
                   .mutateAsync({ key: rotating, value: rotateValue })
                   .then((r) => {
-                    setRotating(null);
+                    closeRotate();
+                    setUnappliedFor(slug);
                     toast({
                       kind: 'success',
                       title: `Rotated ${r.key}`,
@@ -282,7 +351,7 @@ export function SecretsBody({ slug }: { slug: string }) {
                     toast({
                       kind: 'error',
                       title: 'Could not rotate',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -292,13 +361,11 @@ export function SecretsBody({ slug }: { slug: string }) {
           </>
         }
       >
-        <input
-          type="password"
+        <SecretValueField
+          key={rotating ?? ''}
+          label="New value"
           value={rotateValue}
-          onChange={(e) => setRotateValue(e.target.value)}
-          autoComplete="off"
-          placeholder="New value"
-          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
+          onChange={setRotateValue}
         />
       </Modal>
 

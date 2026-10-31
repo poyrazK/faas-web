@@ -8,7 +8,7 @@ describe('capStanding', () => {
     expect(standing.pct).toBeNull();
   });
 
-  it('treats a €0 cap as overage not allowed', () => {
+  it('treats a $0 cap as overage not allowed', () => {
     expect(capStanding(0, 0).label).toBe('Overage not allowed');
     expect(capStanding(0, 0).pct).toBe(0);
     expect(capStanding(50, 0).pct).toBe(100);

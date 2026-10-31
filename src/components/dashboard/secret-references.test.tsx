@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { problem, renderWithProviders, routeApi, type Answer } from '@/test/monetization';
 
+// Project membership follows the workspace (#224); these are personal projects.
+vi.mock('@/lib/api/workspace-apps', () => ({
+  useWorkspaceTarget: () => ({ org: null, label: 'Personal', ready: true }),
+}));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1', plan: 'pro' } }) }));
 
 const { SecretReferences } = await import('./secret-references');

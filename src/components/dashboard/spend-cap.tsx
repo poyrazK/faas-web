@@ -6,15 +6,14 @@ import { useToast } from '@/components/ui/toast';
 import { useOverageCap, useSetOverageCap } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { formatCents } from '@/lib/money';
 
 const DESCRIPTION =
-  'Limit monthly overage spending. When the cap is reached, new wakes beyond your allowance are refused. Set €0 to disallow overage, or clear the cap to remove the ceiling.';
+  'Limit monthly overage spending. When the cap is reached, new wakes beyond your allowance are refused. Set $0 to disallow overage, or clear the cap to remove the ceiling.';
 
 function capLabel(cents: number | null): string {
   if (cents === null) return 'No cap set';
-  const money = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  const money = formatCents(cents);
   return cents === 0 ? `${money} · No overage allowed` : money;
 }
 
@@ -105,14 +104,13 @@ export function SpendCapEditor({ initialCents }: { initialCents: number | null }
       validation.resetValidation();
       toast({
         kind: 'success',
-        title:
-          value === null ? 'Spend cap cleared' : `Spend cap set to €${(value / 100).toFixed(2)}`,
+        title: value === null ? 'Spend cap cleared' : `Spend cap set to ${formatCents(value)}`,
       });
     } catch (err) {
       toast({
         kind: 'error',
         title: value === null ? 'Could not clear cap' : 'Could not set cap',
-        description: errorMessage(err),
+        error: err,
       });
     }
   };
@@ -126,7 +124,7 @@ export function SpendCapEditor({ initialCents }: { initialCents: number | null }
       }}
     >
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium">Cap (EUR)</span>
+        <span className="text-xs font-medium">Cap (USD)</span>
         <input
           name="euros"
           type="number"

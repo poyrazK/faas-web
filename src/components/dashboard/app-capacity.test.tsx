@@ -9,14 +9,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, expect, it, vi } from 'vitest';
-import { api } from '@/lib/api/client';
-import { Route as Storage } from './dashboard.storage';
+import { beforeEach, expect, it } from 'vitest';
+import { AppCapacity } from './app-capacity';
 import { mockedApi, spyApi } from '@/test/api';
 
-vi.mock('@/components/dashboard/object-storage', () => ({
-  ObjectStorage: () => <h2>Object storage</h2>,
-}));
 let account: { plan: string; app_count: number; limits: { deployed_apps: number } };
 let fails: boolean;
 beforeEach(() => {
@@ -34,12 +30,12 @@ async function mount() {
   const root = createRootRoute({ component: Outlet });
   const route = createRoute({
     getParentRoute: () => root,
-    path: '/dashboard/storage',
-    component: Storage.options.component,
+    path: '/dashboard/usage',
+    component: AppCapacity,
   });
   const router = createRouter({
     routeTree: root.addChildren([route]),
-    history: createMemoryHistory({ initialEntries: ['/dashboard/storage'] }),
+    history: createMemoryHistory({ initialEntries: ['/dashboard/usage'] }),
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   await router.load();
@@ -51,16 +47,13 @@ async function mount() {
     );
   });
 }
-it('shows the authoritative app quota instead of runtime bytes, keeping object storage', async () => {
+it('shows the authoritative app quota against the plan', async () => {
   await mount();
   const meter = await screen.findByRole('meter', { name: 'App capacity' });
   expect(meter).toHaveAttribute('aria-valuenow', '1');
   expect(meter).toHaveAttribute('aria-valuemax', '3');
   expect(screen.getByText('2 app slots available')).toBeInTheDocument();
   expect(screen.getByText('Free plan')).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Object storage' })).toBeInTheDocument();
-  expect(screen.queryByText('Runtime storage usage')).not.toBeInTheDocument();
-  expect(api.GET).not.toHaveBeenCalledWith('/v1/usage/storage', expect.anything());
 });
 it('uses a different plan limit and exposes the full-plan state', async () => {
   account = { plan: 'pro', app_count: 12, limits: { deployed_apps: 12 } };
@@ -99,4 +92,11 @@ it('keeps the true count visible when a downgraded account exceeds its limit', a
   expect(meter).toHaveAttribute('aria-valuenow', '3');
   expect(meter).toHaveAttribute('aria-valuetext', '4 of 3 app slots used');
   expect(screen.getByText('All app slots are in use')).toBeInTheDocument();
+});
+
+it('says the allowance is unknown rather than crashing when the account carries no limits', async () => {
+  account = { plan: 'pro', app_count: 2 } as typeof account;
+  await mount();
+  expect(await screen.findByText(/allowance is not available/i)).toBeInTheDocument();
+  expect(screen.queryByRole('meter')).not.toBeInTheDocument();
 });
