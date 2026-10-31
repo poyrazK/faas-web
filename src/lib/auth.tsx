@@ -13,6 +13,7 @@ import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
 import { endServerSessionBestEffort } from './api/logout';
 import type { components } from './api/schema';
+import { safeInternalPath } from './redirect';
 
 /**
  * The real session layer, against `apid`'s cookie auth.
@@ -38,6 +39,7 @@ const SESSION_KEY = 'gregale.session';
 const ONBOARDED_KEY = 'gregale.onboarded';
 const WORKSPACE_KEY = 'gregale.workspace';
 const OAUTH_PENDING_KEY = 'gregale.oauth-pending';
+const OAUTH_RETURN_KEY = 'gregale.oauth-return';
 const ONBOARDING_GITHUB_RETURN_KEY = 'gregale.onboarding-github-return';
 
 /** The server's floor: NIST-style length rule, no complexity theatre. */
@@ -100,12 +102,24 @@ export function readSession(): User | null {
  * hint used by the synchronous route guards. Keep a marker in sessionStorage
  * so the first page after the callback knows to hydrate `/v1/account`.
  */
-export function markOAuthPending() {
+export function markOAuthPending(returnTo?: string) {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(OAUTH_PENDING_KEY, 'true');
+    const next = safeInternalPath(returnTo);
+    if (next) window.sessionStorage.setItem(OAUTH_RETURN_KEY, next);
+    else window.sessionStorage.removeItem(OAUTH_RETURN_KEY);
   } catch {
     // Private browsing modes may deny storage; the OAuth flow still proceeds.
+  }
+}
+
+export function readOAuthReturnTo(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return safeInternalPath(window.sessionStorage.getItem(OAUTH_RETURN_KEY));
+  } catch {
+    return undefined;
   }
 }
 
@@ -122,6 +136,7 @@ export function clearOAuthPending() {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem(OAUTH_PENDING_KEY);
+    window.sessionStorage.removeItem(OAUTH_RETURN_KEY);
   } catch {
     // Best effort only; a denied storage area cannot affect the session.
   }
@@ -224,6 +239,12 @@ interface AuthValue {
    * rather than leaving every panel to report the same outage separately.
    */
   apiReachable: boolean;
+  /**
+   * True once the API has rejected a session this browser believed was signed
+   * in. Lets the console say why it is sending the user to sign in, which a
+   * deliberate sign-out never sets.
+   */
+  sessionExpired: boolean;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -233,6 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => readSession());
   const sessionGeneration = useRef(0);
   const [apiReachable, setReachable] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
   // Only the boot check blocks; later refreshes happen behind the current UI.
   const [loading, setLoading] = useState<boolean>(
     () => readSession() !== null || hasOAuthPending()
@@ -252,6 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (next: User | null) => {
       writeSession(next);
       setUser(next);
+      if (next) setSessionExpired(false);
       if (!next) {
         sessionGeneration.current++;
         void queryClient.cancelQueries({ queryKey: ['account'] });
@@ -285,6 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // With no backend there is no cookie, so every call is a 401; under the
       // dev bypass that must not bounce the designer back to sign-in.
       if (isDevBypass()) return;
+      if (readSession()) setSessionExpired(true);
       sessionGeneration.current++;
       writeSession(null);
       setUser(null);
@@ -375,6 +399,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       refreshAccount,
       apiReachable,
+      sessionExpired,
     }),
     [
       user,
@@ -386,6 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       refreshAccount,
       apiReachable,
+      sessionExpired,
     ]
   );
 

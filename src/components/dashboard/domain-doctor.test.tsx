@@ -7,7 +7,24 @@ vi.mock('@/lib/api/queries', () => ({
   useDomainDoctor: (domain: string) => useDomainDoctor(domain) as unknown,
 }));
 
+const doctorAccess = vi.hoisted(() => ({ value: 'on' as string }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: doctorAccess.value, refresh: vi.fn() }),
+}));
+
 const { DomainDoctor } = await import('./domain-doctor');
+
+describe('DomainDoctor gate', () => {
+  it('does not probe a domain when the doctor is not enabled for the account', () => {
+    // domain-doctor is a preview capability; capgate answers 404 when it is off.
+    doctorAccess.value = 'off';
+    useDomainDoctor.mockClear();
+    render(<DomainDoctor domain="app.example.com" />);
+    expect(useDomainDoctor).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent(/not enabled for this account/i);
+    doctorAccess.value = 'on';
+  });
+});
 
 type Check = {
   name: string;

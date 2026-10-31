@@ -15,6 +15,7 @@ import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
 import { useWorkspaceTarget } from './workspace-apps';
+import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
  * Query hooks over the REST surface.
@@ -117,9 +118,13 @@ export function useInstallRepos(installationId: number | null, accountId?: strin
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch: string };
+type BindRepoInput = { installationId: number; repo: string; branch?: string };
 
-/** Persist the (account, app, installation, repo, branch) binding. */
+/**
+ * Persist the (account, app, installation, repo, branch) binding. Leave
+ * `branch` out to let apid use the repository's default branch
+ * (`production_branch` is optional on `install/bind`).
+ */
 async function bindRepo(slug: string, input: BindRepoInput) {
   const csrf_token = await issueCSRF('bind_app_to_repo');
   return unwrap(
@@ -129,14 +134,27 @@ async function bindRepo(slug: string, input: BindRepoInput) {
         csrf_token,
         installation_id: input.installationId,
         repo_full_name: input.repo,
-        production_branch: input.branch,
+        ...(input.branch ? { production_branch: input.branch } : {}),
       },
     })
   );
 }
 
 export function useBindRepo(slug: string) {
-  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+  });
+}
+
+/** The app's current repository binding (cookie session; no credentials). */
+export function useAppRepoBinding(slug: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...keys.app(slug), 'repo-binding'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/install/bind', { params: { path: { slug } } })),
+    enabled: Boolean(slug) && (options.enabled ?? true),
+  });
 }
 
 /** Slug-in-variables variant for a wizard that creates the app first. */
@@ -2809,11 +2827,18 @@ export function useBillingPortal() {
  * bill immediately, so callers must confirm before invoking it — a 402 here
  * means payment is required and carries a link to the provider's checkout.
  */
+/**
+ * A 202 means the provider accepted a deferred change: the account keeps its
+ * current plan until the provider's webhook confirms the new one.
+ */
 export function useChangePlan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (plan: components['schemas']['ChangePlanRequest']['plan']) =>
-      unwrap(api.PATCH('/v1/account/plan', { body: { plan } })),
+    mutationFn: async (plan: components['schemas']['ChangePlanRequest']['plan']) => {
+      const result = await api.PATCH('/v1/account/plan', { body: { plan } });
+      const account = await unwrap(Promise.resolve(result));
+      return { account, pending: result.response.status === 202 };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
 }
@@ -3114,6 +3139,38 @@ export function useDeployFromRefFor() {
     }: { slug: string } & components['schemas']['SourceRefDeployRequest']) =>
       unwrap(
         api.POST('/v1/apps/{slug}/deployments/source-ref', { params: { path: { slug } }, body })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+/**
+ * A function's first deploy from source the console packed itself: the
+ * handler someone wrote or dropped in New app. apid reads `kind`, `runtime`
+ * and `handler` from the multipart form (pkg/apid/apidserver/deploy_inputs.go);
+ * `handler.handler` keeps the runtime's default handler file
+ * (pkg/api/function_handler.go), which is the file the archive carries.
+ */
+export function useDeployFunctionSourceFor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments', {
+          params: { path: { slug: input.slug } },
+          body: input as never,
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append('source', input.archive, 'source.tar.gz');
+            form.append('kind', 'function');
+            form.append('runtime', input.runtime);
+            form.append('handler', 'handler.handler');
+            return form;
+          },
+        })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
@@ -3470,6 +3527,27 @@ export function usePurgeAppCache(slug: string) {
   });
 }
 
+/**
+ * Replace every live instance without capturing process memory, so new and
+ * changed environment variables and secrets apply now (`fresh=true`). A plain
+ * restart snapshots memory and would keep the previous environment.
+ */
+export function useFreshRestart(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/restart', {
+          params: { path: { slug }, query: { fresh: true } },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug) });
+      void qc.invalidateQueries({ queryKey: ['apps', slug, 'wake-timeline'] });
+    },
+  });
+}
+
 /** Park every instance, snapshot afresh, and queue one replacement wake. */
 export function useRestartApp(slug: string) {
   const qc = useQueryClient();
@@ -3546,28 +3624,17 @@ export function useTrigger(id: string) {
 
 /**
  * Deploy a source tarball the customer picked, the console's equivalent of
- * `gregale deploy --tarball`. Multipart: openapi-fetch skips the serializer
- * when `body` is undefined, so the body is passed through as `never`.
+ * `gregale deploy --tarball`, through the resumable upload session
+ * (`/v1/uploads`) that replaced the deprecated multipart route.
  */
 export function useDeployTarball(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: {
       file: File;
-      sidecar?: components['schemas']['SourceTarballDeployRequest'];
-    }) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
-          params: { path: { slug } },
-          body: input as never,
-          bodySerializer: () => {
-            const form = new FormData();
-            form.append('tarball', input.file);
-            if (input.sidecar) form.append('sidecar', JSON.stringify(input.sidecar));
-            return form;
-          },
-        })
-      ),
+      options?: DeployOptions;
+      onProgress?: (sent: number, total: number) => void;
+    }) => uploadTarball({ slug, ...input }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });

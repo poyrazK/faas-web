@@ -14,6 +14,11 @@ import { api } from '@/lib/api/client';
 import { Route as Storage } from './dashboard.storage';
 import { mockedApi, spyApi } from '@/test/api';
 
+// The page is gated on object-storage; this suite covers its body.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/components/dashboard/object-storage', () => ({
   ObjectStorage: () => <h2>Object storage</h2>,
 }));

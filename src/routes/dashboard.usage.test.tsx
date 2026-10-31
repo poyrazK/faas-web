@@ -131,7 +131,7 @@ describe('spend-cap validation', () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 110 });
     render(<UsagePage />);
     await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0.29{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenLastCalledWith(29));
@@ -145,12 +145,12 @@ describe('spend-cap validation', () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 0 });
     render(<UsagePage />);
     await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenCalledWith(0));
     expect(toast).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: 'Spend cap set to €0.00' })
+      expect.objectContaining({ title: 'Spend cap set to $0.00' })
     );
 
     setCap.mockClear();
@@ -162,7 +162,7 @@ describe('spend-cap validation', () => {
   it('rejects malformed amounts, then preserves the value through API failure and retry', async () => {
     render(<UsagePage />);
     await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
-    const cap = screen.getByRole('spinbutton', { name: 'Cap (EUR)' });
+    const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '-1');
     await userEvent.click(screen.getByRole('button', { name: 'Set cap' }));
