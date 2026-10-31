@@ -29,7 +29,6 @@ import {
   useAppsMetrics,
   useDeployments,
   useInstances,
-  useUsageSummary,
   type MetricsRange,
 } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
@@ -38,6 +37,8 @@ import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
+import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -67,9 +68,7 @@ const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFracti
 
 function formatMoney(cents: number | undefined): string {
   if (cents == null) return '—';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(
-    cents / 100
-  );
+  return formatCents(cents);
 }
 
 const UNKNOWN = <span className="text-muted-foreground">—</span>;
@@ -326,7 +325,8 @@ function OverviewPage() {
   const { account, user } = useAuth();
   const { range = '24h' } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const usage = useUsageSummary();
+  // The workspace's allowance: the company's in a company workspace.
+  const usage = useWorkspaceUsageSummary();
   // The default remains a cache hit with the store. Other windows are queried
   // directly so the overview changes the underlying rollup, not just its label.
   const paidAccess = isPaidPlan(account?.plan);
@@ -387,8 +387,11 @@ function OverviewPage() {
   const rangeDescription = RANGE_DESCRIPTION[range];
 
   const usageData = usage.data;
-  const included = usageData?.included_gb_hours ?? 0;
-  const remainingGbh = Math.max(0, included - (usageData?.used_gb_hours ?? 0));
+  // null: a company with no usage this month carries no allowance yet.
+  const includedKnown = usageData?.included_gb_hours ?? null;
+  const included = includedKnown ?? 0;
+  const usedGbh = usageData?.used_gb_hours ?? 0;
+  const remainingGbh = Math.max(0, included - usedGbh);
   const overGbh = usageData?.overage_gb_hours ?? 0;
   const usageFailed = Boolean(usage.error);
 
@@ -642,14 +645,24 @@ function OverviewPage() {
             )}
           </StatCard>
           <StatCard
-            label={overGbh > 0 ? 'GB-h over' : 'GB-h left'}
+            label={
+              overGbh > 0
+                ? 'GB-h over'
+                : includedKnown === null && usageData
+                  ? 'GB-h used'
+                  : 'GB-h left'
+            }
             hint="Compute allowance for this billing period."
             sub={
               usage.isPending || usageFailed
                 ? 'reading usage'
                 : overGbh > 0
-                  ? `${formatMoney(usageData?.overage_cents)} overage this period`
-                  : `of ${formatGbHours(included)} this period`
+                  ? usageData?.overage_cents === undefined
+                    ? 'over the allowance this period'
+                    : `${formatMoney(usageData.overage_cents)} overage this period`
+                  : includedKnown === null
+                    ? 'this period'
+                    : `of ${formatGbHours(included)} this period`
             }
           >
             {usage.isPending ? (
@@ -660,6 +673,8 @@ function OverviewPage() {
               <span style={{ color: 'var(--status-warning)' }}>
                 <Odometer value={overGbh} format={formatGbHours} />
               </span>
+            ) : includedKnown === null ? (
+              <Odometer value={usedGbh} format={formatGbHours} />
             ) : (
               <Odometer value={remainingGbh} format={formatGbHours} />
             )}

@@ -15,6 +15,11 @@ describe('safeInternalPath', () => {
     expect(safeInternalPath('/\\/attacker.example')).toBeUndefined();
   });
 
+  it('rejects control characters before browser URL normalization', () => {
+    expect(safeInternalPath('/\n/attacker.example')).toBeUndefined();
+    expect(safeInternalPath('/\t/attacker.example')).toBeUndefined();
+  });
+
   it('rejects non-string values', () => {
     expect(safeInternalPath(undefined)).toBeUndefined();
     expect(safeInternalPath({ path: '/dashboard' })).toBeUndefined();

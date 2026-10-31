@@ -36,11 +36,22 @@ describe('TarballDeploy', () => {
     await waitFor(() =>
       expect(deploy).toHaveBeenCalledWith(
         expect.objectContaining({
-          sidecar: { reason: 'restoring the pre-outage build', tag: 'incident_recovery' },
+          options: { reason: 'restoring the pre-outage build', tag: 'incident_recovery' },
         })
       )
     );
     expect(onDeployed).toHaveBeenCalledWith('dep12345678');
+  });
+
+  it('shows how much of the archive has been sent while it uploads', async () => {
+    deploy.mockImplementation((input: { onProgress?: (sent: number, total: number) => void }) => {
+      input.onProgress?.(5, 10);
+      return new Promise(() => {});
+    });
+    render(<TarballDeploy slug="api" />);
+    await userEvent.upload(screen.getByLabelText('Source tarball'), archive());
+    await userEvent.click(screen.getByRole('button', { name: /deploy archive/i }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Uploading… 50%');
   });
 
   it('explains a 413 as the archive being too large', async () => {

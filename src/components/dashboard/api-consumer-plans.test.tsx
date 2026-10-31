@@ -5,7 +5,7 @@ import { capability, problem, renderWithProviders, routeApi } from '@/test/monet
 
 vi.mock('@/lib/api/capabilities', async () => {
   const { capability } = await import('@/test/monetization');
-  return { useCapability: () => capability };
+  return { useCapability: () => capability, useCapabilityAccess: () => capability };
 });
 
 const { ApiConsumerPlans } = await import('./api-consumer-plans');

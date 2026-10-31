@@ -13,7 +13,6 @@ import {
   useAccountSecrets,
 } from '@/lib/api/queries';
 import { useMfa } from '@/components/auth/mfa-provider';
-import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import { PasswordPanel } from '@/components/dashboard/password-wizard';
 import { AuthEventDetail } from '@/components/dashboard/auth-event-detail';
@@ -211,7 +210,7 @@ export function SecuritySettings() {
                   toast({
                     kind: 'error',
                     title: 'Could not revoke',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -258,7 +257,7 @@ export function SecuritySettings() {
                   toast({
                     kind: 'error',
                     title: 'Could not revoke',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
