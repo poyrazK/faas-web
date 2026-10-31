@@ -301,7 +301,7 @@ describe('spend cap', () => {
     );
   });
 
-  it('treats a €0 cap as reached only once the allowance is gone', async () => {
+  it('treats a $0 cap as reached only once the allowance is gone', async () => {
     const props = inputs();
     props.spendCap = ready({ overage_cap_cents: 0 });
     await mount(props);
