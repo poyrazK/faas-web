@@ -37,9 +37,9 @@ describe('problemHelp', () => {
   });
 
   it('offers no link for an unpublished page rather than a 404', () => {
-    expect(problemHelp(problem({ docs_url: 'https://gregale.dev/docs/secrets' })).docsHref).toBe(
-      undefined
-    );
+    expect(
+      problemHelp(problem({ docs_url: 'https://gregale.dev/docs/object-storage' })).docsHref
+    ).toBe(undefined);
   });
 
   it('falls back to the problem type when docs_url is absent', () => {
