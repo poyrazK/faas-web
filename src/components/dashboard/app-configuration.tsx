@@ -27,6 +27,7 @@ import { appNameError } from './new-app-validation';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
 import { configurationEffects } from '@/lib/api/runtime-policy';
+import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
 import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
@@ -708,9 +709,9 @@ function DangerZone({ app }: { app: App }) {
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            The app is hidden from active lists and enters a 7-day grace window before permanent
-            cleanup. Restore it through the API during that window; this console has no restore
-            action. Delete any object storage buckets first.
+            The app is hidden from active lists and enters a {APP_DELETE_GRACE_DAYS}-day grace
+            window before permanent cleanup. Restore it from Recently deleted on the Apps page
+            during that window. Delete any object storage buckets first.
           </p>
         </div>
         <Button
@@ -721,8 +722,7 @@ function DangerZone({ app }: { app: App }) {
             if (
               !(await confirm({
                 title: `Delete ${app.slug}?`,
-                description:
-                  'Traffic to this app stops. Use the restore API within 7 days to recover the app; after the grace window it is eligible for permanent cleanup.',
+                description: `Traffic to this app stops. Restore it from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days; after the grace window it is eligible for permanent cleanup.`,
                 confirmLabel: 'Delete app',
                 destructive: true,
                 typeToConfirm: app.slug,
@@ -735,7 +735,7 @@ function DangerZone({ app }: { app: App }) {
                 toast({
                   kind: 'success',
                   title: 'App deletion scheduled',
-                  description: `${app.slug} can be restored through the API within 7 days.`,
+                  description: `${app.slug} can be restored from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days.`,
                 });
                 void navigate({ to: '/dashboard/apps' });
               })

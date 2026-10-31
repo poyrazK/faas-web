@@ -535,21 +535,136 @@ route('POST', '/v1/auth/sessions/revoke_all', () => {
 
 // --- Apps --------------------------------------------------------------------
 
-// Deleted apps wait out their grace window here; `POST /v1/apps/{slug}/restore`
-// brings one back. apid has no customer listing of them.
-const deletedApps = new Map<string, { app: db.App; expiresAt: number }>();
-function restoreDeleted(record: { app: db.App; expiresAt: number }) {
-  if (record.expiresAt <= Date.now())
+// Deleted apps wait out their grace window here, keyed by ID like apid's
+// tombstones (faas pkg/apid/apprecovery/handlers.go). `GET /v1/deleted-apps`
+// lists them; restore goes by exact ID, or by slug through the legacy route.
+type DeletedRecord = {
+  app: db.App;
+  deletedAt: number | null;
+  expiresAt: number | null;
+  purgeStarted?: boolean;
+};
+const deletedApps = new Map<string, DeletedRecord>();
+const GRACE_MS = 7 * 86400e3; // AppDeleteGraceDays, faas pkg/api/limits.go:2416
+
+function seedDeleted(slug: string, deletedAgoMs: number, extra: Partial<DeletedRecord> = {}) {
+  const deletedAt = db.NOW - deletedAgoMs;
+  const app: db.App = {
+    ...db.apps[0],
+    id: db.id(),
+    slug,
+    status: 'deleted',
+    url: `https://${slug}.gregale.app`,
+    canonical_url: `https://${slug}.gregale.app`,
+  };
+  deletedApps.set(app.id, { app, deletedAt, expiresAt: deletedAt + GRACE_MS, ...extra });
+}
+// Independent records; no live seeded app is deleted to make them. One reuses
+// an active app's name, so its restore answers `conflict`.
+if (!db.EMPTY) {
+  seedDeleted('checkout-preview', 2 * 3600e3);
+  seedDeleted('api-gateway', 2 * 86400e3);
+  seedDeleted('old-webhooks', 6 * 86400e3 + 20 * 3600e3);
+  seedDeleted('legacy-cron', 9 * 86400e3);
+  seedDeleted('nightly-report', 8 * 86400e3, { purgeStarted: true });
+}
+
+function deletedSummary(record: DeletedRecord, now: number): S_['DeletedAppSummary'] {
+  const blocker = record.purgeStarted
+    ? 'purge_started'
+    : record.deletedAt === null || record.expiresAt === null
+      ? 'metadata_unavailable'
+      : record.expiresAt <= now
+        ? 'grace_expired'
+        : '';
+  return {
+    account_id: db.account.id,
+    id: record.app.id,
+    slug: record.app.slug,
+    deleted_at: record.deletedAt === null ? null : new Date(record.deletedAt).toISOString(),
+    delete_grace_until: record.expiresAt === null ? null : new Date(record.expiresAt).toISOString(),
+    restore_eligible: blocker === '',
+    restore_blocker: blocker,
+    evaluated_at: new Date(now).toISOString(),
+  };
+}
+
+function restoreDeleted(record: DeletedRecord) {
+  const now = Date.now();
+  if (!deletedSummary(record, now).restore_eligible)
     throw new Problem(409, 'app_not_restorable', 'the deletion grace window has ended.');
-  if (db.appBySlug(record.app.slug))
-    throw new Problem(409, 'conflict', 'An active app occupies this slug.');
+  const current = db.appBySlug(record.app.slug);
+  if (current && current.id !== record.app.id)
+    throw new Problem(409, 'conflict', "the retained app's slug belongs to an active app.");
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free' && db.apps.length >= 1)
+    throw new Problem(
+      403,
+      'plan_limit_apps',
+      `free plan allows 1 deployed app(s); you have ${db.apps.length}.`
+    );
   record.app.status = db.deployments.some((deployment) => deployment.app_id === record.app.id)
     ? 'active'
     : 'undeployed';
   db.apps.push(record.app);
-  deletedApps.delete(record.app.slug);
+  deletedApps.delete(record.app.id);
   return record.app;
 }
+
+route('GET', '/v1/deleted-apps', ({ query }) => {
+  for (const [key] of query)
+    if ((key !== 'limit' && key !== 'cursor') || query.getAll(key).length !== 1)
+      throw new Problem(400, 'validation_failed', 'only one limit and cursor are supported.');
+  const limit = query.has('limit') ? Number(query.get('limit')) : 25;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Problem(400, 'validation_failed', 'limit must be 1..50');
+  const at = (r: DeletedRecord) => r.deletedAt ?? 0;
+  let before: { at: number; id: string } | null = null;
+  const cursor = query.get('cursor');
+  if (cursor) {
+    try {
+      before = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+      if (!before || !Number.isFinite(before.at) || typeof before.id !== 'string')
+        throw new Error();
+    } catch {
+      throw new Problem(
+        400,
+        'validation_failed',
+        "invalid deleted-app cursor; restart this account's inventory"
+      );
+    }
+  }
+  const rows = [...deletedApps.values()]
+    .sort((a, b) => at(b) - at(a) || b.app.id.localeCompare(a.app.id))
+    .filter((r) => !before || at(r) < before.at || (at(r) === before.at && r.app.id < before.id));
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  const now = Date.now();
+  return {
+    account_id: db.account.id,
+    apps: page.map((r) => deletedSummary(r, now)),
+    evaluated_at: new Date(now).toISOString(),
+    ...(rows.length > limit && last
+      ? {
+          next_cursor: Buffer.from(JSON.stringify({ at: at(last), id: last.app.id })).toString(
+            'base64url'
+          ),
+        }
+      : {}),
+  };
+});
+function deletedRecord(id: string) {
+  const record = deletedApps.get(id);
+  if (!record) throw new Problem(404, 'not_found', 'no such deleted app');
+  return record;
+}
+route('GET', '/v1/deleted-apps/{id}', ({ params }) =>
+  deletedSummary(deletedRecord(params.id), Date.now())
+);
+route('POST', '/v1/deleted-apps/{id}/restore', ({ params, body }) => {
+  if (body && Object.keys(body).length > 0)
+    throw new Problem(400, 'validation_failed', 'restore accepts no fields; use an empty body');
+  return restoreDeleted(deletedRecord(params.id));
+});
 
 function app(slug: string) {
   const found = db.appBySlug(slug);
@@ -656,7 +771,7 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
   const slug = String(body.slug ?? '').trim();
   if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug))
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
-  if (db.appBySlug(slug) || deletedApps.has(slug))
+  if (db.appBySlug(slug) || [...deletedApps.values()].some((r) => r.app.slug === slug))
     throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
   const created: db.App = {
     ...db.apps[0],
@@ -837,7 +952,8 @@ route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
 route('DELETE', '/v1/apps/{slug}', ({ params }) => {
   const a = app(params.slug);
   // Active reads hide tombstones; the restore API retains the same app identity.
-  deletedApps.set(a.slug, { app: a, expiresAt: Date.now() + 7 * 86400e3 });
+  const deletedAt = Date.now();
+  deletedApps.set(a.id, { app: a, deletedAt, expiresAt: deletedAt + GRACE_MS });
   db.apps.splice(db.apps.indexOf(a), 1);
   return NO_CONTENT;
 });
@@ -2290,7 +2406,7 @@ route('POST', '/v1/apps/{slug}/restart', ({ params }) => {
 });
 
 route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
-  const deleted = deletedApps.get(params.slug);
+  const deleted = [...deletedApps.values()].find((r) => r.app.slug === params.slug);
   if (!deleted) {
     app(params.slug);
     throw new Problem(409, 'app_not_restorable', 'the app is not pending deletion.');

@@ -202,12 +202,13 @@ describe('App deletion contract copy', () => {
       </ConfirmProvider>
     );
     expect(screen.getByText(/7-day grace/)).toBeInTheDocument();
+    expect(screen.queryByText(/no restore action/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/no grace period|Every deployment, secret|Permanent\./)
     ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete app' }));
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent(/restore API/);
+    expect(dialog).toHaveTextContent(/Recently deleted on the Apps page/);
     const submit = within(dialog).getByRole('button', { name: 'Delete app' });
     expect(submit).toBeDisabled();
     await userEvent.type(within(dialog).getByRole('textbox'), 'alpha');
