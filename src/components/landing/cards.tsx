@@ -137,17 +137,21 @@ export function Cards({
             transition={reduce ? { duration: 0 } : { duration: 0.28, ease: EASE }}
             className={cn(
               'product-preview-card relative flex flex-col overflow-hidden outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              // phones: every card open and stacked; lg: one open, widths differ
+              // phones: every card open and stacked; lg: one open, widths differ.
+              // On lg every card is exactly 26rem tall, open or closed, so the
+              // row never resizes as cards open; the open layout is compact
+              // there (shorter panel area, 24px title, a wider card below xl)
+              // so the longest card still fits. Check the fit if copy grows.
               'rounded-[20px] bg-card',
-              'lg:min-h-[26rem] lg:rounded-xl lg:bg-[#eef3f0]',
+              'lg:h-[26rem] lg:rounded-xl lg:bg-[#eef3f0]',
               isOpen
-                ? 'lg:flex-[1.24] lg:rounded-[20px] lg:bg-card lg:shadow-[0_12px_16px_0_rgba(13,21,18,0.06),0_1px_0_0_rgba(13,21,18,0.04)]'
+                ? 'lg:flex-[1.6] lg:rounded-[20px] xl:flex-[1.24] lg:bg-card lg:shadow-[0_12px_16px_0_rgba(13,21,18,0.06),0_1px_0_0_rgba(13,21,18,0.04)]'
                 : 'lg:flex-1 lg:cursor-pointer'
             )}
           >
             {showOpen ? (
               <div className="flex flex-col p-2">
-                <div className="flex h-[13.5rem] items-center justify-center rounded-xl bg-[radial-gradient(120%_100%_at_50%_0%,#f6faf8,#e6ede9)]">
+                <div className="flex h-[13.5rem] items-center justify-center rounded-xl lg:h-auto lg:min-h-[10rem] lg:py-2 bg-[radial-gradient(120%_100%_at_50%_0%,#f6faf8,#e6ede9)]">
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.div
                       key={item.title}
@@ -159,16 +163,18 @@ export function Cards({
                     </motion.div>
                   </AnimatePresence>
                 </div>
-                <div className="px-5 pb-5 pt-5">
-                  <h3 className="text-[26px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[32px]">
+                <div className="px-5 pb-5 pt-5 lg:pb-4 lg:pt-4">
+                  <h3 className="text-[26px] font-medium leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[32px] lg:text-[24px]">
                     {item.title}
                   </h3>
-                  {item.status && <p className="label-mono mt-4 text-brand">{item.status}</p>}
-                  <p className="mt-4 text-[14px] leading-[1.35] text-muted-foreground">
+                  {item.status && (
+                    <p className="label-mono mt-4 text-brand lg:mt-3">{item.status}</p>
+                  )}
+                  <p className="mt-4 text-[14px] leading-[1.35] text-muted-foreground lg:mt-3">
                     {item.body}
                   </p>
                   {item.links && item.links.length > 0 && (
-                    <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
+                    <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 lg:mt-3">
                       {item.links.map((l) => (
                         <li key={l.label}>
                           <Link
