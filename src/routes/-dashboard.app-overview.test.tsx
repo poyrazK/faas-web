@@ -97,6 +97,13 @@ vi.mock('@/lib/store', () => ({
     redeploy: vi.fn(),
   }),
 }));
+vi.mock('@/components/dashboard/stateless-contract', () => ({
+  StatelessContract: ({ slug }: { slug: string }) => (
+    <div role="region" aria-label="Stateless contract">
+      {slug}
+    </div>
+  ),
+}));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<object>()),
   useAppInstances: () => ({ data: [{ id: 'c'.repeat(32), state: 'running' }] }),
@@ -172,6 +179,19 @@ describe('App Overview', () => {
     );
     expect(screen.queryByRole('heading', { name: 'Per-app metrics' })).not.toBeInTheDocument();
     expect(fixtures.buildIds).toEqual([]);
+  });
+
+  it("shows the app's stateless contract on Overview only", async () => {
+    const router = await mount();
+    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
+    await act(async () => {
+      await router.navigate({
+        to: '/dashboard/apps/$appSlug',
+        params: { appSlug: 'alpha' },
+        search: { tab: 'Logs' },
+      });
+    });
+    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
   });
 
   it('keeps app state distinct from a failed latest release and opens that exact failure', async () => {

@@ -6459,11 +6459,46 @@ const AUTH_EVENTS = [
     data: { attempts: 3, locked: false },
   },
 ];
+// Runtime stateless advisories (faas ADR-047): one row per debounced batch of
+// writes to a watched directory, attributed to the app by `data.app_id`. Only
+// search-indexer writes state locally, so every other app reads empty.
+const statelessAdvisories = () => {
+  const appId = db.appBySlug('search-indexer')?.id ?? '';
+  const batch = (id: string, minutesAgo: number, instance: string, writes: [string, string][]) => {
+    const at = new Date(Date.now() - minutesAgo * 60e3);
+    const highPath = writes.some(([path]) => /^\/(data|db)(\/|$)/.test(path));
+    return {
+      id,
+      at: at.toISOString(),
+      actor: 'apid',
+      kind: 'stateless.advisory',
+      subject: db.ACCOUNT_ID,
+      severity: highPath ? 'high' : 'warn',
+      data: {
+        app_id: appId,
+        instance,
+        count: writes.length,
+        severity: highPath ? 'high' : 'warn',
+        events: writes.map(([path, mask]) => ({ path, mask, pid: 41, ts_unix_ms: at.getTime() })),
+      },
+    };
+  };
+  return [
+    batch('2210', 4, 'inst-7f2c19', [
+      ['/data/index/segment-0042.bin', 'create,modify'],
+      ['/data/index/segment-0043.bin', 'create'],
+    ]),
+    batch('2207', 38, 'inst-7f2c19', [['/data/index/manifest.json', 'modify']]),
+    batch('2201', 190, 'inst-3a90d4', [['/var/lib/redis/dump.rdb', 'create,move']]),
+  ];
+};
 route('GET', '/v1/audit-events', ({ query }) => {
   const prefix = query.get('kind_prefix') ?? '';
+  const appId = query.get('app_id') ?? '';
   const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 50)));
-  const events = [...overageEvents, ...AUTH_EVENTS]
+  const events = [...overageEvents, ...AUTH_EVENTS, ...statelessAdvisories()]
     .filter((event) => event.kind.startsWith(prefix))
+    .filter((event) => !appId || (event.data as { app_id?: string }).app_id === appId)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, limit);
   return { events, limit };
