@@ -166,6 +166,20 @@ describe('RecentlyDeletedApps', () => {
     );
   });
 
+  it('holds every Restore while one is in flight, since a restore has no replay receipt', async () => {
+    const second = { ...eligible, id: 'b2c4e6a8-0000-4000-8000-000000000099', slug: 'billing-old' };
+    spyApi('GET').mockImplementation(() => ok(page([eligible, second])));
+    spyApi('POST').mockImplementation(() => new Promise(() => {}));
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore checkout-preview' }));
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Restore app' })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Restore billing-old' })).toBeDisabled()
+    );
+  });
+
   it('sends nothing when the confirm is cancelled', async () => {
     spyApi('GET').mockImplementation(() => ok(page([eligible])));
     const post = spyApi('POST');

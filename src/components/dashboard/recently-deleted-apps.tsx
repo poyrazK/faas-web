@@ -57,10 +57,13 @@ function Row({
   row,
   onRestore,
   busy,
+  held,
 }: {
   row: DeletedApp;
   onRestore: (row: DeletedApp) => void;
   busy: boolean;
+  /** Any restore is in flight; there is no replay receipt, so none may start. */
+  held: boolean;
 }) {
   const soon =
     row.restore_eligible &&
@@ -96,6 +99,7 @@ function Row({
             size="sm"
             variant="outline"
             busy={busy}
+            disabled={held}
             aria-label={`Restore ${row.slug}`}
             onClick={() => onRestore(row)}
           >
@@ -173,6 +177,7 @@ export function RecentlyDeletedApps() {
                 row={row}
                 onRestore={(r) => void onRestore(r)}
                 busy={restore.isPending && restore.variables === row.id}
+                held={restore.isPending}
               />
             ))}
           </ul>
