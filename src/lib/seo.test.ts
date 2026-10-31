@@ -47,6 +47,12 @@ describe('consoleHead', () => {
     expect(titleOf(consoleHead('queues'))).toBe('Queues · Gregale');
   });
 
+  it('titles the regrouped rail rows by their rail labels', () => {
+    expect(titleOf(consoleHead('storage'))).toBe('Object storage · Gregale');
+    expect(titleOf(consoleHead('edge-rules'))).toBe('Edge rules · Gregale');
+    expect(titleOf(consoleHead('templates'))).toBe('Templates · Gregale');
+  });
+
   it('falls back to the raw segment for an unknown one', () => {
     expect(titleOf(consoleHead('nonexistent'))).toBe('nonexistent · Gregale');
   });
@@ -84,10 +90,13 @@ describe('titles across the app', () => {
 });
 
 describe('SITE_DESCRIPTION', () => {
-  it('states the backend platform and beta versus preview availability', () => {
-    expect(SITE_DESCRIPTION).toMatch(/APIs, services and background work/i);
-    expect(SITE_DESCRIPTION).toMatch(/Hosting is in public beta/i);
-    expect(SITE_DESCRIPTION).toMatch(/are in preview/i);
+  it('leads with the product promise, not its maturity', () => {
+    // The beta is stated once on the page, under the call to action. A search
+    // snippet that opens with "in public beta" reads as a warning label.
+    expect(SITE_DESCRIPTION).toMatch(/without rewriting it/i);
+    expect(SITE_DESCRIPTION).toMatch(/Firecracker microVM/);
+    expect(SITE_DESCRIPTION).toMatch(/scales it to zero/i);
+    expect(SITE_DESCRIPTION).not.toMatch(/beta|preview/i);
     expect(SITE_DESCRIPTION.length).toBeLessThanOrEqual(160);
   });
 

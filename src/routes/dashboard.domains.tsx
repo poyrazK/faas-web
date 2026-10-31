@@ -2,11 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useAddDomain,
@@ -18,7 +20,6 @@ import {
 import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -57,14 +58,10 @@ interface DomainRow {
   domain: string;
   app: string;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleDateString();
 }
 
 function DomainsPage() {
@@ -108,6 +105,7 @@ function DomainsPage() {
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
@@ -117,7 +115,13 @@ function DomainsPage() {
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // Stacked under the hostname so it does not squeeze an already narrow column.
+      render: (d) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono">{d.domain}</span>
+          {d.isDefault && <Pill label="default" />}
+        </span>
+      ),
     },
     {
       key: 'verified',
@@ -144,9 +148,14 @@ function DomainsPage() {
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <code className="select-all break-all text-xs text-muted-foreground">
-            {d.txtRecord ?? '—'}
-          </code>
+          <span className="flex items-center gap-1">
+            <code className="select-all break-all text-xs text-muted-foreground">
+              {d.txtRecord ?? '—'}
+            </code>
+            {d.txtRecord && (
+              <CopyIconButton text={d.txtRecord} label={`TXT record ${d.txtRecord}`} />
+            )}
+          </span>
         ),
     },
     {
@@ -154,7 +163,7 @@ function DomainsPage() {
       label: 'Verified',
       priority: 'secondary',
       numeric: true,
-      render: (d) => formatDate(d.verifiedAt),
+      render: (d) => <Timestamp value={d.verifiedAt} />,
     },
     {
       key: 'id',
@@ -185,7 +194,7 @@ function DomainsPage() {
                     toast({
                       kind: 'error',
                       title: 'Could not verify',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -227,7 +236,7 @@ function DomainsPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -262,9 +271,7 @@ function DomainsPage() {
             : undefined,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not add domain', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
   };
 
   return (

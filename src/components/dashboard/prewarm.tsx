@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD, FieldError } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import { useCancelPrewarm, usePrewarms, useSchedulePrewarm } from '@/lib/api/prewarm';
 import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
@@ -71,7 +70,7 @@ export function PrewarmPanel({ slug }: { slug: string }) {
       setAttempted(false);
       toast({ kind: 'success', title: 'Prewarm scheduled' });
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not schedule', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not schedule', error: err });
     }
   };
 
@@ -169,7 +168,7 @@ export function PrewarmPanel({ slug }: { slug: string }) {
                         toast({
                           kind: 'error',
                           title: 'Could not cancel',
-                          description: errorMessage(err),
+                          error: err,
                         })
                       );
                     }}

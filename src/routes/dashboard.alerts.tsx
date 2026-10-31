@@ -19,7 +19,6 @@ import {
   useRotateAlertSecret,
   useUpdateAlert,
 } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/alerts')({
@@ -139,9 +138,7 @@ export function AlertsBody({ slug }: { slug: string }) {
       .then(() =>
         toast({ kind: 'success', title: enabled ? `${a.name} resumed` : `${a.name} paused` })
       )
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
 
   const columns: Column<AlertRow>[] = [
     {
@@ -235,7 +232,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -282,7 +279,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                 toast({ kind: 'success', title: 'Rule added', description: rule.name });
               })
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not add', error: err })
               );
           }}
         >

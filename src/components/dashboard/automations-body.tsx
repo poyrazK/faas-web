@@ -416,7 +416,7 @@ function AutomationWorkspace({
       toast({
         kind: 'error',
         title: 'Could not change automatic starts',
-        description: errorMessage(err),
+        error: err,
       });
     }
   };

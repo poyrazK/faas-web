@@ -14,8 +14,8 @@ describe('report feature flow', () => {
         .map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim())
     ).toEqual([
       'Request Your customer',
-      'API Beta hosting',
-      'Background work Preview',
+      'API Gregale hosting',
+      'Background work Gregale background work',
       'Result Your application',
     ]);
     expect(within(steps).getByRole('tab', { name: /API/ })).toHaveAttribute(
@@ -27,7 +27,7 @@ describe('report feature flow', () => {
     expect(within(panel).getByRole('heading', { name: 'Gregale' })).toBeInTheDocument();
     expect(panel).toHaveTextContent(/accept.*request/i);
     expect(
-      screen.getByText(/Illustrative workflow using beta hosting and preview/)
+      screen.getByText(/An example workflow across hosting and background work/)
     ).toBeInTheDocument();
   });
 

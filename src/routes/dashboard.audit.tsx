@@ -4,7 +4,7 @@ import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/prim
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { useInfiniteAuditLog } from '@/lib/api/queries';
-import { formatRelative } from '@/lib/mock-data';
+import { Timestamp } from '@/components/ui/timestamp';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/audit')({
@@ -25,11 +25,6 @@ interface AuditRow {
   actor: string;
   kind: string;
   detail: string;
-}
-
-function formatWhen(value: string): string {
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
 }
 
 /**
@@ -73,7 +68,7 @@ function AuditPage() {
       key: 'at',
       label: 'When',
       numeric: true,
-      render: (e) => <span className="text-xs text-muted-foreground">{formatWhen(e.at)}</span>,
+      render: (e) => <Timestamp value={e.at} className="text-xs text-muted-foreground" />,
     },
     {
       key: 'kind',
