@@ -55,7 +55,7 @@ function failureCopy(err: unknown): string {
       case 'validation_failed':
         // apid's CodeValidation: here, the named CSRF envelope did not verify
         // (expired or overwritten). The spec's prose calls it `validation`.
-        return 'The page’s security token expired. Reload the page and try again.';
+        return 'The request’s security token expired before it arrived. Try again — each attempt reads a fresh one.';
     }
   }
   return errorMessage(err);

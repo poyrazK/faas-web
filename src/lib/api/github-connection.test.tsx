@@ -72,6 +72,27 @@ it('syncs with a token minted by a fresh status read and caches the answer', asy
   expect(client.getQueryData(githubConnectionKey('storefront'))).toEqual(synced);
 });
 
+it.each([
+  ['sync', useSyncGitHub, 'POST'],
+  ['disconnect', useDisconnectGitHub, 'DELETE'],
+] as const)(
+  'cancels an in-flight status read before %s mints its token',
+  async (_name, useAction, method) => {
+    // A status read that lands after the fresh one rewrites the token cookie,
+    // so the token about to be sent would no longer verify.
+    const get = spyApi('GET').mockResolvedValue(ok(bound));
+    spyApi(method).mockResolvedValue(ok(bound));
+    const { client, wrapper } = setup();
+    const cancel = vi.spyOn(client, 'cancelQueries');
+    const hook = renderHook(() => useAction('storefront'), { wrapper });
+    await act(async () => {
+      await hook.result.current.mutateAsync();
+    });
+    expect(cancel).toHaveBeenCalledWith({ queryKey: githubConnectionKey('storefront') });
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(get.mock.invocationCallOrder[0]);
+  }
+);
+
 it('disconnects through DELETE install/bind with the CSRF envelope', async () => {
   spyApi('GET').mockResolvedValue(ok(bound));
   const unbound = {

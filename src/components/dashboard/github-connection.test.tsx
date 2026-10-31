@@ -140,7 +140,7 @@ describe('a bound app', () => {
   it.each([
     ['github_install_not_found', /reconnect github/i],
     ['github_unreachable', /could not reach github/i],
-    ['validation_failed', /reload/i],
+    ['validation_failed', /expired before it arrived. Try again/i],
   ])('explains a %s sync failure', async (code, copy) => {
     state.sync.mockRejectedValue(
       new ApiError({ status: 409, code, title: 'x', detail: 'server prose' } as never)
