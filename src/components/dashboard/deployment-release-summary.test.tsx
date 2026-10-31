@@ -15,6 +15,11 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('./rollback-status', () => ({
+  RollbackStatus: ({ operation }: { operation: { id: string } }) => (
+    <p>watching rollback {operation.id}</p>
+  ),
+}));
 
 const { DeploymentReleaseSummary } = await import('./deployment-release-summary');
 
@@ -78,5 +83,15 @@ describe('DeploymentReleaseSummary', () => {
         targetDeploymentId: 'target2222',
       })
     );
+  });
+
+  it('watches the rollback operation the API accepted until it ends', async () => {
+    rollback.mockResolvedValue({
+      ...deployment('target2222', '2026-09-06T10:00:00Z'),
+      rollback_operation: { id: 'op-77', status: 'preparing' },
+    });
+    render(<DeploymentReleaseSummary appSlug="api" deploymentId="selected1111" />);
+    await userEvent.click(screen.getByRole('button', { name: /roll back to target22/i }));
+    expect(await screen.findByText('watching rollback op-77')).toBeInTheDocument();
   });
 });

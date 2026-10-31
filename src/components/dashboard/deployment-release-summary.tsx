@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useDeploymentSummary, useRollback, type DeploymentSummary } from '@/lib/api/queries';
 import { InlinePhase, queryPhase } from './primitives';
+import { RollbackStatus } from './rollback-status';
+import type { RollbackOperation } from '@/lib/api/deployment-detail';
 
 type ChangeValue = DeploymentSummary['changes'][number]['before'];
 
@@ -32,6 +35,7 @@ export function DeploymentReleaseSummary({
   const rollback = useRollback();
   const confirm = useConfirm();
   const { toast } = useToast();
+  const [operation, setOperation] = useState<RollbackOperation>();
   const phase = queryPhase({ error: summary.error, loading: summary.isPending });
   const targetId = summary.data?.rollback_target_id ?? undefined;
 
@@ -52,6 +56,7 @@ export function DeploymentReleaseSummary({
         slug: appSlug,
         targetDeploymentId: targetId,
       });
+      setOperation(result.rollback_operation);
       void summary.refetch();
       toast({
         kind: 'success',
@@ -112,6 +117,11 @@ export function DeploymentReleaseSummary({
           </div>
         )}
       </div>
+      {operation && (
+        <div className="mt-3">
+          <RollbackStatus slug={appSlug} operation={operation} />
+        </div>
+      )}
       <div className="mt-4">{body}</div>
     </div>
   );
