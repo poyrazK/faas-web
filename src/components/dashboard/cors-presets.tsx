@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash } from 'iconoir-react';
+import { EditPencil, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD, Select } from '@/components/ui/field';
@@ -15,14 +15,21 @@ import {
 } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
+import { slugIndex } from '@/lib/api/adapters';
+import { corsPresetUsers, useUpdateCorsPreset } from '@/lib/api/edge-protection';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   useApp,
+  useApps,
   useCorsPresets,
   useCreateCorsPreset,
   useDeleteCorsPreset,
+  useEdgeRules,
   type CorsPreset,
+  type EdgeRule,
 } from '@/lib/api/queries';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 /**
@@ -30,18 +37,30 @@ import { cn } from '@/lib/utils';
  * references from any CORS edge rule by `cors_preset_id`, instead of
  * retyping origins per rule.
  *
- * Two surfaces. The panel under the edge-rules table lists and manages the
- * presets — account-wide ones and the ones scoped to the app in view. The
- * picker sits at the top of the CORS rule form: choosing a preset fills the
- * rule's fields from it and records the id, so the gateway compiles the
- * rule against the preset and a later edit to the preset reaches the rule.
+ * Two surfaces. The panel under the edge-rules table lists, creates, edits
+ * and deletes the presets — account-wide ones and the ones scoped to the app
+ * in view. The picker sits at the top of the CORS rule form: choosing a
+ * preset fills the rule's fields from it and records the id, so the gateway
+ * compiles the rule against the preset and a later edit to the preset
+ * reaches the rule.
  *
- * The API's refusals are specific and each reads as itself: the Free-tier
- * cap (`402 plan_cors_preset_not_allowed`, the plan panel), a quota
- * (`403 plan_cors_preset_quota_reached`), a duplicate name
- * (`409 cors_preset_name_conflict`), and the wildcard-with-credentials
- * footgun (`422 cors_wildcard_with_credentials`), which is also refused
- * client-side before it is sent.
+ * Presets belong to the signed-in account (faas handlers_cors_presets.go
+ * reads and writes them by `acct.ID`; there is no organization variant), so a
+ * company workspace shows neither the list nor the picker rather than the
+ * personal account's presets.
+ *
+ * An edit or delete changes the served policy of every rule using the
+ * preset, account-wide (pkg/apid/edgerules/referenced_edit.go:179), and a
+ * delete clears those rules' reference (ON DELETE SET NULL) so they fail
+ * closed. The API does not list the users, so they are read from
+ * `/v1/edge-rules` and named before either.
+ *
+ * The API's refusals are matched on code: the Free-tier gate
+ * (`402 plan_cors_presets_not_allowed`), the quota
+ * (`403 plan_cors_preset_quota_reached`) and a list over the plan's cap
+ * (`422 cors_preset_too_large`). Everything else — a duplicate name (409),
+ * a bad origin, a wildcard with credentials — is `validation_failed`, whose
+ * sentence says what to change.
  */
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
@@ -53,46 +72,71 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
-function explain(err: unknown): { kind: 'info' | 'error'; title: string; description?: string } {
+function explain(
+  err: unknown,
+  fallback = 'Could not save the preset'
+): { kind: 'info' | 'error'; title: string; description?: string } {
   if (err instanceof ApiError) {
     switch (err.code) {
-      case 'plan_cors_preset_not_allowed':
+      case 'plan_cors_presets_not_allowed':
         return { kind: 'info', title: 'Not on your plan', description: errorMessage(err) };
       case 'plan_cors_preset_quota_reached':
         return { kind: 'info', title: 'Preset limit reached', description: errorMessage(err) };
-      case 'cors_preset_name_conflict':
+      case 'cors_preset_too_large':
         return {
           kind: 'error',
-          title: 'A preset with that name exists',
-          description: 'Names are unique per scope.',
-        };
-      case 'cors_wildcard_with_credentials':
-        return {
-          kind: 'error',
-          title: 'Wildcard origin with credentials',
-          description: 'Browsers refuse credentials for `*`; name the origins instead.',
-        };
-      case 'cors_preset_invalid':
-        return { kind: 'error', title: 'Preset rejected', description: errorMessage(err) };
-      case 'not_found':
-        return {
-          kind: 'info',
-          title: 'Already gone',
-          description: 'The preset was deleted elsewhere.',
+          title: 'Too many entries for your plan',
+          description: errorMessage(err),
         };
     }
   }
-  return { kind: 'error', title: 'Could not save the preset', description: errorMessage(err) };
+  return { kind: 'error', title: fallback, description: errorMessage(err) };
+}
+
+/** "api · api.acme.dev/*" for each rule, in the order the API lists them. */
+function ruleLabels(rules: EdgeRule[], slugs: Map<string, string>) {
+  return rules.map(
+    (r) => `${slugs.get(r.app_id) ?? r.app_id} · ${r.match_host || '*'}${r.match_path || '/*'}`
+  );
 }
 
 export function CorsPresetsPanel({ slug }: { slug?: string }) {
+  const workspace = useWorkspaceTarget();
+  if (!workspace.ready)
+    return (
+      <Panel title="CORS presets">
+        <LoadingState message="Loading CORS presets…" />
+      </Panel>
+    );
+  if (workspace.org)
+    return (
+      <Panel title="CORS presets">
+        <p className="text-sm text-muted-foreground">
+          {workspace.label} has no CORS presets of its own: a preset belongs to a personal account.
+          Switch to your personal workspace to manage yours.
+        </p>
+      </Panel>
+    );
+  return <AccountPresets slug={slug} />;
+}
+
+function AccountPresets({ slug }: { slug?: string }) {
+  const { account } = useAuth();
+  const accountId = account?.id ?? '';
   const app = useApp(slug ?? '');
   const appId = slug ? app.data?.id : undefined;
   const presets = useCorsPresets();
+  // Every rule on the account, since an edit reaches all of them.
+  const rules = useEdgeRules(true, accountId);
+  const { data: apps } = useApps(undefined, accountId);
+  const slugs = slugIndex(apps ?? []);
   const phase = queryPhase({ error: presets.error, loading: presets.isPending });
   const visible = (presets.data?.presets ?? []).filter(
     (p) => !p.app_id || !appId || p.app_id === appId
   );
+  // Unknown while the rules load or fail: say nothing rather than "no rules".
+  const usersOf = (id: string) =>
+    rules.data ? ruleLabels(corsPresetUsers(rules.data, id), slugs) : null;
 
   return (
     <PlanGated error={presets.error} feature="CORS presets">
@@ -113,11 +157,11 @@ export function CorsPresetsPanel({ slug }: { slug?: string }) {
             ) : (
               <ul className="flex flex-col divide-y divide-border">
                 {visible.map((p) => (
-                  <PresetRow key={p.id} preset={p} />
+                  <PresetRow key={p.id} preset={p} users={usersOf(p.id)} />
                 ))}
               </ul>
             )}
-            <CreatePreset appId={appId} />
+            <PresetForm appId={appId} />
           </div>
         )}
       </Panel>
@@ -125,17 +169,23 @@ export function CorsPresetsPanel({ slug }: { slug?: string }) {
   );
 }
 
-function PresetRow({ preset }: { preset: CorsPreset }) {
+function PresetRow({ preset, users }: { preset: CorsPreset; users: string[] | null }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const remove = useDeleteCorsPreset();
+  const [editing, setEditing] = useState(false);
 
   const onDelete = async () => {
+    const consequence =
+      users === null
+        ? 'Edge rules that reference it lose the link and fail closed until they get a new preset or inline values.'
+        : users.length === 0
+          ? 'No edge rule uses it.'
+          : `${users.length === 1 ? 'This rule loses the link and fails' : `These ${users.length} rules lose the link and fail`} closed until given a new preset or inline values: ${users.join('; ')}.`;
     if (
       !(await confirm({
         title: `Delete preset "${preset.name}"?`,
-        description:
-          'Edge rules that reference it lose the link and fail closed until they get a new preset or inline values.',
+        description: consequence,
         confirmLabel: 'Delete',
         destructive: true,
       }))
@@ -145,72 +195,154 @@ function PresetRow({ preset }: { preset: CorsPreset }) {
       await remove.mutateAsync(preset.id);
       toast({ kind: 'success', title: 'Preset deleted' });
     } catch (err) {
-      toast(explain(err));
+      toast(explain(err, 'Could not delete the preset'));
     }
   };
 
   return (
-    <li className="flex flex-wrap items-center gap-3 py-3 text-xs first:pt-0 last:pb-0">
-      <span className="text-sm font-medium">{preset.name}</span>
-      <Pill label={preset.app_id ? 'this app' : 'account'} color="var(--status-idle)" />
-      <span className="font-mono text-muted-foreground">{preset.allow_origins.join(', ')}</span>
-      <span className="font-mono text-muted-foreground">{preset.allow_methods.join('/')}</span>
-      {preset.allow_credentials && <Pill label="credentials" color="var(--status-warning)" />}
-      <span className="text-muted-foreground">max-age {preset.max_age_seconds}s</span>
-      <Button
-        size="xs"
-        variant="ghost"
-        className="ml-auto"
-        onClick={() => void onDelete()}
-        disabled={remove.isPending}
-        aria-label={`Delete preset ${preset.name}`}
-      >
-        <Trash className="h-3.5 w-3.5" />
-        Delete
-      </Button>
+    <li className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <span className="text-sm font-medium">{preset.name}</span>
+        <Pill label={preset.app_id ? 'this app' : 'account'} />
+        <span className="break-all font-mono text-muted-foreground">
+          {preset.allow_origins.join(', ')}
+        </span>
+        <span className="font-mono text-muted-foreground">{preset.allow_methods.join('/')}</span>
+        {preset.allow_credentials && <Pill label="credentials" color="var(--status-warning)" />}
+        <span className="text-muted-foreground">max-age {preset.max_age_seconds}s</span>
+        {users !== null && users.length > 0 && (
+          <span className="text-muted-foreground">
+            Used by {users.length} rule{users.length === 1 ? '' : 's'}
+          </span>
+        )}
+        <span className="ml-auto flex gap-1">
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setEditing((v) => !v)}
+            aria-expanded={editing}
+            aria-label={`Edit preset ${preset.name}`}
+          >
+            <EditPencil className="h-3.5 w-3.5" />
+            Edit
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => void onDelete()}
+            disabled={remove.isPending}
+            aria-label={`Delete preset ${preset.name}`}
+          >
+            <Trash className="h-3.5 w-3.5" />
+            Delete
+          </Button>
+        </span>
+      </div>
+      {editing && (
+        <div className="rounded-md border border-border p-4">
+          <PresetForm preset={preset} users={users} onDone={() => setEditing(false)} />
+        </div>
+      )}
     </li>
   );
 }
 
-function CreatePreset({ appId }: { appId?: string }) {
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+
+/**
+ * The create form, or with `preset` the edit form. An edit sends only the
+ * fields that changed (apid's PATCH leaves the rest as they are) and keeps the
+ * scope: apid decodes `"app_id": null` as "leave it", so moving a scoped
+ * preset to the whole account cannot be expressed
+ * (handlers_cors_presets.go:408-414).
+ */
+function PresetForm({
+  appId,
+  preset,
+  users = null,
+  onDone,
+}: {
+  appId?: string;
+  preset?: CorsPreset;
+  users?: string[] | null;
+  onDone?: () => void;
+}) {
   const { toast } = useToast();
   const create = useCreateCorsPreset();
-  const [name, setName] = useState('');
-  const [origins, setOrigins] = useState('');
-  const [methods, setMethods] = useState<string[]>(['GET']);
-  const [headers, setHeaders] = useState('');
-  const [credentials, setCredentials] = useState(false);
-  const [maxAge, setMaxAge] = useState('600');
-  const [scope, setScope] = useState<'account' | 'app'>(appId ? 'app' : 'account');
+  const update = useUpdateCorsPreset();
+  const [name, setName] = useState(preset?.name ?? '');
+  const [origins, setOrigins] = useState(preset?.allow_origins.join(' ') ?? '');
+  const [methods, setMethods] = useState<string[]>(preset?.allow_methods ?? ['GET']);
+  const [description, setDescription] = useState(preset?.description ?? '');
+  const [headers, setHeaders] = useState(preset?.allow_headers?.join(', ') ?? '');
+  const [exposed, setExposed] = useState(preset?.expose_headers?.join(', ') ?? '');
+  const [credentials, setCredentials] = useState(preset?.allow_credentials ?? false);
+  const [maxAge, setMaxAge] = useState(String(preset?.max_age_seconds ?? 600));
+  const [scope, setScope] = useState<'account' | 'app'>(
+    preset ? (preset.app_id ? 'app' : 'account') : appId ? 'app' : 'account'
+  );
+  const pending = preset ? update.isPending : create.isPending;
 
   const originList = splitList(origins);
+  const headerList = splitList(headers);
+  const exposedList = splitList(exposed);
   const wildcardWithCredentials = credentials && originList.includes('*');
   const maxAgeValue = Number(maxAge);
-  const ready =
+  const valid =
     name.trim().length > 0 &&
     name.trim().length <= 64 &&
     originList.length > 0 &&
     methods.length > 0 &&
+    maxAge.trim() !== '' &&
     Number.isInteger(maxAgeValue) &&
     maxAgeValue >= 0 &&
     maxAgeValue <= 86400 &&
     !wildcardWithCredentials;
 
+  const changes = preset
+    ? {
+        ...(name.trim() !== preset.name ? { name: name.trim() } : {}),
+        ...(description.trim() !== (preset.description ?? '')
+          ? { description: description.trim() }
+          : {}),
+        ...(sameList(originList, preset.allow_origins) ? {} : { allow_origins: originList }),
+        ...(sameList(methods, preset.allow_methods) ? {} : { allow_methods: methods }),
+        ...(sameList(headerList, preset.allow_headers ?? []) ? {} : { allow_headers: headerList }),
+        ...(sameList(exposedList, preset.expose_headers ?? [])
+          ? {}
+          : { expose_headers: exposedList }),
+        ...(credentials !== preset.allow_credentials ? { allow_credentials: credentials } : {}),
+        ...(maxAgeValue !== preset.max_age_seconds ? { max_age_seconds: maxAgeValue } : {}),
+      }
+    : null;
+  const ready = valid && (changes === null || Object.keys(changes).length > 0);
+
   const submit = async () => {
     try {
-      const preset = await create.mutateAsync({
+      if (preset && changes) {
+        const saved = await update.mutateAsync({ id: preset.id, body: changes });
+        toast({ kind: 'success', title: `Preset "${saved.name}" saved` });
+        onDone?.();
+        return;
+      }
+      const created = await create.mutateAsync({
         name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
         app_id: scope === 'app' && appId ? appId : null,
         allow_origins: originList,
         allow_methods: methods,
-        allow_headers: splitList(headers),
+        allow_headers: headerList,
+        expose_headers: exposedList,
         allow_credentials: credentials,
         max_age_seconds: maxAgeValue,
       });
       setName('');
+      setDescription('');
       setOrigins('');
       setHeaders('');
-      toast({ kind: 'success', title: `Preset "${preset.name}" created` });
+      setExposed('');
+      toast({ kind: 'success', title: `Preset "${created.name}" created` });
     } catch (err) {
       toast(explain(err));
     }
@@ -219,12 +351,20 @@ function CreatePreset({ appId }: { appId?: string }) {
   return (
     <form
       className="flex flex-col gap-3"
+      aria-label={preset ? `Edit preset ${preset.name}` : 'New preset'}
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready && !create.isPending) void submit();
+        if (ready && !pending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">New preset</p>
+      <p className="label-mono text-muted-foreground">{preset ? 'Edit preset' : 'New preset'}</p>
+      {preset && users !== null && (
+        <p className="text-xs text-muted-foreground">
+          {users.length === 0
+            ? 'No edge rule uses this preset yet.'
+            : `Saving changes the CORS policy of ${users.length === 1 ? 'this rule' : `these ${users.length} rules`}: ${users.join('; ')}.`}
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Name</span>
@@ -243,11 +383,21 @@ function CreatePreset({ appId }: { appId?: string }) {
             value={scope}
             onChange={(e) => setScope(e.target.value as 'account' | 'app')}
             aria-label="Preset scope"
-            disabled={!appId}
+            disabled={Boolean(preset) || !appId}
           >
             <option value="account">Whole account</option>
-            {appId && <option value="app">This app only</option>}
+            {(appId || preset?.app_id) && <option value="app">This app only</option>}
           </Select>
+        </label>
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="text-xs text-muted-foreground">Description (optional)</span>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="The marketing site and the console"
+            className={cn(FIELD, 'w-full')}
+            aria-label="Preset description"
+          />
         </label>
         <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="text-xs text-muted-foreground">
@@ -296,6 +446,16 @@ function CreatePreset({ appId }: { appId?: string }) {
           />
         </label>
         <label className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">Exposed headers (optional)</span>
+          <input
+            value={exposed}
+            onChange={(e) => setExposed(e.target.value)}
+            placeholder="X-Request-Id, ETag"
+            className={cn(FIELD, 'w-full font-mono')}
+            aria-label="Exposed headers"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Max age (seconds, 0–86400)</span>
           <input
             type="number"
@@ -322,17 +482,22 @@ function CreatePreset({ appId }: { appId?: string }) {
           )}
         </label>
       </div>
-      <div>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!ready}
-          busy={create.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Create preset
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" className="gap-1.5" disabled={!ready} busy={pending}>
+          {preset ? (
+            'Save preset'
+          ) : (
+            <>
+              <Plus className="h-3.5 w-3.5" />
+              Create preset
+            </>
+          )}
         </Button>
+        {preset && (
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );
@@ -345,6 +510,22 @@ export function CorsPresetPicker({
   onPick,
 }: {
   /** The app the rule belongs to; another app's scoped preset is not offered. */
+  slug?: string;
+  value: string | null;
+  onPick: (preset: CorsPreset | null) => void;
+}) {
+  // A company workspace has no presets, and the personal account's are not
+  // offered there (see CorsPresetsPanel).
+  const workspace = useWorkspaceTarget();
+  if (!workspace.ready || workspace.org) return null;
+  return <AccountPresetPicker slug={slug} value={value} onPick={onPick} />;
+}
+
+function AccountPresetPicker({
+  slug,
+  value,
+  onPick,
+}: {
   slug?: string;
   value: string | null;
   onPick: (preset: CorsPreset | null) => void;

@@ -1877,60 +1877,88 @@ route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
 });
 
 // CORS presets (ADR-129), the template catalog, and preview teardown.
+// Codes are apid's (handlers_cors_presets.go): the Free gate, the quota and an
+// over-cap list have their own; a duplicate name (409), a missing preset (404)
+// and every shape refusal are validation_failed with a sentence.
 const CORS_PRESET_QUOTA = 10;
+const CORS_PRESET_MAX_ORIGINS = 20;
 type CorsPresetRow = (typeof db.corsPresets)[number];
+
+// One CORS rule takes its policy from the account-wide preset, so editing or
+// deleting it has a rule to name. MOCK_EMPTY has neither apps nor presets.
+if (db.apps[0] && db.corsPresets[0])
+  db.edgeRules.push({
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: db.apps[0].id,
+    match_host: 'api.acme.dev',
+    match_path: '/v1/*',
+    match_methods: ['GET', 'POST', 'OPTIONS'],
+    match_headers: {},
+    priority: 95,
+    enabled: true,
+    kind: 'cors',
+    validate_mode: 'block',
+    action: { cors_preset_id: db.corsPresets[0].id, allow_origins: [], allow_methods: [] },
+    created_at: db.iso(3 * 86_400_000),
+    updated_at: db.iso(3 * 86_400_000),
+  });
+
+const corsInvalid = (detail: string) => new Problem(422, 'validation_failed', detail);
+const noSuchPreset = () =>
+  new Problem(404, 'validation_failed', 'no cors preset with that id is visible to this account');
+function corsWithinPlan(origins: unknown[] | undefined) {
+  if (origins && origins.length > CORS_PRESET_MAX_ORIGINS)
+    throw new Problem(
+      422,
+      'cors_preset_too_large',
+      `allow_origins lists ${origins.length} entries; your plan allows ${CORS_PRESET_MAX_ORIGINS}.`
+    );
+}
+const nameTaken = (name: string, appId: string | null, except?: string) =>
+  db.corsPresets.some((p) => p.id !== except && p.name === name && (p.app_id ?? null) === appId);
 
 route('GET', '/v1/cors-presets', ({ query }) => {
   const appId = query.get('app_id');
   if (appId && !db.apps.some((a) => a.id === appId))
-    throw new Problem(404, 'not_found', 'no such app');
+    throw new Problem(404, 'validation_failed', 'no app with that id is visible to this account');
   return { presets: appId ? db.corsPresets.filter((p) => p.app_id === appId) : db.corsPresets };
 });
 route('POST', '/v1/cors-presets', ({ body }) => {
   if (process.env.MOCK_PLAN === 'free')
     throw new Problem(
       402,
-      'plan_cors_preset_not_allowed',
+      'plan_cors_presets_not_allowed',
       'the free plan does not include CORS presets; upgrade to Hobby or above.'
     );
   const name = String(body.name ?? '').trim();
   const origins = Array.isArray(body.allow_origins) ? body.allow_origins.map(String) : [];
   const methods = Array.isArray(body.allow_methods) ? body.allow_methods.map(String) : [];
   const maxAge = Number(body.max_age_seconds);
-  if (
-    !name ||
-    name.length > 64 ||
-    origins.length === 0 ||
-    methods.length === 0 ||
-    !Number.isInteger(maxAge) ||
-    maxAge < 0 ||
-    maxAge > 86400
-  )
-    throw new Problem(
-      422,
-      'cors_preset_invalid',
-      'name 1..64, at least one allow_origin and allow_method, max_age 0..86400.'
-    );
+  if (!name || name.length > 64) throw corsInvalid('cors preset name must be 1..64 characters');
+  if (origins.length === 0) throw corsInvalid('cors preset requires at least one allow_origin');
+  if (methods.length === 0) throw corsInvalid('cors preset requires at least one allow_method');
+  if (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 86400)
+    throw corsInvalid('cors preset max_age_seconds must be 0..86400');
   if (body.allow_credentials === true && origins.includes('*'))
-    throw new Problem(
-      422,
-      'cors_wildcard_with_credentials',
-      'allow_credentials cannot be combined with a wildcard origin.'
+    throw corsInvalid(
+      'cors preset cannot combine AllowCredentials: true with AllowOrigins: ["*"] (browsers reject this combination)'
     );
+  corsWithinPlan(origins);
   const appId = typeof body.app_id === 'string' && body.app_id ? body.app_id : null;
   if (appId && !db.apps.some((a) => a.id === appId))
-    throw new Problem(404, 'cors_preset_app_not_found', 'no such app');
+    throw new Problem(404, 'validation_failed', 'no app with that id is visible to this account');
   if (db.corsPresets.length >= CORS_PRESET_QUOTA)
     throw new Problem(
       403,
       'plan_cors_preset_quota_reached',
       `at most ${CORS_PRESET_QUOTA} CORS presets on this plan.`
     );
-  if (db.corsPresets.some((p) => p.name === name && (p.app_id ?? null) === appId))
+  if (nameTaken(name, appId))
     throw new Problem(
       409,
-      'cors_preset_name_conflict',
-      `a preset named "${name}" exists in this scope.`
+      'validation_failed',
+      'a cors preset with this name already exists for the (account, app) tuple'
     );
   const preset: CorsPresetRow = {
     id: db.id(),
@@ -1952,29 +1980,269 @@ route('POST', '/v1/cors-presets', ({ body }) => {
 });
 route('GET', '/v1/cors-presets/{id}', ({ params }) => {
   const preset = db.corsPresets.find((p) => p.id === params.id);
-  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (!preset) throw noSuchPreset();
   return preset;
 });
 route('PATCH', '/v1/cors-presets/{id}', ({ params, body }) => {
   const preset = db.corsPresets.find((p) => p.id === params.id);
-  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (!preset) throw noSuchPreset();
   if (Object.keys(body).length === 0)
-    throw new Problem(422, 'cors_preset_update_requires_field', 'at least one field is required.');
-  if (Array.isArray(body.allow_origins)) preset.allow_origins = body.allow_origins.map(String);
-  if (Array.isArray(body.allow_methods)) preset.allow_methods = body.allow_methods.map(String);
-  if (typeof body.allow_credentials === 'boolean')
-    preset.allow_credentials = body.allow_credentials;
-  if (typeof body.max_age_seconds === 'number') preset.max_age_seconds = body.max_age_seconds;
-  if (preset.allow_credentials && preset.allow_origins.includes('*'))
-    throw new Problem(422, 'cors_wildcard_with_credentials', 'credentials with a wildcard origin.');
-  preset.updated_at = db.iso(0);
+    throw corsInvalid('cors preset update requires at least one field');
+  // Merge first, as apid does, then judge the merged shape.
+  const next = { ...preset };
+  if (typeof body.name === 'string') next.name = body.name;
+  if (typeof body.description === 'string') next.description = body.description;
+  if (Array.isArray(body.allow_origins)) next.allow_origins = body.allow_origins.map(String);
+  if (Array.isArray(body.allow_methods)) next.allow_methods = body.allow_methods.map(String);
+  if (Array.isArray(body.allow_headers)) next.allow_headers = body.allow_headers.map(String);
+  if (Array.isArray(body.expose_headers)) next.expose_headers = body.expose_headers.map(String);
+  if (typeof body.allow_credentials === 'boolean') next.allow_credentials = body.allow_credentials;
+  if (typeof body.max_age_seconds === 'number') next.max_age_seconds = body.max_age_seconds;
+  if (next.name.length < 1 || next.name.length > 64)
+    throw corsInvalid('cors preset name must be 1..64 characters');
+  if (Array.isArray(body.allow_methods) && next.allow_methods.length === 0)
+    throw corsInvalid('cors preset allow_methods must be non-empty if provided');
+  if (next.max_age_seconds < 0 || next.max_age_seconds > 86400)
+    throw corsInvalid('cors preset max_age_seconds must be 0..86400');
+  if (next.allow_credentials && next.allow_origins.includes('*'))
+    throw corsInvalid(
+      'cors preset cannot combine AllowCredentials: true with AllowOrigins: ["*"] (browsers reject this combination)'
+    );
+  corsWithinPlan(Array.isArray(body.allow_origins) ? body.allow_origins : undefined);
+  if (nameTaken(next.name, next.app_id ?? null, preset.id))
+    throw new Problem(
+      409,
+      'validation_failed',
+      'a cors preset with this name already exists for the (account, app) tuple'
+    );
+  Object.assign(preset, next, { updated_at: db.iso(0) });
   return preset;
 });
 route('DELETE', '/v1/cors-presets/{id}', ({ params }) => {
   const i = db.corsPresets.findIndex((p) => p.id === params.id);
-  if (i < 0) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (i < 0) throw noSuchPreset();
   db.corsPresets.splice(i, 1);
+  // ON DELETE SET NULL: the rules lose the link and fail closed.
+  for (const rule of db.edgeRules) {
+    const action = rule.action as { cors_preset_id?: string | null };
+    if (rule.kind === 'cors' && action.cors_preset_id === params.id) action.cors_preset_id = null;
+  }
   return NO_CONTENT;
+});
+
+// Edge protection (faas ADR-829, ADR-20261021220456). Counts are seeded per
+// app and scaled by range; MOCK_EDGE_DEGRADED=1 answers as apid does when
+// Prometheus is down. Attack mode is a managed challenge rule in db.edgeRules;
+// hiding the edge-attack-mode capability stands in for its platform flag.
+const EDGE_RANGE_HOURS: Record<string, number> = {
+  '5m': 1 / 12,
+  '15m': 0.25,
+  '1h': 1,
+  '6h': 6,
+  '24h': 24,
+  '7d': 168,
+  '15d': 360,
+};
+function edgeRange(query: URLSearchParams, fallback: string) {
+  const range = query.get('range') ?? fallback;
+  if (!(range in EDGE_RANGE_HOURS))
+    throw new Problem(
+      400,
+      'validation_failed',
+      `range must be one of: ${Object.keys(EDGE_RANGE_HOURS).join(', ')}`
+    );
+  return range as '5m' | '15m' | '1h' | '6h' | '24h' | '7d' | '15d';
+}
+const edgeDegraded = () =>
+  process.env.MOCK_EDGE_DEGRADED === '1' ? 'degraded: prometheus unavailable' : null;
+const attackModeRule = (appId: string) =>
+  db.edgeRules.find((r) => r.app_id === appId && r.managed_by === 'attack_mode');
+function attackModeStatus(appId: string) {
+  const rule = attackModeRule(appId);
+  if (!rule) return { active: false };
+  return {
+    active: rule.enabled && Date.parse(rule.expires_at ?? '') > Date.now(),
+    rule_id: rule.id,
+    started_at: rule.created_at,
+    expires_at: rule.expires_at,
+    difficulty: 16,
+    pass_ttl_seconds: 3600,
+  };
+}
+
+route('GET', '/v1/apps/{slug}/edge-protection', ({ params, query }) => {
+  const a = app(params.slug);
+  const range = edgeRange(query, '1h');
+  const degraded = edgeDegraded();
+  const k = degraded ? 0 : EDGE_RANGE_HOURS[range] * (a.id === db.apps[0]?.id ? 1 : 0.2);
+  const n = (v: number) => Math.round(v * k);
+  const rejections = (
+    [
+      { gate: 'throttle', status: '429', count: n(140) },
+      { gate: 'jwt', status: '401', count: n(62) },
+      { gate: 'waf', status: '403', count: n(9) },
+      { gate: 'challenge', status: '403', count: n(5) },
+      { gate: 'geo', status: '403', count: n(3) },
+    ] as const
+  ).filter((r) => r.count > 0);
+  return {
+    app_id: a.id,
+    range,
+    source: degraded ?? 'prometheus',
+    as_of: new Date().toISOString(),
+    pre_auth: { blocked: 0, would_block: n(37) },
+    validation_failures: n(4) ? [{ name: 'block', count: n(4) }] : [],
+    rejections: [...rejections],
+    waf: {
+      inspected: n(1800),
+      detected: n(11),
+      not_inspected: 0,
+      warned: n(2),
+      blocked: n(9),
+      inline_skipped: 0,
+      categories: n(11)
+        ? [
+            { name: 'sqli', count: n(7) },
+            { name: 'xss', count: n(4) },
+          ]
+        : [],
+      top_rules: n(11) ? [{ name: '942100', count: n(7) }] : [],
+    },
+    challenge: {
+      issued: n(20),
+      solved: n(16),
+      rejected: n(5),
+      passed: n(80),
+      bypassed: n(12),
+      invalid: 0,
+      raised: 0,
+    },
+    penalty: { boxed: n(1), rejected: n(6) },
+    attack_mode: attackModeStatus(a.id),
+    ai_crawlers: n(30)
+      ? [
+          { name: 'GPTBot', operator: 'OpenAI', purpose: 'training', count: n(30) },
+          { name: 'PerplexityBot', operator: 'Perplexity', purpose: 'search', count: n(8) },
+        ]
+      : [],
+  };
+});
+route('GET', '/v1/apps/{slug}/pre-auth-observations', ({ params, query }) => {
+  const a = app(params.slug);
+  const range = edgeRange(query, '5m');
+  const base = { app_id: a.id, range, as_of: new Date().toISOString() };
+  // Only the first app has a guard; the others show the "not on" state.
+  if (a.id !== db.apps[0]?.id) return { ...base, source: 'prometheus', policies: [] };
+  const degraded = edgeDegraded();
+  const k = degraded ? 0 : EDGE_RANGE_HOURS[range];
+  const n = (v: number) => Math.round(v * k);
+  const policies = [
+    {
+      policy_id: 'app',
+      kind: 'app' as const,
+      would_block: n(37),
+      result_2xx: n(2),
+      result_3xx: 0,
+      result_4xx: n(31),
+      result_5xx: n(4),
+    },
+    {
+      policy_id: 'route_0',
+      kind: 'route' as const,
+      method: 'POST',
+      path: '/login',
+      would_block: n(12),
+      result_2xx: 0,
+      result_3xx: 0,
+      result_4xx: n(12),
+      result_5xx: 0,
+    },
+    {
+      policy_id: 'failures_0',
+      kind: 'failures' as const,
+      method: 'POST',
+      path: '/login',
+      would_block: n(3),
+      result_2xx: 0,
+      result_3xx: 0,
+      result_4xx: n(3),
+      result_5xx: 0,
+    },
+  ];
+  if (degraded) return { ...base, source: degraded, policies };
+  const requests = n(4200);
+  const succeeded = n(2);
+  const long = ['24h', '7d', '15d'].includes(range);
+  return {
+    ...base,
+    source: 'prometheus',
+    policies,
+    suggestion: {
+      status: !long ? 'insufficient_data' : succeeded > 0 ? 'review' : 'ready',
+      reason: !long
+        ? 'judge enforcement on a range of 24h or longer'
+        : `enforce would have rejected ${succeeded} requests that succeeded; raise requests_per_second or burst, or add route overrides, before enforcing`,
+      requests,
+      would_block: n(49),
+      would_block_succeeded: succeeded,
+    },
+  };
+});
+route('GET', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) =>
+  attackModeStatus(app(params.slug).id)
+);
+route('PUT', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params, body }) => {
+  const a = app(params.slug);
+  if (hiddenCapabilities.has('edge-attack-mode'))
+    throw new Problem(
+      422,
+      'edge_feature_unavailable',
+      'Attack mode is not yet available to this account. Switching it off always works.'
+    );
+  const seconds = Number(body.duration_seconds ?? 0) || 3600;
+  if (seconds < 900 || seconds > 86400)
+    throw new Problem(
+      422,
+      'validation_failed',
+      `duration_seconds must be in 900..86400 (got ${seconds}); attack mode always ends on its own`
+    );
+  const until = new Date(Date.now() + seconds * 1000).toISOString();
+  const current = attackModeRule(a.id);
+  if (current && attackModeStatus(a.id).active) {
+    current.expires_at = until;
+    current.updated_at = new Date().toISOString();
+  } else {
+    if (current) db.edgeRules.splice(db.edgeRules.indexOf(current), 1);
+    const now = new Date().toISOString();
+    db.edgeRules.push({
+      id: db.id(),
+      account_id: db.ACCOUNT_ID,
+      app_id: a.id,
+      match_host: '@app',
+      match_path: '/**',
+      match_methods: [],
+      match_headers: {},
+      priority: 0,
+      enabled: true,
+      kind: 'challenge',
+      action: { difficulty: 16, pass_ttl_seconds: 3600 },
+      name: 'Attack mode',
+      description:
+        'Challenges every visitor until it ends. Managed by attack mode: change it with gregale edge-rules attack-mode.',
+      expires_at: until,
+      mode: 'enforce',
+      managed_by: 'attack_mode',
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  return attackModeStatus(a.id);
+});
+route('DELETE', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) => {
+  const a = app(params.slug);
+  const current = attackModeRule(a.id);
+  if (current) db.edgeRules.splice(db.edgeRules.indexOf(current), 1);
+  return { active: false };
 });
 
 route('GET', '/v1/templates', () => db.templates);
