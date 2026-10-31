@@ -4,7 +4,7 @@ import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useCancelJobRun, useJobRuns } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 
@@ -80,7 +80,7 @@ export function JobRuns({
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not cancel', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not cancel', error: err });
       });
   };
 

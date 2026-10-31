@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import {
@@ -39,6 +39,7 @@ import {
   isDisclosureHub,
   matchesNavPath,
   NAV_GROUPS,
+  visibleNavGroups,
   type NavHub,
   type NavItem,
   SECTION_LABELS,
@@ -48,6 +49,7 @@ import { DashboardSecondaryNavigation } from './secondary-navigation';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
+import { useCapabilityOff } from './nav-access';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
@@ -304,6 +306,8 @@ function SidebarBody({
   const reduce = useReducedMotion();
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
+  const isOff = useCapabilityOff();
+  const groups = useMemo(() => visibleNavGroups(NAV_GROUPS, isOff), [isOff]);
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -372,7 +376,7 @@ function SidebarBody({
         aria-label="Main"
         className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
       >
-        {NAV_GROUPS.map((group, gi) => (
+        {groups.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
             {/* One fixed-height slot per group header, whichever face it
                 wears — the heading when wide, a hairline when narrow — so

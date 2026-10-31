@@ -19,7 +19,6 @@ import {
   useRevokeInvitation,
 } from '@/lib/api/queries';
 import { isValidEmail, useAuth } from '@/lib/auth';
-import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 
 /**
@@ -166,7 +165,7 @@ export function TeamMembersBody({
                   toast({
                     kind: 'error',
                     title: 'Could not change role',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -214,7 +213,7 @@ export function TeamMembersBody({
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -259,7 +258,7 @@ export function TeamMembersBody({
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">
-          {i.status === 'pending' ? when(i.expiresAt).replace(' ago', '') : '—'}
+          {i.status === 'pending' ? when(i.expiresAt) : '—'}
         </span>
       ),
     },
@@ -291,7 +290,7 @@ export function TeamMembersBody({
                   toast({
                     kind: 'error',
                     title: 'Could not revoke',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -352,7 +351,7 @@ export function TeamMembersBody({
                   toast({
                     kind: 'error',
                     title: 'Could not invite',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 )
                 .finally(() => invite.reset());

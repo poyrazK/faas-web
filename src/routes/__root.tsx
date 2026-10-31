@@ -101,11 +101,13 @@ function RootLayout() {
                 {/* Statically false in production, so the button and its
                   module are dropped from the bundle. */}
                 {import.meta.env.DEV && <DevBypassButton />}
-                {/* Vercel Web Analytics. The component is a no-op outside
-                  production (it logs to console in dev instead of sending),
-                  and the script it injects is first-party under
-                  /_vercel/insights — no cookies, no cross-site anything. */}
-                <Analytics />
+                {/* Vercel Web Analytics. In production the script it injects
+                  is first-party under /_vercel/insights — no cookies, no
+                  cross-site anything. In development it would instead load a
+                  debug script from va.vercel-scripts.com, which the CSP the
+                  dev server sends (src/lib/security-headers.ts) rightly
+                  blocks, so it is not mounted outside production builds. */}
+                {import.meta.env.PROD && <Analytics />}
               </ToastProvider>
             </GlimmProvider>
           </DataProvider>

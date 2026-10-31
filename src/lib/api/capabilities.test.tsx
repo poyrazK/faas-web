@@ -43,7 +43,9 @@ it('keeps delayed account reads isolated', async () => {
   await waitFor(() => expect(hook.result.current.data?.plan).toBe('free'));
   await act(async () => finish(reply('scale')));
   expect(hook.result.current.data?.plan).toBe('free');
-  expect(client.getQueryData(['account', 'new', 'capabilities'])).toMatchObject({ plan: 'free' });
+  expect(client.getQueryData(['account', 'new', 'capabilities', 'personal'])).toMatchObject({
+    plan: 'free',
+  });
 });
 it('exposes a refetch failure even with retained registry data', async () => {
   spyApi('GET')

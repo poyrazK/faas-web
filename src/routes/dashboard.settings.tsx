@@ -21,6 +21,7 @@ import { setActiveOrg, useActiveOrg } from '@/lib/workspace';
 import { errorMessage } from '@/lib/api/errors';
 import { Button } from '@/components/ui/button';
 import { consoleHead } from '@/lib/seo';
+import { PreviewsSettings } from '@/components/dashboard/previews-settings';
 
 export const Route = createFileRoute('/dashboard/settings')({
   validateSearch: validateSettingsSearch,
@@ -146,6 +147,7 @@ function SettingsPage() {
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />
       )}
       {section === 'integrations' && <IntegrationSettings search={search} />}
+      {section === 'previews' && <PreviewsSettings />}
       {section === 'security' && <SecuritySettings />}
       {section === 'api-keys' && (
         <>

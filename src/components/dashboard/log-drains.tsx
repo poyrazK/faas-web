@@ -7,7 +7,6 @@ import { FIELD, FieldError } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
-import { errorMessage } from '@/lib/api/errors';
 import {
   useCreateLogDrain,
   useDeleteLogDrain,
@@ -146,7 +145,7 @@ function AddLogDrain({ slug, onClose }: { slug: string; onClose: () => void }) {
       toast({ kind: 'success', title: 'Log destination added' });
       onClose();
     } catch (err) {
-      toast({ kind: 'error', title: 'Could not add', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not add', error: err });
     }
   };
   return (
@@ -253,9 +252,7 @@ function LogDrainDetail({
   const setEnabled = (enabled: boolean) =>
     void update
       .mutateAsync({ id: drain.id, body: { enabled } })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
   return (
     <Panel
       title={drain.target_url}
@@ -295,7 +292,7 @@ function LogDrainDetail({
                   toast({
                     kind: 'error',
                     title: 'Could not delete',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}

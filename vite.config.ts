@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { mockApi } from './mock/plugin';
+import { securityHeaders } from './src/lib/security-headers';
 
 /**
  * Upstream API for `npm run dev`. In production the console and `apid` share
@@ -83,6 +84,10 @@ export default defineConfig({
     },
   },
   server: {
+    // The production policy, minus what a dev server cannot satisfy. See the
+    // module: a third-party font, image or fetch fails here before it fails
+    // in production.
+    headers: securityHeaders('dev'),
     proxy: MOCK
       ? undefined
       : Object.fromEntries([
@@ -94,6 +99,11 @@ export default defineConfig({
             proxyEntry((req) => (req.method === 'GET' ? '/index.html' : undefined)),
           ]),
         ]),
+  },
+  preview: {
+    // The built output under the production policy (less the https upgrade),
+    // which is what `npm run tour` checks against.
+    headers: securityHeaders('preview'),
   },
 });
 
