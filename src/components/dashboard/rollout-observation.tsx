@@ -9,8 +9,8 @@ import { InlinePhase, queryPhase } from './primitives';
  * Where a worker release's residents are: a database snapshot of the selected
  * generation and the ones it replaces (GET /v1/apps/{slug}/rollouts/{id}/observation,
  * scoped_telemetry.go:129). The route answers only for worker apps and is part
- * of `progressive-rollouts`. It is one snapshot, re-read every 10 s, so it is
- * shown as counts rather than drawn as a series.
+ * of `progressive-rollouts`. It is one snapshot, re-read every 10 s only while
+ * a live release converges, so it is shown as counts rather than a series.
  */
 export function RolloutObservation({ slug, deployment }: { slug: string; deployment: Deployment }) {
   const app = useApp(slug);
@@ -21,7 +21,8 @@ export function RolloutObservation({ slug, deployment }: { slug: string; deploym
     slug,
     deployment.id,
     deployment.scope,
-    worker && available
+    worker && available,
+    deployment.status.toLowerCase() === 'live'
   );
   if (!worker) return null;
   const data = query.data;

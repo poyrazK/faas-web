@@ -3,9 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
+import { ApiError } from './errors';
 import {
   isRollbackSettled,
+  observationPollInterval,
   observationSelector,
+  rollbackPollInterval,
   usePromoteDeployment,
   useReleaseDiff,
   useRollbackOperation,
@@ -170,6 +173,46 @@ describe('rollback settling', () => {
   });
 });
 
+describe('polling', () => {
+  const problem = (status: number, code: string) => new ApiError({ status, code, title: code });
+
+  it('stops polling a rollback once it settles or the API refuses for good', () => {
+    expect(rollbackPollInterval({ status: 'preparing' } as RollbackOperation, null)).toBe(5_000);
+    expect(rollbackPollInterval({ status: 'complete' } as RollbackOperation, null)).toBe(false);
+    expect(rollbackPollInterval(undefined, problem(404, 'not_found'))).toBe(false);
+    expect(rollbackPollInterval(undefined, problem(403, 'forbidden'))).toBe(false);
+    // A transient failure keeps the watch going.
+    expect(rollbackPollInterval(undefined, problem(503, 'capacity_unavailable'))).toBe(5_000);
+  });
+
+  it('polls the worker snapshot only for a live release that has not converged', () => {
+    expect(observationPollInterval({ generation_converged: false }, true)).toBe(10_000);
+    expect(observationPollInterval(undefined, true)).toBe(10_000);
+    expect(observationPollInterval({ generation_converged: true }, true)).toBe(false);
+    expect(observationPollInterval({ generation_converged: false }, false)).toBe(false);
+  });
+
+  it('does not keep polling a rollback the API says is gone', async () => {
+    const get = spyApi('GET').mockResolvedValue({
+      error: { status: 404, code: 'not_found', title: 'Rollback not found' },
+      response: new Response(null, { status: 404 }),
+    } as never);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { wrapper } = setup();
+      const accepted = { id: 'op-1', status: 'preparing' } as RollbackOperation;
+      const hook = renderHook(() => useRollbackOperation('alpha', 'op-1', accepted), { wrapper });
+      await waitFor(() => expect(hook.result.current.error).toBeTruthy());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(get).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('worker rollout observation', () => {
   it('selects the default scope or the named environment, never both', () => {
     expect(observationSelector(undefined)).toEqual({ scope: 'default' });
@@ -181,7 +224,9 @@ describe('worker rollout observation', () => {
   it('reads the snapshot for the deployment and its scope', async () => {
     const get = spyApi('GET').mockResolvedValue(ok({ running: 1 }));
     const { wrapper } = setup();
-    renderHook(() => useWorkerRolloutObservation('alpha', 'dep-1', 'staging', true), { wrapper });
+    renderHook(() => useWorkerRolloutObservation('alpha', 'dep-1', 'staging', true, true), {
+      wrapper,
+    });
     await waitFor(() => expect(get).toHaveBeenCalledOnce());
     expect(get).toHaveBeenCalledWith(
       '/v1/apps/{slug}/rollouts/{id}/observation',

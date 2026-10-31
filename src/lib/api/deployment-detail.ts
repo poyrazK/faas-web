@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
+import { ApiError } from './errors';
 import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
 
@@ -131,6 +132,19 @@ export function isRollbackSettled(status: RollbackOperation['status']): boolean 
 }
 
 /**
+ * Poll every 5 s until the rollback settles. A 404 or 403 will not change on
+ * a retry, so it ends the watch; an outage keeps it going.
+ */
+export function rollbackPollInterval(
+  data: RollbackOperation | undefined,
+  error: unknown
+): number | false {
+  if (data && isRollbackSettled(data.status)) return false;
+  if (error instanceof ApiError && !error.isRetryable) return false;
+  return 5_000;
+}
+
+/**
  * Progress of one accepted rollback. The server sweeps plain rollbacks every
  * 5 s and fails them after 10 min (pkg/api/limits.go:1360-1361), so polling
  * faster than the sweep would only re-read the same row.
@@ -154,8 +168,7 @@ export function useRollbackOperation(
     initialDataUpdatedAt: 0,
     enabled: Boolean(slug && operation),
     retry: retryPolicy,
-    refetchInterval: (q) =>
-      q.state.data && isRollbackSettled(q.state.data.status) ? false : 5_000,
+    refetchInterval: (q) => rollbackPollInterval(q.state.data, q.state.error),
   });
   // A settled rollback moved traffic, so the deployment reads are stale. The
   // app prefix holds this query too; refreshing it from inside its own fetch
@@ -179,12 +192,24 @@ export function observationSelector(
   return !scope || scope === 'default' ? { scope: 'default' } : { environment: scope };
 }
 
+/**
+ * Re-read the snapshot every 10 s only while it can still change: the
+ * release is live and its generation has not converged.
+ */
+export function observationPollInterval(
+  data: Pick<WorkerRolloutObservation, 'generation_converged'> | undefined,
+  live: boolean
+): number | false {
+  return live && !data?.generation_converged ? 10_000 : false;
+}
+
 /** Where a worker release's residents are, from the database (scoped_telemetry.go:129). */
 export function useWorkerRolloutObservation(
   slug: string,
   id: string,
   scope: string | null | undefined,
-  enabled: boolean
+  enabled: boolean,
+  live: boolean
 ) {
   const selector = observationSelector(scope);
   return useQuery({
@@ -198,6 +223,6 @@ export function useWorkerRolloutObservation(
       ),
     enabled: enabled && Boolean(slug && id),
     retry: retryPolicy,
-    refetchInterval: 10_000,
+    refetchInterval: (q) => observationPollInterval(q.state.data, live),
   });
 }

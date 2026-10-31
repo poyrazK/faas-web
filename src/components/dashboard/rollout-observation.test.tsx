@@ -58,7 +58,7 @@ describe('RolloutObservation', () => {
   it('counts where the worker generation stands, as numbers and without inventing progress', () => {
     render(<RolloutObservation slug="jobs" deployment={deployment} />);
     const region = screen.getByRole('region', { name: 'Worker rollout' });
-    expect(useObservation).toHaveBeenCalledWith('jobs', 'dep-1', 'staging', true);
+    expect(useObservation).toHaveBeenCalledWith('jobs', 'dep-1', 'staging', true, true);
     for (const [label, value] of [
       ['Running', '2'],
       ['Starting', '1'],
@@ -107,11 +107,16 @@ describe('RolloutObservation', () => {
     expect(region).not.toHaveTextContent(/converging/i);
   });
 
+  it('reads a replaced release once instead of polling it', () => {
+    render(<RolloutObservation slug="jobs" deployment={{ ...deployment, status: 'superseded' }} />);
+    expect(useObservation).toHaveBeenCalledWith('jobs', 'dep-1', 'staging', true, false);
+  });
+
   it('renders nothing for a request app and does not read the observation', () => {
     useApp.mockReturnValue(ready({ slug: 'api', manifest: { execution_mode: 'request' } }));
     const { container } = render(<RolloutObservation slug="api" deployment={deployment} />);
     expect(container).toBeEmptyDOMElement();
-    expect(useObservation).toHaveBeenCalledWith('api', 'dep-1', 'staging', false);
+    expect(useObservation).toHaveBeenCalledWith('api', 'dep-1', 'staging', false, true);
   });
 
   it('shows the capability notice and reads nothing when progressive rollouts are off', () => {
@@ -124,6 +129,6 @@ describe('RolloutObservation', () => {
     render(<RolloutObservation slug="jobs" deployment={deployment} />);
     expect(capability).toHaveBeenCalledWith('progressive-rollouts');
     expect(screen.getByRole('status')).toHaveTextContent(/unavailable on this installation/i);
-    expect(useObservation).toHaveBeenCalledWith('jobs', 'dep-1', 'staging', false);
+    expect(useObservation).toHaveBeenCalledWith('jobs', 'dep-1', 'staging', false, true);
   });
 });

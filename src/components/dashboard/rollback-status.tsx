@@ -103,31 +103,63 @@ export function RollbackStatus({
   );
 }
 
+/** What to say about a refusal faas returns for an explicit rollback target. */
+function refusal(
+  code: string,
+  label: string,
+  err: unknown
+): { title: string; description: string } | null {
+  switch (code) {
+    // verifyRollbackTargetArtifact: the cold-boot artifact cannot be verified.
+    case 'rollback_target_unavailable':
+      return {
+        title: `Cannot roll back to ${label}`,
+        description: `${errorMessage(err)}. Redeploy that release instead.`,
+      };
+    // A database switch undid the target's own release command; cannot be acknowledged.
+    case 'rollback_target_database_restored':
+      return {
+        title: `Cannot roll back to ${label}`,
+        description: `A database switch restored the database to before ${label}'s release command ran. Deploy that code again so its release command runs first.`,
+      };
+    case 'rollback_target_not_found':
+      return {
+        title: `Cannot roll back to ${label}`,
+        description: `${label} is no longer a rollback target of this app. Refresh the release list.`,
+      };
+    // Cancelled, failed or still progressing; or its artifacts were reclaimed.
+    case 'rollback_target_ineligible':
+      return { title: `Cannot roll back to ${label}`, description: errorMessage(err) };
+    default:
+      return null;
+  }
+}
+
 /**
- * Roll the app back to this exact release (POST /v1/apps/{slug}/rollback with
- * `target_deployment_id`, handlers_ext.go:2376). The API accepts only a
- * superseded release, or a live one at zero traffic; a release with no traffic
- * is promoted instead, so only superseded rows offer this.
+ * One rollback flow for every button that rolls back to a named release
+ * (POST /v1/apps/{slug}/rollback with `target_deployment_id`,
+ * handlers_ext.go:2376): a destructive confirmation, a second one when the
+ * rollback crosses release commands, the refusals faas returns, and the
+ * accepted operation to watch.
  */
-export function RollbackToRelease({ slug, deployment }: { slug: string; deployment: Deployment }) {
+export function useRollbackFlow(slug: string) {
   const rollback = useRollbackToRelease();
   const confirm = useConfirm();
   const { toast } = useToast();
   const [operation, setOperation] = useState<RollbackOperation | null>(null);
-  const eligible = deployment.status.toLowerCase() === 'superseded';
-  // Once a rollback starts, its progress outlives the row turning live.
-  if (!eligible && !operation) return null;
-  const label = deploymentLabel(deployment);
+  const [operationLabel, setOperationLabel] = useState('');
 
-  const submit = async (acknowledgeReleases: boolean): Promise<void> => {
+  const submit = async (target: string, label: string, acknowledgeReleases: boolean) => {
     try {
       const result = await rollback.mutateAsync({
         slug,
-        targetDeploymentId: deployment.id,
+        targetDeploymentId: target,
         ...(acknowledgeReleases ? { acknowledgeReleases: true } : {}),
       });
-      if (result.rollback_operation) setOperation(result.rollback_operation);
-      else
+      if (result.rollback_operation) {
+        setOperation(result.rollback_operation);
+        setOperationLabel(label);
+      } else
         toast({
           kind: 'success',
           title: 'Rollback accepted',
@@ -135,6 +167,7 @@ export function RollbackToRelease({ slug, deployment }: { slug: string; deployme
         });
     } catch (err) {
       const code = err instanceof ApiError ? err.code : '';
+      // release/migrations.go:79; acknowledging is the only way past it.
       if (code === 'rollback_crosses_release' && !acknowledgeReleases) {
         const crossed = (err as ApiError).problem.crossed_releases ?? [];
         const list = crossed
@@ -149,34 +182,46 @@ export function RollbackToRelease({ slug, deployment }: { slug: string; deployme
           confirmLabel: 'Roll back anyway',
           destructive: true,
         });
-        if (again) await submit(true);
-        return;
-      }
-      if (code === 'rollback_target_snapshot_expired' || code === 'rollback_target_ineligible') {
-        toast({
-          kind: 'error',
-          title: `Cannot roll back to ${label}`,
-          description: `${errorMessage(err)}. Redeploy that release instead.`,
-        });
+        if (again) await submit(target, label, true);
         return;
       }
       if (code === 'rollback_target_already_live') {
         toast({ kind: 'info', title: `${label} is already live`, description: errorMessage(err) });
         return;
       }
-      toast({ kind: 'error', title: 'Could not roll back', description: errorMessage(err) });
+      const known = refusal(code, label, err);
+      toast({
+        kind: 'error',
+        title: known?.title ?? 'Could not roll back',
+        description: known?.description ?? errorMessage(err),
+      });
     }
   };
 
-  const onRollback = async () => {
+  const start = async (target: string, label: string) => {
     const ok = await confirm({
       title: `Roll back to ${label}?`,
       description: `${label} takes this app's traffic back once its readiness check passes, and the release serving now is superseded. It stays in history.`,
       confirmLabel: 'Roll back',
       destructive: true,
     });
-    if (ok) await submit(false);
+    if (ok) await submit(target, label, false);
   };
+
+  return { start, operation, operationLabel, isPending: rollback.isPending };
+}
+
+/**
+ * Roll the app back to this exact release. The API accepts only a superseded
+ * release, or a live one at zero traffic; a release with no traffic is
+ * promoted instead, so only superseded rows offer this.
+ */
+export function RollbackToRelease({ slug, deployment }: { slug: string; deployment: Deployment }) {
+  const flow = useRollbackFlow(slug);
+  const eligible = deployment.status.toLowerCase() === 'superseded';
+  // Once a rollback starts, its progress outlives the row turning live.
+  if (!eligible && !flow.operation) return null;
+  const label = deploymentLabel(deployment);
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -188,14 +233,16 @@ export function RollbackToRelease({ slug, deployment }: { slug: string; deployme
           <Button
             size="xs"
             variant="destructive"
-            busy={rollback.isPending}
-            onClick={() => void onRollback()}
+            busy={flow.isPending}
+            onClick={() => void flow.start(deployment.id, label)}
           >
             Roll back to {label}
           </Button>
         </div>
       )}
-      {operation && <RollbackStatus slug={slug} operation={operation} targetLabel={label} />}
+      {flow.operation && (
+        <RollbackStatus slug={slug} operation={flow.operation} targetLabel={label} />
+      )}
     </div>
   );
 }

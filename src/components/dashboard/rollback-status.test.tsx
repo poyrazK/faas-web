@@ -206,21 +206,27 @@ describe('RollbackToRelease', () => {
     expect(rollback).toHaveBeenCalledOnce();
   });
 
-  it('explains a target whose snapshot is gone', async () => {
+  it.each([
+    ['rollback_target_unavailable', /redeploy that release instead/i],
+    ['rollback_target_database_restored', /deploy that code again/i],
+    ['rollback_target_not_found', /no longer a rollback target/i],
+    ['rollback_target_ineligible', /only a superseded/i],
+  ])('explains %s from faas', async (code, pattern) => {
     rollback.mockRejectedValue(
       new ApiError({
-        status: 409,
-        code: 'rollback_target_snapshot_expired',
+        status: code === 'rollback_target_not_found' ? 404 : 409,
+        code,
         title: 'x',
-        detail: 'snapshot was garbage-collected',
+        detail: 'only a superseded or zero-traffic live deployment can be rolled back',
       })
     );
     render(<RollbackToRelease slug="alpha" deployment={deployment()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Roll back to v41' }));
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'error', description: expect.stringMatching(/redeploy/i) })
+        expect.objectContaining({ kind: 'error', description: expect.stringMatching(pattern) })
       )
     );
+    expect(rollback).toHaveBeenCalledOnce();
   });
 });

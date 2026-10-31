@@ -152,25 +152,46 @@ describe('PromoteDeployment', () => {
     expect(alert).toHaveTextContent('No application acknowledgement');
   });
 
-  it('reads a 404 on the strict route as an older server and never retries the ordinary route', async () => {
-    promote.mockRejectedValue(
-      new ApiError({ status: 404, code: 'not_found', title: 'Not found', detail: 'nope' })
-    );
-    render(<PromoteDeployment deployment={deployment()} />);
-    await userEvent.click(
-      screen.getByRole('checkbox', { name: /require application acknowledgements/i })
-    );
-    await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(
+  it.each([
+    [
+      'an older server’s plain 404',
+      new ApiError({ status: 404, code: 'http_404', title: 'Not Found' }),
+      /does not support strict promotion/i,
+    ],
+    [
+      'a current server’s missing release',
+      new ApiError({
+        status: 404,
+        code: 'not_found',
+        title: 'Deployment not found',
+        detail: 'No such deployment.',
+      }),
+      /no longer exists/i,
+    ],
+  ])(
+    'reads %s on the strict route and never retries the ordinary route',
+    async (_, err, pattern) => {
+      promote.mockRejectedValue(err);
+      render(<PromoteDeployment deployment={deployment()} />);
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: /require application acknowledgements/i })
+      );
+      await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'error', description: expect.stringMatching(pattern) })
+        )
+      );
+      expect(toast).not.toHaveBeenCalledWith(
         expect.objectContaining({
-          kind: 'error',
-          description: expect.stringMatching(/does not support strict promotion/i),
+          description: expect.stringMatching(
+            pattern.source.includes('strict') ? /no longer exists/i : /strict promotion/i
+          ),
         })
-      )
-    );
-    expect(promote).toHaveBeenCalledOnce();
-  });
+      );
+      expect(promote).toHaveBeenCalledOnce();
+    }
+  );
 
   it.each([
     ['plan_traffic_split_not_allowed', /plan/i],

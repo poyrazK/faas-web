@@ -84,12 +84,24 @@ export function PromoteDeployment({ deployment }: { deployment: Deployment }) {
         setBlockers((err as ApiError).problem.bindings_check?.blockers ?? []);
         return;
       }
-      if (strict && code === 'not_found') {
+      // A server without the strict route answers Go's plain-text 404, which
+      // reaches us as http_404. Never fall back to the ordinary route.
+      if (strict && code === 'http_404') {
         toast({
           kind: 'error',
           title: 'Not promoted',
           description:
             'This server does not support strict promotion, so traffic is unchanged. Promote without the requirement only if you mean to.',
+        });
+        return;
+      }
+      // A current server's not_found means the release is gone or not this
+      // account's (handlers_binding_promotion.go:69-76), on either route.
+      if (code === 'not_found') {
+        toast({
+          kind: 'error',
+          title: 'Not promoted',
+          description: `${label} no longer exists for this app, so traffic is unchanged.`,
         });
         return;
       }
