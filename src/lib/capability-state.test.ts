@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capabilityViewState } from './capability-state';
+import { capabilityAccess, capabilityViewState } from './capability-state';
 import { capabilityEntrypoint, safeCapabilityDocs } from './capability-entrypoints';
 import type { components } from './api/schema';
 
@@ -72,5 +72,55 @@ describe('verified capability destinations', () => {
     );
     expect(capabilityEntrypoint('worker-pools').href).toBe('/dashboard/apps/new?source=worker');
     expect(capabilityEntrypoint('future-key').href).toBeUndefined();
+  });
+});
+
+describe('capabilityAccess', () => {
+  const registry = (over: Record<string, unknown> = {}) =>
+    ({
+      registry_version: 1,
+      plan: 'pro',
+      capabilities: [
+        { key: 'traffic-mirroring', maturity: 'preview', plans: ['pro'], enabled: true },
+        {
+          key: 'issues',
+          maturity: 'preview',
+          plans: ['scale'],
+          enabled: false,
+          unavailable_reason: 'plan_not_entitled',
+        },
+        {
+          key: 'object-storage',
+          maturity: 'preview',
+          plans: ['pro'],
+          enabled: false,
+          unavailable_reason: 'runtime_unavailable',
+        },
+      ],
+      ...over,
+    }) as never;
+
+  it('waits for the registry, and reports a registry error as itself', () => {
+    expect(capabilityAccess(undefined, 'issues', 'loading')).toBe('loading');
+    expect(capabilityAccess(undefined, 'issues', 'error')).toBe('registry-error');
+  });
+  it('treats a hidden capability as off, internal ones included', () => {
+    const r = registry({ hidden_capabilities: ['traffic-mirroring', 'route-insights'] });
+    expect(capabilityAccess(r, 'traffic-mirroring', 'ready')).toBe('off');
+    expect(capabilityAccess(r, 'route-insights', 'ready')).toBe('off');
+  });
+  it('treats an internal capability that is not hidden as released to this account', () => {
+    expect(capabilityAccess(registry({ hidden_capabilities: [] }), 'route-insights', 'ready')).toBe(
+      'on'
+    );
+  });
+  it('treats everything as on when the server has no capability gate', () => {
+    // hidden_capabilities is omitted by servers without the gate (faas handlers_capabilities.go:65)
+    expect(capabilityAccess(registry(), 'route-insights', 'ready')).toBe('on');
+    expect(capabilityAccess(registry(), 'traffic-mirroring', 'ready')).toBe('on');
+  });
+  it('keeps the plan and runtime reasons for listed entries', () => {
+    expect(capabilityAccess(registry(), 'issues', 'ready')).toBe('plan-not-entitled');
+    expect(capabilityAccess(registry(), 'object-storage', 'ready')).toBe('runtime-unavailable');
   });
 });

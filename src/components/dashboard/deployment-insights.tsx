@@ -1,6 +1,7 @@
 import { OpenNewWindow } from 'iconoir-react';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import { publicAppUrl } from '@/lib/app-url';
 import {
   useDeployment,
   useDeploymentAudit,
@@ -174,14 +175,20 @@ export function DeploymentPreviewUrl({ deploymentId }: { deploymentId: string })
   if (!data?.alive || !data.url) {
     return <Pill label="preview closed" color="var(--status-idle)" />;
   }
+  // Only an http(s) destination becomes a link; anything else is shown as text.
+  const href = publicAppUrl(data.url);
+  const label = data.host ?? data.url;
+  if (!href) {
+    return <span className="font-mono text-xs text-muted-foreground">{label}</span>;
+  }
   return (
     <a
-      href={data.url}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1 font-mono text-xs text-brand hover:underline"
     >
-      {data.host ?? data.url}
+      {label}
       <OpenNewWindow className="h-3 w-3" />
     </a>
   );

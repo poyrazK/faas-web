@@ -52,3 +52,36 @@ describe('form validation helpers', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 });
+
+describe('validation over a group of radios', () => {
+  // A list of choices (the New app repository list) is several controls under
+  // one name; the form hands back a RadioNodeList, not an element.
+  it('focuses the chosen radio, or the first one, when the group is invalid', async () => {
+    function Choices({ chosen }: { chosen?: string }) {
+      const validation = useFormValidation<'repository'>();
+      return (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            validation.validate({ repository: 'Choose a repository.' }, event.currentTarget);
+          }}
+        >
+          {['a/one', 'a/two'].map((r) => (
+            <label key={r}>
+              {r}
+              <input type="radio" name="repository" value={r} defaultChecked={chosen === r} />
+            </label>
+          ))}
+          <button type="submit">Go</button>
+        </form>
+      );
+    }
+    const { unmount } = render(<Choices />);
+    await userEvent.click(screen.getByRole('button', { name: 'Go' }));
+    expect(screen.getByRole('radio', { name: 'a/one' })).toHaveFocus();
+    unmount();
+    render(<Choices chosen="a/two" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Go' }));
+    expect(screen.getByRole('radio', { name: 'a/two' })).toHaveFocus();
+  });
+});

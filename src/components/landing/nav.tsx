@@ -23,11 +23,12 @@ interface NavLink {
   label: string;
   /** Landing section this link tracks, for the active dot. */
   section?: 'deploy' | 'pricing';
-  route?: '/docs';
+  route?: '/docs' | '/will-it-run';
 }
 
 const LINKS: NavLink[] = [
   { label: 'Platform', section: 'deploy' },
+  { label: 'Will it run?', route: '/will-it-run' },
   { label: 'Pricing', section: 'pricing' },
   { label: 'Docs', route: '/docs' },
 ];
@@ -61,6 +62,7 @@ function useActiveLink(): string | null {
   }, [pathname]);
 
   if (pathname.startsWith('/docs')) return 'Docs';
+  if (pathname === '/will-it-run') return 'Will it run?';
   return LINKS.find((l) => l.section === section)?.label ?? null;
 }
 
