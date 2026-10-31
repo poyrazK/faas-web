@@ -83,7 +83,22 @@ describe('DeploymentPreviewUrl', () => {
     );
     render(<DeploymentPreviewUrl deploymentId="d1" />);
     const link = screen.getByRole('link', { name: /deploy-4\.api\.gregale\.dev/ });
-    expect(link).toHaveAttribute('href', 'https://deploy-4.api.gregale.dev');
+    expect(link).toHaveAttribute('href', 'https://deploy-4.api.gregale.dev/');
+  });
+
+  it('shows a non-http(s) preview URL as text, never as a link', () => {
+    useDeploymentPreviewUrl.mockReturnValue(
+      ready({
+        deployment_id: 'd1',
+        app_id: 'a1',
+        host: 'deploy-4.api.gregale.dev',
+        url: 'javascript:alert(1)',
+        alive: true,
+      })
+    );
+    render(<DeploymentPreviewUrl deploymentId="d1" />);
+    expect(screen.getByText('deploy-4.api.gregale.dev')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('reads a 200 with alive=false as a closed preview, not an error', () => {
