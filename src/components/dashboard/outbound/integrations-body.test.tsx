@@ -260,7 +260,7 @@ describe('Integrations page', () => {
     const table = (await screen.findByText('gpt-4o-mini')).closest('tr')!;
     // Two callers of one model roll up into one row.
     expect(table).toHaveTextContent('20');
-    expect(table).toHaveTextContent('€2.50');
+    expect(table).toHaveTextContent('$2.50');
     expect(screen.getByText('No budget threshold has been crossed.')).toBeInTheDocument();
   });
 

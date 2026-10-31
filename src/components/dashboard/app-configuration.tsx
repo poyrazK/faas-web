@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -18,13 +18,16 @@ import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { Modal } from '@/components/ui/modal';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { RegistryCredentialsPanel } from './app-core-panels';
-import { SupplyChainPanel } from './supply-chain-panel';
+import { GatedSupplyChainPanel } from './supply-chain-gate';
+import { DeployTokensPanel } from './deploy-tokens';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
+import { appNameError } from './new-app-validation';
 import { useAuth } from '@/lib/auth';
 import { MemorySelect } from './memory-select';
 import { configurationEffects } from '@/lib/api/runtime-policy';
+import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
 import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
@@ -110,14 +113,33 @@ function NumberField({
   min: number;
   onChange: (n: number) => void;
 }) {
+  // The text is a draft: clamping on each keystroke turned "30" into 530 when
+  // the minimum is 5, because "3" was raised to 5 before the "0" arrived.
+  // Values below the minimum are only raised once the field loses focus.
+  const [text, setText] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  if (value !== synced) {
+    setSynced(value);
+    if (Number(text) !== value) setText(String(value));
+  }
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
       <input
         type="number"
         min={min}
-        value={value}
-        onChange={(e) => onChange(Math.max(min, Number(e.target.value) || 0))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = Number(e.target.value);
+          if (e.target.value !== '' && Number.isFinite(n) && n >= min) onChange(n);
+        }}
+        onBlur={() => {
+          const n = Number(text);
+          const next = text !== '' && Number.isFinite(n) ? Math.max(min, n) : Math.max(min, value);
+          setText(String(next));
+          onChange(next);
+        }}
         className={FIELD}
       />
       <span className="text-xs text-muted-foreground">{hint}</span>
@@ -600,22 +622,27 @@ function RenamePanel({ app }: { app: App }) {
   const navigate = useNavigate();
   const rename = useRenameApp(app.slug);
   const [next, setNext] = useState(app.slug);
-  const valid = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(next) && next !== app.slug;
+  // The same rule the create wizard applies, including the reserved tag- prefix.
+  const nameError = next === app.slug ? undefined : appNameError(next);
+  const valid = next !== app.slug && !nameError;
+  const currentUrl = publicAppUrl(app.url)?.replace(/\/$/, '') ?? `the ${app.slug} hostname`;
 
   return (
     <Panel
       title="Name"
       description="The slug is also the subdomain: renaming changes the URL, and the old one stops answering."
     >
+      {/* The error goes under the row, not inside it, so the button stays
+          level with the input when it appears. */}
       <form
-        className="flex flex-wrap items-end gap-3"
+        className="flex flex-col gap-1.5"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!valid || rename.isPending) return;
           if (
             !(await confirm({
               title: `Rename ${app.slug} to ${next}?`,
-              description: `https://${app.slug}.gregale.app stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
+              description: `${currentUrl} stops answering as soon as this lands. Anything pointing at it — a custom domain, a webhook, a cron path — keeps working; anything pointing at the old hostname does not.`,
               confirmLabel: 'Rename',
             }))
           )
@@ -635,18 +662,32 @@ function RenamePanel({ app }: { app: App }) {
             );
         }}
       >
-        <label className="flex min-w-64 flex-1 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Slug</span>
-          <input
-            value={next}
-            onChange={(e) => setNext(e.target.value.toLowerCase())}
-            spellCheck={false}
-            className={FIELD}
-          />
+        <label htmlFor="rename-slug" className="label-mono text-muted-foreground">
+          Slug
         </label>
-        <Button type="submit" size="sm" variant="outline" disabled={!valid} busy={rename.isPending}>
-          Rename
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <input
+              id="rename-slug"
+              value={next}
+              onChange={(e) => setNext(e.target.value.toLowerCase())}
+              spellCheck={false}
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'rename-slug-error' : undefined}
+              className={FIELD}
+            />
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={!valid}
+            busy={rename.isPending}
+          >
+            Rename
+          </Button>
+        </div>
+        {nameError && <FieldError id="rename-slug-error">{nameError}</FieldError>}
       </form>
     </Panel>
   );
@@ -668,9 +709,9 @@ function DangerZone({ app }: { app: App }) {
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            The app is hidden from active lists and enters a 7-day grace window before permanent
-            cleanup. Restore it through the API during that window; this console has no restore
-            action. Delete any object storage buckets first.
+            The app is hidden from active lists and enters a {APP_DELETE_GRACE_DAYS}-day grace
+            window before permanent cleanup. Restore it from Recently deleted on the Apps page
+            during that window. Delete any object storage buckets first.
           </p>
         </div>
         <Button
@@ -681,8 +722,7 @@ function DangerZone({ app }: { app: App }) {
             if (
               !(await confirm({
                 title: `Delete ${app.slug}?`,
-                description:
-                  'Traffic to this app stops. Use the restore API within 7 days to recover the app; after the grace window it is eligible for permanent cleanup.',
+                description: `Traffic to this app stops. Restore it from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days; after the grace window it is eligible for permanent cleanup.`,
                 confirmLabel: 'Delete app',
                 destructive: true,
                 typeToConfirm: app.slug,
@@ -695,7 +735,7 @@ function DangerZone({ app }: { app: App }) {
                 toast({
                   kind: 'success',
                   title: 'App deletion scheduled',
-                  description: `${app.slug} can be restored through the API within 7 days.`,
+                  description: `${app.slug} can be restored from Recently deleted on the Apps page within ${APP_DELETE_GRACE_DAYS} days.`,
                 });
                 void navigate({ to: '/dashboard/apps' });
               })
@@ -769,8 +809,9 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <SupplyChainPanel slug={data.slug} />
+      <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
+      <DeployTokensPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

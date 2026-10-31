@@ -11,7 +11,7 @@ import {
 
 vi.mock('@/lib/api/capabilities', async () => {
   const { capability } = await import('@/test/monetization');
-  return { useCapability: () => capability };
+  return { useCapability: () => capability, useCapabilityAccess: () => capability };
 });
 
 const { ApiConsumers } = await import('./api-consumers');
