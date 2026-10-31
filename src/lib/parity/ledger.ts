@@ -665,9 +665,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 95,
     name: 'Delayed tasks',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Queues'],
-    gap: 'List delayed tasks',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Queues', '/dashboard/queues'],
+    capability: 'delayed-execution',
     wave: 2,
   },
   // E96 · beta
