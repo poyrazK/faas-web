@@ -729,6 +729,7 @@ function newDeployment(a: db.App, kind: string): db.Deployment {
     created_at: new Date().toISOString(),
     traffic_percent: 0,
     scan: null,
+    revision: nextRevision(a.id),
   };
 }
 
@@ -5058,6 +5059,136 @@ route('GET', '/v1/deployments/{id}/url', ({ params }) => {
     alive,
     last_checked_at: new Date().toISOString(),
   };
+});
+
+// --- Deployment aliases (faas handlers_deployment_aliases.go) ---------------
+// A name pinned to one deployment, served at `tag-<name>-<app id>`. Setting
+// accepts only a live or in-progress target; a seeded alias left on a
+// superseded release shows the "not serving" state the list reports.
+
+/** Per-app revision, the same ordinal the preview hostnames above use. */
+function revisionOf(d: db.Deployment) {
+  if (d.revision) return d.revision;
+  return (
+    db.deployments
+      .filter((x) => x.app_id === d.app_id)
+      .sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at))
+      .findIndex((x) => x.id === d.id) + 1
+  );
+}
+function nextRevision(appId: string) {
+  const own = db.deployments.filter((d) => d.app_id === appId);
+  return own.reduce((max, d) => Math.max(max, revisionOf(d)), 0) + 1;
+}
+for (const d of db.deployments) d.revision = revisionOf(d);
+
+interface MockAlias {
+  app_id: string;
+  name: string;
+  deployment_id: string;
+  created_at: string;
+  updated_at: string;
+}
+const deploymentAliases = new Map<string, MockAlias>();
+const ALIAS_NAME = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const ALIAS_TARGETABLE = new Set(['pending', 'building', 'imaging', 'snapshotting', 'live']);
+const aliasHost = (appId: string, name: string) => `tag-${name}-${appId}.gregale.app`;
+{
+  const first = db.apps[0];
+  const live = db.deployments.find((d) => d.app_id === first?.id && d.status === 'live');
+  const old = db.deployments.find((d) => d.app_id === first?.id && d.status === 'superseded');
+  const at = new Date(db.NOW - 26 * 3600_000).toISOString();
+  for (const [name, d] of [
+    ['stable', live],
+    ['partner-demo', old],
+  ] as const)
+    if (first && d)
+      deploymentAliases.set(`${first.id}/${name}`, {
+        app_id: first.id,
+        name,
+        deployment_id: d.id,
+        created_at: at,
+        updated_at: at,
+      });
+}
+function aliasView(alias: MockAlias) {
+  const d = db.deployments.find((x) => x.id === alias.deployment_id);
+  const host = aliasHost(alias.app_id, alias.name);
+  return {
+    name: alias.name,
+    deployment_id: alias.deployment_id,
+    revision: d ? revisionOf(d) : 1,
+    ...(d ? { deployment_status: d.status } : {}),
+    host,
+    url: `https://${host}`,
+    created_at: alias.created_at,
+    updated_at: alias.updated_at,
+  };
+}
+function aliasName(a: db.App, name: string) {
+  if (!ALIAS_NAME.test(name))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must be a lowercase DNS label of at most 63 characters'
+    );
+  if (`tag-${name}-${a.id}`.length > 63)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must fit in a 63-character hostname label'
+    );
+  return name;
+}
+
+route('GET', '/v1/apps/{slug}/deployment-aliases', ({ params }) => {
+  const a = app(params.slug);
+  return {
+    items: [...deploymentAliases.values()]
+      .filter((alias) => alias.app_id === a.id)
+      .sort((x, y) => x.name.localeCompare(y.name))
+      .map(aliasView),
+  };
+});
+
+route('PUT', '/v1/apps/{slug}/deployment-aliases/{name}', ({ params, body }) => {
+  const a = app(params.slug);
+  const name = aliasName(a, params.name);
+  const id = typeof body.deployment_id === 'string' ? body.deployment_id : '';
+  if (!id) throw new Problem(400, 'validation_failed', 'deployment_id is required');
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d || d.app_id !== a.id)
+    throw new Problem(404, 'not_found', `no deployment ${id} on this app`);
+  if (!ALIAS_TARGETABLE.has(d.status))
+    throw new Problem(
+      404,
+      'not_found',
+      `deployment v${revisionOf(d)} is ${d.status}; an alias can point only at a live or in-progress deployment (roll back to it or redeploy it first)`
+    );
+  const key = `${a.id}/${name}`;
+  const now = new Date().toISOString();
+  const alias: MockAlias = {
+    app_id: a.id,
+    name,
+    deployment_id: d.id,
+    created_at: deploymentAliases.get(key)?.created_at ?? now,
+    updated_at: now,
+  };
+  deploymentAliases.set(key, alias);
+  return aliasView(alias);
+});
+
+route('DELETE', '/v1/apps/{slug}/deployment-aliases/{name}', ({ params }) => {
+  const a = app(params.slug);
+  if (!ALIAS_NAME.test(params.name))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'alias name must be a lowercase DNS label of at most 63 characters'
+    );
+  if (!deploymentAliases.delete(`${a.id}/${params.name}`))
+    throw new Problem(404, 'not_found', 'no such deployment alias');
+  return NO_CONTENT;
 });
 
 route('POST', '/v1/deployments/{id}/canary/advance', ({ params, body }) => {

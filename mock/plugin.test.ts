@@ -853,3 +853,75 @@ describe('POST /v1/apps/{slug}/rollback', () => {
     expect(res.body.code).toBe('no_rollback_target');
   });
 });
+
+describe('/v1/apps/{slug}/deployment-aliases', () => {
+  async function app(slug: string) {
+    const created = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+    });
+    expect(created.status).toBe(201);
+    const a = db.apps.find((x) => x.slug === slug)!;
+    const row = (id: string, status: string, ageMin: number, revision: number) =>
+      ({
+        id,
+        app_id: a.id,
+        image_digest: 'sha256:aa',
+        kind: 'github',
+        status,
+        revision,
+        created_at: new Date(Date.now() - ageMin * 60_000).toISOString(),
+      }) as (typeof db.deployments)[number];
+    const live = row(`${slug}-live`, 'live', 5, 2);
+    const old = row(`${slug}-old`, 'superseded', 60, 1);
+    db.deployments.unshift(live, old);
+    return { a, live, old };
+  }
+  const put = (slug: string, name: string, deployment_id: string) =>
+    json(`/v1/apps/${slug}/deployment-aliases/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify({ deployment_id }),
+    });
+
+  it('points, lists and removes an alias on its stable host', async () => {
+    const { a, live } = await app('alias-crud');
+    expect((await json('/v1/apps/alias-crud/deployment-aliases')).body).toEqual({ items: [] });
+    const set = await put('alias-crud', 'canary', live.id);
+    expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({
+      name: 'canary',
+      deployment_id: live.id,
+      revision: 2,
+      host: `tag-canary-${a.id}.gregale.app`,
+      url: `https://tag-canary-${a.id}.gregale.app`,
+    });
+    const listed = await json('/v1/apps/alias-crud/deployment-aliases');
+    expect(listed.body.items).toEqual([
+      expect.objectContaining({ name: 'canary', deployment_status: 'live' }),
+    ]);
+    const res = await fetch(`${base}/v1/apps/alias-crud/deployment-aliases/canary`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(204);
+    const again = await fetch(`${base}/v1/apps/alias-crud/deployment-aliases/canary`, {
+      method: 'DELETE',
+    });
+    expect(again.status).toBe(404);
+  });
+
+  it('refuses a superseded target with apid’s reason', async () => {
+    const { old } = await app('alias-old');
+    const res = await put('alias-old', 'canary', old.id);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('not_found');
+    expect(res.body.detail).toMatch(/v1 is superseded/);
+  });
+
+  it('refuses a name that does not fit the host label', async () => {
+    const { live } = await app('alias-long');
+    const res = await put('alias-long', 'a'.repeat(27), live.id);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('validation_failed');
+    expect((await put('alias-long', 'a'.repeat(26), live.id)).status).toBe(200);
+  });
+});

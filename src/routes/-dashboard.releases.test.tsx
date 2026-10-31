@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Releases } from './dashboard.releases';
 import { Route as Builds } from './dashboard.builds';
 import { Route as App } from './dashboard.apps.$appSlug';
+import { api } from '@/lib/api/client';
+import { spyApi } from '@/test/api';
 
 const fixtures = vi.hoisted(() => ({
   omitBuildFromHistory: false,
@@ -755,5 +757,40 @@ describe('Releases hub', () => {
     );
     expect(router.state.location.search.releaseSection).toBeUndefined();
     expect(router.state.location.search).toMatchObject({ tab: 'Deployments', deployment: 'dep-1' });
+  });
+
+  it('lists the app’s deployment aliases on its Deployments tab and opens their release', async () => {
+    // Through a plain signature, as spyApi does: the client's own generic is too deep (TS2589).
+    const client = api as unknown as { GET: (path: string, init?: unknown) => Promise<unknown> };
+    const realGet = client.GET.bind(api);
+    spyApi('GET').mockImplementation((path, init) =>
+      path === '/v1/apps/{slug}/deployment-aliases'
+        ? Promise.resolve({
+            data: {
+              items: [
+                {
+                  name: 'canary',
+                  deployment_id: 'dep-1',
+                  revision: 1,
+                  deployment_status: 'failed',
+                  created_at: '2026-09-11T00:00:00Z',
+                  updated_at: '2026-09-11T00:00:00Z',
+                },
+              ],
+            },
+            response: new Response(),
+          })
+        : realGet(path, init)
+    );
+    const router = await mount('/dashboard/apps/alpha?tab=Deployments');
+    expect(await screen.findByText('canary')).toBeInTheDocument();
+    expect(screen.getByText(/not serving: v1 is failed/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Open release v1' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        tab: 'Deployments',
+        deployment: 'dep-1',
+      })
+    );
   });
 });
