@@ -24,9 +24,11 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: 'account', state: 'unavailable' }),
+  useCapabilityAccess: () => ({ access: 'off', refresh: () => {} }),
 }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
+vi.mock('./deploy-tokens', () => ({ DeployTokensPanel: () => null }));
 vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
 vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
@@ -100,6 +102,69 @@ describe('App deletion contract copy', () => {
     expect(screen.getByText('Desired revision 6 · App scope')).toBeVisible();
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
+  it('lets a number be typed through values below its minimum', async () => {
+    const user = userEvent.setup();
+    // Saving mounts the policy status panel, which reads through React Query.
+    spyApi('GET').mockResolvedValue({ data: status, response: new Response() } as never);
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '30');
+    expect(idle).toHaveValue(30);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ idle_timeout_s: 30 }))
+    );
+  });
+  it('raises a number left below its minimum once the field loses focus', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const idle = screen.getByLabelText(/Idle timeout/);
+    await user.clear(idle);
+    await user.type(idle, '2');
+    expect(idle).toHaveValue(2);
+    await user.tab();
+    expect(idle).toHaveValue(5);
+  });
+  it('names the URL the app actually answers on when confirming a rename', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'alpha-two');
+    await user.click(screen.getByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('https://alpha.example.test stops answering');
+    expect(dialog).not.toHaveTextContent('gregale.app');
+  });
+  it('refuses a rename onto the reserved tag- prefix', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" />
+      </ConfirmProvider>
+    );
+    const slug = screen.getByLabelText('Slug');
+    await user.clear(slug);
+    await user.type(slug, 'tag-alpha');
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
+  });
   it('explains live policy convergence separately from boot-time memory', () => {
     render(
       <ConfirmProvider>
@@ -137,12 +202,13 @@ describe('App deletion contract copy', () => {
       </ConfirmProvider>
     );
     expect(screen.getByText(/7-day grace/)).toBeInTheDocument();
+    expect(screen.queryByText(/no restore action/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/no grace period|Every deployment, secret|Permanent\./)
     ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete app' }));
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent(/restore API/);
+    expect(dialog).toHaveTextContent(/Recently deleted on the Apps page/);
     const submit = within(dialog).getByRole('button', { name: 'Delete app' });
     expect(submit).toBeDisabled();
     await userEvent.type(within(dialog).getByRole('textbox'), 'alpha');

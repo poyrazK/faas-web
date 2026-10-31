@@ -16,7 +16,6 @@ import {
 import { Modal } from '@/components/ui/modal';
 import { Timestamp } from '@/components/ui/timestamp';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
 import { resourceId } from '@/lib/resource-id';
 import { consoleHead } from '@/lib/seo';
@@ -238,7 +237,7 @@ function InvocationsPage() {
               .mutateAsync(i.id)
               .then(() => toast({ kind: 'success', title: 'Replayed' }))
               .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not replay', description: errorMessage(err) })
+                toast({ kind: 'error', title: 'Could not replay', error: err })
               );
           }}
           className="text-muted-foreground transition-colors hover:text-foreground"
@@ -253,7 +252,7 @@ function InvocationsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Invocations"
-        description="Every request into your apps, and the ones you can replay with their original payload."
+        description="Async work run by your apps — invokes, queue messages, inbound webhooks, delayed tasks, and cron runs — with replay of failed ones from their original payload. HTTP requests are in the Debugger."
       />
       <ResourceTable
         rows={rows}

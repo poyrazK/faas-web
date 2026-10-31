@@ -163,9 +163,50 @@ describe('readStageState', () => {
         current: 'not_a_stage',
         history: [row('image_build'), { name: 'mystery', status: 'completed' }, null, 'x'],
       })
-    ).toEqual({ current: undefined, history: [expect.objectContaining({ name: 'image_build' })] });
+    ).toEqual({ current: '', history: [expect.objectContaining({ name: 'image_build' })] });
     expect(readStageState({})).toBeUndefined();
     expect(readStageState('nope')).toBeUndefined();
+  });
+
+  it('reads an idle stage as no current stage, not an unknown one', () => {
+    const state = readStageState({
+      current: '',
+      history: [
+        {
+          name: 'image_build',
+          status: 'completed',
+          started_at: null,
+          ended_at: null,
+          duration_ms: 4000,
+        },
+      ],
+    });
+    expect(state?.current).toBe('');
+    expect(state?.history[0]).toMatchObject({
+      name: 'image_build',
+      status: 'completed',
+      duration_ms: 4000,
+    });
+  });
+
+  it('keeps cancelled stage rows instead of dropping them', () => {
+    const state = readStageState({ current: '', history: [row('image_build', 'cancelled', 10)] });
+    expect(state?.history.map((r) => r.status)).toEqual(['cancelled']);
+  });
+});
+
+describe('releaseProcess with a cancelled stage', () => {
+  it('shows a cancelled build as skipped with the reason, not as pending', () => {
+    const phases = releaseProcess(
+      deployment({
+        status: 'cancelled',
+        stage_state: stages({ current: '', history: [row('image_build', 'cancelled', 10)] }),
+      })
+    );
+    expect(phases.find((p) => p.key === 'build')).toMatchObject({
+      state: 'skipped',
+      detail: 'image build cancelled',
+    });
   });
 });
 

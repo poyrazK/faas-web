@@ -3,12 +3,13 @@ import { Link } from '@tanstack/react-router';
 import { Popover as PopoverPrimitive } from 'radix-ui';
 import { CheckCircle, WarningTriangle, Xmark } from 'iconoir-react';
 import type { App, Deployment } from '@/lib/api/queries';
-import { useApps, useDeployments, useOverageCap, useUsageSummary } from '@/lib/api/queries';
+import { useApps, useDeployments, useOverageCap } from '@/lib/api/queries';
 import { Tooltip } from '@/components/ui/tooltip';
-import type { components } from '@/lib/api/schema';
 import { formatUsageNumber } from '@/lib/usage-format';
 import { formatRelative } from '@/lib/mock-data';
 import { queryPhase, type QueryPhase } from './primitives';
+import { useWorkspaceUsageSummary, type WorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 
 const DAY = 86_400_000;
 const DISPLAY_LIMIT = 3;
@@ -29,11 +30,9 @@ export interface NeedsAttentionProps {
     items: Pick<Deployment, 'id' | 'app_id' | 'status' | 'created_at'>[];
     next_before?: string | null;
   }>;
+  /** The workspace's allowance; a company's may be unknown (no usage rows yet). */
   usage: ReadResult<
-    Pick<
-      components['schemas']['UsageSummaryResponse'],
-      'month' | 'used_gb_hours' | 'included_gb_hours' | 'overage_cents'
-    >
+    Pick<WorkspaceUsageSummary, 'month' | 'used_gb_hours' | 'included_gb_hours' | 'overage_cents'>
   >;
   /** The monthly spend cap. Optional so callers without it keep their checks. */
   spendCap?: ReadResult<{ overage_cap_cents: number | null }>;
@@ -122,7 +121,7 @@ export function NeedsAttentionContent({
     usage,
     Boolean(
       usage.data &&
-      [usage.data.used_gb_hours, usage.data.included_gb_hours].some(
+      [usage.data.used_gb_hours, usage.data.included_gb_hours ?? 0].some(
         (value) => !Number.isFinite(value) || value < 0
       )
     )
@@ -144,12 +143,14 @@ export function NeedsAttentionContent({
           .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       : [];
   const allowance = usagePhase === 'ready' ? usage.data : undefined;
+  // An unknown allowance (a company with no usage yet) raises nothing.
+  const included = allowance?.included_gb_hours ?? null;
   const lowAllowance = Boolean(
-    allowance && allowance.used_gb_hours >= allowance.included_gb_hours * 0.8
+    allowance && included !== null && allowance.used_gb_hours >= included * 0.8
   );
-  const exhausted = Boolean(allowance && allowance.used_gb_hours >= allowance.included_gb_hours);
+  const exhausted = Boolean(allowance && included !== null && allowance.used_gb_hours >= included);
   // A reached cap parks running apps and refuses new wakes (ADR-1162), so it
-  // outranks a low allowance. €0 is reached as soon as the allowance is gone.
+  // outranks a low allowance. $0 is reached as soon as the allowance is gone.
   const capPhase = spendCap ? readPhase(spendCap) : 'ready';
   const capCents = capPhase === 'ready' ? spendCap?.data?.overage_cap_cents : undefined;
   const overageCents = allowance?.overage_cents ?? 0;
@@ -226,9 +227,11 @@ export function NeedsAttentionContent({
             <dt className="text-muted-foreground">Allowance used</dt>
             <dd className="mt-1 font-medium">
               {allowance
-                ? allowance.included_gb_hours > 0
-                  ? `${formatUsageNumber((allowance.used_gb_hours / allowance.included_gb_hours) * 100, 1)}%`
-                  : 'None included'
+                ? included === null
+                  ? 'Not known yet'
+                  : included > 0
+                    ? `${formatUsageNumber((allowance.used_gb_hours / included) * 100, 1)}%`
+                    : 'None included'
                 : usagePhase === 'loading'
                   ? 'Checking…'
                   : 'Unavailable'}
@@ -288,14 +291,14 @@ export function NeedsAttentionContent({
               <ul>
                 <AttentionRow
                   title={
-                    allowance.included_gb_hours === 0
+                    included === 0
                       ? 'No compute allowance included'
                       : exhausted
                         ? 'Compute allowance exhausted'
                         : 'Compute allowance running low'
                   }
                   tone={exhausted ? 'critical' : 'warning'}
-                  detail={`${formatUsageNumber(allowance.used_gb_hours, 3)} of ${formatUsageNumber(allowance.included_gb_hours, 3)} GB-h used for ${allowance.month}. ${formatUsageNumber(Math.max(0, allowance.included_gb_hours - allowance.used_gb_hours), 3)} GB-h remaining.`}
+                  detail={`${formatUsageNumber(allowance.used_gb_hours, 3)} of ${formatUsageNumber(included ?? 0, 3)} GB-h used for ${allowance.month}. ${formatUsageNumber(Math.max(0, (included ?? 0) - allowance.used_gb_hours), 3)} GB-h remaining.`}
                 >
                   <Link onClick={onNavigate} to="/dashboard/usage" className={ACTION_CLASS}>
                     Review usage
@@ -341,14 +344,17 @@ export function NeedsAttentionContent({
 function LiveAttention({ onNavigate }: { onNavigate: () => void }) {
   const apps = useApps({ refetchInterval: 15_000 });
   const deployments = useDeployments(50, { refetchInterval: 10_000 });
-  const usage = useUsageSummary();
-  const spendCap = useOverageCap();
+  // The workspace's allowance; a company has no spend cap route, so its cap
+  // check does not run rather than reading the signed-in account's cap.
+  const { org } = useWorkspaceTarget();
+  const usage = useWorkspaceUsageSummary();
+  const spendCap = useOverageCap({ enabled: !org });
   return (
     <NeedsAttentionContent
       apps={apps}
       deployments={deployments}
       usage={usage}
-      spendCap={spendCap}
+      spendCap={org ? undefined : spendCap}
       onNavigate={onNavigate}
     />
   );

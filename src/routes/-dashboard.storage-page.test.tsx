@@ -15,6 +15,11 @@ const page = vi.hoisted(() => ({
   change: undefined as
     undefined | ((next: StorageSelection, options?: { replace?: boolean }) => void),
 }));
+// The page is gated on object-storage; this suite covers its body.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 vi.mock('@/components/dashboard/object-storage', () => ({
   ObjectStorage: ({
     onSelectionChange,

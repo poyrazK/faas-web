@@ -176,6 +176,39 @@ describe('PostgresDatabases', () => {
     );
   });
 
+  it('shows the CLI restore command, with placeholders until the form is filled', async () => {
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+
+    expect(
+      await screen.findByText(
+        'gregale postgres restore db1 --name <new-name> --point-in-time <RFC3339-time>'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('names the restore copy button after the database, as a noun', async () => {
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Copy: restore command for orders' })
+    ).toBeInTheDocument();
+  });
+
+  it('fills the CLI restore command from the name and time typed in the form', async () => {
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.type(await screen.findByLabelText('Restored database name'), 'orders-restored');
+    await userEvent.type(screen.getByLabelText('Restore point in time'), '2026-09-07T10:30');
+
+    // The form submits the local time as UTC ISO; the command carries the same instant.
+    const iso = new Date('2026-09-07T10:30').toISOString();
+    expect(
+      screen.getByText(`gregale postgres restore db1 --name orders-restored --point-in-time ${iso}`)
+    ).toBeInTheDocument();
+  });
+
   it('makes deleting a database type its name first', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));

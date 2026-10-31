@@ -3,7 +3,7 @@ import { api, unwrap } from './client';
 import { ApiError, errorMessage } from './errors';
 import { keys, useOrgs } from './queries';
 import type { components } from './schema';
-import { useActiveOrg } from '../workspace';
+import { useActiveOrg, useWorkspaceBound } from '../workspace';
 
 /**
  * Apps and the selected workspace (ADR-061).
@@ -24,6 +24,11 @@ export interface WorkspaceTarget {
   org: string | null;
   /** What the person picked in the switcher, for saying where an app goes. */
   label: string;
+  /**
+   * Whether the choice is known yet: false until the store is bound to the
+   * signed-in account, while `org` reads null even when a company is chosen.
+   */
+  ready: boolean;
 }
 
 /**
@@ -36,10 +41,11 @@ export interface WorkspaceTarget {
  */
 export function useWorkspaceTarget(): WorkspaceTarget {
   const active = useActiveOrg();
+  const ready = useWorkspaceBound();
   const orgs = useOrgs({ enabled: Boolean(active) });
   const listed = active ? orgs.data?.orgs.find((org) => org.slug === active) : undefined;
-  if (!active || listed?.personal) return { org: null, label: 'Personal' };
-  return { org: active, label: listed?.name || active };
+  if (!active || listed?.personal) return { org: null, label: 'Personal', ready };
+  return { org: active, label: listed?.name || active, ready };
 }
 
 export const orgAppsKey = (org: string) => ['orgs', org, 'apps'] as const;
@@ -86,7 +92,10 @@ export function useOrgApps(org: string | null) {
 }
 
 /** A refused workspace creation, said in terms of the workspace; anything else as the API put it. */
-export function workspaceCreateError(error: unknown, target: WorkspaceTarget): string {
+export function workspaceCreateError(
+  error: unknown,
+  target: Pick<WorkspaceTarget, 'org' | 'label'>
+): string {
   if (target.org && error instanceof ApiError) {
     if (error.code === 'org_role_forbidden')
       return `Your role in ${target.label} cannot create apps — owners, admins, and developers can. Switch to Personal to create it under your own account.`;

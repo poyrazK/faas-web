@@ -128,6 +128,13 @@ describe('invocation detail links', () => {
       })
     ).toBeInTheDocument();
   });
+  it('describes the async work it lists and sends HTTP requests to the Debugger', async () => {
+    await mount('/dashboard/invocations');
+    expect(screen.queryByText(/Every request into your apps/)).not.toBeInTheDocument();
+    expect(screen.getByText(/queue messages/)).toHaveTextContent(
+      /HTTP requests are in the Debugger/
+    );
+  });
   it('opens an ID directly even when it is not in the loaded list', async () => {
     await mount(`/dashboard/invocations?invocation=${olderId}`);
     expect(await screen.findByRole('dialog', { name: 'POST /work' })).toHaveTextContent(olderId);

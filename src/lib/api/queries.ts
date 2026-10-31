@@ -14,6 +14,8 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import { useWorkspaceTarget } from './workspace-apps';
+import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
  * Query hooks over the REST surface.
@@ -61,8 +63,11 @@ export const keys = {
   auditLog: ['audit-log'] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
+  /** Config history and guard (ADR-1451); every env or secret write moves both. */
+  appConfig: (slug: string) => ['apps', slug, 'config'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
+  appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -116,9 +121,13 @@ export function useInstallRepos(installationId: number | null, accountId?: strin
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch: string };
+type BindRepoInput = { installationId: number; repo: string; branch?: string };
 
-/** Persist the (account, app, installation, repo, branch) binding. */
+/**
+ * Persist the (account, app, installation, repo, branch) binding. Leave
+ * `branch` out to let apid use the repository's default branch
+ * (`production_branch` is optional on `install/bind`).
+ */
 async function bindRepo(slug: string, input: BindRepoInput) {
   const csrf_token = await issueCSRF('bind_app_to_repo');
   return unwrap(
@@ -128,14 +137,33 @@ async function bindRepo(slug: string, input: BindRepoInput) {
         csrf_token,
         installation_id: input.installationId,
         repo_full_name: input.repo,
-        production_branch: input.branch,
+        ...(input.branch ? { production_branch: input.branch } : {}),
       },
     })
   );
 }
 
 export function useBindRepo(slug: string) {
-  return useMutation({ mutationFn: (input: BindRepoInput) => bindRepo(slug, input) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
+    // Both reads of the binding (the deploy dialog's and the GitHub panel's)
+    // show the new one without a reload.
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+        qc.invalidateQueries({ queryKey: keys.appGitHub(slug) }),
+      ]),
+  });
+}
+
+/** The app's current repository binding (cookie session; no credentials). */
+export function useAppRepoBinding(slug: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: [...keys.app(slug), 'repo-binding'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/install/bind', { params: { path: { slug } } })),
+    enabled: Boolean(slug) && (options.enabled ?? true),
+  });
 }
 
 /** Slug-in-variables variant for a wizard that creates the app first. */
@@ -282,10 +310,11 @@ export function useAcceptInvitation() {
  * ------------------------------------------------------------------ */
 
 /** Read the saved monthly overage ceiling without conflating zero and no cap. */
-export function useOverageCap() {
+export function useOverageCap(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...keys.account, 'overage-cap'],
     queryFn: () => unwrap(api.GET('/v1/account/overage-cap', {})),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1830,26 +1859,33 @@ export function useInvoices() {
  * The invoices page uses this instead of silently dropping older billing
  * records after the server's default page.
  */
+/**
+ * Invoice history for the active workspace: the organization's own billing
+ * subject in a company workspace (GET /v1/orgs/{slug}/invoices, the same
+ * handler and shape), the account's otherwise.
+ */
 export function useInfiniteInvoices(limit = 50) {
+  const { org } = useWorkspaceTarget();
   return useInfiniteQuery({
-    queryKey: [...keys.invoices, 'history', limit],
-    queryFn: ({ pageParam }) =>
-      unwrap(
-        api.GET('/v1/invoices', {
-          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
-        })
-      ),
+    queryKey: [...keys.invoices, 'history', org ?? 'personal', limit],
+    queryFn: ({ pageParam }) => {
+      const query = { limit, ...(pageParam ? { before: pageParam } : {}) };
+      return org
+        ? unwrap(api.GET('/v1/orgs/{slug}/invoices', { params: { path: { slug: org }, query } }))
+        : unwrap(api.GET('/v1/invoices', { params: { query } }));
+    },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
     retry: retryPolicy,
   });
 }
 
-export function useUsageSummary() {
+export function useUsageSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1910,7 +1946,10 @@ export function useSetSecret(slug: string) {
           body: { value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1925,7 +1964,10 @@ export function useDeleteSecret(slug: string) {
         secrets: old.secrets?.filter((s) => s.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1946,7 +1988,10 @@ export function useSetEnv(slug: string) {
       unwrap(
         api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -1961,7 +2006,10 @@ export function useDeleteEnv(slug: string) {
         env: old.env?.filter((v) => v.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -2786,9 +2834,14 @@ export function useStorageUsage(day: string) {
  * Returns a URL to the provider's hosted portal rather than a page we render —
  * card details never touch this app.
  */
+/** The billing portal of the active workspace's billing subject. */
 export function useBillingPortal() {
+  const { org } = useWorkspaceTarget();
   return useMutation({
-    mutationFn: () => unwrap(api.GET('/v1/billing/portal', {})),
+    mutationFn: () =>
+      org
+        ? unwrap(api.GET('/v1/orgs/{slug}/billing/portal', { params: { path: { slug: org } } }))
+        : unwrap(api.GET('/v1/billing/portal', {})),
   });
 }
 
@@ -2797,11 +2850,18 @@ export function useBillingPortal() {
  * bill immediately, so callers must confirm before invoking it — a 402 here
  * means payment is required and carries a link to the provider's checkout.
  */
+/**
+ * A 202 means the provider accepted a deferred change: the account keeps its
+ * current plan until the provider's webhook confirms the new one.
+ */
 export function useChangePlan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (plan: components['schemas']['ChangePlanRequest']['plan']) =>
-      unwrap(api.PATCH('/v1/account/plan', { body: { plan } })),
+    mutationFn: async (plan: components['schemas']['ChangePlanRequest']['plan']) => {
+      const result = await api.PATCH('/v1/account/plan', { body: { plan } });
+      const account = await unwrap(Promise.resolve(result));
+      return { account, pending: result.response.status === 202 };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
   });
 }
@@ -3102,6 +3162,38 @@ export function useDeployFromRefFor() {
     }: { slug: string } & components['schemas']['SourceRefDeployRequest']) =>
       unwrap(
         api.POST('/v1/apps/{slug}/deployments/source-ref', { params: { path: { slug } }, body })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
+/**
+ * A function's first deploy from source the console packed itself: the
+ * handler someone wrote or dropped in New app. apid reads `kind`, `runtime`
+ * and `handler` from the multipart form (pkg/apid/apidserver/deploy_inputs.go);
+ * `handler.handler` keeps the runtime's default handler file
+ * (pkg/api/function_handler.go), which is the file the archive carries.
+ */
+export function useDeployFunctionSourceFor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments', {
+          params: { path: { slug: input.slug } },
+          body: input as never,
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append('source', input.archive, 'source.tar.gz');
+            form.append('kind', 'function');
+            form.append('runtime', input.runtime);
+            form.append('handler', 'handler.handler');
+            return form;
+          },
+        })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.apps });
@@ -3555,28 +3647,17 @@ export function useTrigger(id: string) {
 
 /**
  * Deploy a source tarball the customer picked, the console's equivalent of
- * `gregale deploy --tarball`. Multipart: openapi-fetch skips the serializer
- * when `body` is undefined, so the body is passed through as `never`.
+ * `gregale deploy --tarball`, through the resumable upload session
+ * (`/v1/uploads`) that replaced the deprecated multipart route.
  */
 export function useDeployTarball(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: {
       file: File;
-      sidecar?: components['schemas']['SourceTarballDeployRequest'];
-    }) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/deployments/source-tarball', {
-          params: { path: { slug } },
-          body: input as never,
-          bodySerializer: () => {
-            const form = new FormData();
-            form.append('tarball', input.file);
-            if (input.sidecar) form.append('sidecar', JSON.stringify(input.sidecar));
-            return form;
-          },
-        })
-      ),
+      options?: DeployOptions;
+      onProgress?: (sent: number, total: number) => void;
+    }) => uploadTarball({ slug, ...input }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.appDeployments(slug) });
@@ -3591,12 +3672,26 @@ export function useDeployTarball(slug: string) {
 export type PostgresDatabase = components['schemas']['ManagedPostgresDatabase'];
 export type PostgresBinding = components['schemas']['ManagedPostgresBinding'];
 
-const postgresKey = ['postgres', 'databases'] as const;
+/**
+ * Databases belong to the active workspace: the account's own, or a company's
+ * under `/v1/orgs/{organization}/postgres/…` (faas org_postgres_routes.go, the
+ * same shapes). Nothing is read until the workspace is known.
+ */
+const postgresKey = (org: string | null) => ['postgres', org ?? 'personal', 'databases'] as const;
 
 export function usePostgresDatabases() {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: postgresKey,
-    queryFn: () => unwrap(api.GET('/v1/postgres/databases', {})),
+    queryKey: postgresKey(org),
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases', {
+              params: { path: { organization: org } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases', {})),
+    enabled: ready,
     // Provisioning finishes on the provider's clock, not the browser's.
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
@@ -3608,47 +3703,87 @@ export function usePostgresDatabases() {
 }
 
 export function usePostgresDatabase(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: [...postgresKey, id],
-    queryFn: () => unwrap(api.GET('/v1/postgres/databases/{id}', { params: { path: { id } } })),
-    enabled: Boolean(id),
+    queryKey: [...postgresKey(org), id],
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
   });
 }
 
 export function useCreatePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (body: components['schemas']['CreateManagedPostgresDatabaseRequest']) =>
-      unwrap(api.POST('/v1/postgres/databases', { body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases', {
+              params: { path: { organization: org } },
+              body,
+            })
+          )
+        : unwrap(api.POST('/v1/postgres/databases', { body })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 export function useDeletePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (id: string) =>
-      unwrap(api.DELETE('/v1/postgres/databases/{id}', { params: { path: { id } } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.DELETE('/v1/orgs/{organization}/postgres/databases/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.DELETE('/v1/postgres/databases/{id}', { params: { path: { id } } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 /** Point-in-time restore: always into a new database, never over the old one. */
 export function useRestorePostgresDatabase() {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string; name: string; point_in_time: string }) =>
-      unwrap(api.POST('/v1/postgres/databases/{id}/restore', { params: { path: { id } }, body })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey }),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/restore', {
+              params: { path: { organization: org, id } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/restore', { params: { path: { id } }, body })
+          ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: postgresKey(org) }),
   });
 }
 
 export function usePostgresBindings(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: [...postgresKey, id, 'bindings'],
+    queryKey: [...postgresKey(org), id, 'bindings'],
     queryFn: () =>
-      unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
-    enabled: Boolean(id),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases/{id}/bindings', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/databases/{id}/bindings', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
         (b) => b.state === 'provisioning' || b.state === 'deleting'
@@ -3659,35 +3794,58 @@ export function usePostgresBindings(id: string) {
 }
 
 export function usePostgresBinding(id: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: ['postgres', 'bindings', id],
-    queryFn: () => unwrap(api.GET('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
-    enabled: Boolean(id),
+    queryKey: ['postgres', org ?? 'personal', 'bindings', id],
+    queryFn: () =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/bindings/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.GET('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+    enabled: Boolean(id) && ready,
   });
 }
 
 /** Credentials never reach the browser: the app gets them as a secret. */
 export function useCreatePostgresBinding(databaseId: string) {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (body: components['schemas']['CreateManagedPostgresBindingRequest']) =>
-      unwrap(
-        api.POST('/v1/postgres/databases/{id}/bindings', {
-          params: { path: { id: databaseId } },
-          body,
-        })
-      ),
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/bindings', {
+              params: { path: { organization: org, id: databaseId } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/bindings', {
+              params: { path: { id: databaseId } },
+              body,
+            })
+          ),
     onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
   });
 }
 
 export function useDeletePostgresBinding(databaseId: string) {
   const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
   return useMutation({
     mutationFn: (id: string) =>
-      unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
+      org
+        ? unwrap(
+            api.DELETE('/v1/orgs/{organization}/postgres/bindings/{id}', {
+              params: { path: { organization: org, id } },
+            })
+          )
+        : unwrap(api.DELETE('/v1/postgres/bindings/{id}', { params: { path: { id } } })),
     onSuccess: () =>
-      void qc.invalidateQueries({ queryKey: [...postgresKey, databaseId, 'bindings'] }),
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
   });
 }

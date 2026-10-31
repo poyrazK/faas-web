@@ -152,6 +152,17 @@ describe('recent failed deployments', () => {
 });
 
 describe('compute allowance', () => {
+  it("raises no allowance alarm and no failed check when a company's allowance is not known yet", async () => {
+    // A company with no usage rows this month has no allowance on the wire
+    // (included_gb_hours rides on each usage row); that is not a failure.
+    const props = inputs();
+    props.usage = ready({ month: '2026-10', used_gb_hours: 0, included_gb_hours: null });
+    await mount(props);
+    expect(panel().queryByText('Some checks are unavailable')).not.toBeInTheDocument();
+    expect(panel().queryByText('Compute allowance running low')).not.toBeInTheDocument();
+    expect(panel().getByText('Nothing to investigate')).toBeInTheDocument();
+  });
+
   it('identifies unavailable checks rather than implying that failed reads are still loading', async () => {
     const props = inputs();
     props.usage.error = new Error('Usage read failed');
@@ -301,7 +312,7 @@ describe('spend cap', () => {
     );
   });
 
-  it('treats a €0 cap as reached only once the allowance is gone', async () => {
+  it('treats a $0 cap as reached only once the allowance is gone', async () => {
     const props = inputs();
     props.spendCap = ready({ overage_cap_cents: 0 });
     await mount(props);

@@ -17,15 +17,17 @@ import {
   useDomains,
   useVerifyDomain,
 } from '@/lib/api/queries';
+import { CliCommand } from '@/components/dashboard/cli-command';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { errorMessage } from '@/lib/api/errors';
+import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
 const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
@@ -57,6 +59,8 @@ interface DomainRow {
   domain: string;
   app: string;
   verified: boolean;
+  /** True when this domain is already its app's default. */
+  isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
 }
@@ -75,6 +79,8 @@ function DomainsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const doctorFor = search.doctor;
+  // The doctor is a preview capability; off, there is nothing to open.
+  const doctorAccess = useCapabilityAccess('domain-doctor').access;
   const select = (patch: Partial<typeof search>, replace = false) =>
     void navigate({
       search: (current) => ({ ...current, ...patch }),
@@ -100,16 +106,31 @@ function DomainsPage() {
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
       verified: d.verified,
+      isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
       txtRecord: d.txt_record ?? null,
     }));
   }, [data, apps]);
 
+  // A domain can be made its app's default only once verified, and there is
+  // nothing to do for one that already is. Each eligible domain gets its own
+  // command, so every app with a candidate is covered.
+  const defaultCandidates = rows
+    .filter((row) => row.verified && !row.isDefault)
+    .sort((a, b) => a.domain.localeCompare(b.domain));
+
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
-      render: (d) => <span className="font-mono">{d.domain}</span>,
+      // Marked so it is clear why the default is missing from set-default below.
+      // Stacked under the hostname so it does not squeeze an already narrow column.
+      render: (d) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="font-mono">{d.domain}</span>
+          {d.isDefault && <Pill label="default" />}
+        </span>
+      ),
     },
     {
       key: 'verified',
@@ -182,7 +203,7 @@ function DomainsPage() {
                     toast({
                       kind: 'error',
                       title: 'Could not verify',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   );
               }}
@@ -191,14 +212,16 @@ function DomainsPage() {
             </Button>
           )}
 
-          <IconButton
-            type="button"
-            aria-label={`Diagnose ${d.domain}`}
-            onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Activity className="h-3.5 w-3.5" />
-          </IconButton>
+          {doctorAccess !== 'off' && (
+            <IconButton
+              type="button"
+              aria-label={`Diagnose ${d.domain}`}
+              onClick={() => setDoctorFor(doctorFor === d.domain ? undefined : d.domain)}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Activity className="h-3.5 w-3.5" />
+            </IconButton>
+          )}
 
           <IconButton
             type="button"
@@ -221,7 +244,7 @@ function DomainsPage() {
                   toast({
                     kind: 'error',
                     title: 'Could not remove',
-                    description: errorMessage(err),
+                    error: err,
                   })
                 );
             }}
@@ -256,9 +279,7 @@ function DomainsPage() {
             : undefined,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not add domain', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
   };
 
   return (
@@ -391,6 +412,24 @@ function DomainsPage() {
         error={error}
         onRetry={() => void refetch()}
       />
+
+      {defaultCandidates.length > 0 && (
+        <Panel
+          title="Set a default domain"
+          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
+        >
+          <div className="flex flex-col gap-3">
+            {defaultCandidates.map((row) => (
+              <CliCommand
+                key={row.domain}
+                label={`Make ${row.domain} the default domain for ${row.app}`}
+                copyLabel={`set-default command for ${row.domain}`}
+                command={cliDomainSetDefaultCommand(row.domain)}
+              />
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {doctorFor && (
         <Modal

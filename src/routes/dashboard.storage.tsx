@@ -9,9 +9,11 @@ import {
 
 const TABS: readonly StorageTab[] = ['objects', 'code', 'settings'];
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+import { withCapability } from '@/components/dashboard/capability-gate';
 
 export const Route = createFileRoute('/dashboard/storage')({
-  component: StoragePage,
+  // Gated like its nav item: a bookmarked URL explains itself when off.
+  component: withCapability('object-storage', 'Storage', StoragePage),
   head: () => consoleHead('storage'),
   validateSearch: (search: Record<string, unknown>): StorageSelection => {
     const tab = TABS.find((t) => t === search.tab);
