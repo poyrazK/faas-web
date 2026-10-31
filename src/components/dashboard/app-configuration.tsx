@@ -28,6 +28,7 @@ import { configurationEffects } from '@/lib/api/runtime-policy';
 import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
+import { HealthProbes } from './health-probes';
 
 /**
  * The app's own settings, editable.
@@ -769,6 +770,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       </Panel>
       {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
+      <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
       <SupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />

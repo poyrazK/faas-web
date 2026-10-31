@@ -27,6 +27,7 @@ import {
   trackedDeployment,
 } from './deploy-lifecycle';
 import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
+import { applyLifecycle } from './lifecycle';
 import {
   environmentInventory,
   environmentState,
@@ -798,6 +799,9 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  const lifecycleRefusal = applyLifecycle(a, body, process.env.MOCK_PLAN ?? db.account.plan);
+  if (lifecycleRefusal)
+    throw new Problem(lifecycleRefusal.status, lifecycleRefusal.code, lifecycleRefusal.detail);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {

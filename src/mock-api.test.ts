@@ -923,3 +923,32 @@ describe('workspace app mock contract', () => {
     expect(unknown.status).toBe(404);
   });
 });
+
+it('keeps the restart contract on PATCH /v1/apps/{slug} and refuses past the plan cap', async () => {
+  const patch = (body: object) =>
+    fetch(`${origin}/v1/apps/api-gateway`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  process.env.MOCK_PLAN = 'hobby';
+  const refused = await patch({ stop_grace_period_s: 90 });
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toMatchObject({ code: 'validation_failed' });
+
+  const saved = await patch({ restart_policy: 'always', stop_grace_period_s: 20 });
+  expect(saved.status).toBe(200);
+  const app = await saved.json();
+  expect(app.manifest).toMatchObject({ restart_policy: 'always', stop_grace_period: 20e9 });
+  await patch({ restart_policy: '', stop_grace_period_s: 0 });
+  const { body } = await get('/v1/apps/api-gateway');
+  expect(body.manifest.restart_policy).toBeUndefined();
+  expect(body.manifest.stop_grace_period).toBeUndefined();
+});
+
+it('echoes probe overrides on the serving deployment', async () => {
+  const { body } = await get('/v1/apps/api-gateway/deployments');
+  const live = body.items.find((d: { status: string }) => d.status === 'live');
+  expect(live.override_readiness_probe).toMatchObject({ path: '/readyz' });
+  expect(live.override_liveness_probe).toMatchObject({ path: '/livez' });
+});
