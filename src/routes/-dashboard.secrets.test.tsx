@@ -35,6 +35,12 @@ vi.mock('@/lib/api/queries', () => ({
   useFreshRestart: () => ({ mutateAsync: mocks.restart, isPending: false }),
 }));
 
+// Delete goes through #245's revocation hook; these tests cover the page, not the receipt.
+vi.mock('@/lib/api/secret-references', () => ({
+  useRevokeSecret: () => ({ mutateAsync: mocks.del, isPending: false }),
+}));
+vi.mock('@/components/dashboard/secret-references', () => ({ SecretReferences: () => null }));
+
 const PEM = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADAN\n-----END PRIVATE KEY-----';
 
 beforeEach(() => {
@@ -230,7 +236,9 @@ describe('Secrets', () => {
         expect(mocks.toast).toHaveBeenCalledWith(
           expect.objectContaining({
             kind: 'error',
-            description: 'wait for the accepted restart to finish before retrying',
+            error: expect.objectContaining({
+              message: 'wait for the accepted restart to finish before retrying',
+            }),
           })
         )
       );

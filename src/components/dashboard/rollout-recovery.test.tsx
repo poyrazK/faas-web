@@ -69,7 +69,10 @@ describe('RolloutRecovery', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'info',
-        description: expect.stringContaining('use promote instead'),
+        // The toast shows the error's own message (and its code and docs link).
+        error: expect.objectContaining({
+          message: expect.stringContaining('use promote instead'),
+        }),
       })
     );
   });

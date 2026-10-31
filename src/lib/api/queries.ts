@@ -63,8 +63,11 @@ export const keys = {
   auditLog: ['audit-log'] as const,
   appSecrets: (slug: string) => ['apps', slug, 'secrets'] as const,
   appEnv: (slug: string) => ['apps', slug, 'env'] as const,
+  /** Config history and guard (ADR-1451); every env or secret write moves both. */
+  appConfig: (slug: string) => ['apps', slug, 'config'] as const,
   appAlerts: (slug: string) => ['apps', slug, 'alerts'] as const,
   appRegistryCredentials: (slug: string) => ['apps', slug, 'registry-credentials'] as const,
+  appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
 /** Shared policy: never retry a settled 4xx, retry the rest twice. */
@@ -144,7 +147,13 @@ export function useBindRepo(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: BindRepoInput) => bindRepo(slug, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+    // Both reads of the binding (the deploy dialog's and the GitHub panel's)
+    // show the new one without a reload.
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: [...keys.app(slug), 'repo-binding'] }),
+        qc.invalidateQueries({ queryKey: keys.appGitHub(slug) }),
+      ]),
   });
 }
 
@@ -301,10 +310,11 @@ export function useAcceptInvitation() {
  * ------------------------------------------------------------------ */
 
 /** Read the saved monthly overage ceiling without conflating zero and no cap. */
-export function useOverageCap() {
+export function useOverageCap(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...keys.account, 'overage-cap'],
     queryFn: () => unwrap(api.GET('/v1/account/overage-cap', {})),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -617,16 +627,26 @@ export function useAppErrorSample(slug: string, fingerprint: string) {
   });
 }
 
-/** Frame-by-frame anatomy of one wake attempt. */
+/**
+ * Frame-by-frame anatomy of one wake attempt, oldest first. The endpoint has
+ * no cursor parameter: `next_cursor` is an RFC 3339 timestamp passed back as
+ * `since`, so later pages hold later frames. `since` is inclusive, so the
+ * boundary frame repeats; callers de-duplicate.
+ */
 export function useWakeTimeline(slug: string, wakeId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['apps', slug, 'wakes', wakeId],
-    queryFn: () =>
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/wakes/{wake_id}/timeline', {
-          params: { path: { slug, wake_id: wakeId } },
+          params: {
+            path: { slug, wake_id: wakeId },
+            query: { limit: 1000, ...(pageParam ? { since: pageParam } : {}) },
+          },
         })
       ),
+    getNextPageParam: (last) => last.next_cursor || undefined,
     enabled: Boolean(slug && wakeId),
   });
 }
@@ -1870,11 +1890,12 @@ export function useInfiniteInvoices(limit = 50) {
   });
 }
 
-export function useUsageSummary() {
+export function useUsageSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1935,7 +1956,10 @@ export function useSetSecret(slug: string) {
           body: { value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1950,7 +1974,10 @@ export function useDeleteSecret(slug: string) {
         secrets: old.secrets?.filter((s) => s.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+    },
   });
 }
 
@@ -1971,7 +1998,10 @@ export function useSetEnv(slug: string) {
       unwrap(
         api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 
@@ -1986,7 +2016,10 @@ export function useDeleteEnv(slug: string) {
         env: old.env?.filter((v) => v.key !== key),
       })),
     onError: (_err, _key, rollback) => rollback?.(),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.appEnv(slug) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
+      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+    },
   });
 }
 

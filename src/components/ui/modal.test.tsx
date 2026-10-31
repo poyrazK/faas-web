@@ -35,3 +35,26 @@ it('Escape dismisses only the topmost modal and keeps the parent scroll lock', a
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(document.body.style.overflow).toBe(originalOverflow);
 });
+
+it('opens as a right-side drawer with the same Escape and focus behaviour', async () => {
+  function Drawer() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button onClick={() => setOpen(true)}>Open wake</button>
+        <Modal open={open} title="Wake" placement="right" onClose={() => setOpen(false)}>
+          <button>Inside</button>
+        </Modal>
+      </>
+    );
+  }
+  render(<Drawer />);
+  const trigger = screen.getByRole('button', { name: 'Open wake' });
+  await userEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: 'Wake' });
+  expect(dialog).toHaveAttribute('data-placement', 'right');
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+});

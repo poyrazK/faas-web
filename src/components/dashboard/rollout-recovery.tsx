@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useRecoverRollout, type Deployment } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
 
@@ -75,7 +75,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
         toast({
           kind: 'info',
           title: 'The rollout is still moving',
-          description: errorMessage(err),
+          error: err,
         });
         return;
       }
@@ -91,14 +91,14 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
         toast({
           kind: 'info',
           title: 'Not in that state any more',
-          description: errorMessage(err),
+          error: err,
         });
         return;
       }
       toast({
         kind: 'error',
         title: 'Could not recover the rollout',
-        description: errorMessage(err),
+        error: err,
       });
     }
   };

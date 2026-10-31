@@ -18,6 +18,7 @@ import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendControl } from '@/components/dashboard/spend-control';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { OrgUsage } from '@/components/dashboard/org-billing';
 import { formatCents } from '@/lib/money';
@@ -323,7 +324,7 @@ function PersonalUsage() {
 
           <SpendControl overageCents={data?.overage_cents} />
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
             <StatTile
               label="Egress"
@@ -333,8 +334,9 @@ function PersonalUsage() {
               label="Ingress"
               value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
             />
-            <StatTile label="Apps" value={String(account?.app_count ?? '—')} />
           </div>
+
+          <AppCapacity />
 
           <ForecastPanel used={used} included={included} month={data?.month} />
           <PerAppUsagePanel />
