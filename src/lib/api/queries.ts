@@ -3134,6 +3134,38 @@ export function useDeployFromRefFor() {
   });
 }
 
+/**
+ * A function's first deploy from source the console packed itself: the
+ * handler someone wrote or dropped in New app. apid reads `kind`, `runtime`
+ * and `handler` from the multipart form (pkg/apid/apidserver/deploy_inputs.go);
+ * `handler.handler` keeps the runtime's default handler file
+ * (pkg/api/function_handler.go), which is the file the archive carries.
+ */
+export function useDeployFunctionSourceFor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
+      unwrap(
+        api.POST('/v1/apps/{slug}/deployments', {
+          params: { path: { slug: input.slug } },
+          body: input as never,
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append('source', input.archive, 'source.tar.gz');
+            form.append('kind', 'function');
+            form.append('runtime', input.runtime);
+            form.append('handler', 'handler.handler');
+            return form;
+          },
+        })
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apps });
+      void qc.invalidateQueries({ queryKey: keys.deployments });
+    },
+  });
+}
+
 export function useUpdateAppFor() {
   const qc = useQueryClient();
   return useMutation({

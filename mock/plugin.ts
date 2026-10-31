@@ -640,6 +640,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))
@@ -5627,12 +5633,25 @@ route('POST', '/dashboard/install/connect', ({ body, req, res }) => {
 });
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
-  return [
+  const seeded = [
     { id: 1001, full_name: 'acme-corp/storefront', default_branch: 'main', private: true },
     { id: 1002, full_name: 'acme-corp/checkout', default_branch: 'main', private: true },
     { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
     { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
   ];
+  // MOCK_REPOS=<n> pads the installation to n repositories across a few
+  // owners, to see the New app repository list as a large account sees it.
+  const total = Number(process.env.MOCK_REPOS ?? 0);
+  const owners = ['acme-corp', 'acme-labs', 'design-ops'];
+  const words = ['billing', 'search', 'auth', 'media', 'events', 'catalog', 'inbox', 'ledger'];
+  for (let i = seeded.length; i < total; i++)
+    seeded.push({
+      id: 2000 + i,
+      full_name: `${owners[i % owners.length]}/${words[i % words.length]}-${['api', 'worker', 'web', 'cron'][i % 4]}-${i}`,
+      default_branch: i % 5 ? 'main' : 'develop',
+      private: i % 3 !== 0,
+    });
+  return seeded;
 });
 const repoBindings = new Map<string, { repo_full_name: string; production_branch: string }>();
 route('GET', '/v1/apps/{slug}/install/bind', ({ params }) => {
