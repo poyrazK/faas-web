@@ -283,10 +283,11 @@ export function useAcceptInvitation() {
  * ------------------------------------------------------------------ */
 
 /** Read the saved monthly overage ceiling without conflating zero and no cap. */
-export function useOverageCap() {
+export function useOverageCap(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...keys.account, 'overage-cap'],
     queryFn: () => unwrap(api.GET('/v1/account/overage-cap', {})),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1852,11 +1853,12 @@ export function useInfiniteInvoices(limit = 50) {
   });
 }
 
-export function useUsageSummary() {
+export function useUsageSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
