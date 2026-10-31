@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { FUNCTION_STARTERS } from '@/lib/function-starters';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
 import { ApiError } from '@/lib/api/errors';
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   addWorkflow: vi.fn(),
   bindRepo: vi.fn(),
   deployFromRef: vi.fn(),
+  deployFunction: vi.fn(),
   updateApp: vi.fn(),
   toast: vi.fn(),
   issueCSRF: vi.fn(),
@@ -44,6 +46,11 @@ vi.mock('./image-deploy-form', () => ({
   ),
 }));
 vi.mock('./project-import', () => ({ ProjectImport: () => null }));
+// jsdom has no CompressionStream; the archive is checked uncompressed.
+vi.mock('@/lib/tar', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/tar')>()),
+  gzip: async (bytes: Uint8Array<ArrayBuffer>) => new Blob([bytes]),
+}));
 vi.mock('@/lib/api/logs', () => ({
   useLogStream: () => ({ lines: [], status: 'streaming', reason: null }),
 }));
@@ -111,6 +118,7 @@ vi.mock('@/lib/api/queries', () => ({
   }),
   useBindRepoFor: () => ({ mutateAsync: mocks.bindRepo }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deployFromRef }),
+  useDeployFunctionSourceFor: () => ({ mutateAsync: mocks.deployFunction }),
   useUpdateAppFor: () => ({ mutateAsync: mocks.updateApp }),
   useSourceRefScan: (input: unknown) => mocks.scan(input),
   // The wizard reads the starter catalog to prefill from a `?template=` name.
@@ -170,7 +178,9 @@ describe('NewAppWizard source picker', () => {
       .getAllByRole('button')
       .forEach((card, index) =>
         expect(card).toHaveAccessibleName(
-          ['Template', 'Empty app', 'Container image', 'Long-lived worker', 'Import'][index]
+          ['Function', 'Template', 'Empty app', 'Container image', 'Long-lived worker', 'Import'][
+            index
+          ]
         )
       );
     const importCard = within(others).getByRole('button', { name: 'Import' });
@@ -178,7 +188,7 @@ describe('NewAppWizard source picker', () => {
       'Turn a repository with several services into a project.'
     );
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      'Build and deploy a branch, tag, or commit.'
+      'Build and deploy a function or an app from a branch, tag, or commit.'
     );
   });
 
@@ -240,7 +250,7 @@ describe('NewAppWizard source picker', () => {
   it('leaves the choice open without a GitHub connection', () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
-    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(6);
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(7);
     expect(screen.queryByRole('button', { pressed: true })).not.toBeInTheDocument();
   });
 
@@ -1122,5 +1132,55 @@ describe('NewAppWizard Git submission', () => {
     expect(mocks.bindRepo).toHaveBeenCalledTimes(1);
     expect(mocks.deployFromRef).toHaveBeenCalledTimes(2);
     expect(mocks.addWorkflow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NewAppWizard function written here', () => {
+  it('writes, configures and deploys a function with no repository', async () => {
+    mocks.deployFunction.mockResolvedValue({ id: 'dep-1', status: 'pending' });
+    const user = userEvent.setup();
+    render(<NewAppWizard />);
+    await user.click(screen.getByRole('button', { name: 'Function' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Write a function' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+
+    // An untouched starter follows the language.
+    await user.click(screen.getByRole('radio', { name: 'Python' }));
+    const editor = screen.getByRole('textbox', { name: 'handler.py' });
+    expect(editor).toHaveValue(FUNCTION_STARTERS.python.code);
+
+    // Nothing to deploy is said where it is fixed.
+    await user.clear(editor);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(editor).toHaveFocus();
+    expect(editor).toHaveAccessibleDescription(/Write the handler, or upload a file\./);
+    await user.type(editor, 'async def handler(event, ctx):{enter}    return {{}}');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    // Configure: a function by construction, on this language's versions.
+    await nameApp(user, 'hello-fn');
+    expect(screen.queryByLabelText('Type')).not.toBeInTheDocument();
+    const runtimes = [...(screen.getByLabelText('Runtime') as HTMLSelectElement).options];
+    expect(runtimes.map((o) => o.value)).toEqual(['python312', 'python313']);
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(await screen.findByText('First deploy')).toBeInTheDocument();
+    expect(screen.getByText('First deploy').nextElementSibling).toHaveTextContent(
+      'handler.py, right after create'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create app' }));
+
+    await waitFor(() => expect(mocks.deployFunction).toHaveBeenCalledTimes(1));
+    expect(mocks.addWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'hello-fn', type: 'function', runtime: 'python312' })
+    );
+    const { slug, runtime, archive } = mocks.deployFunction.mock.calls[0][0];
+    expect(slug).toBe('demo-app');
+    expect(runtime).toBe('python312');
+    const tar = new TextDecoder().decode(await (archive as Blob).arrayBuffer());
+    expect(tar).toContain('handler.py');
+    expect(tar).toContain('async def handler(event, ctx):\n    return {}');
   });
 });

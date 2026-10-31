@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Box3dPoint,
   Check,
+  Code,
   GitBranch,
   Import,
   NavArrowRight,
@@ -16,6 +17,7 @@ import { SOURCES } from './new-app-sources';
 
 const ICON: Record<AppSource, ComponentType<SVGProps<SVGSVGElement>>> = {
   git: GitBranch,
+  function: Code,
   template: ViewGrid,
   empty: PlusSquare,
   container: Box3dPoint,
@@ -23,7 +25,7 @@ const ICON: Record<AppSource, ComponentType<SVGProps<SVGSVGElement>>> = {
   import: Import,
 };
 
-const OTHERS: AppSource[] = ['template', 'empty', 'container', 'worker', 'import'];
+const OTHERS: AppSource[] = ['function', 'template', 'empty', 'container', 'worker', 'import'];
 
 /**
  * How a new app starts. Git leads as the one primary card, since most people

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { summaryRows, type SummaryInput } from './new-app-summary';
-import { SOURCES, SOURCE_GROUPS, sourceName } from './new-app-sources';
+import { SOURCES, sourceName } from './new-app-sources';
 
 const base: SummaryInput = {
   step: 0,
@@ -87,16 +87,16 @@ describe('summaryRows', () => {
 });
 
 describe('the shared source list', () => {
-  it('keeps the six sources, grouped with Git first', () => {
+  it('keeps the seven sources, Git first', () => {
     expect(SOURCES.map((s) => s.id)).toEqual([
       'git',
+      'function',
       'template',
       'empty',
       'container',
       'worker',
       'import',
     ]);
-    expect(SOURCE_GROUPS.flatMap((g) => g.sources)).toEqual(SOURCES.map((s) => s.id));
     expect(sourceName('git')).toBe('Git repository');
     expect(sourceName(undefined)).toBe('');
   });

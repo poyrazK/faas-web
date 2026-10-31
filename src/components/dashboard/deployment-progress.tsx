@@ -25,7 +25,10 @@ const ACTIVE_STATES: Record<string, [string, string]> = {
   dispatching: ['Dispatching your app', 'Your deployment is being dispatched to a worker.'],
 };
 export type DeploymentSource =
-  { kind: 'git'; repo: string; ref: string } | { kind: 'image'; reference: string };
+  | { kind: 'git'; repo: string; ref: string }
+  | { kind: 'image'; reference: string }
+  /** Source the console packed itself, such as a function written in New app. */
+  | { kind: 'upload'; label: string };
 
 export function DeploymentProgress({
   appCreated,
@@ -253,7 +256,9 @@ export function DeploymentProgress({
             <span className="font-mono text-foreground">
               {origin.kind === 'image'
                 ? origin.reference
-                : `${origin.repo}@${origin.ref.trim() || 'main'}`}
+                : origin.kind === 'upload'
+                  ? origin.label
+                  : `${origin.repo}@${origin.ref.trim() || 'main'}`}
             </span>
           </p>
           {deploymentId && (

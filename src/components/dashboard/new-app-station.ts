@@ -2,7 +2,14 @@ import type { AppSource, NewAppSearch } from './new-app-source';
 
 export type Station = 'sources' | 'setup' | 'configure' | 'review';
 
-const WITH_SETUP: readonly AppSource[] = ['git', 'template', 'container', 'worker', 'import'];
+const WITH_SETUP: readonly AppSource[] = [
+  'git',
+  'function',
+  'template',
+  'container',
+  'worker',
+  'import',
+];
 
 // These finish on their own page, with their own submit: no Configure or Review.
 const OWN_PAGE: readonly AppSource[] = ['container', 'worker', 'import'];

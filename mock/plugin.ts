@@ -640,6 +640,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
 route('POST', '/v1/apps', ({ body, req }) => createMockApp(body, req));
 route('POST', '/v1/apps/{slug}/deployments', ({ params, body, req }) => {
   const a = app(params.slug);
+  // A source upload (a function written in New app) builds like any tarball.
+  if (String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    if (a.type !== 'function')
+      throw new Problem(422, 'invalid_app_type', 'This mock builds uploads for functions only.');
+    return status(202, startSourceDeployment(a, 'tarball', `${a.slug} (uploaded handler)`));
+  }
   if (a.type !== 'app')
     throw new Problem(422, 'invalid_app_type', 'Image deployment requires an app.');
   if (typeof body.image !== 'string' || !isDigestPinnedImage(body.image))

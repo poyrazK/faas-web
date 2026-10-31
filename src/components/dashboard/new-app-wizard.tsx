@@ -1,6 +1,8 @@
 import { MemorySelect } from './memory-select';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { FUNCTION_STARTERS, languageOf, type FunctionLanguage } from '@/lib/function-starters';
+import { gzip, tarball } from '@/lib/tar';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { motion, useReducedMotion } from 'motion/react';
@@ -33,6 +35,7 @@ import { NewAppStage } from './new-app-layout';
 import { SettingRow, SettingsSection } from './new-app-settings';
 import { sourceName } from './new-app-sources';
 import { ImageDeployForm } from './image-deploy-form';
+import { FunctionSource } from './function-source';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { templateBySlug } from '@/lib/templates';
 import { type Runtime } from '@/lib/mock-data';
@@ -42,6 +45,7 @@ import { useWorkspaceTarget, workspaceCreateError } from '@/lib/api/workspace-ap
 import {
   useBindRepoFor,
   useDeployFromRefFor,
+  useDeployFunctionSourceFor,
   useApps,
   useSourceRefScan,
   useTemplates,
@@ -60,7 +64,7 @@ import { cn } from '@/lib/utils';
 import { predictedAppUrl } from '@/lib/app-url';
 import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
-type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref';
+type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref' | 'handler';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -75,9 +79,13 @@ const RUNTIMES: { id: Runtime; label: string }[] = [
 ];
 
 const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
-  { id: 'function', label: 'Function', desc: 'Source built against a managed runtime.' },
-  { id: 'app', label: 'App', desc: 'Your own container image.' },
+  { id: 'function', label: 'Function', desc: 'One handler on a managed runtime.' },
+  { id: 'app', label: 'App', desc: 'Your own server or Dockerfile.' },
 ];
+
+// A handler written in the browser is one small file; anything bigger is a
+// project, which deploys better from a repository or the CLI.
+const HANDLER_MAX_BYTES = 256 * 1024;
 
 // Scoped pilot sizing, with light-onboarding fallbacks.
 const CONTROL =
@@ -206,11 +214,29 @@ function CreateAppWizard({
   const name = nameDraft ?? (repoName || initialName);
   const bindRepo = useBindRepoFor();
   const deployFromRef = useDeployFromRefFor();
+  const deployFunctionSource = useDeployFunctionSourceFor();
   const updateApp = useUpdateAppFor();
   const [appTypeDraft, setAppType] = useState<'function' | 'app' | null>(null);
   const [visibility, setVisibility] = useState<'public' | 'internal'>('public');
   const [runtimeDraft, setRuntime] = useState<Runtime | null>(null);
-  const runtime = runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22';
+  // A function written here: its language decides the file and the runtimes
+  // it can run on; an untouched starter follows the language.
+  const [fnLanguage, setFnLanguage] = useState<FunctionLanguage>('node');
+  const [fnCode, setFnCode] = useState(FUNCTION_STARTERS.node.code);
+  const fnStarter = FUNCTION_STARTERS[fnLanguage];
+  const fnEdited = fnCode !== fnStarter.code;
+  const chooseFnLanguage = (next: FunctionLanguage) => {
+    if (next === fnLanguage) return;
+    if (!fnEdited) setFnCode(FUNCTION_STARTERS[next].code);
+    setFnLanguage(next);
+    setRuntime(FUNCTION_STARTERS[next].runtime);
+  };
+  const runtime: Runtime =
+    source === 'function'
+      ? runtimeDraft && languageOf(runtimeDraft) === fnLanguage
+        ? runtimeDraft
+        : fnStarter.runtime
+      : (runtimeDraft ?? template?.runtime ?? (picked ? catalogRuntime : null) ?? 'node22');
   // Start at the platform floor. The previous 512 MB default guaranteed a
   // failed Free-plan submission before the customer had seen the limit.
   const [memoryDraft, setMemoryMb] = useState<number | null>(null);
@@ -260,7 +286,9 @@ function CreateAppWizard({
   // (or nothing was typed) leaving is free. A template's prefilled name is
   // not the user's typing — only their own edits arm the guard.
   useUnsavedGuard(
-    !createdId && Boolean(repo.trim() || (name.trim() && name !== initialName)),
+    !createdId &&
+      (Boolean(repo.trim() || (name.trim() && name !== initialName)) ||
+        (source === 'function' && fnEdited)),
     undefined,
     onboarding ? '/onboarding' : '/dashboard/apps/new'
   );
@@ -292,7 +320,7 @@ function CreateAppWizard({
   // The plan reports no runtime, so the only wizard field it can answer is
   // Type: a Dockerfile means the repository builds its own container image.
   const detectedType = scannedService?.dockerfile ? ('app' as const) : undefined;
-  const appType = appTypeDraft ?? detectedType ?? 'function';
+  const appType = source === 'function' ? 'function' : (appTypeDraft ?? detectedType ?? 'function');
   const detectedFrom = scan.plan ? SCAN_SOURCE_LABEL[scan.plan.scan_source] : '';
   const scannedRootDir =
     scannedService && !['', '.', './'].includes(scannedService.root_dir.trim())
@@ -318,7 +346,16 @@ function CreateAppWizard({
       branch: normalizedRef,
     });
   };
+  const handlerError =
+    source !== 'function'
+      ? undefined
+      : !fnCode.trim()
+        ? 'Write the handler, or upload a file.'
+        : new TextEncoder().encode(fnCode).length > HANDLER_MAX_BYTES
+          ? 'The handler is over 256 KB. Deploy it from a repository or the CLI instead.'
+          : undefined;
   const sourceValid =
+    !handlerError &&
     Boolean(source) &&
     source !== 'import' &&
     (source !== 'template' || picked) &&
@@ -346,6 +383,7 @@ function CreateAppWizard({
       source === 'git' && githubConnected && !refValid
         ? 'Use a valid branch, tag, or commit SHA of at most 200 characters.'
         : undefined,
+    handler: handlerError,
   };
   const sourceShown = sourceValidation.submitAttempted;
   const sourceLevelError = sourceShown
@@ -415,6 +453,7 @@ function CreateAppWizard({
     repo,
     ref,
     templateName: template?.name ?? catalogTemplate?.name,
+    handlerFile: source === 'function' ? fnStarter.filename : undefined,
     name,
     workspaceLabel: workspace.label,
     workspaceIsOrg: Boolean(workspace.org),
@@ -446,6 +485,13 @@ function CreateAppWizard({
       ref: normalizedRef,
       format: 'tarball',
     });
+  }
+
+  async function submitFunctionSource(slug: string) {
+    const archive = await gzip(
+      tarball([{ name: fnStarter.filename, content: fnCode }, ...fnStarter.extra])
+    );
+    return deployFunctionSource.mutateAsync({ slug, archive, runtime });
   }
 
   async function createFunction() {
@@ -491,7 +537,11 @@ function CreateAppWizard({
         ? updateApp.mutateAsync({ slug: created.id, min_instances: 1 })
         : Promise.resolve();
       const deploymentPromise =
-        source === 'git' && gitSourceValid ? submitGitSource(created.id) : Promise.resolve(null);
+        source === 'git' && gitSourceValid
+          ? submitGitSource(created.id)
+          : source === 'function'
+            ? submitFunctionSource(created.id)
+            : Promise.resolve(null);
 
       const [scaleResult, deploymentResult] = await Promise.allSettled([
         scalePromise,
@@ -508,23 +558,29 @@ function CreateAppWizard({
 
       if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
         setDeploymentId(deploymentResult.value.id);
-        saveRecovery({ ...pointer, deployment: deploymentResult.value.id, phase: undefined });
+        if (source === 'git')
+          saveRecovery({ ...pointer, deployment: deploymentResult.value.id, phase: undefined });
         onDeploymentAccepted?.();
         toast({
           kind: 'success',
           title: 'Build accepted',
-          description: `${repo.trim()}@${normalizedRef} is queued for build.`,
+          description:
+            source === 'function'
+              ? `${fnStarter.filename} is queued for build.`
+              : `${repo.trim()}@${normalizedRef} is queued for build.`,
         });
       } else if (deploymentResult.status === 'rejected') {
         setSubmissionError(errorMessage(deploymentResult.reason));
         const err: unknown = deploymentResult.reason;
-        saveRecovery({
-          ...pointer,
-          phase:
-            sourceRequested.current && (!(err instanceof ApiError) || err.status >= 500)
-              ? 'unknown'
-              : 'rejected',
-        });
+        // Recovery retries a Git ref; a handler written here is still on the page.
+        if (source === 'git')
+          saveRecovery({
+            ...pointer,
+            phase:
+              sourceRequested.current && (!(err instanceof ApiError) || err.status >= 500)
+                ? 'unknown'
+                : 'rejected',
+          });
         toast({
           kind: 'error',
           title: 'App created, but build was not submitted',
@@ -573,8 +629,13 @@ function CreateAppWizard({
           description="Track the app and its first deployment from the platform state."
         />
 
-        {source === 'git' ? (
+        {source === 'git' || source === 'function' ? (
           <DeploymentProgress
+            source={
+              source === 'function'
+                ? { kind: 'upload', label: `${fnStarter.filename}, written here` }
+                : undefined
+            }
             appCreated={Boolean(createdId)}
             appName={name}
             deploymentId={deploymentId}
@@ -808,6 +869,36 @@ function CreateAppWizard({
     );
     if (source === 'container' || source === 'worker')
       return <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />;
+    if (source === 'function')
+      return (
+        <div className="flex flex-col gap-8">
+          <form
+            id={`${uid}-source-form`}
+            hidden
+            noValidate
+            aria-label="Write the function"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (sourceValidation.validate(sourceErrors, event.currentTarget)) setStep(1);
+            }}
+          />
+          <FunctionSource
+            formId={`${uid}-source-form`}
+            language={fnLanguage}
+            code={fnCode}
+            edited={fnEdited}
+            error={sourceShown ? handlerError : undefined}
+            errorId={`${uid}-handler-error`}
+            onLanguage={chooseFnLanguage}
+            onCode={setFnCode}
+            onReset={() => setFnCode(fnStarter.code)}
+            onBrowseStarters={() =>
+              changeSearch({ ...search, source: 'template', template: undefined, step: 'setup' })
+            }
+          />
+          <div className="flex justify-end">{continueButton}</div>
+        </div>
+      );
     if (source === 'import') return null;
     return (
       <div className="flex flex-col gap-8">
@@ -969,37 +1060,43 @@ function CreateAppWizard({
             )}
           </SettingRow>
 
-          <SettingRow
-            label="Type"
-            htmlFor={`${uid}-type`}
-            hintId={`${uid}-type-hint`}
-            hint={
-              <>
-                {APP_TYPES.find((t) => t.id === appType)?.desc}
-                {detectedType && appTypeDraft === null && (
-                  <> Detected from {detectedFrom} — change it if that is wrong.</>
-                )}
-              </>
-            }
-          >
-            <Select
-              id={`${uid}-type`}
-              name="type"
-              aria-describedby={`${uid}-type-hint`}
-              value={appType}
-              onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
-              className={CONTROL}
+          {source !== 'function' && (
+            <SettingRow
+              label="Type"
+              htmlFor={`${uid}-type`}
+              hintId={`${uid}-type-hint`}
+              hint={
+                <>
+                  {APP_TYPES.find((t) => t.id === appType)?.desc}
+                  {detectedType && appTypeDraft === null && (
+                    <> Detected from {detectedFrom} — change it if that is wrong.</>
+                  )}
+                </>
+              }
             >
-              {APP_TYPES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-          </SettingRow>
+              <Select
+                id={`${uid}-type`}
+                name="type"
+                aria-describedby={`${uid}-type-hint`}
+                value={appType}
+                onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
+                className={CONTROL}
+              >
+                {APP_TYPES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </Select>
+            </SettingRow>
+          )}
 
           {appType === 'function' && (
-            <SettingRow label="Runtime" htmlFor={`${uid}-runtime`}>
+            <SettingRow
+              label="Runtime"
+              htmlFor={`${uid}-runtime`}
+              hint={source === 'function' ? `${fnStarter.label} versions` : undefined}
+            >
               <Select
                 id={`${uid}-runtime`}
                 name="runtime"
@@ -1007,7 +1104,10 @@ function CreateAppWizard({
                 onChange={(e) => setRuntime(e.target.value as Runtime)}
                 className={CONTROL}
               >
-                {RUNTIMES.map((r) => (
+                {(source === 'function'
+                  ? RUNTIMES.filter((r) => fnStarter.runtimes.some((id) => id === r.id))
+                  : RUNTIMES
+                ).map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}
                   </option>
@@ -1190,7 +1290,8 @@ function CreateAppWizard({
   // (Git, Template, Empty) count three steps; the sources that finish on
   // their own page are one page, so they carry no count.
   function header(): Parameters<typeof NewAppHeader>[0] {
-    const counted = source === 'git' || source === 'template' || source === 'empty';
+    const counted =
+      source === 'git' || source === 'function' || source === 'template' || source === 'empty';
     const of = (n: number) => (counted ? `Step ${n} of 3` : undefined);
     if (station === 'sources')
       return onboarding
@@ -1209,6 +1310,10 @@ function CreateAppWizard({
         };
       const page: Record<AppSource, { title: string; description: string }> = {
         git: { title: 'Pick a repository', description: 'Choose what to build and which ref.' },
+        function: {
+          title: 'Write a function',
+          description: 'One handler on a managed runtime. No repository needed.',
+        },
         template: {
           title: 'Pick a starter',
           description:

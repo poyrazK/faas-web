@@ -66,6 +66,7 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
 vi.mock('@/lib/api/queries', () => ({
   useBindRepoFor: () => ({ mutateAsync: mocks.bind }),
   useDeployFromRefFor: () => ({ mutateAsync: mocks.deploy }),
+  useDeployFunctionSourceFor: () => ({ mutateAsync: vi.fn() }),
   useUpdateAppFor: () => ({ mutateAsync: vi.fn() }),
   useSourceRefScan: () => mocks.sourceScan,
   useApps: () => ({ data: [] }),

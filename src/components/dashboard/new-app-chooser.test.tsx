@@ -16,20 +16,28 @@ const setup = (props: Partial<Parameters<typeof NewAppChooser>[0]> = {}) => {
 
 describe('NewAppChooser', () => {
   // Most people arrive with code in a repository: Git leads, on its own,
-  // and the other five follow as one compact list.
+  // and the other six follow as one compact list.
   it('leads with Git, then lists the other ways to start in order', () => {
     setup();
     const order = screen.getAllByRole('button').map((b) => b.getAttribute('data-source'));
-    expect(order).toEqual(['git', 'template', 'empty', 'container', 'worker', 'import']);
+    expect(order).toEqual([
+      'git',
+      'function',
+      'template',
+      'empty',
+      'container',
+      'worker',
+      'import',
+    ]);
     const others = screen.getByRole('group', { name: 'Other ways to start' });
     expect(within(others).queryByRole('button', { name: 'Git repository' })).toBeNull();
-    expect(within(others).getAllByRole('button')).toHaveLength(5);
+    expect(within(others).getAllByRole('button')).toHaveLength(6);
   });
 
   it('names each choice by its source and describes it in one line', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      'Build and deploy a branch, tag, or commit.'
+      'Build and deploy a function or an app from a branch, tag, or commit.'
     );
     expect(screen.getByRole('button', { name: 'Import' })).toHaveAccessibleDescription(
       'Turn a repository with several services into a project.'
@@ -38,7 +46,8 @@ describe('NewAppChooser', () => {
 
   it('shows an icon for each source and no pictures', () => {
     const { container } = setup();
-    expect(container.querySelectorAll('[data-source] svg')).toHaveLength(6 + 5 + 1);
+    // An icon per source, a chevron per listed source, and Git's arrow.
+    expect(container.querySelectorAll('[data-source] svg')).toHaveLength(7 + 6 + 1);
     expect(container.querySelector('canvas, [data-preview]')).toBeNull();
   });
 

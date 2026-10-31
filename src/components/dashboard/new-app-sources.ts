@@ -12,7 +12,12 @@ export const SOURCES: readonly SourceOption[] = [
   {
     id: 'git',
     name: 'Git repository',
-    desc: 'Build and deploy a branch, tag, or commit.',
+    desc: 'Build and deploy a function or an app from a branch, tag, or commit.',
+  },
+  {
+    id: 'function',
+    name: 'Function',
+    desc: 'Write a handler here. No repository needed.',
   },
   {
     id: 'template',
@@ -39,14 +44,6 @@ export const SOURCES: readonly SourceOption[] = [
     name: 'Import',
     desc: 'Turn a repository with several services into a project.',
   },
-];
-
-/** The common path first: most people arrive with code, not an image or a
- * multi-service repository. The order inside a group is the order shown. */
-export const SOURCE_GROUPS: readonly { title: string; sources: readonly AppSource[] }[] = [
-  { title: 'From code', sources: ['git', 'template', 'empty'] },
-  { title: 'From an image', sources: ['container', 'worker'] },
-  { title: 'Bring an existing project', sources: ['import'] },
 ];
 
 export function sourceName(id?: AppSource): string {

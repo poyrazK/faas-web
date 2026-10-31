@@ -16,6 +16,8 @@ export interface SummaryInput {
   repo: string;
   ref: string;
   templateName?: string;
+  /** A function written in the console: the file its first deploy carries. */
+  handlerFile?: string;
   name: string;
   workspaceLabel: string;
   workspaceIsOrg: boolean;
@@ -72,7 +74,14 @@ export function summaryRows(i: SummaryInput): SummaryRow[] {
             value: `${repoRef}, right after create`,
             mono: true,
           }
-        : { key: 'first-deploy', label: 'First deploy', value: 'Later, from the CLI' }
+        : i.source === 'function' && i.handlerFile
+          ? {
+              key: 'first-deploy',
+              label: 'First deploy',
+              value: `${i.handlerFile}, right after create`,
+              mono: true,
+            }
+          : { key: 'first-deploy', label: 'First deploy', value: 'Later, from the CLI' }
     );
     rows.push(
       i.visibility === 'internal'
