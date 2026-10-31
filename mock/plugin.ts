@@ -2440,6 +2440,107 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
   return NO_CONTENT;
 });
 
+// PR previews from the console (faas handlers_preview_create.go,
+// handlers_preview_status.go): pr-{N}-{parent}, undeployed, with a lease; a
+// repeat for the same PR renews it. The plan caps open PR environments.
+route('POST', '/v1/apps/{slug}/previews', ({ params, body }) => {
+  const parent = app(params.slug);
+  if (parent.preview_of_slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'a preview cannot be used as the parent for another preview'
+    );
+  const pr = Number(body.pr_number);
+  if (!Number.isInteger(pr) || pr <= 0)
+    throw new Problem(400, 'validation_failed', 'pr_number must be greater than zero');
+  const ttl = Number(body.ttl_hours ?? 0);
+  if (ttl !== 0 && (!Number.isInteger(ttl) || ttl < 1 || ttl > 720))
+    throw new Problem(400, 'validation_failed', 'ttl_hours must be between 1 and 720');
+  const slug = `pr-${pr}-${parent.slug}`;
+  if (slug.length > 63)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'the generated preview slug must be at most 63 characters'
+    );
+  const expires = new Date(Date.now() + (ttl || 168) * 3_600_000).toISOString();
+  const existing = db.appBySlug(slug);
+  if (existing) {
+    if (existing.preview_of_slug !== parent.slug || existing.preview_pr_number !== pr)
+      throw new Problem(
+        409,
+        'validation_failed',
+        `generated preview slug "${slug}" is already in use`
+      );
+    Object.assign(existing, { preview_pr_state: 'open', preview_expires_at: expires });
+    return existing;
+  }
+  const open = new Set(
+    db.apps
+      .filter((a) => (a.preview_pr_number ?? 0) > 0 && a.preview_pr_state === 'open')
+      .map((a) => `${a.preview_of_slug}:${a.preview_pr_number}`)
+  );
+  if (open.size >= db.account.limits.preview_apps)
+    throw new Problem(
+      403,
+      'plan_limit_apps',
+      `${db.account.plan} plan allows ${db.account.limits.preview_apps} open PR preview environment(s); you have ${open.size}. Close a pull request or run \`gregale preview destroy\` on one of its previews.`
+    );
+  const created: db.App = {
+    ...parent,
+    id: db.id(),
+    slug,
+    url: parent.url.replace(`//${parent.slug}.`, `//${slug}.`),
+    canonical_url: undefined,
+    preview_of_slug: parent.slug,
+    preview_pr_number: pr,
+    preview_pr_state: 'open',
+    preview_expires_at: expires,
+    min_instances: 0,
+    status: 'undeployed',
+  };
+  db.apps.push(created);
+  return status(201, created);
+});
+route('GET', '/v1/preview/{slug}', ({ params }) => {
+  const a = app(params.slug);
+  if (!a.preview_of_slug)
+    throw new Problem(
+      404,
+      'preview_not_found',
+      'the slug does not identify a preview app; use the app endpoint for a production app'
+    );
+  const latest = (id: string) => db.deployments.find((d) => d.app_id === id);
+  const parent = db.appBySlug(a.preview_of_slug);
+  const candidate = latest(a.id);
+  const production = parent && latest(parent.id);
+  const artifact = (d?: db.Deployment) =>
+    d ? { deployment_id: d.id, status: d.status, image_digest: d.image_digest || undefined } : {};
+  return {
+    app: a,
+    parent,
+    latest_deployment: candidate,
+    production_deployment: production,
+    changes_from_production: {
+      artifact_changed: Boolean(
+        candidate?.image_digest &&
+        production?.image_digest &&
+        candidate.image_digest !== production.image_digest
+      ),
+      preview_artifact: artifact(candidate),
+      production_artifact: artifact(production),
+      configuration_changed_groups: [],
+    },
+    links: {
+      url: a.canonical_url || a.url,
+      logs: `/v1/apps/${a.slug}/logs`,
+      metrics: `/v1/apps/${a.slug}/metrics`,
+      configuration: `/v1/apps/${a.slug}`,
+    },
+  };
+});
+
 // Request analytics, request evidence, app lifecycle, upstream history,
 // rollout recovery and the tarball deploy.
 type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResponse'];
@@ -8366,21 +8467,136 @@ route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
   const org = requireOrgRole(params.organization, ANY_MEMBER);
   if (org.personal) return projectSummaries();
   return params.organization === 'acme-corp'
-    ? [{ ...projectSummaries()[0], ...teammateProject }]
+    ? [{ ...projectSummaries()[0], ...teammateProject }].filter(
+        (p) => !deletedOrgProjects.has(`${params.organization}/${p.slug}`)
+      )
     : [];
 });
 route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
   requireOrgRole(params.organization, ANY_MEMBER);
-  const found = projects.find((p) => p.slug === params.slug);
-  if (found) return found;
-  if (params.slug === teammateProject.slug && projects[0])
-    return { ...projects[0], slug: teammateProject.slug, name: 'acme-billing' };
-  throw new Problem(404, 'not_found', `project ${params.slug} not found`);
+  return findCompanyProject(params.organization, params.slug);
 });
 route('GET', '/v1/projects/{slug}', ({ params }) => {
   const project = projects.find((item) => item.slug === params.slug);
   if (!project) throw new Problem(404, 'not_found', 'Project not found.');
   return project;
+});
+// Project settings and deletion (faas handlers_projects.go:67, :142, :180).
+// Deleting detaches the apps; their domains, env and crons stay with them.
+// A company's project refuses a repository change (409 conflict) and needs an
+// owner or admin; MOCK_ORG_ROLE=developer shows the refusal.
+const deletedOrgProjects = new Set<string>();
+// The teammate's project, kept so a branch change sticks across reads.
+let teammateDetail: (typeof projects)[number] | undefined;
+function findCompanyProject(organization: string, slug: string) {
+  if (deletedOrgProjects.has(`${organization}/${slug}`))
+    throw new Problem(404, 'not_found', `project ${slug} not found`);
+  const found = projects.find((p) => p.slug === slug);
+  if (found) return found;
+  if (slug === teammateProject.slug && projects[0])
+    return (teammateDetail ??= {
+      ...structuredClone(projects[0]),
+      ...teammateProject,
+      org_id: db.ORG_ID,
+    });
+  throw new Problem(404, 'not_found', `project ${slug} not found`);
+}
+function companyProject(organization: string, slug: string) {
+  const forced = process.env.MOCK_ORG_ROLE;
+  if (forced && !['owner', 'admin'].includes(forced))
+    throw new Problem(403, 'org_role_forbidden', 'Only owners and admins manage company projects.');
+  requireOrgRole(organization, ['owner', 'admin']);
+  return findCompanyProject(organization, slug);
+}
+function personalProject(slug: string) {
+  const project = projects.find((item) => item.slug === slug);
+  if (!project) throw new Problem(404, 'not_found', `no project exists with slug ${slug}`);
+  return project;
+}
+const validBranch = (branch: string) =>
+  Boolean(branch) &&
+  branch.length <= 255 &&
+  !branch.startsWith('/') &&
+  !branch.endsWith('/') &&
+  !branch.includes('..') &&
+  ![...branch].some((c) => c.charCodeAt(0) <= 0x20 || c.charCodeAt(0) === 0x7f) &&
+  !/[~^:?*[\\]/.test(branch);
+function updateProject(
+  project: (typeof projects)[number],
+  body: components['schemas']['UpdateProjectRequest'] | undefined,
+  shared: boolean
+) {
+  if (body?.repo_full_name === undefined && body?.production_branch === undefined)
+    throw new Problem(400, 'validation_failed', 'repo_full_name or production_branch is required');
+  if (shared && body.repo_full_name?.trim())
+    throw new Problem(
+      409,
+      'conflict',
+      'organization GitHub installation binding is not available on shared project updates'
+    );
+  const branch = body.production_branch?.trim();
+  if (branch !== undefined && !validBranch(branch))
+    throw new Problem(
+      400,
+      'validation_failed',
+      'production_branch must be a valid non-empty Git ref name'
+    );
+  const repo = body.repo_full_name?.trim();
+  if (repo && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))
+    throw new Problem(400, 'validation_failed', 'repo_full_name must be owner/name');
+  if (repo && projects.some((p) => p !== project && p.repo_full_name === repo))
+    throw new Problem(
+      409,
+      'validation_failed',
+      'another project already uses this repository binding'
+    );
+  if (repo !== undefined) project.repo_full_name = repo || undefined;
+  if (branch !== undefined) project.production_branch = branch;
+  project.updated_at = new Date().toISOString();
+  return project;
+}
+function deletePreview(project: (typeof projects)[number]) {
+  const ids = project.workloads.map((w) => db.apps.find((a) => a.slug === w.slug)?.id);
+  const { workloads, exclusions: _exclusions, ...summary } = project;
+  return {
+    project: { ...summary, workload_count: workloads.length },
+    workloads,
+    domain_count: db.domains.filter((d) => ids.includes(d.app_id)).length,
+    env_count: workloads.reduce((n, w) => n + (db.env.get(w.slug)?.length ?? 0), 0),
+    cron_count: db.crons.filter((c) => ids.includes(c.app_id)).length,
+  } satisfies components['schemas']['ProjectDeletePreviewResponse'];
+}
+route('PATCH', '/v1/projects/{slug}', ({ params, body }) => {
+  const project = personalProject(params.slug);
+  return updateProject(
+    project,
+    body as components['schemas']['UpdateProjectRequest'],
+    Boolean(project.org_id)
+  );
+});
+route('GET', '/v1/projects/{slug}/delete-preview', ({ params }) =>
+  deletePreview(personalProject(params.slug))
+);
+route('DELETE', '/v1/projects/{slug}', ({ params }) => {
+  const project = personalProject(params.slug);
+  projects.splice(projects.indexOf(project), 1);
+  return NO_CONTENT;
+});
+route('PATCH', '/v1/orgs/{organization}/projects/{slug}', ({ params, body }) =>
+  updateProject(
+    companyProject(params.organization, params.slug),
+    body as components['schemas']['UpdateProjectRequest'],
+    true
+  )
+);
+route('GET', '/v1/orgs/{organization}/projects/{slug}/delete-preview', ({ params }) => {
+  requireOrgRole(params.organization, ANY_MEMBER);
+  return deletePreview(findCompanyProject(params.organization, params.slug));
+});
+route('DELETE', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
+  companyProject(params.organization, params.slug);
+  deletedOrgProjects.add(`${params.organization}/${params.slug}`);
+  return NO_CONTENT;
 });
 route('GET', '/v1/projects/{slug}/environments', ({ params }) => {
   const items = environmentInventory(params.slug);
