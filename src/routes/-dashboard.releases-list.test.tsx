@@ -47,6 +47,9 @@ vi.mock('@/components/dashboard/resource-table', () => ({
     error ? <button onClick={onRetry}>Retry</button> : null,
 }));
 vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({ accountId: '', state: 'loading', refresh: vi.fn() }),
+}));
 
 const { DeploymentsPage } = await import('@/components/dashboard/releases-page');
 

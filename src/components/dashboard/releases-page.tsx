@@ -17,6 +17,7 @@ import { TabNav, tabClassName } from '@/components/dashboard/tabs';
 import { sourceSize, type ReleasesSearch } from '@/components/dashboard/releases-search';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
 import { ReleaseProcess } from '@/components/dashboard/release-process';
+import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
 const routeApi = getRouteApi('/dashboard/releases');
@@ -426,6 +427,7 @@ export function DeploymentsPage() {
           }
         />
       )}
+      {view === 'releases' && <ReleasePreviews />}
     </div>
   );
 }

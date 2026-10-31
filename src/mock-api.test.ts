@@ -923,6 +923,81 @@ describe('workspace app mock contract', () => {
     expect(unknown.status).toBe(404);
   });
 });
+describe('PR preview create and read (B27)', () => {
+  const post = (path: string, body: unknown) =>
+    fetch(`${origin}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('creates pr-{N}-{parent} undeployed, then renews it on a repeat', async () => {
+    const apps = (await get('/v1/apps')).body as { slug: string; preview_of_slug?: string }[];
+    const parent = apps.find((app) => !app.preview_of_slug)!.slug;
+    const first = await post(`/v1/apps/${parent}/previews`, { pr_number: 77, ttl_hours: 24 });
+    expect(first.status).toBe(201);
+    const created = await first.json();
+    expect(created).toMatchObject({
+      slug: `pr-77-${parent}`,
+      preview_of_slug: parent,
+      preview_pr_number: 77,
+      preview_pr_state: 'open',
+      status: 'undeployed',
+    });
+    const lease = Date.parse(created.preview_expires_at) - Date.now();
+    expect(lease).toBeGreaterThan(23 * 3_600_000);
+    expect(lease).toBeLessThanOrEqual(24 * 3_600_000);
+    const again = await post(`/v1/apps/${parent}/previews`, { pr_number: 77 });
+    expect(again.status).toBe(200);
+    expect(Date.parse((await again.json()).preview_expires_at) - Date.now()).toBeGreaterThan(
+      6 * 86_400_000
+    );
+    const read = await get(`/v1/preview/pr-77-${parent}`);
+    expect(read.response.status).toBe(200);
+    expect(read.body).toMatchObject({
+      app: { slug: `pr-77-${parent}` },
+      parent: { slug: parent },
+      links: { url: created.url },
+      changes_from_production: { configuration_changed_groups: [] },
+    });
+    expect(read.body.latest_deployment).toBeUndefined();
+  });
+
+  it('refuses a preview parent, a bad PR number and a bad lease', async () => {
+    const apps = (await get('/v1/apps')).body as { slug: string; preview_of_slug?: string }[];
+    const preview = apps.find((app) => app.preview_of_slug)!.slug;
+    const parent = apps.find((app) => !app.preview_of_slug)!.slug;
+    for (const [slug, body] of [
+      [preview, { pr_number: 5 }],
+      [parent, { pr_number: 0 }],
+      [parent, { pr_number: 5, ttl_hours: 721 }],
+    ] as const) {
+      const response = await post(`/v1/apps/${slug}/previews`, body);
+      expect(response.status).toBe(400);
+      expect((await response.json()).code).toBe('validation_failed');
+    }
+  });
+
+  it('answers preview_not_found for a production app', async () => {
+    const apps = (await get('/v1/apps')).body as { slug: string; preview_of_slug?: string }[];
+    const parent = apps.find((app) => !app.preview_of_slug)!.slug;
+    const read = await get(`/v1/preview/${parent}`);
+    expect(read.response.status).toBe(404);
+    expect(read.body.code).toBe('preview_not_found');
+  });
+
+  it('enforces the plan preview limit with plan_limit_apps', async () => {
+    const apps = (await get('/v1/apps')).body as { slug: string; preview_of_slug?: string }[];
+    const parent = apps.find((app) => !app.preview_of_slug)!.slug;
+    let last: Response | undefined;
+    for (let pr = 900; pr < 912; pr++) {
+      last = await post(`/v1/apps/${parent}/previews`, { pr_number: pr });
+      if (last.status !== 201) break;
+    }
+    expect(last!.status).toBe(403);
+    expect((await last!.json()).code).toBe('plan_limit_apps');
+  });
+});
 
 describe('billing identity, status and invoice history mock contract', () => {
   const patchBilling = (body: unknown) =>
