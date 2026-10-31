@@ -21,6 +21,7 @@ import { slugIndex } from '@/lib/api/adapters';
 import { errorMessage } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
+import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
@@ -319,6 +320,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       />
 
       <CorsPresetsPanel slug={scoped} />
+      <EdgeRulesExtras slug={scoped} rules={scoped ? (data ?? []) : rules} />
 
       {(creating || editing) && (
         <EdgeRuleDialog

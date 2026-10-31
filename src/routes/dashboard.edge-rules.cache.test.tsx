@@ -29,6 +29,9 @@ vi.mock('@/lib/api/capabilities', () => ({
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('@/components/dashboard/cors-presets', () => ({ CorsPresetsPanel: () => null }));
+vi.mock('@/components/dashboard/edge-rules/edge-rules-extras', () => ({
+  EdgeRulesExtras: () => null,
+}));
 vi.mock('@/components/dashboard/edge-rules/dialog', () => ({ EdgeRuleDialog: () => null }));
 
 import { EdgeRulesBody } from './dashboard.edge-rules';

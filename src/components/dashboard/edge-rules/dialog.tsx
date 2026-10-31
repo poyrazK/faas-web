@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { useCapability } from '@/lib/api/capabilities';
+import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import { CapabilityNotice } from '../capability-notice';
 import { InlinePhase, queryPhase } from '../primitives';
 import {
@@ -18,6 +18,13 @@ import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ChipSet, NumberField, TextField, ToggleRow } from './fields';
 import { KINDS, KIND_ORDER, type ActionMap, type Kind } from './kinds';
+import {
+  PENALTY_KINDS,
+  PenaltyField,
+  samePenalty,
+  validatePenalty,
+  type Penalty,
+} from './penalty-field';
 
 /**
  * Create or edit one edge rule.
@@ -106,9 +113,17 @@ export function EdgeRuleDialog({
     cacheCapability.accountId === account?.id &&
     cacheCapability.state === 'available' &&
     account?.plan !== 'free';
+  // Challenge rules and penalties are released per account by platform flags
+  // (faas platformflags/catalog.go:359-380), which hidden_capabilities lists
+  // while off; apid refuses them before release (edgerules/release.go:155).
+  const challengeAccess = useCapabilityAccess('edge-browser-challenge').access;
+  const penaltyAccess = useCapabilityAccess('edge-penalty-box').access;
+  const challengeReleased = contextCurrent && challengeAccess === 'on';
+  const penaltyReleased = contextCurrent && penaltyAccess === 'on';
   const create = useCreateEdgeRule();
   const update = useUpdateEdgeRule();
   const editing = rule !== null;
+  const [penalty, setPenalty] = useState<Penalty | null>(rule?.penalty ?? null);
 
   const [kind, setKind] = useState<Kind | null>(null);
   const [match, setMatch] = useState<Match>({
@@ -157,7 +172,12 @@ export function EdgeRuleDialog({
 
   const def = kind ? KINDS[kind] : null;
   const planAllows = (k: Kind) =>
-    k === 'cache' ? canCache : !KINDS[k].paid || (account?.plan ?? 'free') !== 'free';
+    k === 'cache'
+      ? canCache
+      : (k !== 'challenge' || challengeReleased) &&
+        (!KINDS[k].paid || (account?.plan ?? 'free') !== 'free');
+  const showPenalty =
+    kind !== null && PENALTY_KINDS.has(kind) && (penaltyReleased || Boolean(rule?.penalty));
 
   const pick = (next: Kind) => {
     setKind(next);
@@ -173,7 +193,11 @@ export function EdgeRuleDialog({
     if (kind === 'cache' && !canCache) return;
     // The match block and then the kind's own rules; the server is the
     // backstop, not the plan.
-    const local = { ...validateMatch(match, kind), ...def.validate(action as never) };
+    const local = {
+      ...validateMatch(match, kind),
+      ...def.validate(action as never),
+      ...(showPenalty ? validatePenalty(penalty) : {}),
+    };
     if (Object.keys(local).length) {
       setFieldErrors(local);
       return;
@@ -189,6 +213,13 @@ export function EdgeRuleDialog({
       enabled: match.enabled,
       validate_mode: rule?.validate_mode ?? 'block',
       action,
+      // Sent only when it changed: clear_penalty removes one and releases the
+      // clients it holds (faas pkg/api/dto.go:10729-10734).
+      ...(!showPenalty || samePenalty(penalty, rule?.penalty)
+        ? {}
+        : penalty
+          ? { penalty }
+          : { clear_penalty: true }),
     };
 
     const done = (verb: string) => {
@@ -299,7 +330,9 @@ export function EdgeRuleDialog({
                     ? KINDS[k].desc
                     : k === 'cache'
                       ? 'Requires confirmed response-cache availability.'
-                      : 'Not on the free plan.'}
+                      : k === 'challenge' && !challengeReleased
+                        ? 'Not released to this account yet.'
+                        : 'Not on the free plan.'}
                 </span>
               </button>
             );
@@ -447,6 +480,11 @@ export function EdgeRuleDialog({
                   ) : undefined
                 }
               />
+            )}
+            {showPenalty && (
+              <div className="border-t border-border">
+                <PenaltyField value={penalty} onChange={setPenalty} errors={fieldErrors} />
+              </div>
             )}
           </section>
         </div>
