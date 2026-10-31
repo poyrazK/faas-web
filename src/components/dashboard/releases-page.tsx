@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { getRouteApi, Link } from '@tanstack/react-router';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { CopyableId } from '@/components/ui/copyable-id';
@@ -14,21 +14,12 @@ import type { components } from '@/lib/api/schema';
 import { Button } from '@/components/ui/button';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
 import { TabNav, tabClassName } from '@/components/dashboard/tabs';
-import {
-  sourceSize,
-  validateReleasesSearch,
-  type ReleasesSearch,
-} from '@/components/dashboard/releases-search';
-import { consoleHead } from '@/lib/seo';
+import { sourceSize, type ReleasesSearch } from '@/components/dashboard/releases-search';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
 import { ReleaseProcess } from '@/components/dashboard/release-process';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
-export const Route = createFileRoute('/dashboard/releases')({
-  component: DeploymentsPage,
-  validateSearch: validateReleasesSearch,
-  head: () => consoleHead('releases'),
-});
+const routeApi = getRouteApi('/dashboard/releases');
 
 type Build = components['schemas']['BuildResponse'];
 type Deployment = components['schemas']['DeploymentResponse'];
@@ -52,8 +43,8 @@ interface ReleaseRow {
 }
 
 export function DeploymentsPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
+  const search = routeApi.useSearch();
+  const navigate = routeApi.useNavigate();
   const apps = useApps();
   const deploymentsQuery = useInfiniteDeployments();
   const buildsQuery = useInfiniteBuilds();

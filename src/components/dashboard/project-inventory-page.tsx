@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { getRouteApi, Link } from '@tanstack/react-router';
 import { Upload } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
@@ -17,9 +17,8 @@ import {
   Panel,
   StateBadge,
 } from '@/components/dashboard/primitives';
-import { Route as ProjectsRoute } from './dashboard.projects';
 
-export const Route = createFileRoute('/dashboard/projects/')({ component: ProjectInventory });
+const projectsRoute = getRouteApi('/dashboard/projects');
 
 const PAGE = 10;
 
@@ -149,8 +148,8 @@ export function ProjectInventory() {
   const membership = useProjectMembership(account?.id ?? '');
   const { workflows, loading: appsLoading, error: appsError, refresh } = useData();
   const workspace = useWorkspaceTarget();
-  const { q = '' } = ProjectsRoute.useSearch();
-  const navigate = ProjectsRoute.useNavigate();
+  const { q = '' } = projectsRoute.useSearch();
+  const navigate = projectsRoute.useNavigate();
   const [limit, setLimit] = useState(PAGE);
   const apps = new Map(workflows.map((app) => [app.id, app]));
   const projects = membership.projects.filter((project) => {

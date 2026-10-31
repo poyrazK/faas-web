@@ -1,19 +1,8 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { ArrowRight } from 'iconoir-react';
 import { CopyButton } from '@/components/docs/copy-button';
 import { DOC_SECTIONS } from '@/lib/docs-manifest';
-import { pageHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/docs/')({
-  component: DocsIndex,
-  head: () =>
-    pageHead({
-      title: 'Documentation',
-      description:
-        'Deploy your first Gregale app, connect a repository, and learn how to run, observe, and scale your backend.',
-    }),
-});
 
 const FIRST_COMMANDS = 'npm install -g gregale\ngregale login';
 const TASKS = [

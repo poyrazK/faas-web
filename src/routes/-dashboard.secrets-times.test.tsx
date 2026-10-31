@@ -27,7 +27,7 @@ vi.mock('@/components/dashboard/app-select', () => ({
   useSelectedApp: () => ({}),
 }));
 
-const { SecretsBody } = await import('./dashboard.secrets');
+const { SecretsBody } = await import('@/components/dashboard/secrets-page');
 
 describe('Secrets table', () => {
   it('shows when a secret was updated, with the exact time on hover', () => {

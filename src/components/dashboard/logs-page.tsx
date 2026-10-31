@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+import { getRouteApi } from '@tanstack/react-router';
 import { Link } from '@tanstack/react-router';
 import {
   ArrowDown,
@@ -47,16 +47,11 @@ import { useAppDeployments, useAppInstances } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
-import { consoleHead } from '@/lib/seo';
 import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
 import { hasRunnableDeployment } from '@/lib/deployment-status';
 
-export const Route = createFileRoute('/dashboard/logs')({
-  component: LogsPage,
-  head: () => consoleHead('logs'),
-  validateSearch: validateLogsSearch,
-});
+const routeApi = getRouteApi('/dashboard/logs');
 
 const STATUS_LABEL: Record<string, { label: string; color?: string }> = {
   idle: { label: 'idle' },
@@ -602,9 +597,9 @@ function SavedViewsMenu({
   );
 }
 
-function LogsPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
+export function LogsPage() {
+  const search = routeApi.useSearch();
+  const navigate = routeApi.useNavigate();
   const appState = useSelectedApp();
   const { select, apps } = appState;
   const slug = search.app

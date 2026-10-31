@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
@@ -9,13 +9,7 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAddUpstream, useDeleteUpstream, useUpstreams } from '@/lib/api/queries';
-import { consoleHead } from '@/lib/seo';
 import { UpstreamHistoryPanel } from '@/components/dashboard/upstream-history';
-
-export const Route = createFileRoute('/dashboard/upstreams')({
-  component: UpstreamsPage,
-  head: () => consoleHead('upstreams'),
-});
 
 interface UpstreamRow {
   id: string;
@@ -311,7 +305,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
   );
 }
 
-function UpstreamsPage() {
+export function UpstreamsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   return (

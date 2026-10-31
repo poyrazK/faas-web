@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { WarningTriangle } from 'iconoir-react';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -7,12 +7,6 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { useAppRoutes } from '@/lib/api/queries';
 import { appRouteUrl } from '@/lib/app-url';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { consoleHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/dashboard/routes')({
-  component: ApisPage,
-  head: () => consoleHead('routes'),
-});
 
 /**
  * Routes served by an app, from `/v1/apps/{slug}/routes`.
@@ -122,7 +116,7 @@ export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }
   );
 }
 
-function ApisPage() {
+export function ApisPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   return (

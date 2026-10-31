@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { ArrowDown, ArrowUp, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -18,16 +18,10 @@ import {
   type EdgeRule,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
-import { consoleHead } from '@/lib/seo';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
-
-export const Route = createFileRoute('/dashboard/edge-rules')({
-  component: EdgeRulesPage,
-  head: () => consoleHead('edge-rules'),
-});
 
 /**
  * Rules the gateway applies before a request reaches an app.
@@ -334,7 +328,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   );
 }
 
-function EdgeRulesPage() {
+export function EdgeRulesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader

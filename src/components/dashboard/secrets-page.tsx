@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
@@ -20,13 +20,7 @@ import { cn } from '@/lib/utils';
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 import { Timestamp } from '@/components/ui/timestamp';
-import { consoleHead } from '@/lib/seo';
 import { configChangeNote } from '@/lib/config-history';
-
-export const Route = createFileRoute('/dashboard/secrets')({
-  component: SecretsPage,
-  head: () => consoleHead('secrets'),
-});
 
 /**
  * Sealed secrets, from `/v1/apps/{slug}/secrets`.
@@ -374,7 +368,7 @@ export function SecretsBody({ slug }: { slug: string }) {
   );
 }
 
-function SecretsPage() {
+export function SecretsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   return (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { Button } from '@/components/ui/button';
 import { PageHeader, Panel, StatTile } from '@/components/dashboard/primitives';
 import { FIELD, Textarea } from '@/components/ui/field';
@@ -18,12 +18,6 @@ import {
 } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { useToast } from '@/components/ui/toast';
-import { consoleHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/dashboard/queues')({
-  component: QueuesPage,
-  head: () => consoleHead('queues'),
-});
 
 /**
  * The per-app FIFO queue, from `/v1/apps/{slug}/queues/*`.
@@ -309,7 +303,7 @@ export function QueuesBody({ slug }: { slug: string }) {
   );
 }
 
-function QueuesPage() {
+export function QueuesPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   return (

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
-import { createFileRoute } from '@tanstack/react-router';
+
 import { ListSelect, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
@@ -19,12 +19,6 @@ import {
   useRotateAlertSecret,
   useUpdateAlert,
 } from '@/lib/api/queries';
-import { consoleHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/dashboard/alerts')({
-  component: AlertsPage,
-  head: () => consoleHead('alerts'),
-});
 
 interface AlertRow {
   id: string;
@@ -476,7 +470,7 @@ export function AlertsBody({ slug }: { slug: string }) {
   );
 }
 
-function AlertsPage() {
+export function AlertsPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   return (

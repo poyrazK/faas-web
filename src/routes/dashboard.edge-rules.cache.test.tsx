@@ -31,7 +31,7 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast 
 vi.mock('@/components/dashboard/cors-presets', () => ({ CorsPresetsPanel: () => null }));
 vi.mock('@/components/dashboard/edge-rules/dialog', () => ({ EdgeRuleDialog: () => null }));
 
-import { EdgeRulesBody } from './dashboard.edge-rules';
+import { EdgeRulesBody } from '@/components/dashboard/edge-rules-page';
 
 const cacheRule: EdgeRule = cacheEdgeRule({
   id: 'cache-1',

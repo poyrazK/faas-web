@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
-import { createFileRoute } from '@tanstack/react-router';
+import { getRouteApi } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
@@ -24,20 +24,9 @@ import {
 import { useAuth } from '@/lib/auth';
 import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
 import { formatRelative } from '@/lib/mock-data';
-import { consoleHead } from '@/lib/seo';
 import type { components } from '@/lib/api/schema';
 
-export function validateWebhookSearch(search: Record<string, unknown>): {
-  direction?: 'inbound' | 'outbound';
-} {
-  return { direction: search.direction === 'inbound' ? 'inbound' : undefined };
-}
-
-export const Route = createFileRoute('/dashboard/webhooks')({
-  component: WebhooksPage,
-  head: () => consoleHead('webhooks'),
-  validateSearch: validateWebhookSearch,
-});
+const routeApi = getRouteApi('/dashboard/webhooks');
 
 export function WebhooksHub({
   accountId,
@@ -498,12 +487,12 @@ export function WebhooksBody({ slug }: { slug: string }) {
   );
 }
 
-function WebhooksPage() {
+export function WebhooksPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   const { account } = useAuth();
-  const { direction } = Route.useSearch();
-  const navigate = Route.useNavigate();
+  const { direction } = routeApi.useSearch();
+  const navigate = routeApi.useNavigate();
   return (
     <div className="flex flex-col gap-6">
       <PageHeader

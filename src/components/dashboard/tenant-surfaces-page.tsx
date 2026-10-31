@@ -1,19 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { TenantSurfaces } from '@/components/dashboard/tenant-surfaces';
-import { consoleHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/dashboard/tenant-surfaces')({
-  component: TenantSurfacesPage,
-  head: () => consoleHead('tenant-surfaces'),
-});
 
 export function TenantSurfacesBody({ slug }: { slug: string }) {
   return <TenantSurfaces slug={slug} />;
 }
 
-function TenantSurfacesPage() {
+export function TenantSurfacesPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
 

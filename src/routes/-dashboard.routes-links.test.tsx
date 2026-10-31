@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { RoutesBody } from './dashboard.routes';
+import { RoutesBody } from '@/components/dashboard/routes-page';
 
 vi.mock('@/lib/api/queries', () => ({
   useAppRoutes: () => ({

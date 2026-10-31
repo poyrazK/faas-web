@@ -1,14 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { OpenAPIImport } from '@/components/dashboard/openapi-import';
 import { OpenAPIRoutePreview } from '@/components/dashboard/openapi-route-preview';
-import { consoleHead } from '@/lib/seo';
-
-export const Route = createFileRoute('/dashboard/openapi')({
-  component: OpenAPIPage,
-  head: () => consoleHead('openapi'),
-});
 
 export function OpenAPIBody({ slug }: { slug: string }) {
   // Keyed on the app: a pasted document, its preview and the chosen
@@ -21,7 +14,7 @@ export function OpenAPIBody({ slug }: { slug: string }) {
   );
 }
 
-function OpenAPIPage() {
+export function OpenAPIPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
 
