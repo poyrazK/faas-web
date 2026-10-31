@@ -26,6 +26,12 @@ export interface Template {
   steps: string[];
 }
 
+/**
+ * Placeholder step: the wizard renders it as the deploy command for the app
+ * just created (`cliDeployCommand`), since the slug is not known here.
+ */
+export const DEPLOY_STEP = 'deploy';
+
 export const TEMPLATES: Template[] = [
   {
     slug: 'node-api',
@@ -52,7 +58,7 @@ export default async function handler(req) {
   }
   return json(404, { error: 'not_found', path: req.path });
 }`,
-    steps: ['Save the scaffold as node24.js in an empty directory.', 'gregale deploy --app'],
+    steps: ['Save the scaffold as node24.js in an empty directory.', DEPLOY_STEP],
   },
   {
     slug: 'node-webhook',
@@ -74,7 +80,7 @@ export default async function handler(req) {
 }`,
     steps: [
       'Save the scaffold as node24.js in an empty directory.',
-      'gregale deploy --app',
+      DEPLOY_STEP,
       'Point the sender at the app URL, then watch Logs for deliveries.',
     ],
   },
@@ -100,7 +106,7 @@ def handler(request):
     if request["method"] == "GET" and request["path"] == "/":
         return _json(200, {"ok": True, "service": "python-api"})
     return _json(404, {"error": "not_found", "path": request["path"]})`,
-    steps: ['Save the scaffold as handler.py in an empty directory.', 'gregale deploy --app'],
+    steps: ['Save the scaffold as handler.py in an empty directory.', DEPLOY_STEP],
   },
   {
     slug: 'python-report',
@@ -124,7 +130,7 @@ def handler(request):
     return {"status": 200, "headers": {"content-type": "application/json"}, "body_b64": body}`,
     steps: [
       'Save the scaffold as handler.py in an empty directory.',
-      'gregale deploy --app',
+      DEPLOY_STEP,
       'Create a Cron Job for the app (Cron Jobs in the sidebar) with your schedule.',
     ],
   },
@@ -173,7 +179,7 @@ func main() {
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(resp)
 }`,
-    steps: ['Save the scaffold as main.go in an empty directory.', 'gregale deploy --app'],
+    steps: ['Save the scaffold as main.go in an empty directory.', DEPLOY_STEP],
   },
   {
     slug: 'go-pinger',
@@ -212,7 +218,7 @@ func main() {
     steps: [
       'Save the scaffold as main.go in an empty directory.',
       'Set a TARGET_URL secret on the app.',
-      'gregale deploy --app',
+      DEPLOY_STEP,
       'Create a Cron Job for the app with your check interval.',
     ],
   },

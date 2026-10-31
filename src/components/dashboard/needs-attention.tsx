@@ -149,7 +149,7 @@ export function NeedsAttentionContent({
   );
   const exhausted = Boolean(allowance && allowance.used_gb_hours >= allowance.included_gb_hours);
   // A reached cap parks running apps and refuses new wakes (ADR-1162), so it
-  // outranks a low allowance. €0 is reached as soon as the allowance is gone.
+  // outranks a low allowance. $0 is reached as soon as the allowance is gone.
   const capPhase = spendCap ? readPhase(spendCap) : 'ready';
   const capCents = capPhase === 'ready' ? spendCap?.data?.overage_cap_cents : undefined;
   const overageCents = allowance?.overage_cents ?? 0;

@@ -28,3 +28,29 @@ export const CAPABILITY_LABELS: Record<CapabilityViewState, string> = {
   'plan-not-entitled': 'Not included in your plan',
   'runtime-unavailable': 'Unavailable on this installation',
 };
+
+export type CapabilityAccess =
+  'loading' | 'on' | 'off' | 'plan-not-entitled' | 'runtime-unavailable' | 'registry-error';
+
+/**
+ * Whether a catalog capability is usable by this account, read the way apid
+ * decides it: `hidden_capabilities` names every capability whose flag is off,
+ * internal ones included (faas handlers_capabilities.go); internal ones are
+ * never listed in `capabilities` (pkg/api/capabilities.go), so an id absent
+ * from both is released to this account. A server without the gate omits
+ * `hidden_capabilities`, which hides nothing.
+ */
+export function capabilityAccess(
+  registry: CapabilityRegistry | undefined,
+  id: string,
+  phase: 'loading' | 'error' | 'ready'
+): CapabilityAccess {
+  if (phase === 'error') return 'registry-error';
+  if (phase === 'loading' || !registry) return 'loading';
+  if (registry.hidden_capabilities?.includes(id)) return 'off';
+  const entry = registry.capabilities.find((c) => c.key === id);
+  if (!entry || entry.enabled) return 'on';
+  return entry.unavailable_reason === 'runtime_unavailable'
+    ? 'runtime-unavailable'
+    : 'plan-not-entitled';
+}
