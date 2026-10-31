@@ -104,8 +104,11 @@ export function toWorkflow(app: App, metrics?: AppsMetrics, latest?: ApiDeployme
     reportedStatus: app.status,
     url: app.url,
     visibility: app.visibility,
-    // Metrics come from the Prometheus rollup and are absent when it is
-    // degraded — zero is the honest reading of "no requests in the window".
+    // Metrics come from the Prometheus rollup. An app missing from a healthy
+    // rollup had no requests in the window, so zero is its reading. With no
+    // rollup at all (a plan without metrics) or a degraded one, the zeros are
+    // placeholders and the row says its metrics are unavailable.
+    metricsUnavailable: !metrics || metrics.source !== 'prometheus' || !metrics.apps,
     invocations24h: row?.request_count ?? 0,
     avgDurationMs: Math.round(row?.latency_p50_ms ?? 0),
     coldStartP50Ms: Math.round(row?.wake_p95_ms ?? 0),

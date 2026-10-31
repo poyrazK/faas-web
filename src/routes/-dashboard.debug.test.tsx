@@ -53,6 +53,7 @@ const fixtures = vi.hoisted(() => ({
       latency_ms: 40,
       count: 1,
       cold_boot: true,
+      wake_id: 'wk-cold',
       received_at: '2026-09-11T09:00:00Z',
     },
     {
@@ -77,6 +78,12 @@ const fixtures = vi.hoisted(() => ({
     first_detected_at: '2026-09-11T08:00:00Z',
     last_detected_at: '2026-09-11T09:00:00Z',
   },
+}));
+// The capability registry is a query; these pages render without a client here.
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<typeof import('@/lib/api/capabilities')>()),
+  useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -163,6 +170,38 @@ vi.mock('@/lib/api/queries', async (original) => {
           : undefined
       ),
     useCompareDeployments: () => useMutation({ mutationFn: fixtures.compare }),
+    useWakeTimeline: (_slug: string, wakeId: string) => ({
+      data: {
+        pages: [
+          {
+            wake_id: wakeId,
+            app_id: 'app-1',
+            limit: 1000,
+            next_cursor: '',
+            events: [
+              {
+                at: '2026-09-11T09:00:00.000Z',
+                kind: 'wake.boot_started',
+                actor: 'schedd',
+                data: { method: 'restore' },
+              },
+              {
+                at: '2026-09-11T09:00:00.250Z',
+                kind: 'wake.boot_completed',
+                actor: 'schedd',
+                data: { method: 'restore' },
+              },
+            ],
+          },
+        ],
+      },
+      isPending: false,
+      error: null,
+      refetch: fixtures.retry,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
+    }),
   };
 });
 
@@ -631,5 +670,26 @@ describe('Debugger investigation navigation', () => {
         'No comparison traffic was returned for the selected route in this window.'
       )
     ).toBeInTheDocument();
+  });
+
+  it('opens the wake a cold request admitted, one dialog at a time, and returns to the evidence', async () => {
+    const router = await mount('/dashboard/debug?app=alpha&request=cold');
+    await userEvent.click(await screen.findByRole('button', { name: 'Woke the app · Open wake' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ request: 'cold', wake: 'wk-cold' })
+    );
+    const drawer = await screen.findByRole('dialog', { name: 'Wake' });
+    expect(within(drawer).getAllByText('250 ms').length).toBeGreaterThan(0);
+    // The evidence dialog steps aside while the wake is open.
+    await waitFor(() => expect(screen.getAllByRole('dialog')).toHaveLength(1));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(router.state.location.search.wake).toBeUndefined());
+    expect(router.state.location.search).toMatchObject({ request: 'cold' });
+    expect(await screen.findByRole('heading', { name: 'What happened' })).toBeInTheDocument();
+  });
+
+  it('opens a wake from a pasted link in the app Debugger tab', async () => {
+    await mount('/dashboard/apps/alpha?tab=Debugger&wake=wk-cold');
+    expect(await screen.findByRole('dialog', { name: 'Wake' })).toBeInTheDocument();
   });
 });

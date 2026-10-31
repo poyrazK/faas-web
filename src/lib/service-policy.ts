@@ -7,7 +7,7 @@ export interface ServicePolicyDraft {
   scopeMode: 'clear' | 'deny' | 'rules';
   scopesJson: string;
   targets: string;
-  policy: 'account' | 'declared';
+  policy: 'account' | 'declared' | 'project';
   transport: 'http' | 'https';
   allowForwardTargets: boolean;
 }
@@ -119,7 +119,8 @@ export function buildServicePolicyPatch(
         draft.callerMode === 'account' ? null : draft.callerMode === 'deny' ? [] : callers,
       allowed_service_call_scopes: scopes,
       service_binding_targets: targets,
-      service_binding_policy: draft.policy,
+      // `project` is set by the project manifest; apid rejects writing it.
+      ...(draft.policy === 'project' ? {} : { service_binding_policy: draft.policy }),
       service_binding_transport: draft.transport,
     },
   };

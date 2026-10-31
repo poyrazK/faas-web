@@ -57,6 +57,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Install the CLI, deploy a starter API, and verify its live URL.',
       },
       {
+        slug: 'quickstart',
+        source: 'docs/quickstart.md',
+        title: 'Guided first deploy',
+        summary:
+          'Let `gregale start` detect, review, and launch an existing project, then iterate on it.',
+      },
+      {
         slug: 'deploy-from-github',
         source: 'docs/deploys.md',
         title: 'Deploy from your repository',
@@ -71,8 +78,9 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'cli',
         source: 'docs/cli-setup.md',
-        title: 'CLI completion & man pages',
-        summary: 'Set up shell completion and offline command reference.',
+        title: 'CLI guide',
+        summary:
+          'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
       },
     ],
   },
@@ -87,18 +95,25 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: `Parked apps hold zero resident RAM. ${RESTORE_TARGET}. Measurement boundaries and cold-boot fallback.`,
       },
       {
+        slug: 'scaling-policy',
+        source: 'docs/scaling-policy.md',
+        title: 'Scaling policy',
+        summary:
+          'Instance bounds, scaling signals, custom metrics, and scheduled warm windows per app.',
+      },
+      {
         slug: 'storage',
         source: 'docs/storage.md',
         title: 'Storage',
         summary:
           'What the platform stores per app: VM snapshots, image layers, and what you pay for.',
       },
-      {
-        slug: 'object-storage',
-        source: 'docs/object-storage.md',
-        title: 'Object storage',
-        summary: 'Preview: managed object buckets, credentials, and storage rollout limits.',
-      },
+      // `docs/object-storage.md` (slug `object-storage`) and `docs/executions.md`
+      // (slug `executions`) were published here until 2026-10-20. Both carry an
+      // operator half — install procedure, Ansible/systemd paths, loopback
+      // listeners, migration order, daemon flags — that upstream has not split
+      // out yet (poyrazK/faas#5023). They are listed in `UNPUBLISHED_DOCS`
+      // with the reason, and come back as manifest entries once cut.
       {
         slug: 'custom-domains',
         source: 'docs/domains.md',
@@ -106,16 +121,176 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Attach, verify, and diagnose your own domain on a deployed app.',
       },
       {
-        slug: 'executions',
-        source: 'docs/executions.md',
-        title: 'Disposable executions',
-        summary: 'Run bounded Node.js or Python work in a fresh isolated microVM.',
-      },
-      {
         slug: 'preview-environments',
         source: 'docs/preview-environments.md',
         title: 'Preview environments',
         summary: 'Per-PR deployments with their own URL, shared app quotas, and cleanup lifecycle.',
+      },
+      {
+        slug: 'dev',
+        source: 'docs/gregale-dev.md',
+        title: 'Remote dev environments',
+        summary:
+          'Sync local code to a cloud dev environment with a stable URL, live patches, and debugging.',
+      },
+      {
+        slug: 'apps',
+        source: 'docs/apps.md',
+        title: 'Apps',
+        summary:
+          'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
+      },
+      {
+        slug: 'functions',
+        source: 'docs/functions.md',
+        title: 'Functions and runtimes',
+        summary: 'Function handlers, streaming, budgets, runtimes and database requests.',
+      },
+      {
+        slug: 'multi-service',
+        source: 'docs/multi-service-apps.md',
+        title: 'Multi-service apps',
+        summary: 'Deploy a Compose project or several services as one project.',
+      },
+      {
+        slug: 'jobs',
+        source: 'docs/jobs.md',
+        title: 'Jobs',
+        summary: 'Run-to-completion tasks from an OCI image, on demand or on a schedule.',
+      },
+      {
+        slug: 'crons',
+        source: 'docs/crons.md',
+        title: 'Crons',
+        summary: 'Call a path on your app on a schedule, waking it when needed.',
+      },
+      {
+        slug: 'event-driven',
+        source: 'docs/event-driven.md',
+        title: 'Event-driven workloads',
+        summary: 'Async invokes, workflows, delayed tasks and deployment webhooks.',
+      },
+      {
+        slug: 'code-workflows',
+        source: 'docs/code-workflows.md',
+        title: 'Code-first workflows',
+        summary: 'Durable workflows written as ordinary async functions.',
+      },
+      {
+        slug: 'networking',
+        source: 'docs/networking.md',
+        title: 'Networking',
+        summary: 'Outbound rules, WebSockets, gRPC, internal services and service bindings.',
+      },
+    ],
+  },
+  {
+    title: 'Configure',
+    blurb: 'What an app is given, and where it may reach.',
+    entries: [
+      {
+        slug: 'env',
+        source: 'docs/env.md',
+        title: 'Environment variables',
+        summary:
+          'Non-secret configuration, its precedence, history, rollback, and the config guard.',
+      },
+      {
+        slug: 'deploy-overrides',
+        source: 'docs/deploy-overrides.md',
+        title: 'Deployment overrides',
+        summary: 'Pin the start command, port, health path, and readiness probe in gregale.yaml.',
+      },
+      {
+        slug: 'build',
+        source: 'docs/build.md',
+        title: 'Builds and framework detection',
+        summary:
+          'How a framework is detected and built, how to override it, and how to read a failure.',
+      },
+      {
+        slug: 'companions',
+        source: 'docs/companions.md',
+        title: 'Application companions',
+        summary:
+          'Run a collector, proxy, or other helper alongside an app, with probes and dependencies.',
+      },
+      {
+        slug: 'registry-credentials',
+        source: 'docs/registry-credentials.md',
+        title: 'Private registry credentials',
+        summary: 'Store write-only credentials so private OCI images can be pulled at deploy time.',
+      },
+      {
+        slug: 'static-egress-ip',
+        source: 'docs/static-egress-ip.md',
+        title: 'Static egress IP',
+        summary: 'Reserve a fixed outbound address an upstream service can allowlist.',
+      },
+      {
+        slug: 'queue-pull-leases',
+        source: 'docs/queue-pull-leases.md',
+        title: 'Pull queue leases',
+        summary:
+          'Consume queue messages from a worker without an HTTP listener: lease, ack, nack, extend.',
+      },
+      {
+        slug: 'secrets',
+        source: 'docs/secrets.md',
+        title: 'Delivered secrets',
+        summary: 'Set, rotate and hot-reload secrets without restarting the app.',
+      },
+      {
+        slug: 'auth',
+        source: 'docs/auth.md',
+        title: 'Authentication',
+        summary: 'CLI login, scoped tokens for CI, MFA and OIDC token exchange.',
+      },
+      {
+        slug: 'edge-rules',
+        source: 'docs/edge-rules.md',
+        title: 'Edge rules',
+        summary: 'Redirects, headers, rate limits, IP and geo rules at the edge.',
+      },
+    ],
+  },
+  {
+    title: 'Observe',
+    blurb: 'What the platform can tell you about a request.',
+    entries: [
+      {
+        slug: 'logs',
+        source: 'docs/logs.md',
+        title: 'Logs',
+        summary:
+          'Live tail, archived logs of parked instances, retention by plan, filters and log drains.',
+      },
+      {
+        slug: 'tracing',
+        source: 'docs/tracing.md',
+        title: 'Request tracing',
+        summary:
+          'One-setting OpenTelemetry tracing to see slow or failing dependencies per request.',
+      },
+      {
+        slug: 'synthetic-checks',
+        source: 'docs/synthetic-checks.md',
+        title: 'Synthetic checks',
+        summary:
+          'Probe a path on a schedule from outside, track uptime and latency, alert on failure.',
+      },
+      {
+        slug: 'edge-rule-trace',
+        source: 'docs/edge-rule-trace.md',
+        title: 'Trace edge rules',
+        summary:
+          'Replay a request against an app’s edge rules from a JSON scenario to see what applies.',
+      },
+      {
+        slug: 'alerts',
+        source: 'docs/alerts.md',
+        title: 'Alerts',
+        summary: 'Alert presets, notification channels and anomaly rules.',
       },
     ],
   },
@@ -135,14 +310,13 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Python 3.13',
         summary: 'The Python runtime: entrypoint, dependency install, and image contents.',
       },
+      // `docs/runtimes/go124.md` (slug `runtime-go`) is held back since
+      // 2026-10-20: its troubleshooting table tells the reader to apply
+      // migration 00043 and revert a field in `pkg/imaged/handler.go`
+      // (poyrazK/faas#5023). Not a catalog path, so it has no
+      // `UNPUBLISHED_DOCS` row; it returns here once upstream cuts the rows.
       {
-        slug: 'runtime-go',
-        source: 'docs/runtimes/go124.md',
-        title: 'Go 1.24',
-        summary: 'The Go runtime, including the Alpine variant and static build behaviour.',
-      },
-      {
-        slug: 'tracing',
+        slug: 'trace-propagation',
         source: 'docs/runtimes/trace-propagation.md',
         title: 'Trace propagation',
         summary: 'How trace context travels through the gateway into your handler.',
@@ -176,6 +350,44 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/faas_openapi_spec.md',
         title: 'Gregale API specification',
         summary: 'The OpenAPI contract, supported routes, response shapes, and CI guarantees.',
+      },
+      {
+        slug: 'account',
+        source: 'docs/account.md',
+        title: 'Account and organizations',
+        summary:
+          'Identity, organizations, members, feature availability, data export, and deletion.',
+      },
+      {
+        slug: 'api-monetization',
+        source: 'docs/api-monetization.md',
+        title: 'API monetization',
+        summary:
+          'Beta: meter, price, and invoice your API’s own customers with rate cards and statements.',
+      },
+      {
+        slug: 'billing',
+        source: 'docs/billing.md',
+        title: 'Billing',
+        summary: 'Spend caps, usage costs, budgets and invoice exports.',
+      },
+      {
+        slug: 'errors',
+        source: 'docs/errors.md',
+        title: 'Errors',
+        summary: 'Error codes, what they mean and what to do next.',
+      },
+      {
+        slug: 'sdks',
+        source: 'docs/sdks.md',
+        title: 'SDKs',
+        summary: 'Install the Node, Python and Go SDKs.',
+      },
+      {
+        slug: 'agents',
+        source: 'docs/agents.md',
+        title: 'Coding agents',
+        summary: 'Use Gregale from Claude Code, Codex, Cursor and other agents.',
       },
     ],
   },

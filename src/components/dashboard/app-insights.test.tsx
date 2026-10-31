@@ -170,6 +170,24 @@ describe('WakeTimelinePanel', () => {
     render(withRouter(<WakeTimelinePanel slug="api" />));
     expect(await screen.findByText(/does not include per-app metrics/i)).toBeInTheDocument();
   });
+
+  it('opens a wake from its row, and only rows with a wake ID offer it', async () => {
+    const base = useAppWakeTimeline('api');
+    useAppWakeTimeline.mockReturnValue({
+      ...base,
+      data: { ...base.data, rows: [{ ...base.data.rows[0], wake_id: 'wk-1' }, base.data.rows[1]] },
+    });
+    const onOpenWake = vi.fn();
+    render(<WakeTimelinePanel slug="api" onOpenWake={onOpenWake} />);
+    expect(screen.getAllByRole('button', { name: /^Open wake/ })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Open wake wk-1' }));
+    expect(onOpenWake).toHaveBeenCalledWith('wk-1');
+  });
+
+  it('offers no open buttons when the host cannot open a wake', () => {
+    render(<WakeTimelinePanel slug="api" />);
+    expect(screen.queryByRole('button', { name: /^Open wake/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('AppUsagePanel', () => {

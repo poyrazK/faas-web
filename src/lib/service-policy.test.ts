@@ -70,3 +70,18 @@ it('validates scoped method and path grants before review', () => {
     ).error
   ).toMatch(/path prefix/i);
 });
+
+it('keeps a project policy instead of reading it as account', async () => {
+  const { draftFromServicePolicy } = await import('./service-policy');
+  // faas pkg/api/service_bindings.go:25 — any service in the caller's project,
+  // declared bindings for every other target.
+  const draft = draftFromServicePolicy({ service_binding_policy: 'project' } as never);
+  expect(draft.policy).toBe('project');
+});
+
+it('never sends the project policy, which only the project manifest sets', async () => {
+  const { draftFromServicePolicy, buildServicePolicyPatch } = await import('./service-policy');
+  const draft = draftFromServicePolicy({ service_binding_policy: 'project' } as never);
+  const { patch } = buildServicePolicyPatch(draft, []);
+  expect(patch?.service_binding_policy).toBeUndefined();
+});

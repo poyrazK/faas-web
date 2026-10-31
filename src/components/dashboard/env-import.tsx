@@ -24,7 +24,16 @@ const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
 
 type RowState = 'new' | 'overwrites' | 'invalid';
 
-export function EnvImportButton({ slug, existingKeys }: { slug: string; existingKeys: string[] }) {
+export function EnvImportButton({
+  slug,
+  existingKeys,
+  onChanged,
+}: {
+  slug: string;
+  existingKeys: string[];
+  /** Called once an import has written at least one value. */
+  onChanged?: () => void;
+}) {
   const { toast } = useToast();
   const setSecret = useSetSecret(slug);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,6 +85,7 @@ export function EnvImportButton({ slug, existingKeys }: { slug: string; existing
       }
     }
     setImporting(false);
+    if (done > 0) onChanged?.();
     if (failed.length === 0) {
       toast({
         kind: 'success',

@@ -23,8 +23,17 @@ const MOCK = readFileSync(resolve('mock/plugin.ts'), 'utf8');
  * Cookie-session flows apid serves same-origin but outside the spec's `paths`.
  * `/dashboard/install/connect` is the native GitHub connect form post the spec
  * documents under `GET /v1/auth/csrf` (`connect_github`) rather than as a path.
+ * `/mock-s3/object` is not apid at all: it stands in for the storage host that
+ * the spec's signed URLs (`ObjectSignedRequest.url`) point at, so the browser
+ * can PUT and GET them on the dev origin.
  */
-const OUTSIDE_SPEC = new Set(['/login', '/signup', '/login/forgot', '/dashboard/install/connect']);
+const OUTSIDE_SPEC = new Set([
+  '/login',
+  '/signup',
+  '/login/forgot',
+  '/dashboard/install/connect',
+  '/mock-s3/object',
+]);
 
 it('every mocked route exists in the OpenAPI spec', () => {
   const specPaths = new Set([...SPEC.matchAll(/^ {2}(\/\S+):\s*$/gm)].map((m) => m[1]));

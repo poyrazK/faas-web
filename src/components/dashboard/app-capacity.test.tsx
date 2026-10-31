@@ -1,0 +1,102 @@
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { beforeEach, expect, it } from 'vitest';
+import { AppCapacity } from './app-capacity';
+import { mockedApi, spyApi } from '@/test/api';
+
+let account: { plan: string; app_count: number; limits: { deployed_apps: number } };
+let fails: boolean;
+beforeEach(() => {
+  fails = false;
+  account = { plan: 'free', app_count: 1, limits: { deployed_apps: 3 } };
+  spyApi('GET').mockImplementation(async (path) => {
+    if (path === '/v1/account') {
+      if (fails) throw new Error('Account capacity unavailable');
+      return { data: account, response: new Response() } as never;
+    }
+    return { data: path === '/v1/apps' ? [] : { items: [] }, response: new Response() } as never;
+  });
+});
+async function mount() {
+  const root = createRootRoute({ component: Outlet });
+  const route = createRoute({
+    getParentRoute: () => root,
+    path: '/dashboard/usage',
+    component: AppCapacity,
+  });
+  const router = createRouter({
+    routeTree: root.addChildren([route]),
+    history: createMemoryHistory({ initialEntries: ['/dashboard/usage'] }),
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  await router.load();
+  await act(async () => {
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+  });
+}
+it('shows the authoritative app quota against the plan', async () => {
+  await mount();
+  const meter = await screen.findByRole('meter', { name: 'App capacity' });
+  expect(meter).toHaveAttribute('aria-valuenow', '1');
+  expect(meter).toHaveAttribute('aria-valuemax', '3');
+  expect(screen.getByText('2 app slots available')).toBeInTheDocument();
+  expect(screen.getByText('Free plan')).toBeInTheDocument();
+});
+it('uses a different plan limit and exposes the full-plan state', async () => {
+  account = { plan: 'pro', app_count: 12, limits: { deployed_apps: 12 } };
+  await mount();
+  expect(await screen.findByRole('meter', { name: 'App capacity' })).toHaveAttribute(
+    'aria-valuemax',
+    '12'
+  );
+  expect(screen.getByText('All app slots are in use')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'View plans' })).toHaveAttribute(
+    'href',
+    '/dashboard/plans'
+  );
+});
+it('does not invent a zero count while loading, and supports retry after failure', async () => {
+  fails = true;
+  await mount();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Account capacity unavailable');
+  expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+  fails = false;
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '1'));
+});
+
+it('keeps quota numbers hidden until the account response arrives', async () => {
+  mockedApi('GET').mockImplementation(() => new Promise(() => {}));
+  await mount();
+  expect(screen.getByText('Loading app capacity…')).toBeInTheDocument();
+  expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+});
+
+it('keeps the true count visible when a downgraded account exceeds its limit', async () => {
+  account.app_count = 4;
+  await mount();
+  const meter = await screen.findByRole('meter');
+  expect(meter).toHaveAttribute('aria-valuenow', '3');
+  expect(meter).toHaveAttribute('aria-valuetext', '4 of 3 app slots used');
+  expect(screen.getByText('All app slots are in use')).toBeInTheDocument();
+});
+
+it('says the allowance is unknown rather than crashing when the account carries no limits', async () => {
+  account = { plan: 'pro', app_count: 2 } as typeof account;
+  await mount();
+  expect(await screen.findByText(/allowance is not available/i)).toBeInTheDocument();
+  expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+});
