@@ -7,7 +7,6 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { Swap } from '@/components/dashboard/motion';
 import { useToast } from '@/components/ui/toast';
 import { useProjectApply, useProjectScan, type ProjectPlan } from '@/lib/api/queries';
-import { errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { SCAN_SOURCE_LABEL } from './scan-source';
@@ -72,9 +71,7 @@ export function ProjectImport({
     void scan
       .mutateAsync({ file, slug, branch })
       .then((plan) => setScanResult({ plan, file, slug, branch }))
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Scan failed', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Scan failed', error: err }));
   };
 
   const runApply = () => {
@@ -92,9 +89,7 @@ export function ProjectImport({
           description: `${result.apps?.length ?? 0} app${(result.apps?.length ?? 0) === 1 ? '' : 's'} created; builds are enqueued.`,
         });
       })
-      .catch((err: unknown) =>
-        toast({ kind: 'error', title: 'Could not apply', description: errorMessage(err) })
-      );
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not apply', error: err }));
   };
 
   const plain = (label: string, value: string) => (

@@ -96,3 +96,13 @@ it('keeps current audit entries visible when an older page fails', async () => {
     { timeout: 5_000 }
   );
 });
+
+it('shows when each event happened, with the exact time on hover', async () => {
+  await mount();
+  await screen.findByText('account.deleted');
+
+  const when = screen.getByRole('time');
+  expect(when).toHaveAttribute('dateTime', '2026-09-11T12:00:00.000Z');
+  expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
+  expect(when).toHaveTextContent(/ago$/);
+});

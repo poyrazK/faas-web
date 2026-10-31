@@ -190,11 +190,13 @@ export function useRollbackFlow(slug: string) {
         return;
       }
       const known = refusal(code, label, err);
-      toast({
-        kind: 'error',
-        title: known?.title ?? 'Could not roll back',
-        description: known?.description ?? errorMessage(err),
-      });
+      // Codes the rollback flow explains itself; anything else gets the
+      // shared error help (code, next step, docs).
+      toast(
+        known
+          ? { kind: 'error', title: known.title, description: known.description }
+          : { kind: 'error', title: 'Could not roll back', error: err }
+      );
     }
   };
 

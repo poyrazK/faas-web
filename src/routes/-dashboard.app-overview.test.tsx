@@ -194,6 +194,13 @@ describe('App Overview', () => {
     expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
   });
 
+  it('offers to copy the live endpoint URL next to its link', async () => {
+    await mount();
+    expect(
+      screen.getByRole('button', { name: 'Copy: endpoint https://alpha.example.test/' })
+    ).toBeInTheDocument();
+  });
+
   it('keeps app state distinct from a failed latest release and opens that exact failure', async () => {
     fixtures.deployments = [
       deployment({ status: 'failed', error_why: 'The start command was not found.' }),
@@ -225,6 +232,7 @@ describe('App Overview', () => {
       expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(status);
       expect(screen.queryByRole('button', { name: 'Inspect failure' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Copy: endpoint/ })).not.toBeInTheDocument();
     }
   );
 

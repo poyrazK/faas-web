@@ -3,7 +3,7 @@ import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { ApiError } from '@/lib/api/errors';
 import { useDestroyPreview } from '@/lib/api/queries';
 
 /**
@@ -20,8 +20,12 @@ export function isPreviewSlug(slug: string): boolean {
   return PREVIEW_SLUG.test(slug);
 }
 
-/** Preview teardown with its typed confirmation, for a button or a menu item. */
-export function useTearDownPreview(slug: string) {
+/**
+ * Preview teardown with its typed confirmation, for a button or a menu item.
+ * The preview's own page leaves for Apps afterwards; a caller that lists
+ * previews passes `onDone` and stays where it is.
+ */
+export function useTearDownPreview(slug: string, onDone?: () => void) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -42,7 +46,8 @@ export function useTearDownPreview(slug: string) {
     try {
       await destroy.mutateAsync(slug);
       toast({ kind: 'success', title: `Preview ${slug} torn down` });
-      void navigate({ to: '/dashboard/apps' });
+      if (onDone) onDone();
+      else void navigate({ to: '/dashboard/apps' });
     } catch (err) {
       if (err instanceof ApiError && err.code === 'preview_not_found') {
         toast({
@@ -53,15 +58,15 @@ export function useTearDownPreview(slug: string) {
         });
         return;
       }
-      toast({ kind: 'error', title: 'Could not tear down', description: errorMessage(err) });
+      toast({ kind: 'error', title: 'Could not tear down', error: err });
     }
   };
 
   return { available: isPreviewSlug(slug), run: onDestroy, pending: destroy.isPending };
 }
 
-export function TearDownPreviewButton({ slug }: { slug: string }) {
-  const tearDown = useTearDownPreview(slug);
+export function TearDownPreviewButton({ slug, onDone }: { slug: string; onDone?: () => void }) {
+  const tearDown = useTearDownPreview(slug, onDone);
   if (!tearDown.available) return null;
   return (
     <Button

@@ -171,7 +171,7 @@ function ExportPanel() {
               toast({ kind: 'success', title: 'Export downloaded' });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not export', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not export', error: err })
             )
         }
       >
@@ -212,7 +212,7 @@ function RestoreBanner({ pending, onRestored }: { pending: boolean; onRestored: 
               toast({ kind: 'success', title: 'Account restored' });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not restore', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not restore', error: err })
             )
         }
       >
@@ -262,7 +262,7 @@ function EgressExtraPanel() {
               toast({ kind: 'success', title: 'Egress budget updated' });
             })
             .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not update', description: errorMessage(err) })
+              toast({ kind: 'error', title: 'Could not update', error: err })
             );
         }}
       >
@@ -339,7 +339,7 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
         toast({
           kind: 'error',
           title: 'Could not schedule deletion',
-          description: errorMessage(err),
+          error: err,
         })
       );
   };

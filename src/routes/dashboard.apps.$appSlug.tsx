@@ -48,11 +48,14 @@ import {
 import { RoutesBody } from './dashboard.routes';
 import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
+import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
+import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
+import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
@@ -64,10 +67,14 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
+import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
+import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
+import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
@@ -537,7 +544,16 @@ function FunctionDetailPage() {
                       <AwakeRoutesPanel slug={fn.id} since="7d" />
                       <DependencyLatencyPanel slug={fn.id} since="24h" />
                     </div>
-                    <WakeTimelinePanel slug={fn.id} />
+                    <WakeTimelinePanel
+                      slug={fn.id}
+                      onOpenWake={(wake) =>
+                        void navigate({
+                          search: (current) => ({ ...current, wake }),
+                          hash: true,
+                          resetScroll: false,
+                        })
+                      }
+                    />
                     <AppUsagePanel slug={fn.id} />
                   </div>
                 ))}
@@ -690,11 +706,24 @@ function FunctionDetailPage() {
                   >
                     <SecretsBody slug={fn.id} />
                   </EnvironmentSection>
+                  <EnvironmentSection
+                    title="History"
+                    description="Every change to variables and secrets is a revision you can roll back to, and the config guard undoes a change that breaks the app."
+                  >
+                    <ConfigHistory slug={fn.id} />
+                  </EnvironmentSection>
                 </>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
-              {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+              {tab === 'Services' && (
+                <div className="space-y-5">
+                  <ServiceBindings slug={fn.id} />
+                  <BindingReleasePolicy slug={fn.id} />
+                  <BindingVerificationRuns slug={fn.id} />
+                  <QueueCanaries slug={fn.id} />
+                </div>
+              )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
               {tab === 'Webhooks' && (
@@ -727,6 +756,7 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
               {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
@@ -735,6 +765,8 @@ function FunctionDetailPage() {
 
               {tab === 'Configuration' && (
                 <>
+                  {/* Source first: AppConfiguration ends in the danger zone. */}
+                  <GitHubConnectionPanel slug={fn.id} />
                   <AppConfiguration slug={fn.id} />
                   <PrewarmPanel slug={fn.id} />
                 </>
@@ -744,6 +776,18 @@ function FunctionDetailPage() {
         </Swap>
       </div>
 
+      <WakeDrawer
+        slug={fn.id}
+        wakeId={search.wake}
+        onClose={() =>
+          void navigate({
+            search: (current) => ({ ...current, wake: undefined }),
+            replace: true,
+            hash: true,
+            resetScroll: false,
+          })
+        }
+      />
       <DeployFromGitModal
         open={deployOpen}
         onClose={() => setDeployOpen(false)}
