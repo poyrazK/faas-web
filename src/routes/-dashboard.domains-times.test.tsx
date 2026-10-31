@@ -32,6 +32,9 @@ vi.mock('@/lib/api/queries', () => ({
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/domain-doctor', () => ({ DomainDoctor: () => null }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 
 const { Route } = await import('./dashboard.domains');
 const DomainsPage = (Route as unknown as { component: React.ComponentType }).component;

@@ -12,6 +12,7 @@ vi.mock('@/lib/api/queries', () => ({
   useSetSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRotateSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useFreshRestart: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
