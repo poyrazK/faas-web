@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultBlocker, useDomainDetail, useSetDefaultDomain } from './domain-detail';
+import { ApiError } from './errors';
 import { spyApi } from '@/test/api';
 
 afterEach(() => vi.restoreAllMocks());
@@ -42,6 +43,48 @@ describe('useDomainDetail', () => {
     const { wrapper } = setup();
     renderHook(() => useDomainDetail(null), { wrapper });
     expect(get).not.toHaveBeenCalled();
+  });
+  it('passes the abort signal, so a closed dialog cancels the dial', async () => {
+    const get = spyApi('GET').mockResolvedValue({
+      data: row(),
+      response: new Response(),
+    } as never);
+    const { wrapper } = setup();
+    const hook = renderHook(() => useDomainDetail('api.example.com'), { wrapper });
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+    expect(get).toHaveBeenCalledWith(
+      '/v1/domains/{domain}',
+      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown })
+    );
+  });
+
+  it('does not retry a 404: every attempt would re-dial port 443', async () => {
+    const get = spyApi('GET').mockRejectedValue(
+      new ApiError({ status: 404, code: 'not_found', title: 'Not found' })
+    );
+    // The hook's own retry policy, not the test default of none.
+    const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const hook = renderHook(() => useDomainDetail('gone.example.com'), { wrapper });
+    await waitFor(() => expect(hook.result.current.isError).toBe(true));
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a reading for a while and does not re-dial on window focus', async () => {
+    spyApi('GET').mockResolvedValue({ data: row(), response: new Response() } as never);
+    const { client, wrapper } = setup();
+    const hook = renderHook(() => useDomainDetail('api.example.com'), { wrapper });
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+    const options = client
+      .getQueryCache()
+      .find({ queryKey: ['domains', 'api.example.com', 'detail'] })!.options as {
+      staleTime?: number;
+      refetchOnWindowFocus?: boolean;
+    };
+    expect(options.staleTime).toBeGreaterThanOrEqual(30_000);
+    expect(options.refetchOnWindowFocus).toBe(false);
   });
 });
 

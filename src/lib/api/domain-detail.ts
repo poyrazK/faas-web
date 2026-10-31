@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import { keys } from './queries';
+import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
 
 export type DomainDetail = components['schemas']['CustomDomainResponse'];
@@ -10,15 +10,19 @@ export type DomainDetail = components['schemas']['CustomDomainResponse'];
  *
  * Unlike the list, the handler dials port 443 for a verified domain and reports
  * what it found — the leaf's expiry and SANs, or `dial_failed:<reason>` — so it
- * is read only while the detail is open and never served from cache.
+ * is read only while the detail is open. Each read is a handshake against the
+ * edge, so a 404 is not retried, a reading holds for a minute, and focusing
+ * the window does not re-dial; closing the dialog aborts an in-flight read.
  */
 export function useDomainDetail(domain: string | null) {
   return useQuery({
     queryKey: ['domains', domain, 'detail'],
     enabled: domain !== null,
-    staleTime: 0,
-    queryFn: () =>
-      unwrap(api.GET('/v1/domains/{domain}', { params: { path: { domain: domain! } } })),
+    retry: retryPolicy,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/domains/{domain}', { params: { path: { domain: domain! } }, signal })),
   });
 }
 

@@ -488,7 +488,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Custom domains with managed TLS, wildcard domains (Pro+), domain doctor',
     status: 'partial',
     surfaces: ['/dashboard/domains'],
-    gap: 'Domain detail and default (open PRs #206, #208)',
+    gap: 'Wildcard and environment-bound domains cannot be added from the form',
     wave: 1,
   },
   // D64 · GA
