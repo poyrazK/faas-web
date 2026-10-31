@@ -11,6 +11,7 @@ import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
+import { readWakeAhead, writeWakeAhead } from './wake-ahead';
 import { projects, projectSummaries } from './projects';
 import {
   mockPromotionPreview,
@@ -745,6 +746,21 @@ route('GET', '/v1/apps/{slug}/bindings', ({ params, query }) => {
         }
       : {}),
   };
+});
+route('GET', '/v1/apps/{slug}/service-wake-ahead', ({ params }) => readWakeAhead(app(params.slug)));
+route('PUT', '/v1/apps/{slug}/service-wake-ahead', ({ params, body }) => {
+  const a = app(params.slug);
+  // The failing app models the setting store being down (ErrCapacity).
+  if (a.slug === 'billing-recon')
+    throw new Problem(503, 'capacity_unavailable', 'service wake-ahead');
+  const out = writeWakeAhead(a, body.enabled);
+  if (!out)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'body must be {"enabled": true} or {"enabled": false}'
+    );
+  return out;
 });
 route('GET', '/v1/apps/{slug}/policy/status', ({ params }) =>
   mockRuntimePolicy(app(params.slug).id)
