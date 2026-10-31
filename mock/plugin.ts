@@ -5648,6 +5648,66 @@ route('GET', '/v1/crons/{id}/runs', ({ params }) => {
   if (!db.crons.some((x) => x.id === params.id)) throw new Problem(404, 'cron_not_found');
   return { runs: db.cronRuns.get(params.id) ?? [] };
 });
+// Occurrences page newest-first by occurrence id, 50 by default and 1-200
+// allowed, as handlers_schedule_occurrences.go does.
+route('GET', '/v1/crons/{id}/occurrences', ({ params, query }) => {
+  if (!db.crons.some((x) => x.id === params.id))
+    throw new Problem(404, 'not_found', 'no such cron');
+  const raw = query.get('limit');
+  const limit = raw === null ? 50 : Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+    throw new Problem(400, 'validation_failed', 'limit must be an integer between 1 and 200');
+  const rows = db.cronOccurrences.get(params.id) ?? [];
+  const before = query.get('before') ?? '';
+  const start = before ? rows.findIndex((o) => o.id === before) + 1 : 0;
+  const page = before && start === 0 ? [] : rows.slice(start, start + limit);
+  return {
+    occurrences: page,
+    limit,
+    ...(before ? { before } : {}),
+    ...(page.length === limit ? { next_before: page[page.length - 1].id } : {}),
+  };
+});
+// Cancel a command-cron run. HTTP crons, unknown runs and another cron's runs
+// share one 404; app tasks off answers 501 (handlers_cron_run_cancel.go).
+// MOCK_UNAVAILABLE_CAPABILITIES=app-tasks turns them off.
+route('POST', '/v1/crons/{id}/runs/{run_id}/cancel', ({ params }) => {
+  if ((process.env.MOCK_UNAVAILABLE_CAPABILITIES ?? '').split(',').includes('app-tasks'))
+    throw new Problem(
+      501,
+      'not_implemented',
+      'deployment-attached app tasks are not enabled on this control-plane host'
+    );
+  const cron = db.crons.find((x) => x.id === params.id);
+  const task = db.cronTasks.get(params.run_id);
+  const run = db.cronRuns.get(params.id)?.find((r) => r.task_id === params.run_id);
+  if (!cron || cron.kind !== 'command' || !task || !run)
+    throw new Problem(404, 'not_found', 'no such cron run');
+  const now = db.iso(0);
+  if (task.status === 'queued') {
+    Object.assign(task, { status: 'cancelled', finished_at: now, updated_at: now });
+  } else if (task.status === 'restoring' || task.status === 'running') {
+    task.cancel_requested_at ??= now;
+    task.updated_at = now;
+  }
+  const answer = { ...task };
+  // The worker stops a running task promptly; the next read shows it settled.
+  if (task.status === 'running' || task.status === 'restoring') {
+    Object.assign(task, { status: 'cancelled', finished_at: now });
+  }
+  if (task.status === 'cancelled') {
+    Object.assign(run, {
+      outcome: 'cancelled',
+      completed_at: now,
+      duration_ms: Date.parse(now) - Date.parse(run.started_at),
+    });
+    const occurrence = db.cronOccurrences
+      .get(params.id)
+      ?.find((o) => o.app_task_id === params.run_id);
+    if (occurrence) Object.assign(occurrence, { status: 'cancelled', finished_at: now });
+  }
+  return status(202, answer);
+});
 route('DELETE', '/v1/crons/{id}', ({ params }) => {
   const i = db.crons.findIndex((c) => c.id === params.id);
   if (i < 0) throw new Problem(404, 'cron_not_found');

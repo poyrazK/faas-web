@@ -1565,6 +1565,178 @@ export function logFrame(app: App): LogFrame {
    to grow a "unless empty" case.
    ---------------------------------------------------------------------------- */
 
+// --- Cron occurrences and command runs ----------------------------------------
+//
+// Built without the seeded generator, so adding them moves no other fixture.
+// Occurrences are the scheduler's decision per nominal fire time (newest
+// first); a command cron's runs are app tasks, which can be cancelled.
+
+const MIN = 60_000;
+const fixedUuid = (n: number) =>
+  `${(0x5c0e0000 + n).toString(16)}-7a1d-4c3b-9e2f-${(0x1d40c7a3b000 + n).toString(16)}`;
+
+/** A command cron every five minutes, skipping a time while a run is still going. */
+const commandCron: S['CronResponse'] = {
+  id: '7f3c2a9e5b1d4c8fa6e09b2d3c4f5a61',
+  app_id: apps[3].id,
+  kind: 'command',
+  schedule: '*/5 * * * *',
+  command: ['bin/sync-search-index', '--incremental'],
+  command_shell: false,
+  timeout_seconds: 600,
+  max_output_bytes: 1_048_576,
+  retry_max: 0,
+  retry_backoff_seconds: 60,
+  enabled: true,
+  timezone: 'UTC',
+  skip_if_running: true,
+  created_at: iso(9 * D),
+  last_fired_at: null,
+};
+crons.push(commandCron);
+
+const POLICY: S['SchedulePolicy'] = { version: 1, overlap: 'allow', missed_runs: 'skip' };
+const SKIP_POLICY: S['SchedulePolicy'] = { version: 1, overlap: 'skip', missed_runs: 'skip' };
+const at = (ms: number) => new Date(ms).toISOString();
+
+export const cronOccurrences = new Map<string, S['ScheduleOccurrenceResponse'][]>();
+export const cronTasks = new Map<string, S['AppTaskResponse']>();
+
+{
+  // HTTP crons: one settled decision per seeded run, plus the two decisions a
+  // run never comes from, on the busiest cron.
+  for (const [index, cron] of crons.entries()) {
+    if (cron.kind !== 'http') continue;
+    const rows = (cronRuns.get(cron.id) ?? []).map((run, i): S['ScheduleOccurrenceResponse'] => {
+      const scheduled = Math.floor(Date.parse(run.started_at) / MIN) * MIN;
+      return {
+        id: fixedUuid(index * 64 + i),
+        schedule_revision: 1,
+        scheduled_for: at(scheduled),
+        schedule_policy: POLICY,
+        status:
+          run.outcome === 'success'
+            ? 'succeeded'
+            : run.outcome === 'running'
+              ? 'running'
+              : 'failed',
+        invocation_id: run.id,
+        started_at: run.started_at,
+        ...(run.completed_at ? { finished_at: run.completed_at } : {}),
+        created_at: at(scheduled),
+      };
+    });
+    cronOccurrences.set(cron.id, rows);
+  }
+  const busiest = crons.find((c) => c.schedule === '*/15 * * * *');
+  const busiestRows = busiest ? cronOccurrences.get(busiest.id) : undefined;
+  if (busiestRows?.length) {
+    const first = Date.parse(busiestRows[0].scheduled_for);
+    busiestRows.splice(
+      1,
+      0,
+      {
+        id: fixedUuid(900),
+        schedule_revision: 1,
+        scheduled_for: at(first - 15 * MIN),
+        start_deadline_at: at(first - 14 * MIN),
+        schedule_policy: { ...POLICY, start_deadline_seconds: 60 },
+        status: 'missed_deadline',
+        reason: 'start deadline expired before the scheduler could dispatch the occurrence',
+        finished_at: at(first - 14 * MIN),
+        created_at: at(first - 15 * MIN),
+      },
+      {
+        id: fixedUuid(901),
+        schedule_revision: 1,
+        scheduled_for: at(first - 30 * MIN),
+        schedule_policy: { ...POLICY, missed_runs: 'coalesce_latest' },
+        status: 'coalesced',
+        reason: 'an older missed occurrence was coalesced into the latest due occurrence',
+        finished_at: at(first - 15 * MIN),
+        created_at: at(first - 30 * MIN),
+      }
+    );
+  }
+
+  // The command cron: the newest time is still running, the one before it
+  // finished, and a time that came while a long run was going was skipped.
+  const latest = Math.floor(NOW / (5 * MIN)) * 5 * MIN;
+  const plan: {
+    status: S['ScheduleOccurrenceResponse']['status'];
+    took?: number;
+    code?: string;
+  }[] = [
+    { status: 'running' },
+    { status: 'succeeded', took: 46_000 },
+    { status: 'succeeded', took: 51_000 },
+    { status: 'skipped_overlap' },
+    { status: 'succeeded', took: 388_000 },
+    { status: 'failed', took: 12_000, code: 'index_conflict' },
+    { status: 'succeeded', took: 44_000 },
+  ];
+  const runs: S['CronRun'][] = [];
+  const rows = plan.map((step, i): S['ScheduleOccurrenceResponse'] => {
+    const scheduled = latest - i * 5 * MIN;
+    const started = scheduled + 2_000;
+    const finished = step.took ? started + step.took : undefined;
+    const row: S['ScheduleOccurrenceResponse'] = {
+      id: fixedUuid(1000 + i),
+      schedule_revision: 3,
+      scheduled_for: at(scheduled),
+      schedule_policy: SKIP_POLICY,
+      status: step.status,
+      created_at: at(scheduled),
+    };
+    if (step.status === 'skipped_overlap') {
+      row.reason = 'an earlier task for this cron is still active';
+      row.blocking_occurrence_id = fixedUuid(1000 + i + 1);
+      row.finished_at = at(scheduled);
+      return row;
+    }
+    const taskId = fixedUuid(2000 + i);
+    row.app_task_id = taskId;
+    row.started_at = at(started);
+    if (finished) row.finished_at = at(finished);
+    if (step.code) row.outcome_code = step.code;
+    const failed = step.status === 'failed';
+    cronTasks.set(taskId, {
+      id: taskId,
+      app_id: commandCron.app_id,
+      deployment_id: fixedUuid(3000),
+      deployment_scope: 'production',
+      kind: 'cron',
+      command: commandCron.command ?? [],
+      command_shell: false,
+      status: step.status === 'running' ? 'running' : failed ? 'failed' : 'succeeded',
+      timeout_seconds: 600,
+      max_output_bytes: 1_048_576,
+      attempt_count: 1,
+      output_truncated: false,
+      exit_code: finished ? (failed ? 1 : 0) : null,
+      ...(step.code ? { outcome_code: step.code } : {}),
+      started_at: at(started),
+      finished_at: finished ? at(finished) : null,
+      created_at: at(started),
+      updated_at: at(finished ?? started),
+    });
+    runs.push({
+      id: taskId,
+      task_id: taskId,
+      started_at: at(started),
+      completed_at: finished ? at(finished) : null,
+      duration_ms: step.took ?? null,
+      outcome: step.status === 'running' ? 'running' : failed ? 'failed' : 'success',
+      attempts: 1,
+      error: failed ? 'exit status 1: duplicate document id in batch 4' : null,
+    });
+    return row;
+  });
+  cronOccurrences.set(commandCron.id, rows);
+  cronRuns.set(commandCron.id, runs);
+  commandCron.last_fired_at = at(latest);
+}
+
 export const EMPTY = process.env.MOCK_EMPTY === '1';
 
 if (EMPTY) {
