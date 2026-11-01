@@ -7,7 +7,7 @@ vi.mock('@/components/dashboard/secret-references', () => ({
   SecretReferences: ({ slug }: { slug: string }) => <p>references for {slug}</p>,
 }));
 
-const { SecretsBody } = await import('./dashboard.secrets');
+const { SecretsBody } = await import('@/components/dashboard/secrets-page');
 
 const REVOCATION = {
   id: '7b0c2a52-4e7f-4c1e-9d3a-0d2f5e7a9c11',

@@ -52,3 +52,41 @@ describe('console theming conventions', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * TanStack's auto code splitting moves a route's `component` into a lazy
+ * chunk, but anything else a route file exports stays in the entry chunk with
+ * the route tree, along with everything it imports — and the plugin does not
+ * warn about it. Fifteen route files once exported their page bodies
+ * for the app detail tabs, which put the console on the landing page. A body
+ * shared between pages lives in `components/`; the route file declares
+ * `Route` and nothing else.
+ */
+describe('route files', () => {
+  // A plain number the test waits on; it costs the entry chunk nothing.
+  const ALLOWED: Record<string, string[]> = { 'will-it-run.tsx': ['MIN_TRANSITION_MS'] };
+
+  const routeFiles = readdirSync(resolve('src/routes')).filter(
+    (name) => name.endsWith('.tsx') && !name.startsWith('-') && !/\.test\./.test(name)
+  );
+
+  it('scans a real tree', () => {
+    expect(routeFiles.length).toBeGreaterThan(30);
+  });
+
+  it('export only Route, so the code splitter can keep pages out of the entry chunk', () => {
+    const offenders = routeFiles.flatMap((name) => {
+      const source = readFileSync(resolve('src/routes', name), 'utf8');
+      const exported = [
+        ...source.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)/gm),
+      ].map(([, ident]) => ident);
+      const reexports = source.match(/^export\s*\{|^export\s+\*|^export\s+default/m)
+        ? ['(re-export)']
+        : [];
+      return [...exported, ...reexports]
+        .filter((ident) => ident !== 'Route' && !(ALLOWED[name] ?? []).includes(ident))
+        .map((ident) => `${name}: ${ident}`);
+    });
+    expect(offenders).toEqual([]);
+  });
+});
