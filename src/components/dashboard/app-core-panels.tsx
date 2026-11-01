@@ -74,7 +74,7 @@ export function InvokePanel({ slug }: { slug: string }) {
         path: path.trim() || '/',
         payload: parseObject(payload, 'Payload'),
         headers: parseObject(headers, 'Headers'),
-        ...(effectiveMode === 'async' ? asyncInvokeExtras(asyncOptions) : {}),
+        ...(mode === 'async' ? asyncInvokeExtras(asyncOptions) : {}),
       };
     } catch (error) {
       toast({ kind: 'error', title: 'Invalid request', error: error });
@@ -168,7 +168,7 @@ export function InvokePanel({ slug }: { slug: string }) {
             className="font-mono"
           />
         </label>
-        {effectiveMode === 'async' && (
+        {mode === 'async' && (
           <AsyncInvokeOptionsFields slug={slug} value={asyncOptions} onChange={setAsyncOptions} />
         )}
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
