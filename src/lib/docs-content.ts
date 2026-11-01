@@ -1,22 +1,35 @@
 /**
- * Loads the vendored markdown and pulls a table of contents out of it.
+ * Loads one vendored docs page at a time, and pulls a table of contents out
+ * of it.
  *
- * `import.meta.glob` with `eager` inlines the files at build time, which is what
- * lets the docs routes prerender to real HTML — a runtime fetch would leave
- * crawlers and unfurlers looking at an empty shell, which is the whole reason
- * `scripts/prerender.mjs` exists.
+ * Each page is its own chunk: `import.meta.glob` without `eager` gives a
+ * loader per file, so a reader of /docs/cli downloads the CLI guide and
+ * nothing else. The `/docs/$slug` loader awaits it, and `scripts/prerender.mjs`
+ * renders through the loader, so crawlers and unfurlers still get the full
+ * page in the HTML.
  *
- * The docs chunk is code-split by route, so the marketing pages never pay for
- * this — as long as nothing outside a route's component imports it
- * statically. A route's `loader`, `head`, and `validateSearch` are not split:
- * they ship in the entry chunk, so they must `await import()` this module.
+ * The whole corpus at once, for search and tests, is `docs-corpus.ts`.
  */
 
-const FILES = import.meta.glob('/content/docs/*.md', {
+const LOADERS = import.meta.glob('/content/docs/*.md', {
   query: '?raw',
   import: 'default',
-  eager: true,
-}) as Record<string, string>;
+}) as Record<string, () => Promise<string>>;
+
+/**
+ * A Windows checkout can vendor these files with CRLF endings, and `.` in a
+ * JS regex refuses to match `\r` — which silently breaks `stripTitle` and
+ * renders the title twice. Normalising once heals every consumer, the
+ * copy-to-clipboard text included.
+ */
+export function normalizeDocSource(raw: string): string {
+  return raw.replace(/\r\n/g, '\n');
+}
+
+export async function loadDocSource(slug: string): Promise<string | undefined> {
+  const load = LOADERS[`/content/docs/${slug}.md`];
+  return load ? normalizeDocSource(await load()) : undefined;
+}
 
 export interface Heading {
   /** Anchor target; matches the id the renderer puts on the heading. */
@@ -36,14 +49,6 @@ export function slugifyHeading(text: string): string {
     .toLowerCase()
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-');
-}
-
-export function docSource(slug: string): string | undefined {
-  // A Windows checkout can vendor these files with CRLF endings, and `.` in a
-  // JS regex refuses to match `\r` — which silently breaks `stripTitle` and
-  // renders the title twice. Normalising once here heals every consumer,
-  // the copy-to-clipboard text included.
-  return FILES[`/content/docs/${slug}.md`]?.replace(/\r\n/g, '\n');
 }
 
 /**

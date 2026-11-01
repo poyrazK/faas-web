@@ -2,13 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { DOC_ENTRIES, DOC_SECTIONS, docNeighbours, findDoc } from './docs-manifest';
 import { CATALOG_ROUTES, DOC_ALIASES, UNPUBLISHED_DOCS, resolveDocPath } from './docs-catalog';
-import {
-  docSource,
-  extractHeadings,
-  readingMinutes,
-  slugifyHeading,
-  stripTitle,
-} from './docs-content';
+import { docSource } from './docs-corpus';
+import { extractHeadings, readingMinutes, slugifyHeading, stripTitle } from './docs-content';
 
 /**
  * The manifest and the vendored markdown are maintained separately — one by
