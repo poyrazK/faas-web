@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { DOC_ENTRIES, DOC_SECTIONS, docNeighbours, findDoc } from './docs-manifest';
 import { CATALOG_ROUTES, DOC_ALIASES, UNPUBLISHED_DOCS, resolveDocPath } from './docs-catalog';
 import { docSource } from './docs-corpus';
@@ -256,5 +257,25 @@ describe('upstream customer-pages catalog', () => {
       return edge && pages ? [] : [alias];
     });
     expect(missing).toEqual([]);
+  });
+});
+
+describe('docs corpus', () => {
+  // The corpus inlines every page. Imported by anything a docs page renders
+  // up front, it puts all of them on every page view; the search box loads
+  // the index (and so the corpus) on first use instead.
+  it('is imported only by the search index and tests', () => {
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) return walk(full);
+        return /\.tsx?$/.test(name) && !/\.test\./.test(name) ? [full] : [];
+      });
+    const importers = walk('src').filter(
+      (file) =>
+        !file.endsWith('docs-corpus.ts') &&
+        /from ['"](?:@\/lib\/|\.\/)docs-corpus['"]/.test(readFileSync(file, 'utf8'))
+    );
+    expect(importers).toEqual([join('src', 'lib', 'docs-search.ts')]);
   });
 });
