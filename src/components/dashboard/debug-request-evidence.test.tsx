@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
@@ -72,6 +73,23 @@ describe('DebugRequestEvidence', () => {
     expect(screen.getByText('regression')).toBeInTheDocument();
     expect(screen.getByText('blamed')).toBeInTheDocument();
     expect(screen.getByText('2180 ms')).toBeInTheDocument();
+  });
+
+  it('lets the request ID and trace ID be copied in full', () => {
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Copy: request ID req1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy: trace ID trace1' })).toBeInTheDocument();
+  });
+
+  it('offers no trace copy button when the request has no trace ID', () => {
+    const current = useDebugRequestEvidence() as { data: object };
+    useDebugRequestEvidence.mockReturnValue({
+      ...current,
+      data: { ...current.data, request: { ...request, trace_id: '' } },
+    });
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByText('Not reported', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Copy: trace ID/ })).not.toBeInTheDocument();
   });
 
   it('states the matched regression against its baseline', () => {
@@ -215,5 +233,28 @@ describe('DebugRequestEvidence', () => {
     });
     view.rerender(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
     expect(screen.getByText(/span list was cut/)).toBeInTheDocument();
+  });
+
+  it('offers the wake a cold request admitted, and nothing for a warm one', async () => {
+    const onOpenWake = vi.fn();
+    const base = useDebugRequestEvidence('api', 'req1');
+    useDebugRequestEvidence.mockReturnValue({
+      ...base,
+      data: { ...base.data, request: { ...base.data.request, cold_boot: true, wake_id: 'wk-7' } },
+    });
+    const { unmount } = render(
+      <DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} onOpenWake={onOpenWake} />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Woke the app · Open wake' }));
+    expect(onOpenWake).toHaveBeenCalledWith('wk-7');
+    unmount();
+
+    useDebugRequestEvidence.mockReturnValue(base);
+    render(
+      <DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} onOpenWake={onOpenWake} />
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Woke the app · Open wake' })
+    ).not.toBeInTheDocument();
   });
 });

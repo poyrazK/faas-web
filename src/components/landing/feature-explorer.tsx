@@ -4,29 +4,28 @@ import { ArrowRight } from 'iconoir-react';
 import { HostingDiagram, type HostingDiagramKind } from './hosting-diagrams';
 import './feature-explorer.css';
 
-type Availability = 'Public beta' | 'Preview' | 'In development';
+/** Shown only when a feature is not yet in beta; the hero states the beta once. */
+type Availability = 'Preview' | 'In development';
 type Diagram = 'deploy' | 'flow' | 'orbit' | HostingDiagramKind;
 interface Feature {
   id: string;
   title: string;
   description: string;
-  availability: Availability;
+  availability?: Availability;
   diagram: Diagram;
   caption: string;
   doc?: string;
 }
 
-const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
+const GROUPS: { title: string; features: Feature[] }[] = [
   {
     title: 'Hosting',
-    availability: 'Beta & preview',
     features: [
       {
         id: 'source',
         title: 'Source deploys',
         description:
           'Take a commit from source to a running API. Follow the build and deployment together, through the CLI, API or console.',
-        availability: 'Public beta',
         diagram: 'deploy',
         caption: 'An illustrated path from commit to running app.',
         doc: 'deploy-from-github',
@@ -36,7 +35,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         title: 'Isolated compute',
         description:
           'Run your API inside its own Firecracker microVM. Bring your code and packages, within your plan’s runtime and resource limits.',
-        availability: 'Public beta',
         diagram: 'compute',
         caption: 'Your app. Its own runtime boundary.',
         doc: 'runtime-node',
@@ -46,7 +44,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         title: 'Scale to zero',
         description:
           'Let eligible idle applications park and wake when traffic returns. The first request waits for the wake; long-running workers have different lifecycle behavior.',
-        availability: 'Public beta',
         diagram: 'scale',
         caption: 'Idle → wake → serve → park',
         doc: 'scale-to-zero',
@@ -56,7 +53,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         title: 'Custom domains',
         description:
           'Put your API on your own domain. Verify DNS and follow certificate issuance in one place.',
-        availability: 'Public beta',
         diagram: 'domain',
         caption: 'Your domain → your application',
         doc: 'custom-domains',
@@ -65,10 +61,9 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         id: 'traces',
         title: 'Logs & traces',
         description:
-          'Follow runtime logs and request context when something goes wrong. Availability and retention depend on your plan.',
-        availability: 'Public beta',
+          'Follow runtime logs and request context when something goes wrong, from the CLI or the console.',
         diagram: 'trace',
-        caption: 'Illustrative spans, not measured request timings.',
+        caption: 'One request’s spans, from the gateway into your handler.',
         doc: 'tracing',
       },
       {
@@ -76,7 +71,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         title: 'Secrets & config',
         description:
           'Keep secrets out of your repository. Gregale seals stored values and injects them into your runtime as environment variables.',
-        availability: 'Public beta',
         diagram: 'secrets',
         caption: 'Configuration outside your source.',
         doc: 'storage',
@@ -86,7 +80,6 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         title: 'PR previews',
         description:
           'Review eligible GitHub pull requests at their own preview URLs. Previews update on push and share your plan’s deployed-app limit.',
-        availability: 'Public beta',
         diagram: 'previews',
         caption: 'A separate preview, before the merge.',
         doc: 'preview-environments',
@@ -95,17 +88,15 @@ const GROUPS: { title: string; availability: string; features: Feature[] }[] = [
         id: 'objects',
         title: 'Object storage',
         description:
-          'Store files in private buckets outside your app’s runtime. Object storage is in preview; availability depends on the storage rollout.',
+          'Store files in private buckets outside your app’s runtime; availability depends on the storage rollout.',
         availability: 'Preview',
         diagram: 'objects',
         caption: 'Object buckets, not persistent VM disks.',
-        doc: 'object-storage',
       },
     ],
   },
   {
     title: 'Connected work',
-    availability: 'Preview & development',
     features: [
       {
         id: 'services',
@@ -384,7 +375,6 @@ export function FeatureExplorer() {
               onKeyDown={(event) => navigateCategory(event, index)}
             >
               <span>{category.title}</span>
-              <span className="feature-category-status">{category.availability}</span>
             </button>
           ))}
         </div>
@@ -439,9 +429,11 @@ export function FeatureExplorer() {
                 <span className="feature-number" aria-hidden="true">
                   {String(selection.feature + 1).padStart(2, '0')}
                 </span>
-                <span className="feature-availability" data-availability={feature.availability}>
-                  {feature.availability}
-                </span>
+                {feature.availability && (
+                  <span className="feature-availability" data-availability={feature.availability}>
+                    {feature.availability}
+                  </span>
+                )}
               </div>
               <h3>{feature.title}</h3>
               <p className="feature-description">{feature.description}</p>
@@ -449,12 +441,10 @@ export function FeatureExplorer() {
                 <FeatureDiagram kind={feature.diagram} />
                 <p>{feature.caption}</p>
               </div>
-              {feature.doc ? (
+              {feature.doc && (
                 <Link to="/docs/$slug" params={{ slug: feature.doc }} className="feature-guide">
                   Read the guide <ArrowRight aria-hidden="true" />
                 </Link>
-              ) : (
-                <span className="feature-guide-pending">Guide coming soon</span>
               )}
             </div>
           </div>

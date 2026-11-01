@@ -25,7 +25,6 @@ import { dirname, join } from 'node:path';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { renderLlmsTxt } = await import('../src/lib/llms-txt.ts');
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`)];
 
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
@@ -132,6 +131,11 @@ for (const route of ROUTES) {
       perRoute.push(`<meta name="twitter:image" content="${attr(image)}" />`);
     }
   }
+  // Points agents at the page's Markdown copy, written below.
+  const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
+  if (docSlug) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
+  }
   // Keeps a non-indexable page out of results without hiding it from the
   // unfurler, which ignores robots meta.
   if (!INDEXABLE.includes(route)) {
@@ -166,8 +170,8 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Bring APIs, services and background work onto one platform. Hosting is in public beta; ' +
-            'background jobs, workflows and internal services are in preview.',
+            'Deploy an existing API without rewriting it. Gregale runs it in a Firecracker microVM, ' +
+            'scales it to zero, and runs your services and background work too.',
           softwareHelp: `${SITE_URL}/docs`,
         },
       ],
@@ -248,11 +252,6 @@ const robots = [
 writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
 
-// Same reasoning for llms.txt: the claims and the docs list it carries have
-// one source each, so it is derived from them rather than committed.
-writeFileSync(join(DIST, 'llms.txt'), renderLlmsTxt(SITE_URL));
-console.log('  wrote llms.txt');
-
 if (SITE_URL) {
   const urls = INDEXABLE.map(
     (route) => `  <url>\n    <loc>${absolute(route)}</loc>\n  </url>`
@@ -267,6 +266,28 @@ if (SITE_URL) {
 } else {
   console.log('  skipped sitemap.xml and canonical tags — set SITE_URL to emit them');
 }
+
+/* ------------------------------------------------------------------ *
+ * llms.txt, llms-full.txt and a Markdown copy of every docs page
+ *
+ * For coding agents, which read Markdown far better than a rendered SPA.
+ * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
+ * ------------------------------------------------------------------ */
+
+const { llmsFull, llmsIndex, markdownPage } = await import('../src/lib/agent-docs.ts');
+const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
+const markdownPages = DOC_ENTRIES.map((entry) => {
+  const page = markdownPage(
+    entry,
+    readFileSync(join('content', 'docs', `${entry.slug}.md`), 'utf8'),
+    SITE_URL
+  );
+  writeFileSync(join(DIST, 'docs', `${entry.slug}.md`), page);
+  return page;
+});
+writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL));
+writeFileSync(join(DIST, 'llms-full.txt'), llmsFull(llmsIntro, markdownPages));
+console.log(`  wrote llms.txt, llms-full.txt and ${markdownPages.length} Markdown docs pages`);
 
 // The SSR bundle is a build artifact, not something to deploy.
 rmSync('dist-ssr', { recursive: true, force: true });

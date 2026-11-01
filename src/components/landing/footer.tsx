@@ -52,8 +52,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: 'Node 24', href: '/docs/runtime-node', doc: 'runtime-node' },
       { label: 'Python 3.13', href: '/docs/runtime-python', doc: 'runtime-python' },
-      { label: 'Go 1.24', href: '/docs/runtime-go', doc: 'runtime-go' },
-      { label: 'Trace propagation', href: '/docs/tracing', doc: 'tracing' },
+      { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
     ],
   },
   {
@@ -78,7 +77,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/deploy-from-github',
         doc: 'deploy-from-github',
       },
-      { label: 'CLI setup', href: '/docs/cli', doc: 'cli' },
+      { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
       // Served by apid on this same origin, so it needs no absolute URL.
       { label: 'API reference', href: '/v1/openapi.yaml' },
     ],
@@ -220,10 +219,6 @@ export function Footer() {
             }}
           />
 
-          <Reveal y={12}>
-            <p className="label-mono relative text-brand">Gregale Beta</p>
-          </Reveal>
-
           {/* The heading animates per word, so it sits outside the block
               Reveal — nesting the two would fight over the same transform. */}
           <TextReveal
@@ -240,8 +235,8 @@ export function Footer() {
               have landed. */}
           <Reveal delay={0.45}>
             <p className="relative mx-auto mt-4 max-w-md text-balance text-muted-foreground">
-              Join the public beta with a demo, side project or another non-critical workload. Bring
-              the work around it onto Gregale as the platform grows.
+              Deploy your API today. Bring the services and background work around it onto Gregale
+              as you grow.
             </p>
 
             <div className="relative mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">

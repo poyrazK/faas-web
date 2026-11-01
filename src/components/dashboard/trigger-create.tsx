@@ -20,19 +20,20 @@ import {
   newTriggerDraft,
   sourceDraft,
   validateTriggerDraft,
-  type BrokerKind,
+  type CreatableBrokerKind,
 } from './trigger-form-model';
 
 const STEPS = ['Destination', 'Event source', 'Delivery & review'] as const;
-const KIND_LABELS: Record<BrokerKind, string> = {
+const KIND_LABELS: Record<CreatableBrokerKind, string> = {
   kafka: 'Kafka',
   nats: 'NATS JetStream',
   redis_streams: 'Redis Streams',
-  sqs_compat: 'SQS-compatible',
   queue: 'Platform queue',
 };
 
 const RECOVERY: Record<string, string> = {
+  trigger_kind_unavailable:
+    'That event source is no longer offered. Use a Platform queue trigger instead.',
   trigger_kind_not_allowed:
     'That event source is not available on this plan. Choose an allowed kind or compare plans.',
   plan_trigger_quota:
@@ -197,7 +198,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                   onChange={(event) =>
                     setDraft((value) => ({
                       ...value,
-                      source: sourceDraft(event.target.value as BrokerKind),
+                      source: sourceDraft(event.target.value as CreatableBrokerKind),
                     }))
                   }
                 >
@@ -258,7 +259,10 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
               <dl className="grid gap-4 rounded-lg border border-border bg-background p-4 sm:grid-cols-2">
                 {[
                   ['Destination', apps.find((app) => app.id === draft.appId)?.slug ?? draft.appId],
-                  ['Source', KIND_LABELS[draft.source.kind]],
+                  [
+                    'Source',
+                    (KIND_LABELS as Record<string, string>)[draft.source.kind] ?? draft.source.kind,
+                  ],
                   ['Slug', draft.slug],
                   [
                     'Batch / window',

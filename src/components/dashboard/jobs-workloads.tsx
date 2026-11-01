@@ -4,6 +4,7 @@ import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboa
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { JobCreateDialog } from './job-create-dialog';
+import { JobActions } from '@/components/dashboard/job-actions';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
@@ -60,7 +61,8 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
   // failure should replace the table with its full-page error state.
   const listError = data.length === 0 ? error : undefined;
   const listLoading = isPending && !error && data.length === 0;
-  const job = data.find((j) => j.id === search.job)?.name ?? null;
+  const selectedJob = data.find((j) => j.id === search.job);
+  const job = selectedJob?.name ?? null;
   const runId = search.run ?? null;
 
   const rows = useMemo<JobRow[]>(
@@ -244,10 +246,18 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           </div>
         )}
 
-        {job && (
+        {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Further changes can be made with the CLI."
+            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
+            actions={
+              <JobActions
+                name={job}
+                status={selectedJob.status}
+                onStarted={(run) => onSelection({ run, task: undefined })}
+                onDeleted={() => onSelection({ job: undefined, run: undefined, task: undefined })}
+              />
+            }
           >
             <JobDefinition name={job} />
           </Panel>

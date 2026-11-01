@@ -50,6 +50,14 @@ beforeEach(() => {
   vi.restoreAllMocks();
   store.workflows = [];
   for (const key of Object.keys(extraGet)) delete extraGet[key];
+  // The detail page's danger zone reads what deleting would touch.
+  extraGet['/v1/projects/{slug}/delete-preview'] = {
+    project: summary,
+    workloads: [],
+    domain_count: 0,
+    env_count: 0,
+    cron_count: 0,
+  };
   bindWorkspaceAccount('a');
   setActiveOrg(null);
 });
@@ -147,7 +155,7 @@ it('lists each project with its apps, without GitHub or a paid capability gate',
   );
   expect(
     within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All projects',
+      name: 'Projects',
     })
   ).toHaveAttribute('aria-current', 'page');
 });
@@ -226,6 +234,30 @@ it('keeps the search in the URL across detail and return navigation', async () =
   expect(pageBack).toHaveAttribute('href', '/dashboard/projects?q=shop');
   await userEvent.click(pageBack!);
   expect(await screen.findByLabelText('Search projects and apps')).toHaveValue('shop');
+});
+
+it('edits the source and deletes the project from its page, then returns to the list', async () => {
+  // PATCH and DELETE /v1/projects/{slug} (faas server.go:3535, :3613).
+  extraGet['/v1/projects/{slug}/delete-preview'] = {
+    project: summary,
+    workloads: [{ slug: 'api', workload_name: 'web', status: 'parked' }],
+    domain_count: 0,
+    env_count: 2,
+    cron_count: 0,
+  };
+  const del = spyApi('DELETE').mockResolvedValue({
+    data: undefined,
+    response: new Response(null, { status: 204 }),
+  } as never);
+  const { router } = await mount('/dashboard/projects/shop');
+  expect(await screen.findByRole('textbox', { name: 'Production branch' })).toHaveValue('main');
+  expect(await screen.findByText(/detaches its app, api\./)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Delete project' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByRole('textbox'), 'shop');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Delete project' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/projects'));
+  expect(del).toHaveBeenCalledWith('/v1/projects/{slug}', expect.anything());
 });
 
 describe('the selected shared workspace', () => {

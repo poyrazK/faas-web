@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { DOC_ENTRIES, DOC_SECTIONS, docNeighbours, findDoc } from './docs-manifest';
+import { CATALOG_ROUTES, DOC_ALIASES, UNPUBLISHED_DOCS, resolveDocPath } from './docs-catalog';
 import {
   docSource,
   extractHeadings,
@@ -26,10 +28,8 @@ describe('docs manifest', () => {
     const expected = {
       'api-hosting-openapi': '# OpenAPI hosting',
       faas_openapi_spec: '# OpenAPI spec + CI gate',
-      'object-storage': '# Customer object storage preview',
       'custom-domains': '# Domains',
       'deploy-from-github': '# Deploys',
-      executions: '# Disposable isolated runs',
       security: '# Security',
     };
 
@@ -37,6 +37,17 @@ describe('docs manifest', () => {
       expect(findDoc(slug), slug).toBeDefined();
       expect(docSource(slug), slug).toContain(heading);
     }
+  });
+
+  it('holds the pages upstream marks unpublished', () => {
+    // Preview and internal capabilities; the capability registry still sends
+    // `docs_url` for them, and the dashboard drops the link
+    // (`safeCapabilityDocs`) rather than 404 on it.
+    for (const slug of ['object-storage', 'executions']) {
+      expect(findDoc(slug), slug).toBeUndefined();
+      expect(UNPUBLISHED_DOCS[slug], slug).toMatch(/(preview|internal) capability/);
+    }
+    expect(findDoc('runtime-go')).toBeUndefined();
   });
 
   it('uses unique slugs', () => {
@@ -189,5 +200,66 @@ describe('install guide', () => {
     expect(source).toContain('--include=optional');
     expect(source).toMatch(/`latest`/);
     expect(source).toMatch(/`rc`/);
+  });
+});
+
+describe('upstream customer-pages catalog', () => {
+  // `poyrazK/faas` only emits docs URLs that are in its catalog, so every
+  // catalogued path must land somewhere here: a page, a redirect, or a
+  // deliberate "not yet" with a reason. See `docs-catalog.ts`.
+  const paths = CATALOG_ROUTES.filter((r) => !r.external && r.path).map((r) => r.path);
+
+  it('vendors a catalog', () => {
+    expect(paths.length).toBeGreaterThan(50);
+  });
+
+  it('resolves every catalogued path or names why not', () => {
+    const unresolved = paths.filter((p) => !resolveDocPath(p) && !(p in UNPUBLISHED_DOCS));
+    expect(unresolved).toEqual([]);
+  });
+
+  it('drops a path from the unpublished list once it is published', () => {
+    const stale = Object.keys(UNPUBLISHED_DOCS).filter((p) => resolveDocPath(p));
+    expect(stale).toEqual([]);
+  });
+
+  it('aliases the paths that share a published source', () => {
+    expect(DOC_ALIASES).toMatchObject({
+      orgs: 'account',
+      gdpr: 'account',
+      builds: 'build',
+      deploys: 'deploy-from-github',
+      deployments: 'deploy-from-github',
+      'build/source': 'deploy-from-github',
+      'build/source-ref': 'deploy-from-source',
+      'dpa/subprocessors': 'subprocessors',
+      sidecars: 'companions',
+      domains: 'custom-domains',
+    });
+  });
+
+  it('collapses a child path onto its parent guide', () => {
+    expect(resolveDocPath('domains/verify')).toEqual({ alias: 'custom-domains' });
+    expect(resolveDocPath('build/limits')).toEqual({ slug: 'build' });
+    expect(resolveDocPath('mcp/hosting')).toBeUndefined();
+    expect(resolveDocPath('/docs-does-not-exist/')).toBeUndefined();
+  });
+
+  it('redirects every alias at the edge too', () => {
+    const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
+      routes: { src: string; status?: number; headers?: Record<string, string> }[];
+    };
+    const netlify = readFileSync('public/_redirects', 'utf8');
+    const missing = Object.entries(DOC_ALIASES).flatMap(([alias, target]) => {
+      const edge = vercel.routes.some(
+        (r) =>
+          r.src === `^/docs/${alias}/?$` &&
+          r.status === 308 &&
+          r.headers?.Location === `/docs/${target}`
+      );
+      const pages = new RegExp(`^/docs/${alias}\\s+/docs/${target}\\s+301$`, 'm').test(netlify);
+      return edge && pages ? [] : [alias];
+    });
+    expect(missing).toEqual([]);
   });
 });

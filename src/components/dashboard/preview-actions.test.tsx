@@ -52,6 +52,14 @@ describe('TearDownPreviewButton', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/dashboard/apps' });
   });
 
+  it('hands control back instead of leaving the page when given onDone', async () => {
+    const onDone = vi.fn();
+    render(<TearDownPreviewButton slug="pr-42-api-gateway" onDone={onDone} />);
+    await userEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('explains preview_not_found instead of reporting a failure', async () => {
     destroy.mockRejectedValue(
       new ApiError({ status: 404, code: 'preview_not_found', title: 'Nope' })

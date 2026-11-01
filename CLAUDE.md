@@ -49,12 +49,17 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
 - **The workspace is an organization.** The breadcrumb switcher stores the
   choice per account (`lib/workspace.ts`) and the API client sends it as
   `X-Active-Org`, which org settings, members, and keys follow. `/v1/apps` and
-  `/v1/projects` ignore it: they stay the signed-in account's, and the UI says
-  so. Apps reach a shared workspace through its URL (ADR-061) — new apps are
-  created with `POST /v1/orgs/{slug}/apps` and Projects shows that workspace's
-  inventory from `GET /v1/orgs/{slug}/apps` (`lib/api/workspace-apps.ts`); the
-  personal workspace keeps `POST /v1/apps`. Every `/v1/apps/{slug}/…` route is
-  still creator-scoped, so never link a workspace app the account did not create.
+  `/v1/projects` ignore it: they stay the signed-in account's. A company's own
+  data comes from org-scoped routes — `/v1/orgs/{slug}/apps` (inventory and
+  create, `lib/api/workspace-apps.ts`), `/v1/orgs/{slug}/billing/status`,
+  `/usage`, `/invoices`, `/billing/portal` and `/plan` (`lib/api/org-billing.ts`),
+  plus org projects and Postgres. Read the active workspace with
+  `useWorkspaceTarget()` and branch on its `org`, never show the personal
+  account's numbers in a company workspace. Company members reach an app's
+  `/v1/apps/{slug}/…` routes through the app's `org_id` (faas
+  ADR-202610171901, `pkg/apid/appaccess/routes.go`), so app pages work for
+  members; company billing refuses a member without the right role with
+  `org_role_forbidden`, which the page explains by naming the organization.
 - **Per-app resources need an app picker.** Secrets, env, alerts, webhooks,
   queues, upstreams, routes, and logs are all `/v1/apps/{slug}/…` with no
   account-wide read. Use `useSelectedApp` + `AppSelect`.
@@ -64,6 +69,8 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   imports it. It is the sanctioned way to see populated console states while
   `apid` is down — the "no fixture data" rule above is about `src/`, and still
   holds. An unmocked path answers `404 not_mocked` and logs to the dev server.
+  `MOCK_REPOS=<n>` gives the GitHub installation n repositories (the New app
+  list as a large account sees it).
   `MOCK_EMPTY=1` boots the same account with nothing in it, and `MOCK_LATENCY`
   slows responses — between them every read state can be seen on demand.
   `MOCK_HAS_PASSWORD=1` boots with a password already set
@@ -78,6 +85,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   their age on each request (`mock/deploy-lifecycle.ts`); seeded rows never move.
   `MOCK_BUILD_FAIL=1` makes new source builds fail installing dependencies
   (`dep_install_failed`) after ~4.5 s, for first-deployment recovery.
+  `MOCK_HIDDEN_CAPABILITIES=<id,id>` lists catalog capabilities as hidden for
+  the account (`hidden_capabilities`), so gated tabs, nav items and pages can be
+  seen in their off state.
+  `MOCK_DOMAIN_EXPIRED=1` seeds the pending domain with an expired TXT challenge,
+  so "Check again" answers 409 and the "Get a new TXT record" recovery shows.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server
@@ -113,5 +125,22 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
 - **A new route needs a `head`.** Use `consoleHead('<segment>')` for console
   pages or `pageHead({ title })` elsewhere (`src/lib/seo.ts`), or the page
   inherits the bare brand title. See the Page titles section in `README.md`.
+- **The parity ledger tracks the backend.** `src/lib/parity/ledger.ts` has one
+  entry per GA/beta/preview row of faas's capability inventory
+  (`content/capabilities/`, pulled by `npm run capabilities:pull`), and
+  `npm run parity` prints coverage by tier. A console change that adds or
+  completes a customer capability updates its row's status and gap. Weekly,
+  run `npm run api:pull` and `npm run capabilities:pull`, fix what stops
+  compiling, and give every new ledger-test failure an entry (status `none`, a
+  gap, its tier's wave). `content/capabilities/*` is vendored: never hand-edit
+  it.
 - **Adding a console page means touching `nav-config.ts` too**, or the page
   exists but is unreachable from the sidebar, breadcrumb, and ⌘K palette.
+- **Headers live in `src/lib/security-headers.ts`; `vercel.json` is a copy.**
+  `src/hosting-contract.test.ts` fails when they differ. The dev server sends
+  the same policy, so a font, image, script, or fetch from a third-party host
+  is blocked locally — that is the point. Do not add an origin to a directive
+  to make something load; ask whether it should be first-party instead (the
+  fonts are, under `src/fonts/`, hashed into `/assets/`). `npm run build:mock && npm run preview:mock`
+  then `BASE_URL=http://localhost:4173 npm run tour` checks a real build under
+  the production headers; the tour fails on CSP violations.

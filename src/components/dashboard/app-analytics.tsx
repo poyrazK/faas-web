@@ -13,7 +13,8 @@ import {
 } from '@/lib/api/queries';
 
 const WINDOWS = ['24h', '3d', '7d'] as const;
-const GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
+/** Every grouping the selector offers; the routes' search validation reads it too. */
+export const ANALYTICS_GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
   { value: 'route', label: 'Route' },
   { value: 'country', label: 'Country' },
   { value: 'referrer_host', label: 'Referrer' },
@@ -169,7 +170,7 @@ export function AppAnalyticsBody({
               aria-label="Group by"
               className="h-8 text-xs"
             >
-              {GROUPS.map((group) => (
+              {ANALYTICS_GROUPS.map((group) => (
                 <option key={group.value} value={group.value}>
                   {group.label}
                 </option>
@@ -278,7 +279,9 @@ export function AppAnalyticsBody({
               <div className="overflow-x-auto">
                 <p className="label-mono mb-2 text-muted-foreground">
                   Top by{' '}
-                  {GROUPS.find((group) => group.value === data.group_by)?.label.toLowerCase()}
+                  {ANALYTICS_GROUPS.find(
+                    (group) => group.value === data.group_by
+                  )?.label.toLowerCase()}
                 </p>
                 <table className="w-full text-xs">
                   <thead>

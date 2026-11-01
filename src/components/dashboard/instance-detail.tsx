@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import type { components } from '@/lib/api/schema';
 import { InlinePhase, queryPhase } from './primitives';
-import { WakeTimeline } from './wake-timeline';
+import { WakeWaterfall } from './wake-waterfall';
 
 type Instance = components['schemas']['InstanceResponse'];
 const missing = 'Not reported';
@@ -163,7 +163,7 @@ export function InstanceDetail({
                   evidence.
                 </p>
               ) : slug && !appsLoading && !appsError ? (
-                <WakeTimeline slug={slug} wakeId={instance.wake_id} />
+                <WakeWaterfall slug={slug} wakeId={instance.wake_id} />
               ) : null}
             </div>
           </div>
