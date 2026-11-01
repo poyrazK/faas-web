@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as AppRoute } from './dashboard.apps.$appSlug';
 import { toWorkflow } from '@/lib/api/adapters';
 import type { App, AppMetrics, Deployment } from '@/lib/api/queries';
+import type { HourPoint } from '@/components/dashboard/traffic-pillars-geometry';
 
 const fixtures = vi.hoisted(() => ({
   plan: 'free',
@@ -24,6 +25,9 @@ const fixtures = vi.hoisted(() => ({
   metrics: undefined as AppMetrics | undefined,
   metricsLoading: false,
   metricsError: null as Error | null,
+  series: undefined as { points: HourPoint[] } | undefined,
+  seriesError: null as Error | null,
+  seriesCalls: [] as { since: string; enabled: boolean | undefined }[],
   retry: vi.fn(),
   buildIds: [] as string[],
   stream: vi.fn(),
@@ -124,6 +128,15 @@ vi.mock('@/lib/api/queries', async (original) => ({
     error: fixtures.metricsError,
     refetch: fixtures.retry,
   }),
+  useAppAnalyticsTimeseries: (_slug: string, since: string, options?: { enabled?: boolean }) => {
+    fixtures.seriesCalls.push({ since, enabled: options?.enabled });
+    return {
+      data: fixtures.series,
+      isPending: !fixtures.series && !fixtures.seriesError,
+      error: fixtures.seriesError,
+      refetch: fixtures.retry,
+    };
+  },
 }));
 
 async function mount(entry = '/dashboard/apps/alpha') {
@@ -161,6 +174,9 @@ beforeEach(() => {
   fixtures.metrics = undefined;
   fixtures.metricsError = null;
   fixtures.metricsLoading = false;
+  fixtures.series = undefined;
+  fixtures.seriesError = null;
+  fixtures.seriesCalls = [];
   fixtures.retry.mockReset();
   fixtures.buildIds = [];
   fixtures.stream.mockClear();
@@ -294,6 +310,53 @@ describe('App Overview', () => {
       })
     );
     expect(router.state.location.search.tab).toBe('Errors');
+  });
+
+  it('draws the last 24 hours as a field of hourly pillars when the series is in', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics();
+    fixtures.series = {
+      points: Array.from({ length: 24 }, (_, i) => ({
+        requests: 50 + i,
+        error_requests: 0,
+        error_rate_pct: 0,
+        cold_boots: 0,
+        p95_ms: 40,
+      })),
+    };
+    await mount();
+    const activity = screen.getByRole('region', { name: 'Traffic snapshot' });
+    expect(within(activity).getByRole('group', { name: /requests per hour/i })).toBeInTheDocument();
+    expect(within(activity).getByRole('status')).toHaveTextContent('1.2k requests');
+    expect(fixtures.seriesCalls.at(-1)).toEqual({ since: '24h', enabled: true });
+  });
+
+  it('keeps the plain totals when the hourly series cannot be read', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics();
+    fixtures.seriesError = new Error('Series failed');
+    await mount();
+    const activity = screen.getByRole('region', { name: 'Traffic snapshot' });
+    expect(within(activity).queryByRole('group', { name: /requests per hour/i })).toBeNull();
+    expect(activity).toHaveTextContent('1.2k');
+    expect(activity).toHaveTextContent('42ms');
+  });
+
+  it('keeps the plain totals when the hourly series comes back empty', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics();
+    fixtures.series = { points: [] };
+    await mount();
+    const activity = screen.getByRole('region', { name: 'Traffic snapshot' });
+    expect(within(activity).queryByRole('group', { name: /requests per hour/i })).toBeNull();
+    expect(activity).toHaveTextContent('1.2k');
+  });
+
+  it('never asks Free for the hourly series it does not include', async () => {
+    fixtures.plan = 'free';
+    await mount();
+    expect(fixtures.seriesCalls.length).toBeGreaterThan(0);
+    expect(fixtures.seriesCalls.every((call) => call.enabled === false)).toBe(true);
   });
 
   it('treats a zero-request window as no traffic, not proof of health', async () => {
