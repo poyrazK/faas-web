@@ -63,6 +63,7 @@ import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { OpenAPIBody } from './dashboard.openapi';
 import { WebhooksHub } from './dashboard.webhooks';
 import { EdgeRulesBody } from './dashboard.edge-rules';
+import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
@@ -763,6 +764,7 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Edge rules' && <EdgeRulesBody slug={fn.id} />}
+              {tab === 'Edge protection' && <EdgeProtectionBody slug={fn.id} />}
               {tab === 'Debugger' && (
                 <DebugBody
                   slug={fn.id}

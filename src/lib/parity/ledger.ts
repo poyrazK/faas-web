@@ -555,18 +555,16 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 75,
     name: 'CORS presets',
-    status: 'partial',
-    surfaces: ['/dashboard/edge-rules'],
-    gap: 'Edit a CORS preset',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/edge-rules', '/dashboard/apps/$appSlug?tab=Edge rules'],
   },
   // D76 · beta
   {
     row: 76,
     name: 'Edge protection: pre-auth guard, challenge under attack, WAF',
-    status: 'none',
-    surfaces: [],
-    gap: 'Pre-auth observations and attack mode',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Edge protection'],
+    gap: 'Configure the pre-auth guard (mode, rate, route overrides); it is set with `gregale app --pre-auth`',
     wave: 2,
   },
   // D77 · GA

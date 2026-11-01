@@ -32,7 +32,7 @@ describe('isPlanGate', () => {
       'plan_per_app_metrics_not_allowed',
       'plan_app_usage_summary_not_allowed',
       'plan_static_egress_ip_not_allowed',
-      'plan_cors_preset_not_allowed',
+      'plan_cors_presets_not_allowed',
       'managed_postgres_not_in_plan',
       'plan_triggers_not_allowed',
       'plan_log_drains_not_allowed',

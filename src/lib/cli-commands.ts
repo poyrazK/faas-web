@@ -84,3 +84,17 @@ export function cliPostgresRestoreCommand(
 export function cliDomainSetDefaultCommand(domain: string): string {
   return `gregale domains set-default ${domain}`;
 }
+
+/**
+ * Set an app's pre-auth guard. With no guard stored, observe and enforce need
+ * a rate and burst of at least 1 (faas cmd/gregale/app_pre_auth.go:39-41);
+ * switching a stored guard's mode keeps its rate, so `rate` is optional.
+ */
+export function cliPreAuthCommand(
+  appSlug: string,
+  mode: 'off' | 'observe' | 'enforce',
+  rate?: { rps: number; burst: number }
+): string {
+  const base = `gregale app ${appSlug} --pre-auth ${mode}`;
+  return rate ? `${base} --pre-auth-rps ${rate.rps} --pre-auth-burst ${rate.burst}` : base;
+}
