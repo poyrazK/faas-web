@@ -68,6 +68,10 @@ import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
+import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
+import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
+import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
@@ -76,12 +80,14 @@ import { GitHubConnectionPanel } from '@/components/dashboard/github-connection'
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
 import {
   AppHealthPanel,
   AwakeRoutesPanel,
   DependencyLatencyPanel,
 } from '@/components/dashboard/app-observability';
 import { AppOverview } from '@/components/dashboard/app-overview';
+import { StatelessContract } from '@/components/dashboard/stateless-contract';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { AppHeader } from '@/components/dashboard/app-header';
 import { useProjectMembership } from '@/lib/api/projects';
@@ -99,6 +105,7 @@ import {
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
+import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { DeploymentGate } from '@/components/dashboard/deployment-gate';
@@ -447,6 +454,7 @@ function FunctionDetailPage() {
                   onRetryMetrics={() => void metrics.refetch()}
                 />
               )}
+              {tab === 'Overview' && <StatelessContract slug={appSlug} />}
               {tab === 'Metrics' &&
                 (authLoading || account === null ? (
                   <LoadingState message="Checking plan access…" />
@@ -536,6 +544,7 @@ function FunctionDetailPage() {
                     <AppHealthPanel slug={fn.id} />
                     <SloPanel slug={fn.id} />
                     <AppAnalyticsPanel slug={fn.id} />
+                    <CustomMetricsPanel slug={fn.id} />
                     <div className="grid gap-4 xl:grid-cols-2">
                       <AwakeRoutesPanel slug={fn.id} since="7d" />
                       <DependencyLatencyPanel slug={fn.id} since="24h" />
@@ -587,6 +596,21 @@ function FunctionDetailPage() {
                       })
                     }
                     actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                  />
+                  <DeploymentAliasesPanel
+                    slug={fn.id}
+                    onOpenDeployment={(id) =>
+                      void navigate({
+                        search: (current) => ({
+                          ...current,
+                          tab: 'Deployments',
+                          deployment: id,
+                          releaseSection: undefined,
+                        }),
+                        hash: true,
+                        resetScroll: false,
+                      })
+                    }
                   />
                   <Panel
                     title="Deploy an archive"
@@ -712,7 +736,15 @@ function FunctionDetailPage() {
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
-              {tab === 'Services' && <ServiceBindings slug={fn.id} />}
+              {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
+              {tab === 'Services' && (
+                <div className="space-y-5">
+                  <ServiceBindings slug={fn.id} />
+                  <BindingReleasePolicy slug={fn.id} />
+                  <BindingVerificationRuns slug={fn.id} />
+                  <QueueCanaries slug={fn.id} />
+                </div>
+              )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
               {tab === 'Webhooks' && (

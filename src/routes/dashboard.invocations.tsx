@@ -1,24 +1,24 @@
 import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Refresh } from 'iconoir-react';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { CopyableId } from '@/components/ui/copyable-id';
-import { useToast } from '@/components/ui/toast';
-import { useConfirm } from '@/components/ui/confirm';
 import {
-  useApps,
-  useInfiniteInvocations,
-  useInvocation,
-  useReplayInvocation,
-} from '@/lib/api/queries';
+  AsyncInvocationsMaturity,
+  InvocationDelivery,
+  ReplayInvocationButton,
+} from '@/components/dashboard/async-invocations';
+import { useApps, useInfiniteInvocations, useInvocation } from '@/lib/api/queries';
 import { Modal } from '@/components/ui/modal';
 import { Timestamp } from '@/components/ui/timestamp';
 import { slugIndex } from '@/lib/api/adapters';
 import { formatRelative } from '@/lib/mock-data';
 import { resourceId } from '@/lib/resource-id';
 import { consoleHead } from '@/lib/seo';
+import type { Invocation } from '@/lib/api/async-invocations';
+
+type InvocationState = Invocation['state'];
 
 export const Route = createFileRoute('/dashboard/invocations')({
   component: InvocationsPage,
@@ -46,6 +46,8 @@ interface InvocationRow {
   route: string;
   attempts: number;
   createdAt: string;
+  workPolicy?: string;
+  queueName?: string;
 }
 
 const STATE_COLOR: Record<string, string> = {
@@ -73,6 +75,8 @@ function Json({ value }: { value: unknown }) {
 function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const q = useInvocation(id ?? '');
   const inv = q.data;
+  const { data: apps } = useApps();
+  const appSlug = inv ? (slugIndex(apps ?? []).get(inv.app_id) ?? '') : '';
   const invPhase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: !inv });
   return (
     <Modal
@@ -120,6 +124,7 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
               {inv.last_error}
             </p>
           )}
+          <InvocationDelivery invocation={inv} appSlug={appSlug} />
           {inv.payload && (
             <div>
               <p className="label-mono mb-1.5 text-muted-foreground">Payload</p>
@@ -132,6 +137,7 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
               <Json value={inv.result} />
             </div>
           )}
+          <ReplayInvocationButton invocation={inv} variant="full" />
         </div>
       )}
     </Modal>
@@ -139,11 +145,8 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
 }
 
 function InvocationsPage() {
-  const { toast } = useToast();
-  const confirm = useConfirm();
   const invocations = useInfiniteInvocations();
   const { data: apps } = useApps();
-  const replay = useReplayInvocation();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const selected = search.invocation ?? null;
@@ -167,6 +170,8 @@ function InvocationsPage() {
       route: [i.method, i.path].filter(Boolean).join(' ') || '—',
       attempts: i.attempts ?? 0,
       createdAt: i.created_at,
+      workPolicy: i.work_policy_name,
+      queueName: i.queue_name,
     }));
   }, [data, apps]);
 
@@ -220,30 +225,14 @@ function InvocationsPage() {
       label: '',
       width: 'w-12',
       render: (i) => (
-        <button
-          type="button"
-          aria-label={`Replay invocation ${i.id}`}
-          onClick={async () => {
-            if (
-              !(await confirm({
-                title: 'Replay this invocation?',
-                description:
-                  'It is re-issued to the app with the same payload. If the handler is not idempotent, that work happens twice.',
-                confirmLabel: 'Replay',
-              }))
-            )
-              return;
-            void replay
-              .mutateAsync(i.id)
-              .then(() => toast({ kind: 'success', title: 'Replayed' }))
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not replay', error: err })
-              );
+        <ReplayInvocationButton
+          invocation={{
+            id: i.id,
+            state: i.state as InvocationState,
+            work_policy_name: i.workPolicy,
+            queue_name: i.queueName,
           }}
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Refresh className="h-3.5 w-3.5" />
-        </button>
+        />
       ),
     },
   ];
@@ -253,6 +242,7 @@ function InvocationsPage() {
       <PageHeader
         title="Invocations"
         description="Async work run by your apps — invokes, queue messages, inbound webhooks, delayed tasks, and cron runs — with replay of failed ones from their original payload. HTTP requests are in the Debugger."
+        actions={<AsyncInvocationsMaturity />}
       />
       <ResourceTable
         rows={rows}

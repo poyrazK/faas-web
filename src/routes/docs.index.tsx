@@ -4,6 +4,7 @@ import { ArrowRight } from 'iconoir-react';
 import { CopyButton } from '@/components/docs/copy-button';
 import { DOC_SECTIONS } from '@/lib/docs-manifest';
 import { pageHead } from '@/lib/seo';
+import { INSTALL_COMMAND, INSTALL_DOC_SLUG } from '@/lib/platform-claims';
 
 export const Route = createFileRoute('/docs/')({
   component: DocsIndex,
@@ -15,7 +16,7 @@ export const Route = createFileRoute('/docs/')({
     }),
 });
 
-const FIRST_COMMANDS = 'npm install -g gregale\ngregale login';
+const FIRST_COMMANDS = `${INSTALL_COMMAND}\ngregale login`;
 const TASKS = [
   {
     slug: 'deploy-from-github',
@@ -69,14 +70,21 @@ export function DocsIndex() {
           </div>
           <pre>
             <code>
-              <span aria-hidden="true">$ </span>npm install -g gregale{'\n'}
+              <span aria-hidden="true">$ </span>
+              {INSTALL_COMMAND}
+              {'\n'}
               <span aria-hidden="true">$ </span>gregale login
             </code>
           </pre>
           <p>
             Then create a starter and deploy it.
             <br />
-            The guide walks through each step.
+            The guide walks through each step. Prefer the curl installer, or need to pin a version?
+            See{' '}
+            <Link to="/docs/$slug" params={{ slug: INSTALL_DOC_SLUG }}>
+              Install the CLI
+            </Link>
+            .
           </p>
         </div>
       </section>

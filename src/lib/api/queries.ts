@@ -529,28 +529,111 @@ export function useAccountSecrets() {
 
 export type DelayedTask = components['schemas']['DelayedTaskResponse'];
 
+/** Every delayed-task query — the per-app lists and the by-id reads — so a
+ * write can refresh them all without knowing which ones are mounted. */
+const delayedTasksKey = ['delayed-tasks'] as const;
+
 /** Schedule a one-shot task to fire at a future time. */
 export function useScheduleDelayedTask(slug: string) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { scheduledAt: string; payload: Record<string, unknown> }) =>
+    mutationFn: (input: {
+      scheduledAt: string;
+      payload: Record<string, unknown>;
+      /** The request the task makes; apid defaults to POST /. */
+      method?: string;
+      path?: string;
+    }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/delayed-tasks', {
           params: { path: { slug } },
-          body: { scheduled_at: input.scheduledAt, payload: input.payload },
+          body: {
+            scheduled_at: input.scheduledAt,
+            ...(input.method ? { method: input.method } : {}),
+            ...(input.path ? { path: input.path } : {}),
+            payload: input.payload,
+          },
         })
       ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
 
-/** One delayed task's state. The API reads tasks by id only — there is no
- * list endpoint — so the console tracks the ids it created. */
+const POLL_FAST = 5_000;
+const POLL_CEILING = 60_000;
+/** How long past its time a pending task still counts as about to run. */
+const OVERDUE_GRACE = 3 * 60_000;
+
+/**
+ * When to re-read delayed tasks, or `false` to stop. TanStack evaluates a
+ * `refetchInterval` function only after the query updates, so returning
+ * `false` for a task that is not yet due would never wake again: a pending
+ * task always keeps a timer, set to its due time (5 s floor, 60 s ceiling).
+ * Dispatching work and tasks just past their time read every 5 s; a task
+ * long overdue (the scheduler is behind) backs off to the ceiling.
+ */
+export function delayedTaskPollInterval(
+  tasks: readonly DelayedTask[],
+  now = Date.now()
+): number | false {
+  if (tasks.some((t) => t.state === 'dispatching')) return POLL_FAST;
+  let next: number | false = false;
+  for (const t of tasks) {
+    if (t.state !== 'pending') continue;
+    const until = Date.parse(t.scheduled_at) - now;
+    const wait = Number.isNaN(until)
+      ? POLL_CEILING
+      : until > 0
+        ? Math.min(Math.max(until, POLL_FAST), POLL_CEILING)
+        : -until < OVERDUE_GRACE
+          ? POLL_FAST
+          : POLL_CEILING;
+    next = next === false ? wait : Math.min(next, wait);
+  }
+  return next;
+}
+
+/**
+ * One app's delayed tasks, newest first, paged by the API's `next_before`
+ * cursor (faas handlers_invocations.go:812). The rows carry state, schedule,
+ * target and attempts — never the payload or headers, which the API does not
+ * return. Polls on `delayedTaskPollInterval`, so a row does not sit at
+ * "pending" after it has fired.
+ */
+export function useDelayedTasks(slug: string, limit = 20) {
+  return useInfiniteQuery({
+    queryKey: [...delayedTasksKey, 'app', slug, limit],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/delayed-tasks', {
+          params: {
+            path: { slug },
+            query: { limit, ...(pageParam ? { before: pageParam } : {}) },
+          },
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
+    enabled: Boolean(slug),
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      query.state.error
+        ? false
+        : delayedTaskPollInterval(query.state.data?.pages.flatMap((page) => page.tasks) ?? []),
+  });
+}
+
+/** One delayed task in full, read by id — the list row's detail. */
 export function useDelayedTask(id: string, options?: { poll?: boolean }) {
   return useQuery({
-    queryKey: ['delayed-tasks', id],
+    queryKey: [...delayedTasksKey, id],
     queryFn: () => unwrap(api.GET('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     refetchInterval: options?.poll
-      ? (query) => (query.state.data?.state === 'pending' ? 5_000 : false)
+      ? (query) =>
+          query.state.error || !query.state.data
+            ? false
+            : delayedTaskPollInterval([query.state.data])
       : undefined,
   });
 }
@@ -560,7 +643,7 @@ export function useCancelDelayedTask() {
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/delayed-tasks/{id}', { params: { path: { id } } })),
-    onSuccess: (_d, id) => void qc.invalidateQueries({ queryKey: ['delayed-tasks', id] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
 
@@ -1639,6 +1722,80 @@ export function useCancelJobRun() {
   });
 }
 
+/**
+ * Fan out a run of a job (`POST /v1/jobs/{name}/runs`). The answer is the new
+ * run in `queued`, not a finished one. `idempotencyKey` is chosen by the caller
+ * so a retry of the same intent replays the first run instead of billing a
+ * second.
+ */
+export function useStartJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      tasks,
+      idempotencyKey,
+    }: {
+      name: string;
+      tasks: number;
+      idempotencyKey: string;
+    }) =>
+      unwrap(
+        api.POST('/v1/jobs/{name}/runs', {
+          params: { path: { name }, header: { 'Idempotency-Key': idempotencyKey } },
+          body: { tasks },
+        })
+      ),
+    // Awaited so the run list already holds the new run when the caller
+    // selects it, rather than briefly reporting "Run not found".
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.jobs] }),
+  });
+}
+
+/**
+ * Soft-delete a job. The API answers 409 `job_has_live_instances` while any of
+ * its tasks is still in flight.
+ */
+export function useDeleteJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      try {
+        return await unwrap(api.DELETE('/v1/jobs/{name}', { params: { path: { name } } }));
+      } catch (error) {
+        // A delete is a soft delete and every read of a deleted job is a 404,
+        // so a 404 means it is already gone. Succeeding here (rather than in
+        // the caller) lets onSuccess drop the stale list row and detail query.
+        if (error instanceof ApiError && error.status === 404) return undefined;
+        throw error;
+      }
+    },
+    onSuccess: async (_none, name) => {
+      // Refresh the lists, but not the deleted job's own detail and runs: they
+      // would only come back 404 while the page is still showing them.
+      await qc.invalidateQueries({
+        queryKey: keys.jobs,
+        predicate: (query) => query.queryKey[1] !== name,
+      });
+      qc.removeQueries({ queryKey: [...keys.jobs, name] });
+    },
+  });
+}
+
+/**
+ * Pause or resume a job (`PATCH /v1/jobs/{name}` with `status`). apid refuses
+ * the change with 409 while any task is queued or claimed; a paused job answers
+ * 409 to a run start.
+ */
+export function useSetJobStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, status }: { name: string; status: 'active' | 'paused' }) =>
+      unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body: { status } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
 export type Job = components['schemas']['JobResponse'];
 export type JobRun = components['schemas']['JobRunResponse'];
 export type JobTask = components['schemas']['JobTaskResponse'];
@@ -2067,6 +2224,22 @@ export function useVerifyDomain() {
     mutationFn: (domain: string) =>
       unwrap(api.POST('/v1/domains/{domain}/verify', { params: { path: { domain } } })),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.domains }),
+  });
+}
+
+/**
+ * Re-arm polling for a pending domain (`POST /v1/domains/{domain}/retry`, 202,
+ * no body). Only works while the TXT challenge is unexpired: the API answers
+ * 409 for an expired challenge and for a domain that is already verified, and
+ * never extends the window. The caller decides what a 409 means by re-reading
+ * the domain, so this hook does not invalidate on error.
+ */
+export function useRetryDomain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (domain: string) =>
+      unwrap(api.POST('/v1/domains/{domain}/retry', { params: { path: { domain } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.domains }),
   });
 }
 
@@ -3804,7 +3977,7 @@ export function usePostgresBindings(id: string) {
     enabled: Boolean(id) && ready,
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some(
-        (b) => b.state === 'provisioning' || b.state === 'deleting'
+        (b) => b.state === 'provisioning' || b.state === 'deleting' || b.rotation_pending
       )
         ? 5_000
         : false,
@@ -3844,6 +4017,38 @@ export function useCreatePostgresBinding(databaseId: string) {
             api.POST('/v1/postgres/databases/{id}/bindings', {
               params: { path: { id: databaseId } },
               body,
+            })
+          ),
+    onSuccess: () =>
+      void qc.invalidateQueries({ queryKey: [...postgresKey(org), databaseId, 'bindings'] }),
+  });
+}
+
+/**
+ * Rotate a binding's credential (`POST /v1/postgres/bindings/{id}/rotate`).
+ * The answer is the binding with its new `credential_generation` and a
+ * `rotation_pending` flag: the previous credential stays valid until the app
+ * runtime's rolling refresh completes, so `true` means accepted, not finished.
+ * `idempotencyKey` is chosen by the caller so a retry of the same intent
+ * replays the first answer.
+ */
+export function useRotatePostgresBinding(databaseId: string) {
+  const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
+  return useMutation({
+    mutationFn: ({ id, idempotencyKey }: { id: string; idempotencyKey: string }) =>
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/bindings/{id}/rotate', {
+              params: {
+                path: { organization: org, id },
+                header: { 'Idempotency-Key': idempotencyKey },
+              },
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/bindings/{id}/rotate', {
+              params: { path: { id }, header: { 'Idempotency-Key': idempotencyKey } },
             })
           ),
     onSuccess: () =>

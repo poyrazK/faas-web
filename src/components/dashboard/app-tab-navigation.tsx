@@ -23,6 +23,7 @@ export const APP_TAB_GROUPS = [
     tabs: [
       'Routes',
       'Upstreams',
+      'Outbound',
       'Services',
       'MCP',
       'Edge rules',
@@ -44,8 +45,9 @@ type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
 type AppTabGroupLabel = AppTabGroup['label'];
 export const APP_DETAIL_TABS: readonly AppTab[] = APP_TAB_GROUPS.flatMap((g) => [...g.tabs]);
 
-/** Catalog ids (faas pkg/productcap/catalog.json) for tabs that are not GA or beta. */
+/** Catalog ids (faas pkg/productcap/catalog.json) for tabs whose routes apid can gate off. */
 export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
+  'Log drains': 'log-drains',
   Routes: 'route-insights',
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
@@ -60,6 +62,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Automations: 'automations',
   Queues: 'queues',
   'Edge protection': 'edge-protection',
+  Outbound: 'outbound-integrations',
 };
 
 /** Hide a tab only once the registry has said its capability is off. */

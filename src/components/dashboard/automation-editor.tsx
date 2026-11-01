@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { ScheduleField } from './schedule-field';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { TIME_ZONES } from '@/lib/timezones';
 import { useAppRoutes } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
@@ -130,12 +131,6 @@ export function JsonField({
  * definition that match no step stay listed (checked) so saving never drops
  * them silently; unchecking removes them.
  */
-/** The runtime's IANA zones, when it can list them; free text works either way. */
-const timeZones: readonly string[] =
-  typeof Intl.supportedValuesOf === 'function'
-    ? ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')]
-    : [];
-
 function DependencyPicker({
   index,
   value,
@@ -784,7 +779,7 @@ export function AutomationEditor({
                   <TextField
                     label="Timezone"
                     value={draft.spec.trigger.timezone ?? 'UTC'}
-                    list={timeZones.length ? timeZoneList : undefined}
+                    list={TIME_ZONES.length ? timeZoneList : undefined}
                     hint="IANA name, such as Europe/Istanbul. The schedule runs in this zone."
                     onChange={(timezone) =>
                       edit({
@@ -793,9 +788,9 @@ export function AutomationEditor({
                       })
                     }
                   />
-                  {timeZones.length > 0 && (
+                  {TIME_ZONES.length > 0 && (
                     <datalist id={timeZoneList}>
-                      {timeZones.map((zone) => (
+                      {TIME_ZONES.map((zone) => (
                         <option key={zone} value={zone} />
                       ))}
                     </datalist>

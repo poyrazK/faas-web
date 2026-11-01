@@ -30,6 +30,7 @@ const PLAN_GATE_CODES = new Set([
   'plan_cors_presets_not_allowed',
   'managed_postgres_not_in_plan',
   'plan_triggers_not_allowed',
+  'plan_log_drains_not_allowed',
 ]);
 
 export function isPlanGate(error: unknown): boolean {
