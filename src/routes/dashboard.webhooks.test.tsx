@@ -70,20 +70,25 @@ describe('webhook form validation', () => {
     await waitFor(() => expect(createWebhook).toHaveBeenCalledTimes(2));
   });
 
-  it('offers the complete API event vocabulary and sends the selected filter', async () => {
+  it('offers only events apid accepts, and sends the selected filter', async () => {
+    // apid rejects any event outside its closed vocabulary with 400
+    // app_webhook_invalid (faas handlers_webhooks.go:88-106, api/webhooks.go:81).
     createWebhook.mockReset().mockResolvedValue({ id: 'webhook-1' });
     render(<WebhooksBody slug="api" />);
+    for (const stale of ['cron.fired', 'app.created', 'build.failed', 'budget.threshold']) {
+      expect(screen.queryByRole('button', { name: stale })).not.toBeInTheDocument();
+    }
     await userEvent.type(
       screen.getByRole('textbox', { name: 'Target URL' }),
       'https://hooks.example.com'
     );
     await userEvent.type(screen.getByLabelText('Secret'), 'x');
-    await userEvent.click(screen.getByRole('button', { name: 'budget.threshold' }));
+    await userEvent.click(screen.getByRole('button', { name: 'deployment.live' }));
     await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
 
     await waitFor(() =>
       expect(createWebhook).toHaveBeenCalledWith(
-        expect.objectContaining({ event_filter: ['budget.threshold'] })
+        expect.objectContaining({ event_filter: ['deployment.live'] })
       )
     );
   });

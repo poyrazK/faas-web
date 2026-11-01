@@ -67,34 +67,38 @@ interface WebhookRow {
   enabled: boolean;
 }
 
+/** One event a webhook may subscribe to, as the vendored spec enumerates them. */
+type SpecEvent = NonNullable<
+  components['schemas']['CreateAppWebhookRequest']['event_filter']
+>[number];
+/**
+ * The platform events offered here: every one is in apid's closed vocabulary
+ * (faas api/webhooks.go:81, AllowedAppWebhookEvents), which rejects anything
+ * else with 400 app_webhook_invalid (handlers_webhooks.go:88-106). Typed by the
+ * spec so a renamed or removed event stops compiling. API monetization and
+ * realtime preview events are left out: apid only accepts them on accounts
+ * that have those features.
+ */
 const EVENTS = [
-  'cron.fired',
-  'cron.fired.manually',
-  'app.created',
-  'app.deleted',
-  'app.deployed',
-  'app.scaled',
+  'deployment.live',
+  'deployment.failed',
+  'rollout.completed',
+  'rollout.aborted',
   'app.parked',
   'app.woken',
-  'build.succeeded',
-  'build.failed',
-  'deployment.failed',
-  'rollout.aborted',
-  'error.new',
+  'app.health.changed',
   'job.finished',
-  'preview.created',
-  'budget.threshold',
-] as const;
+  'operation.finished',
+  'workflow.finished',
+  'issue.created',
+  'issue.regressed',
+  'issue.resolved',
+  'debug.regression.detected',
+  'debug.regression.resolved',
+  'routes.health.blocked',
+  'usage_statement.finalized',
+] as const satisfies readonly SpecEvent[];
 type Event = (typeof EVENTS)[number];
-/**
- * The spec's `event_filter` enum is narrower than apid's canonical list
- * (`state.AllAppWebhookEvents`): every event above is accepted by the server,
- * but 11 of them, `app.created` among them, are missing from the spec. The
- * server is the authority here, so the cast happens once, at the request.
- */
-type SpecEventFilter = NonNullable<
-  components['schemas']['CreateAppWebhookRequest']['event_filter']
->;
 type RetryPolicy = 'default' | 'aggressive' | 'none';
 
 function isHttpsUrl(value: string): boolean {
@@ -363,7 +367,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
               .mutateAsync({
                 target_url: target.trim(),
                 webhook_secret: secret,
-                event_filter: events as SpecEventFilter,
+                event_filter: events,
                 retry_policy: retryPolicy,
                 enabled: true,
               })
