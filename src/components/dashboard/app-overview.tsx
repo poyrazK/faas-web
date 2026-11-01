@@ -2,10 +2,11 @@ import { CheckCircle, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/mock-data';
 import { formatCompact, formatMs } from '@/lib/mock-data';
-import type { AppMetrics, Deployment } from '@/lib/api/queries';
+import type { AppMetrics, Deployment, RequestAnalyticsTimeseries } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
+import { TrafficPillars } from './traffic-pillars';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
@@ -14,6 +15,8 @@ interface AppOverviewProps {
   app: Workflow;
   releases: Read<Deployment[]>;
   metrics: Read<AppMetrics>;
+  /** The 24h hourly series behind the Traffic field; the totals stand alone without it. */
+  series: Read<RequestAnalyticsTimeseries>;
   metricsAccess: 'checking' | 'available' | 'restricted';
   onNavigate: (tab: Destination, deploymentId?: string) => void;
   onDeploy: () => void;
@@ -49,6 +52,7 @@ export function AppOverview({
   app,
   releases,
   metrics,
+  series,
   metricsAccess,
   onNavigate,
   onDeploy,
@@ -74,6 +78,9 @@ export function AppOverview({
       ? metrics.data
       : undefined;
   const hasTraffic = observed && measured(observed.request_count) && observed.request_count > 0;
+  // The field needs both reads: the totals it rests on and the hourly series it
+  // draws. Without the series the totals stand alone rather than a guessed shape.
+  const hourly = observed && !series.isPending && !series.error ? series.data?.points : undefined;
   const requestErrors =
     hasTraffic && measured(observed.error_rate_pct) && observed.error_rate_pct > 0;
   const attention = Boolean(failed || appError || requestErrors);
@@ -289,6 +296,15 @@ export function AppOverview({
               Retry metrics
             </Button>
           </div>
+        ) : hourly ? (
+          <>
+            <TrafficPillars points={hourly} summary={trafficSummary(observed)} />
+            <p className="mt-4 text-xs text-muted-foreground">
+              {observed.request_count === 0
+                ? 'Latency and error rate are not assessed without requests.'
+                : `As of ${timestamp(observed.as_of)}. p95 counts successful (2xx) responses. App state and request health are separate signals.`}
+            </p>
+          </>
         ) : (
           <>
             <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-5">
@@ -328,6 +344,19 @@ export function AppOverview({
       </section>
     </div>
   );
+}
+
+/** The Traffic readout at rest: the window's totals, honest about what is unmeasured. */
+function trafficSummary(observed: AppMetrics): string {
+  if (!measured(observed.request_count)) return 'Request count unavailable';
+  if (observed.request_count === 0) return 'No requests recorded in this window';
+  const errors = measured(observed.error_rate_pct)
+    ? `${observed.error_rate_pct.toFixed(2)}% errors`
+    : 'error rate unavailable';
+  const p95 = measured(observed.latency_p95_ms)
+    ? `p95 ${formatMs(observed.latency_p95_ms)}`
+    : 'p95 unavailable';
+  return `${formatCompact(observed.request_count)} requests · ${errors} · ${p95}`;
 }
 
 function Signal({ label, value, note }: { label: string; value: string; note?: string }) {

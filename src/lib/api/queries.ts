@@ -3590,6 +3590,8 @@ export type AppAnalyticsTimeseriesOptions = {
   route?: string;
   method?: NonNullable<RequestAnalyticsTimeseries['method']>;
   groupBy?: AnalyticsGroupBy;
+  /** Off for accounts without hourly analytics (Free answers 402). */
+  enabled?: boolean;
 };
 export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceResponse'];
 export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
@@ -3695,7 +3697,7 @@ export function useAppAnalyticsTimeseries(
           },
         })
       ),
-    enabled: Boolean(slug),
+    enabled: Boolean(slug) && (options?.enabled ?? true),
     retry: false,
   });
 }
