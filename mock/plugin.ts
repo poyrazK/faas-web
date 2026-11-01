@@ -7,6 +7,8 @@ import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
+import * as asyncMock from './async-invocations';
+import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
 import * as deploymentDetail from './deployment-detail';
 import { registerEventMocks } from './events';
@@ -3315,6 +3317,61 @@ route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
 route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
   logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
 );
+// --- Custom metrics (faas ADR-202, history ADR-745) ---
+// MOCK_PLAN=free refuses pushes with apid's 402; MOCK_CUSTOM_METRIC_HISTORY=off
+// answers history with the 503 an installation without the operator flag sends.
+const CUSTOM_METRIC_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+function customMetricName(name: string) {
+  if (!CUSTOM_METRIC_NAME.test(name))
+    throw new Problem(422, 'validation', `name "${name}" must match [a-z][a-z0-9_]{0,62}.`);
+  return name;
+}
+route('GET', '/v1/apps/{slug}/custom-metrics', ({ params }) =>
+  customMetricMock.listFor(app(params.slug).slug)
+);
+route('PUT', '/v1/apps/{slug}/custom-metrics/{name}', ({ params, body }) => {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      402,
+      'plan_custom_metrics_not_allowed',
+      'custom application metrics are not included in the free plan. Scale on a platform-measured signal (rps, cpu, concurrent_requests, queue_depth, queue_lag) or upgrade.'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const value = body.value;
+  if (typeof value !== 'number')
+    throw new Problem(400, 'validation', 'body must be a JSON object with a numeric `value`.');
+  if (!Number.isFinite(value) || value < 0 || value > 1e12)
+    throw new Problem(422, 'validation', `value must be finite, >= 0 and <= 1e12; got ${value}.`);
+  const held = customMetricMock.listFor(a.slug).metrics;
+  if (held.length >= customMetricMock.MAX_METRICS && !held.some((m) => m.name === name))
+    throw new Problem(
+      422,
+      'custom_metric_limit',
+      `this app already holds ${customMetricMock.MAX_METRICS} custom metrics, which is the maximum. Pushing a new value for an existing metric always works; delete an unused metric to free a slot.`
+    );
+  customMetricMock.pushMetric(a.slug, name, value);
+  return NO_CONTENT;
+});
+route('DELETE', '/v1/apps/{slug}/custom-metrics/{name}', ({ params }) => {
+  // apid answers 204 for a name that does not exist: the intent is satisfied.
+  customMetricMock.store.get(app(params.slug).slug)?.delete(params.name);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/custom-metrics/{name}/series', ({ params, query }) => {
+  if (process.env.MOCK_CUSTOM_METRIC_HISTORY === 'off')
+    throw new Problem(
+      503,
+      'custom_metric_history_unavailable',
+      'custom metric history is not enabled for this deployment'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const range = query.get('range') ?? '24h';
+  if (!['1h', '6h', '24h', '7d', '15d'].includes(range))
+    throw new Problem(400, 'validation', 'range must be one of: 1h, 6h, 24h, 7d, 15d');
+  return customMetricMock.seriesFor(a.slug, name, range);
+});
 // --- Canary route health: candidate vs stable per critical route ---
 function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
   const deployment = db.deployments.find((d) => d.id === deploymentId);
@@ -7509,30 +7566,57 @@ route('DELETE', '/v1/edge-rule-lists/{name}', ({ params }) => {
   return NO_CONTENT;
 });
 
+// Async invocations: work policies, deadlines, destinations, and the two
+// replay routes with apid's one-replay-per-parent rule (mock/async-invocations.ts).
+const asyncInvocations: asyncMock.AsyncMock = {
+  invocations: db.invocations,
+  policies: asyncMock.seedAsyncInvocations(db.invocations, db.apps, db.webhooks, Date.now()),
+  children: new Map(),
+  settleAt: new Map(),
+};
+function refused<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof asyncMock.Refusal)
+      throw new Problem(error.status, error.code, error.detail);
+    throw error;
+  }
+}
 route('GET', '/v1/invocations', ({ query }) => ({
-  invocations: db.invocations.slice(0, Number(query.get('limit') ?? 50)),
+  invocations: db.invocations
+    .slice(0, Number(query.get('limit') ?? 50))
+    .map((inv) => asyncMock.settle(asyncInvocations, inv, Date.now())),
 }));
 route('GET', '/v1/invocations/{id}', ({ params }) => {
   const inv = db.invocations.find((x) => x.id === params.id);
   if (!inv) throw new Problem(404, 'invocation_not_found');
-  return inv;
+  return asyncMock.settle(asyncInvocations, inv, Date.now());
 });
 route('POST', '/v1/invocations/{id}/replay', ({ params }) => {
-  const inv = db.invocations.find((x) => x.id === params.id);
-  if (!inv) throw new Problem(404, 'invocation_not_found');
-  const replay = {
-    ...inv,
-    id: db.id(),
-    source: 'replay' as const,
-    state: 'pending' as const,
-    created_at: db.iso(0),
-    completed_at: null,
-    last_error: null,
-    attempts: 0,
-  };
-  db.invocations.unshift(replay);
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'plain', Date.now()));
   return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
 });
+route('POST', '/v1/invocations/{id}/replay-keyed', ({ params }) => {
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'keyed', Date.now()));
+  return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
+});
+route('POST', '/v1/apps/{slug}/invoke/async', ({ params, body }) => {
+  const a = app(params.slug);
+  const inv = refused(() =>
+    asyncMock.createAsyncInvocation(
+      asyncInvocations,
+      a,
+      listOf(db.webhooks, a.slug),
+      body,
+      Date.now()
+    )
+  );
+  return status(202, { id: inv.id, status_url: `/v1/invocations/${inv.id}` });
+});
+route('GET', '/v1/apps/{slug}/work-policies', ({ params }) => ({
+  policies: asyncInvocations.policies.get(app(params.slug).slug) ?? [],
+}));
 
 route('GET', '/v1/instances', () => ({ instances: db.instances, next_before: null }));
 route('GET', '/v1/audit-log', ({ query }) => {

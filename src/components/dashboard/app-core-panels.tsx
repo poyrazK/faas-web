@@ -19,6 +19,8 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from './plan-gate';
+import { AsyncInvokeOptionsFields } from './async-invoke-options';
+import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -50,14 +52,14 @@ export function InvokePanel({ slug }: { slug: string }) {
   const [path, setPath] = useState('/');
   const [payload, setPayload] = useState('{}');
   const [headers, setHeaders] = useState('{}');
+  const [asyncOptions, setAsyncOptions] = useState(NO_ASYNC_OPTIONS);
   const [output, setOutput] = useState<unknown>(null);
   const [pendingId, setPendingId] = useState('');
   const invocation = useInvocation(pendingId, true);
-  const syncAvailable = account !== null && isPaidPlan(account.plan);
-  // Keep the in-memory choice harmless if the account resolves as Free after
-  // the panel mounted: the displayed and submitted mode becomes async
-  // without a state-setting effect or a paid-only request.
-  const effectiveMode = syncAvailable ? mode : 'async';
+  // apid refuses both invoke routes on Free: invokeApp and invokeAppAsync
+  // each check AsyncInvokeAllowed (faas handlers_invocations.go; limits.go
+  // sets it false for Free) and answer plan_feature_gated.
+  const invokeAvailable = account !== null && isPaidPlan(account.plan);
 
   const submit = () => {
     let body: {
@@ -65,13 +67,14 @@ export function InvokePanel({ slug }: { slug: string }) {
       path: string;
       payload: Record<string, unknown>;
       headers: Record<string, unknown>;
-    };
+    } & ReturnType<typeof asyncInvokeExtras>;
     try {
       body = {
         method,
         path: path.trim() || '/',
         payload: parseObject(payload, 'Payload'),
         headers: parseObject(headers, 'Headers'),
+        ...(mode === 'async' ? asyncInvokeExtras(asyncOptions) : {}),
       };
     } catch (error) {
       toast({ kind: 'error', title: 'Invalid request', error: error });
@@ -80,10 +83,10 @@ export function InvokePanel({ slug }: { slug: string }) {
 
     setOutput(null);
     setPendingId('');
-    const request = effectiveMode === 'sync' ? sync.mutateAsync : asyncInvoke.mutateAsync;
+    const request = mode === 'sync' ? sync.mutateAsync : asyncInvoke.mutateAsync;
     void request({ slug, ...body })
       .then((result) => {
-        if (effectiveMode === 'async') {
+        if (mode === 'async') {
           setPendingId(result.id);
           setOutput({ id: result.id, status: 'queued' });
           toast({ kind: 'success', title: 'Invocation queued' });
@@ -96,7 +99,7 @@ export function InvokePanel({ slug }: { slug: string }) {
       );
   };
 
-  const pending = effectiveMode === 'async' && Boolean(pendingId) && !invocation.data;
+  const pending = mode === 'async' && Boolean(pendingId) && !invocation.data;
   const busy = sync.isPending || asyncInvoke.isPending;
 
   return (
@@ -110,12 +113,12 @@ export function InvokePanel({ slug }: { slug: string }) {
             <button
               key={value}
               type="button"
-              aria-pressed={effectiveMode === value}
-              aria-disabled={value === 'sync' && !syncAvailable}
-              disabled={value === 'sync' && !syncAvailable}
+              aria-pressed={mode === value}
+              aria-disabled={!invokeAvailable}
+              disabled={!invokeAvailable}
               onClick={() => setMode(value)}
               className={`rounded px-2.5 py-1 text-xs pressable ${
-                effectiveMode === value
+                mode === value
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
@@ -165,13 +168,16 @@ export function InvokePanel({ slug }: { slug: string }) {
             className="font-mono"
           />
         </label>
+        {mode === 'async' && (
+          <AsyncInvokeOptionsFields slug={slug} value={asyncOptions} onChange={setAsyncOptions} />
+        )}
         <div className="flex items-center justify-between gap-3 sm:col-span-2">
           <p className="text-xs text-muted-foreground">
-            {effectiveMode === 'sync'
+            {mode === 'sync'
               ? 'The request waits for the platform result and may take longer on a cold app.'
               : 'The request returns immediately; its status is polled until it reaches a terminal state.'}
           </p>
-          <Button size="sm" onClick={submit} disabled={authLoading} busy={busy}>
+          <Button size="sm" onClick={submit} disabled={authLoading || !invokeAvailable} busy={busy}>
             Send request
           </Button>
         </div>
@@ -179,10 +185,10 @@ export function InvokePanel({ slug }: { slug: string }) {
           <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
             Checking plan access…
           </p>
-        ) : account && !syncAvailable ? (
+        ) : account && !invokeAvailable ? (
           <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
-            Synchronous invocation is available on Hobby and above. Async invocation remains
-            available on the free plan.{' '}
+            Invoking from the console is available on Hobby and above. On the free plan, call the
+            app at its own URL.{' '}
             <Link to="/dashboard/plans" className="text-brand hover:underline">
               Compare plans
             </Link>
