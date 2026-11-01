@@ -26,6 +26,7 @@ const lists = vi.hoisted(() => ({
   fetchNextJobs: vi.fn(),
 }));
 beforeEach(() => {
+  CAP.access = 'on';
   lists.empty = false;
   lists.triggersAllowed = true;
   lists.appsRead = 'ready';
@@ -42,6 +43,19 @@ beforeEach(() => {
 vi.mock('@/components/dashboard/automations-body', () => ({
   AutomationsBody: () => <p>Automations body</p>,
 }));
+const CAP = vi.hoisted(() => ({ access: 'on' as string }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: CAP.access, refresh: vi.fn() }),
+  useCapability: () => ({ capability: { key: 'jobs', maturity: 'beta' } }),
+}));
+// Detail panels with their own tests.
+vi.mock('@/components/dashboard/job-schedule', () => ({ JobSchedule: () => null }));
+vi.mock('@/components/dashboard/job-registry-credentials', () => ({
+  JobRegistryCredentials: () => null,
+}));
+vi.mock('@/components/dashboard/job-run-replay', () => ({ JobRunReplay: () => null }));
+vi.mock('@/components/dashboard/job-task-retry', () => ({ JobTaskRetry: () => null }));
+vi.mock('@/components/dashboard/job-task-artifacts', () => ({ JobTaskArtifacts: () => null }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/lib/auth', () => ({
@@ -302,6 +316,13 @@ describe('Jobs hub', () => {
     );
     await userEvent.hover(screen.getByRole('button', { name: 'Run history for */15 * * * *' }));
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Run history for */15 * * * *');
+  });
+
+  it('keeps Workloads behind the jobs capability, which apid can switch off', async () => {
+    CAP.access = 'off';
+    await mount('/dashboard/jobs?section=workloads');
+    expect(await screen.findByText('Not enabled for this account')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New workload' })).not.toBeInTheDocument();
   });
 
   it('loads older workloads on demand', async () => {

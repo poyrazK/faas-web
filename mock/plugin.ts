@@ -6583,11 +6583,39 @@ const jobSeed = [
   { name: 'legacy-backfill', kind: 'batch', status: 'paused', tasks: 120 },
 ];
 
-const jobs = jobSeed.map((j) => ({
+type MockJob = {
+  id: string;
+  name: string;
+  kind: string;
+  status: string;
+  schedule?: string;
+  timezone?: string;
+  last_scheduled_at?: string;
+  schedule_policy?: Record<string, unknown>;
+  max_parallelism: number;
+  retry_max: number;
+  task_timeout_sec: number;
+  [key: string]: unknown;
+};
+const jobs: MockJob[] = jobSeed.map((j) => ({
   id: db.id(),
   account_id: 'acct-1',
   name: j.name,
   kind: j.kind,
+  // A recurring job carries its cron, zone and policy (faas jobResponse).
+  ...(j.kind === 'recurring'
+    ? {
+        schedule: '0 3 * * *',
+        timezone: 'Europe/Istanbul',
+        last_scheduled_at: db.iso(14 * 3_600_000),
+        schedule_policy: {
+          version: 1,
+          overlap: 'skip',
+          start_deadline_seconds: 120,
+          missed_runs: 'skip',
+        },
+      }
+    : {}),
   image_ref: `registry.gregale.dev/acme/${j.name}:v3`,
   command: ['node', 'scripts/run.js'],
   ram_mb: 2048,
@@ -6602,10 +6630,27 @@ const jobs = jobSeed.map((j) => ({
 const RUN_STATES = ['running', 'succeeded', 'failed', 'cancelled', 'queued', 'dead_letter'];
 const TASK_STATES = ['succeeded', 'failed', 'timeout', 'oom', 'cancelled', 'claimed', 'queued'];
 
-function runsFor(name: string) {
+type MockRun = {
+  id: string;
+  aggregate_status: string;
+  tasks: number;
+  tasks_failed: number;
+  tasks_cancelled: number;
+  retry_max: number;
+  finished_at?: string;
+  source_run_id?: string;
+  [key: string]: unknown;
+};
+const TERMINAL_RUN = new Set(['succeeded', 'failed', 'cancelled', 'dead_letter']);
+
+function runsFor(name: string): MockRun[] {
   const job = jobs.find((j) => j.name === name);
   const tasks = jobSeed.find((j) => j.name === name)?.tasks ?? 8;
-  return RUN_STATES.map((state, i) => ({
+  // reindex-search has nothing in flight, so its schedule can be edited: apid
+  // refuses any job update while a task is queued or claimed.
+  const states =
+    name === 'reindex-search' ? RUN_STATES.filter((state) => TERMINAL_RUN.has(state)) : RUN_STATES;
+  return states.map((state, i) => ({
     id: db.id(),
     job_id: job?.id ?? db.id(),
     account_id: 'acct-1',
@@ -6618,14 +6663,33 @@ function runsFor(name: string) {
     tasks_succeeded: state === 'succeeded' ? tasks : Math.floor(tasks / 2),
     tasks_failed: state === 'failed' || state === 'dead_letter' ? 3 : 0,
     tasks_cancelled: state === 'cancelled' ? 2 : 0,
-    created_at: db.iso(i * 3_600_000),
+    tasks_running: state === 'running' ? 2 : 0,
+    dead_letter_count: state === 'dead_letter' ? 3 : 0,
+    created_at: db.iso(i * 3_600_000 + 1_800_000),
+    started_at: db.iso(i * 3_600_000 + 1_700_000),
+    ...(TERMINAL_RUN.has(state) ? { finished_at: db.iso(i * 3_600_000) } : {}),
     updated_at: db.iso(i * 3_500_000),
   }));
 }
 
-const runCache = new Map<string, ReturnType<typeof runsFor>>();
+const runCache = new Map<string, MockRun[]>();
 const runsOf = (name: string) => {
-  if (!runCache.has(name)) runCache.set(name, runsFor(name));
+  if (!runCache.has(name)) {
+    const runs = runsFor(name);
+    runCache.set(name, runs);
+    // A finished run's counters agree with its listed tasks, so a replay
+    // queues exactly the count the console asked about.
+    for (const run of runs) {
+      if (!run.finished_at) continue;
+      const tasks = tasksOf(name, run);
+      run.tasks = tasks.length;
+      run.tasks_succeeded = tasks.filter((t) => t.status === 'succeeded').length;
+      run.tasks_failed = tasks.filter((t) =>
+        ['failed', 'timeout', 'oom'].includes(t.status)
+      ).length;
+      run.tasks_cancelled = tasks.filter((t) => t.status === 'cancelled').length;
+    }
+  }
   return runCache.get(name)!;
 };
 
@@ -6660,6 +6724,9 @@ route('POST', '/v1/jobs', ({ body }) => {
     throw new Problem(400, 'validation_failed', 'Command must be an array of at most 64 strings.');
   if (jobs.some((job) => job.name === name))
     throw new Problem(409, 'validation_failed', `Workload name "${name}" is already in use.`);
+  const schedule = typeof body.schedule === 'string' ? body.schedule.trim() : '';
+  if (kind === 'recurring' && !schedule)
+    throw new Problem(400, 'validation_failed', 'recurring jobs require a schedule');
   // Keep the dev fixture aligned with apid's plan defaults and ceilings.
   const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
   const caps = {
@@ -6692,6 +6759,7 @@ route('POST', '/v1/jobs', ({ body }) => {
     image_ref: image,
     command: command as string[],
     ...resources,
+    ...(schedule ? { kind: 'recurring', schedule, timezone: String(body.timezone ?? 'UTC') } : {}),
     status: 'active',
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -6729,20 +6797,312 @@ route('GET', '/v1/jobs/{name}/runs', ({ params }) => {
   return { runs, limit: 50, offset: 0, next_offset: -1, total: runs.length };
 });
 
+type MockTask = {
+  run_id: string;
+  task_index: number;
+  status: string;
+  attempt: number;
+  source_task_index?: number;
+  output_manifest?: { version: number; artifacts: Record<string, unknown>[] };
+  [key: string]: unknown;
+};
+const taskCache = new Map<string, MockTask[]>();
+const ARTIFACT_DIGEST = (text: string) =>
+  `sha256:${createHash('sha256').update(text).digest('hex')}`;
+const artifactBody = (job: string, run: string, idx: number) =>
+  `${JSON.stringify({ job, run, task: idx, rows: 1200 + idx, status: 'processed' }, null, 2)}\n`;
+
+// Seeded tasks walk every status; task 2 has spent its retry budget, so the
+// console's "replay instead" path is reachable. A succeeded task publishes a
+// managed (obj://) result and an external (s3://) mirror (pkg/jobresult).
+function tasksOf(name: string, run: MockRun): MockTask[] {
+  if (!taskCache.has(run.id)) {
+    const fresh = run.aggregate_status === 'queued';
+    // A finished run has no queued or claimed tasks left.
+    const pattern =
+      run.aggregate_status === 'succeeded'
+        ? ['succeeded']
+        : run.aggregate_status === 'cancelled'
+          ? ['succeeded', 'cancelled']
+          : run.finished_at
+            ? ['succeeded', 'failed', 'timeout', 'oom', 'cancelled']
+            : TASK_STATES;
+    taskCache.set(
+      run.id,
+      Array.from({ length: Math.min(run.tasks, 12) }, (_, i) => {
+        const status = fresh ? 'queued' : pattern[i % pattern.length];
+        const body = artifactBody(name, run.id, i);
+        return {
+          run_id: run.id,
+          task_index: i,
+          status,
+          attempt: fresh ? 1 : i === 2 ? 6 : i % 3 === 0 ? 2 : 1,
+          instance_id: db.id(),
+          ...(fresh ? {} : { started_at: db.iso(600_000), finished_at: db.iso(300_000) }),
+          ...(status === 'succeeded'
+            ? {
+                output_manifest: {
+                  version: 1,
+                  artifacts: [
+                    {
+                      name: 'result',
+                      uri: `obj://app-1/bucket-1/job-results/${name}/${i}/result.json`,
+                      size_bytes: Buffer.byteLength(body),
+                      sha256: ARTIFACT_DIGEST(body),
+                    },
+                    {
+                      name: 'mirror',
+                      uri: `s3://acme-results/${name}/${i}/result.json`,
+                      size_bytes: Buffer.byteLength(body),
+                      sha256: ARTIFACT_DIGEST(body),
+                    },
+                  ],
+                },
+              }
+            : {}),
+        };
+      })
+    );
+  }
+  return taskCache.get(run.id)!;
+}
+
+function ownedRun(name: string, id: string) {
+  const job = jobs.find((j) => j.name === name);
+  if (!job) throw new Problem(404, 'not_found', 'no such run');
+  const run = runsOf(job.name).find((r) => r.id === id);
+  if (!run) throw new Problem(404, 'not_found', 'no such run');
+  return { job, run };
+}
+
 route('GET', '/v1/jobs/{name}/runs/{id}/tasks', ({ params }) => {
   gateJobs();
   const run = runsOf(params.name).find((r) => r.id === params.id);
   if (!run) throw new Problem(404, 'job_run_not_found');
-  const tasks = Array.from({ length: Math.min(run.tasks, 12) }, (_, i) => ({
-    run_id: run.id,
-    task_index: i,
-    status: TASK_STATES[i % TASK_STATES.length],
-    attempt: i % 3 === 0 ? 2 : 1,
-    instance_id: db.id(),
-    started_at: db.iso(600_000),
-    finished_at: db.iso(300_000),
-  }));
+  const tasks = tasksOf(params.name, run);
   return { tasks, limit: 50, offset: 0, next_offset: -1, total: tasks.length };
+});
+
+// Explicit retry of one task (handlers_jobs.go retryJobTask): only failed,
+// timeout, oom or cancelled, and only while attempt <= retry_max.
+route('POST', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/retry', ({ params }) => {
+  gateJobs();
+  const { run } = ownedRun(params.name, params.id);
+  const task = tasksOf(params.name, run).find((t) => t.task_index === Number(params.idx));
+  if (!task)
+    throw new Problem(
+      404,
+      'job_task_not_found',
+      `no job task at run ${run.id} / task ${params.idx}`
+    );
+  if (!['failed', 'timeout', 'oom', 'cancelled'].includes(task.status))
+    throw new Problem(
+      409,
+      'job_task_not_retriable',
+      `task ${task.task_index} in run ${run.id} is in status ${task.status}; only failed, timeout, oom, or cancelled tasks can be retried.`
+    );
+  if (task.attempt > run.retry_max)
+    throw new Problem(
+      409,
+      'job_task_max_retries_reached',
+      `task ${task.task_index} in run ${run.id} has used ${task.attempt} attempts; retry_max is ${run.retry_max}. Re-run its input in a linked run with \`gregale jobs replay-failed ${params.name} ${run.id}\`.`
+    );
+  const delay = Math.min(300, 5 * 2 ** (task.attempt - 1));
+  if (task.status === 'cancelled') run.tasks_cancelled = Math.max(0, run.tasks_cancelled - 1);
+  else run.tasks_failed = Math.max(0, run.tasks_failed - 1);
+  task.status = 'queued';
+  task.attempt += 1;
+  run.aggregate_status = 'running';
+  delete run.finished_at;
+  return {
+    task,
+    run,
+    retried_at: new Date().toISOString(),
+    next_attempt_at: new Date(Date.now() + delay * 1000).toISOString(),
+  };
+});
+
+// A linked run of a finished run's unsuccessful tasks (pgstore_jobs.go
+// JobRunReplayFailed). A paused job reads as missing, as in apid.
+route('POST', '/v1/jobs/{name}/runs/{id}/replay-failed', ({ params }) => {
+  gateJobs();
+  const { job, run } = ownedRun(params.name, params.id);
+  if (job.status !== 'active') throw new Problem(404, 'not_found', 'no such run');
+  const source = tasksOf(job.name, run);
+  const failed = source.filter((t) => ['failed', 'timeout', 'oom', 'cancelled'].includes(t.status));
+  if (
+    !run.finished_at ||
+    failed.length === 0 ||
+    source.some((t) => t.status === 'queued' || t.status === 'claimed')
+  )
+    throw new Problem(
+      409,
+      'validation_failed',
+      'the source must be terminal with failed inputs and the same ready image digest'
+    );
+  const linked: MockRun = {
+    ...run,
+    id: db.id(),
+    trigger_kind: 'manual',
+    tasks: failed.length,
+    aggregate_status: 'queued',
+    tasks_succeeded: 0,
+    tasks_failed: 0,
+    tasks_cancelled: 0,
+    tasks_running: 0,
+    dead_letter_count: 0,
+    source_run_id: run.id,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  delete linked.finished_at;
+  delete linked.started_at;
+  runsOf(job.name).unshift(linked);
+  taskCache.set(
+    linked.id,
+    failed.map((t, i) => ({
+      run_id: linked.id,
+      task_index: i,
+      source_task_index: t.task_index,
+      status: 'queued',
+      attempt: 1,
+    }))
+  );
+  return status(201, linked);
+});
+
+// Verify a managed artifact and sign a five-minute GET (job_managed_objects.go).
+// The mock stores the bytes in the api-gateway "assets" bucket so the signed
+// URL round-trips through /mock-s3/object like any other download.
+route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/artifacts/{artifact}/download', (ctx) => {
+  gateJobs();
+  const { params, req } = ctx;
+  const { job, run } = ownedRun(params.name, params.id);
+  const task = tasksOf(job.name, run).find((t) => t.task_index === Number(params.idx));
+  const artifact = task?.output_manifest?.artifacts.find((a) => a.name === params.artifact);
+  if (!task || task.status !== 'succeeded' || !artifact)
+    throw new Problem(404, 'not_found', 'no such output artifact');
+  if (!String(artifact.uri).startsWith('obj://'))
+    throw new Problem(
+      409,
+      'validation_failed',
+      'download links are available for obj:// artifacts'
+    );
+  const bucket = bucketsFor('api-gateway').find((b) => b.name === 'assets');
+  if (!bucket) throw new Problem(404, 'not_found', 'no such output artifact');
+  const key = `job-results/${job.name}/${run.id}/${task.task_index}/${artifact.name}.json`;
+  const where = `api-gateway/${bucket.id}`;
+  const bytes = Buffer.from(artifactBody(job.name, run.id, task.task_index));
+  const list = storageObjects.get(where) ?? [];
+  if (!list.some((o) => o.key === key))
+    storageObjects.set(where, [
+      ...list,
+      { key, size_bytes: bytes.length, last_modified: db.iso(0) },
+    ]);
+  storageBytes.set(`${where}/${key}`, { bytes, contentType: 'application/json' });
+  const signature = hex(32);
+  const expiresAt = Date.now() + 300_000;
+  storageSignatures.set(signature, {
+    slug: 'api-gateway',
+    bucketId: bucket.id,
+    key,
+    method: 'GET',
+    expiresAt,
+    contentType: 'application/json',
+  });
+  const url = new URL(MOCK_S3_OBJECT_PATH, `http://${req.headers.host ?? 'localhost'}`);
+  url.searchParams.set('bucket', bucket.name);
+  url.searchParams.set('key', key);
+  url.searchParams.set('X-Amz-Signature', signature);
+  return {
+    name: artifact.name,
+    size_bytes: bytes.length,
+    sha256: artifact.sha256,
+    verified_at: new Date().toISOString(),
+    download: {
+      url: url.toString(),
+      method: 'GET',
+      headers: {},
+      expires_at: new Date(expiresAt).toISOString(),
+    },
+  };
+});
+
+// Per-job private-registry credentials (handlers_job_registry_auth.go). The
+// password is accepted and dropped: answers carry metadata only.
+const jobRegistry = new Map<string, Record<string, string>[]>([
+  [
+    'nightly-export',
+    db.EMPTY
+      ? []
+      : [
+          {
+            registry: 'ghcr.io',
+            username: 'acme-ci',
+            created_at: db.iso(20 * 86_400_000),
+            updated_at: db.iso(6 * 86_400_000),
+            last_used_at: db.iso(3_600_000),
+          },
+        ],
+  ],
+]);
+const registryQuota = () =>
+  process.env.MOCK_PLAN === 'hobby' ? 2 : process.env.MOCK_PLAN === 'scale' ? 20 : 5;
+function registryHost(raw: unknown) {
+  const text = String(raw ?? '').trim();
+  if (!/^https:\/\//i.test(text))
+    throw new Problem(
+      400,
+      'invalid_registry_host',
+      'registry must include explicit https:// prefix'
+    );
+  const host = text.slice(8).toLowerCase().replace(/\/+$/, '');
+  if (!host || /[/?#]/.test(host))
+    throw new Problem(400, 'invalid_registry_host', 'registry contains path/query/fragment');
+  return host;
+}
+function registryJob(name: string) {
+  if (!jobs.some((j) => j.name === name)) throw new Problem(404, 'not_found', 'no such job');
+  if (!jobRegistry.has(name)) jobRegistry.set(name, []);
+  return jobRegistry.get(name)!;
+}
+route('GET', '/v1/jobs/{name}/registry-credentials', ({ params }) => {
+  const credentials = registryJob(params.name);
+  return { credentials, quota_max: registryQuota(), count: credentials.length };
+});
+route('PUT', '/v1/jobs/{name}/registry-credentials', ({ params, body }) => {
+  const credentials = registryJob(params.name);
+  const registry = registryHost(body.registry);
+  if (!String(body.username ?? '').trim())
+    throw new Problem(400, 'invalid_registry_host', 'username is required');
+  if (!String(body.password ?? ''))
+    throw new Problem(400, 'invalid_registry_host', 'password is required');
+  const existing = credentials.find((c) => c.registry === registry);
+  if (!existing && credentials.length >= registryQuota())
+    throw new Problem(
+      413,
+      'plan_job_registry_credential_quota',
+      `the pro plan caps private-registry credentials at ${registryQuota()} per job; got ${credentials.length}. Delete one before adding another.`,
+      { limit: registryQuota(), observed: credentials.length }
+    );
+  const row = existing ?? { registry, created_at: db.iso(0) };
+  row.username = String(body.username).trim();
+  row.updated_at = db.iso(0);
+  if (!existing) credentials.push(row);
+  return row;
+});
+route('DELETE', '/v1/jobs/{name}/registry-credentials', ({ params, query }) => {
+  const credentials = registryJob(params.name);
+  const registry = registryHost(query.get('registry'));
+  const index = credentials.findIndex((c) => c.registry === registry);
+  if (index < 0)
+    throw new Problem(
+      400,
+      'job_registry_credential_not_found',
+      `no credential stored for registry "${registry}" on job "${params.name}".`
+    );
+  credentials.splice(index, 1);
+  return NO_CONTENT;
 });
 
 route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs', ({ params }) => {
@@ -6769,6 +7129,7 @@ route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
     throw new Problem(409, 'job_run_not_cancellable', 'The run has already finished.');
   }
   run.aggregate_status = 'cancelled';
+  run.finished_at = new Date().toISOString();
   return { run, cancelled_at: new Date().toISOString() };
 });
 
@@ -6824,6 +7185,61 @@ route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
   gateJobs();
   const job = jobs.find((j) => j.name === params.name);
   if (!job) throw new Problem(404, 'job_not_found', 'no such job');
+  const scheduling =
+    body.schedule !== undefined ||
+    body.timezone !== undefined ||
+    body.schedule_policy !== undefined;
+  if (scheduling) {
+    if (job.kind === 'image_run')
+      throw new Problem(409, 'image_run_managed', `${job.name} is managed by its image run.`);
+    const schedule = body.schedule === undefined ? job.schedule : String(body.schedule).trim();
+    if (body.schedule !== undefined && schedule && !/^\S+(\s+\S+){4}$/.test(schedule))
+      throw new Problem(
+        400,
+        'validation_failed',
+        'schedule must be a valid five-field cron expression'
+      );
+    if (!schedule && body.timezone !== undefined)
+      throw new Problem(400, 'validation_failed', 'timezone can only be set for a recurring job');
+    if (body.timezone !== undefined) {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: String(body.timezone) });
+      } catch {
+        throw new Problem(400, 'validation_failed', 'timezone must be a valid IANA location');
+      }
+    }
+    const policy = body.schedule_policy as Record<string, unknown> | undefined;
+    if (
+      policy &&
+      (!['allow', 'skip', 'replace'].includes(String(policy.overlap)) ||
+        !['skip', 'coalesce_latest'].includes(String(policy.missed_runs)))
+    )
+      throw new Problem(400, 'validation_failed', 'schedule_policy is invalid');
+    if (
+      runsOf(job.name).some(
+        (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+      )
+    )
+      throw new Problem(
+        409,
+        'validation_failed',
+        'wait for active runs to finish or cancel them before updating this job'
+      );
+    if (body.schedule !== undefined) {
+      if (schedule) {
+        job.schedule = schedule;
+        job.kind = 'recurring';
+        job.timezone = String(body.timezone ?? job.timezone ?? 'UTC');
+      } else {
+        delete job.schedule;
+        delete job.timezone;
+        delete job.schedule_policy;
+        job.kind = 'batch';
+      }
+    } else if (body.timezone !== undefined) job.timezone = String(body.timezone);
+    if (policy && job.schedule) job.schedule_policy = policy;
+    job.updated_at = db.iso(0);
+  }
   if (body.status !== undefined) {
     if (body.status !== 'active' && body.status !== 'paused')
       throw new Problem(

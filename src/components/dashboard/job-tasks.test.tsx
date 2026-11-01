@@ -11,6 +11,17 @@ vi.mock('@/lib/api/queries', () => ({
     useJobTaskLog(name, runId, idx) as unknown,
 }));
 
+vi.mock('@/components/dashboard/job-task-retry', () => ({
+  JobTaskRetry: ({ task }: { task: { task_index: number } }) => (
+    <span>retry {task.task_index}</span>
+  ),
+}));
+vi.mock('@/components/dashboard/job-task-artifacts', () => ({
+  JobTaskArtifacts: ({ task }: { task: { task_index: number } }) => (
+    <span>artifacts {task.task_index}</span>
+  ),
+}));
+
 const { JobTasks } = await import('./job-tasks');
 
 const task = (over: Record<string, unknown> = {}) => ({
@@ -93,5 +104,11 @@ describe('JobTasks', () => {
     useJobTasks.mockReturnValue(ok([]));
     render(<JobTasks name="nightly-export" runId="run1" />);
     expect(screen.getByText(/no tasks/i)).toBeInTheDocument();
+  });
+
+  it('gives every task its retry and its artifacts, each deciding whether it applies', () => {
+    render(<JobTasks name="nightly-export" runId="run1" />);
+    expect(screen.getByText('retry 1')).toBeInTheDocument();
+    expect(screen.getByText('artifacts 0')).toBeInTheDocument();
   });
 });

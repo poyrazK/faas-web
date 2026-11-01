@@ -637,7 +637,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Jobs, including output artifacts',
     status: 'partial',
     surfaces: ['/dashboard/jobs'],
-    gap: 'Retry a task, replay failed runs, artifacts, registry credentials, schedule fields',
+    gap: 'Task attempt history, failure rules, schedule occurrences, run inputs and overrides (arguments, env, parallelism, flexible window), editing image/command/env/resources, log follow',
     wave: 2,
   },
   // E94 · beta
