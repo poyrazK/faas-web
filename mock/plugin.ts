@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
+import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
 import * as deploymentDetail from './deployment-detail';
 import { registerEventMocks } from './events';
@@ -3314,6 +3315,61 @@ route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
 route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
   logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
 );
+// --- Custom metrics (faas ADR-202, history ADR-745) ---
+// MOCK_PLAN=free refuses pushes with apid's 402; MOCK_CUSTOM_METRIC_HISTORY=off
+// answers history with the 503 an installation without the operator flag sends.
+const CUSTOM_METRIC_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+function customMetricName(name: string) {
+  if (!CUSTOM_METRIC_NAME.test(name))
+    throw new Problem(422, 'validation', `name "${name}" must match [a-z][a-z0-9_]{0,62}.`);
+  return name;
+}
+route('GET', '/v1/apps/{slug}/custom-metrics', ({ params }) =>
+  customMetricMock.listFor(app(params.slug).slug)
+);
+route('PUT', '/v1/apps/{slug}/custom-metrics/{name}', ({ params, body }) => {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      402,
+      'plan_custom_metrics_not_allowed',
+      'custom application metrics are not included in the free plan. Scale on a platform-measured signal (rps, cpu, concurrent_requests, queue_depth, queue_lag) or upgrade.'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const value = body.value;
+  if (typeof value !== 'number')
+    throw new Problem(400, 'validation', 'body must be a JSON object with a numeric `value`.');
+  if (!Number.isFinite(value) || value < 0 || value > 1e12)
+    throw new Problem(422, 'validation', `value must be finite, >= 0 and <= 1e12; got ${value}.`);
+  const held = customMetricMock.listFor(a.slug).metrics;
+  if (held.length >= customMetricMock.MAX_METRICS && !held.some((m) => m.name === name))
+    throw new Problem(
+      422,
+      'custom_metric_limit',
+      `this app already holds ${customMetricMock.MAX_METRICS} custom metrics, which is the maximum. Pushing a new value for an existing metric always works; delete an unused metric to free a slot.`
+    );
+  customMetricMock.pushMetric(a.slug, name, value);
+  return NO_CONTENT;
+});
+route('DELETE', '/v1/apps/{slug}/custom-metrics/{name}', ({ params }) => {
+  // apid answers 204 for a name that does not exist: the intent is satisfied.
+  customMetricMock.store.get(app(params.slug).slug)?.delete(params.name);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/custom-metrics/{name}/series', ({ params, query }) => {
+  if (process.env.MOCK_CUSTOM_METRIC_HISTORY === 'off')
+    throw new Problem(
+      503,
+      'custom_metric_history_unavailable',
+      'custom metric history is not enabled for this deployment'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const range = query.get('range') ?? '24h';
+  if (!['1h', '6h', '24h', '7d', '15d'].includes(range))
+    throw new Problem(400, 'validation', 'range must be one of: 1h, 6h, 24h, 7d, 15d');
+  return customMetricMock.seriesFor(a.slug, name, range);
+});
 // --- Canary route health: candidate vs stable per critical route ---
 function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
   const deployment = db.deployments.find((d) => d.id === deploymentId);
