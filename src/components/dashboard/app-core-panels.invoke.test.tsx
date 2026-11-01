@@ -17,6 +17,8 @@ vi.mock('@tanstack/react-router', () => ({
     <a href={to}>{children}</a>
   ),
 }));
+// The async options (#261) read work policies; this file covers the plan gate.
+vi.mock('./async-invoke-options', () => ({ AsyncInvokeOptionsFields: () => null }));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<object>()),
   useInvokeApp: () => ({ mutateAsync: mocks.sync, isPending: false }),

@@ -261,6 +261,28 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'async-invocations',
+    name: 'Async invocations',
+    category: 'async',
+    description: 'Invoke an app asynchronously and fetch the result later.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/event-driven',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'work-policies',
+    name: 'Work policies',
+    category: 'async',
+    description: 'Coordinate invocations that share an application key.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/event-driven',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,

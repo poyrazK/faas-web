@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
+import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
 import * as deploymentDetail from './deployment-detail';
@@ -7327,30 +7328,57 @@ route('DELETE', '/v1/edge-rules/{id}', ({ params }) => {
   return NO_CONTENT;
 });
 
+// Async invocations: work policies, deadlines, destinations, and the two
+// replay routes with apid's one-replay-per-parent rule (mock/async-invocations.ts).
+const asyncInvocations: asyncMock.AsyncMock = {
+  invocations: db.invocations,
+  policies: asyncMock.seedAsyncInvocations(db.invocations, db.apps, db.webhooks, Date.now()),
+  children: new Map(),
+  settleAt: new Map(),
+};
+function refused<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof asyncMock.Refusal)
+      throw new Problem(error.status, error.code, error.detail);
+    throw error;
+  }
+}
 route('GET', '/v1/invocations', ({ query }) => ({
-  invocations: db.invocations.slice(0, Number(query.get('limit') ?? 50)),
+  invocations: db.invocations
+    .slice(0, Number(query.get('limit') ?? 50))
+    .map((inv) => asyncMock.settle(asyncInvocations, inv, Date.now())),
 }));
 route('GET', '/v1/invocations/{id}', ({ params }) => {
   const inv = db.invocations.find((x) => x.id === params.id);
   if (!inv) throw new Problem(404, 'invocation_not_found');
-  return inv;
+  return asyncMock.settle(asyncInvocations, inv, Date.now());
 });
 route('POST', '/v1/invocations/{id}/replay', ({ params }) => {
-  const inv = db.invocations.find((x) => x.id === params.id);
-  if (!inv) throw new Problem(404, 'invocation_not_found');
-  const replay = {
-    ...inv,
-    id: db.id(),
-    source: 'replay' as const,
-    state: 'pending' as const,
-    created_at: db.iso(0),
-    completed_at: null,
-    last_error: null,
-    attempts: 0,
-  };
-  db.invocations.unshift(replay);
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'plain', Date.now()));
   return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
 });
+route('POST', '/v1/invocations/{id}/replay-keyed', ({ params }) => {
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'keyed', Date.now()));
+  return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
+});
+route('POST', '/v1/apps/{slug}/invoke/async', ({ params, body }) => {
+  const a = app(params.slug);
+  const inv = refused(() =>
+    asyncMock.createAsyncInvocation(
+      asyncInvocations,
+      a,
+      listOf(db.webhooks, a.slug),
+      body,
+      Date.now()
+    )
+  );
+  return status(202, { id: inv.id, status_url: `/v1/invocations/${inv.id}` });
+});
+route('GET', '/v1/apps/{slug}/work-policies', ({ params }) => ({
+  policies: asyncInvocations.policies.get(app(params.slug).slug) ?? [],
+}));
 
 route('GET', '/v1/instances', () => ({ instances: db.instances, next_before: null }));
 route('GET', '/v1/audit-log', ({ query }) => {
