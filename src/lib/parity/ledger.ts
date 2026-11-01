@@ -737,8 +737,9 @@ export const LEDGER: LedgerEntry[] = [
     row: 103,
     name: 'Outbound webhooks (account and app)',
     status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Webhooks'],
-    gap: 'Account release webhooks; webhook health and attempts',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Webhooks', '/dashboard/release-webhooks'],
+    capability: 'account-release-webhooks',
+    gap: "App webhooks can't be edited or set to CloudEvents/Datadog, and offer events apid no longer accepts",
     wave: 2,
   },
   // E104 · preview

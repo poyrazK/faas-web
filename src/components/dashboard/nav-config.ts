@@ -24,6 +24,7 @@ import {
   Play,
   Rocket,
   Search,
+  SendDiagonal,
   Server,
   Settings,
   ShieldCheck,
@@ -180,6 +181,15 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Account-owned like Integrations: one signed receiver for release events
+    // from every app (faas ADR-224). App webhooks stay on the app's tab.
+    to: '/dashboard/release-webhooks',
+    label: 'Release webhooks',
+    icon: SendDiagonal,
+    capability: 'account-release-webhooks',
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     // Your end customers across apps (platform tenants). Monetize rather than
     // Account: they are resources you run — consumers, hostnames, prices —
     // not settings of your own Gregale account, and Billing there is what
@@ -266,7 +276,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { title: 'Compute', hubs: ['Projects', 'Releases', 'Jobs', 'Instances'] },
   { title: 'Storage', hubs: ['Object storage', 'Postgres'] },
   { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
-  { title: 'Messaging', hubs: ['Events', 'Integrations'] },
+  { title: 'Messaging', hubs: ['Events', 'Integrations', 'Release webhooks'] },
   { title: 'Monetize', hubs: ['Customers'] },
   { title: 'Observe', hubs: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },

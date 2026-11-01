@@ -56,8 +56,12 @@ export function invalidReceiver(
   return undefined;
 }
 
-/** Receivers whose target answered 429/503 with Retry-After (dispatcher.go:763-769). */
-export const cooldowns = new Map<string, string>();
+/**
+ * Receivers whose target answered 429/503 with Retry-After (dispatcher.go:763-769),
+ * as milliseconds still to wait: the pause rolls forward so it shows however
+ * long the dev server has been up.
+ */
+export const cooldowns = new Map<string, number>();
 
 function receiver(url: string, events: Receiver['event_filter'], ageDays: number): Receiver {
   return {
@@ -138,7 +142,7 @@ if (!db.EMPTY) {
     { status: 'dead', attempt: 7 },
     { status: 'succeeded', attempt: 1 },
   ]);
-  cooldowns.set(incidents.id, db.iso(-4 * 60_000));
+  cooldowns.set(incidents.id, 4 * 60_000);
 }
 
 /** Delivery queue health over the last 24 hours (memstore_app_webhooks.go:737-800). */
@@ -153,8 +157,9 @@ export function healthFor(webhookId: string): S['AppWebhookDeliveryHealthRespons
   const recentDead = list.filter(
     (d) => d.status === 'dead' && Date.parse(d.updated_at) >= day
   ).length;
-  const until = cooldowns.get(webhookId);
-  const cooling = until !== undefined && Date.parse(until) > now;
+  const wait = cooldowns.get(webhookId);
+  const cooling = wait !== undefined && wait > 0;
+  const until = cooling ? new Date(now + wait).toISOString() : undefined;
   const overdue = cooling
     ? undefined
     : list
