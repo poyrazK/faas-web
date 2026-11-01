@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
-import { DocsIndex } from '@/routes/docs.index';
+import { DocsIndex } from './docs-home';
 
 describe('docs home', () => {
   it('offers a first-deployment path and task-specific entry points', async () => {

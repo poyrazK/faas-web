@@ -12,11 +12,7 @@ const refetchApps = vi.fn();
 const refetchDeployments = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: unknown) => ({
-    ...(options as object),
-    useSearch: () => ({}),
-    useNavigate: () => vi.fn(),
-  }),
+  getRouteApi: () => ({ useSearch: () => ({}), useNavigate: () => vi.fn() }),
   useNavigate: () => vi.fn(),
   Link: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -55,7 +51,7 @@ vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: '', state: 'loading', refresh: vi.fn() }),
 }));
 
-const { DeploymentsPage } = await import('./dashboard.releases');
+const { DeploymentsPage } = await import('@/components/dashboard/releases-page');
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 

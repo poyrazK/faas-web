@@ -27,7 +27,7 @@ vi.mock('@/components/dashboard/app-select', () => ({
   useSelectedApp: () => ({ slug: 'api', apps: [], select: vi.fn() }),
 }));
 
-const { AlertsBody } = await import('./dashboard.alerts');
+const { AlertsBody } = await import('@/components/dashboard/alerts-page');
 
 beforeEach(() => {
   createAlert

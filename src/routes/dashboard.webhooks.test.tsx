@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const createWebhook = vi.fn();
 const toast = vi.fn();
 
-vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
+vi.mock('@tanstack/react-router', () => ({
+  getRouteApi: () => ({ useSearch: () => ({}), useNavigate: () => vi.fn() }),
+}));
 vi.mock('@/lib/api/queries', () => ({
   useWebhooks: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
   useCreateWebhook: () => ({ mutateAsync: createWebhook, isPending: false }),
@@ -31,7 +33,8 @@ vi.mock('@/components/dashboard/inbound-webhooks', () => ({
   InboundWebhooks: ({ slug }: { slug: string }) => <div>Inbound endpoints for {slug}</div>,
 }));
 
-const { WebhooksBody, WebhooksHub, validateWebhookSearch } = await import('./dashboard.webhooks');
+const { WebhooksBody, WebhooksHub } = await import('@/components/dashboard/webhooks-page');
+const { validateWebhookSearch } = await import('@/components/dashboard/webhooks-search');
 
 beforeEach(() => {
   createWebhook
