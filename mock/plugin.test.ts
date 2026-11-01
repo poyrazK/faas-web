@@ -1030,3 +1030,147 @@ describe('/v1/apps/{slug}/deployment-aliases', () => {
     expect((await put('alias-long', 'a'.repeat(26), live.id)).status).toBe(200);
   });
 });
+
+describe('notification channels and alert rules (ADR-749)', () => {
+  const slackUrl = 'https://hooks.slack.com/services/T0/B0/abc123';
+  const post = (path: string, body: object) =>
+    json(path, { method: 'POST', body: JSON.stringify(body) });
+  const del = (path: string) => fetch(`${base}${path}`, { method: 'DELETE' });
+  async function app(slug: string) {
+    const created = await post('/v1/apps', { slug, type: 'app', runtime: 'node24' });
+    expect(created.status).toBe(201);
+  }
+
+  it('creates a channel, shows only its hint, and refuses what apid refuses', async () => {
+    const ok = await post('/v1/notification-channels', {
+      name: 'ops-slack',
+      kind: 'slack',
+      slack_webhook_url: slackUrl,
+    });
+    expect(ok).toMatchObject({
+      status: 201,
+      body: { name: 'ops-slack', kind: 'slack', target: 'hooks.slack.com/T0/B0/…' },
+    });
+    expect(JSON.stringify(ok.body)).not.toContain('abc123');
+    const dup = await post('/v1/notification-channels', {
+      name: 'ops-slack',
+      kind: 'slack',
+      slack_webhook_url: slackUrl,
+    });
+    expect(dup).toMatchObject({ status: 409, body: { code: 'notification_channel_invalid' } });
+    const elsewhere = await post('/v1/notification-channels', {
+      name: 'evil',
+      kind: 'slack',
+      slack_webhook_url: 'https://evil.example/services/T0/B0/abc',
+    });
+    expect(elsewhere).toMatchObject({
+      status: 400,
+      body: { code: 'notification_channel_invalid' },
+    });
+    const stranger = await post('/v1/notification-channels', {
+      name: 'other',
+      kind: 'email',
+      email: 'someone@else.dev',
+    });
+    expect(stranger).toMatchObject({ status: 400, body: { code: 'notification_channel_invalid' } });
+    const list = await json('/v1/notification-channels');
+    expect(list.body.map((c: { name: string }) => c.name)).toContain('ops-slack');
+  });
+
+  it('records test sends and limits them to ten a minute', async () => {
+    const { body: ch } = await post('/v1/notification-channels', {
+      name: 'tested',
+      kind: 'pagerduty',
+      pagerduty_routing_key: 'a'.repeat(32),
+    });
+    expect(ch).toMatchObject({ pagerduty_region: 'us', target: '…aaaa' });
+    const first = await post(`/v1/notification-channels/${ch.id}/test`, {});
+    expect(first).toMatchObject({ status: 200, body: { delivered: true } });
+    const listed = (await json('/v1/notification-channels')).body.find(
+      (c: { id: string }) => c.id === ch.id
+    );
+    expect(listed.last_delivered_at).toBeTruthy();
+    let last = first;
+    for (let i = 0; i < 10; i++) last = await post(`/v1/notification-channels/${ch.id}/test`, {});
+    expect(last).toMatchObject({
+      status: 429,
+      body: { code: 'notification_channel_test_rate_limited' },
+    });
+  });
+
+  it('takes channel-only rules, reads one rule, and keeps a rule from losing its last destination', async () => {
+    await app('chan-rules');
+    const { body: ch } = await post('/v1/notification-channels', {
+      name: 'only-dest',
+      kind: 'email',
+      email: 'design@gregale.dev',
+    });
+    const nowhere = await post('/v1/apps/chan-rules/alerts', {
+      name: 'nowhere',
+      metric: 'error_rate_pct',
+      comparison: 'gt',
+      threshold: 5,
+      window_spec: '15m',
+    });
+    expect(nowhere).toMatchObject({ status: 400, body: { code: 'alert_rule_invalid' } });
+    const unknown = await post('/v1/apps/chan-rules/alerts', {
+      name: 'unknown',
+      metric: 'error_rate_pct',
+      comparison: 'gt',
+      threshold: 5,
+      window_spec: '15m',
+      channel_ids: ['nope'],
+    });
+    expect(unknown).toMatchObject({ status: 400, body: { code: 'alert_rule_invalid' } });
+    const rule = await post('/v1/apps/chan-rules/alerts', {
+      name: 'Checkout errors',
+      metric: 'error_rate_pct',
+      comparison: 'gt',
+      threshold: 5,
+      window_spec: '15m',
+      channel_ids: [ch.id],
+    });
+    expect(rule).toMatchObject({
+      status: 201,
+      body: { channel_ids: [ch.id], webhook_url: '' },
+    });
+    const read = await json(`/v1/apps/chan-rules/alerts/${rule.body.id}`);
+    expect(read).toMatchObject({ status: 200, body: { id: rule.body.id, state: 'ok' } });
+
+    const inUse = await del(`/v1/notification-channels/${ch.id}`);
+    expect(inUse.status).toBe(409);
+    const problem = await inUse.json();
+    expect(problem.code).toBe('notification_channel_in_use');
+    expect(problem.detail).toContain(`Checkout errors (${rule.body.id})`);
+
+    const cleared = await json(`/v1/apps/chan-rules/alerts/${rule.body.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ channel_ids: [] }),
+    });
+    expect(cleared).toMatchObject({ status: 400, body: { code: 'alert_rule_invalid' } });
+    await json(`/v1/apps/chan-rules/alerts/${rule.body.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ webhook_url: 'https://hooks.example.com/a', webhook_secret: 's' }),
+    });
+    expect((await del(`/v1/notification-channels/${ch.id}`)).status).toBe(204);
+    const after = await json(`/v1/apps/chan-rules/alerts/${rule.body.id}`);
+    expect(after.body.channel_ids ?? []).toEqual([]);
+  });
+
+  it("checks an SLO rule's slo_id against the app's SLOs", async () => {
+    await app('slo-rules');
+    expect((await json('/v1/apps/slo-rules/slos')).body).toEqual([]);
+    expect((await json('/v1/apps/slo-rules/synthetics')).body).toEqual([]);
+    const res = await post('/v1/apps/slo-rules/alerts', {
+      name: 'burn',
+      metric: 'slo_budget_burn',
+      comparison: 'gt',
+      threshold: 2,
+      window_spec: '1h',
+      slo_id: '00000000-0000-0000-0000-000000000000',
+      webhook_url: 'https://hooks.example.com/a',
+      webhook_secret: 's',
+    });
+    expect(res).toMatchObject({ status: 400, body: { code: 'alert_rule_invalid' } });
+  });
+});

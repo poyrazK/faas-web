@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
+import * as channelMock from './notification-channels';
 import * as edgeRuleMock from './edge-rules';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
@@ -1764,25 +1765,170 @@ route('POST', '/v1/apps/{slug}/alert-presets/{name}/test', ({ params }) => {
   return { status: 'sent', is_test: true };
 });
 
+const alertInvalid = (reason: string) => new Problem(400, 'alert_rule_invalid', reason);
+
+/** validateRuleChannels: at most five, no duplicates, each one of the account's. */
+function ruleChannelIds(raw: unknown): string[] {
+  const ids = Array.isArray(raw) ? raw.map(String) : [];
+  if (ids.length > channelMock.MAX_PER_RULE)
+    throw alertInvalid(`an alert rule can deliver to at most ${channelMock.MAX_PER_RULE} channels`);
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) throw alertInvalid(`channel_ids contains ${id} twice`);
+    seen.add(id);
+    if (!channelMock.channels.some((c) => c.id === id))
+      throw alertInvalid(`channel_ids: ${id} is not one of this account's notification channels`);
+  }
+  return ids;
+}
+
+// Account notification channels (faas ADR-749, handlers_notification_channels.go).
+// Free has no alert rules and so no channels (plan_alert_rules_not_allowed).
+function channelPlanGate() {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      402,
+      'plan_alert_rules_not_allowed',
+      'the free plan does not include alert rules; upgrade to Hobby or above to fire alerts.'
+    );
+}
+function channelById(id: string) {
+  const channel = channelMock.channels.find((c) => c.id === id);
+  if (!channel) throw new Problem(404, 'not_found', 'no such notification channel');
+  return channel;
+}
+route('GET', '/v1/notification-channels', () => {
+  channelPlanGate();
+  return channelMock.channels;
+});
+route('POST', '/v1/notification-channels', ({ body }) => {
+  channelPlanGate();
+  const made = channelMock.channelFrom(body);
+  if (typeof made === 'string') throw new Problem(400, 'notification_channel_invalid', made);
+  if (channelMock.channels.some((c) => c.name === made.name))
+    throw new Problem(
+      409,
+      'notification_channel_invalid',
+      'this account already has a notification channel with that name'
+    );
+  if (channelMock.channels.length >= channelMock.MAX_PER_ACCOUNT)
+    throw new Problem(
+      422,
+      'notification_channel_limit_reached',
+      `an account can have at most ${channelMock.MAX_PER_ACCOUNT} notification channels; delete one to add another`
+    );
+  channelMock.channels.push(made);
+  return status(201, made);
+});
+route('GET', '/v1/notification-channels/{id}', ({ params }) => {
+  channelPlanGate();
+  return channelById(params.id);
+});
+route('DELETE', '/v1/notification-channels/{id}', ({ params }) => {
+  channelPlanGate();
+  const channel = channelById(params.id);
+  // A channel that is a rule's only destination cannot go (ADR-20261029203000).
+  const stranded = channelMock
+    .allRules()
+    .filter(
+      (r) => !r.webhook_url && r.channel_ids?.length === 1 && r.channel_ids[0] === channel.id
+    );
+  if (stranded.length)
+    throw new Problem(
+      409,
+      'notification_channel_in_use',
+      `This channel is the only destination of ${stranded.length} alert rule(s): ${stranded
+        .map((r) => `${r.name} (${r.id})`)
+        .join(
+          ', '
+        )}. Give them a webhook or another channel, or delete them, before deleting the channel.`
+    );
+  for (const rule of channelMock.allRules())
+    if (rule.channel_ids?.includes(channel.id)) {
+      const rest = rule.channel_ids.filter((id) => id !== channel.id);
+      rule.channel_ids = rest.length ? rest : undefined;
+    }
+  channelMock.channels.splice(channelMock.channels.indexOf(channel), 1);
+  return NO_CONTENT;
+});
+route('POST', '/v1/notification-channels/{id}/test', ({ params }) => {
+  channelPlanGate();
+  const channel = channelById(params.id);
+  if (!channelMock.takeTestSend())
+    throw new Problem(
+      429,
+      'notification_channel_test_rate_limited',
+      `This account has sent its notification channels ${channelMock.TESTS_PER_MINUTE} test messages in the last minute.`
+    );
+  // The seeded PagerDuty channel has a revoked key, so a failed test shows.
+  const now = new Date().toISOString();
+  if (channel.last_error && channel.name === 'oncall') {
+    channel.last_error_at = now;
+    return { delivered: false, error: channel.last_error };
+  }
+  channel.last_delivered_at = now;
+  return { delivered: true };
+});
+route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+  app(params.slug);
+  return channelMock.slos.get(params.slug) ?? [];
+});
+route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
+  app(params.slug);
+  return channelMock.synthetics.get(params.slug) ?? [];
+});
 route('GET', '/v1/apps/{slug}/alerts', ({ params }) => listOf(db.alerts, params.slug));
 route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   const a = app(params.slug);
-  if (!body.name || !body.metric || !body.webhook_url)
-    throw new Problem(400, 'missing_field', 'name, metric, and webhook_url are required.');
+  if (!body.name || !body.metric)
+    throw new Problem(400, 'missing_field', 'name and metric are required.');
+  const channelIds = ruleChannelIds(body.channel_ids);
+  // apid's destination rule (validateAlertRuleBody): a webhook with its
+  // secret, or at least one channel (ADR-749).
+  if (!body.webhook_url && !body.webhook_secret && channelIds.length === 0)
+    throw alertInvalid(
+      'set webhook_url and webhook_secret, or deliver to notification channels with channel_ids'
+    );
+  if (body.webhook_url && !body.webhook_secret)
+    throw alertInvalid('webhook_secret must be non-empty');
+  const metric = String(body.metric);
+  if (metric.startsWith('slo_budget_')) {
+    const known = (channelMock.slos.get(a.slug) ?? []).some((s) => s.id === body.slo_id);
+    if (!known) throw alertInvalid('slo_id does not name an SLO on this app');
+  }
+  if (metric.startsWith('synthetic_check_')) {
+    const known = (channelMock.synthetics.get(a.slug) ?? []).some(
+      (c) => c.id === body.synthetic_check_id
+    );
+    if (!known)
+      throw alertInvalid('synthetic_check_id does not name a synthetic check on this app');
+  }
+  if (metric === 'log_search_matches' && !String(body.log_query ?? '').trim())
+    throw alertInvalid('log_query must be set when metric is log_search_matches');
   const list = listOf(db.alerts, params.slug);
-  const rule: (typeof list)[number] = {
+  type Rule = (typeof list)[number];
+  const optional = (
+    k: 'failure_source' | 'slo_id' | 'synthetic_check_id' | 'log_query' | 'custom_metric_name'
+  ) => (body[k] ? { [k]: body[k] } : {});
+  const rule: Rule = {
     id: db.id(),
     app_id: a.id,
     name: String(body.name),
     enabled: body.enabled !== false,
-    metric: body.metric as (typeof list)[number]['metric'],
-    comparison: (body.comparison ?? 'gt') as (typeof list)[number]['comparison'],
+    metric: metric as Rule['metric'],
+    comparison: (body.comparison ?? 'gt') as Rule['comparison'],
     threshold: Number(body.threshold ?? 0),
-    window_spec: (body.window_spec ?? '15m') as (typeof list)[number]['window_spec'],
-    webhook_url: String(body.webhook_url),
+    window_spec: (body.window_spec ?? '15m') as Rule['window_spec'],
+    ...optional('failure_source'),
+    ...optional('slo_id'),
+    ...optional('synthetic_check_id'),
+    ...optional('log_query'),
+    ...optional('custom_metric_name'),
+    ...(channelIds.length ? { channel_ids: channelIds } : {}),
+    webhook_url: String(body.webhook_url ?? ''),
     webhook_secret_sealed_masked: '***',
-    cooldown_minutes: Number(body.cooldown_minutes ?? 30),
-    action: (body.action ?? 'webhook') as (typeof list)[number]['action'],
+    cooldown_minutes: Number(body.cooldown_minutes ?? 15),
+    action: (body.action ?? 'webhook') as Rule['action'],
     state: 'ok',
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -1790,6 +1936,11 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
   list.push(rule);
   db.alerts.set(params.slug, list);
   return status(201, rule);
+});
+route('GET', '/v1/apps/{slug}/alerts/{id}', ({ params }) => {
+  const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'not_found', 'no such alert rule');
+  return rule;
 });
 // Deliveries: one delivered, one failed with a real reason, and one test row
 // that only appears when include_test is set — so both branches of the toggle
@@ -1845,6 +1996,14 @@ route('GET', '/v1/apps/{slug}/alerts/{id}/deliveries', ({ params, query }) => {
 route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
   const rule = listOf(db.alerts, params.slug).find((r) => r.id === params.id);
   if (!rule) throw new Problem(404, 'alert_rule_not_found');
+  // updatedRuleChannels: channel_ids replaces the set, and the rule keeps a
+  // destination, a webhook or at least one channel.
+  const channelIds =
+    'channel_ids' in body ? ruleChannelIds(body.channel_ids) : (rule.channel_ids ?? []);
+  const webhook = 'webhook_url' in body ? String(body.webhook_url ?? '') : rule.webhook_url;
+  if (!webhook && channelIds.length === 0)
+    throw alertInvalid('an alert rule needs a webhook_url or at least one notification channel');
+  if ('channel_ids' in body) rule.channel_ids = channelIds.length ? channelIds : undefined;
   for (const k of [
     'name',
     'enabled',
