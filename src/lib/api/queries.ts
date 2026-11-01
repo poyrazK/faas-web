@@ -2924,10 +2924,15 @@ export function useSetAppRegistryCredential(slug: string) {
 export function useDeleteAppRegistryCredential(slug: string) {
   const qc = useQueryClient();
   return useMutation({
+    // The list returns the bare normalized host, but DELETE refuses a value
+    // without an explicit https:// (faas normalizeRegistryHost).
     mutationFn: (registry: string) =>
       unwrap(
         api.DELETE('/v1/apps/{slug}/registry-credentials', {
-          params: { path: { slug }, query: { registry } },
+          params: {
+            path: { slug },
+            query: { registry: /^https:\/\//i.test(registry) ? registry : `https://${registry}` },
+          },
         })
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.appRegistryCredentials(slug) }),
