@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
   recoverMfa: vi.fn(),
   verifyMfa: vi.fn(),
 }));
-vi.mock('@/lib/api/queries', () => api);
+vi.mock('@/lib/api/mfa', () => api);
 
 function Opener({ onVerified, onDismissed }: { onVerified: () => void; onDismissed: () => void }) {
   const { openMfa } = useMfa();
