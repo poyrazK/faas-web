@@ -358,6 +358,8 @@ export function canonicalApprovalId(value: string): string | undefined {
   const hex = value.replaceAll('-', '').toLowerCase();
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+export const validApprovalId = (value: string) => Boolean(canonicalApprovalId(value));
 // unwrap still runs session/MFA hooks. Its raw Problem must not survive in
 // React Query's error state, including failures in the context fences.
 async function safeRead<T>(read: () => Promise<T>): Promise<T> {
