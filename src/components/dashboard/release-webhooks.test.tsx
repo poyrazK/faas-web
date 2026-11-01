@@ -26,16 +26,17 @@ vi.mock('@/lib/api/capabilities', () => ({
 }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => state.workspace }));
 vi.mock('@/lib/workspace', () => ({ setActiveOrg: state.setActiveOrg }));
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1' } }) }));
 vi.mock('./webhook-deliveries', () => ({
   WebhookDeliveries: ({
     source,
     appName,
   }: {
-    source: { id: string };
+    source: { id: string; accountId?: string };
     appName?: (id: string) => string | undefined;
   }) => (
     <p>
-      Deliveries of {source.id} from {appName?.('f'.repeat(32))}
+      Deliveries of {source.id} for {source.accountId} from {appName?.('f'.repeat(32))}
     </p>
   ),
 }));
@@ -66,8 +67,9 @@ const receiver = {
   updated_at: '2026-10-20T09:00:00Z',
 };
 
+let client: QueryClient;
 function mount(children: ReactNode = <ReleaseWebhooks />) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
@@ -101,6 +103,14 @@ describe('ReleaseWebhooks', () => {
     expect(item).toHaveTextContent('deployment.live');
     expect(item).toHaveTextContent('deployment.failed');
     expect(screen.getByText('Beta')).toBeInTheDocument();
+  });
+
+  it("caches receivers under the signed-in account's key, which sign-out clears", async () => {
+    mount();
+    await row();
+    const cache = client.getQueryCache();
+    expect(cache.findAll({ queryKey: ['account', 'acct-1', 'release-webhooks'] })).toHaveLength(1);
+    expect(cache.findAll({ queryKey: ['release-webhooks'] })).toHaveLength(0);
   });
 
   it('drops the label once the capability graduates', async () => {
@@ -142,6 +152,7 @@ describe('ReleaseWebhooks', () => {
       event_filter: ['rollout.aborted'],
       retry_policy: 'default',
       delivery_format: 'json',
+      enabled: false,
     });
     const secret = init.body.webhook_secret as string;
     expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -151,6 +162,45 @@ describe('ReleaseWebhooks', () => {
     await userEvent.click(within(reveal).getByRole('button', { name: 'Reveal' }));
     expect(reveal).toHaveTextContent(secret);
     expect(reveal).toHaveTextContent(/X-Faas-Webhook-Signature/);
+    expect(reveal).toHaveTextContent(/paused/i);
+  });
+
+  it('starts a receiver paused by default, and live when asked', async () => {
+    const post = spyApi('POST').mockImplementation(() => ok(receiver));
+    mount();
+    await row();
+    const paused = screen.getByRole('checkbox', { name: /start paused/i });
+    expect(paused).toBeChecked();
+    expect(screen.getByText(/events while it is paused are not delivered/i)).toBeInTheDocument();
+    await userEvent.click(paused);
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Target URL' }),
+      'https://live.example.com'
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'deployment.live' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add receiver' }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        ROOT,
+        expect.objectContaining({ body: expect.objectContaining({ enabled: true }) })
+      )
+    );
+  });
+
+  it('counts a pasted secret in UTF-8 bytes, as apid does', async () => {
+    const post = spyApi('POST');
+    mount();
+    await row();
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Target URL' }),
+      'https://b.example.com'
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'deployment.live' }));
+    // 100 characters, 300 bytes: over apid's 256-byte cap.
+    await userEvent.type(screen.getByLabelText('Your own secret (optional)'), '€'.repeat(100));
+    await userEvent.click(screen.getByRole('button', { name: 'Add receiver' }));
+    expect(await screen.findByText(/at most 256 bytes/i)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('uses a pasted secret as is and does not show it back', async () => {
@@ -285,10 +335,37 @@ describe('ReleaseWebhooks', () => {
     );
   });
 
+  it('keeps an event the form does not offer, such as agent_run.finished, when editing', async () => {
+    get.mockImplementation((path: string) =>
+      path === ROOT
+        ? ok([{ ...receiver, event_filter: ['deployment.live', 'agent_run.finished'] }])
+        : ok([])
+    );
+    const patch = spyApi('PATCH').mockImplementation(() => ok(receiver));
+    mount();
+    const item = await row();
+    await userEvent.click(within(item).getByRole('button', { name: `Edit receiver ${TARGET}` }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'agent_run.finished' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'rollout.aborted' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(`${ROOT}/{id}`, {
+        params: { path: { id: HOOK } },
+        body: { event_filter: ['deployment.live', 'rollout.aborted', 'agent_run.finished'] },
+      })
+    );
+  });
+
   it('opens deliveries with the source app named', async () => {
     mount();
     const item = await row();
     await userEvent.click(within(item).getByRole('button', { name: `Deliveries for ${TARGET}` }));
-    expect(await screen.findByText(`Deliveries of ${HOOK} from billing`)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`Deliveries of ${HOOK} for acct-1 from billing`)
+    ).toBeInTheDocument();
   });
 });

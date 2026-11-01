@@ -8,16 +8,25 @@ import {
   useFormValidation,
 } from '@/components/ui/field';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { RELEASE_EVENTS, type ReleaseEvent, type ReleaseWebhook } from '@/lib/api/release-webhooks';
-import { WEBHOOK_SECRET_MAX } from './rotate-secret-dialog';
+import { RELEASE_EVENTS, type ReleaseWebhook } from '@/lib/api/release-webhooks';
+import { WEBHOOK_SECRET_MAX, utf8Bytes } from './rotate-secret-dialog';
+
+const OFFERED: ReadonlySet<string> = new Set(RELEASE_EVENTS.map((e) => e.event));
 
 export interface ReleaseWebhookValues {
   target: string;
-  events: ReleaseEvent[];
+  /**
+   * Strings, not the spec's enum: a receiver may hold an event this form does
+   * not offer (agent_run.finished, for accounts in the agent_runs rollout), and
+   * an edit must keep it.
+   */
+  events: string[];
   retryPolicy: ReleaseWebhook['retry_policy'];
   format: ReleaseWebhook['delivery_format'];
   /** Create only: empty means the console generates one and shows it once. */
   ownSecret: string;
+  /** Create only: start disabled, so nothing is sent before the receiver has the secret. */
+  startPaused: boolean;
 }
 
 export const BLANK: ReleaseWebhookValues = {
@@ -26,6 +35,7 @@ export const BLANK: ReleaseWebhookValues = {
   retryPolicy: 'default',
   format: 'json',
   ownSecret: '',
+  startPaused: true,
 };
 
 function targetError(value: string): string | undefined {
@@ -85,11 +95,28 @@ export function ReleaseWebhookForm({
     target: targetError(values.target.trim()),
     events: values.events.length ? undefined : 'Choose at least one event.',
     ownSecret:
-      values.ownSecret.length > WEBHOOK_SECRET_MAX
-        ? `Secrets can be at most ${WEBHOOK_SECRET_MAX} characters.`
+      utf8Bytes(values.ownSecret) > WEBHOOK_SECRET_MAX
+        ? `Secrets can be at most ${WEBHOOK_SECRET_MAX} bytes.`
         : undefined,
   };
   const shown: Partial<typeof errors> = validation.submitAttempted ? errors : {};
+  // Events the form does not offer stay visible, and toggleable, while editing.
+  const [extra] = useState(() => initial.events.filter((e) => !OFFERED.has(e)));
+  const toggle = (event: string) => {
+    const on = values.events.includes(event);
+    const next = on ? values.events.filter((x) => x !== event) : [...values.events, event];
+    // Offered events in the catalog's order, then the rest as they were.
+    set({
+      events: [
+        ...RELEASE_EVENTS.map((e) => e.event).filter((e) => next.includes(e)),
+        ...next.filter((e) => !OFFERED.has(e)),
+      ],
+    });
+  };
+  const chips = [
+    ...RELEASE_EVENTS,
+    ...extra.map((event) => ({ event, what: 'Not offered here; kept as it is.' })),
+  ];
   const ids = {
     target: `${mode}-release-target`,
     events: `${mode}-release-events`,
@@ -127,7 +154,7 @@ export function ReleaseWebhookForm({
       <fieldset className="flex flex-col gap-1.5 sm:col-span-2">
         <legend className="label-mono text-muted-foreground">Events</legend>
         <div className="flex flex-wrap gap-1.5 pt-1.5">
-          {RELEASE_EVENTS.map(({ event, what }) => {
+          {chips.map(({ event, what }) => {
             const on = values.events.includes(event);
             return (
               <button
@@ -137,15 +164,7 @@ export function ReleaseWebhookForm({
                 title={what}
                 aria-pressed={on}
                 aria-describedby={shown.events ? ids.events : undefined}
-                onClick={() =>
-                  set({
-                    events: on
-                      ? values.events.filter((x) => x !== event)
-                      : RELEASE_EVENTS.map((e) => e.event).filter(
-                          (e) => e === event || values.events.includes(e)
-                        ),
-                  })
-                }
+                onClick={() => toggle(event)}
                 className={`h-8 rounded-md border px-2.5 font-mono text-xs pressable ${
                   on
                     ? 'border-brand bg-brand/10 text-foreground'
@@ -205,6 +224,24 @@ export function ReleaseWebhookForm({
               Left empty, a strong secret is generated and shown once after the receiver is added.
             </span>
           )}
+        </div>
+      )}
+      {mode === 'create' && (
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={values.startPaused}
+              onChange={(e) => set({ startPaused: e.target.checked })}
+              className="h-3.5 w-3.5 accent-[color:var(--brand)]"
+            />
+            Start paused
+          </label>
+          <span className="text-xs text-muted-foreground">
+            Until your receiver has the secret, every delivery fails its signature check, and with
+            no retries it is lost. Turn the receiver on once the secret is installed; events while
+            it is paused are not delivered.
+          </span>
         </div>
       )}
       {error !== undefined && error !== null && <Failure error={error} />}

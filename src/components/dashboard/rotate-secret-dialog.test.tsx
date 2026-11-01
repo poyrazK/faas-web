@@ -19,11 +19,15 @@ describe('generateWebhookSecret', () => {
 });
 
 describe('webhookSecretError', () => {
-  it('accepts 1 to 256 characters, as apid does', () => {
+  it('accepts 1 to 256 bytes, as apid does', () => {
     expect(webhookSecretError('x')).toBeUndefined();
     expect(webhookSecretError('x'.repeat(256))).toBeUndefined();
     expect(webhookSecretError('')).toMatch(/1 to 256/);
     expect(webhookSecretError('x'.repeat(257))).toMatch(/1 to 256/);
+  });
+  it('counts UTF-8 bytes, not characters, as apid does', () => {
+    expect(webhookSecretError('€'.repeat(85))).toBeUndefined();
+    expect(webhookSecretError('€'.repeat(86))).toMatch(/1 to 256 bytes/);
   });
 });
 
@@ -57,7 +61,7 @@ describe('RotateSecretDialog', () => {
     render(<RotateSecretDialog name="hook" onRotate={onRotate} onClose={vi.fn()} />);
     await userEvent.clear(field());
     await userEvent.click(screen.getByRole('button', { name: 'Rotate secret' }));
-    expect(screen.getByText('Enter a secret of 1 to 256 characters.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a secret of 1 to 256 bytes.')).toBeInTheDocument();
     expect(field()).toHaveAttribute('aria-invalid', 'true');
     await userEvent.click(field());
     await userEvent.paste('x'.repeat(257));

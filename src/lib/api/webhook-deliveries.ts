@@ -9,19 +9,22 @@ import type { components } from './schema';
  * App webhooks (`/v1/apps/{slug}/webhooks/{id}/…`) and account release
  * webhooks (`/v1/account/release-webhooks/{id}/…`) share one delivery ledger
  * and dispatcher in apid (ADR-224), so their sub-routes answer the same
- * shapes. A source with a slug is an app webhook; without, a release one.
+ * shapes. A source with a slug is an app webhook; one with the signed-in
+ * account's id is a release receiver.
  */
-export interface WebhookSource {
-  id: string;
-  slug?: string;
-}
+export type WebhookSource =
+  | { id: string; slug: string; accountId?: undefined }
+  | { id: string; accountId: string; slug?: undefined };
 
 export type WebhookDelivery = components['schemas']['AppWebhookDeliveryResponse'];
 export type WebhookHealth = components['schemas']['AppWebhookDeliveryHealthResponse'];
 export type WebhookAttempt = components['schemas']['AppWebhookDeliveryAttemptResponse'];
 
-export const webhookKey = ({ id, slug }: WebhookSource) =>
-  slug ? (['apps', slug, 'webhooks', id] as const) : (['release-webhooks', id] as const);
+/** A release receiver sits under the account's key, which sign-out clears. */
+export const webhookKey = ({ id, slug, accountId }: WebhookSource) =>
+  slug
+    ? (['apps', slug, 'webhooks', id] as const)
+    : (['account', accountId, 'release-webhooks', id] as const);
 
 export function useWebhookHealth(source: WebhookSource) {
   const { id, slug } = source;

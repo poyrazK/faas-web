@@ -10,12 +10,14 @@ import { Timestamp } from '@/components/ui/timestamp';
 import { useToast } from '@/components/ui/toast';
 import { useCapability } from '@/lib/api/capabilities';
 import { useApps } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
 import {
   useCreateReleaseWebhook,
   useDeleteReleaseWebhook,
   useReleaseWebhooks,
   useRotateReleaseWebhookSecret,
   useUpdateReleaseWebhook,
+  type CreateReleaseWebhook,
   type ReleaseWebhook,
   type UpdateReleaseWebhook,
 } from '@/lib/api/release-webhooks';
@@ -38,6 +40,7 @@ function valuesOf(hook: ReleaseWebhook): ReleaseWebhookValues {
     retryPolicy: hook.retry_policy,
     format: hook.delivery_format,
     ownSecret: '',
+    startPaused: false,
   };
 }
 
@@ -45,7 +48,8 @@ function valuesOf(hook: ReleaseWebhook): ReleaseWebhookValues {
 function changes(before: ReleaseWebhook, after: ReleaseWebhookValues): UpdateReleaseWebhook {
   const body: UpdateReleaseWebhook = {};
   if (after.target !== before.target_url) body.target_url = after.target;
-  if (after.events.join() !== before.event_filter.join()) body.event_filter = after.events;
+  if (after.events.join() !== before.event_filter.join())
+    body.event_filter = after.events as UpdateReleaseWebhook['event_filter'];
   if (after.retryPolicy !== before.retry_policy) body.retry_policy = after.retryPolicy;
   if (after.format !== before.delivery_format) body.delivery_format = after.format;
   return body;
@@ -54,13 +58,14 @@ function changes(before: ReleaseWebhook, after: ReleaseWebhookValues): UpdateRel
 function Receivers() {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const hooks = useReleaseWebhooks();
+  const accountId = useAuth().account?.id ?? '';
+  const hooks = useReleaseWebhooks(accountId);
   const apps = useApps();
-  const create = useCreateReleaseWebhook();
-  const update = useUpdateReleaseWebhook();
-  const remove = useDeleteReleaseWebhook();
-  const rotate = useRotateReleaseWebhookSecret();
-  const evidence = useOneTimeSecret<{ value: string; target: string }>();
+  const create = useCreateReleaseWebhook(accountId);
+  const update = useUpdateReleaseWebhook(accountId);
+  const remove = useDeleteReleaseWebhook(accountId);
+  const rotate = useRotateReleaseWebhookSecret(accountId);
+  const evidence = useOneTimeSecret<{ value: string; target: string; paused: boolean }>();
   const [viewing, setViewing] = useState<ReleaseWebhook | null>(null);
   const [editing, setEditing] = useState<ReleaseWebhook | null>(null);
   const [rotating, setRotating] = useState<ReleaseWebhook | null>(null);
@@ -82,17 +87,25 @@ function Receivers() {
       await create.mutateAsync({
         target_url: values.target,
         webhook_secret: secret,
-        event_filter: values.events,
+        event_filter: values.events as CreateReleaseWebhook['event_filter'],
         retry_policy: values.retryPolicy,
         delivery_format: values.format,
+        enabled: !values.startPaused,
       });
     } catch {
       // The form shows create.error, worded by its code.
       return false;
     }
     // A pasted secret is already in the person's hands; never echo it.
-    if (!values.ownSecret) receive({ value: secret, target: values.target });
-    toast({ kind: 'success', title: 'Receiver added' });
+    if (!values.ownSecret)
+      receive({ value: secret, target: values.target, paused: values.startPaused });
+    toast({
+      kind: 'success',
+      title: values.startPaused ? 'Receiver added, paused' : 'Receiver added',
+      ...(values.startPaused
+        ? { description: 'Turn it on once your receiver has the secret.' }
+        : {}),
+    });
     return true;
   };
 
@@ -149,7 +162,11 @@ function Receivers() {
               key={evidence.version}
               value={evidence.secret.value}
               title={`Signing secret for ${evidence.secret.target}`}
-              description={`Install it on your receiver; you won't see it again. ${SIGNING}`}
+              description={`Install it on your receiver; you won't see it again.${
+                evidence.secret.paused
+                  ? ' The receiver is paused: turn it on in the list below once the secret is installed.'
+                  : ''
+              } ${SIGNING}`}
               onDismiss={evidence.dismiss}
             />
           )}
@@ -266,7 +283,7 @@ function Receivers() {
       >
         {viewing && (
           <WebhookDeliveries
-            source={{ id: viewing.id }}
+            source={{ id: viewing.id, accountId }}
             target={viewing.target_url}
             appName={(id) => appNames.get(id)}
           />

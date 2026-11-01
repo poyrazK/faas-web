@@ -121,8 +121,9 @@ function routes(
   return get;
 }
 
+let client: QueryClient;
 function mount(children: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
@@ -137,20 +138,27 @@ afterEach(() => vi.restoreAllMocks());
 describe('WebhookDeliveries', () => {
   it('reads the receiver state, queue and last-24-hour outcomes from health', async () => {
     routes('account');
-    mount(<WebhookDeliveries source={{ id: HOOK }} target="https://hooks.example.com" />);
+    mount(
+      <WebhookDeliveries
+        source={{ id: HOOK, accountId: 'acct-1' }}
+        target="https://hooks.example.com"
+      />
+    );
     const summary = await screen.findByRole('region', { name: 'Delivery health' });
     expect(within(summary).getByText('Cooling down')).toBeInTheDocument();
     expect(summary).toHaveTextContent(/answered 429 or 503/i);
     expect(within(summary).getByText('75%')).toBeInTheDocument();
     expect(summary).toHaveTextContent('2 pending');
     expect(summary).toHaveTextContent('1 dead');
+    // Under the account's key, so sign-out (which clears ['account']) drops it.
+    expect(client.getQueryCache().findAll({ queryKey: ['account', 'acct-1'] }).length).toBe(2);
   });
 
   it('opens a delivery attempt history from the account route', async () => {
     const get = routes('account');
     mount(
       <WebhookDeliveries
-        source={{ id: HOOK }}
+        source={{ id: HOOK, accountId: 'acct-1' }}
         target="https://hooks.example.com"
         appName={(id) => (id === APP ? 'billing' : undefined)}
       />
@@ -176,7 +184,12 @@ describe('WebhookDeliveries', () => {
     const post = spyApi('POST').mockImplementation(() =>
       ok({ delivery: delivery(DEAD, { status: 'pending', attempt: 0 }) })
     );
-    mount(<WebhookDeliveries source={{ id: HOOK }} target="https://hooks.example.com" />);
+    mount(
+      <WebhookDeliveries
+        source={{ id: HOOK, accountId: 'acct-1' }}
+        target="https://hooks.example.com"
+      />
+    );
     const done = await screen.findByRole('listitem', { name: /deployment.live, succeeded/ });
     expect(within(done).queryByRole('button', { name: 'Send again' })).toBeNull();
 
@@ -204,7 +217,12 @@ describe('WebhookDeliveries', () => {
     spyApi('POST').mockImplementation(() =>
       problem(400, 'app_webhook_invalid', "delivery is not in 'dead' state")
     );
-    mount(<WebhookDeliveries source={{ id: HOOK }} target="https://hooks.example.com" />);
+    mount(
+      <WebhookDeliveries
+        source={{ id: HOOK, accountId: 'acct-1' }}
+        target="https://hooks.example.com"
+      />
+    );
     const dead = await screen.findByRole('listitem', { name: /deployment.live, dead/ });
     await userEvent.click(within(dead).getByRole('button', { name: 'Send again' }));
     await userEvent.click(
@@ -239,7 +257,12 @@ describe('WebhookDeliveries', () => {
 
   it('says so when nothing has been delivered', async () => {
     routes('account', [{ deliveries: [] }]);
-    mount(<WebhookDeliveries source={{ id: HOOK }} target="https://hooks.example.com" />);
+    mount(
+      <WebhookDeliveries
+        source={{ id: HOOK, accountId: 'acct-1' }}
+        target="https://hooks.example.com"
+      />
+    );
     expect(await screen.findByText(/nothing has been delivered yet/i)).toBeInTheDocument();
   });
 });

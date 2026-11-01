@@ -25,47 +25,48 @@ export const RELEASE_EVENTS: { event: ReleaseEvent; what: string }[] = [
   { event: 'environment.gitops.changed', what: "An environment's GitOps status changed." },
 ];
 
-const key = ['release-webhooks'] as const;
+/** Under the account's key: sign-out clears ['account'], so another account never sees these. */
+const releaseKey = (accountId: string) => ['account', accountId, 'release-webhooks'] as const;
 
-export function useReleaseWebhooks(enabled = true) {
+export function useReleaseWebhooks(accountId: string) {
   return useQuery({
-    queryKey: [...key, 'list'],
+    queryKey: [...releaseKey(accountId), 'list'],
     queryFn: ({ signal }) => unwrap(api.GET('/v1/account/release-webhooks', { signal })),
-    enabled,
+    enabled: Boolean(accountId),
     retry: retryPolicy,
   });
 }
 
-export function useCreateReleaseWebhook() {
+export function useCreateReleaseWebhook(accountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateReleaseWebhook) =>
       unwrap(api.POST('/v1/account/release-webhooks', { body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: releaseKey(accountId) }),
   });
 }
 
-export function useUpdateReleaseWebhook() {
+export function useUpdateReleaseWebhook(accountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...body }: { id: string } & UpdateReleaseWebhook) =>
       unwrap(api.PATCH('/v1/account/release-webhooks/{id}', { params: { path: { id } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: releaseKey(accountId) }),
   });
 }
 
 /** Deleting a receiver deletes its delivery history too. */
-export function useDeleteReleaseWebhook() {
+export function useDeleteReleaseWebhook(accountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/account/release-webhooks/{id}', { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: releaseKey(accountId) }),
   });
 }
 
 /** The new secret replaces the old at once; there is no overlap. */
-export function useRotateReleaseWebhookSecret() {
+export function useRotateReleaseWebhookSecret(accountId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, webhookSecret }: { id: string; webhookSecret: string }) =>
@@ -75,6 +76,6 @@ export function useRotateReleaseWebhookSecret() {
           body: { webhook_secret: webhookSecret },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: releaseKey(accountId) }),
   });
 }
