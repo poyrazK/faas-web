@@ -12,8 +12,6 @@ vi.mock('@/lib/api/queries', () => ({
   useDeleteWebhook: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRotateWebhookSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateWebhook: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useWebhookDeliveries: () => ({ data: { deliveries: [] }, isPending: false, error: null }),
-  useRetryDelivery: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));

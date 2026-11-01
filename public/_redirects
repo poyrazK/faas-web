@@ -54,6 +54,7 @@
 /dashboard/plans    /index.html   200
 /dashboard/postgres    /index.html   200
 /dashboard/queues    /index.html   200
+/dashboard/release-webhooks    /index.html   200
 /dashboard/releases    /index.html   200
 /dashboard/routes    /index.html   200
 /dashboard/secrets    /index.html   200

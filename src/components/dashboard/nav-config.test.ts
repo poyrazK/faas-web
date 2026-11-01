@@ -15,6 +15,7 @@ describe('railGroupFor', () => {
     ['/dashboard/postgres', 'Postgres', 'Storage'],
     ['/dashboard/edge-rules', 'Edge rules', 'Networking'],
     ['/dashboard/integrations', 'Integrations', 'Messaging'],
+    ['/dashboard/release-webhooks', 'Release webhooks', 'Messaging'],
     ['/dashboard/customers', 'Customers', 'Monetize'],
     ['/dashboard/debug', 'Debugger', 'Observe'],
     ['/dashboard/invoices', 'Invoices', 'Account'],
@@ -49,8 +50,11 @@ const hubLabels = (groups: ReturnType<typeof visibleNavGroups>) =>
 
 describe('nav items gated on a capability', () => {
   it('hides a hub whose capability is off', () => {
-    const labels = hubLabels(visibleNavGroups(NAV_GROUPS, off('events', 'platform-tenants')));
+    const labels = hubLabels(
+      visibleNavGroups(NAV_GROUPS, off('events', 'platform-tenants', 'account-release-webhooks'))
+    );
     expect(labels).not.toContain('Events');
+    expect(labels).not.toContain('Release webhooks');
     expect(labels).not.toContain('Customers');
     expect(labels).toContain('Domains');
   });

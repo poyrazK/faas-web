@@ -2553,17 +2553,6 @@ export function useWebhooks(slug: string) {
   });
 }
 
-export function useWebhookDeliveries(slug: string, id: string) {
-  return useQuery({
-    queryKey: ['apps', slug, 'webhooks', id, 'deliveries'],
-    queryFn: () =>
-      unwrap(
-        api.GET('/v1/apps/{slug}/webhooks/{id}/deliveries', { params: { path: { slug, id } } })
-      ),
-    enabled: Boolean(slug && id),
-  });
-}
-
 /* ------------------------------------------------------------------ *
  * Tenant surfaces (ADR-100)
  * ------------------------------------------------------------------ */
@@ -2784,21 +2773,6 @@ export function useAppStreamingCap(slug: string) {
     queryKey: ['apps', slug, 'streaming-cap'],
     queryFn: () => unwrap(api.GET('/v1/apps/{slug}/streaming-cap', { params: { path: { slug } } })),
     enabled: Boolean(slug),
-  });
-}
-
-/** Clears a delivery out of `dead` back to `pending` for another attempt. */
-export function useRetryDelivery(slug: string, id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (did: string) =>
-      unwrap(
-        api.POST('/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', {
-          params: { path: { slug, id, did } },
-        })
-      ),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['apps', slug, 'webhooks', id, 'deliveries'] }),
   });
 }
 

@@ -48,6 +48,7 @@ import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardPostgresRouteImport } from './routes/dashboard.postgres'
 import { Route as DashboardProjectsRouteImport } from './routes/dashboard.projects'
 import { Route as DashboardQueuesRouteImport } from './routes/dashboard.queues'
+import { Route as DashboardReleaseWebhooksRouteImport } from './routes/dashboard.release-webhooks'
 import { Route as DashboardReleasesRouteImport } from './routes/dashboard.releases'
 import { Route as DashboardRoutesRouteImport } from './routes/dashboard.routes'
 import { Route as DashboardSecretsRouteImport } from './routes/dashboard.secrets'
@@ -274,6 +275,12 @@ const DashboardQueuesRoute = DashboardQueuesRouteImport.update({
   path: '/queues',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardReleaseWebhooksRoute =
+  DashboardReleaseWebhooksRouteImport.update({
+    id: '/release-webhooks',
+    path: '/release-webhooks',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 const DashboardReleasesRoute = DashboardReleasesRouteImport.update({
   id: '/releases',
   path: '/releases',
@@ -466,6 +473,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/release-webhooks': typeof DashboardReleaseWebhooksRoute
   '/dashboard/releases': typeof DashboardReleasesRoute
   '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -533,6 +541,7 @@ export interface FileRoutesByTo {
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/release-webhooks': typeof DashboardReleaseWebhooksRoute
   '/dashboard/releases': typeof DashboardReleasesRoute
   '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -605,6 +614,7 @@ export interface FileRoutesById {
   '/dashboard/postgres': typeof DashboardPostgresRoute
   '/dashboard/projects': typeof DashboardProjectsRouteWithChildren
   '/dashboard/queues': typeof DashboardQueuesRoute
+  '/dashboard/release-webhooks': typeof DashboardReleaseWebhooksRoute
   '/dashboard/releases': typeof DashboardReleasesRoute
   '/dashboard/routes': typeof DashboardRoutesRoute
   '/dashboard/secrets': typeof DashboardSecretsRoute
@@ -678,6 +688,7 @@ export interface FileRouteTypes {
     | '/dashboard/postgres'
     | '/dashboard/projects'
     | '/dashboard/queues'
+    | '/dashboard/release-webhooks'
     | '/dashboard/releases'
     | '/dashboard/routes'
     | '/dashboard/secrets'
@@ -745,6 +756,7 @@ export interface FileRouteTypes {
     | '/dashboard/plans'
     | '/dashboard/postgres'
     | '/dashboard/queues'
+    | '/dashboard/release-webhooks'
     | '/dashboard/releases'
     | '/dashboard/routes'
     | '/dashboard/secrets'
@@ -816,6 +828,7 @@ export interface FileRouteTypes {
     | '/dashboard/postgres'
     | '/dashboard/projects'
     | '/dashboard/queues'
+    | '/dashboard/release-webhooks'
     | '/dashboard/releases'
     | '/dashboard/routes'
     | '/dashboard/secrets'
@@ -1136,6 +1149,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardQueuesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/release-webhooks': {
+      id: '/dashboard/release-webhooks'
+      path: '/release-webhooks'
+      fullPath: '/dashboard/release-webhooks'
+      preLoaderRoute: typeof DashboardReleaseWebhooksRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/releases': {
       id: '/dashboard/releases'
       path: '/releases'
@@ -1406,6 +1426,7 @@ interface DashboardRouteChildren {
   DashboardPostgresRoute: typeof DashboardPostgresRoute
   DashboardProjectsRoute: typeof DashboardProjectsRouteWithChildren
   DashboardQueuesRoute: typeof DashboardQueuesRoute
+  DashboardReleaseWebhooksRoute: typeof DashboardReleaseWebhooksRoute
   DashboardReleasesRoute: typeof DashboardReleasesRoute
   DashboardRoutesRoute: typeof DashboardRoutesRoute
   DashboardSecretsRoute: typeof DashboardSecretsRoute
@@ -1460,6 +1481,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardPostgresRoute: DashboardPostgresRoute,
   DashboardProjectsRoute: DashboardProjectsRouteWithChildren,
   DashboardQueuesRoute: DashboardQueuesRoute,
+  DashboardReleaseWebhooksRoute: DashboardReleaseWebhooksRoute,
   DashboardReleasesRoute: DashboardReleasesRoute,
   DashboardRoutesRoute: DashboardRoutesRoute,
   DashboardSecretsRoute: DashboardSecretsRoute,

@@ -18,10 +18,16 @@ export function generateWebhookSecret(): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** apid measures secrets with Go's len(), which counts UTF-8 bytes. */
+export function utf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
 export function webhookSecretError(secret: string): string | undefined {
-  return secret.length >= 1 && secret.length <= WEBHOOK_SECRET_MAX
+  const bytes = utf8Bytes(secret);
+  return bytes >= 1 && bytes <= WEBHOOK_SECRET_MAX
     ? undefined
-    : `Enter a secret of 1 to ${WEBHOOK_SECRET_MAX} characters.`;
+    : `Enter a secret of 1 to ${WEBHOOK_SECRET_MAX} bytes.`;
 }
 
 /**

@@ -6,6 +6,7 @@ import * as db from './data';
 import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
+import * as releaseWebhookMock from './release-webhooks';
 import * as edgeRuleMock from './edge-rules';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
@@ -5160,16 +5161,161 @@ route('GET', '/v1/apps/{slug}/webhooks/{id}/deliveries', ({ params }) => {
 route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params }) => {
   const d = (db.deliveries.get(params.id) ?? []).find((x) => x.id === params.did);
   if (!d) throw new Problem(404, 'delivery_not_found');
-  if (d.status !== 'dead' && d.status !== 'failed')
+  return { delivery: resendDead(d) };
+});
+// Delivery health and attempt history (faas server.go:3771-3772).
+function appWebhookOf(slug: string, id: string) {
+  const hook = listOf(db.webhooks, app(slug).slug).find((w) => w.id === id);
+  if (!hook) throw new Problem(404, 'not_found', 'webhook not found');
+  return hook;
+}
+route('GET', '/v1/apps/{slug}/webhooks/{id}/health', ({ params }) =>
+  releaseWebhookMock.healthFor(appWebhookOf(params.slug, params.id).id)
+);
+route('GET', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/attempts', ({ params }) => {
+  const hook = appWebhookOf(params.slug, params.id);
+  const d = (db.deliveries.get(hook.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  return releaseWebhookMock.attemptsFor(d);
+});
+
+/** Only a dead delivery goes back to pending, with a fresh retry ladder (handlers_webhooks.go:900-912). */
+function resendDead(d: S_['AppWebhookDeliveryResponse']) {
+  if (d.status !== 'dead')
     throw new Problem(
-      409,
-      'delivery_not_retryable',
-      'Only a failed or dead delivery can be retried.'
+      400,
+      'app_webhook_invalid',
+      "delivery is not in 'dead' state; only dead deliveries can be retried"
     );
   d.status = 'pending';
+  d.attempt = 0;
   d.next_attempt_at = db.iso(-5_000);
   d.updated_at = db.iso(0);
-  return { delivery: d };
+  return d;
+}
+
+// Account release webhooks (faas ADR-224; handlers_account_release_webhooks.go).
+// One receiver follows every app the account owns; app and release webhooks
+// share WebhookPerAccount. Free answers 402 on every route.
+function releasePlanAllowed() {
+  const plan = process.env.MOCK_PLAN ?? db.account.plan;
+  if (!releaseWebhookMock.PER_ACCOUNT[plan])
+    throw new Problem(
+      402,
+      'plan_webhooks_not_allowed',
+      `the ${plan} plan does not include outbound webhooks; upgrade to Hobby or above to subscribe.`
+    );
+  return plan;
+}
+function receiverOf(id: string) {
+  releasePlanAllowed();
+  const hook = releaseWebhookMock.receivers.find((w) => w.id === id);
+  if (!hook) throw new Problem(404, 'not_found', 'release webhook not found');
+  return hook;
+}
+route('GET', '/v1/account/release-webhooks', () => {
+  releasePlanAllowed();
+  return releaseWebhookMock.receivers;
+});
+route('POST', '/v1/account/release-webhooks', ({ body }) => {
+  const plan = releasePlanAllowed();
+  const invalid = releaseWebhookMock.invalidReceiver(body, false);
+  if (invalid) throw new Problem(400, 'app_webhook_invalid', invalid);
+  const list = releaseWebhookMock.receivers;
+  if (list.some((w) => w.target_url === body.target_url))
+    throw new Problem(
+      400,
+      'app_webhook_invalid',
+      'an account release webhook already targets this URL'
+    );
+  const cap = releaseWebhookMock.PER_ACCOUNT[plan];
+  const used = list.length + [...db.webhooks.values()].reduce((n, hooks) => n + hooks.length, 0);
+  if (used >= cap)
+    throw new Problem(
+      403,
+      'plan_webhook_quota',
+      `${plan} plan caps webhooks at ${cap} for this account; you have ${used}. Delete one to add another.`
+    );
+  type Receiver = S_['AccountReleaseWebhookResponse'];
+  const hook: Receiver = {
+    id: db.id(),
+    scope: 'account',
+    account_id: db.ACCOUNT_ID,
+    target_url: String(body.target_url),
+    webhook_secret_sealed_masked: '***',
+    event_filter: body.event_filter as Receiver['event_filter'],
+    retry_policy: (body.retry_policy ?? 'default') as Receiver['retry_policy'],
+    delivery_format: body.delivery_format === 'cloudevents' ? 'cloudevents' : 'json',
+    enabled: body.enabled !== false,
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  list.push(hook);
+  db.deliveries.set(hook.id, []);
+  return status(201, hook);
+});
+route('GET', '/v1/account/release-webhooks/{id}', ({ params }) => receiverOf(params.id));
+route('PATCH', '/v1/account/release-webhooks/{id}', ({ params, body }) => {
+  const hook = receiverOf(params.id);
+  const invalid = releaseWebhookMock.invalidReceiver(body, true);
+  if (invalid) throw new Problem(400, 'app_webhook_invalid', invalid);
+  if (
+    typeof body.target_url === 'string' &&
+    releaseWebhookMock.receivers.some((w) => w.id !== hook.id && w.target_url === body.target_url)
+  )
+    throw new Problem(
+      400,
+      'app_webhook_invalid',
+      'an account release webhook already targets this URL'
+    );
+  for (const k of [
+    'target_url',
+    'event_filter',
+    'retry_policy',
+    'delivery_format',
+    'enabled',
+  ] as const)
+    if (body[k] !== undefined) (hook as Record<string, unknown>)[k] = body[k];
+  hook.updated_at = db.iso(0);
+  return hook;
+});
+route('DELETE', '/v1/account/release-webhooks/{id}', ({ params }) => {
+  const hook = receiverOf(params.id);
+  const list = releaseWebhookMock.receivers;
+  list.splice(list.indexOf(hook), 1);
+  db.deliveries.delete(hook.id);
+  return NO_CONTENT;
+});
+route('POST', '/v1/account/release-webhooks/{id}/rotate-secret', ({ params, body }) => {
+  const hook = receiverOf(params.id);
+  const invalid = releaseWebhookMock.invalidReceiver({ webhook_secret: body.webhook_secret }, true);
+  if (invalid || typeof body.webhook_secret !== 'string')
+    throw new Problem(400, 'app_webhook_invalid', invalid ?? 'webhook_secret is required');
+  hook.updated_at = db.iso(0);
+  return { rotated_at: hook.updated_at, webhook_secret_sealed_masked: '***' as const };
+});
+route('GET', '/v1/account/release-webhooks/{id}/deliveries', ({ params, query }) => {
+  const hook = receiverOf(params.id);
+  const all = db.deliveries.get(hook.id) ?? [];
+  const size = Math.min(100, Math.max(1, Number(query.get('page_size')) || 50));
+  const start = Number(query.get('page_token')) || 0;
+  const next = start + size < all.length ? String(start + size) : undefined;
+  return { deliveries: all.slice(start, start + size), ...(next ? { next_token: next } : {}) };
+});
+route('GET', '/v1/account/release-webhooks/{id}/health', ({ params }) =>
+  releaseWebhookMock.healthFor(receiverOf(params.id).id)
+);
+route('GET', '/v1/account/release-webhooks/{id}/deliveries/{did}/attempts', ({ params }) => {
+  const hook = receiverOf(params.id);
+  const d = (db.deliveries.get(hook.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  return releaseWebhookMock.attemptsFor(d);
+});
+route('POST', '/v1/account/release-webhooks/{id}/deliveries/{did}/retry', ({ params }) => {
+  const hook = receiverOf(params.id);
+  const d = (db.deliveries.get(hook.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  return { delivery: resendDead(d) };
 });
 
 // Deployment lifecycle. Cancel refuses a live row the way the API does; retry
