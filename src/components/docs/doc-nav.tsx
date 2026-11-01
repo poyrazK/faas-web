@@ -40,6 +40,16 @@ function SectionList({ onNavigate }: { onNavigate?: () => void }) {
           </ul>
         </div>
       ))}
+      <div>
+        <h2>API</h2>
+        <ul>
+          <li>
+            <Link to="/docs/api" onClick={onNavigate} activeProps={{ 'aria-current': 'page' }}>
+              API reference
+            </Link>
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

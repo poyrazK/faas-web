@@ -25,7 +25,17 @@ import { dirname, join } from 'node:path';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`)];
+const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
+const { load: parseYaml } = await import('js-yaml');
+// The API reference is derived from the vendored spec the same way: one page
+// per group, so a group the spec gains is prerendered and in the sitemap.
+const API_ROUTES = [
+  '/docs/api',
+  ...buildApiReference(parseYaml(readFileSync('api/openapi.yaml', 'utf8'))).map(
+    (group) => `/docs/api/${group.id}`
+  ),
+];
+const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
 
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
 const NOT_FOUND_ROUTE = '/404';
