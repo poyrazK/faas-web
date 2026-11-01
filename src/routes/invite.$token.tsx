@@ -91,7 +91,7 @@ function InvitePage() {
                     toast({
                       kind: 'error',
                       title: 'Could not accept',
-                      description: errorMessage(err),
+                      error: err,
                     })
                   )
               }

@@ -260,7 +260,9 @@ export function ResourceTable<T extends { id: string }>({
           />
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card">
-            <div className="overflow-x-auto">
+            {/* relative: the sr-only (absolute) header text is positioned inside
+                this box, so it is clipped with the table instead of widening the page. */}
+            <div className="relative overflow-x-auto">
               <table
                 className={cn(
                   'w-full text-sm',

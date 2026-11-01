@@ -17,7 +17,7 @@ vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: [{ id: 'app-1', slug: 'api' }] }),
   useAddDomain: () => ({ mutateAsync: addDomain, isPending: false }),
   useDeleteDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useVerifyDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRetryDomain: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -26,6 +26,9 @@ vi.mock('@/components/dashboard/resource-table', () => ({
   ResourceTable: () => null,
 }));
 vi.mock('@/components/dashboard/domain-doctor', () => ({ DomainDoctor: () => null }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+}));
 
 const { Route } = await import('./dashboard.domains');
 const DomainsPage = (Route as unknown as { component: React.ComponentType }).component;

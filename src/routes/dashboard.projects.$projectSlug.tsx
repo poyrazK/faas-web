@@ -10,6 +10,8 @@ import {
   type ReadinessSearch,
 } from '@/components/dashboard/projects/environment-readiness';
 import { ProjectPreviews } from '@/components/dashboard/projects/preview-workload-set';
+import { ProjectSourceSettings } from '@/components/dashboard/projects/project-source-settings';
+import { ProjectDangerZone } from '@/components/dashboard/projects/project-danger-zone';
 import { Route as ProjectsRoute } from './dashboard.projects';
 export const Route = createFileRoute('/dashboard/projects/$projectSlug')({
   component: ProjectPage,
@@ -97,6 +99,11 @@ function ProjectPage() {
           </p>
         )}
       </Panel>
+      <ProjectSourceSettings
+        key={`settings:${account.id}:${project.id}:${project.updated_at}`}
+        accountId={account.id}
+        project={project}
+      />
       <ProjectWorkloads key={`${account.id}:${project.id}`} workloads={project.workloads} />
       <ProjectEnvironments
         accountId={account.id}
@@ -144,6 +151,12 @@ function ProjectPage() {
             resetScroll: false,
           })
         }
+      />
+      <ProjectDangerZone
+        key={`danger:${account.id}:${project.id}`}
+        accountId={account.id}
+        project={project}
+        onDeleted={() => void navigate({ to: '/dashboard/projects', search: { q } })}
       />
     </div>
   );

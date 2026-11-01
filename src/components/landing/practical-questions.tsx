@@ -3,7 +3,7 @@ import { Cards, Panel, type CardItem } from './cards';
 const QUESTIONS: readonly CardItem[] = [
   {
     title: 'Can I start using Gregale today?',
-    body: 'Yes. Hosting is in public beta. Start with a demo, side project or another non-critical workload.',
+    body: 'Yes. Sign up, deploy from your terminal or GitHub, and your API is live on a Gregale URL with TLS.',
     mosaic: [
       [1, 4, 2],
       [2, 3, 1],
@@ -16,7 +16,7 @@ const QUESTIONS: readonly CardItem[] = [
     panel: (
       <Panel
         title="Start with hosting"
-        rows={['Public beta', 'Demo or side project', 'Non-critical workloads']}
+        rows={['Sign up on Free', 'Deploy from source or GitHub', 'Live URL with TLS']}
       />
     ),
   },
@@ -67,7 +67,7 @@ const QUESTIONS: readonly CardItem[] = [
   },
   {
     title: 'What does it cost?',
-    body: 'See the current plans, usage limits and beta billing details.',
+    body: 'Start on Free. Plan prices and included usage come from the platform catalog.',
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],
@@ -78,11 +78,11 @@ const QUESTIONS: readonly CardItem[] = [
       [4, 4, 1],
       [6, 4, 2],
     ],
-    links: [{ label: 'Plans, limits and beta billing', doc: 'plans' }],
+    links: [{ label: 'Plans and included usage', doc: 'plans' }],
     panel: (
       <Panel
         title="Plans and billing"
-        rows={['Current plans', 'Included usage and limits', 'Beta billing details']}
+        rows={['Free to start', 'Plans from the catalog', 'Included usage per plan']}
       />
     ),
   },

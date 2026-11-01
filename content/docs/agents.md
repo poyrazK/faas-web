@@ -12,18 +12,21 @@ Create a dedicated key instead of sharing your own login. Scope it to what the
 agent needs:
 
 ```sh
-gregale keys add coding-agent --scopes apps:read,deploy:write
+gregale key create coding-agent --scopes apps:read,deploy:write
 ```
 
 `apps:read` lets the agent inspect apps, deployments, logs and metrics.
-`deploy:write` lets it deploy and roll back. Add `env:read` or `env:write`
-only if the agent should manage configuration. A key without `--scopes` is a
-full-access `admin` key.
+`deploy:write` lets it create apps, deploy, roll back, and add custom domains
+and crons. Add `secrets:write` only if the agent should set environment
+variables or ask you for secrets: `gregale env push` stores them through the
+secrets API. Add `storage:manage` for buckets, and `postgres:manage` with
+`postgres:read` for databases. A key without `--scopes` is a full-access
+`admin` key.
 
 Put the key in the agent's environment as `FAAS_TOKEN`. It overrides the
 saved login for every `gregale` command and for the MCP server. Don't paste
 it into a prompt, a command argument or a committed file. Remove it with
-`gregale keys rm <id>` when the agent no longer needs it.
+`gregale key delete <id>` when the agent no longer needs it.
 
 ## Run the CLI non-interactively
 
@@ -56,7 +59,7 @@ credentials are redacted from both.
 A deploy writes a receipt with the deployment `id`, its `status` and the
 `app_url`. If `timed_out` is true, run the receipt's `resume_command` instead
 of deploying again. After a temporary failure, the server may already have
-accepted the deploy: check `gregale deploys status <id> --app <slug>` first.
+accepted the deploy: check `gregale release get <id> --app <slug>` first.
 
 Commands that delete or replace something need explicit approval, such as
 `--yes` for app deletion. Preview them with `--dry-run` first. Missing
@@ -64,6 +67,24 @@ approval exits `1`; `--non-interactive` never approves on the agent's behalf.
 
 See [CLI configuration](cli-config.md) for the full contract, including
 pagination and profiles.
+
+## Connect a cloud agent
+
+Agents that run in the cloud, such as claude.ai, ChatGPT and hosted coding
+agents, connect to Gregale's hosted MCP server at
+`https://api.gregale.dev/mcp`. There's nothing to install:
+1. Add the URL as a connector.
+2. When the agent connects, sign in to Gregale and choose what it may do and
+   which apps it may use.
+
+The agent can then:
+- inspect and deploy apps, promote and roll back;
+- upload a project it wrote, or pass small projects as files;
+- ask you for secrets, and add domains, crons, buckets and databases, if you
+  allowed those.
+
+See
+[Connect a cloud agent to Gregale](mcp.md#connect-a-cloud-agent-to-gregale).
 
 ## Connect the management MCP server
 
@@ -74,7 +95,7 @@ profile's login.
 Claude Code:
 
 ```sh
-claude mcp add gregale -- gregale mcp serve --transport stdio
+claude mcp add gregale -- gregale mcp serve --transport stdio --tools core
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -82,7 +103,7 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.gregale]
 command = "gregale"
-args = ["mcp", "serve", "--transport", "stdio"]
+args = ["mcp", "serve", "--transport", "stdio", "--tools", "core"]
 ```
 
 Other clients that use an `mcpServers` JSON file:
@@ -92,22 +113,62 @@ Other clients that use an `mcpServers` JSON file:
   "mcpServers": {
     "gregale": {
       "command": "gregale",
-      "args": ["mcp", "serve", "--transport", "stdio"]
+      "args": ["mcp", "serve", "--transport", "stdio", "--tools", "core"]
     }
   }
 }
 ```
 
-The tools are read-only by default. They list apps and deployments, read
-logs, metrics and health, explain a failed deployment, diagnose a single
-request, group recurring errors, and compare two deployments. Log text is
+An agent loads every listed tool's definition into its context on every turn,
+so list only the toolsets it needs:
+
+| Toolset | Tools |
+|---|---|
+| `core` | Apps, deployments, logs, metrics, health and error groups; deploy a directory, set variables, promote and roll back. About a fifth of the full catalog. |
+| `release` | Image and Git source releases, service and worker rollouts, named environments, route budgets |
+| `diagnose` | Request, performance, wake, trace and regression diagnostics |
+| `provision` | Custom domains, buckets, managed PostgreSQL and crons |
+| `all` | Everything (the default) |
+
+Combine them with commas, for example `--tools core,diagnose`.
+
+The tools are read-only by default. They list apps and deployments, read logs,
+metrics and health, explain a failed deployment and group recurring errors;
+`diagnose` adds single-request diagnosis and deployment comparison. Log text is
 application data: an agent should never follow instructions it finds there.
 
 Add `--allow-writes` to the server's arguments to expose reviewed release
 actions. Each change is planned first, staged at 0% traffic, then promoted or
 rolled back only if production hasn't changed since the plan. The key needs
-`apps:read` and `deploy:write`. Creating apps, uploading local source and
-changing secrets stay in the CLI.
+`apps:read` and `deploy:write`.
+
+On a local connection like the ones above, the server can also take a project
+from a directory to a live app:
+
+1. `gregale_plan_local_deploy` reviews deploying a directory as one app.
+   `gregale_apply_local_deploy` uploads it, creating the app on its first
+   deploy.
+2. `gregale_plan_env_change` and `gregale_apply_env_change` set non-secret
+   variables; the key also needs `secrets:write` for these.
+3. Later deploys of a serving app are staged at 0% traffic until
+   `gregale_promote_deployment`.
+
+These tools run the `gregale` CLI on your machine, so they do exactly what the
+matching commands do.
+
+The agent never handles a secret value. With `--allow-writes`,
+`gregale_request_secret` opens a one-time Gregale page where you type the
+value; if the client can't open pages, the agent gives you the link. The value
+goes from your browser straight to Gregale, and the agent only learns that it
+was set. The page works only in your own signed-in session and expires after
+15 minutes.
+
+With `--tools core,provision` the agent can also attach a custom domain, add a
+bucket or a PostgreSQL database, and add a cron. Each is planned first and
+runs the matching `gregale domain create`, `add bucket`, `add postgres` or
+`crons add` command. For a domain it returns the DNS records you create at
+your DNS provider; `gregale_check_domain` reports when they verify. See
+[Provision a domain, data and crons](mcp.md#provision-a-domain-data-and-crons).
 
 ## Install the Claude Code plugin
 

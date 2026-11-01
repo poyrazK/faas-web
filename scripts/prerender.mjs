@@ -170,8 +170,8 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Bring APIs, services and background work onto one platform. Hosting is in public beta; ' +
-            'background jobs, workflows and internal services are in preview.',
+            'Deploy an existing API without rewriting it. Gregale runs it in a Firecracker microVM, ' +
+            'scales it to zero, and runs your services and background work too.',
           softwareHelp: `${SITE_URL}/docs`,
         },
       ],

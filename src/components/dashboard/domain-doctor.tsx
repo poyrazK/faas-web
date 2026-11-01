@@ -1,6 +1,7 @@
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError } from '@/lib/api/errors';
 import { useDomainDoctor } from '@/lib/api/queries';
+import { CapabilityGate } from './capability-gate';
 import { InlinePhase, queryPhase } from './primitives';
 
 /**
@@ -41,7 +42,16 @@ function formatWhen(value: string | undefined): string {
   return Number.isNaN(ms) ? '' : new Date(ms).toLocaleString();
 }
 
+/** The doctor is a preview capability (faas catalog `domain-doctor`); off, it is not probed. */
 export function DomainDoctor({ domain }: { domain: string }) {
+  return (
+    <CapabilityGate capability="domain-doctor" title="Domain doctor">
+      <DomainDoctorReport domain={domain} />
+    </CapabilityGate>
+  );
+}
+
+function DomainDoctorReport({ domain }: { domain: string }) {
   const { data, isPending, error, refetch } = useDomainDoctor(domain);
 
   if (isPending) {

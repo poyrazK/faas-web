@@ -252,21 +252,20 @@ describe('global Needs Attention dropdown', () => {
  */
 const RAIL = [
   'Overview',
-  'All projects',
-  'Templates',
-  'Import',
-  'Jobs',
+  'Projects',
   'Releases',
-  'Domains',
-  'Customers',
-  'Storage',
+  'Jobs',
+  'Instances',
+  'Object storage',
   'Postgres',
+  'Domains',
+  'Edge rules',
   'Events',
   'Integrations',
+  'Customers',
   'Analytics',
   'Debugger',
   'Invocations',
-  'Instances',
   'Audit Log',
   'Usage',
   'Invoices',
@@ -282,10 +281,24 @@ const RAIL = [
  * `aria-current="page"` last and unconditionally, so a second link to the same
  * URL would be a second current page that no prop can suppress.
  */
-const RAIL_PARENTS = ['Projects', 'Data', 'Observe', 'Billing'];
+const RAIL_PARENTS = ['Billing'];
 
-/** The group headings that give the rail its scent. */
-const RAIL_GROUPS = ['Build', 'Operate', 'Account'];
+/** The rail's headings and the links filed under each, in order. */
+const RAIL_GROUP_ROWS: Record<string, string[]> = {
+  Compute: ['Projects', 'Releases', 'Jobs', 'Instances'],
+  Storage: ['Object storage', 'Postgres'],
+  Networking: ['Domains', 'Edge rules'],
+  Messaging: ['Events', 'Integrations'],
+  Monetize: ['Customers'],
+  Observe: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'],
+  Account: ['Usage', 'Invoices', 'Plans', 'Settings'],
+};
+
+/** The rows under one rail heading: the wrapper that holds the heading and its list. */
+function railGroup(main: HTMLElement, title: string) {
+  const heading = within(main).getByText(title, { selector: 'p' });
+  return within(heading.parentElement!.parentElement!);
+}
 
 /**
  * Where a hub's sections live. They are rail rows for every hub but Settings,
@@ -297,33 +310,6 @@ function sectionsNav(hub: string) {
   });
 }
 const GROUPS = [
-  {
-    hub: 'Projects',
-    anchor: '/dashboard/projects',
-    links: [
-      ['All projects', '/dashboard/projects'],
-      ['Templates', '/dashboard/templates'],
-      ['Import', '/dashboard/import'],
-    ],
-  },
-  {
-    hub: 'Data',
-    anchor: '/dashboard/storage',
-    links: [
-      ['Storage', '/dashboard/storage'],
-      ['Postgres', '/dashboard/postgres'],
-    ],
-  },
-  {
-    hub: 'Observe',
-    anchor: '/dashboard/debug',
-    links: [
-      ['Debugger', '/dashboard/debug'],
-      ['Invocations', '/dashboard/invocations'],
-      ['Instances', '/dashboard/instances'],
-      ['Audit Log', '/dashboard/audit'],
-    ],
-  },
   {
     hub: 'Billing',
     anchor: '/dashboard/usage',
@@ -358,8 +344,12 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('link')
         .map((link) => link.getAttribute('aria-label') ?? link.textContent)
     ).toEqual(RAIL);
-    for (const title of [...RAIL_GROUPS, ...RAIL_PARENTS])
-      expect(within(main).getByText(title)).toBeInTheDocument();
+    for (const [title, rows] of Object.entries(RAIL_GROUP_ROWS))
+      expect(
+        railGroup(main, title)
+          .getAllByRole('link')
+          .map((link) => link.textContent)
+      ).toEqual(rows);
     for (const parent of RAIL_PARENTS) {
       expect(within(main).queryByRole('link', { name: parent })).toBeNull();
       expect(within(main).getByRole('button', { name: parent })).toHaveAttribute(
@@ -400,36 +390,71 @@ describe('dashboard navigation foundation', () => {
     expect(within(breadcrumb).getByText('Analytics')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('shuts a disclosure, remembers it, and leaves the others open', async () => {
+  it('shuts a disclosure, remembers it, and leaves the rest of the rail open', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
-    const observe = within(main).getByRole('button', { name: 'Observe' });
+    const billing = within(main).getByRole('button', { name: 'Billing' });
 
-    expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument();
-    await userEvent.click(observe);
-    expect(observe).toHaveAttribute('aria-expanded', 'false');
+    expect(within(main).getByRole('link', { name: 'Invoices' })).toBeInTheDocument();
+    await userEvent.click(billing);
+    expect(billing).toHaveAttribute('aria-expanded', 'false');
     // The panel collapses on an exit animation, so the rows leave the document
     // when it finishes rather than on the click. aria-expanded flips at once,
     // which is what assistive tech reads.
-    await waitFor(() =>
-      expect(within(main).queryByRole('link', { name: 'Invocations' })).toBeNull()
-    );
-    // Shutting one group must not shut its neighbours.
-    expect(within(main).getByRole('link', { name: 'Storage' })).toBeInTheDocument();
+    await waitFor(() => expect(within(main).queryByRole('link', { name: 'Invoices' })).toBeNull());
+    // Shutting Billing must not touch the rows around it.
+    expect(within(main).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
 
     // Stored as the closed set, so a hub nobody has shut stays open — including
     // one that does not exist yet.
     expect(JSON.parse(window.localStorage.getItem('gregale.sidebar.closedGroups') ?? '[]')).toEqual(
-      ['/dashboard/debug']
+      ['/dashboard/usage']
     );
 
-    await userEvent.click(observe);
-    expect(observe).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(billing);
+    expect(billing).toHaveAttribute('aria-expanded', 'true');
     await waitFor(() =>
-      expect(within(main).getByRole('link', { name: 'Invocations' })).toBeInTheDocument()
+      expect(within(main).getByRole('link', { name: 'Invoices' })).toBeInTheDocument()
     );
     expect(JSON.parse(window.localStorage.getItem('gregale.sidebar.closedGroups') ?? '[]')).toEqual(
       []
+    );
+  });
+
+  it('ignores closed-group entries saved by the previous rail', async () => {
+    // Data, Observe and Projects were disclosures before the regroup. A reader
+    // who shut one must not lose rows that are plain links now.
+    window.localStorage.setItem(
+      'gregale.sidebar.closedGroups',
+      JSON.stringify(['/dashboard/storage', '/dashboard/debug', '/dashboard/projects'])
+    );
+    await renderShell();
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(main)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toEqual(RAIL);
+    expect(within(main).getByRole('button', { name: 'Billing' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  it('keeps every top-level row reachable by name in the collapsed rail', async () => {
+    window.localStorage.setItem('gregale.sidebar.collapsed', '1');
+    await renderShell();
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(main.closest('aside')).toHaveClass('w-16');
+    // Collapsed, labels move to aria-label and the second level folds away.
+    expect(
+      within(main)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('aria-label'))
+    ).toEqual(RAIL.filter((label) => !['Usage', 'Invoices', 'Plans'].includes(label)));
+    expect(within(main).getByRole('button', { name: 'Billing' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
     );
   });
 
@@ -457,7 +482,7 @@ describe('dashboard navigation foundation', () => {
     }
   );
 
-  it('keeps standalone app sections, including Edge rules, accessible from app pages', async () => {
+  it('keeps the app sections strip on per-app pages and lights Projects there', async () => {
     await renderShell('/dashboard/logs');
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
@@ -472,29 +497,45 @@ describe('dashboard navigation foundation', () => {
         `/dashboard/${path}`
       );
     }
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    // Logs has no rail row: the rail shows its branch, and says so only once.
+    expect(within(main).getByRole('link', { name: 'Projects' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+
     await userEvent.click(within(sections).getByRole('link', { name: 'Edge rules' }));
     await waitFor(() =>
       expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/edge-rules')
     );
-    // Edge rules is an app section with no rail row of its own, so the rail
-    // shows the branch rather than claiming a current page it does not have.
-    expect(
-      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', {
-        name: 'Projects',
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole('navigation', { name: 'App sections' })).getByRole('link', {
-        name: 'Edge rules',
-      })
-    ).toHaveAttribute('aria-current', 'page');
+    // Edge rules is a rail row now. Its page is the account view, so the
+    // per-app strip goes; the app page's Connect tab is the per-app way in.
+    expect(within(main).getByRole('link', { name: 'Edge rules' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(screen.queryByRole('navigation', { name: 'App sections' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['/dashboard/instances', 'Instances'],
+    ['/dashboard/postgres', 'Postgres'],
+    ['/dashboard/edge-rules', 'Edge rules'],
+    ['/dashboard/debug', 'Debugger'],
+  ])('lights %s as its own rail row', async (path, label) => {
+    await renderShell(path);
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(main).getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'App sections' })).not.toBeInTheDocument();
   });
 
   it('uses link keyboard navigation and restores hub selection with browser Back', async () => {
     const router = await renderShell('/dashboard/storage');
     const user = userEvent.setup();
     const sections = screen.getByRole('navigation', { name: 'Main' });
-    const storage = within(sections).getByRole('link', { name: 'Storage' });
+    const storage = within(sections).getByRole('link', { name: 'Object storage' });
     storage.focus();
     await user.tab();
     expect(within(sections).getByRole('link', { name: 'Postgres' })).toHaveFocus();
@@ -502,7 +543,7 @@ describe('dashboard navigation foundation', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/postgres'));
     await act(async () => router.history.back());
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/storage'));
-    expect(within(sections).getByRole('link', { name: 'Storage' })).toHaveAttribute(
+    expect(within(sections).getByRole('link', { name: 'Object storage' })).toHaveAttribute(
       'aria-current',
       'page'
     );
@@ -533,21 +574,21 @@ describe('dashboard navigation foundation', () => {
   it('honors keyboard collapse while focus is inside the rail', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
-    await act(async () => within(main).getByRole('link', { name: 'Postgres' }).focus());
+    await act(async () => within(main).getByRole('link', { name: 'Invoices' }).focus());
     await userEvent.keyboard('{Control>}b{/Control}');
     expect(main.closest('aside')).toHaveClass('w-16');
-    expect(within(main).getByRole('button', { name: 'Data' })).toHaveFocus();
-    expect(within(main).queryByRole('link', { name: 'Postgres' })).not.toBeInTheDocument();
+    expect(within(main).getByRole('button', { name: 'Billing' })).toHaveFocus();
+    expect(within(main).queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument();
   });
 
   it('keeps disclosure triggers mounted and focused while the compact rail expands', async () => {
     window.localStorage.setItem('gregale.sidebar.collapsed', '1');
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
-    const data = within(main).getByRole('button', { name: 'Data' });
-    await act(async () => data.focus());
-    expect(data).toHaveFocus();
-    expect(data).toBe(within(main).getByRole('button', { name: 'Data' }));
+    const billing = within(main).getByRole('button', { name: 'Billing' });
+    await act(async () => billing.focus());
+    expect(billing).toHaveFocus();
+    expect(billing).toBe(within(main).getByRole('button', { name: 'Billing' }));
     expect(main.closest('aside')).toHaveClass('w-60');
     expect(window.localStorage.getItem('gregale.sidebar.collapsed')).toBe('1');
   });
@@ -555,16 +596,17 @@ describe('dashboard navigation foundation', () => {
   it('preserves search and hash state when the current section is reselected', async () => {
     const router = await renderShell('/dashboard/storage?q=assets&campaign=handoff#buckets');
     const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'Storage',
+      name: 'Object storage',
     });
     await userEvent.click(link);
     expect(router.state.location.href).toBe('/dashboard/storage?q=assets&campaign=handoff#buckets');
   });
 
-  it('identifies only the current page in a hub anchor breadcrumb', async () => {
+  it('names a rail row once in its breadcrumb', async () => {
     await renderShell('/dashboard/debug');
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(breadcrumb).getByText('Observe')).toBeInTheDocument();
+    // Observe is a heading now, not a hub, so it is not a crumb.
+    expect(within(breadcrumb).queryByText('Observe')).not.toBeInTheDocument();
     expect(within(breadcrumb).getByText('Debugger')).toHaveAttribute('aria-current', 'page');
     expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
@@ -579,7 +621,7 @@ describe('dashboard navigation foundation', () => {
   it('preserves a Projects bookmark when its primary destination is reselected', async () => {
     const router = await renderShell('/dashboard/projects?q=api#list');
     const link = within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
-      name: 'All projects',
+      name: 'Projects',
     });
     expect(link).toHaveAttribute('href', '/dashboard/projects?q=api#list');
     await userEvent.click(link);
@@ -590,8 +632,12 @@ describe('dashboard navigation foundation', () => {
     await renderShell('/dashboard/apps/api');
     const main = screen.getByRole('navigation', { name: 'Main' });
     expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
-    expect(within(main).queryByRole('button', { name: 'Apps' })).toBeNull();
-    expect(within(main).getByRole('button', { name: 'Projects' })).toBeInTheDocument();
+    expect(within(main).queryByRole('link', { name: 'Apps' })).toBeNull();
+    expect(within(main).getByRole('link', { name: 'Projects' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it.each(['/dashboard/apps', '/dashboard/apps/'])(
@@ -614,6 +660,27 @@ describe('dashboard navigation foundation', () => {
     expect(screen.getByText('Recent', { exact: true })).toBeInTheDocument();
     const options = screen.getAllByRole('option');
     expect(options.slice(0, 2).map((option) => option.textContent)).toEqual(['Builds', 'Logs']);
+  });
+
+  it('drops saved commands for removed hub aliases and keeps the rest', async () => {
+    // "Data" and "Observe" were hub aliases with their own ids. Their pages are
+    // still listed, under their own names.
+    window.localStorage.setItem(
+      'gregale.palette.recent',
+      JSON.stringify([
+        'hub-/dashboard/storage',
+        'hub-/dashboard/debug',
+        'nav-/dashboard/storage',
+        'nav-/dashboard/templates',
+      ])
+    );
+    await renderShell();
+    await userEvent.keyboard('{Control>}k{/Control}');
+    await screen.findByRole('combobox', { name: 'Search commands' });
+    const options = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(options.slice(0, 2)).toEqual(['Object storage', 'Templates']);
+    expect(options).not.toContain('Data');
+    expect(options).not.toContain('Observe');
   });
 
   it('restores saved Team and Keys commands as canonical Settings destinations', async () => {
@@ -699,16 +766,19 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('option')
         .map((option) => option.textContent)
         .filter((text) => text?.endsWith('Page'))
-    ).toEqual(['DataPage', 'Data and privacyPage']);
+    ).toEqual(['Data and privacyPage']);
     await user.clear(input);
     await user.type(input, 'Storage');
+    // The label hit leads; Postgres follows because it is filed under Storage.
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'StoragePage',
+      'Object storagePage',
+      'PostgresPage',
     ]);
     await user.clear(input);
-    await user.type(input, 'Observe');
+    // Debugger is both a rail row and an app section: one result, not two.
+    await user.type(input, 'Debugger');
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'ObservePage',
+      'DebuggerPage',
     ]);
   });
 
@@ -751,12 +821,48 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
   });
 
+  it('finds the pages filed under a rail heading from the overview search', async () => {
+    // The overview search is the same matching over the same destinations as
+    // ⌘K, so a heading finds its pages here too.
+    await renderShell('/dashboard', <OverviewSearch workflows={[app]} />);
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByRole('combobox', { name: 'Search apps, pages, and actions' }),
+      'Observe'
+    );
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'AnalyticsPage',
+      'DebuggerPage',
+      'InvocationsPage',
+      'Audit LogPage',
+    ]);
+  });
+
+  it.each([
+    ['Observe', ['Analytics', 'Debugger', 'Invocations', 'Audit Log']],
+    ['Networking', ['Domains', 'Edge rules']],
+    ['Storage', ['Object storage', 'Postgres']],
+  ])('finds the pages filed under %s from the command palette', async (heading, labels) => {
+    await renderShell();
+    const user = userEvent.setup();
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Search commands' }), heading);
+    const options = screen.queryAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(expect.arrayContaining(labels));
+    // The heading is a search term, not a destination, and never shows as text.
+    expect(options).not.toContain(heading);
+  });
+
   it.each([
     ['Releases', '/dashboard/releases'],
     ['Analytics', '/dashboard/analytics'],
     ['Builds', '/dashboard/builds'],
-    ['Data', '/dashboard/storage'],
-    ['Observe', '/dashboard/debug'],
+    ['Object storage', '/dashboard/storage'],
+    ['Debugger', '/dashboard/debug'],
+    ['Edge rules', '/dashboard/edge-rules'],
+    ['Instances', '/dashboard/instances'],
+    ['Templates', '/dashboard/templates'],
+    ['Import', '/dashboard/import'],
     ['Billing', '/dashboard/usage'],
   ])('opens %s from the command palette without duplicate results', async (label, path) => {
     const router = await renderShell();
