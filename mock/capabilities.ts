@@ -150,6 +150,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'log-drains',
+    name: 'Log drains',
+    category: 'observability',
+    description: 'Forward logs to an external destination.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/logs#log-drains',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'private-apps',
     name: 'Private apps',
     category: 'networking',

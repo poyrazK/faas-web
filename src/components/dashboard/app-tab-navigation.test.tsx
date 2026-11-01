@@ -122,6 +122,12 @@ describe('visibleAppTabs', () => {
     expect(APP_TAB_CAPABILITY.Debugger).toBe('production-debugger');
     expect(APP_TAB_CAPABILITY.Automations).toBe('automations');
   });
+  it('hides Log drains when apid gates the log-drains capability off', () => {
+    expect(APP_TAB_CAPABILITY['Log drains']).toBe('log-drains');
+    expect(visibleAppTabs((id) => (id === 'log-drains' ? 'off' : 'on'))).not.toContain(
+      'Log drains'
+    );
+  });
 });
 
 describe('AppTabNavigation with hidden tabs', () => {
