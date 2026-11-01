@@ -34,7 +34,7 @@ vi.mock('./trigger-records', () => ({ TriggerRecords: () => <p>Record activity</
 vi.mock('./trigger-dlq', () => ({ TriggerDeadLetter: () => <p>Dead-letter activity</p> }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
-const { TriggerDetail } = await import('./trigger-detail');
+const { TriggerConfiguration, TriggerDetail } = await import('./trigger-detail');
 
 const account = {
   limits: {
@@ -49,7 +49,7 @@ const account = {
 } as Account;
 const apps = [{ id: 'app1', slug: 'orders-api' }] as App[];
 const trigger = {
-  id: 'trg1',
+  id: '5b7e1c2a-8d30-4f96-a1e4-0c9b3d6f2a18',
   account_id: 'acct',
   app_id: 'app1',
   kind: 'kafka',
@@ -86,8 +86,16 @@ beforeEach(() => {
 });
 
 describe('TriggerDetail', () => {
+  it('shows the full trigger ID with a copy button', async () => {
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
+    expect(await screen.findByText(trigger.id)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Copy: trigger ID ${trigger.id}` })
+    ).toBeInTheDocument();
+  });
+
   it('projects operations, delivery, handler contract, and redacted credentials', async () => {
-    render(withRouter(<TriggerDetail triggerId="trg1" account={account} apps={apps} />));
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
     expect(await screen.findByRole('heading', { name: 'orders-inbound' })).toBeInTheDocument();
     expect(screen.getByText(/orders-api/)).toBeInTheDocument();
     expect(screen.getByText('POST /_triggers/kafka/orders-inbound')).toBeInTheDocument();
@@ -103,7 +111,7 @@ describe('TriggerDetail', () => {
   it('keeps loading, missing, and errors distinct', async () => {
     useTrigger.mockReturnValue({ data: undefined, isPending: true, error: null });
     const first = render(
-      withRouter(<TriggerDetail triggerId="trg1" account={account} apps={apps} />)
+      withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />)
     );
     expect(await screen.findByText(/reading the trigger/i)).toBeInTheDocument();
     first.unmount();
@@ -112,12 +120,12 @@ describe('TriggerDetail', () => {
       isPending: false,
       error: new ApiError({ status: 404, code: 'trigger_not_found', title: 'Gone' }),
     });
-    render(withRouter(<TriggerDetail triggerId="trg1" account={account} apps={apps} />));
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
     expect(await screen.findByText(/no longer exists/i)).toBeInTheDocument();
   });
 
   it('edits delivery with locked identity and plan caps', async () => {
-    render(withRouter(<TriggerDetail triggerId="trg1" account={account} apps={apps} />));
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     expect(screen.getByLabelText('Destination app')).toBeDisabled();
     expect(screen.getByLabelText('Trigger kind')).toBeDisabled();
@@ -127,11 +135,21 @@ describe('TriggerDetail', () => {
   });
 
   it('confirms destructive deletion before calling the API', async () => {
-    render(withRouter(<TriggerDetail triggerId="trg1" account={account} apps={apps} />));
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({ typeToConfirm: 'orders-inbound' })
     );
-    expect(remove).toHaveBeenCalledWith('trg1');
+    expect(remove).toHaveBeenCalledWith(trigger.id);
+  });
+});
+
+describe('TriggerConfiguration', () => {
+  it('shows the full trigger ID with a copy button', () => {
+    render(<TriggerConfiguration triggerId={trigger.id} />);
+    expect(screen.getByText(trigger.id)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Copy: trigger ID ${trigger.id}` })
+    ).toBeInTheDocument();
   });
 });

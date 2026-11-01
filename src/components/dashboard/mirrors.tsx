@@ -67,6 +67,7 @@ function explainMirrorError(err: unknown): {
   kind: 'info' | 'error';
   title: string;
   description?: string;
+  error?: unknown;
 } {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -97,7 +98,7 @@ function explainMirrorError(err: unknown): {
         return { kind: 'error', title: 'Percent must be between 0 and 100' };
     }
   }
-  return { kind: 'error', title: 'Could not save the mirror rule', description: errorMessage(err) };
+  return { kind: 'error', title: 'Could not save the mirror rule', error: err };
 }
 
 export function MirrorRules({ slug }: { slug: string }) {

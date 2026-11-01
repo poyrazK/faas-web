@@ -108,6 +108,9 @@ vi.mock('@/lib/api/queries', () => {
     useJobRuns: () => ok({ runs: [run] }),
     useJobRun: () => ok(run),
     useCancelJobRun: mutation,
+    useStartJobRun: mutation,
+    useDeleteJob: mutation,
+    useSetJobStatus: mutation,
     useJobTasks: () =>
       ok({ tasks: [{ run_id: 'run-1', task_index: 0, status: 'succeeded', attempt: 1 }] }),
     useJobTaskLog: () => ok({ log_content: 'export complete', truncated: false, max_bytes: 65536 }),
@@ -369,6 +372,28 @@ describe('Jobs hub', () => {
       else expect(await screen.findByText('Configuration')).toBeInTheDocument();
     }
   );
+
+  it('shows when an execution started as a time, with the exact time on hover', async () => {
+    await mount('/dashboard/jobs?section=scheduled&schedule=schedule-1&execution=execution-1');
+    await screen.findByRole('heading', { name: 'Execution execution-1' });
+
+    const started = screen.getByText('Started').nextElementSibling!.querySelector('time');
+    expect(started).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
+    expect(started).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(started?.textContent).not.toBe('2026-09-11T00:00:00Z');
+  });
+
+  it('shows each run-history start time with the exact time on hover', async () => {
+    await mount('/dashboard/jobs?section=scheduled&schedule=schedule-1');
+    const row = (await screen.findByRole('button', { name: 'Execution execution-1' })).closest(
+      'li'
+    )!;
+
+    const started = within(row).getByRole('time');
+    expect(started).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
+    expect(started).toHaveAttribute('title', expect.stringContaining('2026'));
+    expect(started).toHaveTextContent(/ago$/);
+  });
 
   it('restores workload, run and task from a copied URL, refresh, Back and Forward', async () => {
     const router = await mount('/dashboard/jobs?section=workloads&campaign=handoff');

@@ -14,12 +14,16 @@ import { SegmentedControl, Tabs, tabId } from './tabs';
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
-  { label: 'Observe', tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger'] },
+  {
+    label: 'Observe',
+    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit'],
+  },
   {
     label: 'Connect',
     tabs: [
       'Routes',
       'Upstreams',
+      'Outbound',
       'Services',
       'MCP',
       'Edge rules',
@@ -40,8 +44,9 @@ type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
 type AppTabGroupLabel = AppTabGroup['label'];
 export const APP_DETAIL_TABS: readonly AppTab[] = APP_TAB_GROUPS.flatMap((g) => [...g.tabs]);
 
-/** Catalog ids (faas pkg/productcap/catalog.json) for tabs that are not GA or beta. */
+/** Catalog ids (faas pkg/productcap/catalog.json) for tabs whose routes apid can gate off. */
 export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
+  'Log drains': 'log-drains',
   Routes: 'route-insights',
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
@@ -55,6 +60,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Consumer plans': 'api-monetization',
   Automations: 'automations',
   Queues: 'queues',
+  Outbound: 'outbound-integrations',
 };
 
 /** Hide a tab only once the registry has said its capability is off. */

@@ -88,6 +88,8 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   `MOCK_HIDDEN_CAPABILITIES=<id,id>` lists catalog capabilities as hidden for
   the account (`hidden_capabilities`), so gated tabs, nav items and pages can be
   seen in their off state.
+  `MOCK_DOMAIN_EXPIRED=1` seeds the pending domain with an expired TXT challenge,
+  so "Check again" answers 409 and the "Get a new TXT record" recovery shows.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server
