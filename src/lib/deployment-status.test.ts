@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deploymentPhase,
   hasRollbackTarget,
+  hasLogSource,
   hasRunnableDeployment,
   isDeploymentTerminal,
 } from './deployment-status';
@@ -69,5 +70,14 @@ describe('hasRunnableDeployment', () => {
     expect(hasRunnableDeployment([{ state: 'building' }])).toBe(false);
     expect(hasRunnableDeployment([{ state: 'failed' }])).toBe(false);
     expect(hasRunnableDeployment([{ state: 'failed' }, { state: 'succeeded' }])).toBe(true);
+  });
+});
+
+describe('hasLogSource', () => {
+  it('opens logs once a deployment has finished, failed or live', () => {
+    expect(hasLogSource([])).toBe(false);
+    expect(hasLogSource([{ state: 'building' }])).toBe(false);
+    expect(hasLogSource([{ state: 'failed' }])).toBe(true);
+    expect(hasLogSource([{ state: 'succeeded' }])).toBe(true);
   });
 });

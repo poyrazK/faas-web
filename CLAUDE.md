@@ -111,6 +111,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   Runbooks, ADRs, and `docs/ops/*` stay unpublished; the reasoning is in
   `src/lib/docs-manifest.ts` and a test enforces it. Adding a page means adding
   a manifest entry, not dropping a file into `content/docs/`.
+- **The API reference (`/docs/api`) is generated from `api/openapi.yaml`** at
+  build time by `src/lib/api-reference/plugin.ts`; nothing is committed. It
+  leaves out the `admin`/`operator` tags, `/v1/admin/…` and `x-internal`. Group
+  pages load one chunk each, and the reference is imported lazily from route
+  loaders so it never joins the main bundle. `npm run api:pull` updates it.
 - **Tests are Vitest + React Testing Library**, in `*.test.ts(x)` beside the
   code. `npm run test`. Vitest does not typecheck, so a green test run does
   not mean `npm run check` passes — run the latter before claiming done.

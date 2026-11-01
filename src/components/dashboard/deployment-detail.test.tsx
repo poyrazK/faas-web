@@ -168,7 +168,7 @@ describe('DeploymentDetailPanel app scope', () => {
     expect(screen.queryByText('Deployment ID')).not.toBeInTheDocument();
     expect(screen.queryByText('github · dep-b')).not.toBeInTheDocument();
     expect(useLogStream).toHaveBeenCalledWith(
-      { kind: 'build', deploymentId: 'dep-b', limit: 200 },
+      { kind: 'build', deploymentId: 'dep-b', limit: 500 },
       false
     );
   });
@@ -181,7 +181,7 @@ describe('DeploymentDetailPanel app scope', () => {
     expect(screen.getByText('Deployment ID')).toBeInTheDocument();
     expect(screen.getByText('dep-a')).toBeInTheDocument();
     expect(useLogStream).toHaveBeenCalledWith(
-      { kind: 'build', deploymentId: 'dep-a', limit: 200 },
+      { kind: 'build', deploymentId: 'dep-a', limit: 500 },
       true
     );
   });

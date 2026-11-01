@@ -48,8 +48,8 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
-import { DeploymentGate } from '@/components/dashboard/deployment-gate';
-import { hasRunnableDeployment } from '@/lib/deployment-status';
+import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { hasLogSource, hasRunnableDeployment } from '@/lib/deployment-status';
 
 const routeApi = getRouteApi('/dashboard/logs');
 
@@ -673,15 +673,18 @@ export function LogsPage() {
           />
         ) : deploymentsPhase === 'loading' ? (
           <LoadingState message="Loading deployment history…" />
-        ) : !hasRunnableDeployment(selectedDeployments) ? (
+        ) : !hasLogSource(selectedDeployments) ? (
           <DeploymentGate slug={slug} resource="Logs" />
         ) : (
-          <LogsBody
-            key={slug}
-            slug={slug}
-            filters={filters}
-            onFilters={(next, replace) => syncUrl(next, slug, replace)}
-          />
+          <>
+            {!hasRunnableDeployment(selectedDeployments) && <NotLiveNotice slug={slug} />}
+            <LogsBody
+              key={slug}
+              slug={slug}
+              filters={filters}
+              onFilters={(next, replace) => syncUrl(next, slug, replace)}
+            />
+          </>
         )}
       </AppScope>
     </div>
