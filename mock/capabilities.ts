@@ -250,6 +250,28 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'alerts',
+    name: 'Alerts',
+    category: 'observability',
+    description: 'Alert on metrics, SLOs and events to Slack, PagerDuty, email or webhooks.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/alerts',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'notification-channels',
+    name: 'Notification channels',
+    category: 'observability',
+    description: 'Send alerts to Slack, PagerDuty or email channels.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/alerts',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,
