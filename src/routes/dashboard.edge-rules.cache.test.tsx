@@ -29,6 +29,9 @@ vi.mock('@/lib/api/capabilities', () => ({
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('@/components/dashboard/cors-presets', () => ({ CorsPresetsPanel: () => null }));
+vi.mock('@/components/dashboard/edge-rules/edge-rules-extras', () => ({
+  EdgeRulesExtras: () => null,
+}));
 vi.mock('@/components/dashboard/edge-rules/dialog', () => ({ EdgeRuleDialog: () => null }));
 
 import { EdgeRulesBody } from './dashboard.edge-rules';
@@ -96,4 +99,15 @@ it('cancels a confirmed cache deletion if availability changes while confirmatio
   view.rerender(<EdgeRulesBody slug="api" />);
   await act(async () => decide(true));
   expect(state.remove).not.toHaveBeenCalled();
+});
+
+it('summarises the kind-wrapped action apid returns (faas edgerules/rules.go:46)', () => {
+  state.rules = [
+    {
+      ...routeRule,
+      action: { kind: 'route', route: { target_app_slug: 'billing' } } as never,
+    },
+  ];
+  render(<EdgeRulesBody slug="api" />);
+  expect(screen.getByText('→ billing')).toBeInTheDocument();
 });

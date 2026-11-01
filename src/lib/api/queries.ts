@@ -2790,9 +2790,17 @@ export function useEdgeRules(enabled = true, accountId?: string) {
 
 /** Every cache entry holding edge rules — the account list and each per-app
  * list — so an optimistic write cannot leave the two disagreeing. */
-const edgeRuleFilters: QueryFilters = {
-  predicate: (q) => q.queryKey.includes('edge-rules'),
+export const edgeRuleListFilters: QueryFilters = {
+  // ['edge-rules', ('account', id)?] and ['apps', slug, 'edge-rules', ('account', id)?]:
+  // only the rule lists, which the optimistic updates below patch as EdgeRule[].
+  predicate: ({ queryKey: k }) =>
+    k[0] === 'edge-rules'
+      ? k.length === 1 || (k.length === 3 && k[1] === 'account')
+      : k[0] === 'apps' &&
+        k[2] === 'edge-rules' &&
+        (k.length === 3 || (k.length === 5 && k[3] === 'account')),
 };
+const edgeRuleFilters = edgeRuleListFilters;
 
 export function useDeleteEdgeRule() {
   const qc = useQueryClient();

@@ -50,6 +50,7 @@ vi.mock('@/lib/api/capabilities', () => ({
     state: state.capability,
     refresh: vi.fn(),
   }),
+  useCapabilityAccess: () => ({ access: 'on' }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
 vi.mock('@tanstack/react-router', () => ({

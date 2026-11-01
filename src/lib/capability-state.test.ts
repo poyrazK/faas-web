@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capabilityAccess, capabilityViewState } from './capability-state';
+import { capabilityAccess, capabilityStage, capabilityViewState } from './capability-state';
 import { capabilityEntrypoint, safeCapabilityDocs } from './capability-entrypoints';
 import type { components } from './api/schema';
 
@@ -122,5 +122,15 @@ describe('capabilityAccess', () => {
   it('keeps the plan and runtime reasons for listed entries', () => {
     expect(capabilityAccess(registry(), 'issues', 'ready')).toBe('plan-not-entitled');
     expect(capabilityAccess(registry(), 'object-storage', 'ready')).toBe('runtime-unavailable');
+  });
+});
+
+describe('capabilityStage', () => {
+  it('labels beta and preview from the maturity, and nothing else', () => {
+    expect(capabilityStage('beta')).toBe('Beta');
+    expect(capabilityStage('preview')).toBe('Preview');
+    expect(capabilityStage('ga')).toBe('');
+    expect(capabilityStage('internal')).toBe('');
+    expect(capabilityStage(undefined)).toBe('');
   });
 });
