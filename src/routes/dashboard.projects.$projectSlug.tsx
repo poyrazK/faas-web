@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useAuth } from '@/lib/auth';
 import { useProject } from '@/lib/api/projects';
-import { canonicalApprovalId, validApprovalId } from '@/lib/api/environment-readiness';
+import { canonicalApprovalId, validApprovalId } from '@/lib/api/approval-id';
 import { ErrorState, LoadingState, PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ProjectWorkloads } from '@/components/dashboard/projects/project-workloads';
 import { ProjectEnvironments } from '@/components/dashboard/projects/environment-selector';

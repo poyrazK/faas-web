@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import type { components } from './schema';
 import { validEnvironment } from './projects';
+import { canonicalApprovalId, validApprovalId } from './approval-id';
 type S = components['schemas'];
 export type EnvironmentIdentity = {
   accountId: string;
@@ -350,16 +351,7 @@ export async function readApprovalReceipt(
     ...optionalFields(raw, ['consumed_at'] as const),
   };
 }
-export function canonicalApprovalId(value: string): string | undefined {
-  if (
-    !/^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(value)
-  )
-    return;
-  const hex = value.replaceAll('-', '').toLowerCase();
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-export const validApprovalId = (value: string) => Boolean(canonicalApprovalId(value));
+export { canonicalApprovalId, validApprovalId };
 // unwrap still runs session/MFA hooks. Its raw Problem must not survive in
 // React Query's error state, including failures in the context fences.
 async function safeRead<T>(read: () => Promise<T>): Promise<T> {
