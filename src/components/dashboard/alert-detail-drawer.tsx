@@ -184,8 +184,13 @@ function RuleChannels({ slug, rule }: { slug: string; rule: AlertRule }) {
             : `Delivers to ${n} notification channel${n === 1 ? '' : 's'}.`}
           {org && n > 0 && " They belong to the app creator's own account."}
         </p>
-      ) : channels.isPending ? (
-        <InlinePhase phase="loading" />
+      ) : channels.error || channels.isPending ? (
+        // A failed read is said as such, not as channels this account cannot see.
+        <InlinePhase
+          phase={queryPhase({ loading: channels.isPending, error: channels.error })}
+          error={channels.error}
+          onRetry={() => void channels.refetch()}
+        />
       ) : (
         <ChannelEditor
           key={bound.join(',')}

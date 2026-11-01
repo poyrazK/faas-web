@@ -402,7 +402,7 @@ function AddChannel() {
           <div role="alert" className="flex flex-col gap-1 text-sm">
             <span style={{ color: 'var(--status-critical)' }}>
               {error instanceof ApiError && error.code === 'notification_channel_limit_reached'
-                ? 'An account can have at most 20 channels. Delete one to add another.'
+                ? `An account can have at most ${error.problem.limit ?? 20} channels. Delete one to add another.`
                 : errorMessage(error)}
             </span>
             <ProblemHelp error={error} />

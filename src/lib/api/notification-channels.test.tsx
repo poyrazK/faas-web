@@ -13,6 +13,9 @@ import {
 } from './notification-channels';
 import { spyApi } from '@/test/api';
 
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1' } }) }));
+const channelsKey = ['account', 'acct-1', 'notification-channels'];
+
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const channel = {
   id: 'c1',
@@ -41,6 +44,16 @@ describe('useNotificationChannels', () => {
     expect(get).toHaveBeenCalledWith('/v1/notification-channels', expect.anything());
   });
 
+  it("caches under the account, so sign-out's ['account'] clear drops it", async () => {
+    spyApi('GET').mockResolvedValue(ok([channel]));
+    const { client, wrapper } = setup();
+    const { result } = renderHook(() => useNotificationChannels(true), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual([channel]));
+    expect(client.getQueryData(channelsKey)).toEqual([channel]);
+    client.removeQueries({ queryKey: ['account'] });
+    expect(client.getQueryData(channelsKey)).toBeUndefined();
+  });
+
   it('does not ask when disabled (a company workspace)', () => {
     const get = spyApi('GET').mockResolvedValue(ok([]));
     const { wrapper } = setup();
@@ -59,7 +72,7 @@ describe('channel mutations', () => {
     const body = { name: 'ops-slack', kind: 'slack' as const, slack_webhook_url: 'https://x' };
     await act(() => result.current.mutateAsync(body));
     expect(post).toHaveBeenCalledWith('/v1/notification-channels', { body });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notification-channels'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: channelsKey });
   });
 
   it('deletes, then refreshes channels and every app rule list (bindings went with it)', async () => {
@@ -89,7 +102,7 @@ describe('channel mutations', () => {
     expect(post).toHaveBeenCalledWith('/v1/notification-channels/{id}/test', {
       params: { path: { id: 'c1' } },
     });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notification-channels'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: channelsKey });
   });
 });
 

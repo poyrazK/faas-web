@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   org: null as string | null,
   access: 'on',
   channelsEnabled: undefined as boolean | undefined,
+  channelsError: null as unknown,
   update: vi.fn(),
   toast: vi.fn(),
 }));
@@ -29,7 +30,8 @@ vi.mock('@/lib/api/notification-channels', () => ({
           ]
         : undefined,
       isPending: !enabled,
-      error: null,
+      error: state.channelsError,
+      refetch: vi.fn(),
     };
   },
 }));
@@ -77,6 +79,7 @@ beforeEach(() => {
   state.org = null;
   state.access = 'on';
   state.channelsEnabled = undefined;
+  state.channelsError = null;
   state.update.mockReset().mockResolvedValue({});
   state.toast.mockReset();
 });
@@ -144,6 +147,14 @@ describe('AlertDetailDrawer', () => {
     render(<AlertDetailDrawer slug="shop" ruleId="r1" onClose={vi.fn()} />);
     expect(state.channelsEnabled).toBe(false);
     expect(screen.getByText(/1 notification channel/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save channels' })).not.toBeInTheDocument();
+  });
+
+  it('shows a failed channel read rather than calling the bound channels unseeable', () => {
+    state.channelsError = new Error('channels unavailable');
+    render(<AlertDetailDrawer slug="shop" ruleId="r1" onClose={vi.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('channels unavailable');
+    expect(screen.queryByText(/cannot see/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save channels' })).not.toBeInTheDocument();
   });
 

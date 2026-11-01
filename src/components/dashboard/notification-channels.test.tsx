@@ -163,7 +163,9 @@ describe('NotificationChannels', () => {
         status: 422,
         code: 'notification_channel_limit_reached',
         title: 'Notification channel limit reached',
-        detail: 'an account can have at most 20 notification channels',
+        detail: 'an account can have at most 25 notification channels',
+        limit: 25,
+        observed: 25,
       } as never)
     );
     render(<NotificationChannels />);
@@ -173,7 +175,7 @@ describe('NotificationChannels', () => {
       'https://hooks.slack.com/services/T0/B0/abc'
     );
     await userEvent.click(screen.getByRole('button', { name: 'Add channel' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/20 channels/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/at most 25 channels/);
   });
 
   it('reports a test send whether or not it was delivered', async () => {
