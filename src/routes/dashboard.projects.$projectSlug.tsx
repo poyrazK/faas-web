@@ -1,14 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useAuth } from '@/lib/auth';
 import { useProject } from '@/lib/api/projects';
-import { canonicalApprovalId } from '@/lib/api/environment-readiness';
+import { canonicalApprovalId, validApprovalId } from '@/lib/api/approval-id';
 import { ErrorState, LoadingState, PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ProjectWorkloads } from '@/components/dashboard/projects/project-workloads';
 import { ProjectEnvironments } from '@/components/dashboard/projects/environment-selector';
-import {
-  validApprovalId,
-  type ReadinessSearch,
-} from '@/components/dashboard/projects/environment-readiness';
+import type { ReadinessSearch } from '@/components/dashboard/projects/environment-readiness';
 import { ProjectPreviews } from '@/components/dashboard/projects/preview-workload-set';
 import { ProjectSourceSettings } from '@/components/dashboard/projects/project-source-settings';
 import { ProjectDangerZone } from '@/components/dashboard/projects/project-danger-zone';

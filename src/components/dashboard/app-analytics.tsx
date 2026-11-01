@@ -11,17 +11,9 @@ import {
   type AnalyticsGroupBy,
   type AppAnalyticsTimeseriesOptions,
 } from '@/lib/api/queries';
+import { ANALYTICS_GROUPS } from '@/components/dashboard/analytics-search';
 
 const WINDOWS = ['24h', '3d', '7d'] as const;
-/** Every grouping the selector offers; the routes' search validation reads it too. */
-export const ANALYTICS_GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
-  { value: 'route', label: 'Route' },
-  { value: 'country', label: 'Country' },
-  { value: 'referrer_host', label: 'Referrer' },
-  { value: 'ua_family', label: 'Client' },
-  { value: 'status', label: 'Status' },
-  { value: 'consumer_id', label: 'Consumer' },
-];
 /**
  * What the hourly chart plots. Every series comes from the same zero-filled
  * hourly buckets. Latency leaves out hours with no requests: a zero-filled

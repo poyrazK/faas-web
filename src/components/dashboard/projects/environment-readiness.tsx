@@ -5,6 +5,7 @@ import {
   usePromotionReceipt,
   useApprovalReceipt,
   canonicalApprovalId,
+  validApprovalId,
   type EnvironmentIdentity,
   type PromotionFilters,
 } from '@/lib/api/environment-readiness';
@@ -17,7 +18,6 @@ export type ReadinessSearch = {
   promotionBefore?: string;
   promotionStatus?: PromotionFilters['status'];
 };
-export const validApprovalId = (value: string) => Boolean(canonicalApprovalId(value));
 function Identity({ label, value }: { label: string; value: string | number | undefined }) {
   return (
     <div>
