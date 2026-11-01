@@ -546,8 +546,9 @@ export const LEDGER: LedgerEntry[] = [
     row: 74,
     name: 'Edge rules (incl. host / path routing declared in `gregale.yaml`): route, rewrite, redirect, headers, CORS, JWT, IP, request validation, geo, async, throttle, cache, retry, circuit breaker, WAF, challenge, maintenance; rule lists; rule trace',
     status: 'partial',
-    surfaces: ['/dashboard/edge-rules'],
-    gap: 'Versions and rollback, rule lists, suggestions, WAF review; challenge and penalty kinds',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Edge rules', '/dashboard/edge-rules'],
+    capability: 'edge-rules',
+    gap: 'Match conditions (incl. in_list) and the respond, retry, circuit_breaker, async and waf kinds are not editable in the rule dialog; per-rule stats and sampled events; the full recipe catalog; rule trace stays CLI (gregale edge rule trace)',
     wave: 2,
   },
   // D75 · beta

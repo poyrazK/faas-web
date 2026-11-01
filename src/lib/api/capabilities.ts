@@ -4,7 +4,7 @@ import { api, unwrap } from './client';
 import type { components } from './schema';
 import { retryPolicy } from './queries';
 import { useAuth } from '../auth';
-import { capabilityAccess, capabilityViewState } from '../capability-state';
+import { capabilityAccess, capabilityStage, capabilityViewState } from '../capability-state';
 import { useActiveOrg } from '../workspace';
 
 export type Capability = components['schemas']['CapabilityStatus'];
@@ -57,4 +57,8 @@ export function useCapabilityAccess(id: string) {
     capability: query.data?.capabilities.find((entry) => entry.key === id),
     refresh: () => void query.refetch(),
   };
+}
+/** The label a surface carries from its capability's maturity: "Beta", "Preview" or "". */
+export function useCapabilityStage(key: string) {
+  return capabilityStage(useCapability(key).capability?.maturity);
 }
