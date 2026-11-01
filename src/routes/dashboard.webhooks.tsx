@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
@@ -15,15 +15,13 @@ import { useConfirm } from '@/components/ui/confirm';
 import {
   useCreateWebhook,
   useDeleteWebhook,
-  useRetryDelivery,
   useRotateWebhookSecret,
   useUpdateWebhook,
-  useWebhookDeliveries,
   useWebhooks,
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
-import { formatRelative } from '@/lib/mock-data';
+import { WebhookDeliveries } from '@/components/dashboard/webhook-deliveries';
 import { consoleHead } from '@/lib/seo';
 import type { components } from '@/lib/api/schema';
 
@@ -117,25 +115,7 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-const DELIVERY_COLOR: Record<string, string | undefined> = {
-  succeeded: 'var(--status-good)',
-  failed: 'var(--status-serious)',
-  dead: 'var(--status-critical)',
-  pending: 'var(--status-warning)',
-  in_flight: 'var(--status-warning)',
-};
-
-function when(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
-
-/**
- * Recent deliveries for one webhook, with a retry on the ones that died.
- * `useWebhookDeliveries` and `useRetryDelivery` both existed and had no
- * caller; this is what they were for.
- */
+/** Delivery health, history, attempts and re-sending, for one webhook. */
 function Deliveries({
   slug,
   hook,
@@ -145,16 +125,6 @@ function Deliveries({
   hook: WebhookRow | null;
   onClose: () => void;
 }) {
-  const { toast } = useToast();
-  const deliveries = useWebhookDeliveries(slug, hook?.id ?? '');
-  const retry = useRetryDelivery(slug, hook?.id ?? '');
-  const list = deliveries.data?.deliveries ?? [];
-  const deliveriesPhase = queryPhase({
-    error: deliveries.error,
-    loading: deliveries.isPending,
-    isEmpty: list.length === 0,
-  });
-
   return (
     <Modal
       open={hook !== null}
@@ -163,51 +133,7 @@ function Deliveries({
       description={hook?.target}
       width="max-w-2xl"
     >
-      {deliveriesPhase !== 'ready' ? (
-        <InlinePhase
-          phase={deliveriesPhase}
-          error={deliveries.error}
-          loadingMessage="Loading deliveries…"
-          emptyMessage="Nothing has been delivered yet."
-        />
-      ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {list.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
-              <Pill label={d.status} color={DELIVERY_COLOR[d.status]} />
-              <span className="font-mono text-xs">{d.event}</span>
-              <span className="text-xs text-muted-foreground">{when(d.created_at)}</span>
-              {d.attempt > 1 && (
-                <span className="text-xs text-muted-foreground">attempt {d.attempt}</span>
-              )}
-              {d.last_error && (
-                <span className="font-mono text-xs text-muted-foreground">{d.last_error}</span>
-              )}
-              {(d.status === 'dead' || d.status === 'failed') && (
-                <button
-                  type="button"
-                  disabled={retry.isPending}
-                  onClick={() =>
-                    void retry
-                      .mutateAsync(d.id)
-                      .then(() => toast({ kind: 'success', title: 'Delivery re-armed' }))
-                      .catch((err: unknown) =>
-                        toast({
-                          kind: 'error',
-                          title: 'Could not retry',
-                          error: err,
-                        })
-                      )
-                  }
-                  className="ml-auto text-xs text-brand transition-colors hover:text-brand-hover disabled:opacity-50"
-                >
-                  Retry
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      {hook && <WebhookDeliveries source={{ slug, id: hook.id }} target={hook.target} />}
     </Modal>
   );
 }
