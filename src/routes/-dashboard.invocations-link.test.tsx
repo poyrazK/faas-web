@@ -25,9 +25,10 @@ vi.mock('@/lib/api/queries', () => ({
             {
               id: 'a'.repeat(32),
               app_id: 'app1',
-              state: 'completed',
+              state: 'failed',
               source: 'async_invoke',
               created_at: '2026-09-01T00:00:00Z',
+              work_policy_name: 'document-index',
             },
           ],
         },
@@ -45,7 +46,9 @@ vi.mock('@/lib/api/queries', () => ({
         id && !mocks.missing && !mocks.errorStatus
           ? {
               id,
-              state: 'completed',
+              app_id: 'app1',
+              state: 'failed',
+              work_policy_name: 'document-index',
               source: 'async_invoke',
               created_at: '2026-09-01T00:00:00Z',
               method: 'POST',
@@ -63,6 +66,18 @@ vi.mock('@/lib/api/queries', () => ({
         : null,
     };
   },
+}));
+vi.mock('@/components/dashboard/async-invocations', () => ({
+  AsyncInvocationsMaturity: () => <span>maturity-label</span>,
+  ReplayInvocationButton: (p: {
+    invocation: { id: string; work_policy_name?: string };
+    variant?: string;
+  }) => (
+    <span>{`replay:${p.variant ?? 'icon'}:${p.invocation.id}:${p.invocation.work_policy_name}`}</span>
+  ),
+  InvocationDelivery: (p: { appSlug: string; invocation: { work_policy_name?: string } }) => (
+    <span>{`delivery:${p.appSlug}:${p.invocation.work_policy_name}`}</span>
+  ),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
@@ -134,6 +149,17 @@ describe('invocation detail links', () => {
     expect(screen.getByText(/queue messages/)).toHaveTextContent(
       /HTTP requests are in the Debugger/
     );
+  });
+  it('labels the page from the capability and replays rows through the routing button', async () => {
+    await mount('/dashboard/invocations');
+    expect(screen.getByText('maturity-label')).toBeInTheDocument();
+    expect(screen.getByText(`replay:icon:${listedId}:document-index`)).toBeInTheDocument();
+  });
+  it('shows how the work was admitted, and the replay it allows, in the drawer', async () => {
+    await mount(`/dashboard/invocations?invocation=${olderId}`);
+    const dialog = await screen.findByRole('dialog', { name: 'POST /work' });
+    expect(dialog).toHaveTextContent('delivery:api:document-index');
+    expect(dialog).toHaveTextContent(`replay:full:${olderId}:document-index`);
   });
   it('opens an ID directly even when it is not in the loaded list', async () => {
     await mount(`/dashboard/invocations?invocation=${olderId}`);

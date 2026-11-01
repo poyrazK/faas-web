@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Copy, WarningTriangle } from 'iconoir-react';
 import { cn } from '@/lib/utils';
+import { INSTALL_COMMAND } from '@/lib/platform-claims';
 
-export const INSTALL_COMMAND = 'npm install -g gregale';
 const FILL_EASE = [0.22, 1, 0.36, 1] as const;
 const HOLD_MS = 2400;
 type CopyState = 'idle' | 'copying' | 'copied' | 'error';

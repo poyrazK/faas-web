@@ -35,10 +35,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 1,
     name: 'Apps: create, update, rename, delete, restore deleted',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps'],
-    gap: 'Recently deleted: list /v1/deleted-apps and restore after the grace window',
-    wave: 1,
   },
   // A2 · GA
   {
@@ -68,8 +66,11 @@ export const LEDGER: LedgerEntry[] = [
     row: 5,
     name: 'GitHub: App install, push-to-deploy, Checks status',
     status: 'partial',
-    surfaces: ['/dashboard/settings?section=integrations'],
-    gap: 'GitHub status, sync and disconnect',
+    surfaces: [
+      '/dashboard/settings?section=integrations',
+      '/dashboard/apps/$appSlug?tab=Configuration',
+    ],
+    gap: 'Retry failed GitHub activity; show deploy-branch mappings',
     wave: 1,
   },
   // A6 · preview
@@ -104,10 +105,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 11,
     name: '`gregale.yaml` deploy overrides, app config',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
-    gap: 'release_policy, release_probe_paths and function_concurrency are not shown',
-    wave: 1,
   },
   // A12 · beta
   {
@@ -120,10 +119,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 13,
     name: 'Per-app deploy tokens for CI',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deploy tokens: list, create, rotate and revoke',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
   },
   // A15 · GA
   {
@@ -343,10 +340,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 44,
     name: 'Service wake-ahead',
-    status: 'none',
-    surfaces: [],
-    gap: 'Service wake-ahead',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
   },
   // C46 · GA
   {
@@ -459,10 +454,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 60,
     name: 'Env vars: diff, history and rollback, push / pull, environment clone, secret scanning',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Environment'],
-    gap: 'History, rollback and config guard',
-    wave: 1,
   },
   // C61 · GA
   {
@@ -553,26 +546,25 @@ export const LEDGER: LedgerEntry[] = [
     row: 74,
     name: 'Edge rules (incl. host / path routing declared in `gregale.yaml`): route, rewrite, redirect, headers, CORS, JWT, IP, request validation, geo, async, throttle, cache, retry, circuit breaker, WAF, challenge, maintenance; rule lists; rule trace',
     status: 'partial',
-    surfaces: ['/dashboard/edge-rules'],
-    gap: 'Versions and rollback, rule lists, suggestions, WAF review; challenge and penalty kinds',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Edge rules', '/dashboard/edge-rules'],
+    capability: 'edge-rules',
+    gap: 'Match conditions (incl. in_list) and the respond, retry, circuit_breaker, async and waf kinds are not editable in the rule dialog; per-rule stats and sampled events; the full recipe catalog; rule trace stays CLI (gregale edge rule trace)',
     wave: 2,
   },
   // D75 · beta
   {
     row: 75,
     name: 'CORS presets',
-    status: 'partial',
-    surfaces: ['/dashboard/edge-rules'],
-    gap: 'Edit a CORS preset',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/edge-rules', '/dashboard/apps/$appSlug?tab=Edge rules'],
   },
   // D76 · beta
   {
     row: 76,
     name: 'Edge protection: pre-auth guard, challenge under attack, WAF',
-    status: 'none',
-    surfaces: [],
-    gap: 'Pre-auth observations and attack mode',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Edge protection'],
+    gap: 'Configure the pre-auth guard (mode, rate, route overrides); it is set with `gregale app --pre-auth`',
     wave: 2,
   },
   // D77 · GA
@@ -636,10 +628,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 92,
     name: 'Crons, fire-now',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/jobs'],
-    gap: 'Cron occurrences and command-run cancel',
-    wave: 1,
   },
   // E93 · beta
   {
@@ -674,8 +664,9 @@ export const LEDGER: LedgerEntry[] = [
     row: 96,
     name: 'Async invocations and results',
     status: 'partial',
-    surfaces: ['/dashboard/invocations'],
-    gap: 'Keyed replay; work policy and destination fields',
+    surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?tab=Invoke'],
+    capability: 'async-invocations',
+    gap: 'Retry settings: the app default (max_retries, retry_policy) and per-invocation retry_policy and retention_seconds',
     wave: 2,
   },
   // E97 · preview
@@ -842,14 +833,15 @@ export const LEDGER: LedgerEntry[] = [
     status: 'full',
     surfaces: ['/dashboard/analytics'],
   },
-  // G122 · beta
+  // G122 · beta. OTLP ingest is exporter plumbing, out of scope per the spec's
+  // "Agent, CI and SDK plumbing"; the customer surface (list, push, delete,
+  // history) is complete.
   {
     row: 122,
     name: 'Custom metrics and OTLP metric ingest',
-    status: 'none',
-    surfaces: [],
-    gap: 'Custom metrics',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Metrics'],
+    capability: 'custom-metrics',
   },
   // G124 · preview
   {
@@ -998,7 +990,7 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Plans, usage, invoices, overage cap, cost breakdown and forecast, FOCUS 1.4 invoice export',
     status: 'partial',
     surfaces: ['/dashboard/plans', '/dashboard/usage', '/dashboard/invoices'],
-    gap: 'Billing identity, billing status and invoice refresh; company billing',
+    gap: 'Per-invoice refresh; account usage folded into Billing (#143)',
     wave: 1,
   },
   // H152 · beta

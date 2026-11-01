@@ -15,9 +15,11 @@ Start with a small Node.js API, deploy it from your terminal, and verify the liv
 Install the CLI, then authenticate this machine:
 
 ```bash
-npm install -g gregale
+npm install -g gregale@rc
 gregale login
 ```
+
+Every release is still a prerelease, so the command pins npm's `rc` tag; `latest` lags behind it. The [install guide](/docs/install) covers the curl installer, pinning a version, and what to do if npm skipped the platform package.
 
 Follow the login prompts. Keep credentials out of your repository and shared terminal output. For automation, use a scoped token rather than sharing your personal login.
 
