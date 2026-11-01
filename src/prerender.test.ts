@@ -18,6 +18,9 @@ const PAGES = [
   },
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },
+  { route: '/privacy', file: 'dist/privacy/index.html', title: 'Privacy · Gregale' },
+  { route: '/terms', file: 'dist/terms/index.html', title: 'Terms of Service · Gregale' },
+  { route: '/support', file: 'dist/support/index.html', title: 'Support · Gregale' },
   { route: '/status', file: 'dist/status/index.html', title: 'Status · Gregale' },
   {
     route: '/status/incidents/:id',
@@ -112,6 +115,17 @@ describeBuilt('prerendered pages', () => {
   describe('indexing directives', () => {
     it('lets the landing page be indexed', () => {
       expect(readFileSync('dist/index.html', 'utf8')).not.toContain('name="robots"');
+    });
+
+    it('publishes the policy and support pages as indexable documents', () => {
+      const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+      for (const route of ['/privacy', '/terms', '/support']) {
+        const html = readFileSync(`dist${route}/index.html`, 'utf8');
+        expect(html).not.toContain('name="robots"');
+        expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+        expect(sitemap).toContain(`<loc>https://gregale.dev${route}</loc>`);
+      }
+      expect(readFileSync('dist/support/index.html', 'utf8')).toContain('support@gregale.dev');
     });
 
     it('indexes the public status overview', () => {

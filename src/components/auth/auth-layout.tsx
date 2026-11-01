@@ -53,13 +53,21 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <div className="mx-auto w-full max-w-sm">{children}</div>
         </div>
 
-        {/* Privacy and Terms linked to `#`. They are pages this product owes
-            its customers, but linking them before they exist is worse than
-            omitting them — put them back here once they are written. */}
         <p className="mb-3 max-w-md text-xs leading-relaxed text-muted-foreground">
           <RestoreTarget />. {RESTORE_CONTEXT}
         </p>
-        <p className="text-xs text-muted-foreground">© {new Date().getFullYear()} Gregale</p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} Gregale</span>
+          <Link to="/privacy" className="hover:text-foreground">
+            Privacy
+          </Link>
+          <Link to="/terms" className="hover:text-foreground">
+            Terms
+          </Link>
+          <Link to="/support" className="hover:text-foreground">
+            Support
+          </Link>
+        </div>
       </div>
 
       {/* Visual side */}
