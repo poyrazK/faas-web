@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from 'react';
 import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
+import { retryPolicy } from './retry';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
 import { useWorkspaceTarget } from './workspace-apps';
@@ -33,7 +34,7 @@ export type Deployment = components['schemas']['DeploymentResponse'];
 export type AppMetrics = components['schemas']['AppMetricsResponse'];
 export type MetricsRange = AppMetrics['range'];
 export type AppSLOWindow = components['schemas']['AppSLOResponse']['window'];
-export type MFAEnrollment = components['schemas']['MFAEnrollResponse'];
+export type { MFAEnrollment } from './mfa';
 export type DeploymentSummary = components['schemas']['DeploymentSummaryResponse'];
 
 export const keys = {
@@ -70,11 +71,7 @@ export const keys = {
   appGitHub: (slug: string) => ['apps', slug, 'github'] as const,
 };
 
-/** Shared policy: never retry a settled 4xx, retry the rest twice. */
-export function retryPolicy(failureCount: number, error: unknown): boolean {
-  if (error instanceof ApiError && !error.isRetryable) return false;
-  return failureCount < 2;
-}
+export { retryPolicy };
 
 /**
  * The optimistic-write pattern, once: cancel in-flight reads so they cannot
@@ -3139,23 +3136,7 @@ export function useRevokeAllSessions() {
  * MFA — the session gate and account security page share these calls.
  * ------------------------------------------------------------------ */
 
-export function enrollMfa() {
-  return unwrap(api.POST('/v1/account/mfa/enroll', {}));
-}
-
-export async function confirmMfa(totp: string) {
-  const csrf_token = await issueCSRF('mfa_confirm');
-  return unwrap(api.POST('/v1/account/mfa/confirm', { body: { totp, csrf_token } }));
-}
-
-export function verifyMfa(totp: string) {
-  return unwrap(api.POST('/v1/account/mfa/verify', { body: { totp } }));
-}
-
-export async function recoverMfa(code: string) {
-  const csrf_token = await issueCSRF('mfa_recover');
-  return unwrap(api.POST('/v1/account/mfa/recover', { body: { code, csrf_token } }));
-}
+export { confirmMfa, enrollMfa, recoverMfa, verifyMfa } from './mfa';
 
 export async function disableMfa(input: { password?: string; recovery_code?: string }) {
   const csrf_token = await issueCSRF('mfa_disable');
