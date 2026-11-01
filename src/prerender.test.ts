@@ -228,3 +228,31 @@ describeBuilt('structured data', () => {
     expect(ld).not.toMatch(/open[\s-]?source/i);
   });
 });
+
+describeBuilt('landing bundle', () => {
+  const html = built ? readFileSync('dist/index.html', 'utf8') : '';
+  const scripts = [...html.matchAll(/<script[^>]*src="(\/assets\/[^"]+\.js)"/g)].map(([, src]) =>
+    readFileSync(`dist${src}`, 'utf8')
+  );
+
+  it('loads at least one script, so the checks below are not vacuous', () => {
+    expect(scripts.length).toBeGreaterThan(0);
+  });
+
+  // The docs route's loader ships in the entry chunk with the route tree, and
+  // the docs content inlines every vendored page. A static import there once
+  // put ~900 KB of markdown on the landing page. One plain prose line per page
+  // is enough to tell whether that page rode along.
+  it('does not inline the vendored docs', () => {
+    const inlined = readdirSync('content/docs')
+      .filter((file) => file.endsWith('.md'))
+      .filter((file) => {
+        const probe = readFileSync(`content/docs/${file}`, 'utf8')
+          .split('\n')
+          .filter((line) => /^[A-Za-z0-9 ,.]{60,}$/.test(line))
+          .sort((a, b) => b.length - a.length)[0];
+        return probe !== undefined && scripts.some((code) => code.includes(probe));
+      });
+    expect(inlined).toEqual([]);
+  });
+});
