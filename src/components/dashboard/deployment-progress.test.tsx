@@ -263,6 +263,23 @@ describe('first deployment progress', () => {
     expect(api.refetch).toHaveBeenCalledOnce();
   });
 
+  it("opens the app's logs from a failed deployment, where a crashed boot's output is", async () => {
+    api.status = 'failed';
+    render(<DeploymentProgress {...props} appSlug="hello-app" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open app logs' }));
+    expect(api.navigate).toHaveBeenCalledWith({
+      to: '/dashboard/apps/$appSlug',
+      params: { appSlug: 'hello-app' },
+      search: { tab: 'Logs' },
+    });
+  });
+
+  it('offers no logs action without an app to open', () => {
+    api.status = 'failed';
+    render(<DeploymentProgress {...props} />);
+    expect(screen.queryByRole('button', { name: 'Open app logs' })).not.toBeInTheDocument();
+  });
+
   it('shows relevant evidence and routes to retry options for the exact failed deployment', async () => {
     api.status = 'failed';
     render(<DeploymentProgress {...props} />);

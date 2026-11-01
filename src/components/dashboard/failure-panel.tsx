@@ -4,11 +4,18 @@ import type { FailureSummary } from './failure-summary';
 export interface FailurePanelProps {
   summary: FailureSummary;
   onViewOutput?: () => void;
+  /** Opens the app's log stream, where a failed boot's output is. */
+  onViewLogs?: () => void;
   onRetryOptions?: () => void;
 }
 
 /** Shared evidence view. Its owner controls navigation and all mutations. */
-export function FailurePanel({ summary, onViewOutput, onRetryOptions }: FailurePanelProps) {
+export function FailurePanel({
+  summary,
+  onViewOutput,
+  onViewLogs,
+  onRetryOptions,
+}: FailurePanelProps) {
   return (
     <section
       aria-label="Failure explanation"
@@ -44,6 +51,11 @@ export function FailurePanel({ summary, onViewOutput, onRetryOptions }: FailureP
         {onViewOutput && (
           <Button size="sm" variant="outline" onClick={onViewOutput}>
             View build output
+          </Button>
+        )}
+        {onViewLogs && (
+          <Button size="sm" variant="outline" onClick={onViewLogs}>
+            Open app logs
           </Button>
         )}
         {onRetryOptions && (

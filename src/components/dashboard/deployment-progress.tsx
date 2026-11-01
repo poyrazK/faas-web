@@ -87,7 +87,8 @@ export function DeploymentProgress({
   const image = origin.kind === 'image';
   const hasBuildOutput = Boolean(deploymentId && (!image || statusQuery.data?.build_id));
   const buildLog = useLogStream(
-    { kind: 'build', deploymentId: deploymentId ?? '', limit: 200 },
+    // The newest lines, where a build's error is; 500 is apid's cap.
+    { kind: 'build', deploymentId: deploymentId ?? '', limit: 500 },
     hasBuildOutput
   );
   const deployment = deploymentId ? statusQuery.data : undefined;
@@ -269,6 +270,17 @@ export function DeploymentProgress({
                       outputRef.current.querySelector('summary')?.focus();
                       outputRef.current.scrollIntoView({ block: 'nearest' });
                     }
+              }
+              onViewLogs={
+                appSlug && deployment.status === 'failed'
+                  ? () => {
+                      void navigate({
+                        to: '/dashboard/apps/$appSlug',
+                        params: { appSlug },
+                        search: { tab: 'Logs' },
+                      });
+                    }
+                  : undefined
               }
               onRetryOptions={
                 deployment.status === 'failed' && !hideRetryOptions

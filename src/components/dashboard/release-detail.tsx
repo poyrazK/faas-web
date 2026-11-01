@@ -88,7 +88,7 @@ export function ReleaseDetailPanel({
   const build = buildQuery.data;
   const slug = appSlug ?? apps.data?.find((app) => app.id === deployment?.app_id)?.slug;
   const buildLog = useLogStream(
-    { kind: 'build', deploymentId: resolvedDeploymentId, limit: 200 },
+    { kind: 'build', deploymentId: resolvedDeploymentId, limit: 500 },
     Boolean(resolvedDeploymentId) && ownsDeployment
   );
   const error =
