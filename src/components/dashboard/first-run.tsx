@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Github } from 'iconoir-react';
-import { INSTALL_COMMAND } from '@/components/landing/install-command';
+import { INSTALL_COMMAND } from '@/lib/platform-claims';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Button } from '@/components/ui/button';
 import { Panel } from './primitives';
@@ -15,7 +15,7 @@ import { Panel } from './primitives';
 const STEPS: { command: string; caption: string }[] = [
   {
     command: INSTALL_COMMAND,
-    caption: 'Install the CLI. Homebrew on macOS and Linux.',
+    caption: 'Install the CLI from npm. The docs cover the curl installer too.',
   },
   {
     command: 'gregale connect',

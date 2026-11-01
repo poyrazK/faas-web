@@ -50,6 +50,14 @@ export const DOC_SECTIONS: DocSection[] = [
     blurb: 'Deploy a first app, then bring your own repository.',
     entries: [
       {
+        slug: 'install',
+        source: 'content/docs/install.md',
+        local: true,
+        title: 'Install the CLI',
+        summary:
+          'npm, the curl installer, or a verified manual download; the beta channel and how to pin a version.',
+      },
+      {
         slug: 'getting-started',
         source: 'content/docs/getting-started.md',
         local: true,
