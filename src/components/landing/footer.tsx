@@ -32,7 +32,7 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status';
+  publicRoute?: '/status' | '/docs/api';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -78,8 +78,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         doc: 'deploy-from-github',
       },
       { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
-      // Served by apid on this same origin, so it needs no absolute URL.
-      { label: 'API reference', href: '/v1/openapi.yaml' },
+      { label: 'API reference', href: '/docs/api', publicRoute: '/docs/api' },
     ],
   },
   {

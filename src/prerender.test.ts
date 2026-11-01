@@ -109,6 +109,21 @@ describeBuilt('prerendered pages', () => {
     });
   });
 
+  describe('API reference', () => {
+    it('prerenders a group with its operations in the markup', () => {
+      const html = readFileSync('dist/docs/api/apps/index.html', 'utf8');
+      expect(html).toContain('<title>Apps API · Gregale</title>');
+      expect(html).toContain('id="createApp"');
+      expect(html).toContain('/v1/apps');
+    });
+
+    it('lists the index and every group in the sitemap', () => {
+      const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+      expect(sitemap).toContain('<loc>https://gregale.dev/docs/api</loc>');
+      expect(sitemap).toContain('<loc>https://gregale.dev/docs/api/deployments</loc>');
+    });
+  });
+
   describe('indexing directives', () => {
     it('lets the landing page be indexed', () => {
       expect(readFileSync('dist/index.html', 'utf8')).not.toContain('name="robots"');

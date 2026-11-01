@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { apiReference } from './src/lib/api-reference/plugin';
 
 /**
  * Separate from `vite.config.ts` on purpose: the app config runs the TanStack
@@ -9,7 +10,7 @@ import { fileURLToPath, URL } from 'node:url';
  * tests need — React, and the `@` alias.
  */
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), apiReference()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
