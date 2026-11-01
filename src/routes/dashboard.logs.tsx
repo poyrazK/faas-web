@@ -49,8 +49,8 @@ import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { consoleHead } from '@/lib/seo';
 import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
-import { DeploymentGate } from '@/components/dashboard/deployment-gate';
-import { hasRunnableDeployment } from '@/lib/deployment-status';
+import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { hasLogSource, hasRunnableDeployment } from '@/lib/deployment-status';
 
 export const Route = createFileRoute('/dashboard/logs')({
   component: LogsPage,
@@ -678,15 +678,18 @@ function LogsPage() {
           />
         ) : deploymentsPhase === 'loading' ? (
           <LoadingState message="Loading deployment history…" />
-        ) : !hasRunnableDeployment(selectedDeployments) ? (
+        ) : !hasLogSource(selectedDeployments) ? (
           <DeploymentGate slug={slug} resource="Logs" />
         ) : (
-          <LogsBody
-            key={slug}
-            slug={slug}
-            filters={filters}
-            onFilters={(next, replace) => syncUrl(next, slug, replace)}
-          />
+          <>
+            {!hasRunnableDeployment(selectedDeployments) && <NotLiveNotice slug={slug} />}
+            <LogsBody
+              key={slug}
+              slug={slug}
+              filters={filters}
+              onFilters={(next, replace) => syncUrl(next, slug, replace)}
+            />
+          </>
         )}
       </AppScope>
     </div>

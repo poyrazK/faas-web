@@ -108,8 +108,8 @@ import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deploymen
 import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
-import { DeploymentGate } from '@/components/dashboard/deployment-gate';
-import { hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
+import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
 
 const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
 
@@ -671,9 +671,10 @@ function FunctionDetailPage() {
                   resource="Logs"
                   phase={deploymentPhase}
                   error={deploymentError}
-                  hasRunnable={hasRunnable}
+                  hasRunnable={hasLogSource(deployments)}
                   onRetry={() => void appDeploymentQuery.refetch()}
                 >
+                  {!hasRunnable && <NotLiveNotice slug={appSlug} />}
                   <LogsBody
                     slug={fn.id}
                     filters={logFilters(search)}
