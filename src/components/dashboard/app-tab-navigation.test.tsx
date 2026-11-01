@@ -142,3 +142,15 @@ describe('AppTabNavigation with hidden tabs', () => {
     expect(within(connect).getByRole('button', { name: 'Routes' })).toBeInTheDocument();
   });
 });
+
+it('puts edge protection beside edge rules, gated on its capability', () => {
+  render(<Navigation initial="Edge rules" />);
+  const names = within(pages('Connect'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Edge protection')).toBe(names.indexOf('Edge rules') + 1);
+  expect(APP_TAB_CAPABILITY['Edge protection']).toBe('edge-protection');
+  expect(visibleAppTabs((id) => (id === 'edge-protection' ? 'off' : 'on'))).not.toContain(
+    'Edge protection'
+  );
+});

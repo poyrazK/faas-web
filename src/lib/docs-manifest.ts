@@ -50,6 +50,14 @@ export const DOC_SECTIONS: DocSection[] = [
     blurb: 'Deploy a first app, then bring your own repository.',
     entries: [
       {
+        slug: 'install',
+        source: 'content/docs/install.md',
+        local: true,
+        title: 'Install the CLI',
+        summary:
+          'npm, the curl installer, or a verified manual download; the beta channel and how to pin a version.',
+      },
+      {
         slug: 'getting-started',
         source: 'content/docs/getting-started.md',
         local: true,
@@ -81,6 +89,13 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'CLI guide',
         summary:
           'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
+      },
+      {
+        slug: 'agents',
+        source: 'docs/agents.md',
+        title: 'Use Gregale from coding agents',
+        summary:
+          'Give Claude Code, Codex or Cursor a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
       },
     ],
   },
@@ -382,12 +397,6 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/sdks.md',
         title: 'SDKs',
         summary: 'Install the Node, Python and Go SDKs.',
-      },
-      {
-        slug: 'agents',
-        source: 'docs/agents.md',
-        title: 'Coding agents',
-        summary: 'Use Gregale from Claude Code, Codex, Cursor and other agents.',
       },
     ],
   },

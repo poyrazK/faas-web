@@ -7,6 +7,9 @@ import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as channelMock from './notification-channels';
+import * as edgeRuleMock from './edge-rules';
+import * as asyncMock from './async-invocations';
+import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
 import * as deploymentDetail from './deployment-detail';
 import { registerEventMocks } from './events';
@@ -2592,60 +2595,88 @@ route('GET', '/v1/apps/{slug}/streaming-cap', ({ params }) => {
 });
 
 // CORS presets (ADR-129), the template catalog, and preview teardown.
+// Codes are apid's (handlers_cors_presets.go): the Free gate, the quota and an
+// over-cap list have their own; a duplicate name (409), a missing preset (404)
+// and every shape refusal are validation_failed with a sentence.
 const CORS_PRESET_QUOTA = 10;
+const CORS_PRESET_MAX_ORIGINS = 20;
 type CorsPresetRow = (typeof db.corsPresets)[number];
+
+// One CORS rule takes its policy from the account-wide preset, so editing or
+// deleting it has a rule to name. MOCK_EMPTY has neither apps nor presets.
+if (db.apps[0] && db.corsPresets[0])
+  db.edgeRules.push({
+    id: db.id(),
+    account_id: db.ACCOUNT_ID,
+    app_id: db.apps[0].id,
+    match_host: 'api.acme.dev',
+    match_path: '/v1/*',
+    match_methods: ['GET', 'POST', 'OPTIONS'],
+    match_headers: {},
+    priority: 95,
+    enabled: true,
+    kind: 'cors',
+    validate_mode: 'block',
+    action: { cors_preset_id: db.corsPresets[0].id, allow_origins: [], allow_methods: [] },
+    created_at: db.iso(3 * 86_400_000),
+    updated_at: db.iso(3 * 86_400_000),
+  });
+
+const corsInvalid = (detail: string) => new Problem(422, 'validation_failed', detail);
+const noSuchPreset = () =>
+  new Problem(404, 'validation_failed', 'no cors preset with that id is visible to this account');
+function corsWithinPlan(origins: unknown[] | undefined) {
+  if (origins && origins.length > CORS_PRESET_MAX_ORIGINS)
+    throw new Problem(
+      422,
+      'cors_preset_too_large',
+      `allow_origins lists ${origins.length} entries; your plan allows ${CORS_PRESET_MAX_ORIGINS}.`
+    );
+}
+const nameTaken = (name: string, appId: string | null, except?: string) =>
+  db.corsPresets.some((p) => p.id !== except && p.name === name && (p.app_id ?? null) === appId);
 
 route('GET', '/v1/cors-presets', ({ query }) => {
   const appId = query.get('app_id');
   if (appId && !db.apps.some((a) => a.id === appId))
-    throw new Problem(404, 'not_found', 'no such app');
+    throw new Problem(404, 'validation_failed', 'no app with that id is visible to this account');
   return { presets: appId ? db.corsPresets.filter((p) => p.app_id === appId) : db.corsPresets };
 });
 route('POST', '/v1/cors-presets', ({ body }) => {
   if (process.env.MOCK_PLAN === 'free')
     throw new Problem(
       402,
-      'plan_cors_preset_not_allowed',
+      'plan_cors_presets_not_allowed',
       'the free plan does not include CORS presets; upgrade to Hobby or above.'
     );
   const name = String(body.name ?? '').trim();
   const origins = Array.isArray(body.allow_origins) ? body.allow_origins.map(String) : [];
   const methods = Array.isArray(body.allow_methods) ? body.allow_methods.map(String) : [];
   const maxAge = Number(body.max_age_seconds);
-  if (
-    !name ||
-    name.length > 64 ||
-    origins.length === 0 ||
-    methods.length === 0 ||
-    !Number.isInteger(maxAge) ||
-    maxAge < 0 ||
-    maxAge > 86400
-  )
-    throw new Problem(
-      422,
-      'cors_preset_invalid',
-      'name 1..64, at least one allow_origin and allow_method, max_age 0..86400.'
-    );
+  if (!name || name.length > 64) throw corsInvalid('cors preset name must be 1..64 characters');
+  if (origins.length === 0) throw corsInvalid('cors preset requires at least one allow_origin');
+  if (methods.length === 0) throw corsInvalid('cors preset requires at least one allow_method');
+  if (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 86400)
+    throw corsInvalid('cors preset max_age_seconds must be 0..86400');
   if (body.allow_credentials === true && origins.includes('*'))
-    throw new Problem(
-      422,
-      'cors_wildcard_with_credentials',
-      'allow_credentials cannot be combined with a wildcard origin.'
+    throw corsInvalid(
+      'cors preset cannot combine AllowCredentials: true with AllowOrigins: ["*"] (browsers reject this combination)'
     );
+  corsWithinPlan(origins);
   const appId = typeof body.app_id === 'string' && body.app_id ? body.app_id : null;
   if (appId && !db.apps.some((a) => a.id === appId))
-    throw new Problem(404, 'cors_preset_app_not_found', 'no such app');
+    throw new Problem(404, 'validation_failed', 'no app with that id is visible to this account');
   if (db.corsPresets.length >= CORS_PRESET_QUOTA)
     throw new Problem(
       403,
       'plan_cors_preset_quota_reached',
       `at most ${CORS_PRESET_QUOTA} CORS presets on this plan.`
     );
-  if (db.corsPresets.some((p) => p.name === name && (p.app_id ?? null) === appId))
+  if (nameTaken(name, appId))
     throw new Problem(
       409,
-      'cors_preset_name_conflict',
-      `a preset named "${name}" exists in this scope.`
+      'validation_failed',
+      'a cors preset with this name already exists for the (account, app) tuple'
     );
   const preset: CorsPresetRow = {
     id: db.id(),
@@ -2667,29 +2698,272 @@ route('POST', '/v1/cors-presets', ({ body }) => {
 });
 route('GET', '/v1/cors-presets/{id}', ({ params }) => {
   const preset = db.corsPresets.find((p) => p.id === params.id);
-  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (!preset) throw noSuchPreset();
   return preset;
 });
 route('PATCH', '/v1/cors-presets/{id}', ({ params, body }) => {
   const preset = db.corsPresets.find((p) => p.id === params.id);
-  if (!preset) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (!preset) throw noSuchPreset();
   if (Object.keys(body).length === 0)
-    throw new Problem(422, 'cors_preset_update_requires_field', 'at least one field is required.');
-  if (Array.isArray(body.allow_origins)) preset.allow_origins = body.allow_origins.map(String);
-  if (Array.isArray(body.allow_methods)) preset.allow_methods = body.allow_methods.map(String);
-  if (typeof body.allow_credentials === 'boolean')
-    preset.allow_credentials = body.allow_credentials;
-  if (typeof body.max_age_seconds === 'number') preset.max_age_seconds = body.max_age_seconds;
-  if (preset.allow_credentials && preset.allow_origins.includes('*'))
-    throw new Problem(422, 'cors_wildcard_with_credentials', 'credentials with a wildcard origin.');
-  preset.updated_at = db.iso(0);
+    throw corsInvalid('cors preset update requires at least one field');
+  // Merge first, as apid does, then judge the merged shape.
+  const next = { ...preset };
+  if (typeof body.name === 'string') next.name = body.name;
+  if (typeof body.description === 'string') next.description = body.description;
+  if (Array.isArray(body.allow_origins)) next.allow_origins = body.allow_origins.map(String);
+  if (Array.isArray(body.allow_methods)) next.allow_methods = body.allow_methods.map(String);
+  if (Array.isArray(body.allow_headers)) next.allow_headers = body.allow_headers.map(String);
+  if (Array.isArray(body.expose_headers)) next.expose_headers = body.expose_headers.map(String);
+  if (typeof body.allow_credentials === 'boolean') next.allow_credentials = body.allow_credentials;
+  if (typeof body.max_age_seconds === 'number') next.max_age_seconds = body.max_age_seconds;
+  if (next.name.length < 1 || next.name.length > 64)
+    throw corsInvalid('cors preset name must be 1..64 characters');
+  if (Array.isArray(body.allow_methods) && next.allow_methods.length === 0)
+    throw corsInvalid('cors preset allow_methods must be non-empty if provided');
+  if (next.max_age_seconds < 0 || next.max_age_seconds > 86400)
+    throw corsInvalid('cors preset max_age_seconds must be 0..86400');
+  if (next.allow_credentials && next.allow_origins.includes('*'))
+    throw corsInvalid(
+      'cors preset cannot combine AllowCredentials: true with AllowOrigins: ["*"] (browsers reject this combination)'
+    );
+  corsWithinPlan(Array.isArray(body.allow_origins) ? body.allow_origins : undefined);
+  if (nameTaken(next.name, next.app_id ?? null, preset.id))
+    throw new Problem(
+      409,
+      'validation_failed',
+      'a cors preset with this name already exists for the (account, app) tuple'
+    );
+  Object.assign(preset, next, { updated_at: db.iso(0) });
   return preset;
 });
 route('DELETE', '/v1/cors-presets/{id}', ({ params }) => {
   const i = db.corsPresets.findIndex((p) => p.id === params.id);
-  if (i < 0) throw new Problem(404, 'not_found', 'no such CORS preset');
+  if (i < 0) throw noSuchPreset();
   db.corsPresets.splice(i, 1);
+  // ON DELETE SET NULL: the rules lose the link and fail closed.
+  for (const rule of db.edgeRules) {
+    const action = rule.action as { cors_preset_id?: string | null };
+    if (rule.kind === 'cors' && action.cors_preset_id === params.id) action.cors_preset_id = null;
+  }
   return NO_CONTENT;
+});
+
+// Edge protection (faas ADR-829, ADR-20261021220456). Counts are seeded per
+// app and scaled by range; MOCK_EDGE_DEGRADED=1 answers as apid does when
+// Prometheus is down. Attack mode is a managed challenge rule in db.edgeRules;
+// hiding the edge-attack-mode capability stands in for its platform flag.
+const EDGE_RANGE_HOURS: Record<string, number> = {
+  '5m': 1 / 12,
+  '15m': 0.25,
+  '1h': 1,
+  '6h': 6,
+  '24h': 24,
+  '7d': 168,
+  '15d': 360,
+};
+function edgeRange(query: URLSearchParams, fallback: string) {
+  const range = query.get('range') ?? fallback;
+  if (!(range in EDGE_RANGE_HOURS))
+    throw new Problem(
+      400,
+      'validation_failed',
+      `range must be one of: ${Object.keys(EDGE_RANGE_HOURS).join(', ')}`
+    );
+  return range as '5m' | '15m' | '1h' | '6h' | '24h' | '7d' | '15d';
+}
+const edgeDegraded = () =>
+  process.env.MOCK_EDGE_DEGRADED === '1' ? 'degraded: prometheus unavailable' : null;
+const attackModeRule = (appId: string) =>
+  db.edgeRules.find((r) => r.app_id === appId && r.managed_by === 'attack_mode');
+function attackModeStatus(appId: string) {
+  const rule = attackModeRule(appId);
+  if (!rule) return { active: false };
+  return {
+    active: rule.enabled && Date.parse(rule.expires_at ?? '') > Date.now(),
+    rule_id: rule.id,
+    started_at: rule.created_at,
+    expires_at: rule.expires_at,
+    difficulty: 16,
+    pass_ttl_seconds: 3600,
+  };
+}
+
+route('GET', '/v1/apps/{slug}/edge-protection', ({ params, query }) => {
+  const a = app(params.slug);
+  const range = edgeRange(query, '1h');
+  const degraded = edgeDegraded();
+  const k = degraded ? 0 : EDGE_RANGE_HOURS[range] * (a.id === db.apps[0]?.id ? 1 : 0.2);
+  const n = (v: number) => Math.round(v * k);
+  const rejections = (
+    [
+      { gate: 'throttle', status: '429', count: n(140) },
+      { gate: 'jwt', status: '401', count: n(62) },
+      { gate: 'waf', status: '403', count: n(9) },
+      { gate: 'challenge', status: '403', count: n(5) },
+      { gate: 'geo', status: '403', count: n(3) },
+    ] as const
+  ).filter((r) => r.count > 0);
+  return {
+    app_id: a.id,
+    range,
+    source: degraded ?? 'prometheus',
+    as_of: new Date().toISOString(),
+    pre_auth: { blocked: 0, would_block: n(37) },
+    validation_failures: n(4) ? [{ name: 'block', count: n(4) }] : [],
+    rejections: [...rejections],
+    waf: {
+      inspected: n(1800),
+      detected: n(11),
+      not_inspected: 0,
+      warned: n(2),
+      blocked: n(9),
+      inline_skipped: 0,
+      categories: n(11)
+        ? [
+            { name: 'sqli', count: n(7) },
+            { name: 'xss', count: n(4) },
+          ]
+        : [],
+      top_rules: n(11) ? [{ name: '942100', count: n(7) }] : [],
+    },
+    challenge: {
+      issued: n(20),
+      solved: n(16),
+      rejected: n(5),
+      passed: n(80),
+      bypassed: n(12),
+      invalid: 0,
+      raised: 0,
+    },
+    penalty: { boxed: n(1), rejected: n(6) },
+    attack_mode: attackModeStatus(a.id),
+    ai_crawlers: n(30)
+      ? [
+          { name: 'GPTBot', operator: 'OpenAI', purpose: 'training', count: n(30) },
+          { name: 'PerplexityBot', operator: 'Perplexity', purpose: 'search', count: n(8) },
+        ]
+      : [],
+  };
+});
+route('GET', '/v1/apps/{slug}/pre-auth-observations', ({ params, query }) => {
+  const a = app(params.slug);
+  const range = edgeRange(query, '5m');
+  const base = { app_id: a.id, range, as_of: new Date().toISOString() };
+  // Only the first app has a guard; the others show the "not on" state.
+  if (a.id !== db.apps[0]?.id) return { ...base, source: 'prometheus', policies: [] };
+  const degraded = edgeDegraded();
+  const k = degraded ? 0 : EDGE_RANGE_HOURS[range];
+  const n = (v: number) => Math.round(v * k);
+  const policies = [
+    {
+      policy_id: 'app',
+      kind: 'app' as const,
+      would_block: n(37),
+      result_2xx: n(2),
+      result_3xx: 0,
+      result_4xx: n(31),
+      result_5xx: n(4),
+    },
+    {
+      policy_id: 'route_0',
+      kind: 'route' as const,
+      method: 'POST',
+      path: '/login',
+      would_block: n(12),
+      result_2xx: 0,
+      result_3xx: 0,
+      result_4xx: n(12),
+      result_5xx: 0,
+    },
+    {
+      policy_id: 'failures_0',
+      kind: 'failures' as const,
+      method: 'POST',
+      path: '/login',
+      would_block: n(3),
+      result_2xx: 0,
+      result_3xx: 0,
+      result_4xx: n(3),
+      result_5xx: 0,
+    },
+  ];
+  if (degraded) return { ...base, source: degraded, policies };
+  const requests = n(4200);
+  const succeeded = n(2);
+  const long = ['24h', '7d', '15d'].includes(range);
+  return {
+    ...base,
+    source: 'prometheus',
+    policies,
+    suggestion: {
+      status: !long ? 'insufficient_data' : succeeded > 0 ? 'review' : 'ready',
+      reason: !long
+        ? 'judge enforcement on a range of 24h or longer'
+        : `enforce would have rejected ${succeeded} requests that succeeded; raise requests_per_second or burst, or add route overrides, before enforcing`,
+      requests,
+      would_block: n(49),
+      would_block_succeeded: succeeded,
+    },
+  };
+});
+route('GET', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) =>
+  attackModeStatus(app(params.slug).id)
+);
+route('PUT', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params, body }) => {
+  const a = app(params.slug);
+  if (
+    hiddenCapabilities.has('edge-attack-mode') ||
+    hiddenCapabilities.has('edge-browser-challenge')
+  )
+    throw new Problem(
+      422,
+      'edge_feature_unavailable',
+      'Attack mode is not yet available to this account. Switching it off always works.'
+    );
+  const seconds = Number(body.duration_seconds ?? 0) || 3600;
+  if (seconds < 900 || seconds > 86400)
+    throw new Problem(
+      422,
+      'validation_failed',
+      `duration_seconds must be in 900..86400 (got ${seconds}); attack mode always ends on its own`
+    );
+  const until = new Date(Date.now() + seconds * 1000).toISOString();
+  const current = attackModeRule(a.id);
+  if (current && attackModeStatus(a.id).active) {
+    current.expires_at = until;
+    current.updated_at = new Date().toISOString();
+  } else {
+    if (current) db.edgeRules.splice(db.edgeRules.indexOf(current), 1);
+    const now = new Date().toISOString();
+    db.edgeRules.push({
+      id: db.id(),
+      account_id: db.ACCOUNT_ID,
+      app_id: a.id,
+      match_host: '@app',
+      match_path: '/**',
+      match_methods: [],
+      match_headers: {},
+      priority: 0,
+      enabled: true,
+      kind: 'challenge',
+      action: { difficulty: 16, pass_ttl_seconds: 3600 },
+      name: 'Attack mode',
+      description:
+        'Challenges every visitor until it ends. Managed by attack mode: change it with gregale edge-rules attack-mode.',
+      expires_at: until,
+      mode: 'enforce',
+      managed_by: 'attack_mode',
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  return attackModeStatus(a.id);
+});
+route('DELETE', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) => {
+  const a = app(params.slug);
+  const current = attackModeRule(a.id);
+  if (current) db.edgeRules.splice(db.edgeRules.indexOf(current), 1);
+  return { active: false };
 });
 
 route('GET', '/v1/templates', () => db.templates);
@@ -3473,6 +3747,61 @@ route('GET', '/v1/apps/{slug}/log-drains/{id}/health', ({ params }) =>
 route('GET', '/v1/apps/{slug}/log-drains/{id}/analytics', ({ params, query }) =>
   logDrainMock.analyticsFor(drainOf(params.slug, params.id), query.get('window') ?? '24h')
 );
+// --- Custom metrics (faas ADR-202, history ADR-745) ---
+// MOCK_PLAN=free refuses pushes with apid's 402; MOCK_CUSTOM_METRIC_HISTORY=off
+// answers history with the 503 an installation without the operator flag sends.
+const CUSTOM_METRIC_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+function customMetricName(name: string) {
+  if (!CUSTOM_METRIC_NAME.test(name))
+    throw new Problem(422, 'validation', `name "${name}" must match [a-z][a-z0-9_]{0,62}.`);
+  return name;
+}
+route('GET', '/v1/apps/{slug}/custom-metrics', ({ params }) =>
+  customMetricMock.listFor(app(params.slug).slug)
+);
+route('PUT', '/v1/apps/{slug}/custom-metrics/{name}', ({ params, body }) => {
+  if ((process.env.MOCK_PLAN ?? db.account.plan) === 'free')
+    throw new Problem(
+      402,
+      'plan_custom_metrics_not_allowed',
+      'custom application metrics are not included in the free plan. Scale on a platform-measured signal (rps, cpu, concurrent_requests, queue_depth, queue_lag) or upgrade.'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const value = body.value;
+  if (typeof value !== 'number')
+    throw new Problem(400, 'validation', 'body must be a JSON object with a numeric `value`.');
+  if (!Number.isFinite(value) || value < 0 || value > 1e12)
+    throw new Problem(422, 'validation', `value must be finite, >= 0 and <= 1e12; got ${value}.`);
+  const held = customMetricMock.listFor(a.slug).metrics;
+  if (held.length >= customMetricMock.MAX_METRICS && !held.some((m) => m.name === name))
+    throw new Problem(
+      422,
+      'custom_metric_limit',
+      `this app already holds ${customMetricMock.MAX_METRICS} custom metrics, which is the maximum. Pushing a new value for an existing metric always works; delete an unused metric to free a slot.`
+    );
+  customMetricMock.pushMetric(a.slug, name, value);
+  return NO_CONTENT;
+});
+route('DELETE', '/v1/apps/{slug}/custom-metrics/{name}', ({ params }) => {
+  // apid answers 204 for a name that does not exist: the intent is satisfied.
+  customMetricMock.store.get(app(params.slug).slug)?.delete(params.name);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/custom-metrics/{name}/series', ({ params, query }) => {
+  if (process.env.MOCK_CUSTOM_METRIC_HISTORY === 'off')
+    throw new Problem(
+      503,
+      'custom_metric_history_unavailable',
+      'custom metric history is not enabled for this deployment'
+    );
+  const a = app(params.slug);
+  const name = customMetricName(params.name);
+  const range = query.get('range') ?? '24h';
+  if (!['1h', '6h', '24h', '7d', '15d'].includes(range))
+    throw new Problem(400, 'validation', 'range must be one of: 1h, 6h, 24h, 7d, 15d');
+  return customMetricMock.seriesFor(a.slug, name, range);
+});
 // --- Canary route health: candidate vs stable per critical route ---
 function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'] {
   const deployment = db.deployments.find((d) => d.id === deploymentId);
@@ -7284,10 +7613,10 @@ route('POST', '/v1/keys/{id}/rotate', ({ params }) => {
   };
 });
 
-route('GET', '/v1/edge-rules', () => db.edgeRules);
+route('GET', '/v1/edge-rules', () => db.edgeRules.map(edgeRuleMock.wireRule));
 route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
   const a = app(params.slug);
-  return db.edgeRules.filter((r) => r.app_id === a.id);
+  return db.edgeRules.filter((r) => r.app_id === a.id).map(edgeRuleMock.wireRule);
 });
 
 /** jwt and ip are paid; geo is allowed on free with a tighter quota. */
@@ -7356,12 +7685,55 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
     validate_mode: (body.validate_mode ??
       'block') as (typeof db.edgeRules)[number]['validate_mode'],
     action: body.action as (typeof db.edgeRules)[number]['action'],
+    ...edgeRuleExtras(body),
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
   db.edgeRules.push(rule);
-  return status(201, rule);
+  edgeRuleMock.record(a.id);
+  return status(201, edgeRuleMock.wireRule(rule));
 });
+
+/**
+ * The optional create/PATCH fields recipes and the dialog send: name,
+ * description, a match condition naming lists, log mode and a penalty.
+ */
+function edgeRuleExtras(body: Record<string, unknown>) {
+  const out: Partial<(typeof db.edgeRules)[number]> = {};
+  if (typeof body.name === 'string') out.name = body.name;
+  if (typeof body.description === 'string') out.description = body.description;
+  if (body.mode === 'log' || body.mode === 'enforce') out.mode = body.mode;
+  if (body.match && typeof body.match === 'object')
+    out.match = body.match as (typeof db.edgeRules)[number]['match'];
+  if (body.penalty && typeof body.penalty === 'object') {
+    const p = body.penalty as { seconds?: number; after?: number; within_seconds?: number };
+    if (!p.seconds || p.seconds < 60 || p.seconds > 86400)
+      throw new Problem(422, 'validation_failed', 'penalty.seconds must be in 60..86400');
+    out.penalty = {
+      seconds: p.seconds,
+      after: p.after || 1,
+      within_seconds: p.within_seconds || 60,
+    };
+  }
+  // edge_rule_penalty.go:49: only rules that refuse a client can box it.
+  const kind = String(body.kind ?? '');
+  if (out.penalty && kind && !['ip', 'geo', 'throttle', 'waf'].includes(kind))
+    throw new Problem(422, 'validation_failed', `penalty: kind=${kind} cannot box clients`);
+  for (const name of edgeRuleListNames(out.match))
+    if (!edgeRuleMock.lists.some((l) => l.name === name))
+      throw new Problem(404, 'edge_rule_list_not_found', `no edge rule list named "${name}"`);
+  return out;
+}
+
+function edgeRuleListNames(m: (typeof db.edgeRules)[number]['match']): string[] {
+  if (!m) return [];
+  return [
+    ...(m.op === 'in_list' && m.list ? [m.list] : []),
+    ...(m.all ?? []).flatMap(edgeRuleListNames),
+    ...(m.any ?? []).flatMap(edgeRuleListNames),
+    ...edgeRuleListNames(m.not),
+  ];
+}
 
 route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
   const rule = db.edgeRules.find((r) => r.id === params.id);
@@ -7377,8 +7749,13 @@ route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
     if (k in body && body[k] != null) (rule as Record<string, unknown>)[k] = body[k];
   // `action` replaces whole — there is no partial shape for it.
   if (body.action) rule.action = body.action as typeof rule.action;
+  if (body.penalty && body.clear_penalty)
+    throw new Problem(422, 'validation_failed', 'set penalty or clear_penalty, not both');
+  Object.assign(rule, edgeRuleExtras({ ...body, kind: rule.kind }));
+  if (body.clear_penalty) delete rule.penalty;
   rule.updated_at = db.iso(0);
-  return rule;
+  edgeRuleMock.record(rule.app_id);
+  return edgeRuleMock.wireRule(rule);
 });
 
 route('GET', '/v1/apps/{slug}/throttle-suggestions', ({ params, query }) => {
@@ -7426,34 +7803,250 @@ route('GET', '/v1/apps/{slug}/throttle-suggestions', ({ params, query }) => {
 route('DELETE', '/v1/edge-rules/{id}', ({ params }) => {
   const i = db.edgeRules.findIndex((r) => r.id === params.id);
   if (i < 0) throw new Problem(404, 'edge_rule_not_found');
-  db.edgeRules.splice(i, 1);
+  const [gone] = db.edgeRules.splice(i, 1);
+  edgeRuleMock.record(gone.app_id);
   return NO_CONTENT;
 });
 
+// Rule-set versions and rollback (faas pkg/apid/edgerules/versions.go).
+route('GET', '/v1/apps/{slug}/edge-rules/versions', ({ params, res }) => {
+  const a = app(params.slug);
+  res.setHeader('ETag', `"${edgeRuleMock.latest(a.id)}"`);
+  return edgeRuleMock.list(a.id);
+});
+route('GET', '/v1/apps/{slug}/edge-rules/versions/{version}', ({ params }) => {
+  const a = app(params.slug);
+  const v = Number(params.version);
+  if (!Number.isInteger(v) || v < 1)
+    throw new Problem(400, 'validation_failed', 'version must be a positive integer');
+  const found = edgeRuleMock.get(a.id, v);
+  if (!found) throw new Problem(404, 'not_found', 'no such edge-rule version');
+  return found;
+});
+route('POST', '/v1/apps/{slug}/edge-rules/rollback', ({ params, body, req }) => {
+  const a = app(params.slug);
+  const version = Number(body.version);
+  if (!Number.isInteger(version) || version < 1)
+    throw new Problem(400, 'validation_failed', 'body must be {"version": <positive integer>}');
+  const current = edgeRuleMock.latest(a.id);
+  const ifMatch = String(req.headers['if-match'] ?? '').trim();
+  if (ifMatch && ifMatch !== '*' && ifMatch.replace(/^W\//, '') !== `"${current}"`)
+    throw new Problem(
+      412,
+      'edge_rules_version_mismatch',
+      `If-Match ${ifMatch} does not match the current edge-rule set version "${current}"; re-read the rules and retry`
+    );
+  const restored = edgeRuleMock.restore(a.id, version);
+  if (!restored) throw new Problem(404, 'not_found', 'no such edge-rule version');
+  return restored;
+});
+
+// Suggested protections (suggestions.go); Free records no request telemetry.
+route('GET', '/v1/apps/{slug}/edge-rules/suggestions', ({ params }) => {
+  if (db.account.plan === 'free')
+    throw new Problem(
+      402,
+      'plan_feature_gated',
+      "the free plan doesn't include request analytics; upgrade to Hobby or higher for historical observability."
+    );
+  return edgeRuleMock.suggestions(app(params.slug).id);
+});
+
+// The WAF false-positive review and one-step exclusions (waf_review.go).
+route('GET', '/v1/apps/{slug}/edge-rules/waf-review', ({ params }) =>
+  edgeRuleMock.wafReview(app(params.slug).id)
+);
+route('POST', '/v1/edge-rules/{id}/waf-exclusions', ({ params, body }) => {
+  const rule = db.edgeRules.find((r) => r.id === params.id);
+  if (!rule) throw new Problem(404, 'not_found', 'no such edge rule');
+  if (rule.kind !== 'waf')
+    throw new Problem(422, 'validation_failed', 'waf exclusions apply to kind=waf rules only');
+  const add = Array.isArray(body.add) ? body.add.map(Number) : [];
+  const remove = Array.isArray(body.remove) ? body.remove.map(Number) : [];
+  if (!add.length && !remove.length)
+    throw new Problem(422, 'validation_failed', 'add or remove at least one CRS rule ID');
+  const bad = [...add, ...remove].find((n) => !(n >= 900000 && n <= 999999));
+  if (bad !== undefined)
+    throw new Problem(422, 'validation_failed', `${bad} is not a CRS rule ID (900000..999999)`);
+  const action = rule.action as components['schemas']['EdgeRuleWAFAction'];
+  const ids = [...new Set([...(action.exclude_rule_ids ?? []), ...add])].filter(
+    (n) => !remove.includes(n)
+  );
+  if (ids.length > 50) throw new Problem(422, 'validation_failed', 'at most 50 excluded CRS rules');
+  rule.action = { ...action, exclude_rule_ids: ids };
+  rule.updated_at = db.iso(0);
+  edgeRuleMock.record(rule.app_id);
+  return edgeRuleMock.wireRule(rule);
+});
+
+// Reusable rule lists (lists.go), the signed-in account's.
+const listView = (l: (typeof edgeRuleMock.lists)[number], items: boolean) => {
+  const { items: all, ...rest } = l;
+  return {
+    ...rest,
+    item_count: all.length,
+    referenced_by: edgeRuleMock.referencedBy(l.name),
+    ...(items ? { items: all } : {}),
+  };
+};
+const findList = (name: string) => {
+  const l = edgeRuleMock.lists.find((x) => x.name === name);
+  if (!l)
+    throw new Problem(
+      404,
+      'edge_rule_list_not_found',
+      `no edge rule list named "${name}" in this account`
+    );
+  return l;
+};
+const listItemCap = (n: number) => {
+  const cap = edgeRuleMock.LIST_LIMITS[db.account.plan]?.[1] ?? 0;
+  if (n > cap)
+    throw new Problem(
+      403,
+      'plan_limit_edge_rule_list_items',
+      `${db.account.plan} plan caps an edge rule list at ${cap} items; this list would have ${n}.`
+    );
+};
+route('GET', '/v1/edge-rule-lists', () => ({
+  lists: edgeRuleMock.lists.map((l) => listView(l, false)),
+}));
+route('POST', '/v1/edge-rule-lists', ({ body }) => {
+  const name = String(body.name ?? '');
+  const kind = String(body.kind ?? '');
+  if (!edgeRuleMock.LIST_NAME.test(name))
+    throw new Problem(
+      422,
+      'validation_failed',
+      `list name "${name}" must be 1-64 characters of a-z, 0-9, '_' and '-', starting with a letter or digit`
+    );
+  if (!['ip', 'country', 'host', 'string', 'asn'].includes(kind))
+    throw new Problem(
+      422,
+      'validation_failed',
+      `unknown list kind "${kind}" (ip, country, host, string, asn)`
+    );
+  const cap = edgeRuleMock.LIST_LIMITS[db.account.plan]?.[0] ?? 0;
+  if (edgeRuleMock.lists.length >= cap)
+    throw new Problem(
+      403,
+      'plan_limit_edge_rule_lists',
+      `${db.account.plan} plan caps edge rule lists at ${cap} per account; you have ${edgeRuleMock.lists.length}.`
+    );
+  if (edgeRuleMock.lists.some((l) => l.name === name))
+    throw new Problem(
+      409,
+      'edge_rule_list_exists',
+      `an edge rule list named "${name}" already exists`
+    );
+  const items = edgeRuleMock.normalizeItems(
+    kind,
+    Array.isArray(body.items) ? body.items.map(String) : []
+  );
+  listItemCap(items.length);
+  const l = {
+    id: db.id(),
+    name,
+    kind: kind as (typeof edgeRuleMock.lists)[number]['kind'],
+    ...(typeof body.description === 'string' && body.description
+      ? { description: body.description }
+      : {}),
+    item_count: items.length,
+    items,
+    referenced_by: [],
+    created_at: db.iso(0),
+    updated_at: db.iso(0),
+  };
+  edgeRuleMock.lists.push(l);
+  return status(201, listView(l, true));
+});
+route('GET', '/v1/edge-rule-lists/{name}', ({ params }) => listView(findList(params.name), true));
+route('PATCH', '/v1/edge-rule-lists/{name}', ({ params, body }) => {
+  const l = findList(params.name);
+  if (Array.isArray(body.items) && (body.add || body.remove))
+    throw new Problem(
+      422,
+      'validation_failed',
+      'items replaces the list and cannot be combined with add or remove'
+    );
+  let items = l.items;
+  if (Array.isArray(body.items)) items = body.items.map(String);
+  if (Array.isArray(body.add)) items = [...items, ...body.add.map(String)];
+  if (Array.isArray(body.remove)) {
+    const gone = new Set(body.remove.map(String));
+    items = items.filter((i) => !gone.has(i));
+  }
+  items = edgeRuleMock.normalizeItems(l.kind, items);
+  listItemCap(items.length);
+  l.items = items;
+  if (typeof body.description === 'string') l.description = body.description;
+  l.updated_at = db.iso(0);
+  return listView(l, true);
+});
+route('DELETE', '/v1/edge-rule-lists/{name}', ({ params }) => {
+  const l = findList(params.name);
+  const refs = edgeRuleMock.referencedBy(l.name);
+  if (refs.length)
+    throw new Problem(
+      409,
+      'edge_rule_list_in_use',
+      `edge rule list "${l.name}" is referenced by ${refs.length} rule(s) (${refs.join(', ')}); remove the references first`
+    );
+  edgeRuleMock.lists.splice(edgeRuleMock.lists.indexOf(l), 1);
+  return NO_CONTENT;
+});
+
+// Async invocations: work policies, deadlines, destinations, and the two
+// replay routes with apid's one-replay-per-parent rule (mock/async-invocations.ts).
+const asyncInvocations: asyncMock.AsyncMock = {
+  invocations: db.invocations,
+  policies: asyncMock.seedAsyncInvocations(db.invocations, db.apps, db.webhooks, Date.now()),
+  children: new Map(),
+  settleAt: new Map(),
+};
+function refused<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof asyncMock.Refusal)
+      throw new Problem(error.status, error.code, error.detail);
+    throw error;
+  }
+}
 route('GET', '/v1/invocations', ({ query }) => ({
-  invocations: db.invocations.slice(0, Number(query.get('limit') ?? 50)),
+  invocations: db.invocations
+    .slice(0, Number(query.get('limit') ?? 50))
+    .map((inv) => asyncMock.settle(asyncInvocations, inv, Date.now())),
 }));
 route('GET', '/v1/invocations/{id}', ({ params }) => {
   const inv = db.invocations.find((x) => x.id === params.id);
   if (!inv) throw new Problem(404, 'invocation_not_found');
-  return inv;
+  return asyncMock.settle(asyncInvocations, inv, Date.now());
 });
 route('POST', '/v1/invocations/{id}/replay', ({ params }) => {
-  const inv = db.invocations.find((x) => x.id === params.id);
-  if (!inv) throw new Problem(404, 'invocation_not_found');
-  const replay = {
-    ...inv,
-    id: db.id(),
-    source: 'replay' as const,
-    state: 'pending' as const,
-    created_at: db.iso(0),
-    completed_at: null,
-    last_error: null,
-    attempts: 0,
-  };
-  db.invocations.unshift(replay);
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'plain', Date.now()));
   return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
 });
+route('POST', '/v1/invocations/{id}/replay-keyed', ({ params }) => {
+  const replay = refused(() => asyncMock.replay(asyncInvocations, params.id, 'keyed', Date.now()));
+  return status(202, { id: replay.id, status_url: `/v1/invocations/${replay.id}` });
+});
+route('POST', '/v1/apps/{slug}/invoke/async', ({ params, body }) => {
+  const a = app(params.slug);
+  const inv = refused(() =>
+    asyncMock.createAsyncInvocation(
+      asyncInvocations,
+      a,
+      listOf(db.webhooks, a.slug),
+      body,
+      Date.now()
+    )
+  );
+  return status(202, { id: inv.id, status_url: `/v1/invocations/${inv.id}` });
+});
+route('GET', '/v1/apps/{slug}/work-policies', ({ params }) => ({
+  policies: asyncInvocations.policies.get(app(params.slug).slug) ?? [],
+}));
 
 route('GET', '/v1/instances', () => ({ instances: db.instances, next_before: null }));
 route('GET', '/v1/audit-log', ({ query }) => {

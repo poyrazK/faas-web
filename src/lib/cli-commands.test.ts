@@ -12,6 +12,7 @@ import {
   cliJobRemoveCommand,
   cliJobRunCommand,
   cliPostgresRestoreCommand,
+  cliPreAuthCommand,
 } from './cli-commands';
 
 // The CLI's own usage lines, copied from poyrazK/faas cmd/gregale:
@@ -135,5 +136,18 @@ describe('domain commands', () => {
     expect(cliDomainSetDefaultCommand('api.example.com')).toBe(
       'gregale domains set-default api.example.com'
     );
+  });
+});
+
+describe('cliPreAuthCommand', () => {
+  // cmd/gregale/app_pre_auth.go:39-41: observe and enforce need
+  // --pre-auth-rps and --pre-auth-burst of at least 1 when nothing is stored.
+  it('names a rate and burst when turning the guard on', () => {
+    expect(cliPreAuthCommand('api', 'observe', { rps: 10, burst: 20 })).toBe(
+      'gregale app api --pre-auth observe --pre-auth-rps 10 --pre-auth-burst 20'
+    );
+  });
+  it('switches an existing guard to enforce without restating its rate', () => {
+    expect(cliPreAuthCommand('api', 'enforce')).toBe('gregale app api --pre-auth enforce');
   });
 });
