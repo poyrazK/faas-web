@@ -26,6 +26,7 @@ export type OutboundAIUsage = S['OutboundAIUsageResponse'];
 export type OutboundAIUsageItem = S['OutboundAIUsageItem'];
 export type OutboundAIAlert = S['OutboundAIBudgetAlert'];
 export type OutboundAIRoute = S['OutboundAIRoute'];
+export type OutboundAppBinding = S['OutboundAppBinding'];
 export type AIProvider = NonNullable<OutboundIntegration['ai_provider']>;
 
 export const AI_PROVIDERS: readonly AIProvider[] = [
@@ -45,6 +46,9 @@ const usageKey = (accountId: string, id: string) =>
   [...outboundKey(accountId), 'usage', id] as const;
 const probeKey = (accountId: string, id: string) =>
   [...outboundKey(accountId), 'probe', id] as const;
+/** Under `outboundKey` so deleting an integration or changing its credential refreshes every app's bindings. */
+const appBindingsKey = (accountId: string, slug: string) =>
+  [...outboundKey(accountId), 'app', slug, 'bindings'] as const;
 
 export function useOutboundIntegrations(accountId: string) {
   return useQuery({
@@ -216,6 +220,55 @@ export function useDeleteOutboundProbePolicy(accountId: string) {
         })
       ),
     onSettled: invalidate,
+  });
+}
+
+/* --- App bindings ------------------------------------------------------- */
+
+/** The integrations one app is attached to. Responses carry no credential material. */
+export function useAppOutboundBindings(accountId: string, slug: string) {
+  return useQuery({
+    queryKey: appBindingsKey(accountId, slug),
+    queryFn: async ({ signal }) =>
+      (
+        await unwrap(
+          api.GET('/v1/apps/{slug}/outbound-bindings', { params: { path: { slug } }, signal })
+        )
+      ).items,
+    enabled: Boolean(accountId && slug),
+    retry: retryPolicy,
+  });
+}
+
+/**
+ * Binds an app to an account integration. Idempotent by resource (the API
+ * stores the same binding again), so it needs no idempotency key and a retry
+ * is harmless. It carries no body and never a provider key.
+ */
+export function useBindOutboundIntegration(accountId: string, slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (integration: string) =>
+      unwrap(
+        api.PUT('/v1/apps/{slug}/outbound-bindings/{integration}', {
+          params: { path: { slug, integration } },
+        })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: appBindingsKey(accountId, slug) }),
+  });
+}
+
+/** Removes the binding only; the integration and its credential are untouched. Idempotent: 204 even when absent. */
+export function useUnbindOutboundIntegration(accountId: string, slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (integration: string) =>
+      unwrap(
+        api.DELETE('/v1/apps/{slug}/outbound-bindings/{integration}', {
+          params: { path: { slug, integration } },
+        })
+      ),
+    onSettled: () => qc.invalidateQueries({ queryKey: appBindingsKey(accountId, slug) }),
   });
 }
 

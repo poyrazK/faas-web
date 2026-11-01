@@ -502,6 +502,25 @@ const usageCounts = new Map<string, number>(
       ]
 );
 
+/** app id -> integration id -> binding. The first app starts attached to the operator's stripe. */
+const appBindings = new Map<string, Map<string, S['OutboundAppBinding']>>();
+const bindApp = (appId: string, offer: S['OutboundIntegrationOffer'], createdAt: string) => {
+  const binding: S['OutboundAppBinding'] = {
+    integration: offer,
+    app_id: appId,
+    // Narrowing is the API's to offer; a fresh binding starts at the ceiling.
+    allowed_methods: [...offer.allowed_methods],
+    allowed_path_prefixes: [...offer.allowed_path_prefixes],
+    daily_request_limit: null,
+    created_at: createdAt,
+  };
+  const forApp = appBindings.get(appId) ?? new Map<string, S['OutboundAppBinding']>();
+  forApp.set(offer.id, binding);
+  appBindings.set(appId, forApp);
+  return binding;
+};
+if (!EMPTY && apps[0]) bindApp(apps[0].id, integrations[0], '2026-10-12T09:30:00Z');
+
 const probes = new Map<string, S['OutboundBindingProbePolicy']>(
   EMPTY
     ? []
@@ -764,6 +783,7 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
     const found = findIntegration(params.integration, true);
     integrations.splice(integrations.indexOf(found), 1);
     probes.delete(found.id);
+    for (const forApp of appBindings.values()) forApp.delete(found.id);
     return noContent;
   });
   route('PUT', '/v1/outbound/integrations/{integration}/credential', ({ params, body }) => {
@@ -920,4 +940,25 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
     return { items };
   });
   route('GET', '/v1/outbound/ai-routes', () => ({ items: aiRoutes }));
+
+  const bindingApp = (slug: string) => {
+    const target = apps.find((a) => a.slug === slug);
+    if (!target) throw new Problem(404, 'not_found', 'App not found');
+    return target;
+  };
+  route('GET', '/v1/apps/{slug}/outbound-bindings', ({ params }) => {
+    const target = bindingApp(params.slug);
+    return { items: [...(appBindings.get(target.id)?.values() ?? [])] };
+  });
+  route('PUT', '/v1/apps/{slug}/outbound-bindings/{integration}', ({ params }) => {
+    const target = bindingApp(params.slug);
+    const offer = findIntegration(params.integration);
+    // Idempotent: binding again keeps the stored binding rather than replacing it.
+    return appBindings.get(target.id)?.get(offer.id) ?? bindApp(target.id, offer, iso(now()));
+  });
+  route('DELETE', '/v1/apps/{slug}/outbound-bindings/{integration}', ({ params }) => {
+    const target = bindingApp(params.slug);
+    appBindings.get(target.id)?.delete(params.integration);
+    return noContent;
+  });
 }

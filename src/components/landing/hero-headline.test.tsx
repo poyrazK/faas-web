@@ -34,17 +34,17 @@ describe('hero capability loop', () => {
   it('cycles all eight capabilities and returns to the first without a status strip', async () => {
     await mount();
     const phrases = [
-      ['APIs that wake on demand.', 'Public beta'],
-      ['services that work together.', 'Preview'],
-      ['background jobs that retry.', 'Preview'],
-      ['workflows that wait and resume.', 'Preview'],
-      ['webhooks that wake your app.', 'Preview'],
-      ['MCP servers for your agents.', 'Preview'],
-      ['previews before you merge.', 'Public beta'],
-      ['code runs in isolated microVMs.', 'Preview'],
-      ['APIs that wake on demand.', 'Public beta'],
+      'APIs that wake on demand.',
+      'services that work together.',
+      'background jobs that retry.',
+      'workflows that wait and resume.',
+      'webhooks that wake your app.',
+      'MCP servers for your agents.',
+      'previews before you merge.',
+      'code runs in isolated microVMs.',
+      'APIs that wake on demand.',
     ];
-    for (const [index, [text]] of phrases.entries()) {
+    for (const [index, text] of phrases.entries()) {
       if (index > 0) await advance(5200);
       expect(phraseText()).toBe(text);
     }

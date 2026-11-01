@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Activity, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,12 @@ import {
   useApps,
   useDeleteDomain,
   useDomains,
-  useVerifyDomain,
+  useRetryDomain,
 } from '@/lib/api/queries';
-import { CliCommand } from '@/components/dashboard/cli-command';
+import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
-import { cliDomainSetDefaultCommand } from '@/lib/cli-commands';
+import { ApiError } from '@/lib/api/errors';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
@@ -58,12 +58,18 @@ interface DomainRow {
   id: string;
   domain: string;
   app: string;
+  appId: string;
+  /** Project environment the route is scoped to; carried through a re-add. */
+  environment: string | null;
   verified: boolean;
   /** True when this domain is already its app's default. */
   isDefault: boolean;
   verifiedAt: string | null;
   txtRecord: string | null;
 }
+
+/** Re-read the domains this long after a retry is queued. */
+const RECHECK_DELAYS_MS = [5_000, 20_000];
 
 function DomainsPage() {
   const { toast } = useToast();
@@ -73,7 +79,11 @@ function DomainsPage() {
   const apps = appQuery.data;
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
-  const verifyDomain = useVerifyDomain();
+  const retryDomain = useRetryDomain();
+  // Hostnames whose TXT challenge the API refused to retry because it ran out.
+  const [expired, setExpired] = useState<ReadonlySet<string>>(new Set());
+  const [rearming, setRearming] = useState<string | null>(null);
+  const [newRecord, setNewRecord] = useState<{ domain: string; txt: string } | null>(null);
 
   // Keep diagnostics shareable and restorable with browser Back/Forward.
   const search = Route.useSearch();
@@ -105,6 +115,8 @@ function DomainsPage() {
       id: d.domain,
       domain: d.domain,
       app: bySlug.get(d.app_id) ?? d.app_id,
+      appId: d.app_id,
+      environment: d.environment ?? null,
       verified: d.verified,
       isDefault: d.default === true,
       verifiedAt: d.verified_at ?? null,
@@ -112,22 +124,117 @@ function DomainsPage() {
     }));
   }, [data, apps]);
 
-  // A domain can be made its app's default only once verified, and there is
-  // nothing to do for one that already is. Each eligible domain gets its own
-  // command, so every app with a candidate is covered.
-  const defaultCandidates = rows
-    .filter((row) => row.verified && !row.isDefault)
-    .sort((a, b) => a.domain.localeCompare(b.domain));
+  // After a retry is queued the poller runs on its own schedule, so look again
+  // a little later rather than leaving the row looking unchanged.
+  const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearRechecks = () => {
+    recheckTimers.current.forEach(clearTimeout);
+    recheckTimers.current = [];
+  };
+  useEffect(() => clearRechecks, []);
+
+  const markExpired = (domain: string, on: boolean) =>
+    setExpired((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(domain);
+      else next.delete(domain);
+      return next;
+    });
+
+  /**
+   * Retry only works while the challenge is unexpired. It answers 409 for an
+   * expired challenge and for a domain that is already verified (the code is the
+   * generic `validation_failed`, so the status is what tells it apart), and the
+   * two need opposite words, so the domains are re-read to see which it was.
+   */
+  const checkAgain = async (domain: string) => {
+    try {
+      await retryDomain.mutateAsync(domain);
+      toast({
+        kind: 'info',
+        title: 'Checking again',
+        description: 'The TXT record will be looked up again shortly.',
+      });
+      clearRechecks();
+      recheckTimers.current = RECHECK_DELAYS_MS.map((ms) => setTimeout(() => void refetch(), ms));
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409)) {
+        toast({ kind: 'error', title: 'Could not check again', error: err });
+        return;
+      }
+      // A failed refetch keeps the previous data, so check the error, not the rows.
+      const fresh = await refetch().catch(() => undefined);
+      if (!fresh || fresh.isError) {
+        toast({
+          kind: 'error',
+          title: 'Could not read the domain’s state',
+          description: 'Reload the list to see whether it verified or expired.',
+        });
+        return;
+      }
+      const row = fresh.data?.find((x) => x.domain === domain);
+      if (!row) {
+        toast({ kind: 'info', title: `${domain} is no longer listed` });
+        return;
+      }
+      if (row.verified) {
+        toast({ kind: 'success', title: `${domain} verified` });
+      } else {
+        markExpired(domain, true);
+        toast({
+          kind: 'info',
+          title: 'This verification expired',
+          description: 'Get a new TXT record, publish it, then check again.',
+        });
+      }
+    }
+  };
+
+  /** Adding the same domain and app again re-arms an expired challenge with a new token. */
+  const getNewRecord = async (row: DomainRow) => {
+    setRearming(row.domain);
+    try {
+      const created = await addDomain.mutateAsync({
+        domain: row.domain,
+        app_id: row.appId,
+        ...(row.environment ? { environment: row.environment } : {}),
+      });
+      const dns = created.dns_records?.find(
+        (r) => r.type === 'TXT' && r.purpose === 'verification'
+      );
+      const txt = created.txt_record ?? (dns ? `${dns.name} TXT "${dns.value}"` : null);
+      markExpired(row.domain, false);
+      if (txt) setNewRecord({ domain: row.domain, txt });
+      else toast({ kind: 'success', title: 'Verification restarted' });
+    } catch (err) {
+      toast({
+        kind: 'error',
+        title: 'Could not get a new TXT record',
+        error: err,
+      });
+    } finally {
+      setRearming(null);
+    }
+  };
 
   const columns: Column<DomainRow>[] = [
     {
       key: 'domain',
       label: 'Domain',
-      // Marked so it is clear why the default is missing from set-default below.
-      // Stacked under the hostname so it does not squeeze an already narrow column.
+      // One line from md up. On a phone the column is narrow, so the name may
+      // break, but only before a dot, never mid-label. The default pill is stacked
+      // under the hostname so it does not squeeze an already narrow column.
       render: (d) => (
         <span className="flex flex-col items-start gap-1">
-          <span className="font-mono">{d.domain}</span>
+          <span className="font-mono [overflow-wrap:normal] md:whitespace-nowrap md:[&_wbr]:hidden">
+            {d.domain.split('.').map((label, i) => (
+              <Fragment key={i}>
+                {i > 0 && <wbr />}
+                {i > 0 && '.'}
+                {label}
+              </Fragment>
+            ))}
+          </span>
           {d.isDefault && <Pill label="default" />}
         </span>
       ),
@@ -147,7 +254,9 @@ function DomainsPage() {
       key: 'app',
       label: 'Routes to',
       priority: 'secondary',
-      render: (d) => <span className="font-mono text-xs text-muted-foreground">{d.app}</span>,
+      render: (d) => (
+        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+      ),
     },
     {
       key: 'txtRecord',
@@ -156,9 +265,13 @@ function DomainsPage() {
       render: (d) =>
         d.verified ? (
           <span className="text-xs text-muted-foreground">—</span>
+        ) : expired.has(d.domain) ? (
+          <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
+            This verification expired. Get a new TXT record, then publish that value instead.
+          </span>
         ) : (
           <span className="flex items-center gap-1">
-            <code className="select-all break-all text-xs text-muted-foreground">
+            <code className="select-all text-xs text-muted-foreground [overflow-wrap:anywhere]">
               {d.txtRecord ?? '—'}
             </code>
             {d.txtRecord && (
@@ -177,41 +290,36 @@ function DomainsPage() {
     {
       key: 'id',
       label: '',
-      width: 'w-56',
+      // As wide as its controls. On a phone they wrap, so the icons drop
+      // below a recovery button instead of running off the card.
+      width: 'md:w-0',
       render: (d) => (
-        <div className="flex items-center justify-end gap-1.5">
-          {!d.verified && (
-            <Button
-              size="sm"
-              variant="secondary"
-              busy={verifyDomain.isPending && verifyDomain.variables === d.domain}
-              onClick={() => {
-                void verifyDomain
-                  .mutateAsync(d.domain)
-                  .then((row) =>
-                    toast(
-                      row.verified
-                        ? { kind: 'success', title: `${d.domain} verified` }
-                        : {
-                            kind: 'info',
-                            title: 'Not verified yet',
-                            description: 'DNS has not propagated. Run the doctor to see why.',
-                          }
-                    )
-                  )
-                  .catch((err: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not verify',
-                      error: err,
-                    })
-                  );
-              }}
-            >
-              Verify
-            </Button>
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:flex-nowrap">
+          {!d.verified &&
+            (expired.has(d.domain) ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                // The longest control in the cell: on a phone its label wraps
+                // rather than pushing the row wider than the card.
+                className="h-auto min-h-8 shrink whitespace-normal py-1 md:h-8 md:whitespace-nowrap"
+                busy={rearming === d.domain}
+                onClick={() => void getNewRecord(d)}
+              >
+                Get a new TXT record
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                busy={retryDomain.isPending && retryDomain.variables === d.domain}
+                onClick={() => void checkAgain(d.domain)}
+              >
+                Check again
+              </Button>
+            ))}
 
+          <DomainDetailButton domain={d.domain} />
           {doctorAccess !== 'off' && (
             <IconButton
               type="button"
@@ -413,22 +521,28 @@ function DomainsPage() {
         onRetry={() => void refetch()}
       />
 
-      {defaultCandidates.length > 0 && (
-        <Panel
-          title="Set a default domain"
-          description="The console does not set an app's default domain. Only a verified domain can be the default, and the new one replaces the app's current default."
+      {newRecord && (
+        <Modal
+          open
+          onClose={() => setNewRecord(null)}
+          width="max-w-xl"
+          title={`New TXT record for ${newRecord.domain}`}
+          description="The previous value no longer works. Publish this one, then check again. It is valid for seven days."
         >
-          <div className="flex flex-col gap-3">
-            {defaultCandidates.map((row) => (
-              <CliCommand
-                key={row.domain}
-                label={`Make ${row.domain} the default domain for ${row.app}`}
-                copyLabel={`set-default command for ${row.domain}`}
-                command={cliDomainSetDefaultCommand(row.domain)}
-              />
-            ))}
+          <div className="flex flex-col gap-3 p-1">
+            <div className="flex items-start gap-2">
+              <code className="select-all break-all rounded-md bg-muted px-2 py-1.5 text-xs">
+                {newRecord.txt}
+              </code>
+              <CopyIconButton text={newRecord.txt} label="TXT record" />
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setNewRecord(null)}>
+                Done
+              </Button>
+            </div>
           </div>
-        </Panel>
+        </Modal>
       )}
 
       {doctorFor && (

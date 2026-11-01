@@ -1,82 +1,94 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const useInfiniteJobs = vi.fn();
-const useJobs = vi.fn();
+const startRun = vi.fn();
+const deleteJob = vi.fn();
+const confirm = vi.fn();
+
+const job = {
+  id: 'job-1',
+  name: 'nightly-export',
+  kind: 'batch',
+  status: 'active',
+  image_ref: 'ghcr.io/acme/export:v1',
+  ram_mb: 512,
+  max_parallelism: 4,
+  retry_max: 1,
+};
 
 vi.mock('@/lib/api/queries', () => ({
-  useInfiniteJobs: () => useInfiniteJobs() as unknown,
-  useJobs: () => useJobs() as unknown,
+  useInfiniteJobs: () => ({
+    data: { pages: [{ jobs: [job] }] },
+    error: null,
+    isPending: false,
+    hasNextPage: false,
+    refetch: vi.fn(),
+  }),
+  useJobs: () => ({ data: { jobs: [job] }, error: null, isPending: false, refetch: vi.fn() }),
+  useStartJobRun: () => ({ mutateAsync: startRun, isPending: false }),
+  useDeleteJob: () => ({ mutateAsync: deleteJob, isPending: false }),
+  useSetJobStatus: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+// Unrelated panels: their own tests cover them.
 vi.mock('./job-create-dialog', () => ({ JobCreateDialog: () => null }));
 vi.mock('@/components/dashboard/job-runs', () => ({ JobRuns: () => null }));
 vi.mock('@/components/dashboard/job-tasks', () => ({ JobTasks: () => null }));
 vi.mock('@/components/dashboard/job-detail', () => ({
-  JobDefinition: () => <p>definition body</p>,
+  JobDefinition: () => <p>definition</p>,
   JobRunDetail: () => null,
 }));
 
 const { WorkloadsBody } = await import('./jobs-workloads');
 
-const job = {
-  id: 'job-1',
-  name: 'nightly-report',
-  kind: 'recurring',
-  status: 'active',
-  image_ref: 'ghcr.io/acme/report:1',
-  ram_mb: 512,
-  max_parallelism: 4,
-  retry_max: 2,
-};
-
 beforeEach(() => {
-  useInfiniteJobs.mockReset().mockReturnValue({
-    data: { pages: [{ jobs: [job] }] },
-    isPending: false,
-    error: null,
-    hasNextPage: false,
-    refetch: vi.fn(),
-  });
-  useJobs.mockReset().mockReturnValue({ data: undefined, isPending: false, error: null });
+  startRun.mockReset().mockResolvedValue({ id: 'run-new', tasks: 1, aggregate_status: 'queued' });
+  deleteJob.mockReset().mockResolvedValue(undefined);
+  confirm.mockReset().mockResolvedValue(true);
 });
 
-describe('WorkloadsBody', () => {
-  it('names the CLI commands to run and delete the selected workload', () => {
-    useJobs.mockReturnValue({ data: { jobs: [job] }, isPending: false, error: null });
-    render(<WorkloadsBody search={{ job: 'job-1' }} onSelection={vi.fn()} />);
+function setup(selected = true) {
+  const onSelection = vi.fn();
+  render(
+    <WorkloadsBody
+      search={selected ? { job: 'job-1', run: 'old-run', task: 2 } : {}}
+      onSelection={onSelection}
+    />
+  );
+  return { onSelection, user: userEvent.setup() };
+}
 
-    expect(screen.getByText('gregale jobs run nightly-report --tasks 1')).toBeInTheDocument();
-    expect(screen.getByText('gregale jobs rm nightly-report')).toBeInTheDocument();
-    expect(screen.queryByText(/Further changes can be made with the CLI/)).not.toBeInTheDocument();
+describe('Workloads start and delete', () => {
+  it('offers neither action until a workload is selected', () => {
+    setup(false);
+    expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('warns beside the run command that pasting it starts real, billed work', () => {
-    useJobs.mockReturnValue({ data: { jobs: [job] }, isPending: false, error: null });
-    render(<WorkloadsBody search={{ job: 'job-1' }} onSelection={vi.fn()} />);
-
-    expect(
-      screen.getByText('Start a run with one task. This starts real, billed work right away.')
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Delete this workload. The CLI does not ask first.')
-    ).toBeInTheDocument();
+  it('opens the queued run in the run views, replacing the previously selected run and task', async () => {
+    const { user, onSelection } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start run' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    await waitFor(() =>
+      expect(onSelection).toHaveBeenCalledWith({ run: 'run-new', task: undefined })
+    );
+    expect(startRun).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'nightly-export', tasks: 1 })
+    );
   });
 
-  it('names the copy buttons as short nouns, not as the warning sentences', () => {
-    useJobs.mockReturnValue({ data: { jobs: [job] }, isPending: false, error: null });
-    render(<WorkloadsBody search={{ job: 'job-1' }} onSelection={vi.fn()} />);
-
-    expect(
-      screen.getByRole('button', { name: 'Copy: run command for nightly-report' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Copy: delete command for nightly-report' })
-    ).toBeInTheDocument();
-  });
-
-  it('shows no command until a workload is selected', () => {
-    render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
-
-    expect(screen.queryByText(/gregale jobs/)).not.toBeInTheDocument();
+  it('clears the selection once the workload is deleted', async () => {
+    const { user, onSelection } = setup();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(onSelection).toHaveBeenCalledWith({
+        job: undefined,
+        run: undefined,
+        task: undefined,
+      })
+    );
+    expect(deleteJob).toHaveBeenCalledWith('nightly-export');
   });
 });
