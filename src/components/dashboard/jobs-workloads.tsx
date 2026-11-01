@@ -4,15 +4,14 @@ import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboa
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { JobCreateDialog } from './job-create-dialog';
+import { JobActions } from '@/components/dashboard/job-actions';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
-import { CliCommand } from '@/components/dashboard/cli-command';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
-import { cliJobRemoveCommand, cliJobRunCommand } from '@/lib/cli-commands';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -62,7 +61,8 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
   // failure should replace the table with its full-page error state.
   const listError = data.length === 0 ? error : undefined;
   const listLoading = isPending && !error && data.length === 0;
-  const job = data.find((j) => j.id === search.job)?.name ?? null;
+  const selectedJob = data.find((j) => j.id === search.job);
+  const job = selectedJob?.name ?? null;
   const runId = search.run ?? null;
 
   const rows = useMemo<JobRow[]>(
@@ -246,24 +246,20 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           </div>
         )}
 
-        {job && (
+        {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. To change it, use gregale jobs update with the fields to change."
+            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
+            actions={
+              <JobActions
+                name={job}
+                status={selectedJob.status}
+                onStarted={(run) => onSelection({ run, task: undefined })}
+                onDeleted={() => onSelection({ job: undefined, run: undefined, task: undefined })}
+              />
+            }
           >
             <JobDefinition name={job} />
-            <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4">
-              <CliCommand
-                label="Start a run with one task. This starts real, billed work right away."
-                copyLabel={`run command for ${job}`}
-                command={cliJobRunCommand(job)}
-              />
-              <CliCommand
-                label="Delete this workload. The CLI does not ask first."
-                copyLabel={`delete command for ${job}`}
-                command={cliJobRemoveCommand(job)}
-              />
-            </div>
           </Panel>
         )}
 
