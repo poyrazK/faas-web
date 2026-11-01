@@ -987,3 +987,154 @@ describe('/v1/apps/{slug}/deployment-aliases', () => {
     expect((await put('alias-long', 'a'.repeat(26), live.id)).status).toBe(200);
   });
 });
+
+describe('/v1/account/release-webhooks', () => {
+  const ROOT = '/v1/account/release-webhooks';
+  const post = (body: object) => json(ROOT, { method: 'POST', body: JSON.stringify(body) });
+  const valid = {
+    target_url: 'https://releases.example.com/hook',
+    webhook_secret: 's3cret',
+    event_filter: ['deployment.live', 'rollout.aborted'],
+  };
+
+  it('creates, lists, edits, rotates and deletes a receiver without echoing the secret', async () => {
+    const created = await post(valid);
+    expect(created).toMatchObject({
+      status: 201,
+      body: {
+        scope: 'account',
+        target_url: valid.target_url,
+        webhook_secret_sealed_masked: '***',
+        retry_policy: 'default',
+        delivery_format: 'json',
+        enabled: true,
+      },
+    });
+    expect(JSON.stringify(created.body)).not.toContain('s3cret');
+    const id = created.body.id as string;
+    expect((await json(ROOT)).body.map((w: { id: string }) => w.id)).toContain(id);
+
+    const patched = await json(`${ROOT}/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: false, delivery_format: 'cloudevents' }),
+    });
+    expect(patched).toMatchObject({
+      status: 200,
+      body: { enabled: false, delivery_format: 'cloudevents' },
+    });
+
+    const rotated = await json(`${ROOT}/${id}/rotate-secret`, {
+      method: 'POST',
+      body: JSON.stringify({ webhook_secret: 'next' }),
+    });
+    expect(rotated).toMatchObject({ status: 200, body: { webhook_secret_sealed_masked: '***' } });
+
+    const removed = await fetch(`${base}${ROOT}/${id}`, {
+      method: 'DELETE',
+    });
+    expect(removed.status).toBe(204);
+    expect((await json(`${ROOT}/${id}`)).body.code).toBe('not_found');
+  });
+
+  it('refuses an empty filter, a non-release event and a duplicate target as app_webhook_invalid', async () => {
+    expect(await post({ ...valid, event_filter: [] })).toMatchObject({
+      status: 400,
+      body: { code: 'app_webhook_invalid' },
+    });
+    expect(await post({ ...valid, event_filter: ['cron.fired'] })).toMatchObject({
+      status: 400,
+      body: { code: 'app_webhook_invalid' },
+    });
+    const target = { ...valid, target_url: 'https://dupe.example.com/hook' };
+    expect((await post(target)).status).toBe(201);
+    expect(await post(target)).toMatchObject({
+      status: 400,
+      body: { code: 'app_webhook_invalid' },
+    });
+  });
+
+  it('answers 402 plan_webhooks_not_allowed on Free', async () => {
+    vi.stubEnv('MOCK_PLAN', 'free');
+    expect(await json(ROOT)).toMatchObject({
+      status: 402,
+      body: { code: 'plan_webhooks_not_allowed' },
+    });
+  });
+
+  it('shares the per-account quota with app webhooks', async () => {
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const listed = (await json(ROOT)).body as unknown[];
+    const room = 10 - listed.length;
+    for (let i = 0; i < room; i++)
+      expect((await post({ ...valid, target_url: `https://q${i}.example.com/hook` })).status).toBe(
+        201
+      );
+    expect(await post({ ...valid, target_url: 'https://over.example.com/hook' })).toMatchObject({
+      status: 403,
+      body: { code: 'plan_webhook_quota' },
+    });
+  });
+
+  it('reads health and attempts, and re-sends only a dead delivery', async () => {
+    const { body: hook } = await post({
+      ...valid,
+      target_url: 'https://deliveries.example.com/hook',
+    });
+    const mock = await import('./release-webhooks');
+    const [dead, done] = mock.seedDeliveries(hook.id, [
+      { status: 'dead', attempt: 7 },
+      { status: 'succeeded', attempt: 1 },
+    ]);
+    const page = await json(`${ROOT}/${hook.id}/deliveries`);
+    expect(page.body.deliveries.map((d: { id: string }) => d.id)).toEqual([dead.id, done.id]);
+
+    const health = await json(`${ROOT}/${hook.id}/health`);
+    expect(health).toMatchObject({
+      status: 200,
+      body: { webhook_id: hook.id, dead_count: 1, receiver_state: 'ready' },
+    });
+
+    const attempts = await json(`${ROOT}/${hook.id}/deliveries/${dead.id}/attempts`);
+    expect(attempts.body.attempts).toHaveLength(7);
+    expect(attempts.body.attempts[0]).toMatchObject({ attempt_number: 7, outcome: 'dead' });
+
+    const refused = await json(`${ROOT}/${hook.id}/deliveries/${done.id}/retry`, {
+      method: 'POST',
+    });
+    expect(refused).toMatchObject({ status: 400, body: { code: 'app_webhook_invalid' } });
+    const resent = await json(`${ROOT}/${hook.id}/deliveries/${dead.id}/retry`, {
+      method: 'POST',
+    });
+    expect(resent).toMatchObject({ status: 200, body: { delivery: { status: 'pending' } } });
+  });
+});
+
+describe('/v1/apps/{slug}/webhooks/{id} health and attempts', () => {
+  it('reads one webhook health and a delivery attempt history', async () => {
+    await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'hook-health', type: 'app', runtime: 'node24' }),
+    });
+    const { body: hook } = await json('/v1/apps/hook-health/webhooks', {
+      method: 'POST',
+      body: JSON.stringify({ target_url: 'https://ops.example.com/h', webhook_secret: 'x' }),
+    });
+    const mock = await import('./release-webhooks');
+    const [failing] = mock.seedDeliveries(hook.id, [{ status: 'pending', attempt: 3 }]);
+    const health = await json(`/v1/apps/hook-health/webhooks/${hook.id}/health`);
+    expect(health).toMatchObject({ status: 200, body: { webhook_id: hook.id, pending_count: 1 } });
+    const attempts = await json(
+      `/v1/apps/hook-health/webhooks/${hook.id}/deliveries/${failing.id}/attempts`
+    );
+    expect(attempts.body.attempts.map((a: { outcome: string }) => a.outcome)).toEqual([
+      'retrying',
+      'retrying',
+      'retrying',
+    ]);
+    const refused = await json(
+      `/v1/apps/hook-health/webhooks/${hook.id}/deliveries/${failing.id}/retry`,
+      { method: 'POST' }
+    );
+    expect(refused).toMatchObject({ status: 400, body: { code: 'app_webhook_invalid' } });
+  });
+});
