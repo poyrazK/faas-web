@@ -486,7 +486,10 @@ describe('Releases hub', () => {
       await act(async () => router.history.forward());
       const restored = await screen.findByRole('dialog', { name: /details/ });
       await waitFor(() => expect(restored.contains(document.activeElement)).toBe(true));
-    }
+    },
+    // Fifty rows and a full open, close, Back, Forward round trip: about 4 s
+    // of the default 5 s on an idle machine, so it timed out under load.
+    20_000
   );
 
   it.each([
