@@ -43,7 +43,20 @@ export function hasRollbackTarget(deployments: ReadonlyArray<{ state: string }>)
   return deployments.filter((deployment) => deployment.state === 'succeeded').length > 1;
 }
 
-/** Invoke and live logs need at least one deployment that can serve traffic. */
+/** Invoke needs at least one deployment that can serve traffic. */
 export function hasRunnableDeployment(deployments: ReadonlyArray<{ state: string }>): boolean {
   return deployments.some((deployment) => deployment.state === 'succeeded');
+}
+
+/**
+ * Logs need only a deployment that has finished, live or failed: a first
+ * deploy that boots and then crashes writes its output to the app's log
+ * stream, and that is exactly when someone needs to read it. apid stores no
+ * excerpt on the failed deployment (every `SetDeploymentFailedEx` caller
+ * passes nil logs), so the stream is the only place the output is.
+ */
+export function hasLogSource(deployments: ReadonlyArray<{ state: string }>): boolean {
+  return deployments.some(
+    (deployment) => deployment.state === 'succeeded' || deployment.state === 'failed'
+  );
 }

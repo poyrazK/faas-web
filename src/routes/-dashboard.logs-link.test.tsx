@@ -15,6 +15,7 @@ const historical = 'd'.repeat(32);
 const mocks = vi.hoisted(() => ({
   stream: vi.fn(),
   deployments: vi.fn(),
+  statuses: ['live'] as string[],
   apps: [
     { id: '1', slug: 'alpha' },
     { id: '2', slug: 'beta' },
@@ -26,7 +27,16 @@ vi.mock('@/lib/api/queries', () => ({
     mocks.deployments(slug);
     return {
       data: {
-        pages: [{ items: [{ id: 'dep', app_id: '1', status: 'live', created_at: '2026-09-01' }] }],
+        pages: [
+          {
+            items: mocks.statuses.map((status, i) => ({
+              id: `dep-${i}`,
+              app_id: '1',
+              status,
+              created_at: '2026-09-01',
+            })),
+          },
+        ],
       },
       isPending: false,
       error: null,
@@ -53,6 +63,7 @@ beforeEach(() => {
   localStorage.clear();
   mocks.stream.mockClear();
   mocks.deployments.mockClear();
+  mocks.statuses = ['live'];
 });
 async function mount(entry: string) {
   const root = createRootRoute({ component: Outlet });
@@ -198,5 +209,31 @@ describe('shared log investigations', () => {
     await waitFor(() => expect(router.state.location.search.app).toBe('alpha'));
     expect(router.state.location.search.level).toBeUndefined();
     expect(router.state.location.search.date).toBeUndefined();
+  });
+});
+
+describe('logs before any deployment has gone live', () => {
+  it('streams a failed first deploy, and says why nothing is live yet', async () => {
+    mocks.statuses = ['failed'];
+    await mount('/dashboard/logs?app=alpha');
+    expect(screen.getByRole('status')).toHaveTextContent('No deployment has gone live yet');
+    expect(screen.getByLabelText('Filter log text')).toBeInTheDocument();
+    expect(mocks.stream).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: 'live', slug: 'alpha' }),
+      true
+    );
+  });
+
+  it('keeps the gate while the only deployment is still building', async () => {
+    mocks.statuses = ['building'];
+    await mount('/dashboard/logs?app=alpha');
+    expect(screen.getByText('Deploy this app before reading its logs.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Filter log text')).not.toBeInTheDocument();
+  });
+
+  it('shows no notice once a deployment is live', async () => {
+    mocks.statuses = ['failed', 'live'];
+    await mount('/dashboard/logs?app=alpha');
+    expect(screen.queryByText(/No deployment has gone live yet/)).not.toBeInTheDocument();
   });
 });
