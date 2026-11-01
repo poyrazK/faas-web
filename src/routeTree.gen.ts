@@ -77,6 +77,8 @@ import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboa
 import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
 import { Route as DashboardWorkflowsSplatRouteImport } from './routes/dashboard.workflows.$'
+import { Route as DocsApiIndexRouteImport } from './routes/docs.api.index'
+import { Route as DocsApiGroupRouteImport } from './routes/docs.api.$group'
 import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -421,6 +423,16 @@ const DashboardWorkflowsSplatRoute = DashboardWorkflowsSplatRouteImport.update({
   path: '/workflows/$',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DocsApiIndexRoute = DocsApiIndexRouteImport.update({
+  id: '/api/',
+  path: '/api/',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsApiGroupRoute = DocsApiGroupRouteImport.update({
+  id: '/api/$group',
+  path: '/api/$group',
+  getParentRoute: () => DocsRoute,
+} as any)
 const StatusIncidentsIdRoute = StatusIncidentsIdRouteImport.update({
   id: '/incidents/$id',
   path: '/incidents/$id',
@@ -493,10 +505,12 @@ export interface FileRoutesByFullPath {
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
+  '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
+  '/docs/api/': typeof DocsApiIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -560,10 +574,12 @@ export interface FileRoutesByTo {
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
+  '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps': typeof DashboardAppsIndexRoute
   '/dashboard/projects': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
+  '/docs/api': typeof DocsApiIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -632,10 +648,12 @@ export interface FileRoutesById {
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
+  '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
+  '/docs/api/': typeof DocsApiIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -705,10 +723,12 @@ export interface FileRouteTypes {
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
+    | '/docs/api/$group'
     | '/status/incidents/$id'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
     | '/dashboard/workflows/'
+    | '/docs/api/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -772,10 +792,12 @@ export interface FileRouteTypes {
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
+    | '/docs/api/$group'
     | '/status/incidents/$id'
     | '/dashboard/apps'
     | '/dashboard/projects'
     | '/dashboard/workflows'
+    | '/docs/api'
   id:
     | '__root__'
     | '/'
@@ -843,10 +865,12 @@ export interface FileRouteTypes {
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
+    | '/docs/api/$group'
     | '/status/incidents/$id'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
     | '/dashboard/workflows/'
+    | '/docs/api/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1339,6 +1363,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardWorkflowsSplatRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/docs/api/': {
+      id: '/docs/api/'
+      path: '/api'
+      fullPath: '/docs/api/'
+      preLoaderRoute: typeof DocsApiIndexRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/api/$group': {
+      id: '/docs/api/$group'
+      path: '/api/$group'
+      fullPath: '/docs/api/$group'
+      preLoaderRoute: typeof DocsApiGroupRouteImport
+      parentRoute: typeof DocsRoute
+    }
     '/status/incidents/$id': {
       id: '/status/incidents/$id'
       path: '/incidents/$id'
@@ -1491,12 +1529,16 @@ interface DocsRouteChildren {
   DocsSplatRoute: typeof DocsSplatRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  DocsApiGroupRoute: typeof DocsApiGroupRoute
+  DocsApiIndexRoute: typeof DocsApiIndexRoute
 }
 
 const DocsRouteChildren: DocsRouteChildren = {
   DocsSplatRoute: DocsSplatRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsIndexRoute: DocsIndexRoute,
+  DocsApiGroupRoute: DocsApiGroupRoute,
+  DocsApiIndexRoute: DocsApiIndexRoute,
 }
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)

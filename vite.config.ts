@@ -5,6 +5,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { mockApi } from './mock/plugin';
 import { securityHeaders } from './src/lib/security-headers';
+import { apiReference } from './src/lib/api-reference/plugin';
 
 /**
  * Upstream API for `npm run dev`. In production the console and `apid` share
@@ -76,6 +77,7 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
+    apiReference(),
     ...(MOCK ? [mockApi()] : []),
   ],
   resolve: {
