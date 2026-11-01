@@ -834,14 +834,15 @@ export const LEDGER: LedgerEntry[] = [
     status: 'full',
     surfaces: ['/dashboard/analytics'],
   },
-  // G122 · beta
+  // G122 · beta. OTLP ingest is exporter plumbing, out of scope per the spec's
+  // "Agent, CI and SDK plumbing"; the customer surface (list, push, delete,
+  // history) is complete.
   {
     row: 122,
     name: 'Custom metrics and OTLP metric ingest',
-    status: 'none',
-    surfaces: [],
-    gap: 'Custom metrics',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Metrics'],
+    capability: 'custom-metrics',
   },
   // G124 · preview
   {
