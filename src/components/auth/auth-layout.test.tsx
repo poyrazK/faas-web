@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
-import { docSource } from '@/lib/docs-content';
+import { docSource } from '@/lib/docs-corpus';
 import { AuthLayout } from './auth-layout';
 
 vi.mock('@/components/dotcut/dot-cut-canvas', () => ({ DotCutCanvas: () => null }));

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
@@ -12,7 +12,8 @@ describe('docs search', () => {
     await user.keyboard('/');
     expect(input).toHaveFocus();
     await user.type(input, 'source_ref_unavailable');
-    const result = screen.getByRole('link', { name: /Deploy a GitHub source ref/ });
+    // The index loads on first focus, so results arrive asynchronously.
+    const result = await screen.findByRole('link', { name: /Deploy a GitHub source ref/ });
     expect(result).toHaveAttribute('href', '/docs/deploy-from-source');
     await user.keyboard('{ArrowDown}');
     expect(result).toHaveFocus();
@@ -32,7 +33,7 @@ describe('docs search', () => {
     );
     const input = await screen.findByRole('searchbox');
     await user.type(input, 'deploy');
-    const links = within(screen.getByRole('search')).getAllByRole('link');
+    const links = await within(screen.getByRole('search')).findAllByRole('link');
     await user.keyboard('{ArrowUp}');
     expect(links.at(-1)).toHaveFocus();
     await user.click(screen.getByRole('button', { name: 'Outside' }));
@@ -43,7 +44,7 @@ describe('docs search', () => {
     render(withRouter(<DocsSearch />));
     const input = await screen.findByRole('searchbox');
     await user.type(input, 'qzzzx-unfindable');
-    expect(screen.getByRole('status')).toHaveTextContent('No matching guides');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('No matching guides'));
     await user.click(screen.getByRole('button', { name: 'Clear documentation search' }));
     expect(input).toHaveValue('');
     expect(input).toHaveFocus();
