@@ -342,6 +342,16 @@ describe('App Overview', () => {
     expect(activity).toHaveTextContent('42ms');
   });
 
+  it('keeps the plain totals when the hourly series comes back empty', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics();
+    fixtures.series = { points: [] };
+    await mount();
+    const activity = screen.getByRole('region', { name: 'Traffic snapshot' });
+    expect(within(activity).queryByRole('group', { name: /requests per hour/i })).toBeNull();
+    expect(activity).toHaveTextContent('1.2k');
+  });
+
   it('never asks Free for the hourly series it does not include', async () => {
     fixtures.plan = 'free';
     await mount();

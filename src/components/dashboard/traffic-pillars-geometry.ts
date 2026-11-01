@@ -101,7 +101,8 @@ const count = (v: number) => v.toLocaleString('en-US');
 
 /** What the header says while the pointer or keyboard rests on an hour. */
 export function hourReadout(hour: HourPoint | null, hoursAgo: number) {
-  const when = hoursAgo === 0 ? 'This hour' : `${hoursAgo}h ago`;
+  // The newest bucket is still filling, so it is shorter than the hour it will be.
+  const when = hoursAgo === 0 ? 'This hour so far' : `${hoursAgo}h ago`;
   if (!hour) return `${when} · not recorded`;
   if (!(hour.requests > 0)) return `${when} · no requests`;
   const errors =

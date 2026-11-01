@@ -12,6 +12,17 @@ const hours: HourPoint[] = Array.from({ length: COLS }, (_, i) => ({
   cold_boots: 0,
   p95_ms: 50 + i,
 }));
+const RECT = {
+  left: 0,
+  top: 0,
+  width: VIEW_W,
+  height: 192,
+  right: VIEW_W,
+  bottom: 192,
+  x: 0,
+  y: 0,
+  toJSON: () => ({}),
+} as DOMRect;
 const SUMMARY = '2.9K requests · 0.10% errors · p95 60 ms (2xx)';
 
 function field() {
@@ -45,7 +56,7 @@ describe('TrafficPillars', () => {
     await user.tab();
     expect(field()).toHaveFocus();
     await user.keyboard('{End}');
-    expect(readout()).toHaveTextContent('This hour · 123 requests · no errors · p95 73ms');
+    expect(readout()).toHaveTextContent('This hour so far · 123 requests · no errors · p95 73ms');
     await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
     expect(readout()).toHaveTextContent('3h ago · 120 requests · 2.50% errors · p95 70ms');
     await user.keyboard('{Home}');
@@ -53,6 +64,42 @@ describe('TrafficPillars', () => {
     await user.keyboard('{ArrowLeft}');
     expect(readout()).toHaveTextContent('23h ago · 100 requests');
     await user.tab();
+    expect(readout()).toHaveTextContent(SUMMARY);
+  });
+
+  it('starts the arrow keys at the newest hour, and Escape returns to the totals', async () => {
+    const user = userEvent.setup();
+    render(<TrafficPillars points={hours} summary={SUMMARY} />);
+    await user.tab();
+    await user.keyboard('{ArrowLeft}');
+    expect(readout()).toHaveTextContent('This hour so far');
+    await user.keyboard('{ArrowLeft}');
+    expect(readout()).toHaveTextContent('1h ago');
+    await user.keyboard('{Escape}');
+    expect(readout()).toHaveTextContent(SUMMARY);
+    expect(field()).toHaveFocus();
+  });
+
+  it('announces hours chosen from the keyboard but not every hour a pointer sweeps', async () => {
+    const user = userEvent.setup();
+    render(<TrafficPillars points={hours} summary={SUMMARY} />);
+    vi.spyOn(field(), 'getBoundingClientRect').mockReturnValue(RECT);
+    fireEvent.pointerMove(field(), { clientX: VIEW_W });
+    expect(readout()).toHaveAttribute('aria-live', 'off');
+    fireEvent.pointerLeave(field());
+    await user.tab();
+    await user.keyboard('{End}');
+    expect(readout()).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('keeps the hovered hour when focus leaves while the pointer is still over it', () => {
+    render(<TrafficPillars points={hours} summary={SUMMARY} />);
+    vi.spyOn(field(), 'getBoundingClientRect').mockReturnValue(RECT);
+    act(() => field().focus());
+    fireEvent.pointerMove(field(), { clientX: VIEW_W });
+    act(() => field().blur());
+    expect(readout()).toHaveTextContent('This hour so far');
+    fireEvent.pointerLeave(field());
     expect(readout()).toHaveTextContent(SUMMARY);
   });
 
@@ -70,7 +117,7 @@ describe('TrafficPillars', () => {
       toJSON: () => ({}),
     } as DOMRect);
     fireEvent.pointerMove(field(), { clientX: VIEW_W });
-    expect(readout()).toHaveTextContent('This hour');
+    expect(readout()).toHaveTextContent('This hour so far');
     fireEvent.pointerMove(field(), { clientX: 0 });
     expect(readout()).toHaveTextContent('23h ago');
     fireEvent.pointerLeave(field());

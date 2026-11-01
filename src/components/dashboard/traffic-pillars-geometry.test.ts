@@ -128,9 +128,9 @@ describe('hourReadout', () => {
     ).toBe('6h ago · 880 requests · 1.02% errors · p95 240ms');
   });
 
-  it('calls the newest bucket this hour and says when there were no errors', () => {
+  it('calls the newest, still-filling bucket this hour so far', () => {
     expect(hourReadout(point({ requests: 12, p95_ms: 30 }), 0)).toBe(
-      'This hour · 12 requests · no errors · p95 30ms'
+      'This hour so far · 12 requests · no errors · p95 30ms'
     );
   });
 

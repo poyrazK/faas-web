@@ -49,6 +49,16 @@ export function TrafficPillars({
   const px = reduce ? target : glide;
   const active = reduce ? on : settle;
   const [hour, setHour] = useState<number | null>(null);
+  // Only hours chosen from the keyboard are announced; a pointer sweeping the
+  // card would otherwise queue an announcement for every hour it crosses.
+  const [via, setViaState] = useState<'pointer' | 'keyboard'>('pointer');
+  const viaShown = useRef<'pointer' | 'keyboard'>('pointer');
+  const setVia = (next: 'pointer' | 'keyboard') => {
+    if (viaShown.current === next) return;
+    viaShown.current = next;
+    setViaState(next);
+  };
+  const hovering = useRef(false);
   // Mirrors `hour`, so gliding within one hour moves only motion values and
   // re-renders nothing; React renders once per hour crossed.
   const shown = useRef<number | null>(null);
@@ -70,38 +80,61 @@ export function TrafficPillars({
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
     if (!(box.width > 0)) return;
+    hovering.current = true;
+    setVia('pointer');
     const x = ((e.clientX - box.left) / box.width) * VIEW_W;
     select(columnAt(x), hourAt(x));
   };
+  const onPointerLeave = () => {
+    hovering.current = false;
+    release();
+  };
+  // Clicking elsewhere blurs the field; the pointer still over it keeps its hour.
+  const onBlur = () => {
+    if (!hovering.current) release();
+  };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const current = hour ?? COLS - 1;
+    if (e.key === 'Escape') {
+      if (hour !== null) e.preventDefault();
+      setVia('keyboard');
+      release();
+      return;
+    }
+    // The first arrow from the totals lands on the newest hour, not past it.
     const next =
-      e.key === 'ArrowLeft'
-        ? Math.max(0, current - 1)
-        : e.key === 'ArrowRight'
-          ? Math.min(COLS - 1, current + 1)
-          : e.key === 'Home'
-            ? 0
-            : e.key === 'End'
-              ? COLS - 1
-              : null;
+      hour === null && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+        ? COLS - 1
+        : e.key === 'ArrowLeft'
+          ? Math.max(0, (hour ?? COLS - 1) - 1)
+          : e.key === 'ArrowRight'
+            ? Math.min(COLS - 1, (hour ?? COLS - 1) + 1)
+            : e.key === 'Home'
+              ? 0
+              : e.key === 'End'
+                ? COLS - 1
+                : null;
     if (next === null) return;
     e.preventDefault();
+    setVia('keyboard');
     select(next);
   };
 
   return (
     <div className="mt-4">
-      <p role="status" className="font-mono text-xs text-muted-foreground">
+      <p
+        role="status"
+        aria-live={via === 'keyboard' ? 'polite' : 'off'}
+        className="font-mono text-xs text-muted-foreground"
+      >
         {hour === null ? summary : hourReadout(day[hour], COLS - 1 - hour)}
       </p>
       <div
         role="group"
         tabIndex={0}
-        aria-label="Requests per hour, last 24 hours. Use the arrow keys to read each hour."
+        aria-label="Requests per hour, last 24 hours. Use the arrow keys to read each hour, Escape for the totals."
         onPointerMove={onPointerMove}
-        onPointerLeave={release}
-        onBlur={release}
+        onPointerLeave={onPointerLeave}
+        onBlur={onBlur}
         onKeyDown={onKeyDown}
         className="mt-2 cursor-crosshair rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >

@@ -80,7 +80,8 @@ export function AppOverview({
   const hasTraffic = observed && measured(observed.request_count) && observed.request_count > 0;
   // The field needs both reads: the totals it rests on and the hourly series it
   // draws. Without the series the totals stand alone rather than a guessed shape.
-  const hourly = observed && !series.isPending && !series.error ? series.data?.points : undefined;
+  const points = observed && !series.isPending && !series.error ? series.data?.points : undefined;
+  const hourly = points?.length ? points : undefined;
   const requestErrors =
     hasTraffic && measured(observed.error_rate_pct) && observed.error_rate_pct > 0;
   const attention = Boolean(failed || appError || requestErrors);
