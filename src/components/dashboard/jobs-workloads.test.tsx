@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const startRun = vi.fn();
 const deleteJob = vi.fn();
 const confirm = vi.fn();
+const cap = vi.hoisted(() => ({ maturity: 'beta' as string }));
 
 const job = {
   id: 'job-1',
@@ -34,7 +35,26 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 // Unrelated panels: their own tests cover them.
 vi.mock('./job-create-dialog', () => ({ JobCreateDialog: () => null }));
-vi.mock('@/components/dashboard/job-runs', () => ({ JobRuns: () => null }));
+vi.mock('@/components/dashboard/job-runs', () => ({
+  JobRuns: (p: { selectedRunId: string | null; renderSelected?: (run: string) => unknown }) =>
+    p.selectedRunId ? p.renderSelected?.(p.selectedRunId) : null,
+}));
+vi.mock('@/components/dashboard/job-schedule', () => ({
+  JobSchedule: ({ name }: { name: string }) => <p>schedule of {name}</p>,
+}));
+vi.mock('@/components/dashboard/job-registry-credentials', () => ({
+  JobRegistryCredentials: ({ name }: { name: string }) => <p>registries of {name}</p>,
+}));
+vi.mock('@/components/dashboard/job-run-replay', () => ({
+  JobRunReplay: ({ runId, jobStatus }: { runId: string; jobStatus: string }) => (
+    <p>
+      replay {runId} of {jobStatus}
+    </p>
+  ),
+}));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => ({ capability: { key: 'jobs', maturity: cap.maturity } }),
+}));
 vi.mock('@/components/dashboard/job-tasks', () => ({ JobTasks: () => null }));
 vi.mock('@/components/dashboard/job-detail', () => ({
   JobDefinition: () => <p>definition</p>,
@@ -44,6 +64,7 @@ vi.mock('@/components/dashboard/job-detail', () => ({
 const { WorkloadsBody } = await import('./jobs-workloads');
 
 beforeEach(() => {
+  cap.maturity = 'beta';
   startRun.mockReset().mockResolvedValue({ id: 'run-new', tasks: 1, aggregate_status: 'queued' });
   deleteJob.mockReset().mockResolvedValue(undefined);
   confirm.mockReset().mockResolvedValue(true);
@@ -90,5 +111,27 @@ describe('Workloads start and delete', () => {
       })
     );
     expect(deleteJob).toHaveBeenCalledWith('nightly-export');
+  });
+});
+
+describe('Workloads detail', () => {
+  it("labels workloads with the jobs capability's maturity, not a fixed word", () => {
+    const view = render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    view.unmount();
+    cap.maturity = 'ga';
+    render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
+  });
+
+  it("shows the selected workload's schedule and private registries", () => {
+    setup();
+    expect(screen.getByText('schedule of nightly-export')).toBeInTheDocument();
+    expect(screen.getByText('registries of nightly-export')).toBeInTheDocument();
+  });
+
+  it('offers a replay on the selected run, knowing whether the workload is paused', () => {
+    setup();
+    expect(screen.getByText('replay old-run of active')).toBeInTheDocument();
   });
 });

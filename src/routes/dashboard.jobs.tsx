@@ -5,6 +5,7 @@ import { WorkloadsBody } from '@/components/dashboard/jobs-workloads';
 import { ScheduledRequestsBody } from '@/components/dashboard/jobs-scheduled';
 import { TriggersBody } from '@/components/dashboard/jobs-triggers';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import {
   jobsSection,
   validateJobsSearch,
@@ -57,7 +58,12 @@ function JobsPage() {
           </Link>
         ))}
       </TabNav>
-      {section === 'workloads' && <WorkloadsBody search={search} onSelection={onSelection} />}
+      {section === 'workloads' && (
+        // apid hides /v1/jobs from an account the jobs capability is off for.
+        <CapabilityGate capability="jobs" title="Workloads">
+          <WorkloadsBody search={search} onSelection={onSelection} />
+        </CapabilityGate>
+      )}
       {section === 'automations' && <AutomationsBody search={search} onSelection={onSelection} />}
       {section === 'scheduled' && (
         <ScheduledRequestsBody search={search} onSelection={onSelection} />

@@ -13,6 +13,8 @@ import { useToast } from '@/components/ui/toast';
 import { useCreateJob, type Job } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { PlanGated } from './plan-gated';
+import { cronScheduleError, TimezoneField } from './cron-fields';
+import { ScheduleField, useScheduleClock } from './schedule-field';
 
 const RESOURCE_FIELDS = [
   ['ram_mb', 'Memory (MB)'],
@@ -21,7 +23,7 @@ const RESOURCE_FIELDS = [
   ['retry_max', 'Maximum retries'],
 ] as const;
 type Resource = (typeof RESOURCE_FIELDS)[number][0];
-type Field = 'name' | 'image' | 'executable' | 'arguments' | Resource;
+type Field = 'name' | 'image' | 'executable' | 'arguments' | 'schedule' | Resource;
 
 /** The API receives argv, never a whitespace-split shell command. */
 export function JobCreateDialog({
@@ -36,6 +38,10 @@ export function JobCreateDialog({
   const { toast } = useToast();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'batch' | 'recurring'>('batch');
+  // apid requires a schedule for a recurring job and refuses one without it.
+  const [schedule, setSchedule] = useState('');
+  const [timezone, setTimezone] = useState('UTC');
+  const now = useScheduleClock();
   const [image, setImage] = useState('');
   const [executable, setExecutable] = useState('');
   const [args, setArgs] = useState('');
@@ -54,6 +60,7 @@ export function JobCreateDialog({
   if (!image.trim()) errors.image = 'Enter a container image reference.';
   if (!executable.trim()) errors.executable = 'Enter the executable to run inside the container.';
   if (command.length > 64) errors.arguments = 'Use at most 63 arguments.';
+  if (kind === 'recurring') errors.schedule = cronScheduleError(schedule, now);
   for (const [key] of RESOURCE_FIELDS) {
     const value = resources[key];
     if (value && (!Number.isSafeInteger(Number(value)) || Number(value) < 1))
@@ -107,6 +114,9 @@ export function JobCreateDialog({
               kind,
               image_ref: image.trim(),
               command,
+              ...(kind === 'recurring'
+                ? { schedule: schedule.trim(), timezone: timezone.trim() || 'UTC' }
+                : {}),
               ...overrides,
             });
             toast({
@@ -152,6 +162,17 @@ export function JobCreateDialog({
               </Select>
             </div>
           </div>
+          {kind === 'recurring' && (
+            <div className="space-y-4 rounded-lg border border-border p-4">
+              <ScheduleField
+                value={schedule}
+                onChange={setSchedule}
+                error={errorFor('schedule')}
+                timezone={timezone}
+              />
+              <TimezoneField value={timezone} onChange={setTimezone} />
+            </div>
+          )}
           <div className="space-y-1.5">
             <label htmlFor="job-image" className="text-xs font-medium">
               Container image

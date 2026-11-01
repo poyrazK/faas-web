@@ -15,6 +15,19 @@ import { ApiError } from '@/lib/api/errors';
 
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }));
 vi.mock('@/lib/api/client', async (original) => ({ ...(await original<object>()), api }));
+const CAP = vi.hoisted(() => ({ access: 'on' as string }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: CAP.access, refresh: vi.fn() }),
+  useCapability: () => ({ capability: { key: 'jobs', maturity: 'beta' } }),
+}));
+// Detail panels with their own tests.
+vi.mock('@/components/dashboard/job-schedule', () => ({ JobSchedule: () => null }));
+vi.mock('@/components/dashboard/job-registry-credentials', () => ({
+  JobRegistryCredentials: () => null,
+}));
+vi.mock('@/components/dashboard/job-run-replay', () => ({ JobRunReplay: () => null }));
+vi.mock('@/components/dashboard/job-task-retry', () => ({ JobTaskRetry: () => null }));
+vi.mock('@/components/dashboard/job-task-artifacts', () => ({ JobTaskArtifacts: () => null }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 const job = {
@@ -195,6 +208,10 @@ describe('Workload creation', () => {
       within(dialog).getByRole('combobox', { name: 'Kind' }),
       'recurring'
     );
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Schedule' }), '0 3 * * *');
+    const zone = within(dialog).getByRole('combobox', { name: 'Timezone' });
+    await userEvent.clear(zone);
+    await userEvent.type(zone, 'Europe/Istanbul');
     await userEvent.click(within(dialog).getByText('Resource limits', { exact: false }));
     for (const [label, value] of [
       ['Memory (MB)', '256'],
@@ -212,6 +229,8 @@ describe('Workload creation', () => {
           kind: 'recurring',
           image_ref: 'ghcr.io/acme/backup:v1',
           command: ['python'],
+          schedule: '0 3 * * *',
+          timezone: 'Europe/Istanbul',
           ram_mb: 256,
           task_timeout_sec: 60,
           max_parallelism: 2,
@@ -219,6 +238,18 @@ describe('Workload creation', () => {
         },
       })
     );
+  });
+
+  it('asks a recurring workload for its schedule, which apid requires', async () => {
+    const dialog = await openForm();
+    await fillForm(dialog);
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: 'Kind' }),
+      'recurring'
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create workload' }));
+    expect(within(dialog).getByText(/five-field cron schedule/i)).toBeInTheDocument();
+    expect(api.POST).not.toHaveBeenCalled();
   });
 
   it('rejects arguments without an executable and invalid resource values', async () => {

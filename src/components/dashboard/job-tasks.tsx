@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { useJobTaskLog, useJobTasks } from '@/lib/api/queries';
+import { JobTaskRetry } from '@/components/dashboard/job-task-retry';
+import { JobTaskArtifacts } from '@/components/dashboard/job-task-artifacts';
 
 /**
  * The tasks of one run, and the tail of a task's log.
@@ -76,7 +78,11 @@ export function JobTasks({
               {t.attempt > 1 && (
                 <span className="text-xs text-muted-foreground">attempt {t.attempt}</span>
               )}
+              <span className="ml-auto">
+                <JobTaskRetry name={name} runId={runId} task={t} />
+              </span>
             </div>
+            <JobTaskArtifacts name={name} runId={runId} task={t} />
 
             {open === t.task_index && (
               <div className="mt-1">

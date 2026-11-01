@@ -8,6 +8,10 @@ import { JobActions } from '@/components/dashboard/job-actions';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
+import { JobSchedule } from '@/components/dashboard/job-schedule';
+import { JobRegistryCredentials } from '@/components/dashboard/job-registry-credentials';
+import { JobRunReplay } from '@/components/dashboard/job-run-replay';
+import { JobsMaturity } from './jobs-maturity';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
@@ -174,12 +178,15 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         title="Workloads"
         description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
         actions={
-          !isPlanGate(error) && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" />
-              New workload
-            </Button>
-          )
+          <div className="flex items-center gap-2">
+            <JobsMaturity />
+            {!isPlanGate(error) && (
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus className="h-4 w-4" />
+                New workload
+              </Button>
+            )}
+          </div>
         }
       />
       {creating && (
@@ -249,7 +256,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
+            description="Current configuration. Changing the image, command, environment, or resources still takes gregale jobs update."
             actions={
               <JobActions
                 name={job}
@@ -262,6 +269,9 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
             <JobDefinition name={job} />
           </Panel>
         )}
+
+        {job && selectedJob && <JobSchedule name={job} />}
+        {job && selectedJob && <JobRegistryCredentials name={job} />}
 
         {job && (
           <Panel
@@ -277,6 +287,15 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
                   <Panel
                     title="Run"
                     description="What this run did, counted as the API reports it."
+                    actions={
+                      <JobRunReplay
+                        name={job}
+                        runId={selectedRun}
+                        jobStatus={selectedJob?.status ?? 'active'}
+                        onReplayed={(run) => onSelection({ run, task: undefined })}
+                        onSelectRun={(run) => onSelection({ run, task: undefined })}
+                      />
+                    }
                   >
                     <JobRunDetail name={job} runId={selectedRun} />
                   </Panel>
