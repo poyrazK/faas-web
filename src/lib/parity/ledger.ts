@@ -866,8 +866,8 @@ export const LEDGER: LedgerEntry[] = [
     row: 125,
     name: 'Alerts, notification channels, alert presets',
     status: 'partial',
-    surfaces: ['/dashboard/alerts'],
-    gap: 'Notification channels; rule-form metrics, baselines, SLO and log queries; alert detail',
+    surfaces: ['/dashboard/alerts', '/dashboard/apps/$appSlug?tab=Alerts'],
+    gap: 'Editing a rule beyond pausing it and its channels; notify_resolved (not in the vendored spec); channels on presets; event, edge-rule, MCP and workflow metrics',
     wave: 2,
   },
   // G127 · preview
