@@ -110,6 +110,27 @@ export async function uploadSignedObject(
     throw new Error(`Upload failed (${response.status}). Request a new upload and try again.`);
 }
 
+/**
+ * Read a signed GET into memory, sending the headers it was signed with. The
+ * console's origin is an operator origin the S3 gateway answers CORS for on
+ * every bucket (faas pkg/s3gateway/cors.go), and the gateway is in
+ * connect-src. Used where following the URL would render the object in place
+ * of the console, because a presigned GET carries no Content-Disposition.
+ */
+export async function fetchSignedObject(signed: components['schemas']['ObjectSignedRequest']) {
+  const response = await fetchSigned(signed.url, {
+    method: 'GET',
+    headers: new Headers(signed.headers),
+    credentials: 'omit',
+    redirect: 'error',
+    referrerPolicy: 'no-referrer',
+  });
+  // Provider error bodies may contain infrastructure details. Do not display them.
+  if (!response.ok)
+    throw new Error(`Download failed (${response.status}). Request a new download and try again.`);
+  return response.blob();
+}
+
 /* ------------------------------------------------------------------ *
  * Bucket access: API-key grants and S3 credentials
  * ------------------------------------------------------------------ */

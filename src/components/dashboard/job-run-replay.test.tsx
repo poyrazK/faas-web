@@ -98,7 +98,10 @@ describe('JobRunReplay', () => {
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Replay 4 tasks of this run?',
-        description: expect.stringMatching(/succeeded do not run again/),
+        description: expect.stringMatching(
+          /new linked run.*uses compute.*succeeded do not run again/s
+        ),
+        destructive: false,
       })
     );
     await waitFor(() =>

@@ -47,9 +47,9 @@ export function JobRunReplay({
     if (
       !(await confirm({
         title: `Replay ${plural(replayable)} of this run?`,
-        description: `A new linked run starts with the ${plural(replayable)} that failed, timed out, ran out of memory or were cancelled, each with a fresh retry budget. Tasks that succeeded do not run again. Tasks that run are billable.`,
+        description: `This starts a new linked run of the ${plural(replayable)} that failed, timed out, ran out of memory or were cancelled, each with a fresh retry budget. It uses compute and is billable. Tasks that succeeded do not run again, and this run is kept as it is.`,
         confirmLabel: 'Replay failed tasks',
-        destructive: true,
+        destructive: false,
       }))
     )
       return;

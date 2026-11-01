@@ -60,7 +60,10 @@ function mount(children: ReactNode) {
   );
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('JobTaskArtifacts', () => {
   it('renders nothing for a task that published no artifacts', () => {
@@ -94,8 +97,12 @@ describe('JobTaskArtifacts', () => {
     expect(screen.getByText('s3://my-results/shard-a.parquet')).toBeInTheDocument();
   });
 
-  it('asks apid to verify the object, then follows the signed URL without a referrer', async () => {
+  it('verifies, then fetches the bytes and saves them under the artifact name, never rendering the URL', async () => {
     const get = spyApi('GET').mockImplementation(() => ok(signed()));
+    const fetch = vi.fn().mockResolvedValue(new Response('{"rows":1}', { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    URL.createObjectURL = vi.fn(() => 'blob:artifact');
+    URL.revokeObjectURL = vi.fn();
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     mount(
       <JobTaskArtifacts
@@ -110,16 +117,44 @@ describe('JobTaskArtifacts', () => {
       '/v1/jobs/{name}/runs/{id}/tasks/{idx}/artifacts/{artifact}/download',
       { params: { path: { name: 'nightly-export', id: 'run-1', idx: 2, artifact: 'result' } } }
     );
+    // The presigned GET has no Content-Disposition, so following it in this tab
+    // would render a JSON or HTML artifact in place of the console.
+    expect(fetch).toHaveBeenCalledWith(
+      signed().download.url,
+      expect.objectContaining({ credentials: 'omit', referrerPolicy: 'no-referrer' })
+    );
     const link = click.mock.contexts[0] as HTMLAnchorElement;
-    expect(link.href).toBe(signed().download.url);
-    expect(link.rel).toBe('noreferrer');
+    expect(link.href).toBe('blob:artifact');
+    expect(link.download).toBe('result');
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:artifact'));
     expect(await screen.findByText(/check the file's sha-256/i)).toBeInTheDocument();
-    // The URL is a bearer capability: it is followed, never shown.
+    // The URL is a bearer capability: it is fetched, never shown.
     expect(screen.queryByText(/X-Amz-Signature/)).not.toBeInTheDocument();
   });
 
-  it('does not follow a signed request that needs headers a link cannot send', async () => {
+  it('sends the headers the signed request names', async () => {
     spyApi('GET').mockImplementation(() => ok(signed({ 'x-amz-checksum-mode': 'ENABLED' })));
+    const fetch = vi.fn().mockResolvedValue(new Response('x', { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    URL.createObjectURL = vi.fn(() => 'blob:artifact');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    mount(
+      <JobTaskArtifacts
+        name="nightly-export"
+        runId="run-1"
+        task={task({ version: 1, artifacts: [managed] })}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Download result' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const headers = new Headers((fetch.mock.calls[0]![1] as RequestInit).headers);
+    expect(headers.get('x-amz-checksum-mode')).toBe('ENABLED');
+  });
+
+  it('says the storage host refused rather than saving its error page', async () => {
+    spyApi('GET').mockImplementation(() => ok(signed()));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<Error/>', { status: 403 })));
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     mount(
       <JobTaskArtifacts
@@ -129,7 +164,7 @@ describe('JobTaskArtifacts', () => {
       />
     );
     await userEvent.click(screen.getByRole('button', { name: 'Download result' }));
-    expect(await screen.findByText(/gregale job artifact get/)).toBeInTheDocument();
+    expect(await screen.findByText(/download failed \(403\)/i)).toBeInTheDocument();
     expect(click).not.toHaveBeenCalled();
   });
 

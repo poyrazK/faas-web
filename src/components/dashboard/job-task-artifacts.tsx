@@ -9,6 +9,7 @@ import {
   type JobArtifact,
   type JobTask,
 } from '@/lib/api/job-detail';
+import { fetchSignedObject } from '@/lib/api/object-storage';
 import { formatUsageBytes } from '@/lib/usage-format';
 
 /**
@@ -17,8 +18,11 @@ import { formatUsageBytes } from '@/lib/usage-format';
  * Gregale keeps the manifest, not the bytes. An `obj://` artifact is in the
  * account's object storage, so apid can check it and sign a five-minute GET;
  * an `s3://` or `gs://` one is the customer's own reference and is only shown.
- * The signed URL is a bearer capability: the browser follows it once, with no
- * referrer, and it is never displayed, copied or stored.
+ * The signed URL is a bearer capability: it is fetched once, with no
+ * credentials or referrer, and never displayed, copied or stored. The bytes
+ * are saved under the artifact's name, because a presigned GET carries no
+ * Content-Disposition and following it would render a text, JSON or HTML
+ * artifact in place of the console.
  */
 export function JobTaskArtifacts({
   name,
@@ -42,20 +46,14 @@ export function JobTaskArtifacts({
         taskIndex: task.task_index,
         artifact: artifact.name,
       });
-      // A navigation cannot carry request headers; the CLI can.
-      if (Object.keys(verified.download.headers ?? {}).length > 0) {
-        toast({
-          kind: 'error',
-          title: 'Download needs the CLI',
-          description: `This signed request needs headers a browser link cannot send. Run gregale job artifact get ${name} ${runId} ${task.task_index} ${artifact.name} --json.`,
-        });
-        return;
-      }
+      const bytes = await fetchSignedObject(verified.download);
+      const href = URL.createObjectURL(bytes);
       const link = document.createElement('a');
-      link.href = verified.download.url;
-      link.rel = 'noreferrer';
-      link.referrerPolicy = 'no-referrer';
+      link.href = href;
+      link.download = artifact.name;
       link.click();
+      // Revoked after the click has handed the blob to the download.
+      setTimeout(() => URL.revokeObjectURL(href), 0);
       toast({
         kind: 'success',
         title: `Downloading ${artifact.name}`,
