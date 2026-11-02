@@ -59,16 +59,7 @@ export function OrgPanel({ slug }: { slug: string }) {
   const memberRows = (members.data?.members ?? []).filter((m) => m.role !== 'owner');
 
   return (
-    <Panel
-      title="Organisation"
-      description={
-        seats.data
-          ? seats.data.limit === 0
-            ? `Personal organizations only on the ${seats.data.plan} plan. Shared member seats are not included.`
-            : `${seats.data.used} of ${seats.data.limit} seats used on the ${seats.data.plan} plan.`
-          : 'Identity and ownership.'
-      }
-    >
+    <Panel title="Organisation">
       <div className="flex flex-col gap-5">
         {org.error || members.error || seats.error ? (
           <div>
@@ -87,6 +78,13 @@ export function OrgPanel({ slug }: { slug: string }) {
           </div>
         ) : null}
         {org.data && <p className="text-sm">{org.data.name}</p>}
+        {seats.data && (
+          <p className="text-sm text-muted-foreground">
+            {seats.data.limit === 0
+              ? `Personal organizations only on the ${seats.data.plan} plan. Shared member seats are not included.`
+              : `${seats.data.used} of ${seats.data.limit} seats used on the ${seats.data.plan} plan.`}
+          </p>
+        )}
         {org.data?.personal && (
           <p className="text-sm text-muted-foreground">
             Personal organizations cannot be renamed or deleted.
@@ -228,7 +226,7 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
   return (
     <Panel
       title="Organisation keys"
-      description="Minted against the org, not a person — CI keeps deploying when someone leaves."
+      help="Owned by the organization, not a person, so CI keeps deploying when someone leaves."
     >
       {!creating && evidence.secret && (
         <OneTimeSecret

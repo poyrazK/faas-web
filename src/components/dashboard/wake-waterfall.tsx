@@ -84,7 +84,7 @@ export function WakeWaterfall({ slug, wakeId }: { slug: string; wakeId: string }
               phase={phase}
               error={gone ? undefined : q.error}
               loadingMessage="Reading the timeline…"
-              emptyMessage="No frames recorded for this wake. It may have aged out. Check the debugger for request evidence."
+              emptyMessage="No frames recorded for this wake; it may have aged out."
             />
             {q.error && !gone && (
               <Button
@@ -123,7 +123,7 @@ export function WakeWaterfall({ slug, wakeId }: { slug: string; wakeId: string }
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No canonical wake stages were recorded. The raw frames are below.
+                No wake stages were recorded; the raw frames are below.
               </p>
             )}
             <OtherFrames frames={anatomy.otherFrames} origin={origin} open={!gen} />

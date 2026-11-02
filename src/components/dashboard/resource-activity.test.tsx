@@ -124,8 +124,7 @@ describe('resource activity timeline', () => {
       'href',
       '/dashboard/domains?q=api.example.com'
     );
-    expect(screen.getByText(/retention expiry/)).toBeInTheDocument();
-    expect(screen.getByText(/Historical coverage can be incomplete/)).toBeInTheDocument();
+    expect(screen.getByText(/Coverage can be incomplete/)).toBeInTheDocument();
   });
   it('keeps unknown outcomes and actor identities explicit', () => {
     state.rows = [

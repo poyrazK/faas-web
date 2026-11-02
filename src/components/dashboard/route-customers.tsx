@@ -119,7 +119,7 @@ export function RouteCustomersPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Customers by route"
-      description="Which API consumers and platform tenants called each route of one deployment, from retained request telemetry."
+      help="Observed only, so zero is not proof a route is unused. Consumer and tenant counts overlap; do not add them."
       actions={
         own.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -194,16 +194,10 @@ export function RouteCustomersPanel({ slug }: { slug: string }) {
                 {detail && <RouteDetail route={detail} limit={data?.customers_limit ?? 20} />}
               </>
             )}
-            {(phase === 'ready' || phase === 'empty') && (
-              <div className="space-y-1 text-xs text-muted-foreground">
-                {data?.window_clamped && <p>The window was shortened to what your plan retains.</p>}
-                <p>
-                  Observed only: sampled, dropped and expired telemetry is not counted, so a route
-                  with no observations is not proof it is unused. Consumer and tenant counts
-                  overlap, so do not add them.
-                  {phase === 'ready' && ' Select a route to see its customers.'}
-                </p>
-              </div>
+            {(phase === 'ready' || phase === 'empty') && data?.window_clamped && (
+              <p className="text-xs text-muted-foreground">
+                The window was shortened to what your plan retains.
+              </p>
             )}
           </div>
         </PlanGated>

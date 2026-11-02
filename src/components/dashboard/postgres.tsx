@@ -144,7 +144,7 @@ export function PostgresDatabases() {
       <div className="flex flex-col gap-6">
         <Panel
           title="Databases"
-          description="Provisioned and run by the platform. Connection details reach your apps as secrets, never this page."
+          help="Connection details reach your apps as secrets, never this page."
           actions={
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus className="h-3.5 w-3.5" />
@@ -290,7 +290,6 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
   return (
     <Panel
       title={database.name}
-      description={`Restore window ${hours(database.restore_window_seconds)} · ${database.availability === 'high_availability' ? 'high availability' : 'single zone'}`}
       actions={
         <Button
           size="xs"
@@ -307,6 +306,10 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Database ID</span>
           <CopyableId value={database.id} label="database ID" full />
+          <span>
+            · Restore window {hours(database.restore_window_seconds)} ·{' '}
+            {database.availability === 'high_availability' ? 'high availability' : 'single zone'}
+          </span>
         </div>
         {database.restore_source_database_id && (
           <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -632,8 +635,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
         </form>
       )}
       <p className="text-xs text-muted-foreground">
-        The connection string is written into the app as a secret under that name. It is never shown
-        in the console and never returned by the API.
+        The connection string reaches the app as this secret and is never shown in the console.
       </p>
     </div>
   );

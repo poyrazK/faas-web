@@ -109,7 +109,7 @@ export function ReleaseScans({ deploymentId }: { deploymentId: string }) {
           </p>
         ) : scan.data.error || scan.data.vulnerabilities == null ? (
           <p className="text-sm text-muted-foreground" role="status">
-            Scan summary unavailable. Redeploy to generate fresh scan evidence.
+            Scan summary unavailable. Redeploy to run a fresh scan.
           </p>
         ) : scan.data.vulnerabilities.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing known in this image.</p>

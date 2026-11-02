@@ -112,6 +112,7 @@ it('lists each route with its requests split by identity and its customer counts
 it('says the counts are observed only and that consumers and tenants overlap', async () => {
   render();
   await screen.findByText('/orders');
+  await userEvent.click(screen.getByRole('button', { name: 'About Customers by route' }));
   expect(screen.getByText(/observed only/i)).toBeInTheDocument();
   expect(screen.getByText(/do not add them/i)).toBeInTheDocument();
 });
@@ -149,6 +150,7 @@ it('says nothing was observed, without calling the route unused', async () => {
   answer = () => usage({ routes: [] });
   render();
   expect(await screen.findByText(/no requests observed/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Customers by route' }));
   expect(screen.getByText(/not proof/i)).toBeInTheDocument();
 });
 

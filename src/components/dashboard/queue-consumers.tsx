@@ -97,7 +97,7 @@ export function QueueConsumers({ slug }: { slug: string }) {
   return (
     <Panel
       title="Queue consumers"
-      description="Durable bindings and binding-scoped scheduler evidence. Queue messages remain below."
+      help="Each delivery attempt uses compute and retries may repeat work, so handlers should be safe to replay."
     >
       <div className="space-y-3 p-4 text-sm">
         {capability.accountId !== accountId || capability.state !== 'available' ? (
@@ -161,12 +161,6 @@ export function QueueConsumers({ slug }: { slug: string }) {
               plan={account.plan}
             />
           ))}
-        <p className="text-xs text-muted-foreground">
-          Pull workers poll and acknowledge externally. Push delivery invokes the configured
-          handler; accepted configuration does not prove that it is processing messages. Each
-          attempt consumes compute and retries may repeat work, so handlers should be safe to
-          replay.
-        </p>
       </div>
     </Panel>
   );

@@ -9,7 +9,7 @@ import { InlinePhase, Panel, queryPhase } from './primitives';
 import { formatCents } from '@/lib/money';
 
 const DESCRIPTION =
-  'Limit monthly overage spending. When the cap is reached, new wakes beyond your allowance are refused. Set $0 to disallow overage, or clear the cap to remove the ceiling.';
+  'At the cap, new wakes beyond your allowance are refused. $0 allows no overage; no cap means no ceiling.';
 
 function capLabel(cents: number | null): string {
   if (cents === null) return 'No cap set';
@@ -35,7 +35,7 @@ export function SpendCap({ compact = false }: { compact?: boolean }) {
 
   if (!compact)
     return (
-      <Panel title="Spend cap" description={DESCRIPTION}>
+      <Panel title="Spend cap" help={DESCRIPTION}>
         {ready && (
           <p className="mb-4 text-sm text-muted-foreground">
             Monthly overage cap: <span className="font-medium text-foreground">{label}</span>

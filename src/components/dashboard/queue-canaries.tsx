@@ -64,7 +64,7 @@ function detail(canary: QueueCanary): string {
     case 'dispatching':
       return 'Delivered and being handled. Not a pass until the handler completes.';
     default:
-      return `Ended ${canary.status}${canary.reason ? ` (${canary.reason})` : ''}. It is not evidence.`;
+      return `Ended ${canary.status}${canary.reason ? ` (${canary.reason})` : ''}. It does not count.`;
   }
 }
 
@@ -80,7 +80,7 @@ export function QueueCanaries({ slug }: { slug: string }) {
   return (
     <Panel
       title="Queue canaries"
-      description="Proves a push queue binding end to end: one reserved message goes to the live deployment’s consumer, and the evidence counts once its handler completes. It changes no traffic."
+      help={`One reserved message goes to the live deployment’s consumer, which must handle it safely. Each canary expires after ${QUEUE_CANARY_MAX_TTL_SECONDS / 60} minutes.`}
     >
       <div className="space-y-4 text-sm">
         <CapabilityNotice
@@ -115,25 +115,19 @@ function QueueCanaryList({ slug }: { slug: string }) {
         onRetry={() => void inventory.refetch()}
       />
       {phase === 'ready' && (
-        <>
-          <ul
-            aria-label="Queue bindings"
-            className="divide-y divide-border rounded-lg border border-border"
-          >
-            {rows.map((item) => (
-              <CanaryRow
-                key={`${item.name}:${item.binding}:${item.scope}`}
-                slug={slug}
-                item={item}
-                deployment={deployment}
-              />
-            ))}
-          </ul>
-          <p className="text-xs text-muted-foreground">
-            The consumer must handle the reserved gregale_queue_canary message safely. Each canary
-            expires after {QUEUE_CANARY_MAX_TTL_SECONDS / 60} minutes.
-          </p>
-        </>
+        <ul
+          aria-label="Queue bindings"
+          className="divide-y divide-border rounded-lg border border-border"
+        >
+          {rows.map((item) => (
+            <CanaryRow
+              key={`${item.name}:${item.binding}:${item.scope}`}
+              slug={slug}
+              item={item}
+              deployment={deployment}
+            />
+          ))}
+        </ul>
       )}
     </>
   );
@@ -195,7 +189,7 @@ function CanaryRow({
     const ok = await confirm({
       title: `Cancel the canary on ${item.binding}?`,
       description:
-        'Cancelling revokes its evidence, even if the handler is still finishing. A release requiring handler completion then needs a new canary.',
+        'Cancelling voids its result, even if the handler is still finishing. A release requiring handler completion then needs a new canary.',
       confirmLabel: 'Cancel canary',
       destructive: true,
     });

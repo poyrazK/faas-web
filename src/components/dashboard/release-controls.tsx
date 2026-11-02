@@ -84,7 +84,7 @@ export function DeploymentControls({
                   !(await confirm({
                     title: `Set ${trafficPercent}% traffic for ${version}?`,
                     description:
-                      'The traffic API rebalances the app by setting every other live deployment to 0%. Continue only if this is intentional.',
+                      'Every other live deployment of this app is set to 0%. Continue only if this is intentional.',
                     confirmLabel: 'Update traffic',
                   }))
                 )

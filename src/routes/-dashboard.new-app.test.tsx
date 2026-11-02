@@ -493,10 +493,7 @@ describe('New App source flow', () => {
     await user.type(await screen.findByLabelText('App name'), 'empty-attempt');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
-    expect(
-      await screen.findByText('Track the app and its first deployment from the platform state.')
-    ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Creating app' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Creating app' })).toBeVisible();
     expect(screen.queryByText('App ready')).not.toBeInTheDocument();
     await act(async () => rejectCreate(new Error('Creation unavailable')));
     expect(await screen.findByRole('button', { name: 'Create app' })).toBeEnabled();

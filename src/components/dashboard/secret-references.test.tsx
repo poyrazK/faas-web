@@ -63,6 +63,7 @@ it('lists production references, removed keys and the shared quota', async () =>
   expect(within(row).getByText('DATABASE_PRIMARY')).toBeInTheDocument();
   expect(screen.getByText('LEGACY_TOKEN')).toBeInTheDocument();
   expect(screen.getByText(/5 of 128 variables and references/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Secret references' }));
   expect(screen.getByText(/next cold wake/i)).toBeInTheDocument();
   expect(spies.GET).toHaveBeenCalledWith(
     '/v1/apps/{slug}/secret-references',

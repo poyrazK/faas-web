@@ -119,7 +119,7 @@ export function DeleteOrganization({ slug, onDeleted }: { slug: string; onDelete
         open={open}
         onClose={close}
         title={`Delete ${slug}?`}
-        description="This marks the organization as pending deletion. This console has no organization restoration action; the API does not specify a recovery window. Your personal account is not deleted."
+        description="The organization is marked as pending deletion and cannot be restored from the console. Your personal account is not deleted."
       >
         <form
           noValidate

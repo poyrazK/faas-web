@@ -65,7 +65,7 @@ export function SecretReferences({ slug }: { slug: string }) {
   return (
     <Panel
       title="Secret references"
-      description="Deliver one of this app’s sealed secrets under another variable name, in one environment of its project. The source must be this app’s secret in that same environment; a reference cannot reach another app’s or the project’s secrets. Changes apply on the next cold wake: running instances keep what they booted with."
+      help="Changes apply on the next cold wake; running instances keep what they booted with."
     >
       <div className="flex flex-col gap-4 text-sm">
         <InlinePhase
@@ -79,8 +79,7 @@ export function SecretReferences({ slug }: { slug: string }) {
             <ProjectReferences accountId={accountId} project={project} slug={slug} />
           ) : (
             <p className="text-muted-foreground">
-              {slug} is not in a project. References belong to a project environment, so this app
-              receives each secret under its own name.
+              {slug} is not in a project, so it receives each secret under its own name.
             </p>
           ))}
       </div>
@@ -338,9 +337,7 @@ function EnvironmentReferences({
           ))}
         </ul>
       ) : (
-        <p className="text-muted-foreground">
-          No references in {environment}. Each secret reaches the app under its own name.
-        </p>
+        <p className="text-muted-foreground">No references in {environment}.</p>
       )}
 
       {suppressed.length > 0 && (

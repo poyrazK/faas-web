@@ -170,7 +170,7 @@ function BindingContext({
   return (
     <Panel
       title="Automation binding"
-      description="A binding routes future verified Stripe events directly to a published automation instead of the app path."
+      help="Future verified Stripe events go to the automation instead of the app."
     >
       <div className="space-y-4 text-sm">
         {!available && (
@@ -188,8 +188,7 @@ function BindingContext({
         {binding.data && (
           <p>
             Current binding: <strong>{binding.data.workflow_name}</strong> ·{' '}
-            {binding.data.event_type} · version {binding.data.version}. This is configured routing,
-            not evidence of a successful run.
+            {binding.data.event_type} · version {binding.data.version}
           </p>
         )}
         <label className="flex flex-col gap-1.5">

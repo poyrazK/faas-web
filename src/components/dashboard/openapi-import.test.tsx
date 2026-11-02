@@ -97,7 +97,7 @@ describe('OpenAPIImport', () => {
   it('reads a 404 on the import as nothing imported, not a fault', () => {
     useAppOpenAPI.mockImplementation(() => notFound());
     render(<OpenAPIImport slug="api" />);
-    expect(screen.getByText(/no document has been imported/i)).toBeInTheDocument();
+    expect(screen.getByText(/no document imported yet/i)).toBeInTheDocument();
   });
 
   it('previews through dry-run before importing, then creates the ticked edge rules', async () => {

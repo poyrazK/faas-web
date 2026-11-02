@@ -134,7 +134,7 @@ export function TemplateCatalog({
     <div className="flex flex-col gap-6">
       {phase === 'empty' ? (
         <EmptyState
-          message="The catalog is empty on this deployment."
+          message="No starter templates are available."
           action={
             onChooseEmpty && (
               <Button size="sm" onClick={onChooseEmpty}>
@@ -147,7 +147,7 @@ export function TemplateCatalog({
         <InlinePhase
           phase={phase}
           error={templates.error}
-          loadingMessage="Loading the catalog…"
+          loadingMessage="Loading templates…"
           onRetry={() => void templates.refetch()}
         />
       ) : (
