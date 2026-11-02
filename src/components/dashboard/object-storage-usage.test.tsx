@@ -72,6 +72,6 @@ describe('ObjectStorageUsagePanel', () => {
       data: { ...current.data, usage: { ...current.data.usage, fresh: false } },
     });
     render(<ObjectStorageUsagePanel />);
-    expect(screen.getByText(/last report is stale/i)).toBeInTheDocument();
+    expect(screen.getByText(/delayed/i)).toBeInTheDocument();
   });
 });

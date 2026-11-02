@@ -4,6 +4,7 @@ import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -165,7 +166,7 @@ function PlansPage() {
   if (!org) return <PersonalPlans />;
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
+      <PageHeader title="Plans" />
       <OrgPlanSummary org={org} label={label} />
     </div>
   );
@@ -309,7 +310,7 @@ function PersonalPlans() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Plans"
-        description="Quotas and features per plan. Pricing and payment methods live in the billing portal."
+        help="Pricing and payment methods live in the billing portal."
         actions={
           <Button
             size="sm"
@@ -336,6 +337,7 @@ function PersonalPlans() {
           </Button>
         }
       />
+      <AppCapacity />
 
       {awaiting && requested && (
         <div

@@ -61,10 +61,9 @@ beforeEach(() => {
 });
 
 describe('app capacity', () => {
-  it('shows app slots against the plan here, instead of a bare app count', () => {
+  it('leaves app slots to the Plans page', () => {
     render(<UsagePage />);
-    expect(screen.getByRole('region', { name: 'App capacity' })).toBeInTheDocument();
-    expect(screen.queryByText('Apps', { selector: 'p, span, dt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'App capacity' })).not.toBeInTheDocument();
   });
 });
 
