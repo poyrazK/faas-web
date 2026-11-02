@@ -54,10 +54,14 @@ vi.mock('@tanstack/react-router', () => ({
     children: ReactNode;
     to: string;
     params?: { appSlug?: string };
-    search?: Record<string, string>;
+    search?: Record<string, string | boolean>;
   }) => (
     <a
-      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${search?.tab ? `?tab=${search.tab}` : ''}`}
+      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${
+        search
+          ? `?${new URLSearchParams(Object.entries(search).map(([k, v]) => [k, String(v)]))}`
+          : ''
+      }`}
     >
       {children}
     </a>
@@ -96,9 +100,9 @@ describe('live deployment', () => {
     const block = screen.getByRole('region', { name: 'Call it' });
     expect(block).toHaveTextContent('curl -i https://hello-app.gregale.dev');
     expect(block).toHaveTextContent('gregale logs hello-app --follow');
-    expect(screen.getByRole('link', { name: 'Open the Invoke tab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Invoke it from the console' })).toHaveAttribute(
       'href',
-      '/dashboard/apps/hello-app?tab=Invoke'
+      '/dashboard/apps/hello-app?invoke=true'
     );
     expect(screen.getByRole('link', { name: 'View logs' })).toHaveAttribute(
       'href',
