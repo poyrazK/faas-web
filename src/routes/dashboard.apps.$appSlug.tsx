@@ -81,11 +81,11 @@ import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
+import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
-  AppAnalyticsPanel,
   validateAppAnalyticsSearch,
   type AppAnalyticsSearch,
-} from '@/components/dashboard/app-analytics';
+} from '@/components/dashboard/app-analytics-search';
 import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
 import {
   AppHealthPanel,

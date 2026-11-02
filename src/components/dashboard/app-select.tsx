@@ -5,6 +5,7 @@ import { Check, NavArrowDown, Plus } from 'iconoir-react';
 import { useApps } from '@/lib/api/queries';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } from './primitives';
+import { remembered, SELECTED_APP_KEY } from './selected-app';
 
 /**
  * Scope picker for the resources the API keys by app.
@@ -17,14 +18,6 @@ import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } fr
  * The choice is remembered across pages and reloads, so moving between Secrets
  * and Env Vars while debugging one app does not mean re-selecting it each time.
  */
-
-const STORAGE_KEY = 'gregale.selectedApp';
-
-/** The app last picked anywhere in the console, or '' if none. */
-export function remembered(): string {
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem(STORAGE_KEY) ?? '';
-}
 
 /**
  * Returns the selected app slug, the setter, and the app list state.
@@ -47,7 +40,7 @@ export function useSelectedApp() {
 
   const select = (next: string) => {
     setChosen(next);
-    window.localStorage.setItem(STORAGE_KEY, next);
+    window.localStorage.setItem(SELECTED_APP_KEY, next);
   };
 
   return {

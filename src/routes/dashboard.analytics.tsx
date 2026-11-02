@@ -4,7 +4,7 @@ import {
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from '@/components/dashboard/account-analytics';
-import { validateAppAnalyticsSearch } from '@/components/dashboard/app-analytics';
+import { validateAppAnalyticsSearch } from '@/components/dashboard/app-analytics-search';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { consoleHead } from '@/lib/seo';
 
