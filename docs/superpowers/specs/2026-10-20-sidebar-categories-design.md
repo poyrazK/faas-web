@@ -160,4 +160,6 @@ Two consequences:
 - Metrics joined Observe, and Overview is a single section. Invoke is a header
   action (`?invoke=1`) rather than a section.
 - The account-level Debugger row left the Observe group. It was an app picker in
-  front of the app's own Debugger; ⌘K still finds it.
+  front of the app's own Debugger, so `/dashboard/debug` now opens the named or
+  last-picked app's Debugger, investigation intact, and stays a picker only for
+  someone who has picked no app yet. ⌘K still finds it.
