@@ -41,12 +41,7 @@ export function AIGatewayView({
   if (state !== 'available') {
     return (
       <Panel title="AI gateway">
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
-            Token and cost usage by model, budget alerts, and fallback routes for AI integrations.
-          </p>
-          <CapabilityNotice capability={capability} state={state} onRetry={refresh} />
-        </div>
+        <CapabilityNotice capability={capability} state={state} onRetry={refresh} />
       </Panel>
     );
   }
@@ -171,11 +166,11 @@ function AIGatewayContent({
   return (
     <div className="flex flex-col gap-6">
       {ai.length === 0 ? (
-        <EmptyState message="No integration has an AI provider yet. Create one with an AI provider to see token usage here." />
+        <EmptyState message="No integration has an AI provider yet." />
       ) : (
         <Panel
           title="AI usage"
-          description="Token and cost rollups by model for one UTC day. Rollups are kept for 90 days."
+          help="Daily rollups by model, in UTC, kept for 90 days."
           actions={
             <div className="flex flex-wrap items-end gap-3">
               <FormField id="ai-integration" label="Integration">
@@ -241,7 +236,7 @@ function AIGatewayContent({
       {selected && (
         <Panel
           title="Budget alerts"
-          description={`Thresholds crossed at 80% and 100% on ${selected.name}, newest first. Kept for 90 days.`}
+          help="Raised at 80% and 100% of a budget and kept for 90 days."
         >
           <InlinePhase
             phase={queryPhase({
@@ -279,7 +274,7 @@ function AIGatewayContent({
 
       <Panel
         title="Fallback routes"
-        description="Ordered AI integrations an app calls through one route; the gateway moves to the next target on a budget, availability, or provider failure."
+        help="The gateway moves to the next target on a budget, availability, or provider failure."
       >
         <InlinePhase
           phase={queryPhase({

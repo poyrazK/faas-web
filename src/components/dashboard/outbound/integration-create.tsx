@@ -53,7 +53,7 @@ export function CreateIntegrationDialog({
       open={open}
       onClose={onClose}
       title="New integration"
-      description="A fixed HTTPS destination your apps call through the outbound gateway. You add the provider credential next."
+      description="You add the provider credential next."
       placement="right"
       width="sm:max-w-[560px]"
     >
