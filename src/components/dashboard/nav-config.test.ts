@@ -16,7 +16,7 @@ describe('railGroupFor', () => {
     ['/dashboard/edge-rules', 'Edge rules', 'Networking'],
     ['/dashboard/integrations', 'Integrations', 'Messaging'],
     ['/dashboard/customers', 'Customers', 'Monetize'],
-    ['/dashboard/debug', 'Debugger', 'Observe'],
+    ['/dashboard/invocations', 'Invocations', 'Observe'],
     ['/dashboard/invoices', 'Invoices', 'Account'],
     ['/dashboard/settings', 'Members', 'Account'],
   ])('files %s (%s) under %s', (to, label, heading) => {
@@ -28,6 +28,7 @@ describe('railGroupFor', () => {
     ['/dashboard/apps', 'Apps'],
     ['/dashboard/logs', 'Logs'],
     ['/dashboard/templates', 'Templates'],
+    ['/dashboard/debug', 'Debugger'],
   ])('gives %s (%s) no heading', (to, label) => {
     expect(railGroupFor({ to, label })).toBeUndefined();
   });
