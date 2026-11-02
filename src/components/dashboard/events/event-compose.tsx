@@ -152,7 +152,7 @@ export function PreviewEventDialog({ open, onClose }: { open: boolean; onClose: 
       open={open}
       onClose={onClose}
       title="Preview routing"
-      description="Evaluates an event against your enabled subscriptions without publishing it. Nothing is stored and nothing is delivered."
+      description="Checks an event against your subscriptions without publishing it. Nothing is stored or delivered."
       width="max-w-2xl"
     >
       {open && <PreviewBody onClose={onClose} />}
@@ -232,7 +232,7 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
           <PreviewList title="Would not receive" items={result.non_matches} />
           {result.truncated && (
             <p className="text-xs text-muted-foreground">
-              The lists are samples; the counts above cover every candidate.
+              The lists are samples; the counts cover every candidate.
             </p>
           )}
           <p className="text-xs text-muted-foreground">Nothing was published.</p>
@@ -408,7 +408,7 @@ function PublishBody({
         <p role="status">
           {published.duplicate
             ? 'Already accepted earlier with identical content; nothing was published again.'
-            : 'Accepted for routing. Acceptance is not delivery — the receipt shows where it went.'}
+            : 'Accepted for routing. The receipt shows where it went.'}
         </p>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
           <dt className="text-muted-foreground">Source</dt>
