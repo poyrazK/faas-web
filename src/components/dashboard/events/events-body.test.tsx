@@ -233,7 +233,7 @@ describe('Events page', () => {
     await user.type(screen.getByRole('textbox', { name: 'Source' }), 'billing');
     await user.type(screen.getByRole('textbox', { name: 'Event ID' }), 'inv-1');
     await user.click(screen.getByRole('button', { name: 'Look up' }));
-    const evidence = within(await screen.findByLabelText('Receipt evidence'));
+    const evidence = within(await screen.findByLabelText('Receipt details'));
     expect(evidence.getByText('invoice.paid')).toBeInTheDocument();
     expect(evidence.getByText('webhook-router')).toBeInTheDocument();
     expect(evidence.getByText('Handed to handler')).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe('Events page', () => {
     await user.type(screen.getByRole('textbox', { name: 'Event ID' }), 'missing');
     await user.click(screen.getByRole('button', { name: 'Look up' }));
     expect(await screen.findByText(/No retained receipt for/)).toBeInTheDocument();
-    expect(screen.queryByLabelText('Receipt evidence')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Receipt details')).not.toBeInTheDocument();
   });
 
   it('previews routing without publishing anything', async () => {
