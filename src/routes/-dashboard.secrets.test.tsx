@@ -53,10 +53,12 @@ beforeEach(() => {
 });
 
 async function save(user: ReturnType<typeof userEvent.setup>, key: string, paste: string) {
-  await user.type(screen.getByPlaceholderText('DATABASE_URL'), key);
-  await user.click(screen.getByLabelText('Value'));
+  await user.click(screen.getByRole('button', { name: 'Set secret' }));
+  const sheet = await screen.findByRole('dialog');
+  await user.type(within(sheet).getByPlaceholderText('DATABASE_URL'), key);
+  await user.click(within(sheet).getByLabelText('Value'));
   await user.paste(paste);
-  await user.click(screen.getByRole('button', { name: 'Save secret' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save secret' }));
 }
 
 describe('Secrets', () => {
@@ -72,8 +74,11 @@ describe('Secrets', () => {
     render(<SecretsBody slug="alpha" />);
     await save(user, 'TLS_KEY', PEM);
     await waitFor(() => expect(mocks.set).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByLabelText('Value').tagName).toBe('INPUT'));
-    expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'password');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(screen.getByRole('button', { name: 'Set secret' }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByLabelText('Value').tagName).toBe('INPUT');
+    expect(within(sheet).getByLabelText('Value')).toHaveAttribute('type', 'password');
   });
 
   it('keeps the multi-line value when the save fails', async () => {

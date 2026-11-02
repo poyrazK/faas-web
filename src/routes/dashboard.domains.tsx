@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
@@ -22,6 +22,7 @@ import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { ApiError } from '@/lib/api/errors';
 import { FieldError, fieldErrorProps, useFormValidation, Select } from '@/components/ui/field';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
@@ -99,8 +100,8 @@ function DomainsPage() {
       resetScroll: false,
     });
   const setDoctorFor = (doctor?: string) => select({ doctor });
-  const hostInput = useRef<HTMLInputElement>(null);
 
+  const [creating, setCreating] = useState(false);
   const [host, setHost] = useState('');
   const [appSlug, setAppSlug] = useState('');
   const validation = useFormValidation<'host'>();
@@ -379,6 +380,7 @@ function DomainsPage() {
       .then((created) => {
         setHost('');
         validation.resetValidation();
+        setCreating(false);
         toast({
           kind: 'success',
           title: 'Domain added',
@@ -395,11 +397,29 @@ function DomainsPage() {
       <PageHeader
         title="Domains"
         description="Custom hostnames and their DNS verification. TLS is issued and renewed automatically once a domain verifies."
+        actions={
+          <Button
+            size="sm"
+            disabled={!apps?.length || Boolean(appQuery.error)}
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add domain
+          </Button>
+        }
       />
 
-      <Panel title="Add a domain">
+      {appQuery.error && (
+        <InlinePhase
+          phase={queryPhase({ error: appQuery.error })}
+          error={appQuery.error}
+          onRetry={() => void appQuery.refetch()}
+        />
+      )}
+
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add domain">
         <form
-          className="flex flex-wrap items-end gap-3"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!validation.validate({ host: hostError }, e.currentTarget) || addDomain.isPending)
@@ -407,11 +427,11 @@ function DomainsPage() {
             submit();
           }}
         >
-          <label className="flex min-w-56 flex-1 flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Hostname</span>
             <input
-              ref={hostInput}
               name="host"
+              autoFocus
               value={host}
               onChange={(e) => setHost(e.target.value)}
               {...fieldErrorProps(showHostError, 'domain-host-error')}
@@ -439,27 +459,18 @@ function DomainsPage() {
             </Select>
           </label>
 
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            busy={addDomain.isPending}
-            disabled={!apps?.length || Boolean(appQuery.error)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add domain
-          </Button>
-        </form>
-        {appQuery.error && (
-          <div className="mt-3">
-            <InlinePhase
-              phase={queryPhase({ error: appQuery.error })}
-              error={appQuery.error}
-              onRetry={() => void appQuery.refetch()}
-            />
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              size="sm"
+              busy={addDomain.isPending}
+              disabled={!apps?.length || Boolean(appQuery.error)}
+            >
+              Add domain
+            </Button>
           </div>
-        )}
-      </Panel>
+        </form>
+      </Sheet>
 
       <ResourceTable
         rows={
@@ -500,13 +511,7 @@ function DomainsPage() {
               Clear filters
             </Button>
           ) : appQuery.isPending || appQuery.error ? undefined : apps?.length ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                hostInput.current?.scrollIntoView({ block: 'center' });
-                hostInput.current?.focus();
-              }}
-            >
+            <Button size="sm" onClick={() => setCreating(true)}>
               Add your first domain
             </Button>
           ) : apps ? (

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,11 +31,15 @@ function mount(children: ReactNode) {
 }
 
 async function fill(name: string, value: string) {
+  await userEvent.click(
+    screen.getByRole('button', { name: name === 'env' ? 'Set variable' : 'Set secret' })
+  );
+  const sheet = await screen.findByRole('dialog');
   await userEvent.type(
-    screen.getByPlaceholderText(name === 'env' ? 'LOG_LEVEL' : 'DATABASE_URL'),
+    within(sheet).getByPlaceholderText(name === 'env' ? 'LOG_LEVEL' : 'DATABASE_URL'),
     'LOG_LEVEL'
   );
-  const valueBox = screen.getByPlaceholderText(
+  const valueBox = within(sheet).getByPlaceholderText(
     name === 'env' ? 'debug' : 'Never shown again once saved'
   );
   await userEvent.type(valueBox, value);

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { Panel } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -54,6 +54,7 @@ export function EnvBody({ slug }: { slug: string }) {
   const setEnv = useSetEnv(slug);
   const deleteEnv = useDeleteEnv(slug);
 
+  const [creating, setCreating] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
@@ -128,9 +129,15 @@ export function EnvBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel title="Set a variable">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Set variable
+        </Button>
+      </div>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Set variable">
         <form
-          className="flex flex-wrap items-end gap-3"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!keyOk || setEnv.isPending) return;
@@ -140,6 +147,7 @@ export function EnvBody({ slug }: { slug: string }) {
                 setKey('');
                 setValue('');
                 setKeyTouched(false);
+                setCreating(false);
                 toast({
                   kind: 'success',
                   title: 'Variable saved',
@@ -151,7 +159,7 @@ export function EnvBody({ slug }: { slug: string }) {
               );
           }}
         >
-          <label className="flex min-w-44 flex-1 flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Name</span>
             <input
               value={key}
@@ -171,7 +179,7 @@ export function EnvBody({ slug }: { slug: string }) {
               </FieldError>
             )}
           </label>
-          <label className="flex min-w-56 flex-[2] flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Value</span>
             <input
               value={value}
@@ -180,18 +188,13 @@ export function EnvBody({ slug }: { slug: string }) {
               className="h-10 rounded-lg border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand"
             />
           </label>
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            disabled={!slug}
-            busy={setEnv.isPending}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Save variable
-          </Button>
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" disabled={!slug} busy={setEnv.isPending}>
+              Save variable
+            </Button>
+          </div>
         </form>
-      </Panel>
+      </Sheet>
 
       <EnvTransferPanel key={slug} slug={slug} />
 

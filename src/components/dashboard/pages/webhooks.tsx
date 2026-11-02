@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { useToast } from '@/components/ui/toast';
@@ -229,6 +230,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const remove = useDeleteWebhook(slug);
   const rotate = useRotateWebhookSecret(slug);
 
+  const [creating, setCreating] = useState(false);
   const [target, setTarget] = useState('');
   const [secret, setSecret] = useState('');
   const [events, setEvents] = useState<Event[]>([]);
@@ -355,13 +357,16 @@ export function WebhooksBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        title="Add a webhook"
-        description="Every matching event is POSTed as JSON with an HMAC signature. The secret is sealed on save and never shown again."
-      >
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Add webhook
+        </Button>
+      </div>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add webhook">
         <form
           noValidate
-          className="grid gap-4 sm:grid-cols-2"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (
@@ -382,6 +387,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 setSecret('');
                 setEvents([]);
                 validation.resetValidation();
+                setCreating(false);
                 toast({ kind: 'success', title: 'Webhook added' });
               })
               .catch((err: unknown) =>
@@ -389,6 +395,10 @@ export function WebhooksBody({ slug }: { slug: string }) {
               );
           }}
         >
+          <p className="text-xs text-muted-foreground">
+            Every matching event is POSTed as JSON with an HMAC signature. The secret is sealed on
+            save and never shown again.
+          </p>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Target URL</span>
             <input
@@ -447,26 +457,25 @@ export function WebhooksBody({ slug }: { slug: string }) {
             </div>
             <span className="text-xs text-muted-foreground">None selected means every event.</span>
           </fieldset>
-          <div className="flex items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Retries</span>
-              <Select
-                value={retryPolicy}
-                onChange={(e) => setRetryPolicy(e.target.value as RetryPolicy)}
-                className={FIELD}
-              >
-                <option value="default">default — back off over 7 tries</option>
-                <option value="aggressive">aggressive — tighter back-off</option>
-                <option value="none">none — one attempt</option>
-              </Select>
-            </label>
-            <Button type="submit" size="sm" className="gap-1.5" busy={create.isPending}>
-              <Plus className="h-3.5 w-3.5" />
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Retries</span>
+            <Select
+              value={retryPolicy}
+              onChange={(e) => setRetryPolicy(e.target.value as RetryPolicy)}
+              className={FIELD}
+            >
+              <option value="default">default — back off over 7 tries</option>
+              <option value="aggressive">aggressive — tighter back-off</option>
+              <option value="none">none — one attempt</option>
+            </Select>
+          </label>
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" busy={create.isPending}>
               Add webhook
             </Button>
           </div>
         </form>
-      </Panel>
+      </Sheet>
 
       <ResourceTable
         rows={rows}

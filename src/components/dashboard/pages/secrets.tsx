@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { Panel } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { Modal } from '@/components/ui/modal';
@@ -67,6 +67,7 @@ export function SecretsBody({ slug }: { slug: string }) {
     setRotateValue('');
   };
 
+  const [creating, setCreating] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
@@ -83,6 +84,7 @@ export function SecretsBody({ slug }: { slug: string }) {
         setValue('');
         setKeyTouched(false);
         setUnappliedFor(slug);
+        setCreating(false);
         toast({
           kind: 'success',
           title: 'Secret saved',
@@ -187,12 +189,16 @@ export function SecretsBody({ slug }: { slug: string }) {
   return (
     <div className="flex flex-col gap-6">
       {/* Migrations arrive as .env files; the importer takes them whole. */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <EnvImportButton
           slug={slug}
           existingKeys={rows.map((r) => r.key)}
           onChanged={() => setUnappliedFor(slug)}
         />
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Set secret
+        </Button>
       </div>
 
       {unapplied && (
@@ -210,9 +216,9 @@ export function SecretsBody({ slug }: { slug: string }) {
         </div>
       )}
 
-      <Panel title="Set a secret">
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Set secret">
         <form
-          className="flex flex-wrap items-end gap-3"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (!keyOk || !value || setSecret.isPending) return;
@@ -236,7 +242,7 @@ export function SecretsBody({ slug }: { slug: string }) {
             });
           }}
         >
-          <label className="flex min-w-44 flex-1 flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Name</span>
             <input
               value={key}
@@ -261,20 +267,14 @@ export function SecretsBody({ slug }: { slug: string }) {
             value={value}
             onChange={setValue}
             placeholder="Never shown again once saved"
-            className="min-w-56 flex-[2]"
           />
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            disabled={!slug}
-            busy={setSecret.isPending}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Save secret
-          </Button>
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" disabled={!slug} busy={setSecret.isPending}>
+              Save secret
+            </Button>
+          </div>
         </form>
-      </Panel>
+      </Sheet>
 
       {revocation && (
         <SecretRevocationStatus
