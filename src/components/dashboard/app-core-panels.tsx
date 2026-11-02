@@ -29,6 +29,7 @@ import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from './plan-gate';
 import { AsyncInvokeOptionsFields } from './async-invoke-options';
 import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
+import { Sheet } from './kit/sheet';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -335,6 +336,7 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
   });
   const setCredential = useSetAppRegistryCredential(slug);
   const deleteCredential = useDeleteAppRegistryCredential(slug);
+  const [adding, setAdding] = useState(false);
   const [registry, setRegistry] = useState('https://');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -344,6 +346,7 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
       .mutateAsync({ registry: registry.trim(), username: username.trim(), password })
       .then(() => {
         setPassword('');
+        setAdding(false);
         toast({ kind: 'success', title: 'Registry credential saved' });
       })
       .catch((error: unknown) =>
@@ -359,56 +362,66 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
     <Panel
       title="Private registries"
       help="Credentials are sealed and never shown again after saving."
+      actions={
+        <Button size="sm" onClick={() => setAdding(true)}>
+          Add credential
+        </Button>
+      }
     >
       <div className="flex flex-col gap-5">
-        <form
-          className="grid gap-3 sm:grid-cols-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (registry.trim() && username.trim() && password && !setCredential.isPending) save();
-          }}
-        >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Registry URL</span>
-            <input
-              value={registry}
-              onChange={(e) => setRegistry(e.target.value)}
-              placeholder="https://registry.example.com"
-              spellCheck={false}
-              className={CODE_FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Username</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              className={FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              className={FIELD}
-            />
-          </label>
-          <div className="flex items-center justify-between gap-3 sm:col-span-3">
-            <p className="text-xs text-muted-foreground">Use an explicit https:// registry URL.</p>
-            <Button
-              size="sm"
-              type="submit"
-              disabled={!registry.trim() || !username.trim() || !password}
-              busy={setCredential.isPending}
-            >
-              Save credential
-            </Button>
-          </div>
-        </form>
+        <Sheet open={adding} onClose={() => setAdding(false)} title="Add registry credential">
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (registry.trim() && username.trim() && password && !setCredential.isPending)
+                save();
+            }}
+          >
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Registry URL</span>
+              <input
+                value={registry}
+                onChange={(e) => setRegistry(e.target.value)}
+                placeholder="https://registry.example.com"
+                spellCheck={false}
+                className={CODE_FIELD}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Username</span>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                className={FIELD}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                className={FIELD}
+              />
+            </label>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Use an explicit https:// registry URL.
+              </p>
+              <Button
+                size="sm"
+                type="submit"
+                disabled={!registry.trim() || !username.trim() || !password}
+                busy={setCredential.isPending}
+              >
+                Save credential
+              </Button>
+            </div>
+          </form>
+        </Sheet>
 
         {credentialsPhase !== 'ready' ? (
           <InlinePhase

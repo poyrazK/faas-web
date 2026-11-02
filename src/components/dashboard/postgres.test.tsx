@@ -149,16 +149,21 @@ describe('PostgresDatabases', () => {
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
     expect(await screen.findByText('DATABASE_URL')).toBeInTheDocument();
     expect(screen.getByText('credentials v2')).toBeInTheDocument();
-    expect(screen.getByText(/never shown in the console/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /bind app/i }));
+    expect(
+      within(await screen.findByRole('dialog')).getByText(/never shown in the console/i)
+    ).toBeInTheDocument();
   });
 
   it('binds an app under the chosen secret name', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
-    const key = await screen.findByLabelText('Environment key');
+    await userEvent.click(await screen.findByRole('button', { name: /bind app/i }));
+    const sheet = await screen.findByRole('dialog');
+    const key = within(sheet).getByLabelText('Environment key');
     await userEvent.clear(key);
     await userEvent.type(key, 'ORDERS_DB_URL');
-    await userEvent.click(screen.getByRole('button', { name: /bind app/i }));
+    await userEvent.click(within(sheet).getByRole('button', { name: /bind app/i }));
     await waitFor(() =>
       expect(createBinding).toHaveBeenCalledWith({
         app_id: 'app1',

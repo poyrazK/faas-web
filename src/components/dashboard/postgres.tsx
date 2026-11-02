@@ -399,6 +399,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
   const [scope, setScope] = useState('default');
+  const [binding, setBinding] = useState(false);
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
@@ -440,6 +441,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
         environment_key: environmentKey.trim(),
         access,
       });
+      setBinding(false);
       toast({
         kind: 'success',
         title: 'Binding created',
@@ -570,8 +572,20 @@ function Bindings({ database }: { database: PostgresDatabase }) {
       )}
 
       {appList.length > 0 && (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => setBinding(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Bind app
+          </Button>
+        </div>
+      )}
+      <Sheet
+        open={binding}
+        onClose={() => setBinding(false)}
+        title={`Bind an app to ${database.name}`}
+      >
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (environmentKey.trim() && !create.isPending) void submit();
@@ -583,7 +597,6 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={chosenApp}
               onChange={(e) => setAppId(e.target.value)}
               aria-label="App to bind"
-              className="h-8 text-xs"
             >
               {appList.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -598,7 +611,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={environmentKey}
               onChange={(e) => setEnvironmentKey(e.target.value)}
               aria-label="Environment key"
-              className={cn(FIELD, 'h-8 w-44 text-xs font-mono')}
+              className={cn(FIELD, 'font-mono')}
             />
           </label>
           <label className="flex flex-col gap-1.5">
@@ -607,7 +620,6 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={access}
               onChange={(e) => setAccess(e.target.value as 'read_write' | 'read_only')}
               aria-label="Binding access"
-              className="h-8 text-xs"
             >
               <option value="read_write">Read and write</option>
               <option value="read_only">Read only</option>
@@ -619,24 +631,24 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={scope}
               onChange={(e) => setScope(e.target.value)}
               aria-label="Binding scope"
-              className={cn(FIELD, 'h-8 w-28 text-xs')}
+              className={FIELD}
             />
           </label>
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={!environmentKey.trim()}
-            busy={create.isPending}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Bind app
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            The connection string reaches the app as this secret and is never shown in the console.
+          </p>
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!environmentKey.trim()}
+              busy={create.isPending}
+            >
+              Bind app
+            </Button>
+          </div>
         </form>
-      )}
-      <p className="text-xs text-muted-foreground">
-        The connection string reaches the app as this secret and is never shown in the console.
-      </p>
+      </Sheet>
     </div>
   );
 }
