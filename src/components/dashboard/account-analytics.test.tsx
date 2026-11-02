@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
@@ -17,6 +18,12 @@ import {
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from './account-analytics';
+
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('@tanstack/react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tanstack/react-router')>()),
+  useNavigate: () => navigate,
+}));
 
 const hooks = vi.hoisted(() => ({
   useAccountSlo: vi.fn(),
@@ -118,7 +125,7 @@ function Harness({ initial = {} }: { initial?: AccountAnalyticsSearch }) {
   return (
     <>
       <AnalyticsWindowSelector search={search} setSearch={setSearch} />
-      <AccountAnalytics search={search} setSearch={setSearch} />
+      <AccountAnalytics search={search} />
       <output aria-label="URL search">{JSON.stringify(search)}</output>
     </>
   );
@@ -161,42 +168,26 @@ beforeEach(() => {
   );
 });
 
-describe('analytics route scroll restoration', () => {
-  it.each([
-    ['selecting', '', 'Filter chart to GET /orders', '/orders'],
-    ['clearing', '&route=%2Forders&method=GET', 'Clear route filter', undefined],
-  ])('preserves scroll when %s a route filter', async (_action, filter, button, expectedRoute) => {
-    const root = createRootRoute();
-    const analyticsRoute = Route.update({
-      id: '/dashboard/analytics',
-      path: '/dashboard/analytics',
-      getParentRoute: () => root,
-    } as never);
-    const router = createRouter({
-      routeTree: root.addChildren([analyticsRoute]),
-      history: createMemoryHistory({
-        initialEntries: [`/dashboard/analytics?app=alpha&window=7d${filter}`],
-      }),
-      scrollRestoration: true,
-    });
-    render(<RouterProvider router={router} />);
-    const control = await screen.findByRole('button', { name: button });
-    await waitFor(() => expect(router.state.status).toBe('idle'));
-    const scrollTo = vi.spyOn(window, 'scrollTo');
-    const rendered = vi.fn();
-    const unsubscribe = router.subscribe('onRendered', rendered);
-    try {
-      await userEvent.click(control);
-      await waitFor(() => expect(rendered).toHaveBeenCalled());
-
-      expect(router.state.location.search).toMatchObject({ app: 'alpha', window: '7d' });
-      expect(router.state.location.search.route).toBe(expectedRoute);
-      expect(scrollTo).not.toHaveBeenCalled();
-    } finally {
-      unsubscribe();
-      scrollTo.mockRestore();
-    }
+it('sends an old one-app analytics link to that app’s Metrics', async () => {
+  const root = createRootRoute();
+  const analyticsRoute = Route.update({
+    id: '/dashboard/analytics',
+    path: '/dashboard/analytics',
+    getParentRoute: () => root,
+  } as never);
+  const app = createRoute({
+    getParentRoute: () => root,
+    path: '/dashboard/apps/$appSlug',
+    component: () => <h1>App page</h1>,
   });
+  const router = createRouter({
+    routeTree: root.addChildren([analyticsRoute, app]),
+    history: createMemoryHistory({ initialEntries: ['/dashboard/analytics?app=alpha&window=7d'] }),
+  });
+  render(<RouterProvider router={router} />);
+  expect(await screen.findByRole('heading', { name: 'App page' })).toBeInTheDocument();
+  expect(router.state.location.pathname).toBe('/dashboard/apps/alpha');
+  expect(router.state.location.search).toEqual({ tab: 'Metrics' });
 });
 
 describe('AccountAnalytics', () => {
@@ -212,7 +203,7 @@ describe('AccountAnalytics', () => {
   });
 
   it('uses the cross-app result as one searchable table sorted by requests', async () => {
-    render(<Harness initial={{ app: 'alpha' }} />);
+    render(<Harness />);
     const table = within(appsRegion());
     const rows = table.getAllByRole('button').filter((el) => el.tagName === 'TR');
     expect(rows[0]).toHaveTextContent('beta');
@@ -230,7 +221,7 @@ describe('AccountAnalytics', () => {
   it.each(['Requests', 'Error rate', 'Cold boots', 'p50', 'p95', 'p99', 'Wake p95 (fleet)'])(
     'allows sorting the %s numeric column',
     async (label) => {
-      render(<Harness initial={{ app: 'alpha' }} />);
+      render(<Harness />);
       const button = within(appsRegion()).getByRole('button', { name: label });
       await userEvent.click(button);
       expect(button.closest('th')).toHaveAttribute(
@@ -240,80 +231,22 @@ describe('AccountAnalytics', () => {
     }
   );
 
-  it.each([undefined, 'missing'])('falls back to the first app for URL app %s', (app) => {
-    render(<Harness initial={{ app }} />);
-    expect(screen.getByRole('heading', { name: 'alpha' })).toBeInTheDocument();
-    expect(hooks.useAppAnalytics).toHaveBeenLastCalledWith('alpha', '24h', 'route');
-  });
-
-  it('uses a valid URL app and selects a different app in place while preserving search', async () => {
-    render(
-      <Harness
-        initial={{ app: 'beta', window: '7d', group: 'route', route: '/orders', method: 'GET' }}
-      />
-    );
-    expect(screen.getByRole('heading', { name: 'beta' })).toBeInTheDocument();
+  it('opens an app’s Metrics from its row', async () => {
+    render(<Harness />);
     await userEvent.click(within(appsRegion()).getByRole('button', { name: /alpha/ }));
-    expect(screen.getByRole('heading', { name: 'alpha' })).toBeInTheDocument();
-    expect(within(appsRegion()).getByRole('button', { name: /alpha/ })).toHaveTextContent(
-      'Selected'
-    );
-    expect(searchState()).toEqual({
-      app: 'alpha',
-      window: '7d',
-      group: 'route',
-      route: '/orders',
-      method: 'GET',
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/dashboard/apps/$appSlug',
+      params: { appSlug: 'alpha' },
+      search: { tab: 'Metrics' },
     });
-    expect(hooks.useAppSlo).toHaveBeenLastCalledWith('alpha', '24h', { enabled: true });
-    expect(hooks.useAppWakeTimeline).toHaveBeenLastCalledWith('alpha');
-    expect(screen.getByRole('heading', { name: 'Service level' })).toBeInTheDocument();
-    expect(screen.getByText('Wake-queue telemetry unavailable.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Wake timeline' })).toBeInTheDocument();
   });
 
-  it('uses one shared 24h/7d control for all four analytics reads and preserves the URL filters', async () => {
-    render(<Harness initial={{ app: 'beta', group: 'route', route: '/orders', method: 'GET' }} />);
-    expect(screen.getAllByRole('group', { name: 'Time range' })).toHaveLength(1);
-    expect(screen.queryByLabelText('Analytics window')).not.toBeInTheDocument();
+  it('uses one 24h/7d control for both reads', async () => {
+    render(<Harness />);
     await userEvent.click(screen.getByRole('button', { name: '7d' }));
-    expect(searchState()).toEqual({
-      app: 'beta',
-      window: '7d',
-      group: 'route',
-      route: '/orders',
-      method: 'GET',
-    });
+    expect(searchState()).toEqual({ window: '7d' });
     expect(hooks.useAccountSlo).toHaveBeenLastCalledWith('7d');
     expect(hooks.useAppsMetrics).toHaveBeenLastCalledWith('7d');
-    expect(hooks.useAppAnalytics).toHaveBeenLastCalledWith('beta', '7d', 'route');
-    expect(hooks.useAppAnalyticsTimeseries).toHaveBeenLastCalledWith('beta', '7d', {
-      groupBy: 'route',
-      route: '/orders',
-      method: 'GET',
-    });
-  });
-
-  it('persists and clears paired route filters without losing app/window/group', async () => {
-    render(<Harness initial={{ app: 'beta', window: '7d', group: 'route' }} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Filter chart to GET /orders' }));
-    expect(searchState()).toEqual({
-      app: 'beta',
-      window: '7d',
-      group: 'route',
-      route: '/orders',
-      method: 'GET',
-    });
-    await userEvent.click(screen.getByRole('button', { name: 'Clear route filter' }));
-    expect(searchState()).toEqual({ app: 'beta', window: '7d', group: 'route' });
-    await userEvent.click(screen.getByRole('button', { name: 'Filter chart to GET /orders' }));
-    await userEvent.selectOptions(screen.getByLabelText('Group by'), 'country');
-    expect(searchState()).toEqual({ app: 'beta', window: '7d', group: 'country' });
-    expect(hooks.useAppAnalyticsTimeseries).toHaveBeenLastCalledWith('beta', '7d', {
-      groupBy: 'country',
-      route: undefined,
-      method: undefined,
-    });
   });
 
   it('shows degraded nullable apps telemetry with its source reason', () => {
@@ -388,30 +321,22 @@ describe('AccountAnalytics', () => {
     expect(within(appsRegion()).queryByText('No apps in this window.')).not.toBeInTheDocument();
   });
 
-  it.each(['account', 'apps', 'analytics'] as const)(
-    'renders the %s plan gate by code',
-    async (scope) => {
-      const hook =
-        scope === 'account'
-          ? hooks.useAccountSlo
-          : scope === 'apps'
-            ? hooks.useAppsMetrics
-            : hooks.useAppAnalytics;
-      hook.mockReturnValue(
-        failed(
-          new ApiError({
-            status: 403,
-            code: 'plan_per_app_metrics_not_allowed',
-            title: 'Upgrade',
-            detail: 'Analytics require a paid plan.',
-          })
-        )
-      );
-      render(withRouter(<Harness />));
-      expect(await screen.findByText('Analytics require a paid plan.')).toBeInTheDocument();
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    }
-  );
+  it.each(['account', 'apps'] as const)('renders the %s plan gate by code', async (scope) => {
+    const hook = scope === 'account' ? hooks.useAccountSlo : hooks.useAppsMetrics;
+    hook.mockReturnValue(
+      failed(
+        new ApiError({
+          status: 403,
+          code: 'plan_per_app_metrics_not_allowed',
+          title: 'Upgrade',
+          detail: 'Analytics require a paid plan.',
+        })
+      )
+    );
+    render(withRouter(<Harness />));
+    expect(await screen.findByText('Analytics require a paid plan.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 
   it('does not turn a billing 402 into an upgrade gate', () => {
     hooks.useAppsMetrics.mockReturnValue(

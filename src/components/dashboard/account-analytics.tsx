@@ -1,26 +1,17 @@
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  useAccountSlo,
-  useAppsMetrics,
-  type AnalyticsGroupBy,
-  type AppAnalyticsTimeseriesOptions,
-  type AppsMetrics,
-} from '@/lib/api/queries';
+import { useNavigate } from '@tanstack/react-router';
+import { useAccountSlo, useAppsMetrics, type AppsMetrics } from '@/lib/api/queries';
 import { InlinePhase, Panel, RangeSelector, Stats, StatTile, queryPhase } from './primitives';
 import { PlanGated } from './plan-gated';
 import { ResourceTable, type Column } from './resource-table';
-import { AppAnalyticsBody } from './app-analytics';
-import { SloPanel } from './app-core-panels';
-import { WakeTimelinePanel } from './app-insights';
-import { AppHealthPanel, AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
 
+/**
+ * The account's traffic, and every app's, over one window. One app's detail
+ * (routes, health, wakes, dependencies) is that app's Metrics section: a row
+ * opens it.
+ */
 export type AccountAnalyticsSearch = {
-  app?: string;
   window?: '24h' | '7d';
-  group?: AnalyticsGroupBy;
-  route?: string;
-  method?: AppAnalyticsTimeseriesOptions['method'];
-  wake?: string;
 };
 
 type SearchProps = {
@@ -42,12 +33,9 @@ export function AnalyticsWindowSelector({ search, setSearch }: SearchProps) {
   );
 }
 
-export function AccountAnalytics({
-  search,
-  setSearch,
-  onOpenWake,
-}: SearchProps & { onOpenWake?: (wakeId: string, slug: string) => void }) {
+export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch }) {
   const window = search.window ?? '24h';
+  const navigate = useNavigate();
   const account = useAccountSlo(window);
   const metrics = useAppsMetrics(window);
   const data = account.data;
@@ -78,22 +66,11 @@ export function AccountAnalytics({
           slug,
         }))
       : [];
-  const slug = rows.find((row) => row.slug === search.app)?.slug ?? rows[0]?.slug;
-  const group = search.group ?? 'route';
   const columns: Column<AppRow>[] = [
     {
       key: 'slug',
       label: 'App',
-      render: (row) => (
-        <span className="inline-flex items-center gap-2 font-mono">
-          {row.slug}
-          {row.slug === slug && (
-            <span className="rounded border border-brand/30 bg-brand/10 px-1.5 py-0.5 font-sans text-xs text-brand">
-              Selected
-            </span>
-          )}
-        </span>
-      ),
+      render: (row) => <span className="font-mono">{row.slug}</span>,
     },
     {
       key: 'request_count',
@@ -140,8 +117,8 @@ export function AccountAnalytics({
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-label="Account overview" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      <section aria-label="Account overview" className="flex flex-col gap-3">
         <PlanGated error={account.error} feature="Account analytics">
           <InlinePhase
             phase={accountPhase}
@@ -162,7 +139,6 @@ export function AccountAnalytics({
                 data ? Math.round((data.requests_total * data.error_rate_pct) / 100) : undefined
               }
               state={accountTile}
-              note="Derived from account requests and error rate."
             />
             <StatTile
               label="Error rate"
@@ -203,7 +179,8 @@ export function AccountAnalytics({
         <PlanGated error={metrics.error} feature="Per-app metrics">
           <Panel
             title="Apps"
-            description="Select an app to inspect its requests and routes. Latency covers 2xx traffic; wake p95 is the fleet figure."
+            help="Latency covers 2xx responses. Wake p95 is the fleet-wide figure, the same on every row. Open an app for its routes, health and wakes."
+            padded={appsPhase === 'ready' && appsDegraded}
           >
             {appsPhase === 'ready' && appsDegraded ? (
               <p role="status" className="text-sm text-muted-foreground">
@@ -221,51 +198,18 @@ export function AccountAnalytics({
                 loading={appsPhase === 'loading'}
                 error={metrics.error}
                 onRetry={() => void metrics.refetch()}
-                onRowClick={(row) => setSearch((previous) => ({ ...previous, app: row.slug }))}
+                onRowClick={(row) =>
+                  void navigate({
+                    to: '/dashboard/apps/$appSlug',
+                    params: { appSlug: row.slug },
+                    search: { tab: 'Metrics' },
+                  })
+                }
               />
             )}
           </Panel>
         </PlanGated>
       </section>
-
-      {slug && (
-        <section aria-label={`App analytics: ${slug}`} className="flex flex-col gap-4">
-          <div className="flex items-baseline gap-3 border-b border-border pb-3">
-            <span className="label-mono text-muted-foreground">Selected app</span>
-            <h2 className="font-mono text-lg font-medium">{slug}</h2>
-          </div>
-          <AppAnalyticsBody
-            slug={slug}
-            since={window}
-            groupBy={group}
-            route={search.route}
-            method={search.method}
-            showWindowSelector={false}
-            onSinceChange={(since) => {
-              if (since === '24h' || since === '7d')
-                setSearch((previous) => ({ ...previous, window: since }));
-            }}
-            onGroupByChange={(next) => setSearch((previous) => ({ ...previous, group: next }))}
-            onRouteChange={(route, method) =>
-              setSearch((previous) => ({
-                ...previous,
-                route: route && method ? route : undefined,
-                method: route && method ? method : undefined,
-              }))
-            }
-          />
-          <AppHealthPanel key={`health-${slug}`} slug={slug} />
-          <SloPanel key={slug} slug={slug} />
-          <div className="grid gap-4 xl:grid-cols-2">
-            <AwakeRoutesPanel slug={slug} since={window} />
-            <DependencyLatencyPanel slug={slug} since={window} />
-          </div>
-          <WakeTimelinePanel
-            slug={slug}
-            onOpenWake={onOpenWake && ((wake) => onOpenWake(wake, slug))}
-          />
-        </section>
-      )}
     </div>
   );
 }
