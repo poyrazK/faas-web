@@ -43,7 +43,9 @@ export function EdgeRuleVersions({ slug }: { slug: string }) {
   return (
     <Panel
       title="Versions"
-      description={`${stage ? `${stage} · ` : ''}Every change to this app's rules records the whole set. Compare a version with the rules now, or roll back to it.`}
+      actions={
+        stage ? <span className="label-mono text-muted-foreground">{stage}</span> : undefined
+      }
       padded={false}
     >
       {phase !== 'ready' ? (
@@ -52,7 +54,7 @@ export function EdgeRuleVersions({ slug }: { slug: string }) {
             phase={phase}
             error={versions.error}
             loadingMessage="Reading versions…"
-            emptyMessage="No versions yet. The first change to this app's rules records one."
+            emptyMessage="No versions yet."
             onRetry={() => void versions.refetch()}
           />
         </div>
