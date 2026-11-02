@@ -184,8 +184,7 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
           >
             {appsPhase === 'ready' && appsDegraded ? (
               <p role="status" className="text-sm text-muted-foreground">
-                Metrics source: {metrics.data?.source}. App metrics are unavailable for this
-                window.
+                Metrics source: {metrics.data?.source}. App metrics are unavailable for this window.
               </p>
             ) : (
               <ResourceTable
