@@ -34,6 +34,7 @@ import {
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { Sheet } from './kit/sheet';
 
 /**
  * Managed PostgreSQL: databases the platform provisions, and the bindings
@@ -133,6 +134,7 @@ export function explainPostgres(err: unknown): {
 export function PostgresDatabases() {
   const databases = usePostgresDatabases();
   const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const phase = queryPhase({ error: databases.error, loading: databases.isPending });
   const items = databases.data?.items ?? [];
   const open = items.find((d) => d.id === selected);
@@ -143,6 +145,12 @@ export function PostgresDatabases() {
         <Panel
           title="Databases"
           description="Provisioned and run by the platform. Connection details reach your apps as secrets, never this page."
+          actions={
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Create database
+            </Button>
+          }
         >
           {phase === 'unreachable' ? (
             <UnreachableState onRetry={() => void databases.refetch()} />
@@ -153,7 +161,14 @@ export function PostgresDatabases() {
           ) : (
             <div className="flex flex-col gap-5">
               {items.length === 0 ? (
-                <EmptyState message="No managed databases yet. Create one below and bind it to an app." />
+                <EmptyState
+                  message="No managed databases yet."
+                  action={
+                    <Button size="sm" onClick={() => setCreating(true)}>
+                      Create database
+                    </Button>
+                  }
+                />
               ) : (
                 <ul className="flex flex-col divide-y divide-border">
                   {items.map((database) => (
@@ -167,10 +182,12 @@ export function PostgresDatabases() {
                   ))}
                 </ul>
               )}
-              <CreateDatabase />
             </div>
           )}
         </Panel>
+        <Sheet open={creating} onClose={() => setCreating(false)} title="Create database">
+          <CreateDatabase onDone={() => setCreating(false)} />
+        </Sheet>
 
         {/* Keyed on the database: the restore and binding forms belong to the
             one that is open, and must not carry over to the next. */}
@@ -622,7 +639,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   );
 }
 
-function CreateDatabase() {
+function CreateDatabase({ onDone }: { onDone: () => void }) {
   const { toast } = useToast();
   const create = useCreatePostgresDatabase();
   const [name, setName] = useState('');
@@ -645,6 +662,7 @@ function CreateDatabase() {
         scale_to_zero: scaleToZero,
       });
       setName('');
+      onDone();
       toast({
         kind: 'success',
         title: `${database.name} is provisioning`,
@@ -657,22 +675,21 @@ function CreateDatabase() {
 
   return (
     <form
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !create.isPending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">New database</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="text-xs text-muted-foreground">Name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="orders"
             aria-label="Database name"
-            className={cn(FIELD, 'w-44')}
+            className={FIELD}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -708,7 +725,7 @@ function CreateDatabase() {
             ))}
           </Select>
         </label>
-        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={ha}
             onCheckedChange={setHa}
@@ -717,7 +734,7 @@ function CreateDatabase() {
           />
           High availability
         </label>
-        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={scaleToZero}
             onCheckedChange={setScaleToZero}
@@ -726,21 +743,16 @@ function CreateDatabase() {
           />
           Scale to zero
         </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!ready}
-          busy={create.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Create database
-        </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         {SERVICE_CLASSES.find((s) => s.value === serviceClass)?.blurb} Lower-case letters, digits
         and dashes in the name.
       </p>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!ready} busy={create.isPending}>
+          Create database
+        </Button>
+      </div>
     </form>
   );
 }
