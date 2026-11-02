@@ -13,6 +13,7 @@ import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
 import type { components } from '@/lib/api/schema';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { Select } from '@/components/ui/field';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props = {
@@ -170,7 +171,7 @@ function PersonalProjectEnvironments(props: Props) {
         <div className="flex flex-wrap gap-4 p-4">
           <label className="flex min-w-40 flex-col gap-2 text-sm">
             Environment
-            <select
+            <Select
               aria-label="Environment"
               className={selectClass}
               value={selected ?? ''}
@@ -188,11 +189,11 @@ function PersonalProjectEnvironments(props: Props) {
                   {item.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="flex min-w-40 flex-col gap-2 text-sm">
             Compare from
-            <select
+            <Select
               aria-label="Compare from"
               className={selectClass}
               value={compare ?? ''}
@@ -210,7 +211,7 @@ function PersonalProjectEnvironments(props: Props) {
                     {item.slug}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
         </div>
         {!items.length && (

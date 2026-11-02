@@ -5,6 +5,7 @@ import { CapabilityNotice } from './capability-notice';
 import { IssueDetail } from './issue-detail';
 import { IssueReportingSetup } from './issue-reporting-setup';
 import type { IssueSearch } from './issues-search';
+import { Select } from '@/components/ui/field';
 
 type Props = {
   accountId: string;
@@ -71,7 +72,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
           <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Issue state
-              <select
+              <Select
                 aria-label="Issue state"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueState ?? ''}
@@ -85,11 +86,11 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                 <option value="open">Open</option>
                 <option value="resolved">Resolved</option>
                 <option value="ignored">Ignored</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Assignee
-              <select
+              <Select
                 aria-label="Assignee"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueAssignee ?? ''}
@@ -103,11 +104,11 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                 <option value="">Everyone</option>
                 <option value="me">Mine</option>
                 <option value="unassigned">Unassigned</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Order
-              <select
+              <Select
                 aria-label="Issue order"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueSort ?? 'recent'}
@@ -117,7 +118,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               >
                 <option value="recent">Most recent</option>
                 <option value="impact">Observed impact</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Environment

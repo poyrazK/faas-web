@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import type { components } from '@/lib/api/schema';
 import { isCronSchedule, upcomingCronRuns } from '@/lib/cron-schedule';
 import { TIME_ZONES } from '@/lib/timezones';
@@ -115,7 +115,7 @@ export function OverlapField({
     <div className="flex flex-col gap-1.5">
       <label className="flex flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Overlap</span>
-        <select
+        <Select
           name="overlap"
           value={value}
           onChange={(event) => onChange(event.target.value as Overlap)}
@@ -127,7 +127,7 @@ export function OverlapField({
               {option.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <p id={hintId} className="text-xs text-muted-foreground">
         {value === 'allow' && 'Runs may overlap. Nothing is skipped.'}

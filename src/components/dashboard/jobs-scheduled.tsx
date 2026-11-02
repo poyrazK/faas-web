@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Clock, EditPencil, Play, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { FIELD, useFormValidation } from '@/components/ui/field';
+import { FIELD, useFormValidation, Select } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { Timestamp } from '@/components/ui/timestamp';
@@ -521,7 +521,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               <fieldset disabled={createCron.isPending} className="space-y-5">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">App</span>
-                  <select
+                  <Select
                     value={targetApp}
                     onChange={(e) => setAppId(e.target.value)}
                     className={`${FIELD} w-full`}
@@ -533,7 +533,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                         {a.slug}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <ScheduleField
                   value={schedule}

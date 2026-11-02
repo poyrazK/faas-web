@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { Panel } from '@/components/dashboard/primitives';
@@ -450,7 +450,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">Inaccessible endpoint</span>
-                  <select
+                  <Select
                     className={FIELD}
                     value={replacementId}
                     onChange={(event) => setReplacementId(event.target.value)}
@@ -461,7 +461,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
                         {endpoint.name} · {endpoint.id}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <Button
                   type="button"

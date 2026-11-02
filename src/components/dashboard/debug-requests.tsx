@@ -13,6 +13,7 @@ import {
   matchesRegression,
   type DebugSelection,
 } from './debug-search';
+import { Select } from '@/components/ui/field';
 
 /**
  * One row per gateway-served request (ADR-127 PR-A).
@@ -150,7 +151,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Quick filter
-          <select
+          <Select
             aria-label="Quick filter"
             value={filter}
             onChange={(e) => onSelect({ debugFilter: e.target.value as typeof filter })}
@@ -161,7 +162,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <p className="text-xs text-muted-foreground">
           Failed: HTTP 4xx / 5xx. Slow: latency ≥ 1,000 ms. Cold start: recorded cold boot only.
@@ -174,7 +175,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
         </p>
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
-          <select
+          <Select
             aria-label="Window"
             value={since}
             onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
@@ -185,7 +186,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
                 {w}
               </option>
             ))}
-          </select>
+          </Select>
           {data?.since && data.since !== since && (
             // The server clamps to the plan's retention. Say so rather than
             // labelling the table with a window it did not use.

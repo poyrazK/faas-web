@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { usePurgeAppCache, useRestartApp } from '@/lib/api/queries';
@@ -206,7 +206,7 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
           if (!purge.isPending && !operation.busy && !confirming) void onPurge();
         }}
       >
-        <select
+        <Select
           aria-label="Purge scope"
           value={mode}
           onChange={(e) => {
@@ -219,7 +219,7 @@ export function PurgeCacheControl({ slug, appId = '' }: { slug: string; appId?: 
           <option value="all">All responses</option>
           <option value="path">Path glob</option>
           <option value="tag">Cache tag</option>
-        </select>
+        </Select>
         {mode !== 'all' && (
           <input
             value={input}

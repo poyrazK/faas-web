@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import {
+  FIELD,
+  FieldError,
+  fieldErrorProps,
+  useFormValidation,
+  Select,
+} from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
@@ -444,7 +450,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
           <div className="flex items-end gap-3">
             <label className="flex flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Retries</span>
-              <select
+              <Select
                 value={retryPolicy}
                 onChange={(e) => setRetryPolicy(e.target.value as RetryPolicy)}
                 className={FIELD}
@@ -452,7 +458,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 <option value="default">default — back off over 7 tries</option>
                 <option value="aggressive">aggressive — tighter back-off</option>
                 <option value="none">none — one attempt</option>
-              </select>
+              </Select>
             </label>
             <Button type="submit" size="sm" className="gap-1.5" busy={create.isPending}>
               <Plus className="h-3.5 w-3.5" />

@@ -15,7 +15,7 @@ import { CopyableId } from '@/components/ui/copyable-id';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { BucketAccess } from './bucket-access';
 import { CliCommand } from './cli-command';
 import { useCapability } from '@/lib/api/capabilities';
@@ -410,7 +410,7 @@ function CreateBucket({
           </label>
           <label htmlFor={`${id}-region`} className="flex flex-col gap-1">
             Region
-            <select
+            <Select
               id={`${id}-region`}
               className={FIELD}
               value={region || defaultRegion}
@@ -419,7 +419,7 @@ function CreateBucket({
               {regions.map((r) => (
                 <option key={r}>{r}</option>
               ))}
-            </select>
+            </Select>
           </label>
         </div>
       </details>

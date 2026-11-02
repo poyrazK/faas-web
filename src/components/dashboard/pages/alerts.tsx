@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { ListSelect, Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import {
+  FIELD,
+  FieldError,
+  fieldErrorProps,
+  useFormValidation,
+  Select,
+} from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -288,7 +294,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Metric</span>
-            <select
+            <Select
               value={metric}
               onChange={(e) => setMetric(e.target.value as Metric)}
               className={FIELD}
@@ -298,12 +304,12 @@ export function AlertsBody({ slug }: { slug: string }) {
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className="flex gap-2">
             <label className="flex w-20 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Is</span>
-              <select
+              <Select
                 value={comparison}
                 onChange={(e) => setComparison(e.target.value as Comparison)}
                 className={`${FIELD} font-mono`}
@@ -313,7 +319,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                     {COMPARISON[c]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Threshold</span>
@@ -334,7 +340,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           {metric === 'failed_invocations' && (
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Failure source</span>
-              <select
+              <Select
                 value={failureSource}
                 onChange={(e) => setFailureSource(e.target.value as FailureSource)}
                 className={FIELD}
@@ -344,7 +350,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                     {source.replace('_', ' ')}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
           <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -379,7 +385,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           <div className="flex gap-2">
             <label className="flex flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Window</span>
-              <select
+              <Select
                 value={window}
                 onChange={(e) => setWindow(e.target.value as Window)}
                 className={`${FIELD} font-mono`}
@@ -389,7 +395,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                     {w}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex w-24 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Cooldown</span>

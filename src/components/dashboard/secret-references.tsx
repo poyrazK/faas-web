@@ -11,7 +11,7 @@ import {
 } from '@/lib/api/secret-references';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { FieldError } from '@/components/ui/field';
+import { FieldError, Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
@@ -127,7 +127,7 @@ function ProjectReferences({
     <>
       <label className="flex w-fit flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Environment</span>
-        <select
+        <Select
           value={environment}
           onChange={(e) => setPicked(e.target.value)}
           className={cn(FIELD, 'min-w-44 font-sans')}
@@ -137,7 +137,7 @@ function ProjectReferences({
               {name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <EnvironmentReferences key={environment} slug={slug} environment={environment} />
     </>
@@ -314,7 +314,7 @@ function EnvironmentReferences({ slug, environment }: { slug: string; environmen
         </label>
         <label className="flex min-w-44 flex-1 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Source secret</span>
-          <select
+          <Select
             value={source}
             onChange={(e) => setSource(e.target.value)}
             disabled={names.length === 0}
@@ -326,7 +326,7 @@ function EnvironmentReferences({ slug, environment }: { slug: string; environmen
                 {name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <Button
           type="submit"

@@ -9,6 +9,7 @@ import {
   useReorderDeployment,
   type Deployment,
 } from '@/lib/api/queries';
+import { Select } from '@/components/ui/field';
 
 /**
  * The write half of deployment control (ADR-122 canary, ADR-124 queue).
@@ -138,7 +139,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
       <label className="text-xs text-muted-foreground" htmlFor={`priority-${deployment.id}`}>
         Queue position
       </label>
-      <select
+      <Select
         id={`priority-${deployment.id}`}
         className="h-6 rounded-md border border-border bg-background px-2 text-xs"
         value={priority}
@@ -149,7 +150,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
             {p.label}
           </option>
         ))}
-      </select>
+      </Select>
       <Button
         size="xs"
         variant="outline"

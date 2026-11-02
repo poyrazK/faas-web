@@ -4,6 +4,7 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { useTriggerDeadLetter, type TriggerDeadLetterReason } from '@/lib/api/queries';
 import { TriggerRecordActions } from './trigger-record-actions';
 import { formatRelative } from '@/lib/mock-data';
+import { Select } from '@/components/ui/field';
 
 /**
  * Records the platform gave up on, and why.
@@ -50,7 +51,7 @@ export function TriggerDeadLetter({ triggerId }: { triggerId: string }) {
     <div className="flex flex-col gap-3">
       <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
         Reason
-        <select
+        <Select
           aria-label="Reason"
           value={reason}
           onChange={(e) => setReason(e.target.value as TriggerDeadLetterReason | '')}
@@ -61,7 +62,7 @@ export function TriggerDeadLetter({ triggerId }: { triggerId: string }) {
               {r || 'All reasons'}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       {phase !== 'ready' ? (

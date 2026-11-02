@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { errorMessage } from '@/lib/api/errors';
 import {
   accountAppChoicesKey,
@@ -191,7 +191,7 @@ export function ServicePolicyEditor({
         )}
         <label className="flex flex-col gap-1.5">
           <span>Allowed callers</span>
-          <select
+          <Select
             aria-label="Allowed callers"
             className={FIELD}
             disabled={busy}
@@ -203,7 +203,7 @@ export function ServicePolicyEditor({
             <option value="account">Any authenticated same-account caller</option>
             <option value="deny">No internal callers</option>
             <option value="allow">Only named callers</option>
-          </select>
+          </Select>
         </label>
         {draft.callerMode === 'allow' && (
           <label className="flex flex-col gap-1.5">
@@ -218,7 +218,7 @@ export function ServicePolicyEditor({
         )}
         <label className="flex flex-col gap-1.5">
           <span>Method and path grants</span>
-          <select
+          <Select
             aria-label="Method and path grants"
             className={FIELD}
             disabled={busy}
@@ -230,7 +230,7 @@ export function ServicePolicyEditor({
             <option value="clear">No scoped grants</option>
             <option value="deny">Deny all callers with an empty scope map</option>
             <option value="rules">Use scoped grants</option>
-          </select>
+          </Select>
         </label>
         {draft.scopeMode === 'rules' && (
           <label className="flex flex-col gap-1.5">
@@ -268,7 +268,7 @@ export function ServicePolicyEditor({
         </label>
         <label className="flex flex-col gap-1.5">
           <span>Outbound reachability</span>
-          <select
+          <Select
             className={FIELD}
             disabled={busy}
             value={draft.policy}
@@ -279,11 +279,11 @@ export function ServicePolicyEditor({
             <option value="project" disabled>
               Project services, declared targets elsewhere (set by the project)
             </option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5">
           <span>Canonical binding transport</span>
-          <select
+          <Select
             className={FIELD}
             disabled={busy}
             value={draft.transport}
@@ -293,7 +293,7 @@ export function ServicePolicyEditor({
           >
             <option value="http">HTTP</option>
             <option value="https">Private HTTPS</option>
-          </select>
+          </Select>
         </label>
         <p className="text-xs text-muted-foreground">
           Private HTTPS requires platform listener and guest CA qualification. A passed binding

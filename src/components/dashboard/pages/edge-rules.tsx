@@ -22,6 +22,7 @@ import { ruleAction } from '@/lib/api/edge-rules';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
+import { Select } from '@/components/ui/field';
 
 /**
  * Rules the gateway applies before a request reaches an app.
@@ -253,7 +254,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         {!scoped && (
           <label className="flex items-center gap-2">
             <span className="label-mono text-muted-foreground">App</span>
-            <select
+            <Select
               value={slug}
               onChange={(e) => setTargetApp(e.target.value)}
               aria-label="App a new rule is created on"
@@ -264,7 +265,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
                   {a.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         <Button

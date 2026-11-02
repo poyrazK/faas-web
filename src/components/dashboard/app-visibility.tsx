@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useCapability } from '@/lib/api/capabilities';
 import { patchAppVisibility, readAppVisibilityContext } from '@/lib/api/bindings';
 import { keys, type App } from '@/lib/api/queries';
@@ -132,7 +132,7 @@ export function AppVisibility({
         )}
         <label className="flex flex-col gap-1.5">
           <span>Visibility</span>
-          <select
+          <Select
             aria-label="App visibility"
             className={FIELD}
             value={desired}
@@ -145,7 +145,7 @@ export function AppVisibility({
           >
             <option value="public">Public edge and internal service</option>
             <option value="internal">Internal service only</option>
-          </select>
+          </Select>
         </label>
         {message && <p role="alert">{message}</p>}
         <Button

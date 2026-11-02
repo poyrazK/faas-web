@@ -15,6 +15,7 @@ import {
   type Regression,
 } from './debug-search';
 import { InlinePhase, queryPhase } from './primitives';
+import { Select } from '@/components/ui/field';
 
 /**
  * Routes the platform has decided are slower than their own baseline.
@@ -117,7 +118,7 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
-          <select
+          <Select
             aria-label="Regression window"
             value={since}
             onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
@@ -128,7 +129,7 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
                 {w}
               </option>
             ))}
-          </select>
+          </Select>
           {data?.since && data.since !== since && (
             <span>Plan retention capped this to {data.since}.</span>
           )}

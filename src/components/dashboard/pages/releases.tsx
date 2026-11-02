@@ -19,6 +19,7 @@ import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label'
 import { ReleaseProcess } from '@/components/dashboard/release-process';
 import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
+import { Select } from '@/components/ui/field';
 
 type Build = components['schemas']['BuildResponse'];
 type Deployment = components['schemas']['DeploymentResponse'];
@@ -301,7 +302,7 @@ export function DeploymentsPage() {
         filters={
           <>
             <label>
-              <select
+              <Select
                 aria-label="Status filter"
                 value={search.status ?? ''}
                 onChange={(event) => select({ status: event.target.value || undefined }, true)}
@@ -322,10 +323,10 @@ export function DeploymentsPage() {
                       {status.charAt(0).toUpperCase() + status.slice(1)}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             <label>
-              <select
+              <Select
                 aria-label="Source filter"
                 value={search.kind ?? ''}
                 onChange={(event) => select({ kind: event.target.value || undefined }, true)}
@@ -335,7 +336,7 @@ export function DeploymentsPage() {
                 {['github', 'tarball', 'railpack', 'dockerfile'].map((kind) => (
                   <option key={kind}>{kind}</option>
                 ))}
-              </select>
+              </Select>
             </label>
           </>
         }
