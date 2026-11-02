@@ -472,30 +472,26 @@ is the rule to preserve: if you find yourself writing a literal hex or a
 The colour ramp, contrast measurements, and chart tokens are documented inline
 at the top of `index.css`.
 
+The console is compact and flat (the `Console density` block in `index.css`):
+13px reading size, 12px labels, small radii, hairlines instead of shadows.
+Labels are sentence case in the sans face; mono is for identifiers and code.
+
 ### Motion
 
-One curve, a few speeds, everywhere. The vocabulary lives in two places that
-mirror each other — change one, change both:
+Content does not animate. A page of figures that drifts in cannot be read for
+its first few hundred milliseconds, so pages, panels, tables and numbers
+arrive in place. Motion is kept where it explains a change of layer: dialogs,
+sheets, the mobile drawer, toasts and menus moving in and out.
 
-- **TypeScript** — `components/dashboard/motion.tsx` exports `EASE`,
-  `DURATION`, and the components: `Stagger`/`Item` (an orchestrated entrance
-  for content that all mounts in the same commit — never for children that
-  can arrive late, which it strands at opacity 0), `CountUp` (a figure that
-  rolls to its new value), and `Swap` (a keyed cross-fade for a block whose
-  content is replaced, like a metrics window change). Page entrances are NOT
-  Stagger: `PageHeader`, `Panel`, `StatTile`, and `ResourceTable` carry the
-  CSS `animate-item-enter` mount animation, which replays whenever they
-  enter the DOM — including code-split routes and post-fetch panels.
-- **CSS** — `--motion-ease` / `--motion-fast|base|slow` tokens in `index.css`,
-  the `ease-console` Tailwind utility, and the `.pressable` class (the 0.97
-  press dip for anything button-shaped that is not a `<Button>`; use it
-  _instead of_ `transition-colors`, which it includes).
+`components/dashboard/motion.tsx` exports the one curve (`EASE`, mirrored in
+CSS as `--motion-ease` / `ease-console`) and `Swap`, a keyed block for content
+that is replaced. Everything honours `prefers-reduced-motion`.
 
-When to reach for which: an element **arriving** joins the page's `Stagger` or
-fades in; a value **updating in place** rolls with `CountUp`; a block being
-**replaced** cross-fades with `Swap`; never two of those at once. Everything
-honours `prefers-reduced-motion` — Framer components via `useReducedMotion()`,
-CSS via the blanket `[class*='animate-']` rule in `index.css`.
+### Component kit
+
+`/dashboard/kit` (dev only, never built for production) shows every console
+primitive in its ready, loading, empty, error and unreachable states. Review a
+component change there before clicking through pages.
 
 ## Deployment
 
@@ -682,18 +678,26 @@ calling a function with the wrong type.
   **Segments** (`SegmentedControl`, or `SegmentGroup` + `segmentClassName` for
   links) switch a view inside a panel: a direction, scope, filter, or range. Do
   not style a switcher with `Button` variants or a one-off class string.
-- **Reuse the shared primitives.** `PageHeader`, `Panel`, `StatTile`,
-  `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`) and
-  `ResourceTable` (`dashboard/resource-table.tsx`) already cover the shape
-  almost every console page needs.
+- **Reuse the shared primitives.** `PageHeader`, `Panel`, `Stats` +
+  `StatTile`, `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`),
+  `ResourceTable` (`dashboard/resource-table.tsx`), and the kit in
+  `dashboard/kit/`: `Sheet` for create and edit flows, `HelpTip` for
+  explanations, `TimeChart`/`Sparkline` for series. Figures go in a `Stats`
+  strip, not a grid of cards; a table in an unpadded `Panel` drops its own
+  frame.
+- **Say less.** A page has a title and no subtitle; a panel has a title and no
+  description. An explanation someone needs before acting goes in the `help`
+  prop (a "?" popover), short. Internal names (apid, microVM, evidence,
+  telemetry) never reach the UI; `src/lib/copy.test.ts` pins that.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
   reachable everywhere at once. The sidebar lists account-wide pages only,
   grouped by resource category (Compute, Storage, Networking, Messaging,
-  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
-  instead (`APP_TABS`). The reasoning is in
-  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app
+  section instead (`APP_TAB_GROUPS` in `app-tab-navigation.tsx`): opening an
+  app swaps the rail to that app's sections (`app-rail.tsx`). The reasoning
+  is in `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 

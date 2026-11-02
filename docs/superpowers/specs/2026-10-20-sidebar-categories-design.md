@@ -145,3 +145,19 @@ In the worktree, all must pass before the PR is opened:
 4. `npx vitest run --maxWorkers=8` exits 0 with no "Errors" line in the summary.
 5. `npm run build` succeeds.
 6. `npm run dev:mock` and a walk of the rail: every row lights on its own page, `/dashboard/edge-rules` and `/dashboard/instances` light their new rows, `/dashboard/apps/<slug>` lights Projects, ⌘K finds Templates, Import and Object storage, and the rail at 1366×768 scrolls no worse than main does. `npm run tour` against the mock server passes.
+
+## Addendum (2026-11-02): the app rail
+
+App sections left the page. They had become seven group tabs with a segmented
+control under each, two strips of navigation above every app page. Opening an
+app now swaps the rail to that app's sections: a back link to its project, the
+app's name, then the same groups as headings and the sections as rows. The
+section still lives in `?tab=`, so links and history are unchanged; small
+screens get a section select at the top of the page.
+
+Two consequences:
+
+- Metrics joined Observe, and Overview is a single section. Invoke is a header
+  action (`?invoke=1`) rather than a section.
+- The account-level Debugger row left the Observe group. It was an app picker in
+  front of the app's own Debugger; ⌘K still finds it.
