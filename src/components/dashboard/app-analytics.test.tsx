@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +27,18 @@ vi.mock('@/components/dashboard/kit/chart', () => ({
 }));
 
 const { AppAnalyticsBody, AppAnalyticsPanel } = await import('./app-analytics');
+
+/** The app page keeps the panel's filters in the URL; local state stands in. */
+function Panel({ slug }: { slug: string }) {
+  const [search, setSearch] = useState({});
+  return (
+    <AppAnalyticsPanel
+      slug={slug}
+      search={search}
+      onSearchChange={(patch) => setSearch((current) => ({ ...current, ...patch }))}
+    />
+  );
+}
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null });
 const analytics = (over: Record<string, unknown> = {}) => ({
@@ -103,7 +116,7 @@ beforeEach(() => {
 
 describe('AppAnalyticsPanel', () => {
   it('shows the aggregate tiles and the grouped table the API returned', async () => {
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     // Tile numbers count up, so the settled value is awaited.
     expect(await screen.findByText('8,421')).toBeInTheDocument();
     expect(screen.getByText('0.44')).toBeInTheDocument();
@@ -112,12 +125,12 @@ describe('AppAnalyticsPanel', () => {
   });
 
   it('draws the hourly series, which the API zero-fills', () => {
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     expect(screen.getByTestId('chart')).toBeInTheDocument();
   });
 
   it('switches the chart between traffic, latency and cold starts', async () => {
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     const series = () => screen.getAllByTestId('series').map((el) => el.textContent);
     expect(series()).toEqual(['requests', 'error_requests']);
     await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
@@ -143,26 +156,26 @@ describe('AppAnalyticsPanel', () => {
         })),
       })
     );
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
     expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
     expect(screen.getByText('No requests in this window.')).toBeInTheDocument();
   });
 
   it('offers grouping by consumer', () => {
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     expect(screen.getByRole('option', { name: 'Consumer' })).toBeInTheDocument();
   });
 
   it('asks for the dimension the reader picked', async () => {
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     await userEvent.selectOptions(screen.getByLabelText('Group by'), 'country');
     expect(useAppAnalytics).toHaveBeenLastCalledWith('api', '24h', 'country');
   });
 
   it('says when the window was clamped to the plan retention', () => {
     useAppAnalytics.mockReturnValue(ready(analytics({ window_clamped: true })));
-    render(<AppAnalyticsPanel slug="api" />);
+    render(<Panel slug="api" />);
     expect(screen.getByText(/clamped to the retention/i)).toBeInTheDocument();
   });
 
@@ -177,7 +190,7 @@ describe('AppAnalyticsPanel', () => {
         detail: 'the free plan does not include per-app metrics.',
       }),
     });
-    render(withRouter(<AppAnalyticsPanel slug="api" />));
+    render(withRouter(<Panel slug="api" />));
     expect(await screen.findByText(/does not include per-app metrics/i)).toBeInTheDocument();
   });
 });

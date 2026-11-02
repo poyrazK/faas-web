@@ -4,28 +4,58 @@ import {
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from '@/components/dashboard/account-analytics';
+import { validateAppAnalyticsSearch } from '@/components/dashboard/app-analytics';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { consoleHead } from '@/lib/seo';
+
+/** A link from before one app's analytics moved to its Metrics section. */
+type LegacyAppLink = {
+  app?: string;
+  wake?: string;
+  group?: unknown;
+  route?: unknown;
+  method?: unknown;
+};
 
 export const Route = createFileRoute('/dashboard/analytics')({
   component: AnalyticsPage,
   head: () => consoleHead('analytics'),
-  validateSearch: (
-    search: Record<string, unknown>
-  ): AccountAnalyticsSearch & { app?: string; wake?: string } => ({
-    ...(search.window === '24h' || search.window === '7d' ? { window: search.window } : {}),
-    ...(typeof search.app === 'string' && search.app.trim() ? { app: search.app } : {}),
-    ...(typeof search.wake === 'string' && search.wake.trim() ? { wake: search.wake } : {}),
-  }),
-  // One app's analytics moved to its Metrics section; old links follow.
+  validateSearch: (search: Record<string, unknown>): AccountAnalyticsSearch & LegacyAppLink => {
+    const window = search.window === '24h' || search.window === '7d' ? search.window : undefined;
+    const app = typeof search.app === 'string' && search.app.trim() ? search.app : undefined;
+    return {
+      ...(window ? { window } : {}),
+      // The per-app keys only matter long enough to redirect.
+      ...(app
+        ? {
+            app,
+            ...(typeof search.wake === 'string' && search.wake.trim() ? { wake: search.wake } : {}),
+            ...(search.group !== undefined ? { group: search.group } : {}),
+            ...(search.route !== undefined ? { route: search.route } : {}),
+            ...(search.method !== undefined ? { method: search.method } : {}),
+          }
+        : {}),
+    };
+  },
+  // One app's analytics moved to its Metrics section; old links follow, and
+  // keep their window, grouping and route filter.
   beforeLoad: ({ search }) => {
-    if (search.app)
-      throw redirect({
-        to: '/dashboard/apps/$appSlug',
-        params: { appSlug: search.app },
-        search: { tab: 'Metrics', ...(search.wake ? { wake: search.wake } : {}) },
-        replace: true,
-      });
+    if (!search.app) return;
+    throw redirect({
+      to: '/dashboard/apps/$appSlug',
+      params: { appSlug: search.app },
+      search: {
+        tab: 'Metrics',
+        ...(search.wake ? { wake: search.wake } : {}),
+        ...validateAppAnalyticsSearch({
+          analyticsSince: search.window,
+          analyticsGroup: search.group,
+          analyticsRoute: search.route,
+          analyticsMethod: search.method,
+        }),
+      },
+      replace: true,
+    });
   },
 });
 
