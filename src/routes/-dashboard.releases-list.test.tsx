@@ -17,6 +17,7 @@ vi.mock('@tanstack/react-router', () => ({
     useSearch: () => ({}),
     useNavigate: () => vi.fn(),
   }),
+  getRouteApi: () => ({ useSearch: () => ({}), useNavigate: () => vi.fn() }),
   useNavigate: () => vi.fn(),
   Link: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -55,7 +56,7 @@ vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: '', state: 'loading', refresh: vi.fn() }),
 }));
 
-const { DeploymentsPage } = await import('./dashboard.releases');
+const { DeploymentsPage } = await import('@/components/dashboard/pages/releases');
 
 const ready = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 
