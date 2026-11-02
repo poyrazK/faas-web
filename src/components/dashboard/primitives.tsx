@@ -217,11 +217,14 @@ export function StatTile({
 
 export function PageHeader({
   title,
+  help,
   meta,
   description,
   actions,
 }: {
   title: string;
+  /** Explanation behind a "?" beside the title, for whoever needs it. */
+  help?: ReactNode;
   /** Inline facts after the title: a status, a count. */
   meta?: ReactNode;
   /** @deprecated A page has no subtitle; explanations go in a `HelpTip`. */
@@ -232,7 +235,10 @@ export function PageHeader({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
+          </div>
           {meta}
         </div>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
