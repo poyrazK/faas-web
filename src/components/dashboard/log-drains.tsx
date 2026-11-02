@@ -123,6 +123,8 @@ function AddLogDrain({ slug, onClose }: { slug: string; onClose: () => void }) {
       onClose={onClose}
       title="Add a log destination"
       description="Runtime logs from every instance are delivered with retries; failures show in the destination's health."
+      placement="right"
+      width="sm:max-w-[560px]"
       footer={
         <>
           <Button size="sm" variant="ghost" onClick={onClose}>

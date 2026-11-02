@@ -270,7 +270,8 @@ function ListDialog({
           ? `${KINDS.find((k) => k.value === list?.kind)?.label ?? ''}. Items are stored deduplicated and sorted.`
           : 'Items are checked for the kind and stored deduplicated and sorted.'
       }
-      width="max-w-xl"
+      placement="right"
+      width="sm:max-w-[560px]"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>

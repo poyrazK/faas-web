@@ -226,6 +226,8 @@ function PlanForm({
           ? 'Limits change in place. The name and the plan’s prices are not edited here.'
           : 'A named set of limits. Assign it to consumers from their Plan section.'
       }
+      placement="right"
+      width="sm:max-w-[560px]"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         {!plan && (

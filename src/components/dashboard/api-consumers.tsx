@@ -253,6 +253,8 @@ function RegisterConsumer({
       onClose={close}
       title="Register consumer"
       description="A stable identity for one customer of this API. Keys are issued to it afterwards."
+      placement="right"
+      width="sm:max-w-[420px]"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         <FormField
