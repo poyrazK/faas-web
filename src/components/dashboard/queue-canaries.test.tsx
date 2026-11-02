@@ -181,7 +181,7 @@ it('cancels an in-flight canary after a destructive confirmation', async () => {
   expect(within(orders).queryByRole('button', { name: /publish canary/i })).not.toBeInTheDocument();
   await user.click(within(orders).getByRole('button', { name: /cancel canary/i }));
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByText(/revokes its evidence/i)).toBeInTheDocument();
+  expect(within(dialog).getByText(/voids its result/i)).toBeInTheDocument();
   expect(spies.DELETE).not.toHaveBeenCalled();
   await user.click(within(dialog).getByRole('button', { name: /cancel canary/i }));
   await waitFor(() => expect(spies.DELETE).toHaveBeenCalledWith(CANARY, expect.anything()));

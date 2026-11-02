@@ -70,7 +70,7 @@ export function ReleasePreviews() {
   return (
     <Panel
       title="PR previews"
-      description="Each preview is its own app, pr-<number>-<app>, made from a production app's settings. It scales to zero and expires on its own."
+      help="Each preview is its own app, made from a production app's settings. It scales to zero and expires on its own."
       actions={
         canCreate && !creating ? (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCreating(true)}>
@@ -106,7 +106,7 @@ export function ReleasePreviews() {
           })}
           error={apps.error}
           loadingMessage="Loading previews…"
-          emptyMessage="No previews yet. Pull requests on a connected repository get one automatically."
+          emptyMessage="No previews yet."
           onRetry={() => void apps.refetch()}
         />
         {previews.length > 0 && (

@@ -46,10 +46,7 @@ export function McpGuidance({ slug }: { slug: string }) {
     !executionBlocked;
   const endpoint = ready && app.publicUrl ? mcpEndpoint(app.publicUrl, '/mcp') : undefined;
   return (
-    <Panel
-      title="MCP hosting"
-      description="Preview · deployment and client guidance for stateless Streamable HTTP servers."
-    >
+    <Panel title="MCP hosting">
       <div className="space-y-5 p-4 text-sm">
         <CapabilityNotice capability={mcp.capability} state={mcp.state} onRetry={mcp.refresh} />
         <div className="space-y-1">
@@ -60,10 +57,7 @@ export function McpGuidance({ slug }: { slug: string }) {
             onRetry={streaming.refresh}
           />
         </div>
-        <p>
-          Registry availability and app configuration do not verify MCP. Protocol and catalog health
-          remain unverified until you inspect explicit CLI diagnostic results.
-        </p>
+        <p>Protocol and tool-list health stay unverified until you run the CLI diagnostics.</p>
         {metadata.error ? (
           <p role="alert">{errorMessage(metadata.error)}</p>
         ) : metadata.isPending || metadata.isFetching ? (
@@ -104,8 +98,7 @@ export function McpGuidance({ slug }: { slug: string }) {
                   <CopyIconButton text={endpoint} label="Starter-default MCP endpoint" />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The default path is /mcp. For a custom declared path, add --endpoint /custom/path
-                  to the CLI handoffs below. This address has not been probed.
+                  For a custom path, add --endpoint /custom/path to the commands.
                 </p>
               </div>
             ) : (
@@ -139,18 +132,14 @@ export function McpGuidance({ slug }: { slug: string }) {
           </p>
           <p>
             CLI account credentials authenticate only to the Gregale control plane. For
-            authenticated MCP diagnostics and catalogs, supply a client access token through the
+            authenticated MCP diagnostics and listings, supply a client access token through the
             MCP_TOKEN environment variable; --token-env MCP_TOKEN reads it without embedding it in
             the command. Omit that flag for an intentionally open endpoint.
           </p>
         </section>
-        <section className="space-y-3" aria-label="MCP client and catalog handoffs">
-          <h3 className="font-medium">Client and catalog handoffs</h3>
-          <p>
-            Run these commands explicitly in your terminal. The console reads app metadata only.
-            Doctor and catalog discovery are CLI operations; the console executes no probes or
-            tools.
-          </p>
+        <section className="space-y-3" aria-label="MCP client commands">
+          <h3 className="font-medium">Client commands</h3>
+          <p>Run these in your terminal; the console runs no probes or tools.</p>
           {commands ? (
             <>
               <Command label="Inspect protocol with the CLI" command={commands.doctor} />
@@ -165,12 +154,6 @@ export function McpGuidance({ slug }: { slug: string }) {
           ) : (
             <p role="alert">The app identity is unconfirmed; commands are unavailable.</p>
           )}
-          <p className="text-xs text-muted-foreground">
-            Connection JSON contains no credentials and uses a common mcpServers HTTP shape; adapt
-            it to your client. Resource reads, prompt rendering and tool calls are separate explicit
-            actions. If clipboard access is unavailable, select and copy the visible command
-            manually. Run gregale mcp --help for local reference.
-          </p>
         </section>
       </div>
     </Panel>

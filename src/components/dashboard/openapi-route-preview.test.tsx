@@ -71,7 +71,9 @@ it('shows route provenance and enabled policy matches without claiming correctne
   expect(routes.getByText('Matched')).toBeInTheDocument();
   expect(routes.getByText('Declared only')).toBeInTheDocument();
   expect(routes.getByText('Observed only')).toBeInTheDocument();
-  expect(screen.getByText(/does not prove policy correctness/i)).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'About Route and policy preview' })
+  ).toBeInTheDocument();
   expect(screen.getAllByText(/Disabled.*deny/i)).toHaveLength(3);
   expect(screen.queryByText(/healthy API/i)).not.toBeInTheDocument();
 });
@@ -88,7 +90,7 @@ it.each(['partial', 'unavailable'])(
     render(<OpenAPIRoutePreview slug="app-a" />);
     expect(
       screen.getByText(
-        source === 'partial' ? /live telemetry is partial/i : /live telemetry is unavailable/i
+        source === 'partial' ? /live request data is partial/i : /live request data is unavailable/i
       )
     ).toBeInTheDocument();
     expect(screen.getByText(/retained discovered routes are included/i)).toBeInTheDocument();
@@ -99,7 +101,7 @@ it('distinguishes a healthy zero-traffic snapshot from unavailable or capped dis
   state.query.data = { ...base(), routes: [], openapi_version: undefined };
   render(<OpenAPIRoutePreview slug="app-a" />);
   expect(screen.getByText(/no observations in this live snapshot/i)).toBeInTheDocument();
-  expect(screen.getByText(/no imported declaration/i)).toBeInTheDocument();
+  expect(screen.getByText(/no imported document/i)).toBeInTheDocument();
 });
 
 it('preserves cap evidence and hides stale routes during a failed refresh', () => {

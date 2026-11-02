@@ -654,10 +654,7 @@ function CreateAppWizard({
     );
     return (
       <div className="flex flex-col gap-8">
-        <NewAppHeader
-          title={onboarding ? 'Your first deployment' : name}
-          description="Track the app and its first deployment from the platform state."
-        />
+        <NewAppHeader title={onboarding ? 'Your first deployment' : name} />
 
         {tracked ? (
           <DeploymentProgress

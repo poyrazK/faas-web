@@ -71,7 +71,7 @@ export function WorkspaceAppInventory({
   return (
     <Panel
       title="In this workspace"
-      description={`Apps attributed to ${workspace.label}. Settings, deploys, and logs stay with each app's creator, so only apps you created open from here.`}
+      help="Settings, deploys, and logs stay with each app's creator, so only apps you created open from here."
     >
       {code === 'org_role_forbidden' ? (
         <p className="text-sm text-muted-foreground">
@@ -87,7 +87,7 @@ export function WorkspaceAppInventory({
           phase={phase}
           error={q.error}
           loadingMessage={`Loading ${workspace.label}'s apps…`}
-          emptyMessage={`No apps are attributed to ${workspace.label} yet. Apps you create while it is selected are added here.`}
+          emptyMessage={`No apps in ${workspace.label} yet.`}
           onRetry={() => void q.refetch()}
         />
       ) : (

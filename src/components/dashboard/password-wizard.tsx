@@ -294,10 +294,7 @@ export function PasswordWizard({
       };
 
   return (
-    <Panel
-      title="Email sign-in"
-      description="Set a password to sign in with email, or replace the one you have. Google and GitHub keep working either way."
-    >
+    <Panel title="Email sign-in" help="Google and GitHub sign-in keep working either way.">
       <AnimatePresence mode="wait" initial={false}>
         {step === 'idle' && (
           <motion.div key="idle" {...slide} className="flex flex-col gap-4">

@@ -44,10 +44,7 @@ export function SupplyChainPanel({ slug }: { slug: string }) {
   const requireSigned = app.data?.require_signed ?? false;
 
   return (
-    <Panel
-      title="Supply chain"
-      description="Require every deploy to carry a signature from a trusted publisher. Admin only; changes demand MFA."
-    >
+    <Panel title="Supply chain" help="Admin only; changes demand MFA.">
       <div className="flex items-start justify-between gap-6 border-b border-border pb-4">
         <div>
           <p className="text-sm font-medium">Require signed deploys</p>
@@ -85,7 +82,7 @@ export function SupplyChainPanel({ slug }: { slug: string }) {
             phase={signersPhase}
             error={signers.error}
             loadingMessage="Reading publishers…"
-            emptyMessage="No publishers yet — add the public key that signs your images."
+            emptyMessage="No publishers yet."
           />
         ) : (
           <ul className="flex flex-col divide-y divide-border">

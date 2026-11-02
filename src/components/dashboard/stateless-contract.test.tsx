@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { AuditEvent } from '@/lib/api/stateless-advisories';
@@ -55,7 +55,7 @@ describe('StatelessContract', () => {
     render(<StatelessContract slug="search-indexer" />);
     expect(useApp).toHaveBeenCalledWith('search-indexer');
     expect(useStatelessAdvisories).toHaveBeenLastCalledWith('app-uuid');
-    const region = screen.getByRole('region', { name: 'Stateless contract' });
+    const region = screen.getByRole('region', { name: 'Local disk' });
     const rows = within(region).getAllByRole('listitem');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('/data');
@@ -67,13 +67,10 @@ describe('StatelessContract', () => {
     expect(rows[1]).toHaveTextContent('/var/lib/redis');
     expect(rows[1]).toHaveTextContent(/warn/i);
     expect(rows[1]).toHaveTextContent(/Upstash/);
-    // Plain about what this is and is not.
-    expect(region).toHaveTextContent(/lost when the instance parks/i);
-    expect(region).toHaveTextContent(/not a guarantee/i);
-    expect(within(region).getByRole('link', { name: /storage/i })).toHaveAttribute(
-      'href',
-      '/docs/storage'
-    );
+    // Plain about what this is and is not, behind the panel's help.
+    fireEvent.click(within(region).getByRole('button', { name: 'About Local disk' }));
+    expect(screen.getByText(/lost when the instance parks/i)).toHaveTextContent(/not a guarantee/i);
+    expect(screen.getByRole('link', { name: /storage/i })).toHaveAttribute('href', '/docs/storage');
     // Nothing to run: the rows are stored, so there is no review button.
     expect(within(region).queryByRole('button', { name: /review|scan|check/i })).toBeNull();
   });
@@ -81,7 +78,7 @@ describe('StatelessContract', () => {
   it('says when nothing has been seen, without claiming the app is stateless', () => {
     useStatelessAdvisories.mockReturnValue(read({ events: [], limit: 100 }));
     render(<StatelessContract slug="search-indexer" />);
-    const region = screen.getByRole('region', { name: 'Stateless contract' });
+    const region = screen.getByRole('region', { name: 'Local disk' });
     expect(region).toHaveTextContent(/no writes to watched paths/i);
     expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   });
@@ -94,7 +91,7 @@ describe('StatelessContract', () => {
       })
     );
     render(<StatelessContract slug="search-indexer" />);
-    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent(
+    expect(screen.getByRole('region', { name: 'Local disk' })).toHaveTextContent(
       /newest 100 batches/i
     );
   });

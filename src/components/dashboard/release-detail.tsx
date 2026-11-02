@@ -117,7 +117,7 @@ export function ReleaseDetailPanel({
     confirmedDeployment.status.toLowerCase() !== 'cancelled';
   const failedBuild = ownsDeployment && !buildQuery.error && build?.status === 'failed';
   const deploymentState = (
-    <div className="flex flex-col items-start gap-3" role="region" aria-label="Deployment evidence">
+    <div className="flex flex-col items-start gap-3" role="region" aria-label="Deployment details">
       <InlinePhase
         phase={queryPhase({ error: detail.error, loading: detail.isPending, isEmpty: !deployment })}
         error={detail.error}

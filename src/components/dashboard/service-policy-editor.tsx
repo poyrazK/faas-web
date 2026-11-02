@@ -175,10 +175,7 @@ export function ServicePolicyEditor({
   }
 
   return (
-    <Panel
-      title="Edit standalone service policy"
-      description="Changes are reviewed against fresh app and account records before they are sent."
-    >
+    <Panel title="Edit standalone service policy">
       <div className="space-y-4 p-4 text-sm">
         {choices.isPending ? <p role="status">Loading account apps…</p> : null}
         {choices.error ? (

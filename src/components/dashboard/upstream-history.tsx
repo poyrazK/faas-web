@@ -28,7 +28,7 @@ export function UpstreamHistoryPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Probe history"
-      description="Reachability and latency the platform measured for each declared upstream, over the last 24 hours."
+      help="Covers the last 24 hours."
       actions={
         <Select
           value={bucket}
@@ -49,10 +49,7 @@ export function UpstreamHistoryPanel({ slug }: { slug: string }) {
       ) : history.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(history.error)}</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No probe samples in this window. An upstream is probed once it has been declared and the
-          app has run.
-        </p>
+        <p className="text-sm text-muted-foreground">No probe samples in this window.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {rows.map((row) => {

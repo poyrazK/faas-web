@@ -159,7 +159,7 @@ export function RequestAuditPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Request audit"
-      description="One record per completed request the gateway served, kept 30 days. No query strings, headers or bodies are kept. Source IPs, and literal path segments in routes the app does not declare, can be personal data."
+      help="Records are kept 30 days, with no query strings, headers or bodies. Source IPs and undeclared path segments can be personal data."
       actions={
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Window
@@ -186,9 +186,8 @@ export function RequestAuditPanel({ slug }: { slug: string }) {
         <div className="space-y-2 text-sm">
           <p className="font-medium">No audit records in this window.</p>
           <p className="max-w-2xl text-muted-foreground">
-            Request audit is off by default. The platform operator turns it on for every app at
-            once: it is not a per-app or gregale.yaml setting. If this app served requests in this
-            window and none are listed, collection is off.
+            Collection is off by default; the platform operator turns it on for every app, so it is
+            not a per-app or gregale.yaml setting.
           </p>
         </div>
       ) : phase !== 'ready' ? (

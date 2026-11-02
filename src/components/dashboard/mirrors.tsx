@@ -125,7 +125,7 @@ export function MirrorRules({ slug }: { slug: string }) {
   return (
     <Panel
       title="Mirror rules"
-      description="Replay a share of a live deployment's requests against another deployment and count the differences."
+      help="Replays a share of a live deployment's requests against another deployment."
       actions={
         phase === 'ready' && live.length >= 2 ? (
           <Button size="sm" onClick={() => setCreating(true)}>
@@ -145,7 +145,7 @@ export function MirrorRules({ slug }: { slug: string }) {
         <div className="flex flex-col gap-6">
           {(rules.data?.rules.length ?? 0) === 0 ? (
             <EmptyState
-              message="No mirror rules yet. Bind a live deployment to a second one."
+              message="No mirror rules yet."
               action={
                 live.length >= 2 ? (
                   <Button size="sm" onClick={() => setCreating(true)}>
@@ -224,7 +224,7 @@ function MirrorRuleCard({
     if (
       !(await confirm({
         title: 'Delete this mirror rule?',
-        description: 'Mirrored traffic stops and the comparison ledger for this rule is discarded.',
+        description: "Mirrored traffic stops and this rule's comparison history is discarded.",
         confirmLabel: 'Delete',
         destructive: true,
       }))

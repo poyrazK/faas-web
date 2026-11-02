@@ -138,7 +138,7 @@ export function TenantSurfaces({ slug }: { slug: string }) {
     <PlanGated error={surfaces.error} feature="Tenant surfaces">
       <Panel
         title="Tenant surfaces"
-        description="Group your customers' hostnames under one certificate bundle; each hostname is verified by a TXT record."
+        help="Each hostname is verified by a TXT record before the certificate is issued."
         actions={
           app.data ? (
             <Button size="sm" onClick={() => setCreating(true)}>
@@ -158,7 +158,7 @@ export function TenantSurfaces({ slug }: { slug: string }) {
           <div className="flex flex-col gap-6">
             {(surfaces.data?.surfaces.length ?? 0) === 0 ? (
               <EmptyState
-                message="No tenant surfaces yet. Create one with the hostnames it should serve."
+                message="No tenant surfaces yet."
                 action={
                   app.data ? (
                     <Button size="sm" onClick={() => setCreating(true)}>

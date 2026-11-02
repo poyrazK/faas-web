@@ -90,16 +90,12 @@ function ActivityTimeline({
           {deploymentId ? 'Release activity' : 'App activity'}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Newest events first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
-          Curated workspace activity is append-only; the API does not advertise a retention expiry.
-          Historical coverage can be incomplete for older or deleted resources. Only records visible
-          to your current workspace membership appear.
+          Newest first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
+          Coverage can be incomplete for older or deleted resources.
         </p>
         {deploymentId && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Only events identifying this release appear here. Older app pages may contain no
-            matching release; load more to continue. App-wide config and domain events are in the
-            app’s Activity tab.
+            Only events naming this release appear; app-wide events are on the app’s Activity tab.
           </p>
         )}
       </div>
@@ -164,8 +160,7 @@ function ActivityTimeline({
         </p>
       ) : !workspace.data && !workspace.isPending ? (
         <p className="text-sm text-muted-foreground">
-          This app’s persisted workspace could not be resolved from the accessible inventory. No
-          unscoped activity is shown.
+          This app’s workspace could not be found, so no activity is shown.
         </p>
       ) : workspace.isPending || activity.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">

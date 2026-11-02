@@ -73,7 +73,7 @@ function GraceWindowPanel() {
   return (
     <Panel
       title="Rotation grace window"
-      description="Account-wide override for future personal and organisation key rotations. Zero revokes the old key immediately; restoring the plan default clears the override."
+      help="Applies to future personal and organisation key rotations. Zero revokes the old key immediately."
     >
       <form
         noValidate
@@ -315,7 +315,7 @@ export function PersonalKeysBody({
       {selectedKeyId && <PersonalKeyDetail id={selectedKeyId} onClose={onCloseKey ?? (() => {})} />}
       <PageHeader
         title="Personal API keys"
-        description="Bearer keys for the CLI and the API. Revoking is immediate; rotating leaves the old key valid for its grace window."
+        help="Revoking is immediate; rotating leaves the old key valid for its grace window."
       />
 
       {!creating && evidence.secret && (
