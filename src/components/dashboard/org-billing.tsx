@@ -40,7 +40,7 @@ export function OrgUsage({ org, label }: { org: string; label: string }) {
   return (
     <Panel
       title={`${label} usage this month`}
-      description="Application usage billed to the organization. Usage from before an app joined it stays with its original owner."
+      help="Usage from before an app joined the organization stays with its original owner."
     >
       {usage.error ? (
         <p role="status" className="text-sm text-muted-foreground">
@@ -96,7 +96,7 @@ export function OrgPlanSummary({ org, label }: { org: string; label: string }) {
   return (
     <Panel
       title={`${label}'s plan`}
-      description="The organization pays for its own apps. Its owner changes the plan."
+      help="The organization pays for its own apps. Its owner changes the plan."
     >
       {status.error ? (
         <p role="status" className="text-sm text-muted-foreground">

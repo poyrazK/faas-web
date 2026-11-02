@@ -324,10 +324,7 @@ function OverviewPage() {
   if (firstRun) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader
-          title={firstName ? `Welcome, ${firstName}` : 'Overview'}
-          description="Your first app starts here. Choose a source and we’ll guide you through deployment."
-        />
+        <PageHeader title={firstName ? `Welcome, ${firstName}` : 'Overview'} />
         <FirstRun />
       </div>
     );
@@ -336,7 +333,7 @@ function OverviewPage() {
   if (phase !== 'ready') {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Overview" description="Your account at a glance." />
+        <PageHeader title="Overview" />
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={refresh} />
         ) : phase === 'error' ? (

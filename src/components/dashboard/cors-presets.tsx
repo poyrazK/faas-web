@@ -144,7 +144,7 @@ function AccountPresets({ slug }: { slug?: string }) {
     <PlanGated error={presets.error} feature="CORS presets">
       <Panel
         title="CORS presets"
-        description="Named allow-lists a CORS edge rule can reference, so origins are kept once and edited once."
+        help="Named allow-lists a CORS edge rule can reference, so origins are kept once and edited once."
         actions={
           <>
             <MaturityLabel capability={capability} />
