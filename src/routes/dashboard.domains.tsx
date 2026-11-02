@@ -397,7 +397,7 @@ function DomainsPage() {
         description="Custom hostnames and their DNS verification. TLS is issued and renewed automatically once a domain verifies."
       />
 
-      <Panel lit title="Add a domain">
+      <Panel title="Add a domain">
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {

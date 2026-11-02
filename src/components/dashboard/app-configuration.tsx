@@ -261,7 +261,6 @@ function ConfigForm({ app }: { app: App }) {
   return (
     <>
       <Panel
-        lit
         title="Runtime"
         description="Request, egress and scaling policies can converge live. Memory requires a fresh instance."
         actions={

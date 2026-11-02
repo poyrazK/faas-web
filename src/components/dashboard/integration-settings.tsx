@@ -65,7 +65,6 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
       )}
 
       <Panel
-        lit={!githubConnected}
         title="GitHub"
         description="Connect GitHub once to let Gregale fetch repository refs for dashboard and CI deployments."
         actions={
