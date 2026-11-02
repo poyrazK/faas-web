@@ -8,7 +8,11 @@ describe('Analytics search', () => {
     expect(validate({ window: '7d', group: 'route', route: '/orders' })).toEqual({ window: '7d' });
   });
 
-  it('keeps an old app link so it can be redirected', () => {
-    expect(validate({ app: 'alpha', wake: 'w1' })).toEqual({ app: 'alpha', wake: 'w1' });
+  it('keeps an old app link, filters included, so it can be redirected', () => {
+    expect(validate({ app: 'alpha', wake: 'w1', group: 'route' })).toEqual({
+      app: 'alpha',
+      wake: 'w1',
+      group: 'route',
+    });
   });
 });

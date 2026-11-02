@@ -182,12 +182,22 @@ it('sends an old one-app analytics link to that app’s Metrics', async () => {
   });
   const router = createRouter({
     routeTree: root.addChildren([analyticsRoute, app]),
-    history: createMemoryHistory({ initialEntries: ['/dashboard/analytics?app=alpha&window=7d'] }),
+    history: createMemoryHistory({
+      initialEntries: [
+        '/dashboard/analytics?app=alpha&window=7d&group=route&route=%2Forders&method=GET',
+      ],
+    }),
   });
   render(<RouterProvider router={router} />);
   expect(await screen.findByRole('heading', { name: 'App page' })).toBeInTheDocument();
   expect(router.state.location.pathname).toBe('/dashboard/apps/alpha');
-  expect(router.state.location.search).toEqual({ tab: 'Metrics' });
+  expect(router.state.location.search).toEqual({
+    tab: 'Metrics',
+    analyticsSince: '7d',
+    analyticsGroup: 'route',
+    analyticsRoute: '/orders',
+    analyticsMethod: 'GET',
+  });
 });
 
 describe('AccountAnalytics', () => {

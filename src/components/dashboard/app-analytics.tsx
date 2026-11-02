@@ -355,25 +355,76 @@ export function AppAnalyticsBody({
   );
 }
 
-export function AppAnalyticsPanel({ slug }: { slug: string }) {
-  const [since, setSince] = useState<string>('24h');
-  const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('route');
-  const [route, setRoute] = useState<string>();
-  const [method, setMethod] = useState<AnalyticsMethod>();
+const METHODS: readonly AnalyticsMethod[] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+];
 
+/** The Metrics section's request-analytics state, kept in the app page URL. */
+export type AppAnalyticsSearch = {
+  analyticsSince?: (typeof WINDOWS)[number];
+  analyticsGroup?: AnalyticsGroupBy;
+  analyticsRoute?: string;
+  analyticsMethod?: AnalyticsMethod;
+};
+
+/** Reads the analytics keys from a search object; unknown values are dropped. */
+export function validateAppAnalyticsSearch(search: Record<string, unknown>): AppAnalyticsSearch {
+  const since = WINDOWS.find((w) => w === search.analyticsSince);
+  const group = ANALYTICS_GROUPS.find(({ value }) => value === search.analyticsGroup)?.value;
+  const method = METHODS.find((m) => m === search.analyticsMethod);
+  const route =
+    typeof search.analyticsRoute === 'string' && search.analyticsRoute.trim()
+      ? search.analyticsRoute
+      : undefined;
+  return {
+    ...(since ? { analyticsSince: since } : {}),
+    ...(group ? { analyticsGroup: group } : {}),
+    // A route filter is only meaningful as a pair, and only when grouping by route.
+    ...(route && method && (!group || group === 'route')
+      ? { analyticsRoute: route, analyticsMethod: method }
+      : {}),
+  };
+}
+
+/** Request analytics for one app, with its filters in the URL so a link keeps them. */
+export function AppAnalyticsPanel({
+  slug,
+  search,
+  onSearchChange,
+}: {
+  slug: string;
+  search: AppAnalyticsSearch;
+  onSearchChange: (patch: AppAnalyticsSearch) => void;
+}) {
   return (
     <AppAnalyticsBody
       slug={slug}
-      since={since}
-      groupBy={groupBy}
-      route={route}
-      method={method}
-      onSinceChange={setSince}
-      onGroupByChange={setGroupBy}
-      onRouteChange={(nextRoute, nextMethod) => {
-        setRoute(nextRoute);
-        setMethod(nextMethod);
-      }}
+      since={search.analyticsSince ?? '24h'}
+      groupBy={search.analyticsGroup ?? 'route'}
+      route={search.analyticsRoute}
+      method={search.analyticsMethod}
+      onSinceChange={(since) =>
+        onSearchChange({ analyticsSince: WINDOWS.find((w) => w === since) })
+      }
+      onGroupByChange={(group) =>
+        onSearchChange({
+          analyticsGroup: group,
+          analyticsRoute: undefined,
+          analyticsMethod: undefined,
+        })
+      }
+      onRouteChange={(route, method) =>
+        onSearchChange({
+          analyticsRoute: route && method ? route : undefined,
+          analyticsMethod: route && method ? method : undefined,
+        })
+      }
     />
   );
 }

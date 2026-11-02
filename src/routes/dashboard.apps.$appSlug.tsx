@@ -81,7 +81,11 @@ import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
-import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import {
+  AppAnalyticsPanel,
+  validateAppAnalyticsSearch,
+  type AppAnalyticsSearch,
+} from '@/components/dashboard/app-analytics';
 import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
 import {
   AppHealthPanel,
@@ -181,6 +185,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
   ): DebugSearch &
     LogsSearch &
     IssueSearch &
+    AppAnalyticsSearch &
     ReturnType<typeof automationSearchPatch> & {
       tab?: Tab;
       /** The Invoke sheet is open. `?tab=Invoke` from before it moved opens it too. */
@@ -193,6 +198,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
+    ...validateAppAnalyticsSearch(search),
     tab: resolveAppTab(search.tab),
     invoke:
       search.invoke === true || search.invoke === '1' || search.tab === 'Invoke' ? true : undefined,
@@ -555,7 +561,18 @@ function FunctionDetailPage() {
                     </Panel>
                     <AppHealthPanel slug={fn.id} />
                     <SloPanel slug={fn.id} />
-                    <AppAnalyticsPanel slug={fn.id} />
+                    <AppAnalyticsPanel
+                      slug={fn.id}
+                      search={search}
+                      onSearchChange={(patch) =>
+                        void navigate({
+                          search: (current) => ({ ...current, ...patch }),
+                          replace: true,
+                          hash: true,
+                          resetScroll: false,
+                        })
+                      }
+                    />
                     <CustomMetricsPanel slug={fn.id} />
                     <div className="grid gap-4 xl:grid-cols-2">
                       <AwakeRoutesPanel slug={fn.id} since="7d" />
