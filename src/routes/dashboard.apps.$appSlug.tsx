@@ -37,7 +37,7 @@ import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { LogsBody } from './dashboard.logs';
+import { LogsBody } from '@/components/dashboard/pages/logs';
 import {
   logFilters,
   logsSearch,
@@ -45,24 +45,24 @@ import {
   validateLogsSearch,
   type LogsSearch,
 } from '@/components/dashboard/logs-search';
-import { RoutesBody } from './dashboard.routes';
-import { SecretsBody } from './dashboard.secrets';
-import { EnvBody } from './dashboard.env';
+import { RoutesBody } from '@/components/dashboard/pages/routes';
+import { SecretsBody } from '@/components/dashboard/pages/secrets';
+import { EnvBody } from '@/components/dashboard/pages/env';
 import { ConfigHistory } from '@/components/dashboard/config-history';
-import { QueuesBody } from './dashboard.queues';
-import { UpstreamsBody } from './dashboard.upstreams';
-import { AlertsBody } from './dashboard.alerts';
+import { QueuesBody } from '@/components/dashboard/pages/queues';
+import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
+import { AlertsBody } from '@/components/dashboard/pages/alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
-import { MirrorsBody } from './dashboard.mirrors';
-import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
+import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
+import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
-import { OpenAPIBody } from './dashboard.openapi';
-import { WebhooksHub } from './dashboard.webhooks';
-import { EdgeRulesBody } from './dashboard.edge-rules';
+import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
+import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
+import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
 import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
 import { ErrorsBody } from '@/components/dashboard/errors-body';
 import { LogDrainsBody } from '@/components/dashboard/log-drains';

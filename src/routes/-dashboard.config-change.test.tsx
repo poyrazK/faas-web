@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { EnvBody } from './dashboard.env';
-import { SecretsBody } from './dashboard.secrets';
+import { EnvBody } from '@/components/dashboard/pages/env';
+import { SecretsBody } from '@/components/dashboard/pages/secrets';
 import { spyApi } from '@/test/api';
 
 // A write's `config_change` receipt (faas ADR-1451) reaches the person, and

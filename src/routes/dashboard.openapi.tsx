@@ -1,25 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
-import { OpenAPIImport } from '@/components/dashboard/openapi-import';
-import { OpenAPIRoutePreview } from '@/components/dashboard/openapi-route-preview';
 import { consoleHead } from '@/lib/seo';
+import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
 
 export const Route = createFileRoute('/dashboard/openapi')({
   component: OpenAPIPage,
   head: () => consoleHead('openapi'),
 });
-
-export function OpenAPIBody({ slug }: { slug: string }) {
-  // Keyed on the app: a pasted document, its preview and the chosen
-  // deployment all belong to one app and must not survive a switch.
-  return (
-    <div className="flex flex-col gap-6" key={slug}>
-      <OpenAPIRoutePreview slug={slug} />
-      <OpenAPIImport slug={slug} />
-    </div>
-  );
-}
 
 function OpenAPIPage() {
   const appState = useSelectedApp();

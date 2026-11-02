@@ -31,7 +31,8 @@ vi.mock('@/components/dashboard/inbound-webhooks', () => ({
   InboundWebhooks: ({ slug }: { slug: string }) => <div>Inbound endpoints for {slug}</div>,
 }));
 
-const { WebhooksBody, WebhooksHub, validateWebhookSearch } = await import('./dashboard.webhooks');
+const { WebhooksBody, WebhooksHub, validateWebhookSearch } =
+  await import('@/components/dashboard/pages/webhooks');
 
 beforeEach(() => {
   createWebhook
