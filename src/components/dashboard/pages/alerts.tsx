@@ -287,8 +287,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           }}
         >
           <p className="text-xs text-muted-foreground sm:col-span-2">
-            When the metric crosses the threshold for the window, a signed payload is POSTed to the
-            webhook. The secret is sealed on save and never shown again.
+            The webhook secret is sealed on save and never shown again.
           </p>
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Name</span>
@@ -460,7 +459,6 @@ export function AlertsBody({ slug }: { slug: string }) {
       {deliveriesFor && (
         <Panel
           title={`Deliveries — ${deliveriesFor.name}`}
-          description="Whether the webhook actually received this rule, newest first."
           actions={
             <Button size="sm" variant="secondary" onClick={() => setDeliveriesFor(null)}>
               Close
@@ -470,10 +468,7 @@ export function AlertsBody({ slug }: { slug: string }) {
           <AlertDeliveries slug={slug} ruleId={deliveriesFor.id} />
         </Panel>
       )}
-      <Panel
-        title="Presets"
-        description="Rules worth having, already written. Enabling one creates a normal rule — the preset supplies the metric and threshold, you supply the webhook."
-      >
+      <Panel title="Presets">
         <AlertPresets slug={slug} />
       </Panel>
     </div>

@@ -226,7 +226,7 @@ export function DeploymentsPage() {
   const selected = deployments.find((deployment) => deployment.id === search.deployment);
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Releases" description="Deployment history and the builds behind it." />
+      <PageHeader title="Releases" />
       <TabNav label="Releases views">
         {(['releases', 'builds'] as const).map((value) => (
           <Link
@@ -247,11 +247,6 @@ export function DeploymentsPage() {
           </Link>
         ))}
       </TabNav>
-      {view === 'builds' && (
-        <p className="text-sm text-muted-foreground">
-          All image builds, including builds without an attached deployment.
-        </p>
-      )}
       <ResourceTable
         rows={rows}
         columns={columns}
@@ -373,7 +368,7 @@ export function DeploymentsPage() {
         <div className="flex items-center gap-3">
           <InlinePhase phase={queryPhase({ error: buildsQuery.error })} error={buildsQuery.error} />
           <Button size="xs" variant="ghost" onClick={() => void buildsQuery.refetch()}>
-            Retry build evidence
+            Retry build details
           </Button>
         </div>
       )}
@@ -396,7 +391,7 @@ export function DeploymentsPage() {
           busy={buildsQuery.isFetchingNextPage}
           onClick={() => void buildsQuery.fetchNextPage().catch(() => undefined)}
         >
-          Load older build evidence
+          Load older build details
         </Button>
       )}
       {(search.deployment || search.build) && (

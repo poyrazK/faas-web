@@ -332,8 +332,7 @@ export function LogsBody({
       )}
       {truncated && (
         <p className="text-xs text-muted-foreground">
-          Showing the last {MAX_LINES.toLocaleString()} lines. Earlier output has scrolled out of
-          the buffer — download before clearing if you need it.
+          Showing the last {MAX_LINES.toLocaleString()} lines.
         </p>
       )}
 
@@ -341,9 +340,7 @@ export function LogsBody({
         <div className="rounded-xl border border-border bg-card p-6">
           <p className="text-sm font-medium">Log archive is not on the free plan</p>
           <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
-            Live output is always available. Reading a past day back from object storage needs Hobby
-            or above, which also sets how far back you can go — 7 days on Hobby, 30 on Pro, 90 on
-            Scale.
+            Past days need Hobby or above: 7 days on Hobby, 30 on Pro, 90 on Scale.
           </p>
           <Link
             to="/dashboard/plans"
@@ -366,7 +363,7 @@ export function LogsBody({
                 : status === 'error'
                   ? 'The log stream is disconnected.'
                   : connected
-                    ? 'Waiting for output. A parked app produces nothing until it wakes.'
+                    ? 'Waiting for output; a parked app is silent until it wakes.'
                     : 'Paused. Resume to stream logs.'
           }
         />

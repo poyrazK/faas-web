@@ -87,20 +87,24 @@ function ProjectCard({
   return (
     <Panel
       title={slug}
-      description={[repo || 'No repository connected', branch && `deploys ${branch}`]
-        .filter(Boolean)
-        .join(' · ')}
       actions={
-        <Button asChild size="xs" variant="ghost">
-          <Link
-            to="/dashboard/projects/$projectSlug"
-            params={{ projectSlug: slug }}
-            search={{ q: q || undefined }}
-            aria-label={`Open project ${slug}`}
-          >
-            Open project
-          </Link>
-        </Button>
+        <>
+          <span className="text-xs text-muted-foreground">
+            {[repo || 'No repository connected', branch && `deploys ${branch}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          <Button asChild size="xs" variant="ghost">
+            <Link
+              to="/dashboard/projects/$projectSlug"
+              params={{ projectSlug: slug }}
+              search={{ q: q || undefined }}
+              aria-label={`Open project ${slug}`}
+            >
+              Open project
+            </Link>
+          </Button>
+        </>
       }
       padded={false}
     >
@@ -170,7 +174,6 @@ export function ProjectInventory() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Projects"
-        description="A project is one repository and everything deployed from it — its apps, environments, and releases."
         actions={
           <>
             <Button asChild size="sm" variant="outline" className="gap-1.5">
@@ -198,7 +201,7 @@ export function ProjectInventory() {
       ) : membership.list.isError ? (
         <ErrorState error={membership.list.error} onRetry={membership.retry} />
       ) : nothingYet ? (
-        <EmptyState message="Nothing deployed yet. Import a repository to create your first project, or deploy a single app." />
+        <EmptyState message="Nothing deployed yet." />
       ) : (
         <>
           <label className="flex max-w-sm flex-col gap-2 text-sm">
@@ -249,7 +252,7 @@ export function ProjectInventory() {
 
           <Panel
             title="Standalone apps"
-            description="Deployed from a folder, an image, or a template rather than an imported repository, so they belong to no project."
+            help="Apps deployed from a folder, an image, or a template belong to no project."
             padded={false}
           >
             {appsError ? (
