@@ -128,7 +128,7 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
           />
           {accountPhase === 'ready' && accountDegraded && (
             <p role="status" className="text-sm text-muted-foreground">
-              Telemetry source: {data?.source}
+              Metrics source: {data?.source}
             </p>
           )}
           <Stats columns={4}>
@@ -184,7 +184,7 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
           >
             {appsPhase === 'ready' && appsDegraded ? (
               <p role="status" className="text-sm text-muted-foreground">
-                Telemetry source: {metrics.data?.source}. App metrics are unavailable for this
+                Metrics source: {metrics.data?.source}. App metrics are unavailable for this
                 window.
               </p>
             ) : (
