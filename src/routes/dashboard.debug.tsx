@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
-import { AppScope, AppSelect, remembered, useSelectedApp } from '@/components/dashboard/app-select';
+import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { remembered } from '@/components/dashboard/selected-app';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch } from '@/components/dashboard/debug-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
