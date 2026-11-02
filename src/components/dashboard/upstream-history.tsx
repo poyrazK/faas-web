@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkline } from '@/components/dither-kit';
+import { Sparkline } from './kit/chart';
 import { Select } from '@/components/ui/field';
 import { Panel } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';

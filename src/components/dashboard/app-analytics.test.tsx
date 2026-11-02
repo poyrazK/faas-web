@@ -13,15 +13,16 @@ vi.mock('@/lib/api/queries', () => ({
   useAppAnalyticsTimeseries: (slug: string, since: string, options?: unknown) =>
     useAppAnalyticsTimeseries(slug, since, options) as unknown,
 }));
-vi.mock('@/components/dither-kit', () => ({
-  Area: ({ dataKey }: { dataKey: string }) => <span data-testid="series">{dataKey}</span>,
-  AreaChart: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
+vi.mock('@/components/dashboard/kit/chart', () => ({
+  TimeChart: ({ series }: { series: Record<string, unknown> }) => (
+    <div data-testid="chart">
+      {Object.keys(series).map((key) => (
+        <span key={key} data-testid="series">
+          {key}
+        </span>
+      ))}
+    </div>
   ),
-  Grid: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
 }));
 
 const { AppAnalyticsBody, AppAnalyticsPanel } = await import('./app-analytics');

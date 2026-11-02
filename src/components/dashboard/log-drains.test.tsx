@@ -54,13 +54,8 @@ vi.mock('@/lib/api/log-drains', () => ({
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock('@/components/dither-kit', () => ({
-  Area: () => null,
-  AreaChart: () => <div data-testid="chart" />,
-  Grid: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
+vi.mock('@/components/dashboard/kit/chart', () => ({
+  TimeChart: () => <div data-testid="chart" />,
 }));
 
 const { LogDrainsBody } = await import('./log-drains');

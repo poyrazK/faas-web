@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { EditPencil, Trash } from 'iconoir-react';
-import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { TimeChart } from './kit/chart';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { Switch } from '@/components/ui/switch';
@@ -17,7 +17,7 @@ import {
 import { Timestamp } from './events/event-format';
 import { EditLogDrain } from './log-drain-edit';
 import { kindLabel } from './log-drain-form';
-import { InlinePhase, Panel, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from './primitives';
 import { SegmentedControl } from './tabs';
 
 const WINDOWS: LogDrainWindow[] = ['1h', '24h', '7d', '30d'];
@@ -146,12 +146,12 @@ export function LogDrainDetail({
               <span className="font-medium">{h.status}</span>
               {h.last_error && <span className="text-muted-foreground">{h.last_error}</span>}
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Stats columns={4}>
               <StatTile label="Delivered" value={h.delivered_total.toLocaleString()} />
               <StatTile label="Failed" value={h.failed_total.toLocaleString()} />
               <StatTile label="Dropped" value={h.dropped_total.toLocaleString()} />
               <StatTile label="Queue" value={`${h.queue_depth} / ${h.queue_capacity}`} />
-            </div>
+            </Stats>
             <ul
               aria-label="Delivery health"
               className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3"
@@ -207,21 +207,15 @@ export function LogDrainDetail({
             />
           </div>
           {points.length >= 2 ? (
-            <AreaChart
+            <TimeChart
               data={points}
-              config={{
+              x="at"
+              series={{
                 delivered: { label: 'Delivered', color: 'green' },
                 failed: { label: 'Failed or dropped', color: 'red' },
               }}
-              className="h-40 w-full"
-            >
-              <Grid />
-              <XAxis dataKey="at" />
-              <YAxis />
-              <Tooltip />
-              <Area dataKey="delivered" />
-              <Area dataKey="failed" />
-            </AreaChart>
+              className="h-40"
+            />
           ) : (
             <InlinePhase
               phase={queryPhase({

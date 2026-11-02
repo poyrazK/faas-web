@@ -5,7 +5,7 @@ const useUpstreamHistory = vi.fn();
 vi.mock('@/lib/api/queries', () => ({
   useUpstreamHistory: (slug: string, bucket: string) => useUpstreamHistory(slug, bucket) as unknown,
 }));
-vi.mock('@/components/dither-kit', () => ({
+vi.mock('@/components/dashboard/kit/chart', () => ({
   Sparkline: () => <div data-testid="sparkline" />,
 }));
 

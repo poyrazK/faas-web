@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
-import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { TimeChart } from './kit/chart';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -243,17 +243,12 @@ function MetricHistory({ slug, metric }: { slug: string; metric: CustomMetric })
     );
   } else if (points.length >= 2) {
     body = (
-      <AreaChart
+      <TimeChart
         data={points}
-        config={{ value: { label: counter ? 'per second' : metric.name, color: 'green' } }}
-        className="h-44 w-full"
-      >
-        <Grid />
-        <XAxis dataKey="at" />
-        <YAxis />
-        <Tooltip />
-        <Area dataKey="value" />
-      </AreaChart>
+        x="at"
+        series={{ value: { label: counter ? 'per second' : metric.name, color: 'green' } }}
+        className="h-44"
+      />
     );
   } else {
     body = (
