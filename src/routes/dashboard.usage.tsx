@@ -140,11 +140,6 @@ function PerAppUsagePanel() {
   return (
     <Panel
       title="By app"
-      description={
-        rows.length > 5 && phase === 'ready'
-          ? `${expanded ? 'All' : 'Top 5 of'} ${rows.length} apps this billing period, highest usage first.`
-          : 'This billing period, per app.'
-      }
       padded={phase !== 'ready'}
       actions={
         phase === 'ready' &&

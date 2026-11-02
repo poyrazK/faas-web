@@ -219,16 +219,14 @@ export function PageHeader({
   title,
   help,
   meta,
-  description,
   actions,
 }: {
   title: string;
-  /** Explanation behind a "?" beside the title, for whoever needs it. */
+  /** Explanation behind a "?" beside the title, for whoever needs it. A page
+   *  has no subtitle. */
   help?: ReactNode;
   /** Inline facts after the title: a status, a count. */
   meta?: ReactNode;
-  /** @deprecated A page has no subtitle; explanations go in a `HelpTip`. */
-  description?: string;
   actions?: ReactNode;
 }) {
   return (
@@ -241,7 +239,6 @@ export function PageHeader({
           </div>
           {meta}
         </div>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && (
         <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
@@ -253,17 +250,15 @@ export function PageHeader({
 export function Panel({
   title,
   help,
-  description,
   actions,
   children,
   className,
   padded = true,
 }: {
   title?: string;
-  /** Explanation behind a "?" beside the title, for whoever needs it. */
+  /** Explanation behind a "?" beside the title, for whoever needs it. A
+   *  panel has a title and no description. */
   help?: ReactNode;
-  /** @deprecated A panel has a title only; explanations go in `help`. */
-  description?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -284,7 +279,6 @@ export function Panel({
                 {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
               </div>
             )}
-            {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>

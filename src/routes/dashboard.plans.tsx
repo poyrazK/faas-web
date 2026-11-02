@@ -85,7 +85,7 @@ function BillingControlsPanel() {
   return (
     <Panel
       title="Subscription"
-      description="Cancelling takes effect at the end of the current period — nothing stops today."
+      help="Cancelling takes effect at the end of the current period. Nothing stops today."
     >
       <div className="flex flex-wrap items-center gap-3">
         {account?.status === 'past_due' && (

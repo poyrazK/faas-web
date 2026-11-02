@@ -526,10 +526,7 @@ function FunctionDetailPage() {
                       />
                     </Stats>
 
-                    <Panel
-                      title="Response latency"
-                      description="2xx traffic over the selected window"
-                    >
+                    <Panel title="Response latency" help="2xx responses over the selected window.">
                       {metricsPhase === 'unreachable' ? (
                         <UnreachableState onRetry={() => void metrics.refetch()} />
                       ) : metricsPhase === 'error' ? (
@@ -616,7 +613,7 @@ function FunctionDetailPage() {
                   />
                   <Panel
                     title="Deploy an archive"
-                    description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
+                    help="For source that is not in a connected repository. The console's half of `gregale deploy --tarball`."
                   >
                     <TarballDeploy
                       slug={fn.id}
