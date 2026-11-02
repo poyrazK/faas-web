@@ -42,10 +42,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 2,
     name: 'Source deploys: local tree, tarball, Dockerfile; resumable uploads',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
-    gap: 'Tarball deploys use the deprecated multipart route; move to /v1/uploads',
-    wave: 0,
   },
   // A3 · GA
   {
