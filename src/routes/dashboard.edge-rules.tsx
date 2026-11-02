@@ -10,10 +10,10 @@ export const Route = createFileRoute('/dashboard/edge-rules')({
 
 function EdgeRulesPage() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PageHeader
-        title="Edge Rules"
-        description="Applied at the gateway, in priority order, before a request reaches an app."
+        title="Edge rules"
+        help="Applied at the gateway, in priority order, before a request reaches an app."
       />
       <EdgeRulesBody />
     </div>
