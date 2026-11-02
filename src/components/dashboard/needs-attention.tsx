@@ -367,15 +367,15 @@ export function NeedsAttentionButton() {
   const close = () => setOpen(false);
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen} modal={false}>
-      <Tooltip content="Needs Attention" side="bottom">
+      <Tooltip content="Needs attention" side="bottom">
         <PopoverPrimitive.Trigger asChild>
           <button
             type="button"
-            aria-label="Needs Attention"
+            aria-label="Needs attention"
             className="pressable inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-foreground hover:border-border-secondary hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand data-[state=open]:border-brand/40 data-[state=open]:bg-brand/10"
           >
             <WarningTriangle aria-hidden="true" className="size-4 text-status-warning" />
-            <span className="hidden sm:inline">Needs Attention</span>
+            <span className="hidden sm:inline">Needs attention</span>
           </button>
         </PopoverPrimitive.Trigger>
       </Tooltip>
@@ -385,13 +385,13 @@ export function NeedsAttentionButton() {
           align="end"
           sideOffset={10}
           collisionPadding={12}
-          aria-label="Needs Attention"
+          aria-label="Needs attention"
           aria-describedby={descriptionId}
           className="animate-pop-in z-[90] flex max-h-[min(38rem,var(--radix-popover-content-available-height))] w-[min(30rem,calc(100vw-1.5rem))] origin-[var(--radix-popover-content-transform-origin)] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-elevation-3 outline-none"
         >
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-3.5">
             <div>
-              <h2 className="text-sm font-semibold tracking-tight">Needs Attention</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Needs attention</h2>
               <p id={descriptionId} className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 App failures, recent failed deployments and compute allowance.
               </p>

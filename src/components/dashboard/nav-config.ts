@@ -113,7 +113,7 @@ export const NAV_HUBS: NavHub[] = [
         icon: WorkflowIcon,
         search: { section: 'automations' },
       },
-      { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
+      { to: '/dashboard/crons', label: 'Scheduled requests', icon: Timer },
       { to: '/dashboard/triggers', label: 'Triggers', icon: Antenna },
     ],
   },
@@ -192,7 +192,7 @@ export const NAV_HUBS: NavHub[] = [
   },
   {
     to: '/dashboard/audit',
-    label: 'Audit Log',
+    label: 'Audit log',
     icon: Journal,
   },
   {
@@ -249,7 +249,9 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
   { title: 'Messaging', hubs: ['Events', 'Integrations'] },
   { title: 'Monetize', hubs: ['Customers'] },
-  { title: 'Observe', hubs: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'] },
+  // The Debugger is per app (the app's Observe section); its account route is
+  // an app picker, reachable from ⌘K rather than a rail row of its own.
+  { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
@@ -434,7 +436,7 @@ export const SECTION_LABELS: Record<string, string> = {
   // title is the page's own.
   releases: 'Releases',
   team: 'Team',
-  keys: 'API Keys',
+  keys: 'API keys',
   account: 'Account',
   security: 'Security',
 };

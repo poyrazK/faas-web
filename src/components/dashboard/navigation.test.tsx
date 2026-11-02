@@ -163,14 +163,14 @@ function attentionClient() {
   return client;
 }
 
-describe('global Needs Attention dropdown', () => {
+describe('global Needs attention dropdown', () => {
   it('opens live attention checks from a non-overview page and restores focus on Escape', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard/usage', undefined, attentionClient());
     expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: 'Needs Attention' });
+    const dialog = screen.getByRole('dialog', { name: 'Needs attention' });
     expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
@@ -181,7 +181,7 @@ describe('global Needs Attention dropdown', () => {
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(trigger).toHaveFocus();
   });
@@ -189,42 +189,42 @@ describe('global Needs Attention dropdown', () => {
   it('dismisses the dropdown when an investigation link navigates to the failed deployment', async () => {
     const user = userEvent.setup();
     const router = await renderShell('/dashboard', undefined, attentionClient());
-    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
     await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
     await waitFor(() =>
       expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
   });
 
   it('can close and reopen checks using the dropdown close button', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', undefined, attentionClient());
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
     await user.click(
-      within(screen.getByRole('dialog', { name: 'Needs Attention' })).getByRole('button', {
+      within(screen.getByRole('dialog', { name: 'Needs attention' })).getByRole('button', {
         name: 'Close',
       })
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     await user.click(trigger);
-    expect(screen.getByRole('dialog', { name: 'Needs Attention' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Needs attention' })).toBeInTheDocument();
   });
 
-  it('toggles the dropdown closed on a second click of the Needs Attention button', async () => {
+  it('toggles the dropdown closed on a second click of the Needs attention button', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', undefined, attentionClient());
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await user.click(trigger);
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
@@ -232,11 +232,11 @@ describe('global Needs Attention dropdown', () => {
   it('dismisses on an outside click without blocking the underlying page', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', <button type="button">Page action</button>, attentionClient());
-    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
     const action = screen.getByRole('button', { name: 'Page action' });
     await user.click(action);
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(action).toHaveFocus();
   });
@@ -263,9 +263,8 @@ const RAIL = [
   'Integrations',
   'Customers',
   'Analytics',
-  'Debugger',
   'Invocations',
-  'Audit Log',
+  'Audit log',
   'Usage',
   'Invoices',
   'Plans',
@@ -289,7 +288,7 @@ const RAIL_GROUP_ROWS: Record<string, string[]> = {
   Networking: ['Domains', 'Edge rules'],
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
-  Observe: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'],
+  Observe: ['Analytics', 'Invocations', 'Audit log'],
   Account: ['Usage', 'Invoices', 'Plans', 'Settings'],
 };
 
@@ -521,7 +520,6 @@ describe('dashboard navigation foundation', () => {
     ['/dashboard/instances', 'Instances'],
     ['/dashboard/postgres', 'Postgres'],
     ['/dashboard/edge-rules', 'Edge rules'],
-    ['/dashboard/debug', 'Debugger'],
   ])('lights %s as its own rail row', async (path, label) => {
     await renderShell(path);
     const main = screen.getByRole('navigation', { name: 'Main' });
@@ -795,7 +793,7 @@ describe('dashboard navigation foundation', () => {
   });
 
   it.each([
-    ['Observe', ['Analytics', 'Debugger', 'Invocations', 'Audit Log']],
+    ['Observe', ['Analytics', 'Invocations', 'Audit log']],
     ['Networking', ['Domains', 'Edge rules']],
     ['Storage', ['Object storage', 'Postgres']],
   ])('finds the pages filed under %s from the command palette', async (heading, labels) => {
