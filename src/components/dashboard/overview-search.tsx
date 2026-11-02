@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { BorderBeam } from 'border-beam';
 import { GitBranch, Plus, Search, Upload } from 'iconoir-react';
 import { Kbd } from '@/components/ui/kbd';
-import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { NAV_ITEMS, railGroupFor, visibleNavItems, type NavIcon } from './nav-config';
 import { fuzzyMatch, highlightSegments } from '@/lib/fuzzy';
 import type { Workflow } from '@/lib/mock-data';
@@ -147,9 +146,8 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
               inputRef.current?.focus();
             }
           }}
-          className="glass relative flex h-11 w-full cursor-text items-center gap-3 overflow-hidden rounded-xl border border-border px-4 shadow-elevation-1 focus-within:border-border-secondary"
+          className="relative flex h-9 w-full cursor-text items-center gap-3 overflow-hidden rounded-md border border-border bg-card px-3 focus-within:border-border-secondary"
         >
-          <PointerGlow />
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}

@@ -11,15 +11,10 @@ import {
 } from '@/components/dashboard/primitives';
 import { FirstRun } from '@/components/dashboard/first-run';
 import { OverviewSearch } from '@/components/dashboard/overview-search';
-import { Magnetic } from '@/components/amicro/magnetic';
-import { PointerGlow } from '@/components/amicro/pointer-glow';
-import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
 import { AnalyticsSection } from '@/components/dashboard/analytics-section';
 import { useSelectedApp } from '@/components/dashboard/app-select';
-import { WindFlow } from '@/components/dashboard/wind-flow';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Odometer } from '@/components/ui/odometer';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
@@ -33,7 +28,6 @@ import {
 } from '@/lib/api/queries';
 import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
-import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -146,9 +140,8 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
       <ColumnHeader label="Apps" to="/dashboard/apps" />
       <Link
         to="/dashboard/apps/new"
-        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+        className="pressable relative mt-2 flex items-center justify-center gap-1.5 rounded-md border border-border bg-card py-1.5 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
       >
-        <PointerGlow />
         <Plus className="h-3.5 w-3.5" />
         New app
       </Link>
@@ -451,47 +444,23 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
-      <div aria-hidden className="pointer-events-none fixed inset-0">
-        <WindFlow intensity={0.06} />
-      </div>
-
-      {/* The ground under the wind: the flow-dot field rises from the
-          bottom of the viewport and is gone before mid-page — background,
-          not furniture. */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
-      >
-        <FlowDotsField />
-      </div>
-
       {/* --- Greeting + search ------------------------------------- */}
       <div className="relative">
         <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
           {/* The verdict rides above the greeting as a pill; when something
               is wrong it is the page's alert and links to the trouble. */}
           <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
-            <Magnetic range={60} strength={0.2}>
-              <Link
-                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
-                className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
-              >
-                <LiveDot color={verdict.color} />
-                {verdict.text}
-              </Link>
-            </Magnetic>
+            <Link
+              to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
+              className="pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+            >
+              <LiveDot color={verdict.color} />
+              {verdict.text}
+            </Link>
           </p>
 
           <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            <WordReveal
-              text={firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
-              suffix={
-                <span aria-hidden className="text-brand">
-                  .
-                </span>
-              }
-            />
+            {firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
           </h1>
 
           {/* Search, answered in place: a real combobox whose results drop
@@ -588,11 +557,7 @@ function OverviewPage() {
                     : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
                 }
               >
-                {metricsUnavailable ? (
-                  UNKNOWN
-                ) : (
-                  <Odometer value={requests} format={formatCompact} />
-                )}
+                {metricsUnavailable ? UNKNOWN : formatCompact(requests)}
               </StatCard>
               <StatCard
                 label="Error rate"
@@ -645,7 +610,7 @@ function OverviewPage() {
           >
             {residentKnown ? (
               <>
-                <Odometer value={residentMb} />
+                {residentMb.toLocaleString()}
                 <span className="ml-1 text-sm font-normal text-muted-foreground">MB</span>
               </>
             ) : (
@@ -678,13 +643,11 @@ function OverviewPage() {
             ) : usageFailed ? (
               UNKNOWN
             ) : overGbh > 0 ? (
-              <span style={{ color: 'var(--status-warning)' }}>
-                <Odometer value={overGbh} format={formatGbHours} />
-              </span>
+              <span style={{ color: 'var(--status-warning)' }}>{formatGbHours(overGbh)}</span>
             ) : includedKnown === null ? (
-              <Odometer value={usedGbh} format={formatGbHours} />
+              formatGbHours(usedGbh)
             ) : (
-              <Odometer value={remainingGbh} format={formatGbHours} />
+              formatGbHours(remainingGbh)
             )}
           </StatCard>
           <StatCard
@@ -698,15 +661,10 @@ function OverviewPage() {
               UNKNOWN
             ) : (
               <>
-                <Odometer
-                  value={usageData.used_cpu_hours}
-                  format={(v) =>
-                    v.toLocaleString(undefined, {
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    })
-                  }
-                />
+                {usageData.used_cpu_hours.toLocaleString(undefined, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
                 <span className="ml-1 text-sm font-normal text-muted-foreground">h</span>
               </>
             )}
