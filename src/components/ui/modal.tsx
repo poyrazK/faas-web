@@ -24,7 +24,7 @@ export function Modal({
   description,
   children,
   footer,
-  width = 'max-w-md',
+  width,
   placement = 'center',
 }: {
   open: boolean;
@@ -33,8 +33,9 @@ export function Modal({
   description?: string;
   children?: ReactNode;
   footer?: ReactNode;
+  /** A max-width utility. Defaults to `max-w-md` centred, 720px on the right. */
   width?: string;
-  /** `right` slides in a full-height drawer; `width` then does not apply. */
+  /** `right` slides in a full-height drawer. */
   placement?: 'center' | 'right';
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -91,7 +92,7 @@ export function Modal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: reduce ? 0 : 0.12 } }}
             transition={{ duration: reduce ? 0 : 0.15 }}
-            className="absolute inset-0 bg-overlay/35 backdrop-blur-sm"
+            className="absolute inset-0 bg-overlay/40"
           />
 
           <motion.div
@@ -121,11 +122,11 @@ export function Modal({
             transition={{ duration: reduce ? 0 : 0.18, ease: EASE }}
             className={
               right
-                ? 'relative flex h-dvh w-full flex-col overflow-hidden border-l border-border bg-popover shadow-elevation-3 outline-none sm:max-w-[720px]'
-                : `relative flex max-h-[calc(100dvh-2rem)] w-full ${width} flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-elevation-3 outline-none`
+                ? `relative flex h-dvh w-full flex-col overflow-hidden border-l border-border bg-popover shadow-elevation-3 outline-none ${width ?? 'sm:max-w-[720px]'}`
+                : `relative flex max-h-[calc(100dvh-2rem)] w-full ${width ?? 'max-w-md'} flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-elevation-3 outline-none`
             }
           >
-            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
                 {description && (
@@ -147,10 +148,10 @@ export function Modal({
               </button>
             </header>
 
-            {children && <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>}
+            {children && <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>}
 
             {footer && (
-              <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-5 py-3.5">
+              <footer className="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-3">
                 {footer}
               </footer>
             )}
