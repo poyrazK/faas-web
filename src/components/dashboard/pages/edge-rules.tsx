@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -23,6 +23,7 @@ import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
 import { Select } from '@/components/ui/field';
+import { Tabs, tabId } from '@/components/dashboard/tabs';
 
 /**
  * Rules the gateway applies before a request reaches an app.
@@ -79,6 +80,10 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const [editing, setEditing] = useState<EdgeRule | null>(null);
   const [creating, setCreating] = useState(false);
   const [targetApp, setTargetApp] = useState<string | undefined>(undefined);
+  // Rules, the CORS presets they reference, and the lists they share: three
+  // views of one page rather than three panels stacked down it.
+  const [view, setView] = useState<'rules' | 'presets' | 'lists'>('rules');
+  const viewPanelId = useId();
 
   const rules = useMemo(
     () =>
@@ -249,67 +254,91 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {!scoped && (
-          <label className="flex items-center gap-2">
-            <span className="label-mono text-muted-foreground">App</span>
-            <Select
-              value={slug}
-              onChange={(e) => setTargetApp(e.target.value)}
-              aria-label="App a new rule is created on"
-              className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
-            >
-              {(apps ?? []).map((a) => (
-                <option key={a.slug} value={a.slug}>
-                  {a.slug}
-                </option>
-              ))}
-            </Select>
-          </label>
-        )}
-        <Button
-          size="sm"
-          className="gap-1.5"
-          disabled={!slug}
-          onClick={() => {
-            setEditing(null);
-            setCreating(true);
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add rule
-        </Button>
-      </div>
-
-      {!cacheAllowed && rules.some((rule) => rule.kind === 'cache') && (
-        <CapabilityNotice
-          capability={cacheCapability.capability}
-          state={cacheCapability.state}
-          onRetry={cacheCapability.refresh}
-        />
-      )}
-
-      <ResourceTable
-        rows={rows}
-        columns={columns}
-        initialSort={{ key: 'priority', dir: 'asc' }}
-        searchKeys={['kind', 'host', 'path', 'app', 'action']}
-        searchPlaceholder="Filter by kind, host, or path…"
-        emptyMessage="No edge rules yet."
-        minWidth="min-w-[980px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
-        onRowClick={(r) => {
-          const full = byId.get(r.id);
-          if (full) setEditing(full);
-        }}
-        rowActions={rowActionsFor}
+    <div className="flex flex-col gap-4">
+      <Tabs
+        label="Edge rule views"
+        panelId={viewPanelId}
+        value={view}
+        options={[
+          { key: 'rules', label: 'Rules' },
+          { key: 'presets', label: 'CORS presets' },
+          { key: 'lists', label: scoped ? 'History and lists' : 'Rule lists' },
+        ]}
+        onChange={setView}
       />
+      <div
+        role="tabpanel"
+        id={viewPanelId}
+        aria-labelledby={tabId(viewPanelId, view)}
+        className="flex flex-col gap-4"
+      >
+        {view === 'rules' && (
+          <>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {!scoped && (
+                <label className="flex items-center gap-2">
+                  <span className="label-mono text-muted-foreground">App</span>
+                  <Select
+                    value={slug}
+                    onChange={(e) => setTargetApp(e.target.value)}
+                    aria-label="App a new rule is created on"
+                    className="bg-card"
+                  >
+                    {(apps ?? []).map((a) => (
+                      <option key={a.slug} value={a.slug}>
+                        {a.slug}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              )}
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={!slug}
+                onClick={() => {
+                  setEditing(null);
+                  setCreating(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add rule
+              </Button>
+            </div>
 
-      <CorsPresetsPanel slug={scoped} />
-      <EdgeRulesExtras slug={scoped} rules={scoped ? (data ?? []) : rules} />
+            {!cacheAllowed && rules.some((rule) => rule.kind === 'cache') && (
+              <CapabilityNotice
+                capability={cacheCapability.capability}
+                state={cacheCapability.state}
+                onRetry={cacheCapability.refresh}
+              />
+            )}
+
+            <ResourceTable
+              rows={rows}
+              columns={columns}
+              initialSort={{ key: 'priority', dir: 'asc' }}
+              searchKeys={['kind', 'host', 'path', 'app', 'action']}
+              searchPlaceholder="Filter by kind, host, or path…"
+              emptyMessage="No edge rules yet."
+              minWidth="min-w-[980px]"
+              loading={isPending}
+              error={error}
+              onRetry={() => void refetch()}
+              onRowClick={(r) => {
+                const full = byId.get(r.id);
+                if (full) setEditing(full);
+              }}
+              rowActions={rowActionsFor}
+            />
+          </>
+        )}
+
+        {view === 'presets' && <CorsPresetsPanel slug={scoped} />}
+        {view === 'lists' && (
+          <EdgeRulesExtras slug={scoped} rules={scoped ? (data ?? []) : rules} />
+        )}
+      </div>
 
       {(creating || editing) && (
         <EdgeRuleDialog
