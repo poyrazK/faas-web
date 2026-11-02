@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import {
   WarningTriangle,
   CheckCircle,
@@ -12,11 +12,8 @@ import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { SegmentedControl } from './tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  DitherButton,
-  Sparkline as DitherSparkline,
-  type DitherColor,
-} from '@/components/dither-kit';
+import { Sparkline, type ChartColor } from './kit/chart';
+import { HelpTip } from './kit/help-tip';
 import { cn } from '@/lib/utils';
 import { ProblemHelp } from './problem-help';
 
@@ -73,10 +70,55 @@ export function LevelTag({ level }: { level: LogLevel }) {
 }
 
 /* ------------------------------------------------------------------ *
- * Stat tile — a single current value with a delta and a sparkline. The
- * right form for one headline number; never a one-bar bar chart.
+ * Stats — headline numbers. One strip of cells divided by hairlines, not a
+ * grid of separate cards: a row of figures reads as one set.
  * ------------------------------------------------------------------ */
 
+const InStats = createContext(false);
+
+/**
+ * True inside an unpadded `Panel`: content there runs to the panel's edges,
+ * so a table drops its own frame instead of drawing a box inside a box.
+ */
+export const FlushContext = createContext(false);
+
+/**
+ * A strip of `StatTile`s. Cells wrap on narrow screens and the hairlines
+ * follow, because the dividers are the strip's own background showing
+ * through a 1px gap.
+ */
+export function Stats({
+  children,
+  columns = 4,
+  className,
+}: {
+  children: ReactNode;
+  /** Cells per row on wide screens. */
+  columns?: 2 | 3 | 4 | 5 | 6;
+  className?: string;
+}) {
+  return (
+    <InStats.Provider value>
+      <div
+        className={cn(
+          'grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
+          {
+            2: 'sm:grid-cols-2',
+            3: 'sm:grid-cols-3',
+            4: 'sm:grid-cols-2 lg:grid-cols-4',
+            5: 'sm:grid-cols-3 lg:grid-cols-5',
+            6: 'sm:grid-cols-3 lg:grid-cols-6',
+          }[columns],
+          className
+        )}
+      >
+        {children}
+      </div>
+    </InStats.Provider>
+  );
+}
+
+/** One headline figure, with an optional context line, delta and trend. */
 export function StatTile({
   label,
   value,
@@ -110,68 +152,57 @@ export function StatTile({
   /** Whether a rising delta is a good thing (invocations) or bad (errors). */
   deltaGood?: boolean;
   series?: number[];
-  /** Dither Kit palette colour for the sparkline (and nothing else — the
-   * value itself never rests on hue). */
-  tone?: DitherColor;
+  /** Colour of the trend line only — the value itself never rests on hue. */
+  tone?: ChartColor;
 }) {
+  const inStats = useContext(InStats);
   const positive = (delta ?? 0) >= 0;
   const good = positive === deltaGood;
   const Arrow = positive ? GraphUp : GraphDown;
 
   return (
-    <div className="animate-item-enter rounded-xl border border-border bg-card p-5">
-      <p className="label-mono text-muted-foreground">{label}</p>
-
-      <div className="mt-3 flex items-end justify-between gap-4">
-        <div>
-          {state === 'loading' ? (
-            <Skeleton className="h-[30px] w-20" />
-          ) : state === 'unavailable' ? (
-            <p
-              className="text-3xl leading-none font-semibold tracking-tight text-muted-foreground"
-              title="The API did not answer, so this figure is unknown."
-            >
-              —<span className="sr-only">unavailable</span>
-            </p>
-          ) : (
-            <p className="text-3xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {typeof value === 'number'
-                ? format
-                  ? format(value)
-                  : value.toLocaleString()
-                : value}
-              {unit && <span className="ml-1 text-base text-muted-foreground">{unit}</span>}
-            </p>
-          )}
-
-          {state === 'ready' && note && (
-            <p className="mt-2 text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-              {note}
-            </p>
-          )}
-
-          {state === 'ready' && delta !== undefined && (
-            <p
-              className="mt-2 flex items-center gap-1 text-xs [font-variant-numeric:tabular-nums]"
-              style={{ color: good ? 'var(--status-good)' : 'var(--status-critical)' }}
-            >
-              <Arrow className="h-3 w-3" />
-              {positive ? '+' : ''}
-              {delta.toFixed(1)}%<span className="text-muted-foreground">vs prev period</span>
-            </p>
-          )}
-        </div>
-
+    <div
+      className={cn(
+        'flex min-w-0 flex-col gap-1 bg-card px-4 py-3',
+        !inStats && 'rounded-lg border border-border'
+      )}
+    >
+      <p className="truncate text-xs text-muted-foreground">{label}</p>
+      <div className="flex items-end justify-between gap-3">
+        {state === 'loading' ? (
+          <Skeleton className="h-7 w-16" />
+        ) : state === 'unavailable' ? (
+          <p
+            className="text-xl leading-7 font-semibold text-muted-foreground"
+            title="The API did not answer, so this figure is unknown."
+          >
+            —<span className="sr-only">unavailable</span>
+          </p>
+        ) : (
+          <p className="truncate text-xl leading-7 font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
+            {typeof value === 'number' ? (format ? format(value) : value.toLocaleString()) : value}
+            {unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>}
+          </p>
+        )}
         {state === 'ready' && series && series.length > 1 && (
-          <DitherSparkline
-            data={series}
-            color={tone}
-            bloom="low"
-            bloomOnHover
-            className="h-9 w-24 shrink-0"
-          />
+          <Sparkline data={series} color={tone} className="mb-1 h-6 w-16 shrink-0" />
         )}
       </div>
+      {state === 'ready' && delta !== undefined && (
+        <p
+          className="flex items-center gap-1 text-xs [font-variant-numeric:tabular-nums]"
+          style={{ color: good ? 'var(--status-good)' : 'var(--status-critical)' }}
+        >
+          <Arrow aria-hidden="true" className="h-3 w-3" />
+          {positive ? '+' : ''}
+          {delta.toFixed(1)}%<span className="text-muted-foreground">vs prev period</span>
+        </p>
+      )}
+      {state === 'ready' && note && (
+        <p className="truncate text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+          {note}
+        </p>
+      )}
     </div>
   );
 }
@@ -182,18 +213,25 @@ export function StatTile({
 
 export function PageHeader({
   title,
+  meta,
   description,
   actions,
 }: {
   title: string;
+  /** Inline facts after the title: a status, a count. */
+  meta?: ReactNode;
+  /** @deprecated A page has no subtitle; explanations go in a `HelpTip`. */
   description?: string;
   actions?: ReactNode;
 }) {
   return (
-    <div className="animate-item-enter flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          {meta}
+        </div>
+        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && (
         <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
@@ -204,65 +242,46 @@ export function PageHeader({
 
 export function Panel({
   title,
+  help,
   description,
   actions,
   children,
   className,
-  lit = false,
-  elevation = 'flat',
   padded = true,
 }: {
   title?: string;
+  /** Explanation behind a "?" beside the title, for whoever needs it. */
+  help?: ReactNode;
+  /** @deprecated A panel has a title only; explanations go in `help`. */
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  /** Mint hairline along the top edge, marking the page's primary panel. */
-  lit?: boolean;
-  /**
-   * Lifts the panel a step off the page. `resting` is the quiet default every
-   * existing page keeps; `raised` is for the one panel a composed layout
-   * leads with. Elevation is a hierarchy signal, so a page with two raised
-   * panels has neither.
-   */
-  elevation?: 'flat' | 'resting' | 'raised';
   /** Off for content that runs to the panel's edges — a list or a table whose
    *  own rows carry the padding and whose dividers should span the full width. */
   padded?: boolean;
 }) {
   return (
     <section
-      className={cn(
-        'animate-item-enter relative overflow-hidden rounded-xl border border-border bg-card',
-        elevation === 'resting' && 'shadow-elevation-1',
-        elevation === 'raised' && 'border-border-secondary shadow-elevation-2',
-        className
-      )}
+      className={cn('relative overflow-hidden rounded-lg border border-border bg-card', className)}
     >
-      {/* The landing's lit edge, brightest at centre. One panel per page at
-          most — it marks the thing the page is for. */}
-      {lit && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-10 top-0 h-px"
-          style={{
-            background: 'linear-gradient(to right, transparent, var(--brand-fill), transparent)',
-          }}
-        />
-      )}
       {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <div>
-            {/* Uppercase mono, the same voice the table headers and stat
-                labels use — a panel title is a section label, not a heading
-                competing with the page's own. */}
-            {title && <h2 className="label-mono text-foreground">{title}</h2>}
-            {description && <p className="mt-1.5 text-xs text-muted-foreground">{description}</p>}
+        <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-2">
+          <div className="min-w-0">
+            {title && (
+              <div className="flex items-center gap-1">
+                <h2 className="text-sm font-semibold">{title}</h2>
+                {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
+              </div>
+            )}
+            {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
-          {actions}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={cn(padded && 'p-5')}>{children}</div>
+      <FlushContext.Provider value={!padded}>
+        <div className={cn(padded && 'p-4')}>{children}</div>
+      </FlushContext.Provider>
     </section>
   );
 }
@@ -272,43 +291,13 @@ export function RangeSelector<T extends string>({
   value,
   options,
   onChange,
-  dither = false,
   disabled = false,
 }: {
   value: T;
   options: { key: T; label: string }[];
   onChange: (key: T) => void;
-  /** Render the segments as Dither Kit buttons — solid mint for the active
-   * range, a quiet dotted grey for the rest. */
-  dither?: boolean;
   disabled?: boolean;
 }) {
-  if (dither) {
-    return (
-      <div role="group" aria-label="Time range" className="flex gap-1">
-        {options.map((opt) => {
-          const active = value === opt.key;
-          return (
-            <DitherButton
-              key={opt.key}
-              disabled={disabled}
-              aria-pressed={active}
-              onClick={() => onChange(opt.key)}
-              color={active ? 'green' : 'grey'}
-              variant={active ? 'solid' : 'dotted'}
-              className={cn(
-                'h-8 px-2.5 py-0 text-xs',
-                active ? 'text-background' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {opt.label}
-            </DitherButton>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
     <SegmentedControl
       label="Time range"

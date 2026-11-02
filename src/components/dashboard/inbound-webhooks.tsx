@@ -330,7 +330,6 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        lit
         title="Stripe inbound webhooks"
         description="Stripe sends signed events to Gregale. After verification and durable acceptance, Gregale delivers to your app path or a bound automation."
       >

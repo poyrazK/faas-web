@@ -104,7 +104,6 @@ export function InvokePanel({ slug }: { slug: string }) {
 
   return (
     <Panel
-      lit
       title="Invoke"
       description="Send a request to this app without leaving the dashboard. Async requests can be followed here after they are queued."
       actions={

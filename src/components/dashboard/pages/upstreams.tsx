@@ -184,7 +184,6 @@ export function UpstreamsBody({ slug }: { slug: string }) {
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        lit
         title="Declare an upstream"
         description="Declared upstreams are probed for reachability and latency before the app needs them. The hostname is hashed at rest."
       >

@@ -128,7 +128,7 @@ export function EnvBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel lit title="Set a variable">
+      <Panel title="Set a variable">
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {

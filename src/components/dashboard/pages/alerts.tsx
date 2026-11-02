@@ -240,7 +240,6 @@ export function AlertsBody({ slug }: { slug: string }) {
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        lit
         title="Add a rule"
         description="When the metric crosses the threshold for the window, a signed payload is POSTed to the webhook. The secret is sealed on save and never shown again."
       >

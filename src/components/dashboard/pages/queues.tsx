@@ -69,7 +69,6 @@ function QueueSendPanel({ slug }: { slug: string }) {
 
   return (
     <Panel
-      lit
       title="Send a message"
       description="Publish a JSON object to this app's FIFO queue. The queue consumer remains responsible for receiving and acknowledging work."
       actions={

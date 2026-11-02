@@ -210,7 +210,7 @@ export function SecretsBody({ slug }: { slug: string }) {
         </div>
       )}
 
-      <Panel lit title="Set a secret">
+      <Panel title="Set a secret">
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {

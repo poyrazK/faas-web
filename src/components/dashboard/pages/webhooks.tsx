@@ -350,7 +350,6 @@ export function WebhooksBody({ slug }: { slug: string }) {
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        lit
         title="Add a webhook"
         description="Every matching event is POSTed as JSON with an HMAC signature. The secret is sealed on save and never shown again."
       >
