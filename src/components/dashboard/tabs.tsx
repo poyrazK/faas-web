@@ -23,7 +23,7 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 /** Class for one underline tab. For `Link`s and buttons alike. */
 export function tabClassName(active: boolean, className?: string) {
   return cn(
-    'pressable -mb-px whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-sm',
+    'pressable -mb-px whitespace-nowrap rounded-t-md border-b-2 px-3 py-1.5 text-sm',
     FOCUS,
     active
       ? 'border-brand font-medium text-foreground'
@@ -43,10 +43,7 @@ export function TabNav({
   className?: string;
 }) {
   return (
-    <nav
-      aria-label={label}
-      className={cn('flex flex-wrap gap-1 border-b border-border', className)}
-    >
+    <nav aria-label={label} className={cn('flex flex-wrap border-b border-border', className)}>
       {children}
     </nav>
   );
@@ -77,7 +74,7 @@ export function Tabs<T extends string>({
     <div
       role="tablist"
       aria-label={label}
-      className={cn('flex flex-wrap gap-1 border-b border-border', className)}
+      className={cn('flex flex-wrap border-b border-border', className)}
     >
       {options.map((option, index) => {
         const active = option.key === value;
@@ -126,7 +123,7 @@ function rovingIndex(key: string, index: number, length: number): number | null 
 /** Class for one segment. For `Link`s and buttons alike. */
 export function segmentClassName(active: boolean, className?: string) {
   return cn(
-    'pressable whitespace-nowrap rounded px-2.5 py-1 text-xs disabled:opacity-50',
+    'pressable inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs disabled:opacity-50',
     FOCUS,
     active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
     className

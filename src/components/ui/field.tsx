@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
  * Keyboard users additionally get the global `:focus-visible` ring.
  */
 export const FIELD =
-  'h-9 rounded-md border border-border bg-background px-3 text-sm outline-none transition-[border-color] duration-150 ease-console placeholder:text-muted-foreground focus:border-brand/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[color:var(--status-critical)]';
+  'h-8 rounded-md border border-border bg-background px-2.5 text-sm outline-none transition-[border-color] duration-150 ease-console placeholder:text-muted-foreground focus:border-brand/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[color:var(--status-critical)]';
 
 export function Select({ className, ...props }: React.ComponentProps<'select'>) {
   // A styled native <select>: the console keeps native popup semantics (and
