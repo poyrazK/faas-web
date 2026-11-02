@@ -45,6 +45,7 @@ import {
   sidebarSectionsFor,
 } from './nav-config';
 import { DashboardSecondaryNavigation } from './secondary-navigation';
+import { AppRail, appOfPath } from './app-rail';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
@@ -261,6 +262,7 @@ function SidebarBody({
 }) {
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
+  const app = appOfPath(pathname);
   const isOff = useCapabilityOff();
   const groups = useMemo(() => visibleNavGroups(NAV_GROUPS, isOff), [isOff]);
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
@@ -325,94 +327,99 @@ function SidebarBody({
         </kbd>
       </button>
 
-      {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
-          and shoves the icons off-center (it did). */}
-      <nav
-        aria-label="Main"
-        className="scrollbar-none mt-3 flex flex-col gap-3 overflow-x-hidden overflow-y-auto"
-      >
-        {groups.map((group, gi) => (
-          <div key={group.title ?? `group-${gi}`}>
-            {/* One fixed-height slot per group header, whichever face it
+      {/* Inside an app, the rail is that app's sections. */}
+      {app ? (
+        <AppRail slug={app} collapsed={collapsed} labelCls={labelCls} onNavigate={onNavigate} />
+      ) : (
+        /* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
+          and shoves the icons off-center (it did). */
+        <nav
+          aria-label="Main"
+          className="scrollbar-none mt-3 flex flex-col gap-3 overflow-x-hidden overflow-y-auto"
+        >
+          {groups.map((group, gi) => (
+            <div key={group.title ?? `group-${gi}`}>
+              {/* One fixed-height slot per group header, whichever face it
                 wears — the heading when wide, a hairline when narrow — so
                 the rows below never shift vertically during the change. */}
-            {group.title && (
-              <div className="relative h-6">
-                <p
-                  className={cn(
-                    'absolute bottom-1 left-2.5 text-xs font-medium text-muted-foreground/70',
-                    labelCls
-                  )}
-                >
-                  {group.title}
-                </p>
-                <div
-                  aria-hidden
-                  className={cn(
-                    'absolute inset-x-1 top-2.5 h-px bg-border',
-                    sidebarLabelClass(!collapsed)
-                  )}
-                />
-              </div>
-            )}
+              {group.title && (
+                <div className="relative h-6">
+                  <p
+                    className={cn(
+                      'absolute bottom-1 left-2.5 text-xs font-medium text-muted-foreground/70',
+                      labelCls
+                    )}
+                  >
+                    {group.title}
+                  </p>
+                  <div
+                    aria-hidden
+                    className={cn(
+                      'absolute inset-x-1 top-2.5 h-px bg-border',
+                      sidebarLabelClass(!collapsed)
+                    )}
+                  />
+                </div>
+              )}
 
-            <ul className="flex flex-col gap-px">
-              {group.items.map((hub) => {
-                // Collapsed, the rail is 40px of icons — there is no room for a
-                // second level, and the hub tooltip is the whole affordance.
-                const disclosure = isDisclosureHub(hub);
-                const onBranch = currentHub?.to === hub.to;
-                if (!disclosure) {
+              <ul className="flex flex-col gap-px">
+                {group.items.map((hub) => {
+                  // Collapsed, the rail is 40px of icons — there is no room for a
+                  // second level, and the hub tooltip is the whole affordance.
+                  const disclosure = isDisclosureHub(hub);
+                  const onBranch = currentHub?.to === hub.to;
+                  if (!disclosure) {
+                    return (
+                      <li key={hub.to}>
+                        <NavRow
+                          item={hub}
+                          collapsed={collapsed}
+                          labelCls={labelCls}
+                          onNavigate={onNavigate}
+                          pathname={pathname}
+                          hash={hash}
+                          current={onBranch}
+                        />
+                      </li>
+                    );
+                  }
+                  const sections = sidebarSectionsFor(hub);
+                  // Open unless shut: a hub nobody has closed is a hub whose
+                  // contents should be readable without being asked for.
+                  const open = !collapsed && !closedGroups.includes(hub.to);
                   return (
                     <li key={hub.to}>
-                      <NavRow
-                        item={hub}
+                      <NavDisclosure
+                        hub={hub}
+                        open={open}
+                        onToggle={() => toggleGroup(hub.to)}
+                        onBranch={onBranch}
                         collapsed={collapsed}
                         labelCls={labelCls}
-                        onNavigate={onNavigate}
-                        pathname={pathname}
-                        hash={hash}
-                        current={onBranch}
-                      />
+                      >
+                        {sections.map((section) => (
+                          <li key={`${section.to}-${section.label}`}>
+                            <NavRow
+                              item={section}
+                              nested
+                              collapsed={collapsed}
+                              labelCls={labelCls}
+                              onNavigate={onNavigate}
+                              pathname={pathname}
+                              hash={hash}
+                              current={!collapsed && matchesNavPath(pathname, section)}
+                            />
+                          </li>
+                        ))}
+                      </NavDisclosure>
                     </li>
                   );
-                }
-                const sections = sidebarSectionsFor(hub);
-                // Open unless shut: a hub nobody has closed is a hub whose
-                // contents should be readable without being asked for.
-                const open = !collapsed && !closedGroups.includes(hub.to);
-                return (
-                  <li key={hub.to}>
-                    <NavDisclosure
-                      hub={hub}
-                      open={open}
-                      onToggle={() => toggleGroup(hub.to)}
-                      onBranch={onBranch}
-                      collapsed={collapsed}
-                      labelCls={labelCls}
-                    >
-                      {sections.map((section) => (
-                        <li key={`${section.to}-${section.label}`}>
-                          <NavRow
-                            item={section}
-                            nested
-                            collapsed={collapsed}
-                            labelCls={labelCls}
-                            onNavigate={onNavigate}
-                            pathname={pathname}
-                            hash={hash}
-                            current={!collapsed && matchesNavPath(pathname, section)}
-                          />
-                        </li>
-                      ))}
-                    </NavDisclosure>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </nav>
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      )}
     </>
   );
 }
