@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
-import { InlinePhase, Panel, queryPhase, StatTile } from './primitives';
+import { InlinePhase, Panel, queryPhase, Stats, StatTile } from './primitives';
 import { Tabs, tabId } from './tabs';
 import { ResourceTable, type Column } from './resource-table';
 import { AutomationEditor, JsonField, JsonReadout } from './automation-editor';
@@ -649,7 +649,7 @@ function HealthDetails({ health }: { health: Health }) {
       />
       {health.data && !health.error && (
         <>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <Stats columns={4}>
             <StatTile label="Runs · last 7 days" value={health.data.run_count} />
             <StatTile
               label="Success rate"
@@ -661,7 +661,7 @@ function HealthDetails({ health }: { health: Health }) {
             />
             <StatTile label="Active now" value={health.data.active_run_count} />
             <StatTile label="Queued now" value={health.data.queued_run_count} />
-          </div>
+          </Stats>
           {health.data.failed_steps.length > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
               Frequently failed steps:{' '}

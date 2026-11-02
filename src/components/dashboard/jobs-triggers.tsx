@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   PageHeader,
   Panel,
+  Stats,
   StatTile,
   InlinePhase,
   queryPhase,
@@ -69,13 +70,13 @@ function TriggerDetail({
       {phase !== 'ready' || !m ? (
         <InlinePhase phase={phase} error={metrics.error} loadingMessage="Reading counts…" />
       ) : (
-        <div className="mb-5 grid gap-4 sm:grid-cols-3 xl:grid-cols-5">
+        <Stats columns={5} className="mb-5">
           <StatTile label="Pending" value={String(m.pending_count)} />
           <StatTile label="Claimed" value={String(m.claimed_count)} />
           <StatTile label="Succeeded" value={String(m.succeeded_count)} />
           <StatTile label="Retry" value={String(m.retry_count)} />
           <StatTile label="Dead letter" value={String(m.dead_letter_count)} />
-        </div>
+        </Stats>
       )}
 
       <div className="mb-3 flex gap-2">

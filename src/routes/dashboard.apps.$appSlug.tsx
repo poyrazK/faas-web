@@ -22,6 +22,7 @@ import {
   PageHeader,
   Panel,
   RangeSelector,
+  Stats,
   StatTile,
   UnreachableState,
   queryPhase,
@@ -476,16 +477,13 @@ function FunctionDetailPage() {
                     {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
                 aggregate per window. The sparkline charts that used to sit here
                 were drawn from a seeded PRNG and are gone with it. */}
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                      {metricsDegraded && (
-                        <p
-                          className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
-                          role="status"
-                        >
-                          Metrics are degraded ({metrics.data?.source}), so no figures can be read
-                          for this window.
-                        </p>
-                      )}
+                    {metricsDegraded && (
+                      <p className="text-xs text-muted-foreground" role="status">
+                        Metrics are degraded ({metrics.data?.source}), so no figures can be read for
+                        this window.
+                      </p>
+                    )}
+                    <Stats columns={4}>
                       <StatTile
                         label="Requests"
                         value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
@@ -509,7 +507,7 @@ function FunctionDetailPage() {
                         value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
                         state={metricsTileState}
                       />
-                    </div>
+                    </Stats>
 
                     <Panel
                       title="Response latency"
@@ -522,7 +520,7 @@ function FunctionDetailPage() {
                       ) : metricsPhase === 'loading' ? (
                         <LoadingState message="Querying metrics…" />
                       ) : (
-                        <div className="grid gap-4 p-5 sm:grid-cols-3">
+                        <Stats columns={3}>
                           <StatTile
                             label="p50"
                             value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
@@ -538,7 +536,7 @@ function FunctionDetailPage() {
                             value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
                             state={metricsTileState}
                           />
-                        </div>
+                        </Stats>
                       )}
                     </Panel>
                     <AppHealthPanel slug={fn.id} />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -46,7 +46,7 @@ export function EventOverview({ accountId }: { accountId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Stats columns={4}>
         <StatTile
           label="Waiting recipients"
           state={tileState(backlog)}
@@ -83,7 +83,7 @@ export function EventOverview({ accountId }: { accountId: string }) {
           }
           note={usage ? `${formatNumber(usage.pending_events)} event(s) still routing` : undefined}
         />
-      </div>
+      </Stats>
       {r ? (
         <p className="text-xs text-muted-foreground">
           Receipts are kept for 30 days after routing settles. {formatNumber(r.held_receipts)} held

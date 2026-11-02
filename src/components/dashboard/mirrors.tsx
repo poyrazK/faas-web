@@ -12,6 +12,7 @@ import {
   LoadingState,
   Panel,
   RangeSelector,
+  Stats,
   StatTile,
   UnreachableState,
   queryPhase,
@@ -294,7 +295,7 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
         <p className="text-sm text-muted-foreground">{errorMessage(summary.error)}</p>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stats columns={5}>
             <StatTile label="Mirrored" value={data?.total_invocations} state={state} />
             <StatTile
               label="Status diffs"
@@ -315,7 +316,7 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
               tone="orange"
             />
             <StatTile label="Crashes" value={data?.crash_count} state={state} tone="red" />
-          </div>
+          </Stats>
           {data && (
             <p className="text-sm text-muted-foreground">
               Latency:{' '}

@@ -16,7 +16,7 @@ import {
   type PlatformTenantDetail,
   type TenantStatement,
 } from '@/lib/api/monetization';
-import { InlinePhase, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Stats, StatTile, queryPhase } from './primitives';
 import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { finalizeCopy } from './api-consumer-statements';
@@ -298,7 +298,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           onRetry={() => void usage.refetch()}
         />
       )}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <Stats columns={3}>
         <StatTile
           label="Requests"
           state={state}
@@ -317,7 +317,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           value={usage.data?.billable_units}
           format={formatCount}
         />
-      </div>
+      </Stats>
       {byApp.length > 0 && (
         <table className="w-full text-sm">
           <caption className="sr-only">Usage by app</caption>

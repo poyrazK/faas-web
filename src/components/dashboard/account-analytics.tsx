@@ -6,7 +6,7 @@ import {
   type AppAnalyticsTimeseriesOptions,
   type AppsMetrics,
 } from '@/lib/api/queries';
-import { InlinePhase, Panel, RangeSelector, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Panel, RangeSelector, Stats, StatTile, queryPhase } from './primitives';
 import { PlanGated } from './plan-gated';
 import { ResourceTable, type Column } from './resource-table';
 import { AppAnalyticsBody } from './app-analytics';
@@ -154,7 +154,7 @@ export function AccountAnalytics({
               Telemetry source: {data?.source}
             </p>
           )}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Stats columns={4}>
             <StatTile label="Requests" value={data?.requests_total} state={accountTile} />
             <StatTile
               label="Errors"
@@ -195,7 +195,7 @@ export function AccountAnalytics({
               state={accountTile}
             />
             <StatTile label="Throttled" value={data?.throttled_total} state={accountTile} />
-          </div>
+          </Stats>
         </PlanGated>
       </section>
 

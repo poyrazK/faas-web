@@ -31,7 +31,7 @@ import {
   type ConsumerKeyScope,
   type ConsumerPlan,
 } from '@/lib/api/monetization';
-import { InlinePhase, Panel, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from './primitives';
 import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { ConsumerStatements } from './api-consumer-statements';
@@ -823,7 +823,7 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
           }}
         />
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stats columns={4}>
         <StatTile
           label="Requests"
           state={tile(usage)}
@@ -854,7 +854,7 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
               : 'Estimate, not an invoice'
           }
         />
-      </div>
+      </Stats>
       {quote.data && quote.data.unpriced_units > 0 && (
         <p className="text-xs text-muted-foreground">
           Usage before the first effective rate card is reported as unpriced rather than treated as
