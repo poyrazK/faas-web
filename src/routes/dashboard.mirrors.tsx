@@ -17,7 +17,6 @@ function MirrorsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Mirrors"
-        description="Shadow a share of live traffic to a second deployment and measure what comes back differently."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="mirror rules">

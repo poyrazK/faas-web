@@ -146,9 +146,8 @@ describe('invocation detail links', () => {
   it('describes the async work it lists and sends HTTP requests to the Debugger', async () => {
     await mount('/dashboard/invocations');
     expect(screen.queryByText(/Every request into your apps/)).not.toBeInTheDocument();
-    expect(screen.getByText(/queue messages/)).toHaveTextContent(
-      /HTTP requests are in the Debugger/
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'About Invocations' }));
+    expect(await screen.findByText(/HTTP requests are in the Debugger/)).toBeInTheDocument();
   });
   it('labels the page from the capability and replays rows through the routing button', async () => {
     await mount('/dashboard/invocations');

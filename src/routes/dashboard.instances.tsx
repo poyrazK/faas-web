@@ -134,10 +134,7 @@ function WorkersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Instances"
-        description="Firecracker microVMs currently alive. Apps park when idle, so an empty list means everything scaled to zero."
-      />
+      <PageHeader title="Instances" />
       <ResourceTable
         rows={rows}
         columns={columns}

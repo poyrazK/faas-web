@@ -139,10 +139,7 @@ function SettingsPage() {
   };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Settings"
-        description="Account preferences, organization access and security."
-      />
+      <PageHeader title="Settings" />
       <SettingsPanels section={section} />
       {(section === 'organization' || section === 'members') && (
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />

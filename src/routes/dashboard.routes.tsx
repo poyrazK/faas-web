@@ -16,7 +16,7 @@ function ApisPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="APIs"
-        description="Routes observed at the gateway for this app. Discovered from traffic, not declared."
+        help="Discovered from traffic, not declared."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
 

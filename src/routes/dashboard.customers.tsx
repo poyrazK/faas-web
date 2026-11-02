@@ -11,10 +11,7 @@ export const Route = createFileRoute('/dashboard/customers')({
 function CustomersPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Customers"
-        description="Your end customers across apps: their linked consumers and hostnames, prices, usage and statements."
-      />
+      <PageHeader title="Customers" />
       <Customers />
     </div>
   );

@@ -16,7 +16,7 @@ function EnvPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Env vars"
-        description="Plain configuration injected at boot. Editing is write-only; explicit exports require confirmation. Credentials belong in Secrets."
+        help="Injected at boot. Credentials belong in Secrets."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
 

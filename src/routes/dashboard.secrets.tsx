@@ -16,7 +16,7 @@ function SecretsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Secrets"
-        description="Sealed per-app values injected at boot. The server cannot read them back — set a new value to change one."
+        help="Values are sealed and cannot be read back. Set a new value to change one."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
 

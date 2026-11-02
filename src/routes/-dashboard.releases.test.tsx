@@ -593,7 +593,7 @@ describe('Releases hub', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     expect(screen.queryByRole('combobox', { name: 'Resume from' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Intermediate checkpoints are not retained/)).toBeInTheDocument();
+    expect(screen.getByText(/every build stage runs again/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
     expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
@@ -715,7 +715,7 @@ describe('Releases hub', () => {
     expect(router.state.location.search.releaseSection).toBeUndefined();
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Debugger');
-    expect(await screen.findByRole('dialog', { name: 'Request evidence' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Request details' })).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject(investigation);
     await act(async () => router.history.back());
     await waitFor(() => expect(router.state.location.search.tab).toBe('Logs'));

@@ -154,7 +154,7 @@ function SavedViewsMenu({
         open={naming}
         onClose={() => setNaming(false)}
         title="Save this view"
-        description="App, level, search, source, and archive instance/date — as they stand now."
+        description="Saves the current filters."
         footer={
           <Button size="sm" disabled={!name.trim()} onClick={save}>
             Save view
@@ -220,7 +220,7 @@ function LogsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Logs"
-        description="Live output from this app's instances. The stream ends on its own when the app parks. Filters live in the URL — the page is a shareable link."
+        help="The stream ends when the app parks. Filters live in the URL, so the page is a shareable link."
         actions={
           <div className="flex items-center gap-2">
             <SavedViewsMenu

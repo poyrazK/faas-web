@@ -617,7 +617,7 @@ describe('Debugger investigation navigation', () => {
     const detail = screen.getByRole('region', { name: 'Regression details' });
     expect(within(detail).getByRole('button', { name: /failed.*500/ })).toBeInTheDocument();
     expect(
-      within(detail).getByText(/up to 20 recent.*exact route.*all deployments/i)
+      within(detail).getByText(/up to the 20 most recent requests on this route/i)
     ).toBeInTheDocument();
   });
 
@@ -629,15 +629,15 @@ describe('Debugger investigation navigation', () => {
     expect(
       screen.getByText(/No request rows for this deployment in the loaded route sample/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Other matching requests may exist outside this sample/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/most recent requests on this route/i)).toBeInTheDocument();
     cleanup();
     await mount('/dashboard/debug?app=alpha&debugFilter=cold');
     expect(
       screen.getByText(/No requests match these filters in the loaded sample/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/up to 20 recent.*across all routes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/up to the 20 most recent requests in the window/i)
+    ).toBeInTheDocument();
   });
 
   it('does not describe text-hidden regression or comparison rows as absent observations or traffic', async () => {

@@ -16,7 +16,7 @@ function QueuesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Queues"
-        description="One FIFO queue per app. Messages here are peeked, not received — browsing never claims work from your consumers."
+        help="One FIFO queue per app. Browsing peeks at messages and never claims work from your consumers."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
 

@@ -179,7 +179,6 @@ function FunctionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Apps"
-        description="Every app in this workspace."
         actions={
           <Button asChild size="sm" className="gap-1.5">
             <Link to="/dashboard/apps/new">

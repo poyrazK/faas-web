@@ -16,7 +16,6 @@ function AlertsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Alerts"
-        description="Threshold rules on your app metrics. A breach POSTs a signed payload to the rule's webhook."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="alert rules">
