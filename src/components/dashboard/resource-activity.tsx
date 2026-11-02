@@ -13,6 +13,7 @@ import {
   type ActivityFilters,
   type ResourceActivity,
 } from '@/lib/api/resource-activity';
+import { Select } from '@/components/ui/field';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -105,7 +106,7 @@ function ActivityTimeline({
       <div className="flex flex-wrap gap-3">
         <label className="flex flex-col gap-1 text-xs">
           Event category
-          <select
+          <Select
             aria-label="Event category"
             value={filters.kind_prefix ?? ''}
             onChange={(event) =>
@@ -121,11 +122,11 @@ function ActivityTimeline({
             <option value="app.">App lifecycle and config</option>
             <option value="env.">Environment changes</option>
             <option value="domain.">Domains and TLS</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs">
           Actor category
-          <select
+          <Select
             aria-label="Actor category"
             value={filters.actor_type ?? ''}
             onChange={(event) =>
@@ -142,7 +143,7 @@ function ActivityTimeline({
             <option value="github">GitHub</option>
             <option value="system">System</option>
             <option value="operator">Operator</option>
-          </select>
+          </Select>
         </label>
         {Boolean(workspace.data) && (
           <Button

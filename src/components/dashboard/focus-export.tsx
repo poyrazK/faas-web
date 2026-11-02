@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { api, unwrap } from '@/lib/api/client';
 import { errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
@@ -84,7 +84,7 @@ export function FocusExport() {
         </label>
         <label className="flex flex-col gap-1.5 text-xs font-medium">
           Format
-          <select
+          <Select
             value={format}
             onChange={(event) => setFormat(event.target.value as Format)}
             className={cn(FIELD, 'w-52')}
@@ -94,7 +94,7 @@ export function FocusExport() {
                 {f.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <Button
           type="submit"

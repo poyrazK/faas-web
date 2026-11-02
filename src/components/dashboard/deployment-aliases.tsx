@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
@@ -338,7 +338,7 @@ function AliasesBody({
                   }}
                   className={cn(FIELD, 'w-44 font-mono')}
                 />
-                <select
+                <Select
                   aria-label="Release"
                   value={target?.id ?? ''}
                   onChange={(event) => {
@@ -352,7 +352,7 @@ function AliasesBody({
                       {releaseOption(d)}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <Button type="submit" size="sm" variant="outline" busy={busy}>
                   {moving ? 'Move alias' : 'Set alias'}
                 </Button>

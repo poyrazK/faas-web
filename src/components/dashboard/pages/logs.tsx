@@ -12,6 +12,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { LogStreamRecovery } from '@/components/dashboard/log-stream-recovery';
+import { Select } from '@/components/ui/field';
 
 const STATUS_LABEL: Record<string, { label: string; color?: string }> = {
   idle: { label: 'idle' },
@@ -219,7 +220,7 @@ export function LogsBody({
           <>
             <label className="flex items-center gap-2">
               <span className="label-mono text-muted-foreground">Instance</span>
-              <select
+              <Select
                 value={chosenInstance}
                 onChange={(e) => update({ instance: e.target.value })}
                 aria-label="Instance to read"
@@ -236,7 +237,7 @@ export function LogsBody({
                     {i.id.slice(0, 12)}… · {i.state}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex items-center gap-2">
               <span className="label-mono text-muted-foreground">Date</span>

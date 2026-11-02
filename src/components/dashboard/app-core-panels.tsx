@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD, Textarea } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, Textarea, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { ErrorState, InlinePhase, LoadingState, Panel, StatTile, queryPhase } from './primitives';
@@ -131,11 +131,11 @@ export function InvokePanel({ slug }: { slug: string }) {
       <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Method</span>
-          <select value={method} onChange={(e) => setMethod(e.target.value)} className={FIELD}>
+          <Select value={method} onChange={(e) => setMethod(e.target.value)} className={FIELD}>
             {['POST', 'GET', 'PUT', 'PATCH', 'DELETE'].map((value) => (
               <option key={value}>{value}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Path</span>
@@ -229,7 +229,7 @@ export function SloPanel({ slug }: { slug: string }) {
       title="Service level"
       description="Customer-facing SLO signals over a fixed window. The source label calls out degraded telemetry instead of hiding it."
       actions={
-        <select
+        <Select
           value={window}
           onChange={(e) => setWindow(e.target.value as AppSLOWindow)}
           disabled={!paidAccess}
@@ -239,7 +239,7 @@ export function SloPanel({ slug }: { slug: string }) {
           {SLO_WINDOWS.map((value) => (
             <option key={value}>{value}</option>
           ))}
-        </select>
+        </Select>
       }
     >
       {authLoading ? (

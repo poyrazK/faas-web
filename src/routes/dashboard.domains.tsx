@@ -21,7 +21,7 @@ import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { ApiError } from '@/lib/api/errors';
-import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import { FieldError, fieldErrorProps, useFormValidation, Select } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 /** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
@@ -426,7 +426,7 @@ function DomainsPage() {
 
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Routes to</span>
-            <select
+            <Select
               value={appSlug}
               onChange={(e) => setAppSlug(e.target.value)}
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
@@ -436,7 +436,7 @@ function DomainsPage() {
                   {a.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <Button
@@ -476,7 +476,7 @@ function DomainsPage() {
         filters={
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Domain status
-            <select
+            <Select
               className="rounded-md border border-border bg-card p-2"
               value={search.status ?? ''}
               onChange={(event) =>
@@ -486,7 +486,7 @@ function DomainsPage() {
               <option value="">All statuses</option>
               <option value="pending">Pending</option>
               <option value="verified">Verified</option>
-            </select>
+            </Select>
           </label>
         }
         emptyMessage={rows.length ? 'No domains match these filters.' : 'No custom domains yet.'}

@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { ApiError } from '@/lib/api/errors';
 import { useWakeTimeline } from '@/lib/api/queries';
 import { formatUsageBytes } from '@/lib/usage-format';
@@ -102,7 +102,7 @@ export function WakeWaterfall({ slug, wakeId }: { slug: string; wakeId: string }
             {gens.length > 1 && (
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 Wake generation
-                <select
+                <Select
                   className={cn(FIELD, 'w-auto')}
                   value={index}
                   onChange={(e) => setPicked(Number(e.target.value))}
@@ -112,7 +112,7 @@ export function WakeWaterfall({ slug, wakeId }: { slug: string; wakeId: string }
                       {i === 0 ? 'First boot' : `Thaw ${i}`}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             )}
             {gen ? (

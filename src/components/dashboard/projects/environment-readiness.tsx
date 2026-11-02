@@ -10,6 +10,7 @@ import {
 } from '@/lib/api/environment-readiness';
 import { Button } from '@/components/ui/button';
 import { Panel } from '../primitives';
+import { Select } from '@/components/ui/field';
 
 export type ReadinessSearch = {
   promotion?: string;
@@ -244,7 +245,7 @@ export function EnvironmentReadiness({
         <div className="space-y-4 p-4 text-sm">
           <label className="flex flex-col gap-1.5">
             Recorded status
-            <select
+            <Select
               aria-label="Recorded status"
               className="rounded-md border border-border bg-background p-2"
               value={status ?? ''}
@@ -260,7 +261,7 @@ export function EnvironmentReadiness({
               <option value="running">Running</option>
               <option value="succeeded">Succeeded</option>
               <option value="failed">Failed</option>
-            </select>
+            </Select>
           </label>
           {history.error ? (
             <div role="alert">

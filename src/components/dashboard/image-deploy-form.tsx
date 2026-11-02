@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavArrowDown } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import { FieldError, fieldErrorProps, useFormValidation, Select } from '@/components/ui/field';
 import { useAuth } from '@/lib/auth';
 import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -863,7 +863,7 @@ function ImageJourney({
                   htmlFor={`${fieldsId}-visibility`}
                   hint="Internal apps have no public platform URL."
                 >
-                  <select
+                  <Select
                     id={`${fieldsId}-visibility`}
                     aria-label="App visibility"
                     className="h-9 rounded-md border border-border bg-background px-2 text-sm"
@@ -873,7 +873,7 @@ function ImageJourney({
                   >
                     <option value="public">Public edge</option>
                     <option value="internal">Internal service only</option>
-                  </select>
+                  </Select>
                 </SettingRow>
               )}
               <SettingRow
@@ -977,7 +977,7 @@ function ImageJourney({
           {kind === 'worker' && !fixedApp && (
             <SettingsSection id={`${fieldsId}-lifecycle-section`} title="Worker lifecycle">
               <SettingRow label="Restart policy" htmlFor={`${fieldsId}-restart`}>
-                <select
+                <Select
                   id={`${fieldsId}-restart`}
                   className="h-9 rounded-md border border-border bg-background px-2 text-sm"
                   value={restartPolicy}
@@ -988,7 +988,7 @@ function ImageJourney({
                   <option value="on-failure">On failure</option>
                   <option value="unless-stopped">Unless stopped</option>
                   <option value="no">Never</option>
-                </select>
+                </Select>
               </SettingRow>
               <SettingRow
                 label="Startup deadline (seconds)"

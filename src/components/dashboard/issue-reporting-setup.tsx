@@ -18,6 +18,7 @@ import {
   useIssueTokens,
   type IssueTokenMetadata,
 } from '@/lib/api/issues';
+import { Select } from '@/components/ui/field';
 
 type Props = { accountId: string; slug: string; onClose: () => void };
 type Disclosure = { token: string; id: string; context: string };
@@ -395,7 +396,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
           >
             <label className="flex flex-col gap-1">
               Deployment
-              <select
+              <Select
                 aria-label="Deployment"
                 required
                 value={deploymentId}
@@ -408,7 +409,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                     {row.id} · {row.status}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Token name
@@ -422,7 +423,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
             </label>
             <label className="flex flex-col gap-1">
               Project
-              <select
+              <Select
                 aria-label="Project"
                 value={projectSlug}
                 onChange={(event) => {
@@ -437,11 +438,11 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                     {item.slug}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Environment
-              <select
+              <Select
                 aria-label="Environment"
                 value={environment}
                 onChange={(event) => setEnvironment(event.target.value)}
@@ -454,7 +455,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                       {item.slug}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Expires in hours

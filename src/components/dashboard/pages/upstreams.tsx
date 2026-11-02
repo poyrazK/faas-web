@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import {
+  FIELD,
+  FieldError,
+  fieldErrorProps,
+  useFormValidation,
+  Select,
+} from '@/components/ui/field';
 import { Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
@@ -220,7 +226,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
         >
           <label className="flex flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Kind</span>
-            <select
+            <Select
               value={kind}
               onChange={(e) => {
                 const next = e.target.value as (typeof KINDS)[number];
@@ -234,7 +240,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
                   {k}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="flex min-w-56 flex-1 flex-col gap-1.5">
             <span className="label-mono text-muted-foreground">Host</span>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, Select } from '@/components/ui/field';
 import { AsyncInvocationsMaturity } from '@/components/dashboard/async-invocations';
 import { useAppWorkPolicies, type AsyncInvokeOptions } from '@/lib/api/async-invocations';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
@@ -58,7 +58,7 @@ function Fields({
   const destination = (label: string, field: 'onSuccess' | 'onFailure') => (
     <label className="flex min-w-0 flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
-      <select
+      <Select
         aria-label={label}
         value={value[field]}
         onChange={(e) => set({ [field]: e.target.value })}
@@ -71,7 +71,7 @@ function Fields({
             {hook.target_url}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 
@@ -80,7 +80,7 @@ function Fields({
       {policiesOn && (
         <label className="flex min-w-0 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Work policy</span>
-          <select
+          <Select
             aria-label="Work policy"
             value={value.policy}
             onChange={(e) => set({ policy: e.target.value })}
@@ -93,7 +93,7 @@ function Fields({
                 {policy.name}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="text-xs text-muted-foreground">
             {policies.error
               ? errorMessage(policies.error)
