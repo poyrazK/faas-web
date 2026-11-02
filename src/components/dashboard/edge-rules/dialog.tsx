@@ -271,7 +271,7 @@ export function EdgeRuleDialog({
             ? KINDS[kind].desc
             : 'Rules run at the gateway, before a request reaches an app.'
       }
-      width="max-w-3xl"
+      placement="right"
       footer={
         kind ? (
           <>

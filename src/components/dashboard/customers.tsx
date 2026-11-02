@@ -211,6 +211,8 @@ function RegisterCustomer({
       onClose={close}
       title="Register customer"
       description="Registering the same external reference and name again returns the existing customer."
+      placement="right"
+      width="sm:max-w-[420px]"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         <FormField

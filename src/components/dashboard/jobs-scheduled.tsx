@@ -473,7 +473,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           onClose={closeCreation}
           title="New scheduled request"
           description="Send an HTTP GET to an app on a recurring schedule. Times use the timezone below, UTC unless you change it."
-          width="max-w-lg"
+          placement="right"
+          width="sm:max-w-[560px]"
         >
           <form
             noValidate
