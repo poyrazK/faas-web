@@ -24,19 +24,15 @@ const COLOR: Record<ChartColor, string> = {
   grey: 'var(--chart-muted)',
 };
 
-export type ChartSeries<K extends string> = Record<K, { label: string; color: ChartColor }>;
+export type ChartSeries = Record<string, { label: string; color: ChartColor }>;
 
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
 const formatTick = (v: number) => compact.format(v);
 
 /** Points to path strings, in viewBox units (y grows downward). */
-function useGeometry<K extends string>(
-  data: Record<string, unknown>[],
-  keys: K[],
-  filled: boolean
-) {
+function useGeometry(data: Record<string, unknown>[], keys: string[], filled: boolean) {
   return useMemo(() => {
-    const values = (key: K) => data.map((d) => Number(d[key]) || 0);
+    const values = (key: string) => data.map((d) => Number(d[key]) || 0);
     // A round top (500, not 481) so the three ticks read as round numbers.
     const max = scaleLinear()
       .domain([0, Math.max(1, ...keys.flatMap(values))])
@@ -70,7 +66,7 @@ function useGeometry<K extends string>(
  * `x` names the label field (an hour, a day); each `series` key names a
  * numeric field. `kind="area"` fills under each line.
  */
-export function TimeChart<K extends string>({
+export function TimeChart({
   data,
   x,
   series,
@@ -80,12 +76,12 @@ export function TimeChart<K extends string>({
 }: {
   data: Record<string, unknown>[];
   x: string;
-  series: ChartSeries<K>;
+  series: ChartSeries;
   kind?: 'area' | 'line';
   format?: (v: number) => string;
   className?: string;
 }) {
-  const keys = useMemo(() => Object.keys(series) as K[], [series]);
+  const keys = useMemo(() => Object.keys(series), [series]);
   const { max, paths } = useGeometry(data, keys, kind === 'area');
   const [hover, setHover] = useState<number | null>(null);
   const clipId = useId();

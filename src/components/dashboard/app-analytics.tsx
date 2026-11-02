@@ -1,8 +1,8 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { TimeChart } from './kit/chart';
 import { SegmentedControl } from './tabs';
 import { Select } from '@/components/ui/field';
-import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from '@/components/dashboard/primitives';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import {
@@ -188,7 +188,7 @@ export function AppAnalyticsBody({
           />
         ) : (
           <div className="flex flex-col gap-5">
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <Stats columns={6}>
               <StatTile label="Requests" value={data?.requests} state={tileState} />
               <StatTile label="Errors" value={data?.error_requests} state={tileState} tone="red" />
               <StatTile
@@ -206,7 +206,7 @@ export function AppAnalyticsBody({
                 state={tileState}
                 tone="orange"
               />
-            </div>
+            </Stats>
 
             {data?.window_clamped && (
               <p className="text-xs text-muted-foreground">
@@ -245,15 +245,13 @@ export function AppAnalyticsBody({
                   />
                 </div>
                 {points.length ? (
-                  <AreaChart data={points} config={chart.config} className="h-48 w-full">
-                    <Grid />
-                    <XAxis dataKey="at" />
-                    <YAxis />
-                    <Tooltip />
-                    {Object.keys(chart.config).map((key) => (
-                      <Area key={key} dataKey={key} />
-                    ))}
-                  </AreaChart>
+                  <TimeChart
+                    data={points}
+                    x="at"
+                    series={chart.config}
+                    kind={metric === 'latency' ? 'line' : 'area'}
+                    className="h-48"
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {metric === 'latency'

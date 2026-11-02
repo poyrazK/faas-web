@@ -31,15 +31,10 @@ vi.mock('@tanstack/react-router', () => ({
     <a href={to}>{children}</a>
   ),
 }));
-vi.mock('@/components/dither-kit', () => ({
-  Area: () => null,
-  AreaChart: ({ data }: { data: unknown[] }) => (
+vi.mock('@/components/dashboard/kit/chart', () => ({
+  TimeChart: ({ data }: { data: unknown[] }) => (
     <div data-testid="chart" data-points={data.length} />
   ),
-  Grid: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
 }));
 
 const { CustomMetricsPanel } = await import('./custom-metrics');
@@ -297,7 +292,7 @@ it('charts the selected metric’s recorded history and changes range', async ()
   show();
   const chart = await screen.findByTestId('chart');
   expect(chart).toHaveAttribute('data-points', '3');
-  // dither-kit spaces points by index, so a missing stretch is drawn as a
+  // The chart spaces points by index, so a missing stretch is drawn as a
   // straight line; the caption must not promise a visible gap.
   expect(screen.queryByText(/gap means/i)).not.toBeInTheDocument();
   expect(seriesCalls()[0][1]).toMatchObject({
