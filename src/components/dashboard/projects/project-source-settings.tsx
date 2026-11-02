@@ -102,7 +102,7 @@ export function ProjectSourceSettings({
   return (
     <Panel
       title="Source settings"
-      description="The repository and branch production deploys come from."
+      help="Workloads and the services they call come from the repository (Compose or .gregale/project.yaml) and change on the next deploy."
     >
       <form
         className="flex flex-col gap-4"
@@ -124,8 +124,7 @@ export function ProjectSourceSettings({
               <span className="label-mono text-muted-foreground">Repository</span>
               <span className="break-all text-sm">{project.repo_full_name || 'Not connected'}</span>
               <span className="text-xs text-muted-foreground">
-                A company's project can be disconnected but not moved to another repository yet; the
-                API needs the company's own GitHub installation for that.
+                A company's project can be disconnected but not moved to another repository yet.
               </span>
               {project.repo_full_name && (
                 <Button
@@ -186,11 +185,7 @@ export function ProjectSourceSettings({
             {failure}
           </p>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-xl text-xs text-muted-foreground">
-            Workloads, their names and the services they call come from the repository (Compose or{' '}
-            <code>.gregale/project.yaml</code>) and change on the next deploy, not here.
-          </p>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Button
             type="submit"
             size="sm"

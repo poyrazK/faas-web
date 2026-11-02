@@ -57,7 +57,7 @@ function SelectedEnvironment({
       />
     );
   if (detail.isPending || state.isPending || (compare && diff.isPending))
-    return <LoadingState message="Loading environment evidence…" />;
+    return <LoadingState message="Loading environment details…" />;
   if (
     detail.data?.project_id !== projectId ||
     detail.data?.slug !== environment ||
@@ -71,7 +71,7 @@ function SelectedEnvironment({
   )
     return (
       <p role="alert" className="text-sm text-destructive">
-        Environment evidence does not match this selection.
+        Environment details do not match this selection.
       </p>
     );
   return (
@@ -164,10 +164,7 @@ function PersonalProjectEnvironments(props: Props) {
       !items.some((item) => item.slug === compare));
   return (
     <>
-      <Panel
-        title="Environments"
-        description="Named environment evidence and comparisons. Stage desired queue settings can be reviewed below."
-      >
+      <Panel title="Environments">
         <div className="flex flex-wrap gap-4 p-4">
           <label className="flex min-w-40 flex-col gap-2 text-sm">
             Environment
