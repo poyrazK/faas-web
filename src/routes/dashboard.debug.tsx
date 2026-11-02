@@ -1,6 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
-import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { AppScope, AppSelect, remembered, useSelectedApp } from '@/components/dashboard/app-select';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch } from '@/components/dashboard/debug-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
@@ -9,6 +9,19 @@ import { consoleHead } from '@/lib/seo';
 export const Route = createFileRoute('/dashboard/debug')({
   component: DebugPage,
   validateSearch: validateDebugSearch,
+  // The Debugger is an app's Observe section now. A link that names an app,
+  // or an app picked earlier, opens it there with the investigation intact;
+  // this page remains only as the picker for someone who has chosen none.
+  beforeLoad: ({ search }) => {
+    const app = search.app ?? remembered();
+    if (!app) return;
+    throw redirect({
+      to: '/dashboard/apps/$appSlug',
+      params: { appSlug: app },
+      search: { ...search, app: undefined, tab: 'Debugger' },
+      replace: true,
+    });
+  },
   head: () => consoleHead('debug'),
 });
 

@@ -20,7 +20,8 @@ import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } fr
 
 const STORAGE_KEY = 'gregale.selectedApp';
 
-function remembered(): string {
+/** The app last picked anywhere in the console, or '' if none. */
+export function remembered(): string {
   if (typeof window === 'undefined') return '';
   return window.localStorage.getItem(STORAGE_KEY) ?? '';
 }
