@@ -57,17 +57,14 @@ export function AutomationRuns({
   ];
   return (
     <>
-      <Panel
-        title="Run history"
-        description="Real durable runs for this automation. Updates every 10 seconds."
-      >
+      <Panel title="Run history">
         <ResourceTable
           rows={q.data?.runs ?? []}
           columns={columns}
           loading={q.isPending}
           error={q.error}
           onRetry={() => void q.refetch()}
-          emptyMessage="No retained runs for this automation."
+          emptyMessage="No runs for this automation."
           minWidth="min-w-[640px]"
         />
         <Pagination
@@ -113,7 +110,6 @@ function RunDetail({
   return (
     <Panel
       title="Run detail"
-      description={id}
       actions={
         <Button size="sm" variant="ghost" onClick={onClose}>
           Close run
@@ -131,16 +127,13 @@ function RunDetail({
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap gap-5 text-sm">
               <AutomationStatus status={run.cancelled_at ? 'cancelled' : run.status} />
+              <span className="font-mono text-xs">{id}</span>
               <span>Created: {new Date(run.created_at).toLocaleString()}</span>
               {run.started_at && <span>Started: {new Date(run.started_at).toLocaleString()}</span>}
               {run.finished_at && (
                 <span>Finished: {new Date(run.finished_at).toLocaleString()}</span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Each run retains its captured definition. The run API does not report a publication
-              revision.
-            </p>
             {run.last_error && (
               <p
                 className="rounded-md border border-border p-3 text-sm"

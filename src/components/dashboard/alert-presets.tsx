@@ -114,7 +114,7 @@ export function AlertPresets({ slug }: { slug: string }) {
       <InlinePhase
         phase={phase}
         error={error}
-        loadingMessage="Reading the catalog…"
+        loadingMessage="Reading presets…"
         emptyMessage="No presets are published."
       />
     );

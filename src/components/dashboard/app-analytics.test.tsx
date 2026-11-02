@@ -122,7 +122,6 @@ describe('AppAnalyticsPanel', () => {
     expect(series()).toEqual(['requests', 'error_requests']);
     await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
     expect(series()).toEqual(['p50_ms', 'p95_ms', 'p99_ms']);
-    expect(screen.getByText('Hours without requests are left out.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Cold starts' }));
     expect(series()).toEqual(['cold_boots']);
   });
@@ -147,9 +146,7 @@ describe('AppAnalyticsPanel', () => {
     render(<AppAnalyticsPanel slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: 'Latency' }));
     expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
-    expect(
-      screen.getByText('No requests in this window, so there is no latency to plot.')
-    ).toBeInTheDocument();
+    expect(screen.getByText('No requests in this window.')).toBeInTheDocument();
   });
 
   it('offers grouping by consumer', () => {

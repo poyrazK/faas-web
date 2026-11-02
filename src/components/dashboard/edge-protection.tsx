@@ -244,7 +244,7 @@ function AttackModePanel({ slug }: { slug: string }) {
     <Region label="Attack mode">
       <Panel
         title="Attack mode"
-        description="One switch for a flood your rules cannot keep up with: every visitor is challenged until it ends on its own."
+        help="Every visitor is challenged until it ends on its own."
         actions={<MaturityLabel capability={capability} />}
       >
         {phase !== 'ready' ? (
@@ -277,9 +277,7 @@ function AttackModePanel({ slug }: { slug: string }) {
             </p>
             {active && (
               <p className="text-xs text-muted-foreground">
-                Clients that are not browsers and carry no verified credential get 403 while it is
-                on. Keep part of the app open with a challenge rule on the paths under attack
-                instead.
+                Non-browser clients without a verified credential get 403 while it is on.
               </p>
             )}
             {released ? (
@@ -367,10 +365,7 @@ function SummaryPanel({ slug, range }: { slug: string; range: EdgeRange }) {
 
   return (
     <Region label="What the edge refused">
-      <Panel
-        title="What the edge refused"
-        description={`Requests the gateway answered before they reached ${slug}, over the last ${range}.`}
-      >
+      <Panel title="What the edge refused">
         {phase !== 'ready' || !data ? (
           <InlinePhase
             phase={phase}
@@ -380,7 +375,7 @@ function SummaryPanel({ slug, range }: { slug: string; range: EdgeRange }) {
           />
         ) : degraded ? (
           <p className="text-sm text-muted-foreground" role="status">
-            Counts are unavailable: {degraded}. They are not zero; the metrics could not be read.
+            Counts are unavailable: {degraded}.
           </p>
         ) : (
           <div className="flex flex-col gap-5">
@@ -469,7 +464,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
     <Region label="Pre-auth observations">
       <Panel
         title="Pre-auth observations"
-        description="The per-source limit that runs before credentials are checked. In observe mode it never rejects; it records what it would have."
+        help="Runs before credentials are checked. In observe mode it never rejects; it records what it would have."
       >
         {phase !== 'ready' || !data ? (
           <InlinePhase
@@ -481,8 +476,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
         ) : data.policies.length === 0 ? (
           <div className="flex flex-col gap-2 text-sm">
             <p className="text-muted-foreground">
-              No pre-auth guard is on for this app, so nothing is observed. Turn it on in observe
-              mode first; it records without rejecting:
+              No pre-auth guard is on for this app. Turn it on in observe mode:
             </p>
             <CliCommand
               command={cliPreAuthCommand(slug, 'observe', defaultPreAuthRate(account?.plan))}
@@ -493,8 +487,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
           <div className="flex flex-col gap-4">
             {degraded && (
               <p className="text-sm text-muted-foreground" role="status">
-                Counts are unavailable: {degraded}. They are not zero; the metrics could not be
-                read.
+                Counts are unavailable: {degraded}.
               </p>
             )}
             {suggestion && advice && (
@@ -538,8 +531,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
                   </tbody>
                 </table>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  A 2xx on a request it would have blocked is a possible false positive, not proof
-                  the client was legitimate.
+                  A 2xx on a request it would have blocked is a possible false positive.
                 </p>
               </div>
             )}

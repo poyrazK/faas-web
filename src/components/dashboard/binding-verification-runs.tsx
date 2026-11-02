@@ -42,7 +42,7 @@ const STATUS: Record<string, string> = {
 const ACTION: Record<string, string> = {
   probe: 'Probe',
   'queue-canary': 'Queue canary',
-  reuse: 'Reuse evidence',
+  reuse: 'Reuse results',
   wait: 'Observe pending probe',
   'wait-queue': 'Observe pending canary',
   observe: 'Observe consumer',
@@ -87,7 +87,7 @@ function explain(error: unknown, context: 'review' | 'create' | 'run'): string {
           // and the selected-deployment check in verification_reviews.go:62-67.
           return 'No plan could be reviewed. A run needs an enforced release policy (revision 1 or later) in the deployment’s scope, a complete binding inventory with no issues, the deployment you named to be the one under verification (leave the field empty for the live deployment), and an instance of that deployment started since its configuration last changed.';
         if (context === 'create') return 'The plan changed since you reviewed it. Review again.';
-        return 'The reviewed plan, policy, configuration, deadline or evidence changed. Check the diagnostics, then review a new run.';
+        return 'The reviewed plan, policy, configuration, deadline or results changed. Check the diagnostics, then review a new run.';
       case 'binding_verification_budget_full':
         return 'This run’s admission budget is full. Wait for an unfinished probe or canary to settle, then admit again.';
       case 'binding_verification_run_limit':
@@ -130,7 +130,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
   return (
     <Panel
       title="Binding verification runs"
-      description="A run freezes a reviewed plan for one deployment and records each probe and canary message it starts. The server never starts them on its own: admit each step, then complete the run. The CLI’s durable verify does the same."
+      help="The server never starts a step on its own: admit each step, then complete the run."
       actions={
         !reviewing && (
           <Button size="sm" variant="outline" onClick={() => setReviewing(true)}>
@@ -154,7 +154,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
           phase={phase}
           error={list.error}
           loadingMessage="Loading verification runs…"
-          emptyMessage="No verification runs are retained for this app."
+          emptyMessage="No verification runs yet."
           onRetry={() => void list.refetch()}
         />
         {phase === 'ready' && (
@@ -199,9 +199,6 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
                 Load older runs
               </Button>
             )}
-            <p className="text-xs text-muted-foreground">
-              The list shows stored state. Open a run to recheck it against current evidence.
-            </p>
           </>
         )}
         {selected && <RunDetail key={selected} slug={slug} runId={selected} />}
@@ -297,7 +294,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
     const ok = await confirm({
       title: 'Cancel this verification run?',
       description:
-        'Blocks further admissions and cancels the unfinished probes and canary messages this run started. A handler already running may still finish. Evidence that already succeeded is kept.',
+        'Blocks further admissions and cancels the unfinished probes and canary messages this run started. A handler already running may still finish. Checks that already succeeded are kept.',
       confirmLabel: 'Cancel run',
       destructive: true,
     });
@@ -323,7 +320,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
       <InlinePhase
         phase={phase}
         error={run.error}
-        loadingMessage="Checking the run against current evidence…"
+        loadingMessage="Checking the run…"
         onRetry={() => void run.refetch()}
       />
       {phase === 'ready' && data && (
@@ -331,8 +328,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
           <RunHeader run={data} />
           {data.status === 'passed' && (
             <p className="text-xs text-muted-foreground">
-              Passed is an observation at the last check. It moves no traffic: promotion still
-              rechecks policy and evidence when traffic changes.
+              Passing moves no traffic; promotion still rechecks the policy when traffic changes.
             </p>
           )}
           <ol aria-label="Steps" className="divide-y divide-border rounded-lg border border-border">
@@ -356,9 +352,8 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
           )}
           {data.status === 'pending' && completeConflict && !blocker && (
             <p role="alert">
-              Every step succeeded, but the final policy check is blocked: the policy, configuration
-              or evidence may have changed since the review. Check the diagnostics below; if they
-              show the review changed, review a new run.
+              Every step succeeded, but the final policy check is blocked. Check the diagnostics; if
+              they show the review changed, review a new run.
             </p>
           )}
           {data.status === 'pending' && (
@@ -383,13 +378,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
               </Button>
             </div>
           )}
-          {data.status === 'pending' && (
-            <p className="text-xs text-muted-foreground">
-              Complete passes only when every step this run admitted succeeded and a fresh policy
-              check passes. Recheck confirms the original review still holds; neither extends the
-              deadline.
-            </p>
-          )}
+
           <Diagnostics
             phase={queryPhase({ error: diagnostics.error, loading: diagnostics.isLoading })}
             error={diagnostics.error}
@@ -510,8 +499,8 @@ function Diagnostics({
             {data.check_passed === undefined
               ? 'The current policy check was not evaluated.'
               : data.check_passed
-                ? 'Current evidence satisfies the current policy.'
-                : 'Current evidence does not yet satisfy the current policy.'}{' '}
+                ? 'Current checks satisfy the current policy.'
+                : 'Current checks do not yet satisfy the current policy.'}{' '}
             {!data.complete && 'Some reads failed; retry for a full picture.'}
           </p>
           {data.budget && (
@@ -547,9 +536,7 @@ function Diagnostics({
           )}
           {data.recovery.length > 0 && (
             <div>
-              <p className="text-muted-foreground">
-                Suggested next steps (nothing runs on its own):
-              </p>
+              <p className="text-muted-foreground">Suggested next steps:</p>
               <ul className="list-disc space-y-1 pl-5">
                 {data.recovery.map((r, i) => (
                   <li key={i}>{r.message}</li>

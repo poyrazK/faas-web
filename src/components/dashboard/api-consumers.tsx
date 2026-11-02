@@ -143,7 +143,6 @@ function ConsumersPanel({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       <Panel
         title="Consumers"
-        description="Stable identities for the customers who call this API. Keys, plans, usage and statements belong to a consumer."
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setRegistering(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -161,7 +160,7 @@ function ConsumersPanel({ slug }: { slug: string }) {
           loading={consumers.isPending}
           error={consumers.error}
           onRetry={() => void consumers.refetch()}
-          emptyMessage="No consumers yet. Register one for each customer that calls this API."
+          emptyMessage="No consumers yet."
           minWidth="min-w-[560px]"
         />
       </Panel>
@@ -350,7 +349,6 @@ function ConsumerDetail({
   return (
     <Panel
       title={consumer.name}
-      description={`External reference ${consumer.external_ref}`}
       actions={
         <div className="flex items-center gap-2">
           {active && (
@@ -382,6 +380,7 @@ function ConsumerDetail({
                 {consumer.id}
               </span>,
             ],
+            ['External reference', consumer.external_ref],
             ['Created', formatUtc(consumer.created_at)],
             ...(consumer.revoked_at
               ? ([['Revoked', formatUtc(consumer.revoked_at)]] as [string, string][])
@@ -693,12 +692,6 @@ function ConsumerPlanSection({
           <p className="text-sm">
             On <strong>{planLabel(current?.plan_id, plans)}</strong>
             {current ? ` since ${formatUtc(current.effective_from)}` : ''}.
-            {!current?.plan_id && (
-              <span className="text-muted-foreground">
-                {' '}
-                The default plan prices usage with the app-wide rate cards.
-              </span>
-            )}
           </p>
           {scheduled.map((a) => (
             <p key={a.id} className="text-sm text-muted-foreground">
@@ -775,9 +768,7 @@ function ConsumerPlanSection({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            The move cannot start in the past, and the target plan needs a rate card in force when
-            it does. Statements price each minute with the plan in force then; monthly allowances
-            keep counting across the change.
+            The move cannot start in the past, and the target plan needs a rate card in force then.
           </p>
         </form>
       )}
@@ -857,12 +848,7 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
           }
         />
       </Stats>
-      {quote.data && quote.data.unpriced_units > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Usage before the first effective rate card is reported as unpriced rather than treated as
-          free.
-        </p>
-      )}
+
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">Usage alerts</p>
         <InlinePhase

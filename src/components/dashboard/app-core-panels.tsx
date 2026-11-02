@@ -113,7 +113,7 @@ export function InvokePanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Invoke"
-      description="Send a request to this app without leaving the dashboard. Async requests can be followed here after they are queued."
+      help="Sync waits for the result and takes longer on a cold app. Async returns at once and is followed here."
       actions={
         <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Mode">
           {(['sync', 'async'] as const).map((value) => (
@@ -178,12 +178,7 @@ export function InvokePanel({ slug }: { slug: string }) {
         {mode === 'async' && (
           <AsyncInvokeOptionsFields slug={slug} value={asyncOptions} onChange={setAsyncOptions} />
         )}
-        <div className="flex items-center justify-between gap-3 sm:col-span-2">
-          <p className="text-xs text-muted-foreground">
-            {mode === 'sync'
-              ? 'The request waits for the platform result and may take longer on a cold app.'
-              : 'The request returns immediately; its status is polled until it reaches a terminal state.'}
-          </p>
+        <div className="flex items-center justify-end gap-3 sm:col-span-2">
           <Button size="sm" onClick={submit} disabled={authLoading || !invokeAvailable} busy={busy}>
             Send request
           </Button>
@@ -235,7 +230,6 @@ export function SloPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Service level"
-      description="Customer-facing SLO signals over a fixed window. The source label calls out degraded telemetry instead of hiding it."
       actions={
         <Select
           value={window}
@@ -265,7 +259,7 @@ export function SloPanel({ slug }: { slug: string }) {
         <div className="flex flex-col gap-4">
           {degraded && (
             <p className="text-xs text-muted-foreground" role="status">
-              Telemetry source: <span className="font-mono">{data.source}</span>
+              Metrics source: <span className="font-mono">{data.source}</span>
             </p>
           )}
           <Stats columns={4}>
@@ -296,7 +290,7 @@ export function SloPanel({ slug }: { slug: string }) {
                 data.wake_queue_p95_ms == null
                   ? data.wake_queue_sample_status === 'no_sample'
                     ? 'No wake-queue samples in this window.'
-                    : 'Wake-queue telemetry unavailable.'
+                    : 'Wake-queue metrics unavailable.'
                   : undefined
               }
               state={tileState}
@@ -364,7 +358,7 @@ export function RegistryCredentialsPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Private registries"
-      description="Credentials are sealed by the control plane and never returned to the browser after saving."
+      help="Credentials are sealed and never shown again after saving."
     >
       <div className="flex flex-col gap-5">
         <form

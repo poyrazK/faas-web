@@ -120,12 +120,8 @@ function EnvTransferBody({ slug, accountId }: { slug: string; accountId: string 
     }
   };
   return (
-    <Panel title="Import environment variables">
+    <Panel title="Import environment variables" help="Credentials belong in Secrets.">
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">
-          Review additions and overwrites before applying a file or pasted block. Values stay in
-          memory until you leave this app. Credentials belong in sealed Secrets.
-        </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1.5 text-sm">
             Transfer scope
@@ -203,8 +199,7 @@ function EnvTransferBody({ slug, accountId }: { slug: string; accountId: string 
           />
         </label>
         <p className="text-xs text-muted-foreground">
-          Use one assignment per line. Double quotes accept escaped quotes and \n for line breaks.
-          Values are hidden in the review.
+          One assignment per line. Double quotes accept escaped quotes and \n for line breaks.
         </p>
         <Button
           variant="outline"
@@ -243,9 +238,7 @@ function EnvTransferBody({ slug, accountId }: { slug: string; accountId: string 
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Invalid and duplicate entries are excluded. The server validates each value and
-              enforces plan limits. Stored values are write-only, so overwrites cannot be classified
-              as unchanged.
+              Invalid and duplicate entries are excluded.
             </p>
             <Button
               disabled={!ready || pending || !diff.length || quotaExceeded}

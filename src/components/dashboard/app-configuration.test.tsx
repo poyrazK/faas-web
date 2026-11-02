@@ -177,14 +177,15 @@ describe('App deletion contract copy', () => {
     await user.type(slug, 'tag-alpha');
     expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
   });
-  it('explains live policy convergence separately from boot-time memory', () => {
+  it('explains live policy convergence separately from boot-time memory', async () => {
     render(
       <ConfirmProvider>
         <AppConfiguration slug="alpha" />
       </ConfirmProvider>
     );
     expect(screen.queryByText(/Applied on the next wake/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Memory requires a fresh instance/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'About Runtime' }));
+    expect(await screen.findByText(/Memory requires a fresh instance/)).toBeVisible();
   });
   it('disables memory sizes above the account limit in configuration', () => {
     render(
@@ -221,7 +222,7 @@ describe('App deletion contract copy', () => {
         <AppConfiguration slug="alpha" />
       </ConfirmProvider>
     );
-    expect(screen.getByText(/7-day grace/)).toBeInTheDocument();
+    expect(screen.getByText(/Recently deleted for 7 days/)).toBeInTheDocument();
     expect(screen.queryByText(/no restore action/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/no grace period|Every deployment, secret|Permanent\./)

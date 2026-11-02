@@ -4,11 +4,9 @@ import { EmptyState, Panel } from './primitives';
 
 const COPY = {
   Invoke: {
-    description: 'Requests become available after the app has a successful deployment to run.',
     message: 'Deploy this app before invoking it.',
   },
   Logs: {
-    description: 'Log output becomes available once the app has a deployment that has finished.',
     message: 'Deploy this app before reading its logs.',
   },
 } as const;
@@ -24,8 +22,7 @@ export function NotLiveNotice({ slug }: { slug: string }) {
       role="status"
       className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground"
     >
-      No deployment has gone live yet. If the latest one started and then failed, what it printed is
-      below. A build failure&rsquo;s output is on the deployment.{' '}
+      No deployment has gone live yet.{' '}
       <Link
         to="/dashboard/apps/$appSlug"
         params={{ appSlug: slug }}
@@ -43,7 +40,7 @@ export function DeploymentGate({ slug, resource }: { slug: string; resource: key
   const copy = COPY[resource];
 
   return (
-    <Panel title={resource} description={copy.description}>
+    <Panel title={resource}>
       <EmptyState
         message={copy.message}
         action={

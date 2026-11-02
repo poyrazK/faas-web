@@ -262,7 +262,7 @@ function ConfigForm({ app }: { app: App }) {
     <>
       <Panel
         title="Runtime"
-        description="Request, egress and scaling policies can converge live. Memory requires a fresh instance."
+        help="Memory requires a fresh instance. Other settings apply live."
         actions={
           <>
             {/* The CLI's deploy --diff, one click before Save: the server
@@ -628,7 +628,7 @@ function RenamePanel({ app }: { app: App }) {
   return (
     <Panel
       title="Name"
-      description="The slug is also the subdomain: renaming changes the URL, and the old one stops answering."
+      help="The slug is also the subdomain. Renaming changes the URL, and the old one stops answering."
     >
       {/* The error goes under the row, not inside it, so the button stays
           level with the input when it appears. */}
@@ -700,16 +700,14 @@ function DangerZone({ app }: { app: App }) {
   return (
     <Panel
       title="Danger zone"
-      description="Stops serving traffic. The console asks you to type the slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            The app is hidden from active lists and enters a {APP_DELETE_GRACE_DAYS}-day grace
-            window before permanent cleanup. Restore it from Recently deleted on the Apps page
-            during that window. Delete any object storage buckets first.
+            Restorable from Recently deleted for {APP_DELETE_GRACE_DAYS} days. Delete its storage
+            buckets first.
           </p>
         </div>
         <Button

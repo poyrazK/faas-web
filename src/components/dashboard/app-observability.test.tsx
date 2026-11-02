@@ -79,7 +79,7 @@ describe('AppHealthPanel', () => {
     );
     const history = screen.getByRole('list', { name: 'Health history' });
     expect(within(history).getByText('healthy → unhealthy')).toBeInTheDocument();
-    expect(within(history).getByText('No evidence collected')).toBeInTheDocument();
+    expect(within(history).getByText('No checks recorded')).toBeInTheDocument();
   });
 
   it('uses the plan gate rather than an error when the plan excludes it', async () => {

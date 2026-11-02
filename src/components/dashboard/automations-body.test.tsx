@@ -142,7 +142,7 @@ it('keeps authoring discoverable while runtime execution is disabled', () => {
 });
 it('does not fetch a remembered fallback app for an inaccessible app link', () => {
   render(<AutomationsBody search={{ app: 'missing' }} onSelection={vi.fn()} />);
-  expect(screen.getByText(/not in your accessible app list/)).toBeInTheDocument();
+  expect(screen.getByText(/not in your app list/)).toBeInTheDocument();
   expect(state.read).not.toHaveBeenCalled();
 });
 it('shows an empty app scope without starting disabled automation queries', () => {
@@ -175,7 +175,7 @@ it('offers an app-scoped first-automation action without an empty search', async
   state.empty = true;
   const onSelection = vi.fn();
   render(<AutomationsBody search={{ app: 'alpha' }} onSelection={onSelection} />);
-  expect(screen.getByText(/Create your first automation for alpha/)).toBeInTheDocument();
+  expect(screen.getByText('No automations yet.')).toBeInTheDocument();
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Create your first automation' }));
   expect(onSelection).toHaveBeenCalledWith({

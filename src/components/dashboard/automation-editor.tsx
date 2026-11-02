@@ -683,18 +683,15 @@ export function AutomationEditor({
     <div className="flex flex-col gap-5">
       <Panel
         title={onClose ? 'Definition' : savedName ? 'Draft definition' : 'New automation'}
-        description={
-          onClose
-            ? undefined
-            : `App: ${slug} · ${savedName ? `Editing revision ${version}` : 'Save a draft before publishing'}`
+        actions={
+          !onClose &&
+          savedName && <span className="text-xs text-muted-foreground">Revision {version}</span>
         }
       >
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
           {inDialog && !savedName && (
             <div>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Start with a template, then customize your handlers.
-              </p>
+              <p className="mb-2 text-xs text-muted-foreground">Start from a template.</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {AUTOMATION_TEMPLATES.map((item) => (
                   <button
@@ -1088,7 +1085,7 @@ export function AutomationEditor({
       <details className="rounded-lg border border-border p-4">
         <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
         <div className="mt-4">
-          <Panel description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run.">
+          <Panel>
             <div className="grid gap-4 sm:grid-cols-2">
               <JsonField
                 disabled={busy}
@@ -1176,7 +1173,7 @@ export function AutomationEditor({
       open
       onClose={() => void close()}
       title="New automation"
-      description={`App: ${slug} · Publish now, or save a draft to publish later.`}
+      description={`App: ${slug}`}
       width="max-w-3xl"
       footer={
         <>

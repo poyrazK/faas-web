@@ -80,9 +80,9 @@ export function LogDrainDetail({
   return (
     <Panel
       title={drain.target_url}
-      description={kindLabel(drain)}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">{kindLabel(drain)}</span>
           <label className="flex items-center gap-2 text-xs">
             <Switch
               checked={drain.enabled}
@@ -180,7 +180,7 @@ export function LogDrainDetail({
                 stamped with the drain's own update time, not a report. */}
             <p className="text-xs text-muted-foreground">
               {h.status === 'unknown' ? (
-                'No delivery report yet. One arrives once this app writes logs.'
+                'No delivery report yet.'
               ) : (
                 <>
                   Reported by the log pipeline <Timestamp iso={h.updated_at} />.

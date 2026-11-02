@@ -227,13 +227,7 @@ export function DomainDetailButton({ domain }: { domain: string }) {
         <InfoCircle className="h-3.5 w-3.5" />
       </IconButton>
       {open && (
-        <Modal
-          open
-          onClose={() => setOpen(false)}
-          width="max-w-2xl"
-          title={domain}
-          description="Routing, certificate and DNS, read live from the platform."
-        >
+        <Modal open onClose={() => setOpen(false)} width="max-w-2xl" title={domain}>
           <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-1">
             <DomainDetail domain={domain} />
           </div>

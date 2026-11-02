@@ -67,7 +67,7 @@ export function BindingReleasePolicy({ slug }: { slug: string }) {
   return (
     <Panel
       title="Binding release policy"
-      description="Applies to every traffic increase in one deployment scope. When enforced, promotion, traffic changes and canary advances are refused (bindings_release_required) until the deployment gaining traffic has fresh binding evidence. Saving a policy does not change serving traffic and runs no probes."
+      help="When enforced, promotions, traffic changes and canary advances are refused until the deployment gaining traffic has fresh binding checks."
     >
       <div className="space-y-4 text-sm">
         <form onSubmit={applyScope} className="flex flex-wrap items-end gap-2">
@@ -154,7 +154,7 @@ function PolicySummary({ policy }: { policy: ReleasePolicy }) {
         </p>
       )}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
-        <dt className="text-muted-foreground">Maximum evidence age</dt>
+        <dt className="text-muted-foreground">Maximum verification age</dt>
         <dd className="font-mono">{policy.max_verification_age}</dd>
         <dt className="text-muted-foreground">Application acknowledgements</dt>
         <dd>{policy.require_application_ack ? 'Required' : 'Not required'}</dd>
@@ -229,7 +229,7 @@ function validate(form: PolicyForm, queue: Row[], storage: Row[]): PolicyErrors 
   const errors: PolicyErrors = { queueRows: [], storageRows: [] };
   if (parseVerificationAge(form.maxAge) === null)
     errors.maxAge =
-      'Maximum evidence age must be whole seconds from 1s to 24h, such as 10m or 90s.';
+      'Maximum verification age must be whole seconds from 1s to 24h, such as 10m or 90s.';
   if (form.mode === 'off' && !form.reason.trim())
     errors.reason = 'A reason is required to turn enforcement off.';
   else if (new TextEncoder().encode(form.reason.trim()).length > REASON_MAX_BYTES)
@@ -310,15 +310,15 @@ function PolicyEditor({
       const ok = await confirm(
         mode === 'enforce'
           ? {
-              title: `Enforce binding evidence in ${scope}?`,
+              title: `Enforce binding checks in ${scope}?`,
               description:
-                'Promotions, traffic changes and canary advances in this scope will be refused until the deployment gaining traffic has fresh binding evidence. New canaries must start at 0%. Serving traffic does not change now.',
+                'Promotions, traffic changes and canary advances in this scope will be refused until the deployment gaining traffic has fresh binding checks. New canaries must start at 0%. Serving traffic does not change now.',
               confirmLabel: 'Enforce',
             }
           : {
               title: `Turn off binding enforcement in ${scope}?`,
               description:
-                'Traffic in this scope can then increase without binding evidence. The change and your reason are recorded in the policy history.',
+                'Traffic in this scope can then increase without binding checks. The change and your reason are recorded in the policy history.',
               confirmLabel: 'Turn off enforcement',
               destructive: true,
             }
@@ -370,9 +370,9 @@ function PolicyEditor({
         </div>
       </fieldset>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted-foreground">Maximum evidence age</span>
+        <span className="text-xs text-muted-foreground">Maximum verification age</span>
         <Input
-          aria-label="Maximum evidence age"
+          aria-label="Maximum verification age"
           value={maxAge}
           onChange={(e) => setMaxAge(e.target.value)}
           className="w-40 font-mono"
@@ -404,7 +404,7 @@ function PolicyEditor({
         error={errors.queue}
         invalidRows={errors.queueRows}
         errorId={ids.queue}
-        hint="consumer_readiness needs a healthy push consumer poll; handler_completion needs a completed canary."
+        hint="Consumer readiness needs a healthy consumer poll; handler completion needs a completed canary."
       />
       <Requirements
         kind="storage"
@@ -477,7 +477,7 @@ function Requirements({
 }) {
   const title = kind === 'queue' ? 'Queue requirements' : 'Object-storage requirements';
   const keyLabel = kind === 'queue' ? 'Queue binding' : 'Storage prefix';
-  const valueLabel = kind === 'queue' ? 'Queue evidence' : 'Storage mode';
+  const valueLabel = kind === 'queue' ? 'Queue check' : 'Storage mode';
   const capability = kind === 'queue' ? 'Queue bindings' : 'Object storage';
   if (!editable) {
     if (!rows.length) return null;

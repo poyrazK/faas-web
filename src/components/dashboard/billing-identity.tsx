@@ -71,7 +71,7 @@ export function BillingIdentityPanel() {
   return (
     <Panel
       title="Billing identity"
-      description="The legal name, address and tax ID printed on invoices. Changes apply to invoices issued from now on; issued invoices keep the details they were issued with."
+      help="Printed on invoices. Changes apply to invoices issued from now on."
       actions={
         ready && !editing ? (
           <Button

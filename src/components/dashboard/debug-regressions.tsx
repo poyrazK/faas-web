@@ -172,8 +172,7 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                The selected regression is not in this window. Widen the window or select another
-                observation.
+                The selected regression is not in this window.
               </p>
             )}
           </section>
@@ -217,10 +216,6 @@ function RegressionDetail({
           </div>
         ))}
       </dl>
-      <p className="text-xs text-muted-foreground">
-        The baseline deployment ID is not returned. Choose deployment A to compare with this current
-        deployment (B).
-      </p>
       <Button
         className="self-start"
         size="sm"
@@ -245,10 +240,7 @@ function RegressionDetail({
       </a>
       <h4 className="text-sm font-medium">Requests on this release and route</h4>
       <p className="text-xs text-muted-foreground">
-        Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows for this exact route in the selected
-        window across all deployments, then filtered to this deployment. Individual regression
-        membership is confirmed in request evidence. Other matching requests may exist outside this
-        sample; it is not the aggregate count.
+        Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests on this route.
       </p>
       {requests.error || requests.isPending ? (
         <>
@@ -274,8 +266,7 @@ function RegressionDetail({
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No request rows for this deployment in the loaded route sample (up to{' '}
-          {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).
+          No request rows for this deployment in the loaded route sample.
         </p>
       )}
     </div>

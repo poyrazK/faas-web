@@ -63,10 +63,7 @@ function TriggerDetail({
   const phase = queryPhase({ error: metrics.error, loading: metrics.isPending, isEmpty: !m });
 
   return (
-    <Panel
-      title={label}
-      description="What this trigger has taken off its source, and where it went."
-    >
+    <Panel title={label}>
       {phase !== 'ready' || !m ? (
         <InlinePhase phase={phase} error={metrics.error} loadingMessage="Reading counts…" />
       ) : (
@@ -215,11 +212,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Triggers"
-        description="Event sources that invoke an app — cron, Kafka, NATS, Redis Streams, an SQS-compatible queue, or the in-platform queue. Defined in gregale.yaml and the CLI; paused, inspected and recovered here."
-        actions={action}
-      />
+      <PageHeader title="Triggers" actions={action} />
 
       {search.trigger && data && !selected && <p role="status">Trigger not found</p>}
       <ResourceTable
@@ -228,7 +221,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
         initialSort={{ key: 'slug', dir: 'asc' }}
         searchKeys={['slug', 'app', 'kind']}
         searchPlaceholder="Filter by trigger, app, or kind…"
-        emptyMessage="No triggers yet. Declare them in gregale.yaml and deploy."
+        emptyMessage="No triggers yet."
         emptyAction={
           <Link
             to="/docs/$slug"

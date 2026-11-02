@@ -165,13 +165,8 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
           </Select>
         </label>
         <p className="text-xs text-muted-foreground">
-          Failed: HTTP 4xx / 5xx. Slow: latency ≥ 1,000 ms. Cold start: recorded cold boot only.
-          Regressions: matching release and route observations in this window.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent telemetry rows in the selected window
-          across all routes. Quick and text filters apply only to this loaded sample; other matching
-          requests may exist.
+          Slow: 1,000 ms or more. Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests in the
+          window.
         </p>
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
@@ -206,10 +201,10 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
           onQueryChange={(debugQuery) => onSelect({ debugQuery: debugQuery || undefined })}
           emptyMessage={
             data?.requests.length
-              ? `No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`
-              : 'No request rows were returned in this bounded sample.'
+              ? 'No requests match these filters in the loaded sample.'
+              : 'No requests in this window.'
           }
-          filteredEmptyMessage={`No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`}
+          filteredEmptyMessage="No requests match these filters in the loaded sample."
           minWidth="min-w-[760px]"
           loading={isPending || (filter === 'regressions' && regressions.isPending)}
           error={error ?? regressionError}

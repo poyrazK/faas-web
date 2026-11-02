@@ -178,9 +178,7 @@ export function EditCronDialog({
               <div className="flex flex-col gap-1.5">
                 <span className="label-mono text-muted-foreground">Command</span>
                 <code className="text-xs">{target}</code>
-                <p className="text-xs text-muted-foreground">
-                  The command cannot be changed here. Delete and recreate the schedule to change it.
-                </p>
+                <p className="text-xs text-muted-foreground">The command cannot be changed here.</p>
               </div>
             ) : (
               <label className="flex flex-col gap-1.5">

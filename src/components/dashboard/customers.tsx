@@ -91,7 +91,6 @@ function CustomersBody() {
     <div className="flex flex-col gap-6">
       <Panel
         title="Customers"
-        description="Each customer groups the consumers and hostnames of one end customer across your apps."
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setRegistering(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -109,7 +108,7 @@ function CustomersBody() {
             loading={tenants.isPending}
             error={tenants.error}
             onRetry={() => void tenants.refetch()}
-            emptyMessage="No customers yet. Register one with the reference your own systems use."
+            emptyMessage="No customers yet."
             minWidth="min-w-[480px]"
           />
           {tenants.hasNextPage && (
@@ -315,7 +314,6 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
   return (
     <Panel
       title={tenant?.name ?? 'Customer'}
-      description={tenant ? `External reference ${tenant.external_ref}` : undefined}
       actions={
         <div className="flex items-center gap-2">
           {tenant && (
@@ -354,6 +352,7 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   {tenant.id}
                 </span>,
               ],
+              ['External reference', tenant.external_ref],
               ['Registered', formatUtc(tenant.created_at)],
               ['Updated', formatUtc(tenant.updated_at)],
             ]}
@@ -427,9 +426,6 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground">
-          Hostnames live on each app&rsquo;s Tenant surfaces tab.
-        </p>
       </div>
       {linking ? (
         <LinkExisting tenantId={tenant.id} onDone={() => setLinking(false)} />
@@ -566,10 +562,6 @@ function CustomerCredentials({ tenant }: { tenant: PlatformTenantDetail }) {
   });
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground">
-        Metadata only; plaintext keys are never returned. Keys are issued per consumer on each
-        app&rsquo;s Consumers tab.
-      </p>
       <InlinePhase
         phase={phase}
         error={credentials.error}

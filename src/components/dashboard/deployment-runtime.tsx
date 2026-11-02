@@ -137,8 +137,7 @@ function PreviewBody({ preview }: { preview: RuntimeUpgradePreview }) {
       )}
       {(preview.rebuild_required || preview.cold_start_required) && (
         <p className="text-muted-foreground">
-          Moving to this base needs a rebuild and a cold start: existing snapshots cannot be reused
-          across different base bytes.
+          Moving to this base needs a rebuild and a cold start.
         </p>
       )}
       {preview.blockers.length > 0 && <List title="Blockers" items={preview.blockers} />}

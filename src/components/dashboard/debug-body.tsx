@@ -12,7 +12,6 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
   return (
     <Panel
       title="Debugger"
-      description="Investigate gateway requests with recorded evidence. Routes are templates, not expanded URLs."
       actions={
         <nav aria-label="Debugger views" className="flex gap-2">
           {DEBUG_VIEWS.map((id) => (

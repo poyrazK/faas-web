@@ -96,8 +96,7 @@ function Probes({ app }: { app: App }) {
         />
       ) : !probes ? (
         <p className="text-sm text-muted-foreground">
-          No production release is serving traffic, so there are no probes to show. They are set by
-          the deployment that does.
+          No production release is serving traffic, so there are no probes to show.
         </p>
       ) : (
         <ul aria-label="Probes" className="flex flex-col divide-y divide-border">
@@ -107,12 +106,9 @@ function Probes({ app }: { app: App }) {
         </ul>
       )}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Probes are fixed per deployment and change with the next one. Set the startup check with{' '}
-        <Code>hosting.health</Code> in gregale.yaml or{' '}
-        <Code>gregale deploy --healthcheck-path</Code>. Readiness and liveness probes are{' '}
-        <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code> on an image
-        deployment, or a <Code>healthcheck:</Code> on a Compose service. A Dockerfile{' '}
-        <Code>HEALTHCHECK</Code> replaces the default liveness probe. See{' '}
+        Probes are fixed per deployment. Set the startup check with <Code>hosting.health</Code> in
+        gregale.yaml or <Code>gregale deploy --healthcheck-path</Code>, and readiness and liveness
+        with <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code>. See{' '}
         <a href="/docs/deploy-overrides" className="text-brand underline-offset-2 hover:underline">
           Deployment overrides
         </a>
@@ -377,10 +373,7 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
 
 export function HealthProbes({ app, plan }: { app: App; plan: Plan | undefined }) {
   return (
-    <Panel
-      title="Health and restarts"
-      description="How an instance is judged ready and alive, and how it restarts and stops."
-    >
+    <Panel title="Health and restarts">
       <div className="flex flex-col gap-8">
         <Probes app={app} />
         <RestartContract app={app} plan={plan} />

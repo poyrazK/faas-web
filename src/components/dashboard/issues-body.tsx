@@ -4,6 +4,7 @@ import { useIssues, type IssueFilters } from '@/lib/api/issues';
 import { CapabilityNotice } from './capability-notice';
 import { IssueDetail } from './issue-detail';
 import { IssueReportingSetup } from './issue-reporting-setup';
+import { HelpTip } from './kit/help-tip';
 import type { IssueSearch } from './issues-search';
 import { Select } from '@/components/ui/field';
 
@@ -32,13 +33,12 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
   return (
     <section className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-1">
           <h2 className="text-lg font-semibold">Issues</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Instrumented exceptions reported by your app or SDK. Automatic HTTP Errors are shown in
-            their separate tab. Counts and impact cover retained, verified reports only; they do not
-            establish complete coverage.
-          </p>
+          <HelpTip label="About Issues">
+            Exceptions your app or SDK reports; HTTP errors are in the Errors tab. Counts cover
+            retained, verified reports only.
+          </HelpTip>
         </div>
         <Button
           variant="outline"

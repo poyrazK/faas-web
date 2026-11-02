@@ -87,8 +87,8 @@ it('reads the default scope and says what enforcement does to promotion', async 
   expect(screen.getByText(/handler completion/i)).toBeInTheDocument();
   expect(screen.getByText(/MEDIA/)).toBeInTheDocument();
   // The fence it puts on traffic (binding_release_traffic.go:20).
-  expect(screen.getAllByText(/promot/i).length).toBeGreaterThan(0);
-  expect(screen.getByText(/does not change serving traffic/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Binding release policy' }));
+  expect(await screen.findByText(/promotions, traffic changes/i)).toBeInTheDocument();
 });
 
 it('reads another deployment scope on request', async () => {
@@ -141,7 +141,7 @@ it('needs a reason to turn enforcement off, and says traffic loses its fence', a
   const reason = screen.getByRole('textbox', { name: /reason/i });
   expect(reason).toHaveAttribute('aria-invalid', 'true');
   expect(reason).toHaveAccessibleDescription(/reason is required/i);
-  expect(screen.getByRole('textbox', { name: /maximum evidence age/i })).not.toHaveAttribute(
+  expect(screen.getByRole('textbox', { name: /maximum verification age/i })).not.toHaveAttribute(
     'aria-invalid'
   );
   expect(spies.PUT).not.toHaveBeenCalled();
@@ -149,7 +149,7 @@ it('needs a reason to turn enforcement off, and says traffic loses its fence', a
   await user.type(screen.getByRole('textbox', { name: /reason/i }), 'Incident recovery');
   await user.click(screen.getByRole('button', { name: /save policy/i }));
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByText(/without binding evidence/i)).toBeInTheDocument();
+  expect(within(dialog).getByText(/without binding checks/i)).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: /turn off/i }));
   await waitFor(() => expect(spies.PUT).toHaveBeenCalled());
   expect(putCall()[1].body).toMatchObject({ mode: 'off', reason: 'Incident recovery' });
@@ -159,7 +159,7 @@ it('rejects an evidence age outside 1s–24h before writing', async () => {
   const user = userEvent.setup();
   renderWithProviders(<BindingReleasePolicy slug="api" />);
   await user.click(await screen.findByRole('button', { name: /edit policy/i }));
-  const age = screen.getByRole('textbox', { name: /maximum evidence age/i });
+  const age = screen.getByRole('textbox', { name: /maximum verification age/i });
   await user.clear(age);
   await user.type(age, '25h');
   await user.click(screen.getByRole('button', { name: /save policy/i }));
@@ -176,7 +176,7 @@ it('adds a queue requirement through the queues route', async () => {
   await user.click(await screen.findByRole('button', { name: /edit policy/i }));
   await user.click(screen.getByRole('button', { name: /add queue requirement/i }));
   await user.type(screen.getByRole('textbox', { name: /queue binding 1/i }), 'orders');
-  await user.selectOptions(screen.getByRole('combobox', { name: /queue evidence 1/i }), [
+  await user.selectOptions(screen.getByRole('combobox', { name: /queue check 1/i }), [
     'handler_completion',
   ]);
   await user.click(screen.getByRole('button', { name: /save policy/i }));

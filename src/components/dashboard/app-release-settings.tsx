@@ -29,7 +29,7 @@ type Policy = 'safe' | 'fast' | 'immediate';
 const POLICIES: { value: Policy; line: string }[] = [
   {
     value: 'safe',
-    line: 'Canary at 1%, 10%, 50%, then 100%, advancing on clean evidence. A 5xx regression rolls back.',
+    line: 'Canary at 1%, 10%, 50%, then 100%, advancing on clean results. A 5xx regression rolls back.',
   },
   {
     value: 'fast',
@@ -180,7 +180,7 @@ export function AppReleaseSettings({ app }: { app: App }) {
   return (
     <Panel
       title="Releases"
-      description="How a production release reaches traffic when the deploy names no rollout."
+      help="Applies once an app serves traffic. First deploys, previews and named environments keep their own rollout."
       actions={
         <Button
           size="sm"
@@ -232,10 +232,8 @@ export function AppReleaseSettings({ app }: { app: App }) {
             })}
           </div>
           <span className="text-xs text-muted-foreground">
-            Applies to an app that already serves traffic. First deploys, previews and named
-            environments keep their own rollout, and one deploy can override it with{' '}
-            <code className="font-mono">gregale deploy --rollout</code>. Also set with{' '}
-            <code className="font-mono">gregale app {app.slug} --release-policy</code>.
+            Also set with <code className="font-mono">gregale app {app.slug} --release-policy</code>
+            .
           </span>
           {mode && NON_REQUEST_MODES.has(mode) && (
             <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
@@ -263,7 +261,7 @@ export function AppReleaseSettings({ app }: { app: App }) {
           <span className="text-xs text-muted-foreground">
             {draft.policy === 'immediate'
               ? 'Not used while the policy is immediate. '
-              : 'While traffic is too quiet to judge, the rollout sends GET requests to these paths on both revisions instead of /. '}
+              : 'Probed with GET while traffic is too quiet to judge. '}
             One per line, up to {MAX_PROBE_PATHS}; empty probes /. Also set with{' '}
             <code className="font-mono">gregale app {app.slug} --release-probe-paths</code>.
           </span>
@@ -290,10 +288,9 @@ export function AppReleaseSettings({ app }: { app: App }) {
               <FieldError id="function-concurrency-error">{concurrencyError}</FieldError>
             )}
             <span className="text-xs text-muted-foreground">
-              Requests one Node or Python worker serves at once, up to {bound} on your plan. Applies
-              from the next deploy. A <code className="font-mono">concurrency:</code> in this
-              function&apos;s <code className="font-mono">functions:</code> entry in gregale.yaml
-              replaces it on <code className="font-mono">gregale deploy</code>.
+              Requests one worker serves at once, up to {bound} on your plan, from the next deploy.
+              A <code className="font-mono">concurrency:</code> under{' '}
+              <code className="font-mono">functions:</code> in gregale.yaml overrides it.
             </span>
           </div>
         )}

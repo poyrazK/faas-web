@@ -64,7 +64,7 @@ export function FocusExport() {
   return (
     <Panel
       title="Cost export"
-      description="Invoice detail as a FOCUS 1.4 projection for cost tools. Partial: it covers invoices whose period ends in the month, without drafts or voids."
+      help="FOCUS 1.4 export for cost tools. Covers invoices whose period ends in the month, without drafts or voids."
     >
       <form
         className="flex flex-wrap items-end gap-3"

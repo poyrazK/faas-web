@@ -172,7 +172,6 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
     <div className="@container flex flex-col gap-6">
       <PageHeader
         title="Workloads"
-        description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
         actions={
           !isPlanGate(error) && (
             <Button size="sm" onClick={() => setCreating(true)}>
@@ -203,7 +202,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           initialSort={{ key: 'name', dir: 'asc' }}
           searchKeys={['name', 'image', 'kind']}
           searchPlaceholder="Filter by job, image, or kind…"
-          emptyMessage="No workloads yet. Start with a container image."
+          emptyMessage="No workloads yet."
           emptyAction={
             <Button size="sm" onClick={() => setCreating(true)}>
               Create your first workload
@@ -249,7 +248,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
+            help="Changing the image, command, environment, resources or schedule takes gregale jobs update."
             actions={
               <JobActions
                 name={job}
@@ -264,26 +263,17 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         )}
 
         {job && (
-          <Panel
-            title={`Runs — ${job}`}
-            description="Newest first. Cancel stops tasks still in flight."
-          >
+          <Panel title={`Runs — ${job}`}>
             <JobRuns
               name={job}
               onSelect={(run) => onSelection({ run, task: undefined })}
               selectedRunId={runId}
               renderSelected={(selectedRun) => (
                 <div className="mt-6 flex flex-col gap-6">
-                  <Panel
-                    title="Run"
-                    description="What this run did, counted as the API reports it."
-                  >
+                  <Panel title="Run">
                     <JobRunDetail name={job} runId={selectedRun} />
                   </Panel>
-                  <Panel
-                    title="Tasks"
-                    description="One row per task. Open a task for the tail of its log."
-                  >
+                  <Panel title="Tasks">
                     <JobTasks
                       name={job}
                       runId={selectedRun}

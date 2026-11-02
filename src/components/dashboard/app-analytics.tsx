@@ -147,7 +147,6 @@ export function AppAnalyticsBody({
     <PlanGated error={planGateError} feature="Request analytics">
       <Panel
         title="Request analytics"
-        description="Aggregated at the edge from route templates, hostname-only referrers and country codes — never full URLs."
         actions={
           <div className="flex items-center gap-2">
             {showWindowSelector && (
@@ -255,13 +254,8 @@ export function AppAnalyticsBody({
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {metric === 'latency'
-                      ? 'No requests in this window, so there is no latency to plot.'
+                      ? 'No requests in this window.'
                       : 'No hourly points in this window yet.'}
-                  </p>
-                )}
-                {metric === 'latency' && points.length > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Hours without requests are left out.
                   </p>
                 )}
               </div>

@@ -100,7 +100,7 @@ function PlansPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Consumer plans"
-      description="Per-consumer limits; zero means unlimited. Consumers without a plan use the default plan and the app-wide rate cards. Plan prices are rate-card versions published through the API."
+      help="Zero means unlimited. Consumers without a plan use the default plan."
       actions={
         <Button
           size="sm"
@@ -122,7 +122,7 @@ function PlansPanel({ slug }: { slug: string }) {
         loading={plans.isPending}
         error={plans.error}
         onRetry={() => void plans.refetch()}
-        emptyMessage="No plans yet. Every consumer is on the default plan."
+        emptyMessage="No plans yet."
         minWidth="min-w-[600px]"
       />
       {editing && (

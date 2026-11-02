@@ -29,7 +29,7 @@ const slo = {
 beforeEach(() => useAppSlo.mockReset());
 
 it.each([
-  ['unavailable', 'Wake-queue telemetry unavailable.'],
+  ['unavailable', 'Wake-queue metrics unavailable.'],
   ['no_sample', 'No wake-queue samples in this window.'],
 ])('keeps other SLO metrics visible when wake-queue latency is %s', (status, message) => {
   useAppSlo.mockReturnValue({
