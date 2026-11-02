@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -40,12 +40,14 @@ beforeEach(() => {
 describe('alert form validation', () => {
   it('reports the first malformed or out-of-range field and preserves values for retry', async () => {
     render(<AlertsBody slug="api" />);
-    const name = screen.getByRole('textbox', { name: 'Name' });
-    const url = screen.getByRole('textbox', { name: 'Webhook URL' });
-    const secret = screen.getByLabelText('Webhook secret');
-    const cooldown = screen.getByRole('spinbutton', { name: 'Cooldown' });
-
     await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+    const sheet = await screen.findByRole('dialog');
+    const name = within(sheet).getByRole('textbox', { name: 'Name' });
+    const url = within(sheet).getByRole('textbox', { name: 'Webhook URL' });
+    const secret = within(sheet).getByLabelText('Webhook secret');
+    const cooldown = within(sheet).getByRole('spinbutton', { name: 'Cooldown' });
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Add rule' }));
     expect(name).toHaveFocus();
     expect(name).toHaveAccessibleDescription('Enter a name for this rule.');
 
@@ -77,18 +79,20 @@ describe('alert form validation', () => {
   it('includes the required failure source for failed-invocation alerts', async () => {
     createAlert.mockReset().mockResolvedValue({ name: 'Failures' });
     render(<AlertsBody slug="api" />);
-    await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Failures');
+    await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByRole('textbox', { name: 'Name' }), 'Failures');
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Metric' }),
+      within(sheet).getByRole('combobox', { name: 'Metric' }),
       'failed_invocations'
     );
     await userEvent.type(
-      screen.getByRole('textbox', { name: 'Webhook URL' }),
+      within(sheet).getByRole('textbox', { name: 'Webhook URL' }),
       'https://hooks.example.com'
     );
-    await userEvent.type(screen.getByLabelText('Webhook secret'), 'x');
-    expect(screen.getByRole('combobox', { name: 'Failure source' })).toHaveValue('any');
-    await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+    await userEvent.type(within(sheet).getByLabelText('Webhook secret'), 'x');
+    expect(within(sheet).getByRole('combobox', { name: 'Failure source' })).toHaveValue('any');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Add rule' }));
 
     await waitFor(() =>
       expect(createAlert).toHaveBeenCalledWith(expect.objectContaining({ failure_source: 'any' }))

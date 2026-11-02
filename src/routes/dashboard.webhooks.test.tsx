@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,7 +21,6 @@ vi.mock('@/components/dashboard/resource-table', () => ({
   Pill: () => null,
   ResourceTable: () => null,
 }));
-vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
 vi.mock('@/components/dashboard/app-select', () => ({
   AppScope: ({ children }: { children: React.ReactNode }) => children,
   AppSelect: () => null,
@@ -45,10 +44,12 @@ beforeEach(() => {
 describe('webhook form validation', () => {
   it('handles empty and malformed submit, API failure, retry, and success', async () => {
     render(<WebhooksBody slug="api" />);
-    const target = screen.getByRole('textbox', { name: 'Target URL' });
-    const secret = screen.getByLabelText('Secret');
-
     await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+    const sheet = await screen.findByRole('dialog');
+    const target = within(sheet).getByRole('textbox', { name: 'Target URL' });
+    const secret = within(sheet).getByLabelText('Secret');
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
     expect(target).toHaveFocus();
     expect(target).toHaveAccessibleDescription('Enter a complete HTTPS target URL.');
 
@@ -73,16 +74,18 @@ describe('webhook form validation', () => {
     // app_webhook_invalid (faas handlers_webhooks.go:88-106, api/webhooks.go:81).
     createWebhook.mockReset().mockResolvedValue({ id: 'webhook-1' });
     render(<WebhooksBody slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+    const sheet = await screen.findByRole('dialog');
     for (const stale of ['cron.fired', 'app.created', 'build.failed', 'budget.threshold']) {
-      expect(screen.queryByRole('button', { name: stale })).not.toBeInTheDocument();
+      expect(within(sheet).queryByRole('button', { name: stale })).not.toBeInTheDocument();
     }
     await userEvent.type(
-      screen.getByRole('textbox', { name: 'Target URL' }),
+      within(sheet).getByRole('textbox', { name: 'Target URL' }),
       'https://hooks.example.com'
     );
-    await userEvent.type(screen.getByLabelText('Secret'), 'x');
-    await userEvent.click(screen.getByRole('button', { name: 'deployment.live' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+    await userEvent.type(within(sheet).getByLabelText('Secret'), 'x');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'deployment.live' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
 
     await waitFor(() =>
       expect(createWebhook).toHaveBeenCalledWith(
@@ -94,9 +97,11 @@ describe('webhook form validation', () => {
   it('enforces the API target URL length before sending', async () => {
     createWebhook.mockReset().mockResolvedValue({ id: 'webhook-1' });
     render(<WebhooksBody slug="api" />);
-    const target = screen.getByRole('textbox', { name: 'Target URL' });
+    await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+    const sheet = await screen.findByRole('dialog');
+    const target = within(sheet).getByRole('textbox', { name: 'Target URL' });
     fireEvent.change(target, { target: { value: `https://example.com/${'a'.repeat(2030)}` } });
-    await userEvent.type(screen.getByLabelText('Secret'), 'x{Enter}');
+    await userEvent.type(within(sheet).getByLabelText('Secret'), 'x{Enter}');
 
     expect(target).toHaveAccessibleDescription('Target URLs can be at most 2048 characters.');
     expect(createWebhook).not.toHaveBeenCalled();

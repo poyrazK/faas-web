@@ -99,22 +99,28 @@ describe('CorsPresetsPanel', () => {
 
   it('refuses a wildcard origin with credentials before sending it', async () => {
     render(<CorsPresetsPanel slug="api" />);
-    await userEvent.type(screen.getByLabelText('Preset name'), 'open');
-    await userEvent.type(screen.getByLabelText('Allowed origins'), '*');
-    await userEvent.click(screen.getByRole('switch', { name: /allow credentials/i }));
-    expect(screen.getByText(/browsers refuse credentials for a wildcard/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create preset/i })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Preset name'), 'open');
+    await userEvent.type(within(sheet).getByLabelText('Allowed origins'), '*');
+    await userEvent.click(within(sheet).getByRole('switch', { name: /allow credentials/i }));
+    expect(
+      within(sheet).getByText(/browsers refuse credentials for a wildcard/i)
+    ).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: /create preset/i })).toBeDisabled();
   });
 
   it('creates a preset scoped to the app with the parsed lists', async () => {
     render(<CorsPresetsPanel slug="api" />);
-    await userEvent.type(screen.getByLabelText('Preset name'), 'admin');
+    await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Preset name'), 'admin');
     await userEvent.type(
-      screen.getByLabelText('Allowed origins'),
+      within(sheet).getByLabelText('Allowed origins'),
       'https://a.example https://b.example'
     );
-    await userEvent.click(screen.getByRole('button', { name: 'POST' }));
-    await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'POST' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: /create preset/i }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -141,9 +147,11 @@ describe('CorsPresetsPanel', () => {
       })
     );
     render(<CorsPresetsPanel slug="api" />);
-    await userEvent.type(screen.getByLabelText('Preset name'), 'web-clients');
-    await userEvent.type(screen.getByLabelText('Allowed origins'), 'https://a.example');
     await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Preset name'), 'web-clients');
+    await userEvent.type(within(sheet).getByLabelText('Allowed origins'), 'https://a.example');
+    await userEvent.click(within(sheet).getByRole('button', { name: /create preset/i }));
     await waitFor(() => expect(toast).toHaveBeenCalled());
     // The toast renders the problem itself (ProblemHelp), so apid's sentence shows.
     expect(toast).toHaveBeenCalledWith(
@@ -158,9 +166,11 @@ describe('CorsPresetsPanel', () => {
       new ApiError({ status: 402, code: 'plan_cors_presets_not_allowed', title: 'Upgrade' })
     );
     render(<CorsPresetsPanel slug="api" />);
-    await userEvent.type(screen.getByLabelText('Preset name'), 'x');
-    await userEvent.type(screen.getByLabelText('Allowed origins'), 'https://a.example');
     await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Preset name'), 'x');
+    await userEvent.type(within(sheet).getByLabelText('Allowed origins'), 'https://a.example');
+    await userEvent.click(within(sheet).getByRole('button', { name: /create preset/i }));
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Not on your plan' }))
     );
@@ -298,11 +308,13 @@ describe('CorsPresetsPanel', () => {
 
   it('creates and edits the description and exposed headers too', async () => {
     render(<CorsPresetsPanel slug="api" />);
-    await userEvent.type(screen.getByLabelText('Preset name'), 'docs');
-    await userEvent.type(screen.getByLabelText('Preset description'), 'The docs site');
-    await userEvent.type(screen.getByLabelText('Allowed origins'), 'https://docs.example');
-    await userEvent.type(screen.getByLabelText('Exposed headers'), 'X-Request-Id');
     await userEvent.click(screen.getByRole('button', { name: /create preset/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Preset name'), 'docs');
+    await userEvent.type(within(sheet).getByLabelText('Preset description'), 'The docs site');
+    await userEvent.type(within(sheet).getByLabelText('Allowed origins'), 'https://docs.example');
+    await userEvent.type(within(sheet).getByLabelText('Exposed headers'), 'X-Request-Id');
+    await userEvent.click(within(sheet).getByRole('button', { name: /create preset/i }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ description: 'The docs site', expose_headers: ['X-Request-Id'] })

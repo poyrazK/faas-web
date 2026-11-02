@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -15,6 +15,7 @@ import { FieldError, Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { Sheet } from './kit/sheet';
 
 /** ValidateEnvKey in faas pkg/api/env.go. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
@@ -102,6 +103,7 @@ function ProjectReferences({
     .map((environment) => environment.slug)
     .filter((name) => validEnvironment(name) && name !== 'pr-preview');
   const [picked, setPicked] = useState('');
+  const [creating, setCreating] = useState(false);
   const environment =
     picked && choices.includes(picked)
       ? picked
@@ -125,33 +127,54 @@ function ProjectReferences({
     );
   return (
     <>
-      <label className="flex w-fit flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Environment</span>
-        <Select
-          value={environment}
-          onChange={(e) => setPicked(e.target.value)}
-          className={cn(FIELD, 'min-w-44 font-sans')}
-        >
-          {choices.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </Select>
-      </label>
-      <EnvironmentReferences key={environment} slug={slug} environment={environment} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="flex w-fit flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Environment</span>
+          <Select
+            value={environment}
+            onChange={(e) => setPicked(e.target.value)}
+            className={cn(FIELD, 'min-w-44 font-sans')}
+          >
+            {choices.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Add reference
+        </Button>
+      </div>
+      <EnvironmentReferences
+        key={environment}
+        slug={slug}
+        environment={environment}
+        creating={creating}
+        onCreatingChange={setCreating}
+      />
     </>
   );
 }
 
-function EnvironmentReferences({ slug, environment }: { slug: string; environment: string }) {
+function EnvironmentReferences({
+  slug,
+  environment,
+  creating,
+  onCreatingChange,
+}: {
+  slug: string;
+  environment: string;
+  creating: boolean;
+  onCreatingChange: (open: boolean) => void;
+}) {
   const references = useSecretReferences(slug, environment);
   const sources = useScopedSecretNames(slug, environment);
   const save = useSetSecretReference(slug, environment);
   const remove = useRemoveSecretReference(slug, environment);
   const confirm = useConfirm();
   const { toast } = useToast();
-  const keyInput = useRef<HTMLInputElement>(null);
   const errorId = useId();
   const [key, setKey] = useState('');
   const [source, setSource] = useState('');
@@ -192,17 +215,104 @@ function EnvironmentReferences({ slug, environment }: { slug: string; environmen
     setTouched(false);
     setFailure('');
     if (names.includes(name)) setSource(name);
-    keyInput.current?.focus();
+    onCreatingChange(true);
   }
+
+  // Rendered whatever the list's phase, so the header's "Add reference" always
+  // has somewhere to open.
+  const sheet = (
+    <Sheet
+      open={creating}
+      onClose={() => onCreatingChange(false)}
+      title={`Add reference in ${environment}`}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!keyOk || !source || save.isPending) return;
+          const destination = key.trim();
+          setFailure('');
+          save.mutate(
+            { key: destination, source },
+            {
+              onSuccess: () => {
+                setKey('');
+                setSource('');
+                setTouched(false);
+                onCreatingChange(false);
+                toast({
+                  kind: 'success',
+                  title: `${destination} now comes from ${source} in ${environment}`,
+                  description: 'Instances pick it up when they next boot.',
+                });
+              },
+              onError: (error) =>
+                setFailure(
+                  explain(error, { key: destination, source, environment, quota: data?.quota })
+                ),
+            }
+          );
+        }}
+      >
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Variable</span>
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            onBlur={() => setTouched(true)}
+            aria-invalid={showKeyError || undefined}
+            aria-describedby={showKeyError ? errorId : undefined}
+            placeholder="DATABASE_URL"
+            className={cn(FIELD, showKeyError && 'border-[color:var(--status-critical)]')}
+          />
+          {showKeyError && (
+            <FieldError id={errorId}>
+              UPPER_SNAKE_CASE: a letter first, then letters, digits, or underscores.
+            </FieldError>
+          )}
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Source secret</span>
+          <Select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            disabled={names.length === 0}
+            className={FIELD}
+          >
+            <option value="">{sources.isLoading ? 'Loading…' : 'Choose a secret'}</option>
+            {names.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        {failure && (
+          <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+            {failure}
+          </p>
+        )}
+        <div className="flex justify-end">
+          <Button type="submit" size="sm" disabled={!keyOk || !source} busy={save.isPending}>
+            Save reference
+          </Button>
+        </div>
+      </form>
+    </Sheet>
+  );
 
   if (phase !== 'ready')
     return (
-      <InlinePhase
-        phase={phase}
-        error={references.error}
-        loadingMessage="Loading references…"
-        onRetry={() => void references.refetch()}
-      />
+      <>
+        <InlinePhase
+          phase={phase}
+          error={references.error}
+          loadingMessage="Loading references…"
+          onRetry={() => void references.refetch()}
+        />
+        {sheet}
+      </>
     );
 
   return (
@@ -266,84 +376,7 @@ function EnvironmentReferences({ slug, environment }: { slug: string; environmen
         </p>
       )}
 
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!keyOk || !source || save.isPending) return;
-          const destination = key.trim();
-          setFailure('');
-          save.mutate(
-            { key: destination, source },
-            {
-              onSuccess: () => {
-                setKey('');
-                setSource('');
-                setTouched(false);
-                toast({
-                  kind: 'success',
-                  title: `${destination} now comes from ${source} in ${environment}`,
-                  description: 'Instances pick it up when they next boot.',
-                });
-              },
-              onError: (error) =>
-                setFailure(
-                  explain(error, { key: destination, source, environment, quota: data?.quota })
-                ),
-            }
-          );
-        }}
-      >
-        <label className="flex min-w-44 flex-1 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Variable</span>
-          <input
-            ref={keyInput}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            onBlur={() => setTouched(true)}
-            aria-invalid={showKeyError || undefined}
-            aria-describedby={showKeyError ? errorId : undefined}
-            placeholder="DATABASE_URL"
-            className={cn(FIELD, showKeyError && 'border-[color:var(--status-critical)]')}
-          />
-          {showKeyError && (
-            <FieldError id={errorId}>
-              UPPER_SNAKE_CASE: a letter first, then letters, digits, or underscores.
-            </FieldError>
-          )}
-        </label>
-        <label className="flex min-w-44 flex-1 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Source secret</span>
-          <Select
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            disabled={names.length === 0}
-            className={FIELD}
-          >
-            <option value="">{sources.isLoading ? 'Loading…' : 'Choose a secret'}</option>
-            {names.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!keyOk || !source}
-          busy={save.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Save reference
-        </Button>
-      </form>
-      {failure && (
-        <p role="alert" className="text-xs text-[color:var(--status-critical)]">
-          {failure}
-        </p>
-      )}
+      {sheet}
       {sources.isSuccess && names.length === 0 && (
         <p className="text-xs text-muted-foreground">
           No secrets are set in {environment} yet. A reference can only name one, so set it there

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -49,8 +49,19 @@ vi.mock('@/components/dashboard/capability-notice', () => ({
   CapabilityNotice: ({ state }: { state: string }) => <span>Capability: {state}</span>,
 }));
 vi.mock('@/components/dashboard/primitives', () => ({
-  Panel: ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <section aria-label={title}>{children}</section>
+  Panel: ({
+    title,
+    actions,
+    children,
+  }: {
+    title: string;
+    actions?: React.ReactNode;
+    children: React.ReactNode;
+  }) => (
+    <section aria-label={title}>
+      {actions}
+      {children}
+    </section>
   ),
 }));
 vi.mock('@/components/ui/modal', () => ({
@@ -110,12 +121,22 @@ it('opens a known-event receipt lookup for the selected endpoint', async () => {
   expect(screen.getByRole('region', { name: 'Known event receipt' })).toHaveTextContent('e1');
 });
 
+async function openSheet() {
+  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  return screen.findByRole('dialog', { name: 'Create Stripe endpoint' });
+}
+
 async function fillForm() {
-  await userEvent.type(screen.getByRole('textbox', { name: 'Endpoint name' }), 'stripe-primary');
-  await userEvent.type(screen.getByLabelText('Stripe signing secret'), 'whsec_private');
-  const path = screen.getByRole('textbox', { name: 'Delivery path' });
+  const sheet = await openSheet();
+  await userEvent.type(
+    within(sheet).getByRole('textbox', { name: 'Endpoint name' }),
+    'stripe-primary'
+  );
+  await userEvent.type(within(sheet).getByLabelText('Stripe signing secret'), 'whsec_private');
+  const path = within(sheet).getByRole('textbox', { name: 'Delivery path' });
   await userEvent.clear(path);
   await userEvent.type(path, '/stripe');
+  return sheet;
 }
 
 it('gates creation on the current account capability and keeps existing metadata readable', async () => {
@@ -141,8 +162,8 @@ it('shows the created URL only in an acknowledged disclosure and leaves manual c
     value: { writeText: vi.fn().mockRejectedValue(new Error('clipboard denied')) },
   });
   renderInbound();
-  await fillForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  const sheet = await fillForm();
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create Stripe endpoint' }));
   const dialog = await screen.findByRole('dialog', { name: 'Copy Stripe endpoint URL' });
   expect(screen.getByRole('textbox', { name: 'One-time endpoint URL' })).toHaveValue(
     'https://api.example.test/v1/hooks/secret-token'
@@ -169,8 +190,8 @@ it('does not repeat an ambiguous create and requires inspection of same-name met
     },
   ];
   renderInbound();
-  await fillForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  const sheet = await fillForm();
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create Stripe endpoint' }));
   expect(await screen.findByText(/outcome is unknown/i)).toBeInTheDocument();
   expect(refetch).toHaveBeenCalled();
   expect(screen.getByRole('combobox', { name: 'Inaccessible endpoint' })).toHaveTextContent(
@@ -184,8 +205,8 @@ it('never discloses a delayed response after switching app or account', async ()
   let finish!: (value: unknown) => void;
   create.mockReturnValue(new Promise((resolve) => (finish = resolve)));
   const view = renderInbound();
-  await fillForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  const sheet = await fillForm();
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create Stripe endpoint' }));
   view.rerender(
     <QueryClientProvider client={new QueryClient()}>
       <InboundWebhooks accountId="account-2" slug="app-b" />
@@ -208,8 +229,8 @@ it('replaces only an explicitly selected inaccessible endpoint after review', as
     },
   ];
   renderInbound();
-  await fillForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  const sheet = await fillForm();
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create Stripe endpoint' }));
   await screen.findByText(/outcome is unknown/i);
   refetch.mockResolvedValue({ data: list.data, isSuccess: true, error: null });
   expect(remove).not.toHaveBeenCalled();
@@ -223,8 +244,11 @@ it('replaces only an explicitly selected inaccessible endpoint after review', as
   );
   expect(remove).toHaveBeenCalledWith('app-a', 'e1');
   expect(create).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('textbox', { name: 'Endpoint name' })).toHaveValue('stripe-primary');
-  expect(screen.getByLabelText('Stripe signing secret')).toHaveValue('');
+  const replacement = await openSheet();
+  expect(within(replacement).getByRole('textbox', { name: 'Endpoint name' })).toHaveValue(
+    'stripe-primary'
+  );
+  expect(within(replacement).getByLabelText('Stripe signing secret')).toHaveValue('');
 });
 
 it('does not delete a cached same-name endpoint when fresh metadata fails', async () => {
@@ -239,8 +263,8 @@ it('does not delete a cached same-name endpoint when fresh metadata fails', asyn
     },
   ];
   renderInbound();
-  await fillForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Create Stripe endpoint' }));
+  const sheet = await fillForm();
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create Stripe endpoint' }));
   await screen.findByText(/outcome is unknown/i);
   refetch.mockResolvedValue({ data: list.data, isSuccess: false, error: new Error('offline') });
   await userEvent.selectOptions(

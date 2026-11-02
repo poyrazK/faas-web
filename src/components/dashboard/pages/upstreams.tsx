@@ -8,7 +8,7 @@ import {
   useFormValidation,
   Select,
 } from '@/components/ui/field';
-import { Panel } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
@@ -80,6 +80,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
   const add = useAddUpstream(slug);
   const remove = useDeleteUpstream(slug);
 
+  const [creating, setCreating] = useState(false);
   const [kind, setKind] = useState<(typeof KINDS)[number]>('postgres');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(String(DEFAULT_PORT.postgres));
@@ -189,13 +190,16 @@ export function UpstreamsBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        title="Declare an upstream"
-        description="Declared upstreams are probed for reachability and latency before the app needs them. The hostname is hashed at rest."
-      >
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Declare upstream
+        </Button>
+      </div>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Declare upstream">
         <form
           noValidate
-          className="flex flex-wrap items-end gap-3"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (
@@ -217,6 +221,7 @@ export function UpstreamsBody({ slug }: { slug: string }) {
                 setHost('');
                 setScope('');
                 validation.resetValidation();
+                setCreating(false);
                 toast({ kind: 'success', title: `${kind} upstream declared` });
               })
               .catch((err: unknown) =>
@@ -224,72 +229,79 @@ export function UpstreamsBody({ slug }: { slug: string }) {
               );
           }}
         >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Kind</span>
-            <Select
-              value={kind}
-              onChange={(e) => {
-                const next = e.target.value as (typeof KINDS)[number];
-                setKind(next);
-                setPort(String(DEFAULT_PORT[next] ?? ''));
-              }}
-              className={`${FIELD} min-w-36`}
-            >
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex min-w-56 flex-1 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Host</span>
-            <input
-              name="host"
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              {...fieldErrorProps(shownHostError, 'upstream-host-error')}
-              placeholder="db.internal.example.com"
-              spellCheck={false}
-              className={`${FIELD} font-mono`}
-            />
-            {shownHostError && <FieldError id="upstream-host-error">{shownHostError}</FieldError>}
-          </label>
-          <label className="flex w-28 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Port</span>
-            <input
-              name="port"
-              type="number"
-              min={1}
-              max={65535}
-              value={port}
-              onChange={(e) => setPort(e.target.value)}
-              {...fieldErrorProps(shownPortError, 'upstream-port-error')}
-              className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
-            />
-            {shownPortError && <FieldError id="upstream-port-error">{shownPortError}</FieldError>}
-          </label>
-          <label className="flex w-36 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Scope</span>
-            <input
-              name="scope"
-              value={scope}
-              onChange={(e) => setScope(e.target.value)}
-              {...fieldErrorProps(shownScopeError, 'upstream-scope-error')}
-              placeholder="optional"
-              spellCheck={false}
-              className={`${FIELD} font-mono`}
-            />
-            {shownScopeError && (
-              <FieldError id="upstream-scope-error">{shownScopeError}</FieldError>
-            )}
-          </label>
-          <Button type="submit" size="sm" className="gap-1.5" busy={add.isPending}>
-            <Plus className="h-3.5 w-3.5" />
-            Declare
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            Declared upstreams are probed for reachability and latency before the app needs them.
+            The hostname is hashed at rest.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="label-mono text-muted-foreground">Kind</span>
+              <Select
+                value={kind}
+                onChange={(e) => {
+                  const next = e.target.value as (typeof KINDS)[number];
+                  setKind(next);
+                  setPort(String(DEFAULT_PORT[next] ?? ''));
+                }}
+                className={FIELD}
+              >
+                {KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="label-mono text-muted-foreground">Host</span>
+              <input
+                name="host"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                {...fieldErrorProps(shownHostError, 'upstream-host-error')}
+                placeholder="db.internal.example.com"
+                spellCheck={false}
+                className={`${FIELD} font-mono`}
+              />
+              {shownHostError && <FieldError id="upstream-host-error">{shownHostError}</FieldError>}
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Port</span>
+              <input
+                name="port"
+                type="number"
+                min={1}
+                max={65535}
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                {...fieldErrorProps(shownPortError, 'upstream-port-error')}
+                className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
+              />
+              {shownPortError && <FieldError id="upstream-port-error">{shownPortError}</FieldError>}
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Scope</span>
+              <input
+                name="scope"
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+                {...fieldErrorProps(shownScopeError, 'upstream-scope-error')}
+                placeholder="optional"
+                spellCheck={false}
+                className={`${FIELD} font-mono`}
+              />
+              {shownScopeError && (
+                <FieldError id="upstream-scope-error">{shownScopeError}</FieldError>
+              )}
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" busy={add.isPending}>
+              Declare
+            </Button>
+          </div>
         </form>
-      </Panel>
+      </Sheet>
 
       <ResourceTable
         rows={rows}

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Panel } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AlertDeliveries } from '@/components/dashboard/alert-deliveries';
 import { AlertPresets } from '@/components/dashboard/alert-presets';
@@ -83,6 +84,7 @@ export function AlertsBody({ slug }: { slug: string }) {
   const [rotating, setRotating] = useState<AlertRow | null>(null);
   const createAlert = useCreateAlert(slug);
 
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [metric, setMetric] = useState<Metric>('error_rate_pct');
   const [comparison, setComparison] = useState<Comparison>('gt');
@@ -245,13 +247,16 @@ export function AlertsBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        title="Add a rule"
-        description="When the metric crosses the threshold for the window, a signed payload is POSTed to the webhook. The secret is sealed on save and never shown again."
-      >
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-3.5 w-3.5" />
+          Add rule
+        </Button>
+      </div>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add rule">
         <form
           noValidate
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="grid gap-4 sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!validation.validate(errors, e.currentTarget) || createAlert.isPending) return;
@@ -273,6 +278,7 @@ export function AlertsBody({ slug }: { slug: string }) {
                 setWebhookUrl('');
                 setSecret('');
                 validation.resetValidation();
+                setCreating(false);
                 toast({ kind: 'success', title: 'Rule added', description: rule.name });
               })
               .catch((err: unknown) =>
@@ -280,6 +286,10 @@ export function AlertsBody({ slug }: { slug: string }) {
               );
           }}
         >
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            When the metric crosses the threshold for the window, a signed payload is POSTed to the
+            webhook. The secret is sealed on save and never shown again.
+          </p>
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Name</span>
             <input
@@ -338,7 +348,7 @@ export function AlertsBody({ slug }: { slug: string }) {
             </label>
           </div>
           {metric === 'failed_invocations' && (
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="label-mono text-muted-foreground">Failure source</span>
               <Select
                 value={failureSource}
@@ -368,7 +378,7 @@ export function AlertsBody({ slug }: { slug: string }) {
               <FieldError id="alert-webhook-url-error">{shown('webhookUrl')}</FieldError>
             )}
           </label>
-          <label className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="label-mono text-muted-foreground">Webhook secret</span>
             <input
               name="secret"
@@ -382,48 +392,45 @@ export function AlertsBody({ slug }: { slug: string }) {
             />
             {shown('secret') && <FieldError id="alert-secret-error">{shown('secret')}</FieldError>}
           </label>
-          <div className="flex gap-2">
-            <label className="flex flex-1 flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Window</span>
-              <Select
-                value={window}
-                onChange={(e) => setWindow(e.target.value as Window)}
-                className={`${FIELD} font-mono`}
-              >
-                {WINDOWS.map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="flex w-24 flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Cooldown</span>
-              <input
-                name="cooldown"
-                type="number"
-                min={5}
-                max={1440}
-                step={1}
-                value={cooldown}
-                onChange={(e) => setCooldown(e.target.value)}
-                {...fieldErrorProps(shown('cooldown'), 'alert-cooldown-error')}
-                title="Minutes between firings"
-                className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
-              />
-              {shown('cooldown') && (
-                <FieldError id="alert-cooldown-error">{shown('cooldown')}</FieldError>
-              )}
-            </label>
-          </div>
-          <div className="flex items-end sm:col-span-2 lg:col-span-4">
-            <Button type="submit" size="sm" className="gap-1.5" busy={createAlert.isPending}>
-              <Plus className="h-3.5 w-3.5" />
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Window</span>
+            <Select
+              value={window}
+              onChange={(e) => setWindow(e.target.value as Window)}
+              className={`${FIELD} font-mono`}
+            >
+              {WINDOWS.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Cooldown</span>
+            <input
+              name="cooldown"
+              type="number"
+              min={5}
+              max={1440}
+              step={1}
+              value={cooldown}
+              onChange={(e) => setCooldown(e.target.value)}
+              {...fieldErrorProps(shown('cooldown'), 'alert-cooldown-error')}
+              title="Minutes between firings"
+              className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
+            />
+            {shown('cooldown') && (
+              <FieldError id="alert-cooldown-error">{shown('cooldown')}</FieldError>
+            )}
+          </label>
+          <div className="flex justify-end sm:col-span-2">
+            <Button type="submit" size="sm" busy={createAlert.isPending}>
               Add rule
             </Button>
           </div>
         </form>
-      </Panel>
+      </Sheet>
 
       <ResourceTable
         rows={rows}
