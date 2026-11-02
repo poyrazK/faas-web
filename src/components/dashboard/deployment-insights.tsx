@@ -257,9 +257,7 @@ export function DeploymentAudit({ deploymentId }: { deploymentId: string }) {
     <div>
       <p className="label-mono mb-2 text-muted-foreground">Audit timeline</p>
       <p className="mb-3 text-xs text-muted-foreground">
-        Deployment-specific forensic audit. The API exposes only the latest{' '}
-        {audit.data?.limit ?? 50} rows without an older-page cursor or retention expiry. Workspace
-        activity above has separate coverage and pagination.
+        The latest {audit.data?.limit ?? 50} entries.
       </p>
       {body}
       {Boolean(audit.error) && (

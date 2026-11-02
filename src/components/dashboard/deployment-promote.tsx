@@ -133,8 +133,7 @@ export function PromoteDeployment({ deployment }: { deployment: Deployment }) {
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            Send all of this app&apos;s traffic to {label}, after a bindings check. A failed check
-            leaves traffic as it is.
+            A bindings check runs first; if it fails, traffic stays as it is.
           </p>
           <label className="flex items-start gap-2 text-xs">
             <input
@@ -146,9 +145,8 @@ export function PromoteDeployment({ deployment }: { deployment: Deployment }) {
             <span>
               Require application acknowledgements
               <span className="block text-muted-foreground">
-                Each workload using a PostgreSQL or object-storage binding must report that it
-                applied the current secret version. These are the app&apos;s own self-attestations,
-                not a health check; workloads without secret reload support will block.
+                Each workload with a PostgreSQL or object-storage binding must report that it
+                applied the current secret. Workloads without secret reload will block.
               </span>
             </span>
           </label>

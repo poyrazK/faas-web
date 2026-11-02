@@ -125,13 +125,7 @@ function RunHistory({
     isEmpty: (runs.data?.runs ?? []).length === 0,
   });
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`${cron.schedule} → ${cron.target}`}
-      description="Recent runs, newest first, and the scheduler’s decision for each fire time."
-      width="max-w-2xl"
-    >
+    <Modal open onClose={onClose} title={`${cron.schedule} → ${cron.target}`} width="max-w-2xl">
       <Tabs
         label="Cron history"
         value={view}
@@ -457,7 +451,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       )}
       <PageHeader
         title="Scheduled requests"
-        description="HTTP requests on a Cron schedule. Firing one by hand does not change its schedule."
+        help="Firing one by hand does not change its schedule."
         actions={
           <Button type="button" onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" />
@@ -472,7 +466,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           open
           onClose={closeCreation}
           title="New scheduled request"
-          description="Send an HTTP GET to an app on a recurring schedule. Times use the timezone below, UTC unless you change it."
+          description="Sends an HTTP GET to an app on a schedule."
           placement="right"
           width="sm:max-w-[560px]"
         >
@@ -615,7 +609,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         initialSort={{ key: 'schedule', dir: 'asc' }}
         searchKeys={rows.length ? ['schedule', 'description', 'target', 'app'] : undefined}
         searchPlaceholder="Filter by schedule, app, or path…"
-        emptyMessage="Schedule a request to your app’s endpoint for regular tasks like reports, cleanup, or syncing data."
+        emptyMessage="No scheduled requests yet."
         emptyAction={
           appQuery.isPending || appQuery.error ? undefined : targetApp ? (
             <Button size="sm" onClick={() => setCreating(true)}>

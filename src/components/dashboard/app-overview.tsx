@@ -148,11 +148,7 @@ export function AppOverview({
               ) : (
                 empty && (
                   <div className="mt-5">
-                    <p className="text-sm">Your first release starts here.</p>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Deploy from GitHub or upload an archive. Its progress and result will appear
-                      here.
-                    </p>
+                    <p className="text-sm">No releases yet.</p>
                     <Button className="mt-5" size="sm" onClick={onDeploy}>
                       Deploy your app
                     </Button>
@@ -165,9 +161,6 @@ export function AppOverview({
 
         <section aria-label="Needs attention" className="min-w-0 px-1 py-2 xl:px-2">
           <h2 className="text-base font-medium">Needs attention</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            From app state, the latest release, and available traffic.
-          </p>
           <div className="mt-4 divide-y divide-border">
             {failed && latest && (
               <div className="py-3 first:pt-0">
@@ -191,9 +184,6 @@ export function AppOverview({
             {appError && (
               <div className="py-3 first:pt-0">
                 <p className="text-sm font-medium">The app reports an error</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Check runtime output for the reported failure.
-                </p>
                 <Button
                   className="mt-2"
                   size="xs"
@@ -209,7 +199,6 @@ export function AppOverview({
                 <p className="text-sm font-medium">Requests returned errors</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {observed.error_rate_pct.toFixed(2)}% error rate in the {observed.range} window.
-                  This does not identify the cause.
                 </p>
                 <Button
                   className="mt-2"
@@ -233,13 +222,13 @@ export function AppOverview({
                       ? 'Nothing flagged in the available signals.'
                       : 'No confirmed issues to show yet.'}
                   </p>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    {!observed
-                      ? 'Request health is unconfirmed without metrics.'
-                      : !hasTraffic
-                        ? 'No traffic to assess in this window.'
-                        : 'This is a summary of reported signals, not an uptime check.'}
-                  </p>
+                  {(!observed || !hasTraffic) && (
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                      {!observed
+                        ? 'Request health is unconfirmed without metrics.'
+                        : 'No traffic in this window.'}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -277,14 +266,11 @@ export function AppOverview({
           </p>
         ) : metricsAccess === 'restricted' ? (
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            Request metrics are available on Hobby and above. Your app status and release history
-            remain available here.
+            Request metrics are available on Hobby and above.
           </p>
         ) : !observed ? (
           <div className="mt-4" role="status">
-            <p className="text-sm text-muted-foreground">
-              Traffic metrics are unavailable. Missing data is not a zero error rate.
-            </p>
+            <p className="text-sm text-muted-foreground">Traffic metrics are unavailable.</p>
             <Button className="mt-3" size="xs" variant="outline" onClick={onRetryMetrics}>
               Retry metrics
             </Button>
@@ -320,8 +306,8 @@ export function AppOverview({
             </dl>
             <p className="mt-5 text-xs text-muted-foreground">
               {observed.request_count === 0
-                ? 'No requests recorded in this window. Latency and error rate are not assessed.'
-                : `As of ${timestamp(observed.as_of)}. App state and request health are separate signals.`}
+                ? 'No requests in this window.'
+                : `As of ${timestamp(observed.as_of)}.`}
             </p>
           </>
         )}

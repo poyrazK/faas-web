@@ -59,7 +59,6 @@ export function DeploymentHistoryPanel({
     loading: deployments.isPending,
   });
   const nextPagePhase = queryPhase({ error: deployments.error });
-  const loadedLabel = `${items.length}${deployments.hasNextPage ? '+' : ''} deployments loaded`;
 
   let body: ReactNode;
   if (phase === 'unreachable') {
@@ -69,7 +68,7 @@ export function DeploymentHistoryPanel({
   } else if (phase === 'loading') {
     body = <p className="text-sm text-muted-foreground">Loading deployment history…</p>;
   } else if (items.length === 0) {
-    body = <EmptyState message="No deployments yet. Deploy a Git ref or use the CLI." />;
+    body = <EmptyState message="No deployments yet." />;
   } else {
     body = (
       <>
@@ -131,11 +130,7 @@ export function DeploymentHistoryPanel({
   }
 
   return (
-    <Panel
-      title="Deployment history"
-      description={phase === 'loading' ? undefined : loadedLabel}
-      actions={actions}
-    >
+    <Panel title="Deployment history" actions={actions}>
       {body}
     </Panel>
   );

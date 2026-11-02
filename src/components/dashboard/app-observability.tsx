@@ -23,7 +23,7 @@ const CHECK_NAMES: Record<string, string> = {
   latest_deployment: 'Latest deployment',
   workload: 'Workload',
   traffic_readiness: 'Traffic readiness',
-  collection: 'Evidence collection',
+  collection: 'Data collection',
   maintenance: 'Maintenance',
 };
 
@@ -68,7 +68,7 @@ export function AppHealthPanel({ slug }: { slug: string }) {
   const data = health.data;
   const failing = (data?.checks ?? []).filter((check) => tone(check.status).icon !== CheckCircle);
   return (
-    <Panel title="Health" description="apid's assessment of whether this app can serve.">
+    <Panel title="Health">
       <PlanGated error={health.error} feature="App health">
         {phase !== 'ready' || !data ? (
           <InlinePhase
@@ -123,7 +123,7 @@ export function AppHealthPanel({ slug }: { slug: string }) {
                     <li key={entry.id} className="flex flex-wrap justify-between gap-x-4 py-1.5">
                       <span>
                         {entry.kind === 'gap'
-                          ? 'No evidence collected'
+                          ? 'No checks recorded'
                           : `${entry.previous_status ? `${entry.previous_status.replace(/_/g, ' ')} → ` : ''}${entry.assessment.status.replace(/_/g, ' ')}`}
                       </span>
                       <time dateTime={entry.observed_at} className="text-xs text-muted-foreground">
@@ -167,10 +167,7 @@ export function AwakeRoutesPanel({ slug, since }: { slug: string; since: string 
   });
   const data = awake.data;
   return (
-    <Panel
-      title="What keeps it awake"
-      description="Routes whose requests restarted the idle timer, by share of awake time."
-    >
+    <Panel title="What keeps it awake">
       <PlanGated error={awake.error} feature="Awake-time analysis">
         {data && (
           <p className="mb-3 text-sm text-muted-foreground">
@@ -263,10 +260,7 @@ export function DependencyLatencyPanel({ slug, since }: { slug: string; since: s
   });
   const data = deps.data;
   return (
-    <Panel
-      title="Dependencies"
-      description="Databases, caches and APIs this app calls, from traced spans."
-    >
+    <Panel title="Dependencies">
       <PlanGated error={deps.error} feature="Dependency latency">
         {phase !== 'ready' || !data ? (
           <InlinePhase

@@ -66,8 +66,7 @@ function DomainDoctorReport({ domain }: { domain: string }) {
   ) {
     return (
       <p className="text-sm text-muted-foreground">
-        The domain doctor is not enabled on this deployment. DNS status is still available in the
-        domains table.
+        The domain doctor is not enabled on this installation.
       </p>
     );
   }

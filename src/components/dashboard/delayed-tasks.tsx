@@ -179,7 +179,7 @@ function DelayedTasksPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Delayed tasks"
-      description="One-shot requests to this app at a chosen time, up to a year ahead. Cancelling stops a task only while it is pending."
+      help="Up to a year ahead. Cancelling stops a task only while it is pending."
       actions={
         <div className="flex items-center gap-3">
           {docs && (

@@ -245,9 +245,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Free requests are counted per customer per UTC month across every linked app; statements
-          for periods such a card prices must cover one calendar month. Graduated tiers are
-          published through the API.
+          Free requests count per customer per UTC month, across every linked app.
         </p>
       </form>
     </div>
@@ -349,10 +347,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           </tbody>
         </table>
       )}
-      <p className="text-xs text-muted-foreground">
-        Raw usage of linked consumers and surfaces, by UTC day. App prices and invoices are not
-        aggregated here; statements price it.
-      </p>
+      <p className="text-xs text-muted-foreground">Unpriced usage by UTC day.</p>
     </div>
   );
 }
@@ -485,7 +480,7 @@ export function TenantStatements({ tenantId }: { tenantId: string }) {
           loading={statements.isPending}
           error={statements.error}
           onRetry={() => void statements.refetch()}
-          emptyMessage="No statement for this period yet. Snapshot it to create the first revision."
+          emptyMessage="No statement for this period yet."
           minWidth="min-w-[520px]"
           rowActions={(r) =>
             r.status === 'draft' && r.statement.unpriced_units === 0 ? (
@@ -553,10 +548,7 @@ function TenantStatementDetail({
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-medium">Billing handoff</p>
           {notRecorded ? (
-            <p className="text-sm text-muted-foreground">
-              No handoff recorded. Your billing system records one through the API when it invoices
-              this statement.
-            </p>
+            <p className="text-sm text-muted-foreground">No handoff recorded.</p>
           ) : (
             <>
               <InlinePhase

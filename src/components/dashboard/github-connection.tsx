@@ -145,11 +145,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
     <section aria-label="GitHub connection">
       <Panel
         title="GitHub"
-        description={
-          bound
-            ? 'Pushes to the production branch deploy this app, and each deployment reports back to GitHub as a check.'
-            : 'Bind a repository and pushes to its production branch deploy this app.'
-        }
+        help="Pushes to the bound repository's production branch deploy this app."
         actions={
           bound ? (
             <div className="flex flex-wrap gap-2">

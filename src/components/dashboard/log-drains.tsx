@@ -27,7 +27,6 @@ import { Pill, ResourceTable, type Column } from './resource-table';
  */
 export function LogDrainsBody({ slug }: { slug: string }) {
   const drains = useLogDrains(slug);
-  const kinds = useLogDrainKinds();
   const stage = useLogDrainStage();
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -64,19 +63,21 @@ export function LogDrainsBody({ slug }: { slug: string }) {
       <PlanGated error={drains.error} feature="Log drains">
         <Panel
           title="Log drains"
-          description={`${stage ? `${stage} · ` : ''}Send this app's runtime logs to your own HTTP endpoint${kinds.includes('datadog') ? ', an OpenTelemetry collector, or Datadog' : ' or OpenTelemetry collector'}.`}
           actions={
-            <Button size="sm" className="gap-1.5" onClick={() => setAdding(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Add destination
-            </Button>
+            <>
+              {stage && <span className="label-mono text-muted-foreground">{stage}</span>}
+              <Button size="sm" className="gap-1.5" onClick={() => setAdding(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                Add destination
+              </Button>
+            </>
           }
           padded={false}
         >
           <ResourceTable
             rows={rows}
             columns={columns}
-            emptyMessage="No log destinations yet. Logs stay in the console until you add one."
+            emptyMessage="No log destinations yet."
             loading={drains.isPending}
             error={drains.error}
             onRetry={() => void drains.refetch()}
@@ -122,7 +123,6 @@ function AddLogDrain({ slug, onClose }: { slug: string; onClose: () => void }) {
       open
       onClose={onClose}
       title="Add a log destination"
-      description="Runtime logs from every instance are delivered with retries; failures show in the destination's health."
       placement="right"
       width="sm:max-w-[560px]"
       footer={

@@ -77,7 +77,7 @@ export function FirstDeploymentRecovery({
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
       <PageHeader
         title="Your first deployment"
-        description="Your app is saved. Recovery creates another attempt, not another app."
+        help="Your app is saved. Recovery creates another attempt, not another app."
       />
       <p className="text-sm text-muted-foreground">
         {app.data.slug} · {app.data.runtime ?? app.data.type} · {app.data.ram_mb} MB

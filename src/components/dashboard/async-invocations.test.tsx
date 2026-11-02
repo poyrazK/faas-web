@@ -185,7 +185,6 @@ describe('ReplayInvocationButton', () => {
       <ReplayInvocationButton variant="full" invocation={invocation({ work_policy_name: 'p' })} />
     );
     expect(screen.getByRole('button', { name: /Replay in lane/ })).toBeInTheDocument();
-    expect(screen.getByText(/joins its work-policy lane/)).toBeInTheDocument();
   });
 });
 

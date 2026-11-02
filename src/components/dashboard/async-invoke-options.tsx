@@ -149,8 +149,7 @@ function Fields({
       {destination('On success', 'onSuccess')}
       {destination('On failure', 'onFailure')}
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        Destinations are this app&apos;s webhooks; each gets a job.finished event when the work
-        completes, or fails for good.
+        Destinations are this app&apos;s webhooks.
         {hooks.error ? ` ${errorMessage(hooks.error)}` : ''}
       </p>
     </div>

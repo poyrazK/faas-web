@@ -123,11 +123,6 @@ describe('CallIt', () => {
     );
   });
 
-  it('describes the function contract for a function', () => {
-    render(<CallIt app={{ ...app, type: 'function' }} />);
-    expect(screen.getByText(/handler receives the request/)).toBeInTheDocument();
-  });
-
   it('says an internal app has no public URL but keeps logs and Invoke', () => {
     render(<CallIt app={{ ...app, visibility: 'internal', url: '' }} />);
     expect(screen.queryByText(/^curl/)).not.toBeInTheDocument();

@@ -240,16 +240,13 @@ function AliasesBody({
   return (
     <Panel
       title="Deployment aliases"
-      description="Stable URLs that each serve one exact release. Pointing, moving or removing one never changes production traffic."
+      help="Each alias serves one exact release. Pointing, moving or removing one never changes production traffic."
       actions={<MaturityTag maturity={capability?.maturity} />}
     >
       <div className="flex flex-col gap-4">
         {phase === 'empty' ? (
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <p>
-              No aliases yet. Point one at a release to give it a URL that stays put while newer
-              releases ship, for a reviewer, a partner, or a test suite.
-            </p>
+            <p>No aliases yet.</p>
             <span className="flex min-w-0 items-center gap-1 rounded-md bg-muted/40 px-3 py-1.5">
               <code className="min-w-0 truncate font-mono text-xs">{command}</code>
               <CopyIconButton text={command} label="alias set command" />
@@ -461,8 +458,7 @@ function HereBody({
           </form>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Only a live or in-progress release can take an alias. Roll back to this one or redeploy
-            it first.
+            Only a live or in-progress release can take an alias.
           </p>
         ))}
       {problem && <Problem text={problem} />}

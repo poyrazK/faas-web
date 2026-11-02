@@ -179,8 +179,8 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
               </p>
               <p className="text-xs text-muted-foreground">
                 Observed from {new Date(detail.data.impact.window_start).toLocaleString()} to{' '}
-                {new Date(detail.data.impact.window_end).toLocaleString()}. Impact reflects
-                retained, verified attribution only and may omit unreported failures.
+                {new Date(detail.data.impact.window_end).toLocaleString()}. Retained, verified
+                reports only.
               </p>
             </div>
           )}

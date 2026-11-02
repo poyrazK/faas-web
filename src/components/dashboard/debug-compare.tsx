@@ -293,10 +293,6 @@ function AppDeploymentCompare({
               Compare
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            A is the baseline selection; B is the current selection. Git ref metadata is not
-            returned by deployment history.
-          </p>
           {route && (
             <div className="flex items-center gap-3 text-xs">
               <span>
@@ -318,7 +314,7 @@ function AppDeploymentCompare({
           {((source && !sourceId) || (mirror && !mirrorId)) && (
             <p className="text-xs text-muted-foreground">
               A selected deployment is not in the loaded history. Load older deployments or choose
-              another; the URL selection is preserved.
+              another.
             </p>
           )}
 

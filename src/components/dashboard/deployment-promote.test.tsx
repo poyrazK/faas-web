@@ -102,7 +102,7 @@ describe('PromoteDeployment', () => {
 
   it('uses the strict route when application acknowledgements are required, and says what that means', async () => {
     render(<PromoteDeployment deployment={deployment()} />);
-    expect(screen.getByText(/self-attestations/i)).toBeInTheDocument();
+    expect(screen.getByText(/without secret reload will block/i)).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('checkbox', { name: /require application acknowledgements/i })
     );

@@ -627,10 +627,7 @@ function ImageJourney({
               {operation.createRequest.max_retries || 'plan default'}.
             </p>
           )}
-          <p className="text-xs text-muted-foreground">
-            This request is frozen. Recovery keeps its app identity and never creates a renamed
-            replacement.
-          </p>
+
           {(operation.stage === 'create-rejected' || operation.stage === 'deploy-rejected') && (
             <>
               <p role="status">
@@ -735,8 +732,7 @@ function ImageJourney({
               {inspected && (
                 <>
                   <p className="text-xs text-muted-foreground">
-                    Recent releases are candidates, not a confirmed match to this request. Digest or
-                    timing alone cannot establish identity.
+                    Recent releases are candidates, not a confirmed match to this request.
                   </p>
                   <ul className="flex flex-col gap-2">
                     {history.map((item) => (
@@ -819,8 +815,7 @@ function ImageJourney({
           {operation.stage === 'accepted' && observedTerminal === operation.deploymentId && (
             <>
               <p className="text-xs text-muted-foreground">
-                This release has a confirmed terminal outcome. Your app is kept; another image
-                requires a new review and request.
+                Your app is kept; another image needs a new review.
               </p>
               <Button disabled={busy} onClick={() => editRequest(operation)}>
                 Choose another image

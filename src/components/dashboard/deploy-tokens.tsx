@@ -193,7 +193,7 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Deploy tokens"
-      description="Credentials for CI that can deploy this app and nothing else. Creating or rotating one asks for an authenticator code from the last 5 minutes."
+      help="Can deploy this app and nothing else. Creating or rotating one needs an authenticator code from the last 5 minutes."
     >
       <div className="flex flex-col gap-5">
         {stepUpMissed && (

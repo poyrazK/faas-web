@@ -193,7 +193,7 @@ export function ErrorsBody({ slug }: { slug: string }) {
         initialSort={{ key: 'count', dir: 'desc' }}
         searchKeys={['route', 'errorClass', 'sample']}
         searchPlaceholder="Filter by route or class…"
-        emptyMessage="No errors grouped in this window — grouping is automatic, nothing to install."
+        emptyMessage="No errors in this window."
         minWidth="min-w-[760px]"
         loading={isPending}
         error={error}

@@ -313,8 +313,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Create a short lived credential for the exact deployment that reports exceptions. The token
-        is shown once; store it as an app secret. Rotate on deployment and revoke old credentials.
+        A token is shown once; store it as an app secret.
       </p>
       <Modal
         open={Boolean(secret)}
@@ -484,9 +483,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground">
-            “application” is the standalone namespace. Named environments require a project
-            containing this app and a deployment in its active recorded release. The server checks
-            that relationship again.
+            Named environments need a project containing this app.
           </p>
           {deployments.hasNextPage && (
             <Button variant="outline" onClick={() => void deployments.fetchNextPage()}>

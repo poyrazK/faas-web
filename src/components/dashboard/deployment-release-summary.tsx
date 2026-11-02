@@ -61,9 +61,6 @@ export function DeploymentReleaseSummary({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="label-mono text-muted-foreground">Release summary</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Selected release compared with its immediate predecessor.
-          </p>
         </div>
         {targetId && (
           <div className="flex max-w-sm flex-col items-start gap-2 sm:items-end">
@@ -71,8 +68,7 @@ export function DeploymentReleaseSummary({
               <p className="label-mono text-muted-foreground">Eligible rollback target</p>
               <p className="mt-1 break-all font-mono text-xs">{targetId}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                The platform determines this target from the app&apos;s current release state; it
-                may differ from the selected release above.
+                It may differ from the selected release.
               </p>
             </div>
             {offerRollback && targetLabel && (

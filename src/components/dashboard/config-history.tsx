@@ -108,7 +108,7 @@ function GuardPanel({ slug }: { slug: string }) {
     <section aria-label="Config guard">
       <Panel
         title="Config guard"
-        description="A change to variables or secrets of an app with a live deployment opens a guard. It compares the first 10 minutes of traffic with the new values against the hour before, and restores the previous values and restarts the app if the new ones fail."
+        help="Watches the first 10 minutes after a config change, and restores the previous values if the app starts failing."
         actions={guard.data && <GuardPill status={guard.data.status} />}
       >
         {phase !== 'ready' ? (
@@ -121,10 +121,7 @@ function GuardPanel({ slug }: { slug: string }) {
         ) : guard.data ? (
           <GuardBody guard={guard.data} />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            No change has been guarded yet. The next change opens a guard once the app has a live
-            deployment.
-          </p>
+          <p className="text-sm text-muted-foreground">No change has been guarded yet.</p>
         )}
       </Panel>
     </section>
@@ -138,8 +135,7 @@ function GuardBody({ guard }: { guard: ConfigGuard }) {
       <p>{guardHeadline(guard)}</p>
       {guard.status === 'watching' && (
         <p className="text-muted-foreground">
-          Nothing to do: if the app starts failing with the new values, the guard restores the
-          previous values and restarts it.
+          If the app starts failing, the guard restores the previous values.
           {guard.window_ends_at && (
             <>
               {' '}
@@ -147,12 +143,12 @@ function GuardBody({ guard }: { guard: ConfigGuard }) {
             </>
           )}
           {!guard.restorable &&
-            ' This change deleted or rotated a secret, so the guard can report a failure but not undo it.'}
+            ' This change deleted or rotated a secret, so the guard cannot undo it.'}
         </p>
       )}
       {guard.status === 'regressed' && (
         <p className="text-muted-foreground">
-          Fix the config by hand: set the secret again, or roll the variables back below.
+          Fix the config by hand: set the secret again, or roll the variables back.
         </p>
       )}
       {d && (
@@ -174,8 +170,7 @@ function GuardBody({ guard }: { guard: ConfigGuard }) {
             , closed <When at={guard.closed_at} />
           </>
         )}
-        . Opt a change out with <code className="font-mono">--no-guard</code> on{' '}
-        <code className="font-mono">gregale env set</code>.
+        .
       </p>
     </div>
   );
@@ -201,18 +196,14 @@ function RevisionsPanel({
   });
   return (
     <section aria-label="Revisions">
-      <Panel
-        title="Revisions"
-        description="Every change to this app's variables and secrets, newest first. The newest 100 are kept. Same as gregale env history."
-        padded={false}
-      >
+      <Panel title="Revisions" help="Newest first. Only the newest 100 are kept." padded={false}>
         {phase !== 'ready' ? (
           <div className="p-5">
             <InlinePhase
               phase={phase}
               error={revisions.error}
               loadingMessage="Reading config history…"
-              emptyMessage="No config changes recorded yet. The first change records the config before it, so it can be undone too."
+              emptyMessage="No config changes recorded yet."
               onRetry={() => void revisions.refetch()}
             />
           </div>

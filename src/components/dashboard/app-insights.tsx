@@ -78,10 +78,7 @@ export function WakeTimelinePanel({
 
   return (
     <PlanGated error={timeline.error} feature="Wake timeline">
-      <Panel
-        title="Wake timeline"
-        description="Where each wake in the last 24 hours spent its time, as the platform measured it."
-      >
+      <Panel title="Wake timeline">
         {timeline.error ? (
           <p className="text-sm text-muted-foreground">{errorMessage(timeline.error)}</p>
         ) : (
@@ -102,7 +99,7 @@ export function WakeTimelinePanel({
               <StatTile
                 label="With timing"
                 value={data?.wake_count_with_meta}
-                note="wakes that recorded ready_in_ms"
+                note="wakes with a recorded ready time"
                 state={state}
                 tone="grey"
               />
@@ -181,10 +178,13 @@ export function AppUsagePanel({ slug }: { slug: string }) {
     <PlanGated error={usage.error} feature="Per-app usage">
       <Panel
         title="Usage"
-        description={
-          data
-            ? `${new Date(data.period_start).toLocaleDateString()} – ${new Date(data.period_end).toLocaleDateString()}, from ${data.source.replace('_', ' ')}.`
-            : 'Trailing 30 days of billing usage for this app alone.'
+        actions={
+          data && (
+            <span className="text-xs text-muted-foreground">
+              {new Date(data.period_start).toLocaleDateString()} –{' '}
+              {new Date(data.period_end).toLocaleDateString()}
+            </span>
+          )
         }
       >
         {usage.error ? (
@@ -241,7 +241,7 @@ export function EnvDiffPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Across scopes"
-      description="Which keys exist in each scope and whether their values agree. Secrets compare by hash; their values never leave the server."
+      help="Secrets compare by hash; their values never leave the server."
     >
       {diff.isPending ? (
         <p className="text-sm text-muted-foreground">Comparing scopes…</p>

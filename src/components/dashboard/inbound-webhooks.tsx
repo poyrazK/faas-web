@@ -335,10 +335,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        title="Stripe inbound webhooks"
-        description="Stripe sends signed events to Gregale. After verification and durable acceptance, Gregale delivers to your app path or a bound automation."
-      >
+      <Panel title="Stripe inbound webhooks">
         <CapabilityNotice
           capability={capability.capability}
           state={capability.state}
@@ -486,7 +483,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
 
       <Panel
         title="Inbound endpoints"
-        description="Enabled means Gregale accepts future ingress. It does not prove an app delivery or automation run succeeded."
+        help="Enabled means new events are accepted. It does not prove a delivery succeeded."
         actions={
           <Button
             size="sm"
@@ -561,7 +558,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
       {selectedEndpoint && (
         <Panel
           title={`Manage ${selectedEndpoint.name}`}
-          description="Signing-secret rotation changes verification only. It does not recover the endpoint URL."
+          help="Rotation changes verification only. It does not recover the endpoint URL."
         >
           <div className="space-y-3 text-sm">
             <p>
