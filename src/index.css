@@ -57,31 +57,36 @@
   --elevation-2: 0 4px 12px -2px rgb(13 21 18 / 0.1);
   --elevation-3: 0 16px 40px -12px rgb(13 21 18 / 0.25);
 }
-.console {
-  --console-body-size: 0.875rem;
-  --console-body-leading: 1.5714;
-  --console-label-size: 0.875rem;
-  --console-label-leading: 1.4286;
-  --console-control-height: 2.25rem;
-  --console-control-radius: 0.375rem;
-  --console-surface-radius: 0.625rem;
-  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.24);
-  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.34);
-  --elevation-3: 0 24px 48px -12px rgb(0 0 0 / 0.5);
+/* --- Console density ------------------------------------------------------
+   The console is an operations surface: compact, flat, and quiet. Every value
+   here is a token the utilities already read, so one definition moves all of
+   the console and leaves the marketing site (which never carries `.console`)
+   exactly as it was.
 
-  /* The console's reading size.
-     `text-xs` is the console's real body size — 458 uses against 283 of
-     `text-sm` — not the caption size Tailwind's 12px/1.33 default assumes. At
-     that size a resource table is a wall, and the fix is the token rather than
-     458 call sites: the utilities compile to `font-size: var(--text-xs)`, so
-     one definition here moves the whole console and leaves the marketing site
-     (which never carries `.console`) exactly as it was.
-     13px is deliberately a small step. It buys legibility without closing the
-     gap to `text-sm` entirely, and it cannot reflow a fixed-height control the
-     way changing `--text-sm` would. Most of the leverage is in the leading:
-     1.33 is what made dense rows read as a block. */
-  --text-xs: 0.8125rem;
-  --text-xs--line-height: 1.5;
+   - Type: 13px reading size (`text-sm`), 12px for labels and secondary facts
+     (`text-xs`). The 1.5 leading is what keeps a dense table from reading as a
+     wall; the size can be small because the leading is not.
+   - Shape: 6px corners on surfaces, 4px on controls (`--radius` drives the
+     whole `rounded-*` scale).
+   - Depth: hairlines, not shadows. Only floating chrome (menus, dialogs,
+     toasts) keeps a shadow, so a lifted surface always means "on top". */
+.console {
+  --console-body-size: 0.8125rem;
+  --console-body-leading: 1.5385;
+  --console-label-size: 0.75rem;
+  --console-label-leading: 1.5;
+  --console-control-height: 2rem;
+  --console-control-radius: 0.25rem;
+  --console-surface-radius: 0.375rem;
+  --radius: 0.375rem;
+  --elevation-1: 0 0 #0000;
+  --elevation-2: 0 0 #0000;
+  --elevation-3: 0 16px 40px -12px rgb(0 0 0 / 0.55);
+
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
 }
 
 /* --- Light surface (marketing, auth, 404) ---------------------------------
@@ -181,7 +186,7 @@
      mint is reserved for actions, links, and focus. */
   --background: #1c1c1c;
   --foreground: #ededed;
-  --card: #242424;
+  --card: #212121;
   --card-foreground: #ededed;
   --popover: #2c2c2c;
   --popover-foreground: #ededed;
@@ -567,9 +572,28 @@
 }
 
 @layer utilities {
-  /* The page boundary owns route entrances. Do not stack a separate delayed
-     entrance on every card, heading and table inside the same page. */
-  .console-page .animate-item-enter {
+  /* The console does not animate content into place: a page of numbers that
+     drifts in is a page that cannot be read for its first 400ms. */
+  .console .animate-item-enter {
+    animation: none;
+  }
+
+  /* One label voice in the console: sentence case, sans, 12px, medium.
+     `label-mono` keeps its uppercase-mono face on the marketing site and
+     docs; key caps stay monospaced everywhere. */
+  .console .label-mono:not(kbd) {
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Press feedback stays (colour); the dip and the settling ring are flair. */
+  .console .pressable:active {
+    transform: none;
+  }
+  .console :focus-visible {
     animation: none;
   }
 }
