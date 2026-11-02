@@ -21,10 +21,10 @@ function WebhooksPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Webhooks"
-        description={
+        help={
           direction === 'inbound'
-            ? 'Stripe events enter through verified, durable inbound endpoints.'
-            : 'Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries.'
+            ? undefined
+            : 'Failed deliveries back off and dead-letter after seven tries.'
         }
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />

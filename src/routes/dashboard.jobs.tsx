@@ -39,10 +39,7 @@ function JobsPage() {
   };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Jobs"
-        description="Durable automations, workloads, scheduled HTTP requests, and event triggers."
-      />
+      <PageHeader title="Jobs" />
       <TabNav label="Jobs sections">
         {sections.map(({ value, label }) => (
           <Link

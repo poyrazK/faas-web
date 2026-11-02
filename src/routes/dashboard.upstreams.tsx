@@ -16,7 +16,7 @@ function UpstreamsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Upstreams"
-        description="External services this app reaches. Mostly discovered from egress; hostnames are hashed, never stored in the clear."
+        help="Hostnames are hashed, never stored in the clear."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="upstreams">

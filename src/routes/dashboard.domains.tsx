@@ -396,7 +396,7 @@ function DomainsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Domains"
-        description="Custom hostnames and their DNS verification. TLS is issued and renewed automatically once a domain verifies."
+        help="TLS is issued and renewed automatically once a domain verifies."
         actions={
           <Button
             size="sm"
@@ -556,7 +556,6 @@ function DomainsPage() {
           onClose={() => setDoctorFor()}
           width="max-w-2xl"
           title={`Doctor — ${doctorFor}`}
-          description="What the platform observes for this hostname right now."
         >
           <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-1">
             <DomainDoctor domain={doctorFor} />

@@ -17,7 +17,6 @@ function TenantSurfacesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Tenant surfaces"
-        description="Your customers' own hostnames, grouped under one certificate bundle per surface."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="tenant surfaces">

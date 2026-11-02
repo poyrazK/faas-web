@@ -84,7 +84,6 @@ function MetricsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Metrics"
-        description="Aggregates over the selected window, straight from Prometheus."
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <AppSelect slug={slug} onSelect={select} apps={apps} />
@@ -165,11 +164,6 @@ function MetricsPage() {
                   <StatTile label="p99" value={formatMs(data?.latency_p99_ms)} state={tile} />
                 </Stats>
               </Panel>
-
-              <p className="text-xs text-muted-foreground">
-                Window {data?.range}. Latency percentiles cover 2xx traffic only; wake p95 is the
-                fleet figure, not this app alone.
-              </p>
             </div>
           </Swap>
         ) : null}

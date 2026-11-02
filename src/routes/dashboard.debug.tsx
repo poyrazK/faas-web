@@ -39,7 +39,6 @@ function DebugPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Debugger"
-        description="What happened, what the evidence explains, and what to inspect next."
         actions={
           <AppSelect
             slug={slug}
@@ -48,7 +47,7 @@ function DebugPage() {
           />
         }
       />
-      <AppScope state={appState} resource="request telemetry">
+      <AppScope state={appState} resource="requests">
         {available ? (
           <DebugBody
             slug={slug}
@@ -62,9 +61,7 @@ function DebugPage() {
             }
           />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            The selected app is unavailable. Select an app to investigate its requests.
-          </p>
+          <p className="text-sm text-muted-foreground">The selected app is unavailable.</p>
         )}
       </AppScope>
       <WakeDrawer

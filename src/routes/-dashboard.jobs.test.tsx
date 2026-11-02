@@ -336,10 +336,12 @@ describe('Jobs hub', () => {
       'aria-current',
       'page'
     );
-    expect(screen.getByText(/Container jobs for batch and recurring work/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Workloads' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Image' })).toBeInTheDocument();
     await userEvent.click(within(navigation).getByRole('link', { name: 'Scheduled requests' }));
-    expect(await screen.findByText(/HTTP requests on a Cron schedule/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Scheduled requests' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New scheduled request' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Path' })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Image' })).not.toBeInTheDocument();

@@ -31,10 +31,7 @@ function NewTriggerPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Create trigger"
-        description="Bind an event source to one destination app and define its delivery contract."
-      />
+      <PageHeader title="Create trigger" />
       <CreateTrigger account={account} apps={apps.data ?? []} />
     </div>
   );

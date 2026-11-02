@@ -17,7 +17,6 @@ function OpenAPIPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="OpenAPI"
-        description="Import your API description, preview the edge rules it suggests, and read what the platform captured from the app itself."
         actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
       />
       <AppScope state={appState} resource="OpenAPI documents">
