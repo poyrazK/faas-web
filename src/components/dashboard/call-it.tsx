@@ -137,10 +137,10 @@ export function CallIt({ app, unreadable = false }: { app: CallTarget; unreadabl
         <Link
           to="/dashboard/apps/$appSlug"
           params={{ appSlug: app.slug }}
-          search={{ tab: 'Invoke' }}
+          search={{ invoke: true }}
           className="text-brand underline-offset-4 hover:underline"
         >
-          Open the Invoke tab
+          Invoke it from the console
         </Link>
         <Link
           to="/dashboard/apps/$appSlug"

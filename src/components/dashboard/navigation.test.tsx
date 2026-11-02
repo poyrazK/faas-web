@@ -628,16 +628,18 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.href).toBe('/dashboard/projects?q=api#list');
   });
 
-  it('files apps under Projects: no Apps row, and app pages light Projects', async () => {
+  it('swaps the rail for the app’s own sections on an app page', async () => {
     await renderShell('/dashboard/apps/api');
-    const main = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
-    expect(within(main).queryByRole('link', { name: 'Apps' })).toBeNull();
-    expect(within(main).getByRole('link', { name: 'Projects' })).toHaveAttribute(
+    const [rail] = screen.getAllByRole('navigation', { name: 'App' });
+    expect(within(rail).getByRole('link', { name: 'Overview' })).toHaveAttribute(
       'aria-current',
       'page'
     );
-    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(within(rail).getByRole('link', { name: 'Logs' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/api?tab=Logs'
+    );
+    expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
   });
 
   it.each(['/dashboard/apps', '/dashboard/apps/'])(

@@ -411,12 +411,8 @@ describe('Debugger investigation navigation', () => {
     const router = await mount(
       '/dashboard/apps/alpha?tab=Debugger&debugFilter=cold&keep=yes#context'
     );
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(
-      within(screen.getByRole('group', { name: 'Overview pages' })).getByRole('button', {
-        name: 'Metrics',
-      })
-    );
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Overview');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Metrics');
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
         tab: 'Metrics',
@@ -496,7 +492,7 @@ describe('Debugger investigation navigation', () => {
 
   it('falls back to Overview for an invalid app tab while preserving debugger and unrelated parameters', async () => {
     await mount('/dashboard/apps/alpha?tab=invalid&debugFilter=slow&keep=yes');
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Overview');
   });
 
   it('restores comparison result text filtering through Back, Forward, and copied URL reload after explicitly rerunning', async () => {

@@ -170,7 +170,7 @@ afterEach(cleanup);
 describe('App Overview', () => {
   it('opens a useful overview for Free accounts without fetching per-release builds', async () => {
     await mount();
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Overview');
     expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('release-new');
     expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
@@ -181,17 +181,17 @@ describe('App Overview', () => {
     expect(fixtures.buildIds).toEqual([]);
   });
 
-  it("shows the app's stateless contract on Overview only", async () => {
+  it("shows the app's stateless contract under Configuration", async () => {
     const router = await mount();
-    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
+    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
     await act(async () => {
       await router.navigate({
         to: '/dashboard/apps/$appSlug',
         params: { appSlug: 'alpha' },
-        search: { tab: 'Logs' },
+        search: { tab: 'Configuration' },
       });
     });
-    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
   });
 
   it('offers to copy the live endpoint URL next to its link', async () => {
@@ -326,15 +326,11 @@ describe('App Overview', () => {
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('constructor');
   });
 
-  it('preserves explicit Metrics links and supports keyboard access to Overview', async () => {
+  it('preserves explicit Metrics links and switches back to Overview', async () => {
     await mount('/dashboard/apps/alpha?tab=Metrics');
-    const pages = screen.getByRole('group', { name: 'Overview pages' });
-    expect(within(pages).getByRole('button', { name: 'Metrics' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
-    within(pages).getByRole('button', { name: 'Overview' }).focus();
-    await userEvent.keyboard('{Enter}');
+    const section = screen.getByRole('combobox', { name: 'Section' });
+    expect(section).toHaveValue('Metrics');
+    await userEvent.selectOptions(section, 'Overview');
     expect(await screen.findByRole('region', { name: 'Latest release' })).toBeInTheDocument();
   });
 });
@@ -372,8 +368,8 @@ describe('App log investigation links', () => {
       router.history.back();
     });
     await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Overview');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
     expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
   });
   it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {

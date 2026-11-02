@@ -664,7 +664,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 96,
     name: 'Async invocations and results',
     status: 'partial',
-    surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?tab=Invoke'],
+    surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?invoke=1'],
     capability: 'async-invocations',
     gap: 'Retry settings: the app default (max_retries, retry_policy) and per-invocation retry_policy and retention_seconds',
     wave: 2,

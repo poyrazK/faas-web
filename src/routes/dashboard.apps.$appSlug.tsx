@@ -1,7 +1,6 @@
 import {
   APP_TAB_CAPABILITY,
-  AppTabNavigation,
-  appTabPanelLabel,
+  APP_TAB_GROUPS,
   resolveAppTab,
   visibleAppTabs,
   type AppTab,
@@ -11,10 +10,12 @@ import { useCapabilityRegistry } from '@/lib/api/capabilities';
 import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, useParams } from '@tanstack/react-router';
-import { Rocket } from 'iconoir-react';
+import { Play, Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/field';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import {
   EmptyState,
   ErrorState,
@@ -182,6 +183,8 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     IssueSearch &
     ReturnType<typeof automationSearchPatch> & {
       tab?: Tab;
+      /** The Invoke sheet is open. `?tab=Invoke` from before it moved opens it too. */
+      invoke?: true;
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
@@ -191,6 +194,8 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
     tab: resolveAppTab(search.tab),
+    invoke:
+      search.invoke === true || search.invoke === '1' || search.tab === 'Invoke' ? true : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
@@ -213,6 +218,8 @@ function FunctionDetailPage() {
   // Preserve nested investigations when the operator leaves and returns to a tab.
   const setTab = (next: Tab) =>
     navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
+  const setInvoke = (open: boolean) =>
+    navigate({ search: (current) => ({ ...current, invoke: open || undefined }), hash: true });
   useEffect(() => {
     if (search.tab === 'Logs' && search.mode === 'archive' && !search.date) {
       void navigate({
@@ -222,7 +229,6 @@ function FunctionDetailPage() {
       });
     }
   }, [search, navigate]);
-  const tabsId = useId();
   const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
@@ -364,6 +370,10 @@ function FunctionDetailPage() {
         project={membership.projectOfApp.get(appSlug)}
         actions={
           <>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setInvoke(true)}>
+              <Play className="h-3.5 w-3.5" />
+              Invoke
+            </Button>
             <Button
               size="sm"
               className="gap-1.5"
@@ -391,20 +401,28 @@ function FunctionDetailPage() {
         />
       )}
 
-      <AppTabNavigation
-        tab={tab}
-        onSelect={(next) => void setTab(next)}
-        panelId={`${tabsId}-panel`}
-        visible={visibleTabs}
-      />
-
-      <div
-        role="tabpanel"
-        id={`${tabsId}-panel`}
-        aria-labelledby={appTabPanelLabel(`${tabsId}-panel`, tab)}
+      {/* The rail lists this app's sections; small screens get the same list
+          here, since the rail is behind the menu button there. */}
+      <Select
+        aria-label="Section"
+        value={tab}
+        onChange={(e) => void setTab(e.target.value as Tab)}
+        className="w-full lg:hidden"
       >
-        {/* Keyed by tab, so switching cross-fades the panel in rather than
-            hard-swapping — the tab strip above stays put either way. */}
+        {APP_TAB_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {(group.tabs as readonly Tab[])
+              .filter((name) => name === tab || visibleTabs.includes(name))
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </Select>
+
+      <section aria-label={tab}>
         <Swap id={tab}>
           <TabCapabilityGate capability={tabCapability} title={tab}>
             <div className="flex flex-col gap-6">
@@ -455,7 +473,6 @@ function FunctionDetailPage() {
                   onRetryMetrics={() => void metrics.refetch()}
                 />
               )}
-              {tab === 'Overview' && <StatelessContract slug={appSlug} />}
               {tab === 'Metrics' &&
                 (authLoading || account === null ? (
                   <LoadingState message="Checking plan access…" />
@@ -560,19 +577,6 @@ function FunctionDetailPage() {
                     <AppUsagePanel slug={fn.id} />
                   </div>
                 ))}
-
-              {tab === 'Invoke' && (
-                <DeploymentCapability
-                  slug={fn.id}
-                  resource="Invoke"
-                  phase={deploymentPhase}
-                  error={deploymentError}
-                  hasRunnable={hasRunnable}
-                  onRetry={() => void appDeploymentQuery.refetch()}
-                >
-                  <InvokePanel slug={fn.id} />
-                </DeploymentCapability>
-              )}
 
               {tab === 'Deployments' && (
                 <>
@@ -790,13 +794,31 @@ function FunctionDetailPage() {
                   <GitHubConnectionPanel slug={fn.id} />
                   <AppConfiguration slug={fn.id} />
                   <PrewarmPanel slug={fn.id} />
+                  <StatelessContract slug={appSlug} />
                 </>
               )}
             </div>
           </TabCapabilityGate>
         </Swap>
-      </div>
+      </section>
 
+      <Sheet
+        open={Boolean(search.invoke)}
+        onClose={() => void setInvoke(false)}
+        title="Invoke"
+        size="lg"
+      >
+        <DeploymentCapability
+          slug={fn.id}
+          resource="Invoke"
+          phase={deploymentPhase}
+          error={deploymentError}
+          hasRunnable={hasRunnable}
+          onRetry={() => void appDeploymentQuery.refetch()}
+        >
+          <InvokePanel slug={fn.id} />
+        </DeploymentCapability>
+      </Sheet>
       <WakeDrawer
         slug={fn.id}
         wakeId={search.wake}
