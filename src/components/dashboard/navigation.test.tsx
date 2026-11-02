@@ -589,7 +589,7 @@ describe('dashboard navigation foundation', () => {
     await act(async () => billing.focus());
     expect(billing).toHaveFocus();
     expect(billing).toBe(within(main).getByRole('button', { name: 'Billing' }));
-    expect(main.closest('aside')).toHaveClass('w-60');
+    expect(main.closest('aside')).toHaveClass('w-56');
     expect(window.localStorage.getItem('gregale.sidebar.collapsed')).toBe('1');
   });
 

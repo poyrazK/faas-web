@@ -100,24 +100,6 @@ vi.mock('@/lib/api/queries', async (importOriginal) => {
   };
 });
 
-vi.mock('@/components/dashboard/wind-flow', () => ({ WindFlow: () => null }));
-vi.mock('@/components/dashboard/shapes', () => ({ FlowDotsField: () => null }));
-vi.mock('@/components/amicro/magnetic', () => ({
-  Magnetic: ({ children }: { children: React.ReactNode }) => children,
-}));
-vi.mock('@/components/amicro/pointer-glow', () => ({ PointerGlow: () => null }));
-vi.mock('@/components/amicro/tilt', () => ({
-  Tilt: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <div className={className}>{children}</div>
-  ),
-}));
-vi.mock('@/components/amicro/word-reveal', () => ({
-  WordReveal: ({ text }: { text: string }) => <>{text}</>,
-}));
-vi.mock('@/components/ui/spotlight-card', () => ({
-  SpotlightCard: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
-
 const { Route } = await import('./dashboard.index');
 
 function metrics(range: string, requestCount: number) {

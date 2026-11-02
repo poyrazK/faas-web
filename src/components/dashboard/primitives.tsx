@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   WarningTriangle,
   CheckCircle,
@@ -11,9 +10,7 @@ import {
 } from 'iconoir-react';
 import type { LogLevel, RunState } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { CountUp } from './motion';
 import { SegmentedControl } from './tabs';
-import { BreatheRing } from '@/components/amicro/breathe-ring';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DitherButton,
@@ -39,40 +36,20 @@ const STATE_CONFIG: Record<RunState, { label: string; color: string; icon: typeo
 export function StateBadge({ state, className }: { state: RunState; className?: string }) {
   const cfg = STATE_CONFIG[state];
   const Icon = cfg.icon;
-  const reduce = useReducedMotion();
-  // In-flight state breathes gently so it reads as live; every other state
-  // (and reduced motion) sits still.
-  const pulse = state === 'deploying' && !reduce;
   return (
-    <motion.span
-      animate={pulse ? { opacity: [1, 0.6, 1] } : { opacity: 1 }}
-      transition={pulse ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}
-      className={cn(
-        // Colour eases over a state flip (deploying → live) while the keyed
-        // span below cross-fades the icon and label — the moment reads as a
-        // change of state, not a repaint.
-        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-[color,border-color] duration-200 ease-console',
-        className
-      )}
-      style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
-        color: cfg.color,
-      }}
+    <span
+      className={cn('inline-flex items-center gap-1.5 text-xs font-medium', className)}
+      style={{ color: cfg.color }}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.span
-          key={state}
-          className="inline-flex items-center gap-1.5"
-          initial={reduce ? false : { opacity: 0, y: -3 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: 3 }}
-          transition={{ duration: 0.15 }}
-        >
-          <Icon className={cn('h-3 w-3', state === 'deploying' && 'animate-spin')} />
-          {cfg.label}
-        </motion.span>
-      </AnimatePresence>
-    </motion.span>
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          'h-3 w-3 shrink-0',
+          state === 'deploying' && 'animate-spin motion-reduce:animate-none'
+        )}
+      />
+      {cfg.label}
+    </span>
   );
 }
 
@@ -113,12 +90,9 @@ export function StatTile({
   tone = 'green',
 }: {
   label: string;
-  /** Pass a number and the tile rolls to new values instead of jumping —
-   *  pair it with `format` when the figure is not a plain integer. A string
-   *  renders as-is. */
+  /** A number is formatted with `format` (or the locale); a string renders as-is. */
   value?: string | number;
-  /** Turns a numeric `value` into text. Keep it monotone (fixed/compact) so
-   *  the width settles. Ignored for string values. */
+  /** Turns a numeric `value` into text. Ignored for string values. */
   format?: (v: number) => string;
   /**
    * Whether the figure is known.
@@ -161,7 +135,11 @@ export function StatTile({
             </p>
           ) : (
             <p className="text-3xl leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {typeof value === 'number' ? <CountUp value={value} format={format} /> : value}
+              {typeof value === 'number'
+                ? format
+                  ? format(value)
+                  : value.toLocaleString()
+                : value}
               {unit && <span className="ml-1 text-base text-muted-foreground">{unit}</span>}
             </p>
           )}
@@ -525,8 +503,11 @@ export function LoadingState({
         className
       )}
     >
-      <BreatheRing />
-      <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+      <RefreshDouble
+        aria-hidden="true"
+        className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none"
+      />
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }

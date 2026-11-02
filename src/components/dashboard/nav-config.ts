@@ -39,8 +39,6 @@ export interface NavItem {
   to: string;
   label: string;
   icon: NavIcon;
-  /** Small wayfinding accents in the sidebar; labels and other menus stay neutral. */
-  sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
   /** Catalog id (faas pkg/productcap/catalog.json); the item hides when apid hides it. */
@@ -74,7 +72,6 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Overview',
     icon: ViewGrid,
     exact: true,
-    sidebarIconClassName: 'text-brand/80',
   },
   {
     // Projects are the way in: apps live inside them (standalone apps are a
@@ -85,7 +82,6 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/projects',
     label: 'Projects',
     icon: Folder,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
@@ -93,13 +89,11 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/apps',
     label: 'Apps',
     icon: WorkflowIcon,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     to: '/dashboard/releases',
     label: 'Releases',
     icon: Rocket,
-    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
@@ -110,7 +104,6 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/jobs',
     label: 'Jobs',
     icon: Play,
-    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
@@ -129,7 +122,6 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/instances',
     label: 'Instances',
     icon: Server,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     // Not "Storage": the heading above already says that word.
@@ -137,20 +129,17 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Object storage',
     icon: HardDrive,
     capability: 'object-storage',
-    sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/postgres',
     label: 'Postgres',
     icon: Database,
     capability: 'managed-postgres',
-    sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/domains',
     label: 'Domains',
     icon: Globe,
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // The account view: every app's rules plus CORS presets. The per-app view
@@ -159,7 +148,6 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/edge-rules',
     label: 'Edge rules',
     icon: FilterList,
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Account-wide: the event router has no per-app read for its backlog,
@@ -168,7 +156,6 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Events',
     icon: DataTransferBoth,
     capability: 'events',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Outbound integrations are account-owned; apps bind to them, but the
@@ -177,7 +164,6 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Integrations',
     icon: Network,
     capability: 'outbound-integrations',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Your end customers across apps (platform tenants). Monetize rather than
@@ -188,31 +174,26 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Customers',
     icon: Community,
     capability: 'platform-tenants',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     to: '/dashboard/analytics',
     label: 'Analytics',
     icon: GraphUp,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/debug',
     label: 'Debugger',
     icon: Search,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/invocations',
     label: 'Invocations',
     icon: Activity,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/audit',
     label: 'Audit Log',
     icon: Journal,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/usage',

@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
   CloudXmark,
@@ -32,8 +32,7 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { NeedsAttentionButton } from './needs-attention';
 import { CommandPalette } from './command-palette';
-import { ConsolePageTransition } from './page-transition';
-import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
+import { EASE } from './motion';
 import {
   findNavHub,
   isDisclosureHub,
@@ -110,7 +109,6 @@ function NavRow({
   nested = false,
   collapsed = false,
   labelCls,
-  reduce,
   onNavigate,
   pathname,
   hash,
@@ -120,7 +118,6 @@ function NavRow({
   nested?: boolean;
   collapsed?: boolean;
   labelCls: string;
-  reduce: boolean | null;
   onNavigate?: () => void;
   pathname: string;
   hash: string;
@@ -141,29 +138,22 @@ function NavRow({
       aria-label={collapsed ? label : undefined}
       aria-current={current ? 'page' : undefined}
       className={cn(
-        'pressable relative isolate flex items-center rounded-md py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        'pressable relative flex h-8 items-center rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
         // The nested row trades its icon for indent: a second column of glyphs
         // reads as ten more destinations rather than as detail under one.
-        nested ? 'gap-2.5 py-1 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
-        current ? 'text-brand' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        current && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+        nested ? 'h-7 gap-2.5 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
+        current
+          ? 'bg-muted font-medium text-foreground'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       )}
     >
       <>
-        {current && !reduce && (
-          <motion.span
-            aria-hidden="true"
-            layoutId="sidebar-active"
-            className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
-            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-          />
-        )}
         {!nested && (
           <Icon
             aria-hidden="true"
             className={cn(
               'h-4 w-4 shrink-0 transition-colors duration-150',
-              current ? 'text-brand' : item.sidebarIconClassName
+              current ? 'text-brand' : 'text-muted-foreground'
             )}
           />
         )}
@@ -208,20 +198,8 @@ function NavDisclosure({
   labelCls: string;
   children: ReactNode;
 }) {
-  const reduce = useReducedMotion();
   const Icon = hub.icon;
   const panelId = `nav-${hub.to.replace(/\W+/g, '-')}`;
-  // The panel clips itself while its height is in motion, and stops once it
-  // has settled — a focus ring on the first or last row is drawn outside the
-  // row's box, and a permanently clipped panel would shave it off.
-  //
-  // Seeded from `open` rather than from `true`: the rail mounts with
-  // `initial={false}`, so a group that is already open never
-  // animates and never fires the handlers below. Starting clipped would leave
-  // it clipped until its first toggle.
-  const [clip, setClip] = useState(() => !open);
-  const openT = reduce ? { duration: 0 } : DISCLOSURE_OPEN;
-  const closeT = reduce ? { duration: 0 } : DISCLOSURE_CLOSE;
   return (
     <>
       <Tooltip content={hub.label} side="right">
@@ -233,77 +211,54 @@ function NavDisclosure({
           data-sidebar-disclosure
           aria-label={collapsed ? hub.label : undefined}
           className={cn(
-            'pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+            'pressable flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
             'text-muted-foreground hover:bg-muted hover:text-foreground',
             onBranch && 'text-foreground',
-            onBranch && collapsed && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+            onBranch && collapsed && 'bg-muted'
           )}
         >
           <Icon
             aria-hidden="true"
             className={cn(
               'h-4 w-4 shrink-0 transition-colors duration-150',
-              onBranch ? 'text-brand' : hub.sidebarIconClassName
+              onBranch ? 'text-brand' : 'text-muted-foreground'
             )}
           />
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
-          {/* The chevron rides the panel's own curve and direction rather than
-              a CSS transition of its own, so the two read as one gesture
-              instead of two things that happen to start together. */}
-          <motion.span
-            aria-hidden="true"
-            className={cn('ml-auto flex shrink-0', labelCls)}
-            initial={false}
-            animate={{ rotate: open ? 0 : -90 }}
-            transition={open ? openT : closeT}
-          >
-            <NavArrowDown className="h-3.5 w-3.5" />
-          </motion.span>
+          <span aria-hidden="true" className={cn('ml-auto flex shrink-0', labelCls)}>
+            <NavArrowDown className={cn('h-3.5 w-3.5', !open && '-rotate-90')} />
+          </span>
         </button>
       </Tooltip>
-      {/* Keep the group mounted through rail changes, so icons slide into
-          place and keyboard focus never loses its disclosure trigger. */}
-      <motion.ul
+      {/* Kept mounted while shut, so keyboard focus never loses its trigger. */}
+      <ul
         id={panelId}
         data-sidebar-panel
         inert={!open}
         aria-hidden={!open}
-        initial={false}
-        animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
-        transition={{
-          height: open ? openT : closeT,
-          opacity: { duration: reduce ? 0 : open ? 0.14 : 0.07, delay: reduce || !open ? 0 : 0.04 },
-        }}
-        onAnimationStart={() => setClip(true)}
-        onAnimationComplete={() => setClip(!open)}
         className={cn(
-          'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
-          clip && 'overflow-hidden'
+          'relative ml-[18px] flex-col gap-px border-l border-border',
+          open ? 'flex' : 'hidden'
         )}
       >
         {children}
-      </motion.ul>
+      </ul>
     </>
   );
 }
 
 function SidebarBody({
-  id,
   onNavigate,
   onOpenSearch,
   collapsed = false,
 }: {
   /** Opens the command palette; the rail's search field is its front door. */
   onOpenSearch?: () => void;
-  /** Namespaces the shared active pill — the desktop rail and the mobile
-   * drawer each get their own, so one never tries to fly to the other. */
-  id: string;
   onNavigate?: () => void;
   collapsed?: boolean;
 }) {
-  const reduce = useReducedMotion();
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
   const isOff = useCapabilityOff();
@@ -325,7 +280,7 @@ function SidebarBody({
   // Horizontal geometry stays fixed; nested groups fold on the vertical axis.
   const labelCls = sidebarLabelClass(collapsed);
   return (
-    <LayoutGroup id={id}>
+    <>
       <Link
         to="/"
         className="relative flex h-9 items-center overflow-hidden px-2.5 py-1"
@@ -374,7 +329,7 @@ function SidebarBody({
           and shoves the icons off-center (it did). */}
       <nav
         aria-label="Main"
-        className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
+        className="scrollbar-none mt-3 flex flex-col gap-3 overflow-x-hidden overflow-y-auto"
       >
         {groups.map((group, gi) => (
           <div key={group.title ?? `group-${gi}`}>
@@ -385,7 +340,7 @@ function SidebarBody({
               <div className="relative h-6">
                 <p
                   className={cn(
-                    'label-mono absolute bottom-1 left-2.5 text-muted-foreground/70',
+                    'absolute bottom-1 left-2.5 text-xs font-medium text-muted-foreground/70',
                     labelCls
                   )}
                 >
@@ -401,7 +356,7 @@ function SidebarBody({
               </div>
             )}
 
-            <ul className="flex flex-col gap-0.5">
+            <ul className="flex flex-col gap-px">
               {group.items.map((hub) => {
                 // Collapsed, the rail is 40px of icons — there is no room for a
                 // second level, and the hub tooltip is the whole affordance.
@@ -414,7 +369,6 @@ function SidebarBody({
                         item={hub}
                         collapsed={collapsed}
                         labelCls={labelCls}
-                        reduce={reduce}
                         onNavigate={onNavigate}
                         pathname={pathname}
                         hash={hash}
@@ -444,7 +398,6 @@ function SidebarBody({
                             nested
                             collapsed={collapsed}
                             labelCls={labelCls}
-                            reduce={reduce}
                             onNavigate={onNavigate}
                             pathname={pathname}
                             hash={hash}
@@ -460,7 +413,7 @@ function SidebarBody({
           </div>
         ))}
       </nav>
-    </LayoutGroup>
+    </>
   );
 }
 
@@ -501,10 +454,7 @@ function Breadcrumbs() {
   }
 
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
-    >
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <WorkspaceSwitcher />
 
       {trail.map(({ label, to }, i) => {
@@ -518,17 +468,14 @@ function Breadcrumbs() {
               <Link
                 to={to}
                 activeOptions={{ exact: true }}
-                className="pressable truncate rounded-md px-1 py-1 lowercase text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="pressable truncate rounded-md px-1 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 {label}
               </Link>
             ) : (
               <span
                 aria-current={last ? 'page' : undefined}
-                className={cn(
-                  'truncate lowercase',
-                  last ? 'text-foreground' : 'text-muted-foreground'
-                )}
+                className={cn('truncate', last ? 'text-foreground' : 'text-muted-foreground')}
               >
                 {label}
               </span>
@@ -552,7 +499,7 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account"
-        className="account-shine inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-card text-[11px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[state=open]:bg-muted sm:size-9"
+        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[state=open]:bg-muted sm:size-8"
       >
         <span aria-hidden="true">{user?.initials ?? 'GG'}</span>
       </DropdownMenuTrigger>
@@ -560,7 +507,7 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         align="end"
         sideOffset={10}
         collisionPadding={12}
-        className="account-shine w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border-transparent p-1.5"
+        className="w-64 max-w-[calc(100vw-1.5rem)] rounded-lg p-1"
       >
         <DropdownMenuLabel className="px-2.5 py-2.5">
           <p className="truncate text-sm font-medium text-foreground">{user?.name}</p>
@@ -768,11 +715,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     recordVisit(pathname);
   }, [pathname]);
-  // Wait for the destination to commit, not merely a link click. Query and
-  // hash changes belong to the current page and must not replay its entrance.
-  const pageKey = useRouterState({
-    select: (s) => (s.resolvedLocation?.pathname ?? s.location.pathname).replace(/\/$/, ''),
-  });
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
@@ -851,19 +793,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 // on a real hover or toggle, never on load. Horizontal padding
                 // is constant across both widths — geometry that never moves
                 // is what keeps the expansion smooth.
-                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] lg:flex',
+                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-4 transition-[width] lg:flex',
                 sidebarSizeClass(railCollapsed),
-                railCollapsed ? 'w-16' : 'w-60',
+                railCollapsed ? 'w-16' : 'w-56',
                 // Hover-expanded over pinned-collapsed content: a floating
                 // peek, so it carries elevation the pinned states do not.
                 collapsed && !railCollapsed && 'shadow-elevation-3'
               )}
             >
-              <SidebarBody
-                id="desktop"
-                collapsed={railCollapsed}
-                onOpenSearch={() => setPaletteOpen(true)}
-              />
+              <SidebarBody collapsed={railCollapsed} onOpenSearch={() => setPaletteOpen(true)} />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
@@ -931,7 +869,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     <Xmark className="h-4 w-4" />
                   </button>
                   <SidebarBody
-                    id="mobile"
                     onNavigate={() => setMobileOpen(false)}
                     onOpenSearch={() => setPaletteOpen(true)}
                   />
@@ -941,13 +878,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div
               className={cn(
-                'console-atmosphere min-h-screen transition-[padding]',
+                'min-h-screen transition-[padding]',
                 sidebarSizeClass(collapsed),
-                collapsed ? 'lg:pl-16' : 'lg:pl-60'
+                collapsed ? 'lg:pl-16' : 'lg:pl-56'
               )}
             >
               {/* Top bar */}
-              <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
+              <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
                 <button
                   aria-label="Open navigation"
                   className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
@@ -967,16 +904,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 </div>
               </header>
 
-              <main id="main" tabIndex={-1} className="px-4 py-8 outline-none sm:px-6 lg:px-8">
-                {/* A measure, not the full viewport: past ~1100px a form row or a
-                label/value pair stops scanning as a pair. Tables set their own
-                min-width and scroll inside it. */}
-                <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
+              <main id="main" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6">
+                {/* Wide enough for a dense table, still a measure: past ~1280px
+                a label/value pair stops scanning as a pair. */}
+                <div className="mx-auto flex max-w-[1280px] flex-col gap-5">
                   <UnreachableBanner />
-                  <ConsolePageTransition pageKey={pageKey}>
+                  <div className="console-page flex flex-col gap-5">
                     <DashboardSecondaryNavigation />
                     {children}
-                  </ConsolePageTransition>
+                  </div>
                 </div>
               </main>
             </div>
