@@ -8,7 +8,12 @@ export function ProjectWorkloads({ workloads }: Pick<ProjectDetail, 'workloads'>
   return (
     <Panel
       title="Workloads"
-      description="Latest reported states. A saved project or successful build does not mean every workload is live."
+      help={
+        <>
+          Calls are the services a workload declares with <code>depends_on</code> in Compose or{' '}
+          <code>.gregale/project.yaml</code>. They change on the next deploy, not here.
+        </>
+      }
     >
       {!workloads.length ? (
         <p className="p-4 text-sm text-muted-foreground">This project has no workloads.</p>
@@ -80,17 +85,6 @@ export function ProjectWorkloads({ workloads }: Pick<ProjectDetail, 'workloads'>
             </tbody>
           </table>
         </div>
-      )}
-      {workloads.length > 0 && (
-        // depends_on is read from the app's declared service bindings
-        // (faas handlers_projects.go:215, ADR-20261026193018); the API refuses
-        // edits to them on project apps as source-managed.
-        <p className="border-t border-border p-4 text-xs text-muted-foreground">
-          Calls are the services a workload declares with <code>depends_on</code> in the
-          repository's Compose file or <code>.gregale/project.yaml</code>. They change on the next
-          deploy from the repository, not here, and a service under the <code>project</code> policy
-          can call its siblings without declaring them.
-        </p>
       )}
       {workloads.length > limit && (
         <div className="p-4">

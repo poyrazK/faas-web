@@ -75,16 +75,10 @@ export function EnvironmentReadiness({
       : undefined;
   return (
     <div className="space-y-5">
-      <Panel
-        title="Environment readiness"
-        description="Read-only promotion preview and durable evidence. Mutations remain gated."
-      >
+      <Panel title="Environment readiness">
         <div className="space-y-4 p-4 text-sm">
           <p>
-            Promote and rollback require separate isolated staging qualification. Complete clone is
-            unavailable: coordinated data checkpoints, full resource coverage and fresh managed
-            bindings are not qualified. Customer GitOps enforcement and continuous graph activation
-            remain unavailable.
+            Promote, rollback, full clone and GitOps enforcement are not available in the console.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled>Promote</Button>
@@ -99,13 +93,12 @@ export function EnvironmentReadiness({
             </Button>
           </div>
           {!source ? (
-            <p>Select Compare from above to inspect an exact source-to-target preview.</p>
+            <p>Select Compare to inspect a source-to-target preview.</p>
           ) : preview.error ? (
             <div role="alert">
               <p>
-                Current promotion preview could not be read. Permission, MFA, changed context or
-                unavailable contracts may require attention. Previous evidence is not current
-                approval.
+                The promotion preview could not be read. Permissions, MFA or a changed selection may
+                need attention.
               </p>
               <Button variant="outline" onClick={() => void preview.refetch()}>
                 Refresh preview
@@ -130,8 +123,7 @@ export function EnvironmentReadiness({
                 {p.can_promote
                   ? 'Server preview records no promotion blockers.'
                   : 'Server preview blocks promotion.'}{' '}
-                This does not establish console authorization, complete resource coverage or
-                execution health. Changed source or target needs a fresh preview and review.
+                A changed source or target needs a fresh preview.
               </p>
               {!!p.blocking_reasons.length && (
                 <ul aria-label="Promotion blockers" className="list-disc pl-5">
@@ -150,9 +142,8 @@ export function EnvironmentReadiness({
                 <Identity label="Target release set" value={p.targetRelease?.id} />
               </dl>
               <p>
-                Configuration stays target-scoped in this preview. Secrets and managed credentials
-                remain target-owned; shared resource references do not establish isolated copies.
-                Missing generation or serving receipts are not inferred.
+                Secrets and managed credentials stay with the target; shared resources are not
+                copied.
               </p>
               {p.qualification ? (
                 <div className="space-y-2 rounded-lg border border-border p-3">
@@ -160,8 +151,7 @@ export function EnvironmentReadiness({
                     Qualification: {p.qualification.id} · {p.qualification.status}
                   </p>
                   <p>
-                    Returned expiry: <code>{p.qualification.expires_at}</code>. Receipt status alone
-                    does not establish current qualification; use the fresh preview blockers.
+                    Returned expiry: <code>{p.qualification.expires_at}</code>
                   </p>
                   <dl className="grid gap-3 sm:grid-cols-2">
                     <Identity
@@ -204,7 +194,7 @@ export function EnvironmentReadiness({
                   No qualification receipt returned.{' '}
                   {p.qualification_required
                     ? 'This preview requires qualification.'
-                    : 'This preview does not require it; staging qualification for console controls remains separate.'}
+                    : 'This preview does not require it.'}
                 </p>
               )}
               <ul aria-label="Preview workload identities" className="space-y-3">
@@ -232,16 +222,11 @@ export function EnvironmentReadiness({
               </ul>
             </>
           ) : (
-            <p role="alert">
-              Preview evidence does not match this selection. Refresh before review.
-            </p>
+            <p role="alert">Preview details do not match this selection. Refresh before review.</p>
           )}
         </div>
       </Panel>
-      <Panel
-        title="Recorded promotion operations"
-        description="Inspect existing operations without restarting or rolling them back."
-      >
+      <Panel title="Recorded promotion operations">
         <div className="space-y-4 p-4 text-sm">
           <label className="flex flex-col gap-1.5">
             Recorded status
@@ -318,9 +303,8 @@ export function EnvironmentReadiness({
             <div className="space-y-3 rounded-lg border border-border p-3">
               <p className="break-all">Selected operation: {operation}</p>
               <p>
-                A timeout or disconnect is not permission to restart or roll back. Refresh the same
-                durable operation identity. Accepted intent and workload application remain separate
-                from verification.
+                A timeout or disconnect is not permission to restart or roll back; refresh this
+                operation instead.
               </p>
               <Button
                 variant="outline"
@@ -355,11 +339,6 @@ export function EnvironmentReadiness({
                       value={r.release_graph?.restored_target_release_set_id}
                     />
                   </dl>
-                  <p>
-                    Recorded status does not prove complete resource coverage or current serving
-                    health. Qualification and approval identities not returned by this status
-                    endpoint are not inferred.
-                  </p>
                   <ul aria-label="Operation checkpoints" className="space-y-2">
                     {r.workloads.map((row) => (
                       <li key={row.workload_slug} className="rounded-md border border-border p-3">
@@ -382,7 +361,7 @@ export function EnvironmentReadiness({
                   </ul>
                 </>
               ) : (
-                <p role="alert">Operation evidence does not match this target.</p>
+                <p role="alert">Operation details do not match this target.</p>
               )}
             </div>
           )}
@@ -390,7 +369,7 @@ export function EnvironmentReadiness({
       </Panel>
       <Panel
         title="Inspect a known approval"
-        description="Use the durable approval ID from an existing reviewed CLI/API operation. Do not enter a token."
+        help="Enter the approval ID from a CLI or API operation, never a token."
       >
         <div className="space-y-3 p-4 text-sm">
           <form
@@ -443,7 +422,7 @@ export function EnvironmentReadiness({
                 </Button>
               </div>
             ) : (
-              <p role="alert">Approval evidence does not match this target.</p>
+              <p role="alert">Approval details do not match this target.</p>
             ))}
         </div>
       </Panel>

@@ -11,7 +11,8 @@ export function EnvironmentDiffView({ data }: { data: EnvironmentDiff }) {
   return (
     <Panel
       title={`${data.from_environment} compared with ${data.to_environment}`}
-      description={`Snapshot ${data.generated_at}. Server-reported differences; missing fingerprints are not equality.`}
+      help="A missing fingerprint does not mean the values are equal."
+      actions={<span className="text-xs text-muted-foreground">Snapshot {data.generated_at}</span>}
     >
       <div className="space-y-4 p-4 text-sm">
         <p>

@@ -305,6 +305,7 @@ describe('the selected shared workspace', () => {
       'href',
       '/dashboard/apps/mine'
     );
+    await userEvent.click(screen.getByRole('button', { name: 'About In this workspace' }));
     expect(screen.getByText(/stay with each app's creator/)).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
       '/v1/orgs/{slug}/apps',

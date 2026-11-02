@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { ProjectWorkloads } from './project-workloads';
 vi.mock('@tanstack/react-router', () => ({
@@ -25,6 +25,7 @@ it('lists the services each workload declares it calls, and says where they come
   const [web, auth] = within(table).getAllByRole('row').slice(1);
   expect(within(web).getByText('auth, billing')).toBeInTheDocument();
   expect(within(auth).getByText('None declared')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'About Workloads' }));
   expect(screen.getByText(/depends_on/)).toBeInTheDocument();
   expect(screen.getByText(/\.gregale\/project\.yaml/)).toBeInTheDocument();
 });

@@ -435,7 +435,7 @@ export function StageQueueBindings({
   return (
     <Panel
       title={`Stage queue definitions · ${selection.workload}`}
-      description="Desired settings for the selected project, environment and workload. Production consumers are managed on the app Queues tab."
+      help="Production consumers are managed on the app's Queues tab."
     >
       {query.isPending ? (
         <p role="status" className="p-4">

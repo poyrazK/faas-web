@@ -36,7 +36,7 @@ export function PreviewWorkloadSet({ accountId, app }: { accountId: string; app:
   return (
     <Panel
       title="PR preview workload set"
-      description="Current-head readiness for the recorded set. Production dependencies may be shared; this is not a complete isolated clone."
+      help="Production dependencies may be shared; a preview is not an isolated clone."
     >
       <div className="space-y-4 p-4 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -66,11 +66,7 @@ export function PreviewWorkloadSet({ accountId, app }: { accountId: string; app:
         {unavailable ? (
           <div>
             <p className="font-medium">Workload set unavailable</p>
-            <p className="mt-1 text-muted-foreground">
-              App-level information only. This may be a developer preview, an unrecorded legacy
-              preview, or a sibling rather than the recorded root. No whole-set readiness is
-              inferred.
-            </p>
+            <p className="mt-1 text-muted-foreground">App-level information only.</p>
           </div>
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -190,7 +186,7 @@ function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: str
           {app.preview_pr_number ? ` · PR #${app.preview_pr_number}` : ' · Developer preview'}
         </p>
         <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? 'Hide preview evidence' : 'Inspect preview workload set'}
+          {open ? 'Hide preview details' : 'Inspect preview workload set'}
         </Button>
       </div>
       {open &&
@@ -230,8 +226,7 @@ export function ProjectPreviews(props: ProjectPreviewsProps) {
     return (
       <Panel title="PR previews">
         <p role="status" className="text-sm text-muted-foreground">
-          PR previews for {label}'s projects are not listed in the console yet. Each preview still
-          links from its pull request.
+          PR previews for {label}'s projects are not listed in the console yet.
         </p>
       </Panel>
     );
@@ -261,10 +256,7 @@ function PersonalProjectPreviews({
   ];
   const app = candidates.find((item) => item.slug === selected);
   return (
-    <Panel
-      title="PR previews"
-      description="App-backed preview discovery. Recorded roots are verified only when selected; this list does not claim complete project PR-set coverage."
-    >
+    <Panel title="PR previews">
       <div className="space-y-4 p-4">
         <Button
           size="sm"
