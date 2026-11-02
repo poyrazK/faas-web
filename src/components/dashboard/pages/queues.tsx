@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Panel, StatTile } from '@/components/dashboard/primitives';
+import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { DeadLetterPanel } from '@/components/dashboard/dead-letter-panel';
 import { QueueConsumers } from '@/components/dashboard/queue-consumers';
@@ -129,7 +129,7 @@ export function QueuesBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Stats columns={4}>
         <StatTile label="Depth" value={String(state.data?.depth ?? '—')} />
         <StatTile label="In flight" value={String(state.data?.in_flight ?? '—')} />
         <StatTile
@@ -137,7 +137,7 @@ export function QueuesBody({ slug }: { slug: string }) {
           value={formatAge(state.data?.oldest_pending_age_seconds)}
         />
         <StatTile label="Plan cap" value={String(state.data?.plan_cap ?? '—')} />
-      </div>
+      </Stats>
 
       <QueueConsumers slug={slug} />
 

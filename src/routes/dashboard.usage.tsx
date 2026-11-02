@@ -4,6 +4,7 @@ import {
   LoadingState,
   PageHeader,
   Panel,
+  Stats,
   StatTile,
   UnreachableState,
   queryPhase,
@@ -290,12 +291,12 @@ function PersonalUsage() {
         <LoadingState message="Loading usage…" />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stats columns={4}>
             <StatTile label="GB-hours used" value={formatUsageNumber(used)} />
             <StatTile label="Included" value={formatUsageNumber(included)} />
             <StatTile label="Overage" value={formatUsageNumber(data?.overage_gb_hours)} />
             <StatTile label="Overage cost" value={formatMoney(data?.overage_cents)} />
-          </div>
+          </Stats>
 
           <Panel title={`Allowance — ${data?.month ?? 'this month'}`}>
             <div className="flex flex-col gap-3">
@@ -324,7 +325,7 @@ function PersonalUsage() {
 
           <SpendControl overageCents={data?.overage_cents} />
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <Stats columns={3}>
             <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
             <StatTile
               label="Egress"
@@ -334,7 +335,7 @@ function PersonalUsage() {
               label="Ingress"
               value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
             />
-          </div>
+          </Stats>
 
           <AppCapacity />
 

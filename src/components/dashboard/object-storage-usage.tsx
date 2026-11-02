@@ -1,4 +1,4 @@
-import { Panel, StatTile } from '@/components/dashboard/primitives';
+import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import { errorMessage } from '@/lib/api/errors';
 import { useObjectStorageUsage } from '@/lib/api/object-storage';
 import { ACCOUNT_CURRENCY } from '@/lib/money';
@@ -63,7 +63,7 @@ export function ObjectStorageUsagePanel() {
       {query.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(query.error)}</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stats columns={4}>
           <StatTile
             label="Stored"
             value={usage ? bytes(usage.observed_bytes) : undefined}
@@ -100,7 +100,7 @@ export function ObjectStorageUsagePanel() {
             }
             state={state}
           />
-        </div>
+        </Stats>
       )}
     </Panel>
   );

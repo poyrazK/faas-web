@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { Panel, StatTile } from '@/components/dashboard/primitives';
+import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -86,7 +86,7 @@ export function WakeTimelinePanel({
           <p className="text-sm text-muted-foreground">{errorMessage(timeline.error)}</p>
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <Stats columns={3}>
               <StatTile label="Wakes (24h)" value={data?.wake_count_24h} state={state} />
               <StatTile
                 label="At capacity"
@@ -106,7 +106,7 @@ export function WakeTimelinePanel({
                 state={state}
                 tone="grey"
               />
-            </div>
+            </Stats>
             {classes.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 By trigger class:{' '}
@@ -190,7 +190,7 @@ export function AppUsagePanel({ slug }: { slug: string }) {
         {usage.error ? (
           <p className="text-sm text-muted-foreground">{errorMessage(usage.error)}</p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stats columns={6}>
             <StatTile
               label="GB-hours"
               value={data ? data.gb_hours.toFixed(2) : undefined}
@@ -227,7 +227,7 @@ export function AppUsagePanel({ slug }: { slug: string }) {
               state={state}
               tone="grey"
             />
-          </div>
+          </Stats>
         )}
       </Panel>
     </PlanGated>

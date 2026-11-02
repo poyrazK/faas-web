@@ -1,5 +1,5 @@
 import { Pill } from '@/components/dashboard/resource-table';
-import { StatTile } from '@/components/dashboard/primitives';
+import { Stats, StatTile } from '@/components/dashboard/primitives';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useJob, useJobRun } from '@/lib/api/queries';
 
@@ -110,7 +110,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
           <span className="text-muted-foreground">up to {data.retry_max} retries</span>
         )}
       </div>
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <Stats columns={6}>
         <StatTile label="Tasks" value={data.tasks} />
         <StatTile label="Succeeded" value={data.tasks_succeeded} />
         <StatTile label="Running" value={data.tasks_running} tone="orange" />
@@ -122,7 +122,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
           note={data.dead_letter_count > 0 ? 'exhausted every retry' : undefined}
           tone="red"
         />
-      </div>
+      </Stats>
     </div>
   );
 }

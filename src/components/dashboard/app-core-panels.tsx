@@ -4,7 +4,15 @@ import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD, Textarea, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ErrorState, InlinePhase, LoadingState, Panel, StatTile, queryPhase } from './primitives';
+import {
+  ErrorState,
+  InlinePhase,
+  LoadingState,
+  Panel,
+  Stats,
+  StatTile,
+  queryPhase,
+} from './primitives';
 import {
   useAppRegistryCredentials,
   useAppSlo,
@@ -260,7 +268,7 @@ export function SloPanel({ slug }: { slug: string }) {
               Telemetry source: <span className="font-mono">{data.source}</span>
             </p>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Stats columns={4}>
             <StatTile
               label="Requests"
               value={data.requests_total.toLocaleString()}
@@ -293,8 +301,8 @@ export function SloPanel({ slug }: { slug: string }) {
               }
               state={tileState}
             />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          </Stats>
+          <Stats columns={3}>
             <StatTile
               label="Latency p50"
               value={`${data.request_duration.p50_ms.toFixed(1)} ms`}
@@ -310,7 +318,7 @@ export function SloPanel({ slug }: { slug: string }) {
               value={`${data.request_duration.p99_ms.toFixed(1)} ms`}
               state={tileState}
             />
-          </div>
+          </Stats>
         </div>
       )}
     </Panel>

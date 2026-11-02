@@ -23,6 +23,7 @@ import {
   LoadingState,
   PageHeader,
   Panel,
+  Stats,
   StatTile,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -297,18 +298,18 @@ export function TriggerDetail({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-5">
+      <Stats columns={5}>
         {(['pending', 'claimed', 'succeeded', 'retry', 'dead_letter'] as const).map((state) => (
           <StatTile
             key={state}
-            label={state.replace('_', ' ')}
+            label={(state[0].toUpperCase() + state.slice(1)).replace('_', ' ')}
             value={counters ? counters[`${state}_count`] : undefined}
             state={
               metrics.isPending ? 'loading' : metrics.error || !counters ? 'unavailable' : 'ready'
             }
           />
         ))}
-      </div>
+      </Stats>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
         <Panel

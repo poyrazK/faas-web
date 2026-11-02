@@ -97,11 +97,15 @@ export function Stats({
   columns?: 2 | 3 | 4 | 5 | 6;
   className?: string;
 }) {
+  // Inside an unpadded panel the panel is the frame; a second border would
+  // be a box inside a box.
+  const flush = useContext(FlushContext);
   return (
     <InStats.Provider value>
       <div
         className={cn(
-          'grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
+          'grid grid-cols-2 gap-px overflow-hidden bg-border',
+          !flush && 'rounded-lg border border-border',
           {
             2: 'sm:grid-cols-2',
             3: 'sm:grid-cols-3',

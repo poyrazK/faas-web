@@ -4,6 +4,7 @@ import {
   EmptyState,
   InlinePhase,
   Panel,
+  Stats,
   StatTile,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -204,7 +205,7 @@ function AIGatewayContent({
           }
         >
           <div className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <Stats columns={2}>
               <StatTile
                 label="Tokens"
                 state={tileState}
@@ -222,7 +223,7 @@ function AIGatewayContent({
                     : undefined
                 }
               />
-            </div>
+            </Stats>
             <ResourceTable
               rows={u ? byModel(u.items) : []}
               columns={MODEL_COLUMNS}
