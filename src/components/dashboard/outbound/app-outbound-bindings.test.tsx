@@ -191,6 +191,9 @@ describe('App outbound integrations', () => {
 
   it('describes binding as available to the account, not owned by it', async () => {
     renderSection();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'About Outbound integrations' })
+    );
     expect(
       await screen.findByText(/an integration available to your account/i)
     ).toBeInTheDocument();

@@ -209,7 +209,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
   return (
     <Panel
       title="Outbound integrations"
-      description="Fixed destinations this app may call through the gateway. Binding attaches the app to an integration available to your account; it never carries a provider key."
+      help="Binding attaches this app to an integration available to your account; it never carries a provider key."
       actions={
         <Link
           to="/dashboard/integrations"
@@ -229,7 +229,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
         ) : bindingsPhase === 'empty' ? (
           integrationsPhase === 'empty' ? (
             <EmptyState
-              message="No integrations in this account yet. Create one, then bind this app to it."
+              message="No integrations in this account yet."
               action={
                 <Link
                   to="/dashboard/integrations"

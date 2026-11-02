@@ -122,8 +122,7 @@ export function BucketSettings({
       </section>
 
       <p className="text-xs text-muted-foreground lg:col-span-2">
-        These are read here. Change them with the gregale CLI or the API; this page shows the
-        result.
+        Read-only here; change them with the gregale CLI or the API.
       </p>
 
       <section className="storage-danger flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 lg:col-span-2">
