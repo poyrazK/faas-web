@@ -67,9 +67,11 @@ beforeEach(() => {
 });
 
 describe('EdgeRuleSuggestions', () => {
-  it('lists each suggestion with the traffic behind it', () => {
+  it('lists each suggestion with the traffic behind it', async () => {
     render(<EdgeRuleSuggestions slug="api" />);
-    expect(screen.getByText(/^Beta · .*last 7 days/)).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'About Suggested protections' }));
+    expect(await screen.findByText(/^From the last 7 days of traffic/)).toBeInTheDocument();
     expect(screen.getByText(/POST \/login received 900 requests/)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Challenge visitors on a path instead' })

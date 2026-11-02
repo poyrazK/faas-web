@@ -373,7 +373,7 @@ export function EdgeRuleDialog({
           {editing && (
             <p className="text-xs text-muted-foreground">
               Kind is <span className="font-mono text-foreground">{kind}</span> and cannot be
-              changed — delete the rule and create a new one to switch.
+              changed.
             </p>
           )}
 
@@ -540,8 +540,7 @@ function ThrottleSuggest({
         </div>
       ) : q.data?.route_metrics_disabled ? (
         <p className="text-xs text-muted-foreground">
-          Per-route metrics are off for this app, so there is nothing to measure. Turn them on in
-          the app&rsquo;s Configuration tab.
+          Per-route metrics are off for this app. Turn them on in its Configuration tab.
         </p>
       ) : !rows.length ? (
         <p className="text-xs text-muted-foreground">

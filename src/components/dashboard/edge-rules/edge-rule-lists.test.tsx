@@ -78,7 +78,7 @@ beforeEach(() => {
 describe('EdgeRuleLists', () => {
   it('lists the account’s lists with their kind, size and use', () => {
     render(<EdgeRuleLists />);
-    expect(screen.getByText(/^Beta · /)).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
     const row = screen.getByRole('group', { name: 'office-ips' });
     expect(row).toHaveTextContent('ip');
     expect(row).toHaveTextContent('2 items');
