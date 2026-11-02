@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   account: { id: 'account', plan: 'free', status: 'active', limits: {} } as Record<string, unknown>,
 }));
 
+vi.mock('@/components/dashboard/app-capacity', () => ({ AppCapacity: () => null }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: mocks.account,

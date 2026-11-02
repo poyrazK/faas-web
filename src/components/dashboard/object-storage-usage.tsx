@@ -54,14 +54,18 @@ export function ObjectStorageUsagePanel() {
   return (
     <Panel
       title="Object storage"
-      description={
-        usage
-          ? `Since ${new Date(usage.period_start).toLocaleDateString()}.${usage.fresh ? '' : ' The last report is stale; these figures lag behind.'}`
-          : 'Stored bytes, requests and egress for the account.'
+      padded={false}
+      actions={
+        usage && (
+          <span className="text-xs text-muted-foreground">
+            Since {new Date(usage.period_start).toLocaleDateString()}
+            {!usage.fresh && <span style={{ color: 'var(--status-warning)' }}> · delayed</span>}
+          </span>
+        )
       }
     >
       {query.error ? (
-        <p className="text-sm text-muted-foreground">{errorMessage(query.error)}</p>
+        <p className="px-4 py-3 text-sm text-muted-foreground">{errorMessage(query.error)}</p>
       ) : (
         <Stats columns={4}>
           <StatTile
@@ -78,7 +82,7 @@ export function ObjectStorageUsagePanel() {
             tone="grey"
           />
           <StatTile
-            label="Egress"
+            label="Storage egress"
             value={usage ? bytes(usage.egress_bytes) : undefined}
             note={policy ? `cap ${bytes(policy.max_monthly_egress_bytes)}/month` : undefined}
             state={state}

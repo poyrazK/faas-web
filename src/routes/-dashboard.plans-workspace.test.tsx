@@ -6,6 +6,7 @@ const workspace = vi.hoisted(() => ({
   label: 'Personal',
   ready: true,
 }));
+vi.mock('@/components/dashboard/app-capacity', () => ({ AppCapacity: () => null }));
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 vi.mock('@/components/dashboard/org-billing', () => ({
