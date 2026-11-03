@@ -4,29 +4,18 @@ import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD, Textarea, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import {
-  ErrorState,
-  InlinePhase,
-  LoadingState,
-  Panel,
-  Stats,
-  StatTile,
-  queryPhase,
-} from './primitives';
+import { InlinePhase, Panel, queryPhase } from './primitives';
 import {
   useAppRegistryCredentials,
-  useAppSlo,
   useDeleteAppRegistryCredential,
   useInvokeApp,
   useInvokeAppAsync,
   useInvocation,
   useSetAppRegistryCredential,
-  type AppSLOWindow,
 } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { PlanGate } from './plan-gate';
 import { AsyncInvokeOptionsFields } from './async-invoke-options';
 import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
 import { Sheet } from './kit/sheet';
@@ -211,109 +200,6 @@ export function InvokePanel({ slug }: { slug: string }) {
               {pretty(invocation.data ?? output)}
             </pre>
           )}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-const SLO_WINDOWS: AppSLOWindow[] = ['1h', '24h', '7d'];
-
-export function SloPanel({ slug }: { slug: string }) {
-  const { account, loading: authLoading } = useAuth();
-  const [window, setWindow] = useState<AppSLOWindow>('24h');
-  const paidAccess = account !== null && isPaidPlan(account.plan);
-  const slo = useAppSlo(slug, window, { enabled: paidAccess });
-  const data = slo.data;
-  const degraded = Boolean(data && data.source !== 'prometheus');
-  const tileState = degraded ? ('unavailable' as const) : ('ready' as const);
-
-  return (
-    <Panel
-      title="Service level"
-      actions={
-        <Select
-          value={window}
-          onChange={(e) => setWindow(e.target.value as AppSLOWindow)}
-          disabled={!paidAccess}
-          className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:border-brand/50"
-          aria-label="SLO window"
-        >
-          {SLO_WINDOWS.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </Select>
-      }
-    >
-      {authLoading ? (
-        <LoadingState message="Checking plan access…" />
-      ) : account === null || !paidAccess ? (
-        <PlanGate
-          feature="Service-level metrics"
-          description="Per-app SLOs include request, error, cold-boot, wake-queue, and latency signals for paid plans."
-        />
-      ) : slo.error ? (
-        <ErrorState error={slo.error} onRetry={() => void slo.refetch()} />
-      ) : slo.isPending || !data ? (
-        <LoadingState message="Reading service level…" />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {degraded && (
-            <p className="text-xs text-muted-foreground" role="status">
-              Metrics source: <span className="font-mono">{data.source}</span>
-            </p>
-          )}
-          <Stats columns={4}>
-            <StatTile
-              label="Requests"
-              value={data.requests_total.toLocaleString()}
-              state={tileState}
-            />
-            <StatTile
-              label="Error rate"
-              value={data.error_rate_pct.toFixed(2)}
-              unit="%"
-              deltaGood={false}
-              state={tileState}
-            />
-            <StatTile
-              label="Cold boots"
-              value={data.cold_boot_rate_pct.toFixed(2)}
-              unit="%"
-              state={tileState}
-            />
-            <StatTile
-              label="Wake queue p95"
-              value={
-                data.wake_queue_p95_ms == null ? '—' : `${data.wake_queue_p95_ms.toFixed(1)} ms`
-              }
-              note={
-                data.wake_queue_p95_ms == null
-                  ? data.wake_queue_sample_status === 'no_sample'
-                    ? 'No wake-queue samples in this window.'
-                    : 'Wake-queue metrics unavailable.'
-                  : undefined
-              }
-              state={tileState}
-            />
-          </Stats>
-          <Stats columns={3}>
-            <StatTile
-              label="Latency p50"
-              value={`${data.request_duration.p50_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-            <StatTile
-              label="Latency p95"
-              value={`${data.request_duration.p95_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-            <StatTile
-              label="Latency p99"
-              value={`${data.request_duration.p99_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-          </Stats>
         </div>
       )}
     </Panel>

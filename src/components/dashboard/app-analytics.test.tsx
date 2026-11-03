@@ -115,12 +115,9 @@ beforeEach(() => {
 });
 
 describe('AppAnalyticsPanel', () => {
-  it('shows the aggregate tiles and the grouped table the API returned', async () => {
+  it('shows the grouped table the API returned', async () => {
     render(<Panel slug="api" />);
-    // Tile numbers count up, so the settled value is awaited.
-    expect(await screen.findByText('8,421')).toBeInTheDocument();
-    expect(screen.getByText('0.44')).toBeInTheDocument();
-    expect(screen.getByText('/orders')).toBeInTheDocument();
+    expect(await screen.findByText('/orders')).toBeInTheDocument();
     expect(screen.getByText('4000')).toBeInTheDocument();
   });
 
