@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { Link, useRouter, type ErrorComponentProps } from '@tanstack/react-router';
 import { WarningTriangle, Undo } from 'iconoir-react';
+import { featureFlags } from '@/lib/feature-flags';
+import { reportError } from '@/lib/error-reporting';
 
 /**
  * Router-wide error and pending states.
@@ -19,6 +22,11 @@ import { WarningTriangle, Undo } from 'iconoir-react';
 export function RouteError({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
   const message = error instanceof Error ? error.message : String(error);
+
+  // The router catches these, so the window listeners never see them.
+  useEffect(() => {
+    if (featureFlags.errorReporting) reportError('route', error);
+  }, [error]);
 
   return (
     <div

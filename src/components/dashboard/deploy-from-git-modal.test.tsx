@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   },
   bindingPending: false,
   installRepos: [] as { id: number; full_name: string; default_branch: string; private: boolean }[],
+  review: vi.fn(),
+  reviewPending: false,
+  executionMode: undefined as string | undefined,
 }));
 
 vi.mock('@tanstack/react-router', () => ({
@@ -58,6 +61,16 @@ vi.mock('@/lib/api/queries', () => ({
   useBindRepo: () => ({ mutateAsync: mocks.bind, isPending: false }),
   useAppRepoBinding: () => ({ data: mocks.binding ?? undefined, isPending: mocks.bindingPending }),
   useInstallRepos: () => ({ data: mocks.installRepos, isPending: false }),
+  useApp: () => ({
+    data: { id: 'app-a', slug: 'alpha', manifest: { execution_mode: mocks.executionMode } },
+    error: null,
+    isPending: false,
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('@/lib/api/source-review', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/source-review')>()),
+  useReviewSource: () => ({ mutateAsync: mocks.review, isPending: mocks.reviewPending }),
 }));
 
 function open(onAccepted = vi.fn(), onSubmissionError = vi.fn()) {
@@ -86,6 +99,33 @@ async function deploy(user: ReturnType<typeof userEvent.setup>, repo?: string, r
   await user.click(screen.getByRole('button', { name: 'Deploy' }));
 }
 
+const SHA = '3f1c2b7d9e8a6f5b4c3d2e1f0a9b8c7d6e5f4a3b';
+const REVIEW = (servingIds = ['dep-0'], protectedTarget = false) => ({
+  app_id: 'app-a',
+  repo: 'acme/api',
+  commit_sha: SHA,
+  installation_id: 42,
+  repository_id: 7,
+  source_root: '',
+  release_review: {
+    app_id: 'app-a',
+    scope: 'default',
+    configuration_hash: 'c'.repeat(64),
+    latest_deployment_id: 'dep-0',
+    serving_deployment_ids: servingIds,
+    ...(protectedTarget ? { protected: true } : {}),
+  },
+});
+
+async function review(user: ReturnType<typeof userEvent.setup>, repo = 'acme/api', ref = 'main') {
+  await user.click(screen.getByRole('button', { name: 'Review first' }));
+  await user.clear(screen.getByLabelText('Repository'));
+  await user.type(screen.getByLabelText('Repository'), repo);
+  await user.clear(screen.getByLabelText('Ref'));
+  await user.type(screen.getByLabelText('Ref'), ref);
+  await user.click(screen.getByRole('button', { name: 'Review' }));
+}
+
 beforeEach(() => {
   mocks.deploy.mockReset().mockResolvedValue({ id: 'dep-1' });
   mocks.bind.mockReset().mockResolvedValue({});
@@ -93,6 +133,9 @@ beforeEach(() => {
   mocks.binding = null;
   mocks.bindingPending = false;
   mocks.installRepos = [];
+  mocks.review.mockReset().mockResolvedValue(REVIEW());
+  mocks.reviewPending = false;
+  mocks.executionMode = undefined;
 });
 
 describe('Deploy from Git', () => {
@@ -264,5 +307,105 @@ describe('Deploy from Git', () => {
         })
       )
     );
+  });
+
+  describe('reviewed source', () => {
+    it('reviews a ref, shows what it pinned, and stages exactly that commit at 0%', async () => {
+      const user = userEvent.setup();
+      mocks.binding = { state: 'installed' };
+      const onAccepted = open();
+      await review(user);
+      expect(mocks.review).toHaveBeenCalledWith({ repo: 'acme/api', ref: 'main' });
+      const pinned = await screen.findByRole('region', { name: 'Reviewed source' });
+      expect(pinned).toHaveTextContent(SHA.slice(0, 12));
+      expect(pinned).toHaveTextContent('acme/api');
+      expect(pinned).toHaveTextContent('c'.repeat(12));
+      expect(pinned).toHaveTextContent('dep-0');
+      await user.click(screen.getByRole('button', { name: 'Stage at 0%' }));
+      await waitFor(() => expect(onAccepted).toHaveBeenCalled());
+      expect(mocks.deploy).toHaveBeenCalledWith({
+        repo: 'acme/api',
+        ref: SHA,
+        format: 'tarball',
+        no_triggers: true,
+        traffic_percent: 0,
+        expected_source: REVIEW(),
+      });
+      expect(onAccepted).toHaveBeenCalledWith({ id: 'dep-1', repo: 'acme/api', ref: SHA });
+      // A reviewed release never writes the push-to-deploy binding.
+      expect(mocks.bind).not.toHaveBeenCalled();
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'success', title: 'Reviewed commit staged' })
+      );
+    });
+
+    it('drops the review when the source it was for is edited', async () => {
+      const user = userEvent.setup();
+      open();
+      await review(user);
+      await screen.findByRole('region', { name: 'Reviewed source' });
+      await user.type(screen.getByLabelText('Ref'), 'x');
+      expect(screen.queryByRole('region', { name: 'Reviewed source' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Review' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Stage at 0%' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['source_ref_stale', /source changed after it was reviewed/i],
+      ['release_review_changed', /configuration or serving release changed/i],
+    ])('asks for a new review when the deploy answers %s', async (code, pattern) => {
+      const user = userEvent.setup();
+      const onSubmissionError = vi.fn();
+      open(vi.fn(), onSubmissionError);
+      mocks.deploy.mockRejectedValue(new ApiError({ status: 409, code, title: code, detail: 'x' }));
+      await review(user);
+      await user.click(await screen.findByRole('button', { name: 'Stage at 0%' }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(pattern);
+      expect(alert).toHaveTextContent(/nothing was deployed/i);
+      expect(screen.queryByRole('region', { name: 'Reviewed source' })).not.toBeInTheDocument();
+      expect(onSubmissionError).not.toHaveBeenCalledWith(expect.any(String));
+      mocks.review.mockClear();
+      await user.click(within(alert).getByRole('button', { name: 'Review again' }));
+      expect(mocks.review).toHaveBeenCalledWith({ repo: 'acme/api', ref: 'main' });
+      expect(await screen.findByRole('region', { name: 'Reviewed source' })).toBeInTheDocument();
+    });
+
+    it('holds staging while traffic is split across releases', async () => {
+      const user = userEvent.setup();
+      mocks.review.mockResolvedValue(REVIEW(['dep-0', 'dep-9']));
+      open();
+      await review(user);
+      expect(await screen.findByText(/split across 2 releases/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Stage at 0%' })).toBeDisabled();
+    });
+
+    it('hands a worker over natively instead of staging it', async () => {
+      const user = userEvent.setup();
+      mocks.executionMode = 'worker';
+      open();
+      await review(user);
+      await user.click(await screen.findByRole('button', { name: 'Roll out reviewed commit' }));
+      await waitFor(() => expect(mocks.deploy).toHaveBeenCalled());
+      const body = mocks.deploy.mock.calls[0][0] as Record<string, unknown>;
+      expect(body).toMatchObject({ ref: SHA, native_rollout: 'worker', expected_source: REVIEW() });
+      expect(body).not.toHaveProperty('traffic_percent');
+    });
+
+    it('reports a refused review where it happened', async () => {
+      const user = userEvent.setup();
+      mocks.review.mockRejectedValue(
+        new ApiError({
+          status: 400,
+          code: 'validation_failed',
+          title: 'Validation failed',
+          detail: 'ref must resolve to a branch or be a full lowercase commit SHA',
+        })
+      );
+      open();
+      await review(user, 'acme/api', 'v1.2.0');
+      expect(await screen.findByRole('alert')).toHaveTextContent(/full lowercase commit SHA/);
+      expect(mocks.deploy).not.toHaveBeenCalled();
+    });
   });
 });

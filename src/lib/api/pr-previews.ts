@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
+import { orgAppsKey } from './workspace-apps';
 
 /**
  * PR previews created from the console (B27).
@@ -33,10 +34,23 @@ export function validPreviewTtl(hours: number) {
   return Number.isInteger(hours) && hours >= 1 && hours <= PREVIEW_TTL_MAX_HOURS;
 }
 
+/**
+ * The PR number and parent a `pr-{N}-{parent}` slug names, or null. Only
+ * preview provisioning may allocate that shape (faas pkg/api/app_slug.go:39-43,
+ * :58-78), so it identifies a PR preview in an inventory that carries no
+ * preview fields — a company's `OrgAppSummary`.
+ */
+export function parsePreviewSlug(slug: string): { prNumber: number; parent: string } | null {
+  const match = /^pr-(0|[1-9]\d*)-(.+)$/.exec(slug);
+  return match ? { prNumber: Number(match[1]), parent: match[2] } : null;
+}
+
 export interface CreatePreviewInput {
   parent: string;
   prNumber: number;
   ttlHours: number;
+  /** The company workspace the parent belongs to, whose inventory lists the preview. */
+  org?: string | null;
 }
 
 export function useCreatePreview() {
@@ -51,9 +65,10 @@ export function useCreatePreview() {
       // 201 is a new preview; 200 is the existing one, renewed.
       return { app, created: result.response.status === 201 };
     },
-    onSuccess: ({ app }) => {
+    onSuccess: ({ app }, { org }) => {
       void qc.invalidateQueries({ queryKey: keys.apps });
       void qc.invalidateQueries({ queryKey: previewKey(app.slug) });
+      if (org) void qc.invalidateQueries({ queryKey: orgAppsKey(org) });
     },
   });
 }

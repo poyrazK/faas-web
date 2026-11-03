@@ -433,3 +433,20 @@ describe('App header', () => {
     ).toEqual(['Park', 'Restart', 'Roll back']);
   });
 });
+
+describe('Invoke deep links', () => {
+  it.each(['invoke=1', 'invoke=true', 'tab=Invoke'])(
+    'opens the Invoke sheet from %s and preserves context when closed',
+    async (query) => {
+      const router = await mount(`/dashboard/apps/alpha?${query}&keep=yes#context`);
+      expect(await screen.findByRole('dialog', { name: 'Invoke' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Invoke' })).not.toBeInTheDocument()
+      );
+      expect(router.state.location.search.invoke).toBeUndefined();
+      expect(router.state.location.search.keep).toBe('yes');
+      expect(router.state.location.hash).toBe('context');
+    }
+  );
+});

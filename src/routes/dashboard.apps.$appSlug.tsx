@@ -1,3 +1,19 @@
+import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
+import { ApiConsumers } from '@/components/dashboard/api-consumers';
+import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
+import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import {
+  validateAppAnalyticsSearch,
+  type AppAnalyticsSearch,
+} from '@/components/dashboard/app-analytics-search';
+import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { InvokePanel } from '@/components/dashboard/app-core-panels';
+import { AppHeader } from '@/components/dashboard/app-header';
+import { AppHealthPanel } from '@/components/dashboard/app-health';
+import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
+import { AwakeRoutesPanel, DependencyLatencyPanel } from '@/components/dashboard/app-observability';
+import { AppOverview } from '@/components/dashboard/app-overview';
+import { AppRetryDefaults } from '@/components/dashboard/app-retry-defaults';
 import {
   APP_TAB_CAPABILITY,
   APP_TAB_GROUPS,
@@ -5,33 +21,30 @@ import {
   visibleAppTabs,
   type AppTab,
 } from '@/components/dashboard/app-tab-navigation';
-import { CapabilityGate } from '@/components/dashboard/capability-gate';
-import { useCapabilityRegistry } from '@/lib/api/capabilities';
-import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
+import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
+import { ConfigHistory } from '@/components/dashboard/config-history';
+import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
+import { DebugBody } from '@/components/dashboard/debug-body';
+import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
+import { DeployFromGitModal } from '@/components/dashboard/deploy-from-git-modal';
+import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
+import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
+import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
+import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
+import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
+import { ErrorsBody } from '@/components/dashboard/errors-body';
+import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
+import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
+import { IssuesBody } from '@/components/dashboard/issues-body';
+import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { createFileRoute, useParams } from '@tanstack/react-router';
-import { Play, Rocket } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/field';
-import { Sheet } from '@/components/dashboard/kit/sheet';
 import { HelpTip } from '@/components/dashboard/kit/help-tip';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  PageHeader,
-  Panel,
-  UnreachableState,
-  queryPhase,
-} from '@/components/dashboard/primitives';
-import { useAppDeployments, useAppMetrics, useBuildRecords } from '@/lib/api/queries';
-import { toDeployment } from '@/lib/api/adapters';
-import { useData } from '@/lib/store';
-import { useAuth } from '@/lib/auth';
-import { isPaidPlan } from '@/lib/plan';
-import { LogsBody } from '@/components/dashboard/pages/logs';
+import { Sheet } from '@/components/dashboard/kit/sheet';
+import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import {
   logFilters,
   logsSearch,
@@ -39,75 +52,61 @@ import {
   validateLogsSearch,
   type LogsSearch,
 } from '@/components/dashboard/logs-search';
+import { McpGuidance } from '@/components/dashboard/mcp-guidance';
+import { Swap } from '@/components/dashboard/motion';
+import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
+import { AlertsBody } from '@/components/dashboard/pages/alerts';
+import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
+import { EnvBody } from '@/components/dashboard/pages/env';
+import { LogsBody } from '@/components/dashboard/pages/logs';
+import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
+import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
+import { QueuesBody } from '@/components/dashboard/pages/queues';
 import { RoutesBody } from '@/components/dashboard/pages/routes';
 import { SecretsBody } from '@/components/dashboard/pages/secrets';
-import { EnvBody } from '@/components/dashboard/pages/env';
-import { ConfigHistory } from '@/components/dashboard/config-history';
-import { QueuesBody } from '@/components/dashboard/pages/queues';
-import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
-import { AlertsBody } from '@/components/dashboard/pages/alerts';
-import { DebugBody } from '@/components/dashboard/debug-body';
-import { WakeDrawer } from '@/components/dashboard/wake-drawer';
-import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
-import { RequestAuditBody } from '@/components/dashboard/request-audit';
-import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
 import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
-import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
-import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
+import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
 import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
-import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
-import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
-import { ErrorsBody } from '@/components/dashboard/errors-body';
-import { LogDrainsBody } from '@/components/dashboard/log-drains';
-import { IssuesBody } from '@/components/dashboard/issues-body';
-import { ServiceBindings } from '@/components/dashboard/service-bindings';
-import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
-import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
-import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
-import { QueueCanaries } from '@/components/dashboard/queue-canaries';
-import { McpGuidance } from '@/components/dashboard/mcp-guidance';
-import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
-import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { PlanGate } from '@/components/dashboard/plan-gate';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
-import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
-import { InvokePanel } from '@/components/dashboard/app-core-panels';
-import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
-import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
-  validateAppAnalyticsSearch,
-  type AppAnalyticsSearch,
-} from '@/components/dashboard/app-analytics-search';
-import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
-import {
-  AppHealthPanel,
-  AwakeRoutesPanel,
-  DependencyLatencyPanel,
-} from '@/components/dashboard/app-observability';
-import { AppOverview } from '@/components/dashboard/app-overview';
-import { StatelessContract } from '@/components/dashboard/stateless-contract';
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Panel,
+  queryPhase,
+  UnreachableState,
+} from '@/components/dashboard/primitives';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { AppHeader } from '@/components/dashboard/app-header';
-import { useProjectMembership } from '@/lib/api/projects';
-import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
-import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
-import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
-import { Swap } from '@/components/dashboard/motion';
-import { DeployFromGitModal } from '@/components/dashboard/deploy-from-git-modal';
-import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
+import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
 import {
   validateReleasesSearch,
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
+import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
-import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
-import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
-import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
-import { pageHead, useDocumentTitle } from '@/lib/seo';
-import { PlanGate } from '@/components/dashboard/plan-gate';
-import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { StatelessContract } from '@/components/dashboard/stateless-contract';
+import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
+import { WakeDrawer } from '@/components/dashboard/wake-drawer';
+import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/field';
+import { toDeployment } from '@/lib/api/adapters';
+import { useCapabilityRegistry } from '@/lib/api/capabilities';
+import { useProjectMembership } from '@/lib/api/projects';
+import { useAppDeployments, useAppMetrics, useBuildRecords } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { capabilityAccess } from '@/lib/capability-state';
 import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
+import { isPaidPlan } from '@/lib/plan';
+import { pageHead, useDocumentTitle } from '@/lib/seo';
+import { useData } from '@/lib/store';
+import { createFileRoute, useParams } from '@tanstack/react-router';
+import { Play, Rocket } from 'iconoir-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -192,6 +191,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
+      workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
@@ -200,11 +200,18 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     ...validateAppAnalyticsSearch(search),
     tab: resolveAppTab(search.tab),
     invoke:
-      search.invoke === true || search.invoke === '1' || search.tab === 'Invoke' ? true : undefined,
+      search.invoke === true ||
+      search.invoke === 1 ||
+      search.invoke === '1' ||
+      search.tab === 'Invoke'
+        ? true
+        : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
     webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
+    workflowRun:
+      typeof search.workflowRun === 'string' && search.workflowRun ? search.workflowRun : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -438,7 +445,20 @@ function FunctionDetailPage() {
                   }}
                 />
               )}
+              {tab === 'Workflows' && (
+                <WorkflowsBody
+                  slug={fn.id}
+                  run={search.workflowRun}
+                  onRun={(workflowRun) =>
+                    void navigate({
+                      search: (current) => ({ ...current, workflowRun }),
+                      hash: true,
+                    })
+                  }
+                />
+              )}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
+              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Overview' && (
                 <AppOverview
                   app={fn}
@@ -783,6 +803,7 @@ function FunctionDetailPage() {
           onRetry={() => void appDeploymentQuery.refetch()}
         >
           <InvokePanel slug={fn.id} />
+          <AppRetryDefaults slug={fn.id} />
         </DeploymentCapability>
       </Sheet>
       <WakeDrawer

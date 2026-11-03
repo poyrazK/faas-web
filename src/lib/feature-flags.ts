@@ -49,6 +49,12 @@ export function enabled(value: string | undefined): boolean {
 export const featureFlags = {
   /** Reference flag. Gates nothing; proves the wiring and shows the shape. */
   example: enabled(import.meta.env.VITE_FEATURE_EXAMPLE),
+  /**
+   * Browser error capture (`lib/error-reporting.ts`). Its transport is a no-op
+   * until the owner chooses where reports go, so turning this on today only
+   * exercises capture and redaction.
+   */
+  errorReporting: enabled(import.meta.env.VITE_FEATURE_ERROR_REPORTING),
 } as const;
 
 export type FeatureFlags = typeof featureFlags;

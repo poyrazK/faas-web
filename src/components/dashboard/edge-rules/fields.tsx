@@ -521,6 +521,7 @@ export function JsonField({
   value,
   onChange,
   rows = 8,
+  objectMessage = 'The schema has to be a JSON object.',
 }: {
   label: string;
   hint?: string;
@@ -528,6 +529,8 @@ export function JsonField({
   value: Record<string, unknown>;
   onChange: (v: Record<string, unknown> | null) => void;
   rows?: number;
+  /** What to say when the text parses to something other than an object. */
+  objectMessage?: string;
 }) {
   const [text, setText] = useState(() => JSON.stringify(value, null, 2));
   const [parseError, setParseError] = useState<string | null>(null);
@@ -535,7 +538,7 @@ export function JsonField({
     try {
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setParseError('The schema has to be a JSON object.');
+        setParseError(objectMessage);
         onChange(null);
         return;
       }
@@ -574,6 +577,62 @@ export function JsonField({
           Format
         </button>
       </div>
+    </Field>
+  );
+}
+
+/**
+ * Any JSON value — object, array, scalar or null — or nothing at all. Empty
+ * text is `undefined` (the field is left out); text that does not parse is
+ * reported through `onInvalid`, so the form can refuse to send it.
+ */
+export function JsonValueField({
+  label,
+  hint,
+  error,
+  value,
+  onChange,
+  onInvalid,
+  rows = 6,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  onInvalid: () => void;
+  rows?: number;
+}) {
+  const [text, setText] = useState(() =>
+    value === undefined ? '' : JSON.stringify(value, null, 2)
+  );
+  const [parseError, setParseError] = useState<string | null>(null);
+  const parse = (raw: string) => {
+    if (!raw.trim()) {
+      setParseError(null);
+      onChange(undefined);
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      setParseError(null);
+      onChange(parsed);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message.replace(/^JSON\.parse: /, '') : 'Invalid JSON');
+      onInvalid();
+    }
+  };
+  return (
+    <Field label={label} hint={hint} error={parseError ?? error}>
+      <textarea
+        value={text}
+        rows={rows}
+        spellCheck={false}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => parse(e.target.value)}
+        aria-invalid={parseError || error ? true : undefined}
+        className={cn(INPUT, 'h-auto resize-y py-2 font-mono text-xs leading-relaxed')}
+      />
     </Field>
   );
 }

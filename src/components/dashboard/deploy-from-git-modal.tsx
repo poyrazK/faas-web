@@ -1,22 +1,60 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
+import { SegmentedControl } from '@/components/dashboard/tabs';
 import {
+  useApp,
   useAppRepoBinding,
   useBindRepo,
   useDeployFromRef,
   useInstallRepos,
 } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import {
+  reviewBlocker,
+  reviewedDeployBody,
+  reviewedRollout,
+  useReviewSource,
+  type ReviewedRollout,
+  type SourceReview,
+} from '@/lib/api/source-review';
 import { useAuth } from '@/lib/auth';
+import { InlinePhase, queryPhase } from './primitives';
 
 export interface AcceptedDeploy {
   id: string;
   repo: string;
   ref: string;
 }
+
+type DeployMode = 'deploy' | 'review';
+const MODES = [
+  { key: 'deploy', label: 'Build and deploy' },
+  { key: 'review', label: 'Review first' },
+] as const;
+
+/** The two answers that mean the review no longer describes what would be deployed. */
+type ReviewConflict = 'source_ref_stale' | 'release_review_changed';
+
+const ROLLOUT_COPY: Record<ReviewedRollout, { action: string; after: string }> = {
+  stage: {
+    action: 'Stage at 0%',
+    after: 'It goes live with no traffic; promote it from the release when you are ready.',
+  },
+  service: {
+    action: 'Roll out reviewed commit',
+    after:
+      'Once it is live, traffic moves to it through readiness and drain; there is no 0% stage.',
+  },
+  worker: {
+    action: 'Roll out reviewed commit',
+    after: 'Once it is live, it activates as the newest worker generation; there is no 0% stage.',
+  },
+};
 
 /**
  * The one deploy the console can start itself: a Git ref, built server-side.
@@ -36,6 +74,14 @@ export interface AcceptedDeploy {
  * So when the installation the console knows can see the repository, the
  * modal offers to bind the app to it and deploy again; otherwise the fix is
  * on GitHub, and the modal says so.
+ *
+ * "Review first" is the reviewed-source release (faas
+ * handlers_source_review.go): `source-review` resolves the ref to one commit
+ * and pins the app's release state without building, and the deploy then
+ * sends that review as `expected_source`. apid refuses with `source_ref_stale`
+ * when the repository, installation, commit or source root moved, and with
+ * `release_review_changed` when the configuration or serving release did; both
+ * change nothing, and the answer is a fresh review. It never binds the app.
  */
 export function DeployFromGitModal({
   open,
@@ -59,12 +105,27 @@ export function DeployFromGitModal({
   const binding = useAppRepoBinding(appSlug, { enabled: open });
   const bound = binding.data?.state === 'bound' ? binding.data : null;
 
+  const [mode, setMode] = useState<DeployMode>('deploy');
   const [repo, setRepo] = useState('');
   const [ref, setRef] = useState('main');
   const [error, setError] = useState<string | null>(null);
   // The repository the last deploy was refused for as ambiguous.
   const [ambiguous, setAmbiguous] = useState<string | null>(null);
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
+
+  const reviewSource = useReviewSource(appSlug);
+  // The workload mode decides how a reviewed commit reaches traffic.
+  const app = useApp(appSlug, { enabled: open && mode === 'review' });
+  const [review, setReview] = useState<SourceReview | null>(null);
+  const [conflict, setConflict] = useState<ReviewConflict | null>(null);
+  // A review answered after its inputs were edited describes nothing on screen.
+  const reviewSeq = useRef(0);
+  const dropReview = () => {
+    reviewSeq.current += 1;
+    setReview(null);
+    setConflict(null);
+  };
+
   const boundSource = bound?.repo_full_name
     ? `${bound.repo_full_name}@${bound.production_branch || 'main'}`
     : null;
@@ -72,6 +133,8 @@ export function DeployFromGitModal({
     setPrefilledFrom(boundSource);
     setRepo(bound?.repo_full_name ?? '');
     setRef(bound?.production_branch || 'main');
+    setReview(null);
+    setConflict(null);
   }
 
   const installationId = account?.github_install_id ? Number(account.github_install_id) : 0;
@@ -85,6 +148,12 @@ export function DeployFromGitModal({
     binding.data?.github_login && binding.data.installation_id === installationId
       ? `the ${binding.data.github_login} installation`
       : 'your connected installation';
+
+  const validSource = /^[^/\s]+\/[^/\s]+$/.test(repo.trim()) && Boolean(ref.trim());
+  const appPhase = queryPhase({ error: app.error, loading: app.isPending });
+  const executionMode = app.data?.manifest?.execution_mode;
+  const rollout = app.data ? reviewedRollout(executionMode) : null;
+  const blocker = review && rollout ? reviewBlocker(review, rollout) : null;
 
   const submit = ({ justBound = false }: { justBound?: boolean } = {}) => {
     const source = { repo: repo.trim(), ref: ref.trim() };
@@ -146,6 +215,54 @@ export function DeployFromGitModal({
       });
   };
 
+  const runReview = () => {
+    const source = { repo: repo.trim(), ref: ref.trim() };
+    dropReview();
+    setError(null);
+    const seq = reviewSeq.current;
+    void reviewSource
+      .mutateAsync(source)
+      .then((result) => {
+        if (reviewSeq.current === seq) setReview(result);
+      })
+      .catch((err: unknown) => {
+        if (reviewSeq.current === seq) setError(errorMessage(err));
+      });
+  };
+
+  const deployReviewed = () => {
+    if (!review || !rollout || blocker) return;
+    const pinned = review;
+    setError(null);
+    setConflict(null);
+    onSubmissionError(null);
+    void deployFromRef
+      .mutateAsync(reviewedDeployBody(pinned, rollout))
+      .then((deployment) => {
+        onAccepted({ id: deployment.id, repo: pinned.repo, ref: pinned.commit_sha });
+        onClose();
+        toast({
+          kind: 'success',
+          title: rollout === 'stage' ? 'Reviewed commit staged' : 'Reviewed rollout started',
+          description: `${pinned.repo}@${pinned.commit_sha.slice(0, 12)} is queued. ${ROLLOUT_COPY[rollout].after}`,
+        });
+      })
+      .catch((err: unknown) => {
+        if (
+          err instanceof ApiError &&
+          (err.code === 'source_ref_stale' || err.code === 'release_review_changed')
+        ) {
+          dropReview();
+          setConflict(err.code);
+          return;
+        }
+        const message = errorMessage(err);
+        setError(message);
+        onSubmissionError(message);
+        toast({ kind: 'error', title: 'Could not start the deploy', description: message });
+      });
+  };
+
   // A binding for this exact repository decides the installation, so bind
   // first and retry; the retry must not bind a second time.
   const bindAndDeploy = () => {
@@ -170,34 +287,68 @@ export function DeployFromGitModal({
       ? bound.repo_full_name
       : null;
 
+  const footer =
+    mode === 'deploy' ? (
+      <Button
+        size="sm"
+        disabled={!validSource}
+        busy={deployFromRef.isPending}
+        onClick={() => submit()}
+      >
+        Deploy
+      </Button>
+    ) : review && rollout ? (
+      <Button
+        size="sm"
+        disabled={Boolean(blocker)}
+        busy={deployFromRef.isPending}
+        onClick={deployReviewed}
+      >
+        {ROLLOUT_COPY[rollout].action}
+      </Button>
+    ) : (
+      <Button
+        size="sm"
+        disabled={!validSource || !rollout}
+        busy={reviewSource.isPending}
+        onClick={runReview}
+      >
+        Review
+      </Button>
+    );
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={`Deploy ${appName}`}
       description={
-        bound?.repo_full_name
-          ? `Builds a ref from ${bound.repo_full_name} and ships it when the build succeeds. Pushes keep deploying ${bound.production_branch || 'main'}.`
-          : 'Builds a ref from the repository you choose and ships it when the build succeeds.'
+        mode === 'review'
+          ? 'Pins one commit and the app’s release state first, then deploys exactly that.'
+          : bound?.repo_full_name
+            ? `Builds a ref from ${bound.repo_full_name} and ships it when the build succeeds. Pushes keep deploying ${bound.production_branch || 'main'}.`
+            : 'Builds a ref from the repository you choose and ships it when the build succeeds.'
       }
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            disabled={!/^[^/\s]+\/[^/\s]+$/.test(repo.trim()) || !ref.trim()}
-            busy={deployFromRef.isPending}
-            onClick={() => submit()}
-          >
-            Deploy
-          </Button>
+          {footer}
         </>
       }
     >
       <div className="grid gap-4">
-        {ambiguous && (
+        <SegmentedControl
+          label="How to deploy"
+          value={mode}
+          options={MODES}
+          onChange={(next) => {
+            setMode(next);
+            setError(null);
+          }}
+        />
+        {mode === 'deploy' && ambiguous && (
           <div role="alert" className="flex flex-col gap-2 text-xs">
             <p className="text-[color:var(--status-critical)]">
               {ambiguous} is reachable from more than one of your GitHub installations, so Gregale
@@ -231,6 +382,27 @@ export function DeployFromGitModal({
             )}
           </div>
         )}
+        {mode === 'review' && conflict && (
+          <div role="alert" className="flex flex-col gap-2 text-xs">
+            <p className="text-[color:var(--status-critical)]">
+              {conflict === 'source_ref_stale'
+                ? 'The source changed after it was reviewed: the repository, its installation, the commit or the app’s source root no longer match the review. Nothing was deployed.'
+                : 'The app’s configuration or serving release changed after the review, so nothing was deployed.'}
+            </p>
+            <p className="text-muted-foreground">
+              Review again to pin what is there now, and check it before deploying.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              busy={reviewSource.isPending}
+              onClick={runReview}
+            >
+              Review again
+            </Button>
+          </div>
+        )}
         {error && (
           <p role="alert" className="text-xs text-[color:var(--status-critical)]">
             {error}
@@ -247,20 +419,138 @@ export function DeployFromGitModal({
             onChange={(next, defaultBranch) => {
               setRepo(next);
               if (defaultBranch) setRef(defaultBranch);
+              dropReview();
             }}
           />
         </div>
-        <label className="flex flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Ref</span>
-          <input
-            value={ref}
-            onChange={(e) => setRef(e.target.value)}
-            placeholder="main, a tag, or a commit"
-            spellCheck={false}
-            className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Ref</span>
+            <input
+              value={ref}
+              onChange={(e) => {
+                setRef(e.target.value);
+                dropReview();
+              }}
+              placeholder={
+                mode === 'review' ? 'main, or a full commit SHA' : 'main, a tag, or a commit'
+              }
+              aria-describedby={mode === 'review' ? 'deploy-git-ref-hint' : undefined}
+              spellCheck={false}
+              className="h-9 rounded-md border border-border bg-background px-3 font-mono text-sm outline-none focus:border-brand/50"
+            />
+          </label>
+          {mode === 'review' && (
+            <span id="deploy-git-ref-hint" className="text-xs text-muted-foreground">
+              A branch is resolved once, here. For a tag, use its commit SHA.
+            </span>
+          )}
+        </div>
+        {mode === 'review' && (
+          <ReviewedSourceBody
+            appPhase={appPhase}
+            appError={app.error}
+            onRetryApp={() => void app.refetch()}
+            executionMode={executionMode}
+            rollout={rollout}
+            review={review}
+            blocker={blocker}
           />
-        </label>
+        )}
       </div>
     </Modal>
+  );
+}
+
+/** What a review pins and how the deploy will use it, before anything is sent. */
+function ReviewedSourceBody({
+  appPhase,
+  appError,
+  onRetryApp,
+  executionMode,
+  rollout,
+  review,
+  blocker,
+}: {
+  appPhase: ReturnType<typeof queryPhase>;
+  appError: unknown;
+  onRetryApp: () => void;
+  executionMode: string | null | undefined;
+  rollout: ReviewedRollout | null;
+  review: SourceReview | null;
+  blocker: string | null;
+}) {
+  if (appPhase !== 'ready')
+    return (
+      <InlinePhase
+        phase={appPhase}
+        error={appError}
+        loadingMessage="Reading the app’s workload mode…"
+        onRetry={onRetryApp}
+      />
+    );
+  if (!rollout)
+    return (
+      <p className="text-xs text-muted-foreground">
+        Reviewed releases cover request, service and worker apps; this app runs in{' '}
+        <code className="font-mono">{executionMode}</code> mode. Deploy it with Build and deploy.
+      </p>
+    );
+  const serving = review?.release_review.serving_deployment_ids ?? [];
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Gregale resolves the ref to one commit and pins this app&apos;s configuration and serving
+        release, without building. Deploying then builds exactly that commit. The repository&apos;s
+        triggers, workflows, operations and release command are not imported; workflows and
+        operations stay as the serving release has them. {ROLLOUT_COPY[rollout].after}
+      </p>
+      {review && (
+        <section aria-label="Reviewed source" className="rounded-md border border-border p-3">
+          <p className="label-mono mb-2 text-muted-foreground">Reviewed source</p>
+          <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
+            <dt className="text-muted-foreground">Commit</dt>
+            <dd className="min-w-0">
+              <CopyableId value={review.commit_sha} label="commit" />
+            </dd>
+            <dt className="text-muted-foreground">Repository</dt>
+            <dd className="min-w-0 [overflow-wrap:anywhere]">
+              <span className="font-mono">{review.repo}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                · installation {review.installation_id}
+              </span>
+            </dd>
+            <dt className="text-muted-foreground">Source root</dt>
+            <dd className="font-mono">{review.source_root || '/'}</dd>
+            <dt className="text-muted-foreground">Configuration</dt>
+            <dd className="min-w-0">
+              <CopyableId
+                value={review.release_review.configuration_hash}
+                label="configuration hash"
+              />
+            </dd>
+            <dt className="text-muted-foreground">Serving</dt>
+            <dd className="flex min-w-0 flex-wrap gap-x-3">
+              {serving.length === 0 ? (
+                <span className="text-muted-foreground">Nothing serves yet</span>
+              ) : (
+                serving.map((id) => <CopyableId key={id} value={id} label="serving deployment" />)
+              )}
+            </dd>
+          </dl>
+        </section>
+      )}
+      {blocker && (
+        <p role="status" className="flex items-start gap-1.5 text-xs">
+          <WarningTriangle
+            aria-hidden
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            style={{ color: 'var(--status-warning)' }}
+          />
+          <span>{blocker}</span>
+        </p>
+      )}
+    </div>
   );
 }

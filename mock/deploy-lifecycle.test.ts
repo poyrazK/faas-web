@@ -146,6 +146,18 @@ describe('a tracked deployment', () => {
     expect(first.deployment).toMatchObject({ status: 'superseded', traffic_percent: 0 });
   });
 
+  it('keeps a staged release dark when it goes live, leaving the serving one alone', () => {
+    const first = rows();
+    startDeployment({ ...first, now: T0 });
+    advanceDeployments(T0 + 11_000);
+    const second = { ...rows(), app: first.app };
+    second.deployment = { ...second.deployment, id: 'e'.repeat(32) };
+    startDeployment({ ...second, now: T0 + 20_000, staged: true });
+    advanceDeployments(T0 + 31_000);
+    expect(second.deployment).toMatchObject({ status: 'live', traffic_percent: 0 });
+    expect(first.deployment).toMatchObject({ status: 'live', traffic_percent: 100 });
+  });
+
   it('stops advancing a deployment a route moved, such as a cancel', () => {
     const { app, deployment, build } = rows('node24', 'active');
     startDeployment({ deployment, app, build, now: T0 });

@@ -8,6 +8,10 @@ import type { App } from './data';
  * merge), the per-plan caps are ValidatePlan's (appmanifest.go:885-958), and
  * a refusal is 400 validation_failed (lifecycle.go:63). The grace period is
  * stored as time.Duration and so reads back as nanoseconds.
+ *
+ * The snapshot hooks, after_restore and before_checkpoint, ride the same
+ * PATCH: a hook with neither path nor timeout clears it (lifecycle.go:265),
+ * and the checks are validateLifecycleHook's (appmanifest.go:87-101, 810-821).
  */
 
 const CAPS: Record<string, { grace: number; startup: number; retries: number }> = {
@@ -23,7 +27,10 @@ const FIELDS = [
   'startup_deadline_s',
   'stop_signal',
   'stop_grace_period_s',
+  'after_restore',
+  'before_checkpoint',
 ] as const;
+const HOOKS = ['after_restore', 'before_checkpoint'] as const;
 
 type Refusal = { status: 400; code: 'validation_failed'; detail: string };
 const refuse = (detail: string): Refusal => ({
@@ -52,6 +59,26 @@ export function applyLifecycle(
   }
   const grace = int('stop_grace_period_s');
   if (grace !== undefined) next.stop_grace_period = grace ? grace * 1e9 : undefined;
+  for (const key of HOOKS) {
+    const hook = body[key] as { path?: string; timeout_ms?: number } | null | undefined;
+    if (!hook || typeof hook !== 'object') continue;
+    const path = hook.path ?? '';
+    const timeout = hook.timeout_ms ?? 0;
+    next[key] = path === '' && timeout === 0 ? undefined : { ...hook };
+    if (next[key] === undefined) continue;
+    if (!path.startsWith('/') || path.startsWith('//') || /[?#%]/.test(path))
+      return refuse(
+        `${key}.path must be an absolute path without query, fragment, or percent escapes`
+      );
+    // eslint-disable-next-line no-control-regex -- apid refuses exactly these bytes
+    if (/[\u0000-\u001f\u007f]/.test(path))
+      return refuse(`${key}.path must not contain control characters`);
+    if (!Number.isInteger(timeout) || timeout < 0 || timeout > 2000)
+      return refuse(`${key}.timeout_ms must be between 0 and 2000`);
+    const mode = (next.execution_mode as string | undefined) ?? 'request';
+    if (mode !== 'request' && mode !== 'service')
+      return refuse(`${key} requires request or service execution mode`);
+  }
 
   const policy = next.restart_policy as string | undefined;
   if (policy && !POLICIES.includes(policy))

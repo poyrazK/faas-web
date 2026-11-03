@@ -283,11 +283,3 @@ export function useBucketLifecycle(slug: string, bucket: string) {
     retry: false,
   });
 }
-
-/** Account-wide object-storage accounting, with the policy caps it is measured against. */
-export function useObjectStorageUsage() {
-  return useQuery({
-    queryKey: ['account', 'object-storage-usage'],
-    queryFn: () => unwrap(api.GET('/v1/account/object-storage-usage', {})),
-  });
-}

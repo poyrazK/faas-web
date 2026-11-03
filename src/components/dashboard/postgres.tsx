@@ -1,11 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Database, Plus, Trash } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
-import { useConfirm } from '@/components/ui/confirm';
-import { CopyableId } from '@/components/ui/copyable-id';
-import { FIELD, Select } from '@/components/ui/field';
-import { Switch } from '@/components/ui/switch';
-import { useToast } from '@/components/ui/toast';
+import { CliCommand } from '@/components/dashboard/cli-command';
+import { PlanGated } from '@/components/dashboard/plan-gated';
 import {
   EmptyState,
   ErrorState,
@@ -14,10 +8,20 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { CliCommand } from '@/components/dashboard/cli-command';
-import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
+import { CopyableId } from '@/components/ui/copyable-id';
+import { FIELD, Select } from '@/components/ui/field';
+import { Switch } from '@/components/ui/switch';
+import { Timestamp } from '@/components/ui/timestamp';
+import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import {
+  usePostgresUsage,
+  usePurgePostgresDatabase,
+  useUndeletePostgresDatabase,
+} from '@/lib/api/postgres';
 import {
   useApps,
   useCreatePostgresBinding,
@@ -31,10 +35,20 @@ import {
   type PostgresBinding,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
+import { absoluteTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { Clock, Database, Pause, Plus, Trash, Undo } from 'iconoir-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sheet } from './kit/sheet';
+import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
+import { ConnectionBudget, DatabaseConditions } from './postgres-health';
+import { StatusTag, TONE, explainPostgres } from './postgres-shared';
+import { PostgresUsage } from './postgres-usage';
+
+export { explainPostgres } from './postgres-shared';
 
 /**
  * Managed PostgreSQL: databases the platform provisions, and the bindings
@@ -54,6 +68,14 @@ import { Sheet } from './kit/sheet';
  * Restore is always into a *new* database (the API takes a name and a point
  * in time and returns a new row), so the form says that rather than implying
  * the current database is rewound.
+ *
+ * Deleting a ready database schedules it (faas ADR-20261029174950): it is kept
+ * for seven days with its compute stopped, shows `restorable_until`, and can
+ * be recovered (`POST …/undelete`) or purged (`DELETE …?purge=true`) until
+ * then. Any other database is deleted at once. A database is also suspended,
+ * with its data kept, when the workspace reaches its compute cap (the usage
+ * panel says when it resumes) or when the plan no longer includes it
+ * (`plan_excess`).
  */
 
 const SERVICE_CLASSES = [
@@ -70,9 +92,31 @@ const STATE_COLOR: Record<string, string> = {
   provisioning: 'var(--status-warning)',
   ready: 'var(--status-good)',
   updating: 'var(--status-warning)',
-  deleting: 'var(--status-idle)',
+  deleting: 'var(--chart-muted)',
   failed: 'var(--status-critical)',
-  deleted: 'var(--status-idle)',
+  deleted: 'var(--chart-muted)',
+};
+
+/** A delete the customer can still undo: kept until `restorable_until`. */
+function scheduledDelete(database: PostgresDatabase): boolean {
+  return database.state === 'deleting' && Boolean(database.restorable_until);
+}
+
+/** apid's own wording for each plan-excess suspension (pkg/dashboard/templates/postgres.html). */
+const PLAN_EXCESS: Record<
+  NonNullable<PostgresDatabase['plan_excess']>,
+  { tag: string; explain: (whose: string, database: PostgresDatabase) => string }
+> = {
+  database_limit: {
+    tag: 'over the database limit',
+    explain: (whose) =>
+      `${whose} plan allows fewer databases than there are, so this one, among the newest, is suspended. Its data, credentials and bindings are kept. Upgrade, or delete a database, to resume it; the next usage sweep, within minutes, does.`,
+  },
+  service_class: {
+    tag: 'class not in plan',
+    explain: (whose, database) =>
+      `${whose} plan does not include the ${database.service_class} class, so this database is suspended. Its data, credentials and bindings are kept. Upgrade, or resize it to a class the plan includes, to resume it.`,
+  },
 };
 
 function gb(bytes: number): string {
@@ -91,50 +135,16 @@ function when(value: string | null | undefined): string {
   return Number.isNaN(ms) ? value : formatRelative(ms);
 }
 
-export function explainPostgres(err: unknown): {
-  kind: 'info' | 'error';
-  title: string;
-  description?: string;
-  error?: unknown;
-} {
-  if (err instanceof ApiError) {
-    switch (err.code) {
-      case 'managed_postgres_not_in_plan':
-        return { kind: 'info', title: 'Not on your plan', error: err };
-      case 'managed_postgres_quota_exceeded':
-        return { kind: 'info', title: 'Database limit reached', error: err };
-      case 'managed_postgres_unsupported':
-        return {
-          kind: 'error',
-          title: 'Not supported',
-          error: err,
-        };
-      case 'managed_postgres_conflict':
-        return {
-          kind: 'error',
-          title: 'That name or binding is taken',
-          error: err,
-        };
-      case 'managed_postgres_invalid':
-        return { kind: 'error', title: 'The request was rejected', error: err };
-      case 'managed_postgres_unavailable':
-      case 'managed_postgres_usage_stale':
-        return {
-          kind: 'info',
-          title: 'The database provider is unavailable',
-          description: 'Nothing was changed. This is upstream of Gregale; try again shortly.',
-        };
-      case 'managed_postgres_not_found':
-        return { kind: 'info', title: 'Already gone', description: 'It was removed elsewhere.' };
-    }
-  }
-  return { kind: 'error', title: 'Could not complete that', error: err };
-}
-
 export function PostgresDatabases() {
   const databases = usePostgresDatabases();
+  // The same read as the usage panel's: the cap holds every database at once.
+  const capSuspended = usePostgresUsage().data?.compute_cap_state === 'suspended';
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The resize or policy change started for each database, kept here so it is
+  // still followed after its detail is closed and opened again: the API has no
+  // list of a database's changes to find it by.
+  const [operations, setOperations] = useState<Record<string, ComputeOperation>>({});
   const phase = queryPhase({ error: databases.error, loading: databases.isPending });
   const items = databases.data?.items ?? [];
   const open = items.find((d) => d.id === selected);
@@ -142,6 +152,7 @@ export function PostgresDatabases() {
   return (
     <PlanGated error={databases.error} feature="Managed PostgreSQL">
       <div className="flex flex-col gap-6">
+        <PostgresUsage />
         <Panel
           title="Databases"
           help="Connection details reach your apps as secrets, never this page."
@@ -175,6 +186,7 @@ export function PostgresDatabases() {
                     <li key={database.id}>
                       <DatabaseRow
                         database={database}
+                        capSuspended={capSuspended}
                         open={database.id === selected}
                         onToggle={() => setSelected(database.id === selected ? null : database.id)}
                       />
@@ -191,7 +203,15 @@ export function PostgresDatabases() {
 
         {/* Keyed on the database: the restore and binding forms belong to the
             one that is open, and must not carry over to the next. */}
-        {open && <DatabaseDetail key={open.id} database={open} />}
+        {open && (
+          <DatabaseDetail
+            key={open.id}
+            database={open}
+            capSuspended={capSuspended}
+            operation={operations[open.id]}
+            onOperation={(operation) => setOperations((all) => ({ ...all, [open.id]: operation }))}
+          />
+        )}
       </div>
     </PlanGated>
   );
@@ -199,10 +219,12 @@ export function PostgresDatabases() {
 
 function DatabaseRow({
   database,
+  capSuspended,
   open,
   onToggle,
 }: {
   database: PostgresDatabase;
+  capSuspended: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -222,30 +244,64 @@ function DatabaseRow({
       {database.availability === 'high_availability' && (
         <Pill label="HA" color="var(--status-good)" />
       )}
-      {database.scale_to_zero && <Pill label="scales to zero" color="var(--status-idle)" />}
+      {database.scale_to_zero && <Pill label="scales to zero" color="var(--chart-muted)" />}
       <span className="text-muted-foreground">{gb(database.storage_limit_bytes)}</span>
       {database.last_error_code && (
         <span style={{ color: 'var(--status-critical)' }}>{database.last_error_code}</span>
+      )}
+      {scheduledDelete(database) && (
+        <span className="text-muted-foreground">
+          recoverable until <Timestamp value={database.restorable_until} />
+        </span>
+      )}
+      {database.plan_excess ? (
+        <StatusTag tone="critical" icon={Pause}>
+          suspended · {PLAN_EXCESS[database.plan_excess].tag}
+        </StatusTag>
+      ) : (
+        capSuspended &&
+        database.state === 'ready' && (
+          <StatusTag tone="critical" icon={Pause}>
+            suspended · compute cap
+          </StatusTag>
+        )
       )}
       <span className="ml-auto text-muted-foreground">created {when(database.created_at)}</span>
     </button>
   );
 }
 
-function DatabaseDetail({ database }: { database: PostgresDatabase }) {
+function DatabaseDetail({
+  database,
+  capSuspended,
+  operation,
+  onOperation,
+}: {
+  database: PostgresDatabase;
+  capSuspended: boolean;
+  operation?: ComputeOperation;
+  onOperation: (operation: ComputeOperation) => void;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
+  const { org, label } = useWorkspaceTarget();
+  const whose = org ? `${label}'s` : 'Your';
+  const scheduled = scheduledDelete(database);
   const remove = useDeletePostgresDatabase();
   const restore = useRestorePostgresDatabase();
   const [restoreName, setRestoreName] = useState('');
   const [pointInTime, setPointInTime] = useState('');
 
   const onDelete = async () => {
+    // apid schedules only a ready database; any other is deleted at once
+    // (managedpostgres/delete_grace.go ScheduleDelete).
+    const kept = database.state === 'ready';
     if (
       !(await confirm({
         title: `Delete ${database.name}?`,
-        description:
-          'The database and its data are destroyed. Bindings to it are removed and the apps holding its credentials lose access.',
+        description: kept
+          ? 'Its compute stops and it refuses connections at once. It is kept for 7 days and can be recovered until then, after which it is deleted for good. Apps must be unbound from it first.'
+          : 'It is not ready, so it is deleted at once, with no undo. Apps must be unbound from it first.',
         confirmLabel: 'Delete database',
         destructive: true,
         typeToConfirm: database.name,
@@ -253,10 +309,29 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
     )
       return;
     try {
-      await remove.mutateAsync(database.id);
-      toast({ kind: 'success', title: `${database.name} is being deleted` });
+      const deleted = await remove.mutateAsync(database.id);
+      const until = Date.parse(deleted.restorable_until ?? '');
+      toast(
+        Number.isNaN(until)
+          ? { kind: 'success', title: `${database.name} is being deleted` }
+          : {
+              kind: 'success',
+              title: `${database.name} is scheduled for deletion`,
+              description: `Recover it until ${absoluteTime(until)}.`,
+            }
+      );
     } catch (err) {
-      toast(explainPostgres(err));
+      toast(
+        err instanceof ApiError && err.code === 'managed_postgres_conflict'
+          ? {
+              kind: 'error',
+              title: 'Unbind its apps first',
+              description:
+                'A database with bound apps, or with a database restored from it, cannot be deleted.',
+              error: err,
+            }
+          : explainPostgres(err)
+      );
     }
   };
 
@@ -291,15 +366,17 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
     <Panel
       title={database.name}
       actions={
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => void onDelete()}
-          disabled={remove.isPending}
-        >
-          <Trash className="h-3.5 w-3.5" />
-          Delete
-        </Button>
+        scheduled ? undefined : (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => void onDelete()}
+            disabled={remove.isPending}
+          >
+            <Trash className="h-3.5 w-3.5" />
+            Delete
+          </Button>
+        )
       }
     >
       <div className="flex flex-col gap-6">
@@ -311,6 +388,44 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
             {database.availability === 'high_availability' ? 'high availability' : 'single zone'}
           </span>
         </div>
+        {scheduled && <ScheduledDeletion database={database} />}
+        {database.plan_excess ? (
+          <Suspension>{PLAN_EXCESS[database.plan_excess].explain(whose, database)}</Suspension>
+        ) : (
+          capSuspended &&
+          database.state === 'ready' && (
+            <Suspension>
+              This database refuses connections until the compute cap lifts; Usage this month,
+              above, says when and how. Its data is kept.
+            </Suspension>
+          )
+        )}
+        {database.restore_slot_until && (
+          <p className="flex items-start gap-2 text-xs text-muted-foreground">
+            <Clock
+              aria-hidden
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              style={{ color: TONE.warning }}
+            />
+            <span>
+              This restored copy is past {org ? `${label}'s` : 'your'} plan&apos;s database limit.
+              Purge a database or upgrade before{' '}
+              <Timestamp value={database.restore_slot_until} mode="absolute" /> to keep it;
+              otherwise its delete is scheduled then.
+            </span>
+          </p>
+        )}
+        {org ? (
+          <p className="text-xs text-muted-foreground">
+            Conditions and connection planning are read for personal databases only: the API has no
+            organization route for them.
+          </p>
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-2">
+            <DatabaseConditions database={database} />
+            {!scheduled && <ConnectionBudget database={database} />}
+          </div>
+        )}
         {database.restore_source_database_id && (
           <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             Restored from{' '}
@@ -327,59 +442,214 @@ function DatabaseDetail({ database }: { database: PostgresDatabase }) {
           </p>
         )}
 
-        <Bindings database={database} />
-
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (restoreReady && !restore.isPending) void onRestore();
-          }}
-        >
-          <p className="label-mono text-muted-foreground">Point-in-time restore</p>
-          <p className="text-xs text-muted-foreground">
-            Restores into a new database, leaving this one running. Anything within the last{' '}
-            {hours(database.restore_window_seconds)} can be chosen.
+        {scheduled ? (
+          <p className="text-sm text-muted-foreground">
+            Recover it to bind apps to it or restore from it.
           </p>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">New database name</span>
-              <input
-                value={restoreName}
-                onChange={(e) => setRestoreName(e.target.value)}
-                placeholder={`${database.name}-restored`}
-                aria-label="Restored database name"
-                className={cn(FIELD, 'w-56')}
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">Point in time</span>
-              <input
-                type="datetime-local"
-                value={pointInTime}
-                onChange={(e) => setPointInTime(e.target.value)}
-                aria-label="Restore point in time"
-                className={cn(FIELD, 'w-56')}
-              />
-            </label>
-            <Button
-              type="submit"
-              size="sm"
-              variant="outline"
-              disabled={!restoreReady}
-              busy={restore.isPending}
+        ) : (
+          <>
+            <DatabaseCompute database={database} operation={operation} onOperation={onOperation} />
+
+            <Bindings database={database} />
+
+            <form
+              className="flex flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (restoreReady && !restore.isPending) void onRestore();
+              }}
             >
-              Restore into a new database
-            </Button>
-          </div>
-          <CliCommand
-            label="Or restore from the CLI"
-            copyLabel={`restore command for ${database.name}`}
-            command={restoreCommand}
-          />
-        </form>
+              <p className="label-mono text-muted-foreground">Point-in-time restore</p>
+              <p className="text-xs text-muted-foreground">
+                Restores into a new database, leaving this one running. Anything within the last{' '}
+                {hours(database.restore_window_seconds)} can be chosen.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-muted-foreground">New database name</span>
+                  <input
+                    value={restoreName}
+                    onChange={(e) => setRestoreName(e.target.value)}
+                    placeholder={`${database.name}-restored`}
+                    aria-label="Restored database name"
+                    className={cn(FIELD, 'w-56')}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-muted-foreground">Point in time</span>
+                  <input
+                    type="datetime-local"
+                    value={pointInTime}
+                    onChange={(e) => setPointInTime(e.target.value)}
+                    aria-label="Restore point in time"
+                    className={cn(FIELD, 'w-56')}
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={!restoreReady}
+                  busy={restore.isPending}
+                >
+                  Restore into a new database
+                </Button>
+              </div>
+              <CliCommand
+                label="Or restore from the CLI"
+                copyLabel={`restore command for ${database.name}`}
+                command={restoreCommand}
+              />
+            </form>
+          </>
+        )}
       </div>
     </Panel>
+  );
+}
+
+/** A suspension the customer can act on: colour, icon and the words for what to do. */
+function Suspension({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="flex items-start gap-2 rounded-lg border p-3 text-sm text-muted-foreground"
+      style={{ borderColor: `color-mix(in oklab, ${TONE.critical} 35%, transparent)` }}
+    >
+      <Pause aria-hidden className="mt-0.5 h-4 w-4 shrink-0" style={{ color: TONE.critical }} />
+      <span>
+        <span className="font-medium" style={{ color: TONE.critical }}>
+          Suspended.
+        </span>{' '}
+        {children}
+      </span>
+    </p>
+  );
+}
+
+function explainRecover(err: unknown): ReturnType<typeof explainPostgres> {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      // ClaimUndelete: past the window, or never scheduled, is not found.
+      case 'managed_postgres_not_found':
+        return {
+          kind: 'info',
+          title: 'The recovery window has ended',
+          description: 'The database is deleted for good and can no longer be brought back.',
+        };
+      case 'managed_postgres_not_in_plan':
+        return {
+          kind: 'info',
+          title: 'Your plan no longer allows this database',
+          description: 'Recovering makes the same plan check as creating. Upgrade to recover it.',
+          error: err,
+        };
+      case 'managed_postgres_quota_exceeded':
+        return { kind: 'info', title: 'No room under the database limit', error: err };
+      case 'managed_postgres_conflict':
+        return {
+          kind: 'error',
+          title: 'Another change holds this database',
+          description: 'Wait for it to finish, then try again.',
+          error: err,
+        };
+    }
+  }
+  return explainPostgres(err);
+}
+
+/**
+ * A database whose delete is scheduled: recover it while the window is open,
+ * or purge it now. Recovery is not destructive, so it does not ask; purging
+ * is final, so it asks for the name.
+ */
+function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const undelete = useUndeletePostgresDatabase();
+  const purge = usePurgePostgresDatabase();
+  // One key per recovery intent, as for rotation: a retry after an unknown
+  // outcome replays the first answer (a second undelete of a ready database
+  // would answer 404); after an ApiError the answer is known and the key goes.
+  const intent = useRef<string | null>(null);
+  const until = database.restorable_until ?? '';
+  // Read once: the window is days long, and a recovery after it ends is
+  // answered 404 and explained, so a stale "open" costs nothing.
+  const [now] = useState(() => Date.now());
+  const open = Date.parse(until) > now;
+
+  const onRecover = async () => {
+    const key = intent.current ?? crypto.randomUUID();
+    intent.current = key;
+    try {
+      const recovered = await undelete.mutateAsync({ id: database.id, idempotencyKey: key });
+      intent.current = null;
+      toast({
+        kind: 'success',
+        title: `${recovered.name} is recovered`,
+        description:
+          'It is ready again, with its data and restore history. Bind apps to it again to use it.',
+      });
+    } catch (err) {
+      if (err instanceof ApiError) intent.current = null;
+      toast(explainRecover(err));
+    }
+  };
+
+  const onPurge = async () => {
+    if (
+      !(await confirm({
+        title: `Delete ${database.name} now?`,
+        description:
+          'This deletes the database and its restore history at once and ends the recovery window. It cannot be undone through Gregale.',
+        confirmLabel: 'Delete now',
+        destructive: true,
+        typeToConfirm: database.name,
+      }))
+    )
+      return;
+    try {
+      await purge.mutateAsync(database.id);
+      toast({ kind: 'success', title: `${database.name} is being deleted` });
+    } catch (err) {
+      toast(explainPostgres(err));
+    }
+  };
+
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-lg border p-4"
+      style={{ borderColor: `color-mix(in oklab, ${TONE.warning} 35%, transparent)` }}
+    >
+      <p className="flex items-center gap-2 text-sm font-medium" style={{ color: TONE.warning }}>
+        <Clock aria-hidden className="h-4 w-4 shrink-0" />
+        Deletion scheduled
+      </p>
+      {open ? (
+        <p className="text-sm text-muted-foreground">
+          Its compute is stopped and it refuses connections. Recover it before{' '}
+          <Timestamp value={until} mode="absolute" /> to return it to ready with its data and
+          restore history; after that it is deleted for good. Until then it counts toward the
+          plan&apos;s database limit and keeps its name.
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          The recovery window has ended; the database is being deleted for good.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {open && (
+          <Button size="sm" busy={undelete.isPending} onClick={() => void onRecover()}>
+            <Undo className="h-3.5 w-3.5" />
+            Recover database
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" disabled={purge.isPending} onClick={() => void onPurge()}>
+          <Trash className="h-3.5 w-3.5" />
+          Delete now
+        </Button>
+      </div>
+    </div>
   );
 }
 

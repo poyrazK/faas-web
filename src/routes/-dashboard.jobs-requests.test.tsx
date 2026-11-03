@@ -16,6 +16,11 @@ import { ApiError } from '@/lib/api/errors';
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }));
 vi.mock('@/lib/api/client', async (original) => ({ ...(await original<object>()), api }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/lib/api/capabilities', async (original) => ({
+  ...(await original<object>()),
+  useCapabilityAccess: () => ({ access: 'on', refresh: vi.fn() }),
+  useCapabilityStage: () => 'Beta',
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 const job = {
   id: 'job-1',
@@ -61,6 +66,7 @@ beforeEach(() => {
           truncated: false,
           max_bytes: 65536,
         },
+        '/v1/jobs/{name}/registry-credentials': { credentials: [], quota_max: 5, count: 0 },
         '/v1/apps': [{ id: 'app-1', slug: 'api' }],
         '/v1/crons': [
           {
@@ -195,6 +201,8 @@ describe('Workload creation', () => {
       within(dialog).getByRole('combobox', { name: 'Kind' }),
       'recurring'
     );
+    // apid refuses kind=recurring without a schedule (handlers_jobs.go:789-792).
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Schedule' }), '0 3 * * *');
     await userEvent.click(within(dialog).getByText('Resource limits', { exact: false }));
     for (const [label, value] of [
       ['Memory (MB)', '256'],
@@ -216,6 +224,8 @@ describe('Workload creation', () => {
           task_timeout_sec: 60,
           max_parallelism: 2,
           retry_max: 1,
+          schedule: '0 3 * * *',
+          timezone: 'UTC',
         },
       })
     );

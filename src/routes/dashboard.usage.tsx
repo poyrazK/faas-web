@@ -1,26 +1,32 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { ManagedPostgresUsagePanel } from '@/components/dashboard/account-postgres-usage';
+import { CostBreakdown, CostBreakdownPersonalOnly } from '@/components/dashboard/billing-costs';
+import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { OrgUsage } from '@/components/dashboard/org-billing';
 import {
   ErrorState,
+  InlinePhase,
   LoadingState,
   PageHeader,
   Panel,
+  queryPhase,
   Stats,
   StatTile,
   UnreachableState,
-  queryPhase,
+  type QueryPhase,
 } from '@/components/dashboard/primitives';
-import { useUsageSummary, useApps, usePerAppUsage } from '@/lib/api/queries';
-import { useId, useMemo, useState } from 'react';
+import { SpendCap } from '@/components/dashboard/spend-cap';
+import { SpendControl } from '@/components/dashboard/spend-control';
+import { DailyUsagePanel } from '@/components/dashboard/usage-daily';
 import { Button } from '@/components/ui/button';
-import { InlinePhase } from '@/components/dashboard/primitives';
 import { slugIndex } from '@/lib/api/adapters';
+import { ApiError } from '@/lib/api/errors';
+import { useAccountUsage, useApps, usePerAppUsage, useUsageSummary } from '@/lib/api/queries';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { formatCents } from '@/lib/money';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
-import { SpendControl } from '@/components/dashboard/spend-control';
-import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
-import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { OrgUsage } from '@/components/dashboard/org-billing';
-import { formatCents } from '@/lib/money';
+import { createFileRoute } from '@tanstack/react-router';
+import { useId, useMemo, useState } from 'react';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -28,7 +34,10 @@ export const Route = createFileRoute('/dashboard/usage')({
 });
 
 /**
- * Billing-period usage, from `/v1/usage/summary`.
+ * Billing-period usage. Compute, the allowance and overage are from
+ * `/v1/usage/summary`; the account usage projection (`/v1/account/usage`) adds
+ * the daily rollups, object storage and managed PostgreSQL when the account has
+ * them, and its failure only replaces that addition with a notice.
  *
  * The unit that matters is GB-hours: memory multiplied by time, which is how a
  * scale-to-zero platform charges. An idle app costs nothing, so a low number
@@ -232,8 +241,11 @@ function PerAppUsagePanel() {
 }
 
 /**
- * In a company workspace the page reads the organization's billing subject;
- * the allowance, forecast and cap below belong to the signed-in account.
+ * In a company workspace the page reads the organization's billing subject:
+ * its usage and its own spend cap. The account projection, allowance,
+ * forecast and cost breakdown belong to the signed-in account and have no
+ * organization variant, so they are not shown there; the cost breakdown says
+ * so in place.
  */
 function UsagePage() {
   const { org, label, ready } = useWorkspaceTarget();
@@ -244,12 +256,66 @@ function UsagePage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Usage" />
       <OrgUsage org={org} label={label} />
+      <SpendCap />
+      <CostBreakdownPersonalOnly label={label} />
     </div>
   );
 }
 
+/**
+ * Why the service breakdown is missing, by code. apid fails the whole account
+ * projection when a configured service's accounting fails (faas handlers_ext.go
+ * accountUsage: `capacity_unavailable` for object storage, `managed_postgres_*`
+ * for PostgreSQL), so compute above, read separately, is never what is lost.
+ */
+function breakdownNotice(error: unknown): string {
+  const unaffected = 'Compute usage above is unaffected.';
+  if (error instanceof ApiError) {
+    if (error.code === 'managed_postgres_usage_stale')
+      return `Managed PostgreSQL usage is stale, so the daily breakdown and service usage cannot be shown yet. ${unaffected}`;
+    if (error.code.startsWith('managed_postgres_'))
+      return `Managed PostgreSQL usage could not be read, so the daily breakdown and service usage are unavailable. ${unaffected}`;
+    if (error.code === 'capacity_unavailable')
+      return `A service's usage accounting could not be read, so the daily breakdown and service usage are unavailable. ${unaffected}`;
+  }
+  return `The daily breakdown and service usage are unavailable. ${unaffected}`;
+}
+
+/** Stands in for the daily chart and service panels while the projection is not ready. */
+function BreakdownPhase({
+  phase,
+  error,
+  onRetry,
+}: {
+  phase: QueryPhase;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  return (
+    <Panel
+      title="Day by day and services"
+      help="Daily rollups, object storage and managed PostgreSQL, from the account usage projection."
+    >
+      {phase === 'loading' ? (
+        <InlinePhase phase="loading" loadingMessage="Reading the daily and service breakdown…" />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">{breakdownNotice(error)}</p>
+          <InlinePhase phase={phase} error={error} onRetry={onRetry} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function PersonalUsage() {
+  // Compute, the allowance and overage come from the usage summary, which
+  // stands on its own; the account projection only adds to it.
   const { data, isPending, error, refetch } = useUsageSummary();
+  const breakdown = useAccountUsage();
+  const breakdownPhase = queryPhase({ error: breakdown.error, loading: breakdown.isPending });
+  // A failed refetch keeps stale data; show the notice rather than old figures.
+  const projection = breakdownPhase === 'ready' ? breakdown.data : undefined;
   // The shared precedence: an unreachable API is an outage to wait out, not a
   // red error — and never a page of zeros.
   const phase = queryPhase({ error, loading: isPending });
@@ -295,13 +361,35 @@ function PersonalUsage() {
               value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
             />
           </Stats>
+
           <AllowancePanel used={used} included={included} month={data?.month} />
           <SpendControl overageCents={data?.overage_cents} />
+          {projection ? (
+            <DailyUsagePanel
+              daily={projection.compute.daily}
+              month={projection.month}
+              usedGbHours={used}
+            />
+          ) : (
+            <BreakdownPhase
+              phase={breakdownPhase}
+              error={breakdown.error}
+              onRetry={() => void breakdown.refetch()}
+            />
+          )}
           <PerAppUsagePanel />
+
+          {/* Absent blocks mean the service is not enabled for the account. */}
+          {projection?.object_storage && (
+            <ObjectStorageUsagePanel data={projection.object_storage} />
+          )}
+          {projection?.managed_postgres && (
+            <ManagedPostgresUsagePanel data={projection.managed_postgres} />
+          )}
+
+          <CostBreakdown />
         </>
       )}
-
-      <ObjectStorageUsagePanel />
     </div>
   );
 }

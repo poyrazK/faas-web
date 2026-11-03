@@ -51,9 +51,13 @@ afterEach(() => vi.restoreAllMocks());
 it('sends the work policy with an async invocation', async () => {
   const post = routes();
   mount();
-  expect(screen.queryByText(/Work policy, deadline and destinations/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Retries, retention, deadline, work policy and destinations/)
+  ).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Async' }));
-  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  await userEvent.click(
+    screen.getByText(/Retries, retention, deadline, work policy and destinations/)
+  );
   await waitFor(() =>
     expect(screen.getByRole('option', { name: 'document-index' })).toBeInTheDocument()
   );
@@ -72,7 +76,9 @@ it('refuses a policy without a key, before sending anything', async () => {
   const post = routes();
   mount();
   await userEvent.click(screen.getByRole('button', { name: 'Async' }));
-  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  await userEvent.click(
+    screen.getByText(/Retries, retention, deadline, work policy and destinations/)
+  );
   await waitFor(() =>
     expect(screen.getByRole('option', { name: 'document-index' })).toBeInTheDocument()
   );
@@ -91,4 +97,40 @@ it('sends no async-only fields with a synchronous invocation', async () => {
   expect(path).toBe('/v1/apps/{slug}/invoke');
   expect(init.body).not.toHaveProperty('work');
   expect(init.body).not.toHaveProperty('destinations');
+  expect(init.body).not.toHaveProperty('retry_policy');
+  expect(init.body).not.toHaveProperty('retention_seconds');
+});
+
+it('sends a per-invocation retry policy and retention with an async invocation', async () => {
+  const post = routes();
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Async' }));
+  await userEvent.click(screen.getByText(/Retries, retention, deadline/));
+  await userEvent.type(await screen.findByLabelText('Max attempts'), '4');
+  await userEvent.type(screen.getByLabelText('Longest wait (s)'), '30');
+  await userEvent.type(screen.getByLabelText('Keep the result for'), '2');
+  await userEvent.selectOptions(screen.getByLabelText('Keep the result for unit'), 'days');
+  await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/invoke/async', {
+      params: { path: { slug: 'docs' } },
+      body: expect.objectContaining({
+        retry_policy: { max_attempts: 4, max_seconds: 30 },
+        retention_seconds: 172_800,
+      }),
+    })
+  );
+});
+
+it('refuses a retry policy apid would refuse, before sending anything', async () => {
+  const post = routes();
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Async' }));
+  await userEvent.click(screen.getByText(/Retries, retention, deadline/));
+  await userEvent.type(await screen.findByLabelText('First retry after (s)'), '60');
+  await userEvent.type(screen.getByLabelText('Longest wait (s)'), '10');
+  await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+  // Once in the toast, once under the field that was just left.
+  expect(await screen.findAllByText(/at least the first one/)).toHaveLength(2);
+  expect(post).not.toHaveBeenCalled();
 });

@@ -10,13 +10,18 @@ gregale logout
 
 Browser-approved logins mint a 30-day CLI key tied to this device. The CLI
 stores that key's non-secret id and `gregale logout` revokes exactly that key
-before clearing the local keychain. Use `gregale key list` and
-`gregale key delete <id>` to remove a session from a lost device; CLI sessions are
-labelled `cli-login` and never expose their plaintext after creation.
+before clearing the local keychain. Logging in again, or removing a connection
+profile, revokes the CLI key of the login it replaces. Use `gregale key list`
+(its ID column) and `gregale key delete <id>` to remove a session from a lost
+device; CLI sessions are labelled `cli-login` and never expose their plaintext
+after creation.
 
 For CI, create a scoped project or organization token and expose it as `FAAS_TOKEN`, or pass it once with `gregale login --token "$FAAS_TOKEN"`. Prefer the narrowest scope and a short expiration. Do not commit tokens or pass them as command-line arguments where process listings can expose them.
 Tokens supplied through `FAAS_TOKEN` or `gregale login --token` remain
 non-owning: logout clears local state but does not revoke a shared CI key.
+`FAAS_TOKEN` outranks a saved login, so `gregale login` and `gregale start`
+refuse to run while it is set (unless `--token` passes the same value), and
+`gregale logout` says when `FAAS_TOKEN` is still active.
 
 For a Runs-only agent, mint an account key with `runs:write` instead of the
 default full-access `admin` key:
@@ -30,6 +35,22 @@ streams. `runs:write` can submit and cancel runs and includes those read
 permissions so an agent can follow its work. Existing `apps:read` keys retain
 Runs read access, and existing `deploy:write` keys retain submit/cancel access.
 Both scopes remain account-wide; they do not bind a key to an individual run.
+
+For an agent that uses Gregale's hosted MCP server without a browser, such as
+one in CI, mint an agent key (ADR-20261029085359):
+
+```sh
+gregale key create ci-agent --scopes agent,deploy:write
+```
+
+Only keys with the `agent` scope open the hosted MCP server; other keys are
+refused there. An agent key always includes `apps:read`, can never include
+`admin`, and expires after 90 days unless you choose otherwise. Its other
+scopes pick the agent's tools; see
+[headless agents](mcp.md#headless-agents-with-an-agent-key).
+`gregale mcp connection list` shows agent keys beside hosted MCP sign-ins, and
+`gregale mcp connection revoke` revokes one or all of them; see
+[connected agents](mcp.md#see-and-revoke-connected-agents).
 
 Interactive users can enable MFA from the account settings page. Each authenticator code works once: a code that already verified a session is refused if it is sent again, so wait for the next code. A `401` means the session or token is missing/expired; a `403` means the identity is valid but lacks the required project or organization scope. Rotate a compromised token immediately and review the audit log.
 
@@ -89,6 +110,31 @@ For GitHub Actions, first-use account lookup accepts both the legacy
 `repo:OWNER@OWNER_ID/REPO@REPO_ID:...` form. Gregale uses the owner/repository
 names only to locate an existing GitHub App binding. It verifies and pins the
 complete signed subject, including immutable IDs, in the trust policy.
+
+A trust policy Gregale creates on first use, and every exchange under one,
+accepts only the `gregale` audience (plus any audience the operator lists in
+`FAAS_OIDC_EXCHANGE_AUDIENCES`, comma-separated), so a GitHub token minted for
+another relying party cannot deploy. The token's `repository_owner_id` and
+`repository_id` claims must equal the IDs the repository binding recorded; a
+repository recreated under the same name has to be bound again. Other branches
+and workflows of a bound repository are admitted only under a policy Gregale
+created: a trust policy the account wrote is authoritative.
+
+Under a policy Gregale created, a deploy bearer follows what the GitHub App
+itself deploys (ADR-20261101100000):
+
+- The run must be on a branch Gregale deploys from that repository (the
+  production branch, or a project deploy branch) or on a `v*` release tag, and
+  not a `pull_request` or `pull_request_target` run. A pull request is deployed
+  by merging it; its PR preview is built by the GitHub integration.
+- The exchange names the app to deploy (`app` in the JSON body, or
+  `resource=urn:gregale:app:<app>` in the RFC 8693 form), and the app must be
+  bound to the token's repository. The bearer can act only on that app, like a
+  per-app deploy token.
+
+A refused exchange answers 403 with the allowed refs. To deploy from another
+ref, write the account's trust policy for it. Protect `v*` tags in the
+repository if releases depend on review, as you protect the production branch.
 ## Organization queue permissions
 
 Organization-owned queue operations apply current membership roles alongside

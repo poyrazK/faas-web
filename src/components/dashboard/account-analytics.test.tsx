@@ -32,9 +32,7 @@ const hooks = vi.hoisted(() => ({
   useAppAnalyticsTimeseries: vi.fn(),
   useAppSlo: vi.fn(),
   useAppWakeTimeline: vi.fn(),
-  // The health, awake-time and dependency panels are covered in their own tests.
-  useAppHealth: () => ({ isPending: true, error: null, refetch: vi.fn() }),
-  useAppHealthHistory: () => ({ isPending: true, error: null, refetch: vi.fn() }),
+  // The awake-time and dependency panels are covered in their own tests.
   useRouteAwake: () => ({ isPending: true, error: null, refetch: vi.fn() }),
   useDependencyLatency: () => ({ isPending: true, error: null, refetch: vi.fn() }),
 }));
@@ -43,6 +41,8 @@ vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<object>()),
   ...hooks,
 }));
+// The health panel sits behind its capability gate, and app-health.test.tsx covers it.
+vi.mock('./app-health', () => ({ AppHealthPanel: () => null }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: 'hobby' }, loading: false }),
 }));

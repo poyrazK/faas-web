@@ -1,6 +1,6 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import { useUsageSummary } from './queries';
+import { retryPolicy, useUsageSummary } from './queries';
 import type { components } from './schema';
 import { useWorkspaceTarget } from './workspace-apps';
 
@@ -28,6 +28,43 @@ export function useOrgUsage(org: string) {
     queryFn: ({ signal }) =>
       unwrap(api.GET('/v1/orgs/{slug}/usage', { params: { path: { slug: org } }, signal })),
     enabled: Boolean(org),
+  });
+}
+
+/**
+ * A company's monthly spend cap: integer cents, 0 for no overage, null for no
+ * cap. Any member reads it (faas server.go:4814, OrgActionView). An
+ * organization that owns its resources is billed, and capped, apart from its
+ * members (ADR-20261030093512), so this never falls back to the personal cap.
+ */
+export function useOrgOverageCap(org: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: key(org, 'overage-cap'),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/v1/orgs/{slug}/overage-cap', { params: { path: { slug: org } }, signal })),
+    enabled: Boolean(org) && (options?.enabled ?? true),
+    retry: retryPolicy,
+  });
+}
+
+/**
+ * Set or clear a company's spend cap. Owner only, with admin scope, a verified
+ * email and a step-up from the last five minutes (faas server.go:4815,
+ * org_billing_routes.go:16-25, OrgActionChangePlan). The caller owns the
+ * idempotency key so a retry after the step-up replays the same write.
+ */
+export function useSetOrgOverageCap(org: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ capCents, key: idempotencyKey }: { capCents: number | null; key: string }) =>
+      unwrap(
+        api.POST('/v1/orgs/{slug}/overage-cap', {
+          params: { path: { slug: org } },
+          headers: { 'Idempotency-Key': idempotencyKey },
+          body: { overage_cap_cents: capCents },
+        })
+      ),
+    onSuccess: (next) => qc.setQueryData(key(org, 'overage-cap'), next),
   });
 }
 

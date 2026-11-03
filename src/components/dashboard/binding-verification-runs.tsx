@@ -1,44 +1,56 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { useAuth } from '@/lib/auth';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
+import { Input } from '@/components/ui/input';
 import {
+  CANONICAL_UUID,
   RUN_DEFAULT_CONCURRENCY,
   RUN_MAX_ACTIVE,
   RUN_MAX_CONCURRENCY,
   RUN_MAX_TTL_SECONDS,
+  RUN_STATUSES,
   admitStep,
+  completeBlocker,
   createVerificationRun,
   reviewVerification,
   runAction,
   stepAdmittable,
   stepExplanation,
-  completeBlocker,
   useRunDiagnostics,
   useRunWrites,
   useVerificationRun,
   useVerificationRuns,
   type CompleteBlocker,
   type RunAction,
+  type RunStatusFilter,
   type VerificationDiagnostics,
   type VerificationPlanStep,
   type VerificationReview,
   type VerificationRun,
   type VerificationRunStep,
 } from '@/lib/api/binding-verification';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useConfirm } from '@/components/ui/confirm';
+import { ApiError, errorMessage } from '@/lib/api/errors';
+import { useApp } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { useMutation } from '@tanstack/react-query';
+import { CheckCircle, Clock, WarningTriangle, XmarkCircle } from 'iconoir-react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { SegmentedControl } from './tabs';
 
-const STATUS: Record<string, string> = {
-  pending: 'Pending',
-  passed: 'Passed',
-  blocked: 'Blocked',
-  cancelled: 'Cancelled',
-  expired: 'Expired',
+const STATUS: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
+  pending: { label: 'Pending', color: 'var(--status-warning)', icon: Clock },
+  passed: { label: 'Passed', color: 'var(--status-good)', icon: CheckCircle },
+  blocked: { label: 'Blocked', color: 'var(--status-critical)', icon: WarningTriangle },
+  cancelled: { label: 'Cancelled', color: 'var(--chart-muted)', icon: XmarkCircle },
+  expired: { label: 'Expired', color: 'var(--chart-muted)', icon: Clock },
 };
+
+/** The status filter both run listings take; `all` sends none. */
+export const RUN_STATUS_OPTIONS: readonly { key: RunStatusFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  ...RUN_STATUSES.map((key) => ({ key, label: STATUS[key].label })),
+];
 const ACTION: Record<string, string> = {
   probe: 'Probe',
   'queue-canary': 'Queue canary',
@@ -49,16 +61,16 @@ const ACTION: Record<string, string> = {
   skip: 'Skip',
   blocked: 'Blocked',
 };
-const when = (iso: string) =>
+export const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-const short = (id: string) => id.slice(0, 8);
+export const short = (id: string) => id.slice(0, 8);
 
 /** "step 1", "steps 1 and 2", "steps 1, 2 and 4". */
 function stepList(steps: number[]) {
   if (steps.length === 1) return `step ${steps[0]}`;
   return `steps ${steps.slice(0, -1).join(', ')} and ${steps[steps.length - 1]}`;
 }
-function blockerText(blocker: CompleteBlocker) {
+export function blockerText(blocker: CompleteBlocker) {
   const list = stepList(blocker.steps);
   if (blocker.kind !== 'failed')
     return blocker.kind === 'admit'
@@ -67,18 +79,26 @@ function blockerText(blocker: CompleteBlocker) {
   return `${list[0].toUpperCase()}${list.slice(1)} ended ${blocker.status}. The run can no longer pass; review a new run.`;
 }
 
-function StatusBadge({ status }: { status: string }) {
+/** Colour, icon and label, so a run's state never rests on hue alone. */
+export function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS[status] ?? { label: status, color: 'var(--chart-muted)', icon: Clock };
+  const Icon = cfg.icon;
   return (
-    <Badge
-      variant={status === 'passed' ? 'default' : status === 'pending' ? 'secondary' : 'outline'}
+    <span
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+      style={{
+        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        color: cfg.color,
+      }}
     >
-      {STATUS[status] ?? status}
-    </Badge>
+      <Icon aria-hidden className="h-3 w-3" />
+      {cfg.label}
+    </span>
   );
 }
 
 /** Messages by `ApiError.code` (faas pkg/apid/bindings/verification_runs.go:299-330). */
-function explain(error: unknown, context: 'review' | 'create' | 'run'): string {
+export function explain(error: unknown, context: 'review' | 'create' | 'run'): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'binding_verification_run_changed':
@@ -117,7 +137,9 @@ function explain(error: unknown, context: 'review' | 'create' | 'run'): string {
 export function BindingVerificationRuns({ slug }: { slug: string }) {
   const { account } = useAuth();
   const accountId = account?.id ?? '';
-  const list = useVerificationRuns(accountId, slug);
+  const [status, setStatus] = useState<RunStatusFilter>('all');
+  const [includeMembers, setIncludeMembers] = useState(false);
+  const list = useVerificationRuns(accountId, slug, { status, includeMembers });
   const [selected, setSelected] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const rows = list.data?.pages.flatMap((page) => page.runs) ?? [];
@@ -126,6 +148,10 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
     loading: list.isLoading,
     isEmpty: rows.length === 0,
   });
+  const emptyMessage =
+    status === 'all'
+      ? 'No verification runs are retained for this app.'
+      : `No ${STATUS[status].label.toLowerCase()} verification runs are retained for this app.`;
 
   return (
     <Panel
@@ -150,11 +176,28 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
             }}
           />
         )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <SegmentedControl
+            label="Run status"
+            value={status}
+            options={RUN_STATUS_OPTIONS}
+            onChange={setStatus}
+          />
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={includeMembers}
+              onChange={(event) => setIncludeMembers(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[color:var(--brand)]"
+            />
+            Include project graph members
+          </label>
+        </div>
         <InlinePhase
           phase={phase}
           error={list.error}
           loadingMessage="Loading verification runs…"
-          emptyMessage="No verification runs yet."
+          emptyMessage={emptyMessage}
           onRetry={() => void list.refetch()}
         />
         {phase === 'ready' && (
@@ -176,6 +219,9 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
                       {when(row.created_at)}
                       {row.scope ? ` · ${row.scope}` : ''}
                       {row.deployment_id ? ` · deployment ${short(row.deployment_id)}` : ''}
+                      {row.graph_run_id
+                        ? ` · member of project ${row.project ?? ''} graph ${short(row.graph_run_id)}`
+                        : ''}
                     </span>
                   </div>
                   <Button
@@ -199,6 +245,10 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
                 Load older runs
               </Button>
             )}
+            <p className="text-xs text-muted-foreground">
+              The list shows stored state; expired means past its deadline when the list was read.
+              Open a run to recheck it against current results.
+            </p>
           </>
         )}
         {selected && <RunDetail key={selected} slug={slug} runId={selected} />}
@@ -419,7 +469,7 @@ function bindingLabel(plan: VerificationPlanStep) {
   return `${plan.type} · ${plan.name}${binding}`;
 }
 
-function StepRow({
+export function StepRow({
   index,
   step,
   blockers,
@@ -472,7 +522,7 @@ function StepRow({
   );
 }
 
-function Diagnostics({
+export function Diagnostics({
   phase,
   error,
   data,
@@ -480,9 +530,16 @@ function Diagnostics({
 }: {
   phase: ReturnType<typeof queryPhase>;
   error: unknown;
-  data: VerificationDiagnostics | undefined;
+  /** An app run's diagnostics, or the graph-level part of a project graph's. */
+  data:
+    | (Pick<
+        VerificationDiagnostics,
+        'checked_at' | 'complete' | 'budget' | 'blockers' | 'changes' | 'recovery'
+      > & { check_passed?: boolean })
+    | undefined;
   onRetry: () => void;
 }) {
+  const graph = data !== undefined && 'members' in data;
   return (
     <div className="space-y-2">
       <h3 className="label-mono text-foreground">Diagnostics</h3>
@@ -496,11 +553,13 @@ function Diagnostics({
         <div className="space-y-2 text-xs">
           <p className="text-muted-foreground">
             Checked {when(data.checked_at)}.{' '}
-            {data.check_passed === undefined
-              ? 'The current policy check was not evaluated.'
-              : data.check_passed
-                ? 'Current checks satisfy the current policy.'
-                : 'Current checks do not yet satisfy the current policy.'}{' '}
+            {graph
+              ? 'Each member’s policy check is shown with the member.'
+              : data.check_passed === undefined
+                ? 'The current policy check was not evaluated.'
+                : data.check_passed
+                  ? 'Current results satisfy the current policy.'
+                  : 'Current results do not yet satisfy the current policy.'}{' '}
             {!data.complete && 'Some reads failed; retry for a full picture.'}
           </p>
           {data.budget && (
@@ -562,15 +621,27 @@ function ReviewNewRun({
   onCreated: (id: string) => void;
 }) {
   const { account } = useAuth();
-  const refresh = useRunWrites(account?.id ?? '', slug);
+  const accountId = account?.id ?? '';
+  const refresh = useRunWrites(accountId, slug);
+  const app = useApp(slug, { enabled: Boolean(accountId) }, accountId);
+  const services = [...new Set((app.data?.service_bindings ?? []).map((b) => b.service))].sort();
   const [deployment, setDeployment] = useState('');
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  const chosen = Object.fromEntries(
+    Object.entries(targets)
+      .map(([service, id]) => [service, id.trim()] as const)
+      .filter(([service, id]) => id && services.includes(service))
+  );
+  const invalidTargets = Object.entries(chosen)
+    .filter(([, id]) => !CANONICAL_UUID.test(id))
+    .map(([service]) => service);
   const review = useMutation({
-    mutationFn: () => reviewVerification(slug, deployment.trim() || undefined),
+    mutationFn: () => reviewVerification(slug, deployment.trim() || undefined, chosen),
   });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    review.mutate();
+    if (!invalidTargets.length) review.mutate();
   }
 
   return (
@@ -587,7 +658,37 @@ function ReviewNewRun({
             className="w-80 max-w-full font-mono"
           />
         </label>
-        <Button type="submit" size="sm" disabled={review.isPending}>
+        {services.length > 0 && (
+          <fieldset className="flex min-w-0 basis-full flex-col gap-2">
+            <legend className="text-xs text-muted-foreground">
+              Service targets (optional): pin a declared service to one of its live deployments in
+              this scope, such as a candidate before it serves. Leave a service empty to verify
+              against what serves now; a managed environment deployment takes its targets from its
+              reviewed release.
+            </legend>
+            {services.map((service) => (
+              <label key={service} className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="w-32 truncate font-mono text-xs">{service}</span>
+                <Input
+                  aria-label={`Target deployment for ${service}`}
+                  placeholder="Deployment UUID"
+                  value={targets[service] ?? ''}
+                  onChange={(e) =>
+                    setTargets((current) => ({ ...current, [service]: e.target.value }))
+                  }
+                  aria-invalid={invalidTargets.includes(service) || undefined}
+                  className="w-80 max-w-full font-mono"
+                />
+              </label>
+            ))}
+            {invalidTargets.length > 0 && (
+              <p role="alert" className="text-xs">
+                Enter {invalidTargets.join(', ')} as a full lowercase deployment UUID.
+              </p>
+            )}
+          </fieldset>
+        )}
+        <Button type="submit" size="sm" disabled={review.isPending || invalidTargets.length > 0}>
           {review.isPending ? 'Reviewing…' : 'Review plan'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>
@@ -659,6 +760,15 @@ function ReviewResult({
         {review.scope} · policy revision {review.policy.revision} · reviewed{' '}
         {when(review.reviewed_at)}
       </p>
+      {Object.keys(review.service_targets).length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Service targets:{' '}
+          {Object.entries(review.service_targets)
+            .map(([service, id]) => `${service} → ${short(id)}`)
+            .join(', ')}
+          . The run verifies against these deployments, not what serves now.
+        </p>
+      )}
       {review.blockers.length > 0 && (
         <ul role="alert" className="list-disc space-y-1 pl-5">
           {review.blockers.map((b, i) => (

@@ -16,3 +16,19 @@ export function formatCents(cents: number): string {
 export function formatMillicents(millicents: number): string {
   return dollars.format(millicents / 100_000);
 }
+
+const rates = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: ACCOUNT_CURRENCY,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 5,
+});
+
+/**
+ * A unit price in integer millicents. A rate can be a fraction of a cent (a
+ * per-byte price), which `formatMillicents` would round to $0.00, so this
+ * keeps every millicent: five decimal places of a dollar.
+ */
+export function formatMillicentRate(millicents: number): string {
+  return rates.format(millicents / 100_000);
+}

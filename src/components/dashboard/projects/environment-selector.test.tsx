@@ -51,6 +51,8 @@ it('selects production only when registered, and reads its exact state', async (
   const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/projects/{slug}/environments') return ok(environments);
     if (path === '/v1/projects/{slug}/environments/{environment}') return ok(environments[0]);
+    if (path === '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs')
+      return ok({ runs: [], observed_at: '2026-10-09T10:00:00Z' });
     return ok({
       project_slug: 'shop',
       environment: 'production',
@@ -74,6 +76,10 @@ it('selects production only when registered, and reads its exact state', async (
     '/v1/projects/{slug}/environments/{environment}/state',
     expect.objectContaining({ params: { path: { slug: 'shop', environment: 'production' } } })
   );
+  // The environment's project-wide binding verification graphs.
+  expect(
+    await screen.findByText('No graph verification runs are retained for production.')
+  ).toBeInTheDocument();
 });
 it('does not invent a named environment for an empty registry', async () => {
   const get = spyApi('GET').mockResolvedValue(ok([]));

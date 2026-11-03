@@ -27,8 +27,8 @@ export function useGitHubConnection(slug: string) {
 }
 
 /**
- * Sync and disconnect take a `github_install_manage` token that only the
- * status read mints (it is not one of `/v1/auth/csrf`'s actions). Every read
+ * Sync, disconnect and activity retry take a `github_install_manage` token
+ * that only the status read mints (not one of `/v1/auth/csrf`'s actions). Every read
  * rewrites the HttpOnly cookie, and the token lives ten minutes, so the token
  * cached with the status may no longer match — read it fresh per mutation.
  * An in-flight status read is cancelled first: landing after this one, it
@@ -54,6 +54,35 @@ export function useSyncGitHub(slug: string) {
       );
     },
     onSuccess: (status) => qc.setQueryData(githubConnectionKey(slug), status),
+  });
+}
+
+export type GitHubActivityRetry = components['schemas']['GitHubActivityRetryResponse'];
+
+/**
+ * Requeue up to ten recent dead pushes and Check Run updates (faas
+ * handlers_github_connection.go:132-157). The answer is counts only.
+ *
+ * The caller names the attempt with `idempotencyKey`, so a resend of the same
+ * click carries the same key. Only the bearer twin
+ * (`/github/activity/retry`) replays on it, and that route refuses a browser
+ * session; this one requeues only rows that are still dead, so a duplicate
+ * finds nothing left to queue rather than queuing twice.
+ */
+export function useRetryGitHubActivity(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (idempotencyKey: string): Promise<GitHubActivityRetry> => {
+      const csrf_token = await manageToken(qc, slug);
+      return unwrap(
+        api.POST('/v1/apps/{slug}/install/activity/retry', {
+          params: { path: { slug } },
+          body: { csrf_token },
+          headers: { 'Idempotency-Key': idempotencyKey },
+        })
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: githubConnectionKey(slug) }),
   });
 }
 

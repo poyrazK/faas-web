@@ -26,6 +26,24 @@ vi.mock('@/components/dashboard/resource-table', () => ({
   ResourceTable: () => null,
 }));
 vi.mock('@/components/dashboard/domain-doctor', () => ({ DomainDoctor: () => null }));
+// The add form's plan gate and environment choice (domain-add-form.tsx).
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1', plan: 'pro' } }) }));
+vi.mock('@/lib/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/projects')>()),
+  useProjectMembership: () => ({
+    projectOfApp: new Map(),
+    state: 'ready',
+    list: { error: null },
+    details: [],
+    retry: () => {},
+  }),
+  useProjectEnvironments: () => ({
+    data: undefined,
+    isPending: true,
+    error: null,
+    refetch: () => {},
+  }),
+}));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
 }));

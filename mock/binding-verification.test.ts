@@ -1,12 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BindingMockProblem,
   admitRunStep,
+  cancelGraphRun,
+  completeGraphRun,
   completeRun,
   createRun,
+  getGraphRun,
   goDuration,
+  graphRunDiagnostics,
+  listGraphRuns,
   listRuns,
   readReleasePolicy,
+  recoveryRefused,
+  releaseGate,
+  resumeGraphRun,
   reviewRun,
   writeReleasePolicy,
 } from './binding-verification';
@@ -102,5 +110,91 @@ describe('verification runs (faas bindings/verification_runs.go)', () => {
     expect(admitRunStep(a, id, probe)).toMatchObject({ owned: true, resource_kind: 'task' });
     // max_concurrency 1: the unfinished probe holds the only slot.
     expect(code(() => admitRunStep(a, id, canary))).toBe('binding_verification_budget_full');
+  });
+});
+
+describe('the release gate on a traffic increase (handlers_binding_promotion.go)', () => {
+  const a = { id: 'app-gate', slug: 'gate-app', live: '33333333-3333-4333-8333-333333333333' };
+
+  it('passes an unenforced scope and blocks an enforced one without fresh evidence', () => {
+    expect(releaseGate(a, a.live, undefined)).toBeNull();
+    expect(recoveryRefused(a, undefined)).toBe(false);
+    writeReleasePolicy(a, null, 'queues', {
+      mode: 'enforce',
+      expected_revision: 0,
+      queue_requirements: { orders: 'handler_completion' },
+    });
+    expect(recoveryRefused(a, 'default')).toBe(true);
+    const report = releaseGate(a, a.live, 'default');
+    expect(report).toMatchObject({ passed: false, deployment_id: a.live, scope: 'default' });
+    expect(report?.blockers.map((b) => b.code)).toEqual([
+      'verification_unknown',
+      'queue_completion_unverified',
+    ]);
+    // Another scope's policy is its own.
+    expect(releaseGate(a, a.live, 'canary')).toBeNull();
+  });
+});
+
+describe('project graph runs (handlers_project_binding_verification_runs.go)', () => {
+  const apps = [
+    { id: 'graph-a', slug: 'graph-api', live: '44444444-4444-4444-8444-444444444444' },
+    { id: 'graph-b', slug: 'graph-worker', live: '55555555-5555-4555-8555-555555555555' },
+  ];
+  const at = (project = 'acme-shop') => [project, 'production', apps] as const;
+
+  afterEach(() => vi.useRealTimers());
+
+  it('seeds the acme-shop production graph and filters by effective status', () => {
+    const all = listGraphRuns(...at(), new URLSearchParams());
+    expect(all.runs.map((r) => r.status)).toEqual(['pending', 'expired', 'cancelled']);
+    expect(listGraphRuns(...at(), new URLSearchParams('status=expired')).runs).toHaveLength(1);
+    expect(listGraphRuns(...at('elsewhere'), new URLSearchParams()).runs).toEqual([]);
+    expect(code(() => listGraphRuns(...at(), new URLSearchParams('include_members=true')))).toBe(
+      'validation_failed'
+    );
+  });
+
+  it('keeps graph members out of an app listing unless asked', () => {
+    const graph = getGraphRun(...at(), listGraphRuns(...at(), new URLSearchParams()).runs[0].id);
+    const member = graph.members['graph-api'];
+    expect(member.graph_run_id).toBe(graph.id);
+    const ids = (query: string) =>
+      listRuns(apps[0], new URLSearchParams(query)).runs.map((r) => r.id);
+    expect(ids('')).not.toContain(member.id);
+    expect(ids('include_members=true')).toContain(member.id);
+    expect(
+      listRuns(apps[0], new URLSearchParams('include_members=true')).runs.find(
+        (r) => r.id === member.id
+      )
+    ).toMatchObject({ graph_run_id: graph.id, project: 'acme-shop', environment: 'production' });
+  });
+
+  it('completes only once every member’s admitted steps succeeded, all at once', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const id = listGraphRuns(...at(), new URLSearchParams('status=pending')).runs[0].id;
+    let graph = getGraphRun(...at(), id);
+    expect(code(() => completeGraphRun(...at(), id))).toBe('binding_verification_run_changed');
+    for (const [slug, member] of Object.entries(graph.members)) {
+      const app = apps.find((a) => a.slug === slug)!;
+      // A member completes through its graph, never alone.
+      expect(code(() => completeRun(app, member.id))).toBe('binding_verification_run_changed');
+      member.steps.forEach((step, index) => {
+        if (step.plan.action === 'probe') admitRunStep(app, member.id, index);
+      });
+    }
+    vi.setSystemTime(Date.now() + 5_000);
+    graph = completeGraphRun(...at(), id);
+    expect(graph.status).toBe('passed');
+    expect(Object.values(graph.members).map((m) => m.status)).toEqual(['passed', 'passed']);
+    expect(graphRunDiagnostics(...at(), id)).toMatchObject({ status: 'passed', recovery: [] });
+  });
+
+  it('cancels every member with the graph', () => {
+    const id = listGraphRuns(...at(), new URLSearchParams()).runs[0].id;
+    const graph = cancelGraphRun(...at(), id);
+    expect(graph.status).toBe('cancelled');
+    expect(Object.values(graph.members).every((m) => m.status === 'cancelled')).toBe(true);
+    expect(code(() => resumeGraphRun(...at(), id))).toBe('binding_verification_run_changed');
   });
 });
