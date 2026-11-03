@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import type { components } from '@/lib/api/schema';
+import { useWebhooks } from '@/lib/api/queries';
 import { validateCacheAction } from '@/lib/cache-policy';
 import { CorsPresetPicker } from '../cors-presets';
+import { SegmentedControl } from '../tabs';
 import {
   ChipSet,
   HeaderOpsField,
   JsonField,
+  JsonValueField,
   KeyValueField,
   LinesField,
   NumberField,
@@ -49,6 +52,11 @@ export interface ActionMap {
   budget: S['EdgeRuleBudgetAction'];
   cache: S['EdgeRuleCacheAction'];
   challenge: S['EdgeRuleChallengeAction'];
+  waf: S['EdgeRuleWAFAction'];
+  retry: S['EdgeRuleRetryAction'];
+  circuit_breaker: S['EdgeRuleCircuitBreakerAction'];
+  async: S['EdgeRuleAsyncAction'];
+  respond: S['EdgeRuleRespondAction'];
 }
 
 export type Kind = keyof ActionMap;
@@ -63,6 +71,12 @@ export interface ActionFormProps<A> {
   slug: string;
   /** Rendered by the throttle form; supplied by the dialog. */
   suggest?: ReactNode;
+  /**
+   * Whether WAF warn and block are released to the account (the
+   * edge-waf-blocking flag). Unreleased, a warn or block rule only observes
+   * (faas edgerules/release.go:66), so the WAF form offers observe alone.
+   */
+  wafBlocking?: boolean;
 }
 
 export interface KindDef<K extends Kind> {
@@ -70,6 +84,16 @@ export interface KindDef<K extends Kind> {
   desc: string;
   /** Free plans get 402 for these; the picker says so before the server does. */
   paid?: boolean;
+  /** The plans whose quota for the kind is above zero, when narrower than every paid plan. */
+  plans?: readonly string[];
+  /**
+   * The catalog capability that owns `edge_rule.<kind>` (faas
+   * productcap/catalog.json), when it is released per account: apid refuses
+   * the kind with 403 capability_not_released until it is.
+   */
+  capability?: string;
+  /** A stage worth saying on the picker: preview, or released on request. */
+  stage?: string;
   empty: () => ActionMap[K];
   summary: (action: ActionMap[K]) => string;
   validate: (action: ActionMap[K]) => Record<string, string>;
@@ -88,6 +112,12 @@ const ALGORITHMS = ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512'] as con
 
 const required = (value: string | undefined, field: string, message: string) =>
   value?.trim() ? {} : { [field]: message };
+
+const between = (n: number | undefined, min: number, max: number) =>
+  n !== undefined && Number.isInteger(n) && n >= min && n <= max;
+
+/** A respond body whose text does not parse: refused locally, never sent. */
+const INVALID_JSON: unknown = Object.freeze({ invalidJson: true });
 
 const bytes = (n: number | undefined) =>
   n == null ? '—' : n >= 1e6 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`;
@@ -768,9 +798,502 @@ export const KINDS = {
       </div>
     ),
   }),
+  // edge_rule.waf is the edge-protection capability; WAF rules are Pro and
+  // Scale only (docs/edge-rules.md §Limits: 0 on Free and Hobby).
+  waf: def<'waf'>({
+    label: 'Web application firewall',
+    desc: 'Inspect requests with the OWASP Core Rule Set. Observe reports detections; warn tags the response; block answers 403.',
+    paid: true,
+    plans: ['pro', 'scale'],
+    capability: 'edge-protection',
+    empty: () => ({
+      mode: 'observe',
+      paranoia_level: 1,
+      anomaly_threshold: 5,
+      exclude_rule_ids: [],
+      inspect_body_bytes: 8192,
+    }),
+    summary: (a) =>
+      `${a.mode ?? 'observe'} · paranoia ${a.paranoia_level ?? 1} · threshold ${a.anomaly_threshold ?? 5}${
+        a.exclude_rule_ids?.length ? ` · ${a.exclude_rule_ids.length} excluded` : ''
+      }`,
+    validate: (a): Record<string, string> => ({
+      ...(a.paranoia_level === undefined || a.paranoia_level === 1 || a.paranoia_level === 2
+        ? {}
+        : { paranoia_level: 'Level 1 or 2.' }),
+      ...((a.mode === 'warn' || a.mode === 'block') && (a.paranoia_level ?? 1) !== 1
+        ? { paranoia_level: 'Warn and block run at paranoia level 1 only.' }
+        : {}),
+      ...(a.anomaly_threshold === undefined || between(a.anomaly_threshold, 1, 100)
+        ? {}
+        : { anomaly_threshold: 'From 1 to 100.' }),
+      ...(a.inspect_body_bytes === undefined || between(a.inspect_body_bytes, 1, 65536)
+        ? {}
+        : { inspect_body_bytes: 'From 1 to 65536 bytes.' }),
+      ...((a.exclude_rule_ids ?? []).length > 50
+        ? { exclude_rule_ids: 'At most 50 rule IDs.' }
+        : (a.exclude_rule_ids ?? []).every((id) => between(id, 900000, 999999))
+          ? {}
+          : { exclude_rule_ids: 'CRS rule IDs run from 900000 to 999999.' }),
+    }),
+    Form: ({ value, onChange, errors, wafBlocking }) => {
+      const mode = value.mode ?? 'observe';
+      return (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Mode</span>
+            <SegmentedControl
+              label="WAF mode"
+              value={mode}
+              options={[
+                { key: 'observe', label: 'Observe' },
+                ...(wafBlocking || mode !== 'observe'
+                  ? [
+                      { key: 'warn' as const, label: 'Warn' },
+                      { key: 'block' as const, label: 'Block' },
+                    ]
+                  : []),
+              ]}
+              onChange={(next) =>
+                onChange({
+                  ...value,
+                  mode: next,
+                  ...(next !== 'observe' ? { paranoia_level: 1 } : {}),
+                })
+              }
+            />
+            <span className="text-xs text-muted-foreground">
+              {!wafBlocking
+                ? 'Warn and block are not released to this account yet; until they are, a rule only observes.'
+                : mode === 'observe'
+                  ? 'Samples requests, bodies included, off the request path and reports detections. Nothing is blocked.'
+                  : mode === 'warn'
+                    ? 'Also checks headers and URL in the request path: a detected request is served with an X-WAF-Warning response header.'
+                    : 'Also checks headers and URL in the request path: a detected request is answered 403. Bodies are never blocked.'}
+            </span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <SelectField
+              label="Paranoia level"
+              hint="Level 2 detects more and flags more legitimate traffic. Observe only."
+              error={errors.paranoia_level}
+              value={String(value.paranoia_level ?? 1)}
+              onChange={(v) => onChange({ ...value, paranoia_level: Number(v) })}
+              options={[
+                { value: '1', label: '1' },
+                ...(mode === 'observe' ? [{ value: '2', label: '2' }] : []),
+              ]}
+            />
+            <NumberField
+              label="Anomaly threshold"
+              hint="Score at which a request counts as a detection; one critical match scores 5."
+              error={errors.anomaly_threshold}
+              value={value.anomaly_threshold}
+              min={1}
+              onChange={(anomaly_threshold) => onChange({ ...value, anomaly_threshold })}
+            />
+            <NumberField
+              label="Inspect body (bytes)"
+              hint="Body prefix inspected, up to 65536. Larger uses more of the app's budget."
+              error={errors.inspect_body_bytes}
+              value={value.inspect_body_bytes}
+              min={1}
+              onChange={(inspect_body_bytes) => onChange({ ...value, inspect_body_bytes })}
+            />
+          </div>
+          <StringListField
+            label="Excluded CRS rules"
+            hint="Rule IDs left out of scoring on this route, for known false positives. The WAF review can add them for you."
+            error={errors.exclude_rule_ids}
+            value={(value.exclude_rule_ids ?? []).map(String)}
+            onChange={(ids) =>
+              onChange({ ...value, exclude_rule_ids: ids.map(Number).filter(Number.isFinite) })
+            }
+            placeholder="942100"
+            normalize={(s) => s.replace(/\D/g, '')}
+          />
+        </div>
+      );
+    },
+  }),
+
+  // edge_rule.retry is the request-retry capability, released per account
+  // (docs/edge-rules.md: "on request"); Free has a quota of 0.
+  retry: def<'retry'>({
+    label: 'Retry on another instance',
+    desc: 'Replay a request that failed in transport on a healthy sibling. An app that answered 5xx is never replayed.',
+    paid: true,
+    capability: 'request-retry',
+    stage: 'on request',
+    empty: () => ({
+      max_attempts: 2,
+      allow_non_idempotent: false,
+      min_remaining_ms: 250,
+      backoff_ms: 0,
+      budget_percent: 10,
+      budget_min_retries: 1,
+    }),
+    summary: (a) =>
+      `${a.max_attempts ?? 2} attempts · budget ${a.budget_percent ?? 10}%${a.allow_non_idempotent ? ' · POST/PATCH with key' : ''}`,
+    validate: (a): Record<string, string> => ({
+      ...(a.max_attempts === undefined || a.max_attempts === 2 || a.max_attempts === 3
+        ? {}
+        : { max_attempts: '2 or 3. It counts attempts, not retries: 2 is one replay.' }),
+      ...(a.min_remaining_ms === undefined || between(a.min_remaining_ms, 0, 30000)
+        ? {}
+        : { min_remaining_ms: 'From 0 to 30000 ms.' }),
+      ...(a.backoff_ms === undefined || between(a.backoff_ms, 0, 1000)
+        ? {}
+        : { backoff_ms: 'From 0 to 1000 ms.' }),
+      ...(a.budget_percent === undefined || between(a.budget_percent, 1, 100)
+        ? {}
+        : { budget_percent: 'From 1 to 100.' }),
+      ...(a.budget_min_retries === undefined || between(a.budget_min_retries, 0, 32)
+        ? {}
+        : { budget_min_retries: 'From 0 to 32.' }),
+    }),
+    Form: ({ value, onChange, errors }) => (
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SelectField
+            label="Attempts"
+            hint="Counts the original: 2 is one replay."
+            error={errors.max_attempts}
+            value={String(value.max_attempts ?? 2)}
+            onChange={(v) => onChange({ ...value, max_attempts: Number(v) })}
+            options={[
+              { value: '2', label: '2' },
+              { value: '3', label: '3' },
+            ]}
+          />
+          <NumberField
+            label="Budget (% of requests)"
+            hint="At most this share of the app's requests is replayed, so an outage cannot double traffic."
+            error={errors.budget_percent}
+            value={value.budget_percent}
+            min={1}
+            onChange={(budget_percent) => onChange({ ...value, budget_percent })}
+          />
+          <NumberField
+            label="Minimum replays"
+            hint="Per window, so a quiet app keeps one recovery chance. 0 to 32."
+            error={errors.budget_min_retries}
+            value={value.budget_min_retries}
+            onChange={(budget_min_retries) => onChange({ ...value, budget_min_retries })}
+          />
+          <NumberField
+            label="Minimum time left (ms)"
+            hint="Skip the replay when less of the request budget remains. 0 uses 250."
+            error={errors.min_remaining_ms}
+            value={value.min_remaining_ms}
+            onChange={(min_remaining_ms) => onChange({ ...value, min_remaining_ms })}
+          />
+          <NumberField
+            label="Backoff (ms)"
+            hint="Delay before the replay, up to 1000. The next instance is a different process, so 0 is usual."
+            error={errors.backoff_ms}
+            value={value.backoff_ms}
+            onChange={(backoff_ms) => onChange({ ...value, backoff_ms })}
+          />
+        </div>
+        <div className="border-t border-border">
+          <ToggleRow
+            label="Replay POST and PATCH"
+            hint="Only requests carrying an Idempotency-Key header, and only if your handler returns the stored result for a repeated key; otherwise the side effect runs twice."
+            checked={value.allow_non_idempotent ?? false}
+            onChange={(allow_non_idempotent) => onChange({ ...value, allow_non_idempotent })}
+          />
+        </div>
+      </div>
+    ),
+  }),
+
+  // edge_rule.circuit_breaker is the circuit-breaking capability, released
+  // per account; Free has a quota of 0. It tunes a breaker every app has.
+  circuit_breaker: def<'circuit_breaker'>({
+    label: 'Circuit breaker',
+    desc: 'Tune when a failing instance is taken out of rotation. Every app already has a breaker; this changes its thresholds.',
+    paid: true,
+    capability: 'circuit-breaking',
+    stage: 'on request',
+    empty: () => ({
+      failure_threshold: 0.5,
+      min_requests: 5,
+      window_seconds: 10,
+      open_seconds: 5,
+      max_open_seconds: 60,
+    }),
+    summary: (a) =>
+      `${Math.round((a.failure_threshold ?? 0.5) * 100)}% of ${a.min_requests ?? 5} in ${a.window_seconds ?? 10} s · open ${a.open_seconds ?? 5}–${a.max_open_seconds ?? 60} s`,
+    validate: (a): Record<string, string> => ({
+      ...(a.failure_threshold === undefined || (a.failure_threshold > 0 && a.failure_threshold <= 1)
+        ? {}
+        : { failure_threshold: 'A ratio above 0 and at most 1, such as 0.5.' }),
+      ...(a.min_requests === undefined || between(a.min_requests, 1, 1000)
+        ? {}
+        : { min_requests: 'From 1 to 1000.' }),
+      ...(a.window_seconds === undefined || between(a.window_seconds, 1, 300)
+        ? {}
+        : { window_seconds: 'From 1 to 300 seconds.' }),
+      ...(a.open_seconds === undefined || between(a.open_seconds, 1, 3600)
+        ? {}
+        : { open_seconds: 'From 1 to 3600 seconds.' }),
+      ...(a.max_open_seconds === undefined ||
+      (between(a.max_open_seconds, 1, 3600) && a.max_open_seconds >= (a.open_seconds ?? 5))
+        ? {}
+        : { max_open_seconds: 'From the first open interval up to 3600 seconds.' }),
+    }),
+    Form: ({ value, onChange, errors }) => (
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextField
+            label="Failure ratio"
+            hint="Opens at or above this share of failures, 0 to 1. 0.5 is half."
+            error={errors.failure_threshold}
+            value={value.failure_threshold === undefined ? '' : String(value.failure_threshold)}
+            onChange={(v) =>
+              onChange({ ...value, failure_threshold: v.trim() === '' ? undefined : Number(v) })
+            }
+            placeholder="0.5"
+          />
+          <NumberField
+            label="Minimum requests"
+            hint="Observations in the window before the ratio counts. At 1, one blip opens it."
+            error={errors.min_requests}
+            value={value.min_requests}
+            min={1}
+            onChange={(min_requests) => onChange({ ...value, min_requests })}
+          />
+          <NumberField
+            label="Window (seconds)"
+            hint="Rolling failure window, up to 300."
+            error={errors.window_seconds}
+            value={value.window_seconds}
+            min={1}
+            onChange={(window_seconds) => onChange({ ...value, window_seconds })}
+          />
+          <NumberField
+            label="First open (seconds)"
+            hint="Before one probe request is let through. Doubles after each failed probe."
+            error={errors.open_seconds}
+            value={value.open_seconds}
+            min={1}
+            onChange={(open_seconds) => onChange({ ...value, open_seconds })}
+          />
+          <NumberField
+            label="Longest open (seconds)"
+            hint="The ceiling the doubling grows to, up to 3600."
+            error={errors.max_open_seconds}
+            value={value.max_open_seconds}
+            min={1}
+            onChange={(max_open_seconds) => onChange({ ...value, max_open_seconds })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          The breaker is per app: the highest-priority rule tunes it for every instance, whatever
+          its path. A change reaches the gateways within 30 seconds.
+        </p>
+      </div>
+    ),
+  }),
+
+  // edge_rule.async is the async-routes capability (preview); Free plans
+  // cannot invoke asynchronously (edgerules/rules_core.go:103).
+  async: def<'async'>({
+    label: 'Run asynchronously',
+    desc: 'Accept the request with 202 and a status URL, store it, and run it later without keeping the caller waiting.',
+    paid: true,
+    capability: 'async-routes',
+    stage: 'preview',
+    empty: () => ({}),
+    summary: (a) => {
+      const attempts = a.retry_policy?.max_attempts;
+      return [
+        '202 accepted',
+        attempts ? `${attempts} attempts` : '',
+        a.max_age_seconds ? `max age ${a.max_age_seconds} s` : '',
+        a.on_success || a.on_failure ? 'webhooks' : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    },
+    validate: (a): Record<string, string> => {
+      const r = a.retry_policy ?? {};
+      return {
+        ...(a.max_age_seconds === undefined || between(a.max_age_seconds, 0, 86400)
+          ? {}
+          : { max_age_seconds: 'From 0 to 86400 seconds.' }),
+        ...(r.max_attempts === undefined || between(r.max_attempts, 0, 25)
+          ? {}
+          : { 'retry_policy.max_attempts': 'From 0 to 25.' }),
+        ...(r.jitter_seconds === undefined ||
+        (Number.isFinite(r.jitter_seconds) && r.jitter_seconds >= 0 && r.jitter_seconds <= 1)
+          ? {}
+          : { 'retry_policy.jitter_seconds': 'A fraction from 0 to 1.' }),
+        ...(r.base_seconds !== undefined && !(r.base_seconds >= 0)
+          ? { 'retry_policy.base_seconds': 'Zero or more seconds.' }
+          : {}),
+        ...(r.max_seconds !== undefined &&
+        (!(r.max_seconds >= 0) ||
+          ((r.base_seconds ?? 0) > 0 && r.max_seconds > 0 && r.max_seconds < (r.base_seconds ?? 0)))
+          ? { 'retry_policy.max_seconds': 'At least the base delay.' }
+          : {}),
+      };
+    },
+    Form: ({ value, onChange, errors, slug }) => {
+      const retry = value.retry_policy ?? {};
+      const setRetry = (patch: Partial<NonNullable<typeof value.retry_policy>>) => {
+        const next: Record<string, number | undefined> = { ...retry, ...patch };
+        for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+        onChange({ ...value, retry_policy: Object.keys(next).length ? next : undefined });
+      };
+      const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
+      return (
+        <div className="flex flex-col gap-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            The app receives the original method, path, JSON body and safe headers later; its
+            workload has to accept request invocations. Empty fields keep the app and plan defaults.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <WebhookSelect
+              slug={slug}
+              label="On success"
+              hint="A webhook subscription of this app that receives the job.finished outcome."
+              value={value.on_success}
+              onChange={(on_success) => onChange({ ...value, on_success })}
+            />
+            <WebhookSelect
+              slug={slug}
+              label="On failure"
+              hint="Receives failed and dead-lettered outcomes."
+              value={value.on_failure}
+              onChange={(on_failure) => onChange({ ...value, on_failure })}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <NumberField
+              label="Max age (seconds)"
+              hint="Lifetime from acceptance; 0 inherits the plan's deadline, which also caps it."
+              error={errors.max_age_seconds}
+              value={value.max_age_seconds}
+              onChange={(max_age_seconds) => onChange({ ...value, max_age_seconds })}
+            />
+            <NumberField
+              label="Attempts"
+              hint="Including the first, up to 25 and your plan's cap; 0 inherits."
+              error={errors['retry_policy.max_attempts']}
+              value={retry.max_attempts}
+              onChange={(max_attempts) => setRetry({ max_attempts })}
+            />
+            <TextField
+              label="Jitter"
+              hint="Symmetric fraction of the delay, 0 to 1."
+              error={errors['retry_policy.jitter_seconds']}
+              value={retry.jitter_seconds === undefined ? '' : String(retry.jitter_seconds)}
+              onChange={(v) => setRetry({ jitter_seconds: num(v) })}
+              placeholder="0.1"
+            />
+            <TextField
+              label="Base delay (seconds)"
+              hint="Exponential backoff starts here."
+              error={errors['retry_policy.base_seconds']}
+              value={retry.base_seconds === undefined ? '' : String(retry.base_seconds)}
+              onChange={(v) => setRetry({ base_seconds: num(v) })}
+              placeholder="1"
+            />
+            <TextField
+              label="Max delay (seconds)"
+              hint="The backoff's ceiling."
+              error={errors['retry_policy.max_seconds']}
+              value={retry.max_seconds === undefined ? '' : String(retry.max_seconds)}
+              onChange={(v) => setRetry({ max_seconds: num(v) })}
+              placeholder="60"
+            />
+          </div>
+        </div>
+      );
+    },
+  }),
+
+  // Preview apps only (edgerules/rules_core.go:147); every plan.
+  respond: def<'respond'>({
+    label: 'Fixed response',
+    desc: 'Answer with a fixed JSON body, so a preview frontend can be built before its endpoint exists.',
+    empty: () => ({ status_code: 200, body: {} }),
+    summary: (a) => `${a.status_code}${a.body === undefined ? ' · empty' : ' · JSON'}`,
+    validate: (a): Record<string, string> => ({
+      ...(between(a.status_code, 200, 599) ? {} : { status_code: 'From 200 to 599.' }),
+      ...(a.body === INVALID_JSON
+        ? { body: 'Fix the JSON first.' }
+        : a.body !== undefined && new TextEncoder().encode(JSON.stringify(a.body)).length > 65536
+          ? { body: 'At most 64 KiB.' }
+          : {}),
+    }),
+    Form: ({ value, onChange, errors }) => (
+      <div className="flex flex-col gap-4">
+        <NumberField
+          label="Status"
+          hint="200 to 599."
+          error={errors.status_code}
+          value={value.status_code}
+          min={200}
+          onChange={(status_code) => onChange({ ...value, status_code: status_code ?? 0 })}
+          className="sm:w-56"
+        />
+        <JsonValueField
+          label="Body"
+          hint="Any JSON value, up to 64 KiB. Empty sends no body."
+          error={errors.body}
+          value={value.body}
+          onChange={(body) => onChange({ ...value, body })}
+          onInvalid={() => onChange({ ...value, body: INVALID_JSON })}
+        />
+      </div>
+    ),
+  }),
 } satisfies { [K in Kind]: KindDef<K> };
 
 export const KIND_ORDER = Object.keys(KINDS) as Kind[];
+
+/** One of the app's webhook subscriptions, by id (`GET /v1/apps/{slug}/webhooks`). */
+function WebhookSelect({
+  slug,
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  slug: string;
+  label: string;
+  hint: string;
+  value: string | undefined;
+  onChange: (id: string | undefined) => void;
+}) {
+  const hooks = useWebhooks(slug);
+  const list = hooks.data ?? [];
+  const known = !value || list.some((h) => h.id === value);
+  return (
+    <SelectField
+      label={label}
+      hint={
+        hooks.error
+          ? 'The app’s webhooks could not be read.'
+          : hooks.isPending
+            ? 'Reading the app’s webhooks…'
+            : list.length
+              ? hint
+              : 'This app has no webhook subscriptions; add one on its Webhooks tab.'
+      }
+      value={value ?? ''}
+      onChange={(v) => onChange(v || undefined)}
+      options={[
+        { value: '', label: 'None' },
+        ...list.map((h) => ({ value: h.id, label: h.target_url })),
+        ...(known || !value ? [] : [{ value, label: value }]),
+      ]}
+    />
+  );
+}
 
 /** One line describing a rule's action, for the table. */
 export function summarise(kind: string, action: unknown): string {

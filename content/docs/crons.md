@@ -16,6 +16,11 @@ Crons are available on Hobby, Pro and Scale. Free accounts get
 Disabled crons count toward both limits. A request over a limit gets
 `403 plan_cron_quota` with the limit and your current count.
 
+If a plan change leaves you over a limit, your oldest enabled crons keep
+running and the rest stop until the plan allows them again. Running one of the
+stopped crons with `gregale cron run` also gets `403 plan_cron_quota`, and
+`gregale cron status ID` reports it as not ready with reason `plan_limit`.
+
 ## Create a cron
 
 ```bash
@@ -33,7 +38,12 @@ single `/`, may carry a query string, and is at most 2,048 bytes; whitespace,
 control characters, backslashes and `#` are rejected. A cron always calls its
 own app, so a path cannot name another host.
 
-`--timezone` takes an IANA name and defaults to `UTC`. Schedules follow the
+An app has one cron per schedule and path; another gets `409 conflict`. To
+run the same job on the same schedule in two timezones, give each its own
+path, for example `/jobs/report?tz=istanbul` and `/jobs/report?tz=newyork`.
+
+`--timezone` takes an IANA name such as `Europe/Istanbul` and defaults to
+`UTC`; `Local` is rejected because it names no place. Schedules follow the
 zone's daylight-saving rules: a time that falls in a spring-forward gap fires
 once at the first valid minute after it, and a fixed time that repeats when
 clocks fall back fires once. Interval schedules such as `*/30 * * * *` keep
@@ -58,10 +68,16 @@ triggers:
     skip_if_running: true       # optional
 ```
 
-When `triggers:` names an app, that app's HTTP crons match the file exactly
-after each deploy: crons missing from the file are removed. An empty
+When `triggers:` names an app, `gregale deploy` makes that app's HTTP crons
+match the file exactly: crons missing from the file are removed. An empty
 `triggers: []` removes them all. If the file has no `triggers:` key, or none
 of its cron triggers name the app, the app's crons are left alone.
+
+A deploy from a GitHub push, or through the source API, only adds the file's
+crons the app does not have yet, with their timezone and `skip_if_running`; it
+never changes or removes a cron. Declared crons take effect when the
+deployment goes live. PR previews, deploys to another environment and releases
+staged without traffic leave crons alone.
 
 ## What your app receives
 
@@ -84,11 +100,16 @@ timeout. Work that needs more time belongs in a [job](jobs).
 
 ## Delivery
 
-Each scheduled time produces one run, and Gregale makes one attempt at it. A
-run fails when the app answers with an error status, times out, or cannot be
-woken. A failed run is not retried; the next scheduled time is the next
-attempt. To retry by status code or outcome, set failure rules (see
+Each scheduled time produces one run, and your app receives it at most once. A
+run fails when the app answers with an error status or times out. A failed run
+is not retried; the next scheduled time is the next attempt. To retry by
+status code or outcome, set failure rules (see
 [Advanced scheduling](#advanced-scheduling)).
+
+If Gregale cannot hand the request to your app at all, for example because
+the app could not be woken or its ingress policy could not be checked, the app
+has not seen the run, so Gregale tries again after 5 seconds and then 10
+seconds. The run fails if the third attempt is also refused.
 
 Runs are delivered by the same queue as other background work. A run normally
 starts within a few seconds of its scheduled minute; it can start later when
@@ -111,7 +132,8 @@ It never runs immediately because of the change, and it does not catch up on
 the times it passed while it was off.
 
 Disabling a cron stops future runs. It does not cancel a run that is already
-queued or in progress.
+queued or in progress. Deleting a cron also cancels its runs that have not
+started, including runs waiting to retry; a run already in progress finishes.
 
 ### Suspension
 
@@ -124,22 +146,31 @@ yourself stays disabled. Deleting an app suspends its crons with
 ## Run a cron now
 
 ```bash
-gregale cron run CRON_ID
+gregale cron run CRON_ID                         # queue the run, print its request id
+gregale cron run CRON_ID --wait                  # follow it; exit 0 only if it succeeds
 gregale cron run --app my-api --interactive      # pick a cron and follow the run
-gregale cron fire-now REQUEST_ID --wait          # follow a request you already made
+gregale cron run get REQUEST_ID --wait          # follow a request you already made
 ```
 
 A manual run sends the same request as a scheduled run and does not move the
-schedule. The request goes `pending`, then `running` while the run is queued
+schedule. A suspended cron cannot be run (`409 conflict`); deploy the app to
+resume it. The request goes `pending`, then `running` while the run is queued
 and delivered, then `succeeded` or `failed` with the run's error. A cron can
 have five manual runs waiting or running at once; another request gets
 `429 cron_fire_now_busy` until one finishes.
+
+Without `--wait`, `gregale cron run` exits 0 as soon as the run is queued. In
+scripts and CI use `--wait`: it exits 1 when the run fails or is cancelled and
+3 when `--timeout` (default 2m) passes first.
+
+Crons are not part of `gregale triggers`, which covers message-broker and
+queue triggers; list and edit crons with `gregale cron`.
 
 ## History and alerts
 
 ```bash
 gregale cron runs CRON_ID                 # newest first
-gregale cron runs CRON_ID --before CURSOR # older runs
+gregale cron runs CRON_ID --cursor CURSOR # older runs
 ```
 
 Each run shows when it started, how long it took, its outcome (`success`,
@@ -148,8 +179,13 @@ Each run shows when it started, how long it took, its outcome (`success`,
 period.
 
 Schedule decisions (`gregale cron occurrences CRON_ID`) and manual-run
-requests (`gregale cron fire-now REQUEST_ID`) are kept for 90 days. A
+requests (`gregale cron run get REQUEST_ID`) are kept for 90 days. A
 decision that is still waiting or running is kept until it settles.
+
+A run that fails with `application returned HTTP 404` reached your app, but
+the app has no handler for `POST` at the cron's path. This is the most common
+cron failure. `gregale cron runs` points it out; serve the route in the app or
+change the cron's path with `gregale cron update ID --path /...`.
 
 To be told when runs fail, add an alert rule on failed cron invocations:
 
@@ -171,14 +207,16 @@ need more control:
 
 - **Overlap**: `allow`, `skip` or `replace` a run that is still active.
 - **Missed runs**: `skip` or `coalesce_latest` the times a busy or unavailable
-  scheduler passed, with each decision recorded and listed by
-  `gregale cron occurrences CRON_ID`.
+  scheduler passed, with the decisions listed by
+  `gregale cron occurrences CRON_ID`. After a long gap only the newest 20 due
+  times are recorded; `coalesce_latest` always runs the latest one.
 - **Start deadline**: give up on a run that cannot start within N seconds.
 - **Failure rules**: map HTTP statuses or a reported `outcome_code` to
   `retry` or `fail_partition` (fail without retrying), and choose whether an
   unknown outcome is held or retried. Retries use your plan's retry budget,
   so a cron with failure rules can run more than once for one scheduled time;
-  make such handlers idempotent.
+  make such handlers idempotent. Without failure rules, a cron with a schedule
+  policy is delivered once per scheduled time, like any other cron.
 
 ## Command crons (preview)
 

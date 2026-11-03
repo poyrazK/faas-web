@@ -23,6 +23,7 @@ import { consoleHead } from '@/lib/seo';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
 import { ReleaseProcess } from '@/components/dashboard/release-process';
 import { ReleasePreviews } from '@/components/dashboard/release-previews';
+import { DeployQueue } from '@/components/dashboard/deploy-queue';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
 export const Route = createFileRoute('/dashboard/releases')({
@@ -259,6 +260,13 @@ export function DeploymentsPage() {
         <p className="text-sm text-muted-foreground">
           All image builds, including builds without an attached deployment.
         </p>
+      )}
+      {view === 'releases' && (
+        <DeployQueue
+          onOpen={(deployment) =>
+            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
+          }
+        />
       )}
       <ResourceTable
         rows={rows}

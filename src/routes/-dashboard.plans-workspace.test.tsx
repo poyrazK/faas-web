@@ -11,7 +11,7 @@ vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace
 vi.mock('@/components/dashboard/org-billing', () => ({
   OrgPlanSummary: ({ label }: { label: string }) => <p>org plan for {label}</p>,
 }));
-vi.mock('@/components/dashboard/spend-cap', () => ({ SpendCap: () => null }));
+vi.mock('@/components/dashboard/spend-cap', () => ({ SpendCap: () => <p>workspace spend cap</p> }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { plan: 'hobby' }, refreshAccount: vi.fn() }),
 }));
@@ -40,6 +40,8 @@ describe('Plans in a company workspace', () => {
     render(<PlansPage />);
     expect(screen.getByText('org plan for Acme')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Switch to/ })).toBeNull();
+    // The cap follows the workspace (ADR-20261030093512); see spend-cap.test.tsx.
+    expect(screen.getByText('workspace spend cap')).toBeInTheDocument();
   });
   it('keeps the personal plans in the personal workspace', () => {
     render(<PlansPage />);

@@ -27,6 +27,9 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('./domain-hosts', () => ({
+  DomainHosts: ({ domain }: { domain: string }) => <p>Host allowlist for {domain}</p>,
+}));
 
 const { DomainDetail, DomainDetailButton } = await import('./domain-detail');
 
@@ -137,6 +140,16 @@ describe('DomainDetail', () => {
     render(<DomainDetail domain="shop.example.com" />);
     expect(screen.getByText(reason)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /make default/i })).not.toBeInTheDocument();
+  });
+
+  it('gives a wildcard its host allowlist, and a single host none', () => {
+    useDomainDetail.mockReturnValue(detail({ domain: '*.example.com' }));
+    const { unmount } = render(<DomainDetail domain="*.example.com" />);
+    expect(screen.getByText('Host allowlist for *.example.com')).toBeInTheDocument();
+    unmount();
+    useDomainDetail.mockReturnValue(detail());
+    render(<DomainDetail domain="shop.example.com" />);
+    expect(screen.queryByText(/host allowlist for/i)).not.toBeInTheDocument();
   });
 
   it('names the effect before making it the default, then sets it', async () => {

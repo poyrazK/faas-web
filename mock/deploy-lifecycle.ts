@@ -228,6 +228,8 @@ export interface Tracked {
   /** The status this module last wrote; anything else means a route changed it. */
   written: string;
   settled: boolean;
+  /** Created with `traffic_percent: 0`: it goes live dark and waits for a promotion. */
+  staged: boolean;
 }
 
 const tracked = new Map<string, Tracked>();
@@ -249,6 +251,7 @@ export function startDeployment(opts: {
   fail?: boolean;
   now: number;
   source?: string;
+  staged?: boolean;
 }): Tracked {
   const { deployment, app, build, now } = opts;
   const plan = lifecyclePlan(build ? 'source' : 'image', Boolean(opts.fail) && Boolean(build));
@@ -279,6 +282,7 @@ export function startDeployment(opts: {
     ),
     written: plan.queued,
     settled: false,
+    staged: Boolean(opts.staged),
   };
   tracked.set(deployment.id, rec);
   setScenario(app, 'deploying');
@@ -314,7 +318,10 @@ function apply(rec: Tracked, phase: Phase) {
     if (phase.build === 'failed') build.failure_class = 'user_error';
   }
 
-  if (phase.status === 'live') {
+  if (phase.status === 'live' && rec.staged) {
+    rec.settled = true;
+    if (scenarioOf(app) === 'deploying') restore(rec);
+  } else if (phase.status === 'live') {
     rec.settled = true;
     d.traffic_percent = 100;
     const previous = liveByApp.get(app.id);

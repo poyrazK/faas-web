@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { ArrowDown, ArrowUp, Plus, Trash } from 'iconoir-react';
+import { ArrowDown, ArrowUp, Eye, Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader } from '@/components/dashboard/primitives';
@@ -23,8 +23,10 @@ import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
 import { ruleAction } from '@/lib/api/edge-rules';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
-import { useCapability } from '@/lib/api/capabilities';
+import { MaturityLabel } from '@/components/dashboard/maturity-label';
+import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
+import { summariseMatch } from '@/lib/edge-rule-match';
 
 export const Route = createFileRoute('/dashboard/edge-rules')({
   component: EdgeRulesPage,
@@ -48,7 +50,12 @@ interface EdgeRuleRow {
   host: string;
   path: string;
   methods: string;
+  /** The match condition in one line; empty when the rule has none. */
+  condition: string;
   action: string;
+  name: string;
+  /** A log-mode rule is matched and counted but never acts. */
+  logOnly: boolean;
   enabled: boolean;
 }
 
@@ -64,6 +71,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const { account } = useAuth();
   const accountId = account?.id ?? '';
   const cacheCapability = useCapability('declarative-response-caching');
+  // Edge rules are a beta capability (faas productcap/catalog.json). With it
+  // off, existing rules keep applying and stay readable; new ones are refused.
+  const rulesCapability = useCapability('edge-rules');
+  const rulesAccess = useCapabilityAccess('edge-rules').access;
+  const rulesOff =
+    rulesAccess === 'off' ||
+    rulesAccess === 'plan-not-entitled' ||
+    rulesAccess === 'runtime-unavailable';
   const cacheAllowed =
     Boolean(accountId) &&
     cacheCapability.accountId === accountId &&
@@ -109,7 +124,10 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       host: r.match_host || '*',
       path: r.match_path || '/*',
       methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
+      condition: summariseMatch(r.match),
       action: summarise(r.kind, ruleAction(r)),
+      name: r.name ?? '',
+      logOnly: r.mode === 'log',
       enabled: r.enabled,
     }));
   }, [rules, apps]);
@@ -151,11 +169,37 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       width: 'w-16',
       render: (r) => <span className="[font-variant-numeric:tabular-nums]">{r.priority}</span>,
     },
-    { key: 'kind', label: 'Kind', width: 'w-32', render: (r) => <Pill label={r.kind} /> },
+    {
+      key: 'kind',
+      label: 'Kind',
+      width: 'w-32',
+      render: (r) => (
+        <span className="flex flex-col items-start gap-1">
+          <Pill label={r.kind} />
+          {r.logOnly && (
+            <span
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+              style={{
+                borderColor: 'color-mix(in oklab, var(--status-warning) 35%, transparent)',
+                color: 'var(--status-warning)',
+              }}
+            >
+              <Eye aria-hidden className="h-3 w-3" />
+              log only
+            </span>
+          )}
+        </span>
+      ),
+    },
     {
       key: 'action',
       label: 'Does',
-      render: (r) => <span className="font-mono text-xs">{r.action}</span>,
+      render: (r) => (
+        <span className="flex min-w-0 flex-col">
+          {r.name && <span className="truncate text-xs">{r.name}</span>}
+          <span className="font-mono text-xs">{r.action}</span>
+        </span>
+      ),
     },
     {
       key: 'app',
@@ -171,6 +215,11 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
           <span className="truncate font-mono text-xs text-muted-foreground">
             {r.path} · {r.methods}
           </span>
+          {r.condition && (
+            <span className="truncate font-mono text-xs text-muted-foreground">
+              if {r.condition}
+            </span>
+          )}
         </span>
       ),
     },
@@ -258,6 +307,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="mr-auto flex flex-wrap items-center gap-2">
+          <MaturityLabel capability={rulesCapability.capability} />
+          {rulesOff && (
+            <span role="status" className="text-xs text-muted-foreground">
+              Edge rules are not enabled for this account. Existing rules keep applying.
+            </span>
+          )}
+        </div>
         {!scoped && (
           <label className="flex items-center gap-2">
             <span className="label-mono text-muted-foreground">App</span>
@@ -278,7 +335,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         <Button
           size="sm"
           className="gap-1.5"
-          disabled={!slug}
+          disabled={!slug || rulesOff}
           onClick={() => {
             setEditing(null);
             setCreating(true);
@@ -301,7 +358,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         rows={rows}
         columns={columns}
         initialSort={{ key: 'priority', dir: 'asc' }}
-        searchKeys={['kind', 'host', 'path', 'app', 'action']}
+        searchKeys={['kind', 'name', 'host', 'path', 'app', 'action', 'condition']}
         searchPlaceholder="Filter by kind, host, or path…"
         emptyMessage="No edge rules yet."
         minWidth="min-w-[980px]"

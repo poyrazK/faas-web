@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   update: vi.fn(),
   capabilitiesOn: new Set<string>(),
+  diff: vi.fn(),
 }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: () => {} }));
@@ -29,6 +30,7 @@ vi.mock('@/lib/api/capabilities', () => ({
     access: mocks.capabilitiesOn.has(id) ? 'on' : 'off',
     refresh: () => {},
   }),
+  useCapabilityStage: () => 'Beta',
 }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
@@ -45,6 +47,9 @@ vi.mock('./health-probes', () => ({
       Health and restarts for {app.slug} on {plan}
     </p>
   ),
+}));
+vi.mock('./snapshot-hooks', () => ({
+  SnapshotHooks: ({ app }: { app: { slug: string } }) => <p>Snapshot hooks for {app.slug}</p>,
 }));
 vi.mock('./app-release-settings', () => ({
   AppReleaseSettings: ({ app }: { app: { slug: string } }) => (
@@ -69,7 +74,7 @@ vi.mock('@/lib/api/queries', () => ({
     error: null,
   }),
   useUpdateApp: () => ({ mutateAsync: mocks.update, isPending: false }),
-  useAppDiff: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAppDiff: () => ({ mutateAsync: mocks.diff, isPending: false }),
   useRenameApp: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteApp: () => ({ mutateAsync: mocks.remove, isPending: false }),
 }));
@@ -87,6 +92,47 @@ beforeEach(() => {
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.navigate.mockReset();
   mocks.toast.mockReset();
+});
+
+describe('Runtime change preview', () => {
+  it('previews only the edited fields and names each break instead of "[object Object]"', async () => {
+    spyApi('GET').mockResolvedValue({ data: status, response: new Response() } as never);
+    mocks.diff.mockReset().mockResolvedValue({
+      slug: 'alpha',
+      plan: 'hobby',
+      blocking: true,
+      diff: {
+        slug: 'alpha',
+        plan: 'hobby',
+        changes: [{ field: 'concurrency', kind: 'modify', before: 1, after: 30 }],
+        breaks: [
+          {
+            code: 'plan_limit_concurrency',
+            severity: 'error',
+            reason: 'max_concurrency exceeds plan cap',
+            field: 'concurrency',
+            observed: 30,
+            limit: 20,
+          },
+        ],
+      },
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
+    fireEvent.change(screen.getByLabelText(/Max concurrency/), { target: { value: '30' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    expect(mocks.diff).toHaveBeenCalledWith({ max_concurrency: 30 });
+    const dialog = await screen.findByRole('dialog', { name: 'What this change would do' });
+    expect(dialog).toHaveTextContent('Beta');
+    expect(dialog).toHaveTextContent('plan_limit_concurrency');
+    expect(dialog).toHaveTextContent('30 against a limit of 20');
+    expect(dialog).not.toHaveTextContent('[object Object]');
+  });
 });
 
 describe('App deletion contract copy', () => {

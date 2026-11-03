@@ -3,6 +3,7 @@ import { SETTINGS_SECTIONS } from './settings-search';
 import {
   Activity,
   Antenna,
+  Bell,
   Coins,
   DataTransferBoth,
   Database,
@@ -389,13 +390,22 @@ export const APP_SECTIONS: NavItem[] = APP_TABS.map(({ tab, segment }) => ({
 }));
 
 /**
- * Destinations ⌘K and the breadcrumb know but the rail does not list. Both
- * redirect into the New app wizard (`?source=template|import`), so a rail row
- * could never be the current page. The New app button is the visible way in.
+ * Destinations ⌘K and the breadcrumb know but the rail does not list. Templates
+ * and Import redirect into the New app wizard (`?source=template|import`), so a
+ * rail row could never be the current page. The New app button is the visible
+ * way in.
  */
 const PALETTE_ONLY: NavItem[] = [
   { to: '/dashboard/templates', label: 'Templates', icon: Cube },
   { to: '/dashboard/import', label: 'Import', icon: Upload },
+  // Account-wide, so not an app tab: the Alerts page's Channels tab.
+  {
+    to: '/dashboard/alerts',
+    label: 'Notification channels',
+    icon: Bell,
+    search: { view: 'channels' },
+    capability: 'notification-channels',
+  },
 ];
 
 /** Both hub names and familiar page names remain searchable. */

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -31,6 +32,11 @@ export type EdgeRuleSuggestion = S['EdgeRuleRecipeSuggestion'];
 export type EdgeWAFReviewGroup = S['EdgeWAFReviewGroup'];
 export type EdgeRuleList = S['EdgeRuleListResponse'];
 export type EdgeRuleListKind = EdgeRuleList['kind'];
+export type EdgeRuleStats = S['EdgeRuleStatsResponse'];
+export type EdgeRuleHitStats = S['EdgeRuleHitStatsResponse'];
+export type EdgeRuleEvent = S['EdgeRuleEventResponse'];
+export type EdgeRuleEventOutcome = EdgeRuleEvent['outcome'];
+export type EdgeRuleStatsWindow = EdgeRuleStats['window'];
 
 const setKey = (slug: string) => ['apps', slug, 'edge-rules'] as const;
 const listsKey = (accountId: string) => ['edge-rule-lists', accountId] as const;
@@ -169,6 +175,65 @@ export function useUpdateWAFExclusions(slug: string) {
     mutationFn: ({ id, ...body }: { id: string } & S['EdgeWAFExclusionsRequest']) =>
       unwrap(api.POST('/v1/edge-rules/{id}/waf-exclusions', { params: { path: { id } }, body })),
     onSettled: () => rereadRules(qc, slug),
+  });
+}
+
+/**
+ * Each rule's matches over a window, with hourly totals (faas
+ * pkg/apid/edgerules/stats.go). Gateways count every match, at most once per
+ * rule per request, and flush hourly buckets each minute; rules with no
+ * matches are left out of the answer.
+ */
+export function useEdgeRuleStats(slug: string, window: EdgeRuleStatsWindow, enabled = true) {
+  return useQuery({
+    queryKey: [...setKey(slug), 'stats', window],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/edge-rules/stats', {
+          params: { path: { slug }, query: { window, series: true } },
+          signal,
+        })
+      ),
+    enabled: Boolean(slug) && enabled,
+  });
+}
+
+export interface EdgeRuleEventFilter {
+  rule?: string;
+  outcome?: EdgeRuleEventOutcome;
+  request_id?: string;
+  /** A duration such as 1h, 24h or 7d; apid clamps it to the plan's event window. */
+  since: string;
+}
+
+/**
+ * Sampled matches, newest first, a page of 50 at a time (faas
+ * pkg/apid/edgerules/events.go). Gateways keep the first 10 matches of each
+ * rule a minute as full events, so these are samples, not every request.
+ */
+export function useEdgeRuleEvents(slug: string, filter: EdgeRuleEventFilter, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...setKey(slug), 'events', filter],
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/edge-rules/events', {
+          params: {
+            path: { slug },
+            query: {
+              since: filter.since,
+              limit: 50,
+              ...(filter.rule ? { rule: filter.rule } : {}),
+              ...(filter.outcome ? { outcome: filter.outcome } : {}),
+              ...(filter.request_id ? { request_id: filter.request_id } : {}),
+              ...(pageParam ? { cursor: pageParam } : {}),
+            },
+          },
+          signal,
+        })
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    enabled: Boolean(slug) && enabled,
   });
 }
 

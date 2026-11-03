@@ -254,6 +254,89 @@ export function promoteDeployment(
   return { deployment: d, from_percent: from, to_percent: 100, already_promoted: from === 100 };
 }
 
+const canonicalId = (id: string) => id.replace(/-/g, '').toLowerCase();
+
+/**
+ * A serving expectation that no longer holds (faas memstore.go:6164-6177):
+ * `''` expects no other live release of the scope with traffic; an id expects
+ * exactly that release to be the only other one, at 100%.
+ */
+export function servingChanged(all: Deployment[], d: Deployment, expected: string): boolean {
+  const others = all.filter(
+    (o) =>
+      o.app_id === d.app_id &&
+      scopeOf(o) === scopeOf(d) &&
+      o.status === 'live' &&
+      (o.traffic_percent ?? 0) > 0 &&
+      o.id !== d.id
+  );
+  if (expected === '') return others.length !== 0;
+  return (
+    others.length !== 1 ||
+    canonicalId(others[0].id) !== canonicalId(expected) ||
+    others[0].traffic_percent !== 100
+  );
+}
+
+/**
+ * PATCH /v1/deployments/{id}/traffic: the target takes `percent` and the
+ * residual is shared across the scope's other live releases by prior weight
+ * (largest remainder), or given to the newest when none held any. Returns
+ * false when nothing could take the residual (`traffic_residual_unassigned`).
+ */
+export function setTrafficWeight(all: Deployment[], d: Deployment, percent: number): boolean {
+  const siblings = all
+    .filter(
+      (o) =>
+        o.app_id === d.app_id && scopeOf(o) === scopeOf(d) && o.status === 'live' && o.id !== d.id
+    )
+    .sort((a, b) => ms(b.created_at) - ms(a.created_at));
+  const residual = 100 - percent;
+  if (residual > 0 && siblings.length === 0) return false;
+  const prior = siblings.reduce((sum, o) => sum + (o.traffic_percent ?? 0), 0);
+  const shares = siblings.map((o, i) => {
+    const exact =
+      prior > 0 ? (residual * (o.traffic_percent ?? 0)) / prior : i === 0 ? residual : 0;
+    return { o, floor: Math.floor(exact), rest: exact - Math.floor(exact) };
+  });
+  let left = residual - shares.reduce((sum, s) => sum + s.floor, 0);
+  for (const s of [...shares].sort((a, b) => b.rest - a.rest)) {
+    if (left <= 0) break;
+    s.floor += 1;
+    left -= 1;
+  }
+  for (const s of shares) s.o.traffic_percent = s.floor;
+  d.traffic_percent = percent;
+  return true;
+}
+
+/**
+ * The release state a source review pins (faas AppReleaseReview): the app's
+ * configuration, its newest default-scope deployment and what serves there.
+ * Any of them moving before the deploy is `release_review_changed`.
+ */
+export function releaseReview(
+  all: Deployment[],
+  app: Pick<S['AppResponse'], 'id' | 'runtime' | 'ram_mb' | 'min_instances'> & {
+    manifest?: S['AppResponse']['manifest'];
+  }
+): S['AppReleaseReview'] {
+  const own = all
+    .filter((d) => d.app_id === app.id && scopeOf(d) === 'default')
+    .sort((a, b) => ms(b.created_at) - ms(a.created_at));
+  return {
+    app_id: app.id,
+    scope: 'default',
+    configuration_hash: sha(
+      JSON.stringify([app.runtime, app.ram_mb, app.min_instances, app.manifest ?? null])
+    ),
+    latest_deployment_id: own[0]?.id ?? '',
+    serving_deployment_ids: own
+      .filter((d) => d.status === 'live' && (d.traffic_percent ?? 0) > 0)
+      .map((d) => d.id),
+  };
+}
+
 interface RollbackRecord {
   op: S['RollbackOperation'];
   requestedAt: number;

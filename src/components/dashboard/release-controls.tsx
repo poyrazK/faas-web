@@ -2,12 +2,23 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { ApiError } from '@/lib/api/errors';
 import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
+import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
+import {
+  ServingChanged,
+  ServingNote,
+  deploymentLabel,
+  pinnedRelease,
+  useServingPin,
+} from './deployment-promote';
 export function DeploymentControls({
+  slug,
   deployment,
   version,
 }: {
+  slug: string;
   deployment: components['schemas']['DeploymentResponse'];
   version: string;
 }) {
@@ -17,6 +28,13 @@ export function DeploymentControls({
   const confirm = useConfirm();
   const [minInstances, setMinInstances] = useState(deployment.min_instances ?? 0);
   const [trafficPercent, setTrafficPercent] = useState(deployment.traffic_percent ?? 0);
+  // Only a live release takes a weight; apid refuses the rest before any pin is read.
+  const live = deployment.status.toLowerCase() === 'live';
+  const serving = useServingPin(slug, deployment, live);
+  const [takenOver, setTakenOver] = useState<string | null>(null);
+  // Raising a release's weight runs the bindings check when its scope's
+  // release policy is enforced (handlers_ext.go:2293, binding_release_traffic.go:26-86).
+  const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -58,53 +76,95 @@ export function DeploymentControls({
           </div>
         </label>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Traffic weight</span>
-          <span className="text-xs text-muted-foreground">
-            Setting this deployment's weight sets other live deployments for the app to 0.
-          </span>
-          <div className="mt-1 flex gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={trafficPercent}
-              onChange={(e) =>
-                setTrafficPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
-              }
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Traffic weight</span>
+            <span className="text-xs text-muted-foreground">
+              Setting this deployment's weight sets other live deployments for the app to 0.
+            </span>
+            <div className="mt-1 flex gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={trafficPercent}
+                onChange={(e) =>
+                  setTrafficPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
+                }
+                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
+              />
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={trafficPercent === deployment.traffic_percent || (live && !serving.pin)}
+                busy={updateTraffic.isPending}
+                onClick={async () => {
+                  // Pinned to what is shown now. A sole server pins its id; with no
+                  // other release holding traffic the API takes '' for "still none".
+                  const pinned = pinnedRelease(serving);
+                  const pin = pinned
+                    ? { expected_serving_deployment_id: pinned.id }
+                    : serving.pin?.kind === 'none'
+                      ? { expected_serving_deployment_id: '' }
+                      : {};
+                  if (
+                    !(await confirm({
+                      title: `Set ${trafficPercent}% traffic for ${version}?`,
+                      description:
+                        'The traffic API rebalances the app by setting every other live deployment to 0%. Continue only if this is intentional.' +
+                        (pinned
+                          ? ` It is pinned to ${deploymentLabel(pinned)}: if another release takes over first, nothing moves.`
+                          : ''),
+                      confirmLabel: 'Update traffic',
+                    }))
+                  )
+                    return;
+                  setTakenOver(null);
+                  setRefusal(null);
+                  void updateTraffic
+                    .mutateAsync({ id: deployment.id, traffic_percent: trafficPercent, ...pin })
+                    .then(() => toast({ kind: 'success', title: 'Traffic weight updated' }))
+                    .catch((error: unknown) => {
+                      if (error instanceof ApiError && error.code === 'traffic_serving_changed') {
+                        setTakenOver(
+                          pinned ? deploymentLabel(pinned) : 'The release that was serving'
+                        );
+                        return;
+                      }
+                      const gate = bindingsGateRefusal(error);
+                      if (gate) {
+                        setRefusal(gate);
+                        return;
+                      }
+                      toast({
+                        kind: 'error',
+                        title: 'Could not update traffic',
+                        error: error,
+                      });
+                    });
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </label>
+          {live && <ServingNote serving={serving} action="change" pinsNone />}
+          {takenOver && (
+            <ServingChanged
+              pinned={takenOver}
+              refreshing={serving.read.isFetching}
+              onRefresh={() => void serving.read.refetch().then(() => setTakenOver(null))}
             />
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={trafficPercent === deployment.traffic_percent}
-              busy={updateTraffic.isPending}
-              onClick={async () => {
-                if (
-                  !(await confirm({
-                    title: `Set ${trafficPercent}% traffic for ${version}?`,
-                    description:
-                      'The traffic API rebalances the app by setting every other live deployment to 0%. Continue only if this is intentional.',
-                    confirmLabel: 'Update traffic',
-                  }))
-                )
-                  return;
-                void updateTraffic
-                  .mutateAsync({ id: deployment.id, traffic_percent: trafficPercent })
-                  .then(() => toast({ kind: 'success', title: 'Traffic weight updated' }))
-                  .catch((error: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not update traffic',
-                      error: error,
-                    })
-                  );
-              }}
-            >
-              Save
-            </Button>
-          </div>
-        </label>
+          )}
+          {refusal && (
+            <BindingsGateNotice
+              refusal={refusal}
+              slug={slug}
+              deploymentId={deployment.id}
+              action="traffic change"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

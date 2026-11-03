@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,9 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
 
 const { RolloutRecovery, isRolloutInFlight } = await import('./rollout-recovery');
 
@@ -85,6 +89,28 @@ describe('RolloutRecovery', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ description: expect.stringContaining('aud12345678') })
     );
+  });
+
+  it('says an enforced release policy refuses a recovery promote, and what to do instead', async () => {
+    recover.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'bindings_release_required',
+        title: 'Binding release policy blocked traffic',
+        detail: 'This scope requires fresh checked binding evidence before traffic can increase.',
+        hint: 'Verify the exact deployment receiving traffic, then promote, advance its canary, or abort with both deployment_id and expected_predecessor_deployment_id.',
+      })
+    );
+    render(<RolloutRecovery slug="api" deployment={deployment()} />);
+    await userEvent.click(screen.getByRole('button', { name: /promote to 100/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      /binding release policy blocked traffic\. traffic is unchanged/i
+    );
+    expect(alert).toHaveTextContent(/rollout recovery does not run the bindings check/i);
+    expect(alert).toHaveTextContent(/advance the canary, which runs the check, or abort/i);
+    expect(alert).toHaveTextContent('gregale app binding verify api --release d1 --all');
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('sends the typed reason with an abort', async () => {

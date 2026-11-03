@@ -16,9 +16,13 @@ import {
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
-import { ChipSet, NumberField, TextField, ToggleRow } from './fields';
+import type { CapabilityAccess } from '@/lib/capability-state';
+import { validateConditions } from '@/lib/edge-rule-match';
+import { SegmentedControl } from '../tabs';
+import { ChipSet, Field, INPUT, KeyValueField, NumberField, TextField, ToggleRow } from './fields';
 import { ruleAction } from '@/lib/api/edge-rules';
 import { KINDS, KIND_ORDER, type ActionMap, type Kind } from './kinds';
+import { MatchConditionsField, matchOf, matchState, type MatchState } from './match-conditions';
 import {
   PENALTY_KINDS,
   PenaltyField,
@@ -38,6 +42,10 @@ import {
  *   says to delete and recreate.
  * - **`action` replaces whole.** There is no partial-update shape for it, so
  *   the draft always carries a complete action.
+ *
+ * Everything else an edit sends only when it changed, so a field the person
+ * did not touch (a condition written by the CLI, a recipe's name) is never
+ * rewritten in the form's shape.
  */
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
@@ -45,12 +53,18 @@ const CACHE_METHODS = ['GET', 'HEAD'] as const;
 
 /**
  * The match grammar, as the spec documents it: host is a glob where `*` is
- * any host and `*.example.com` is any subdomain (253 chars, the DNS limit);
- * path is a glob whose trailing `*` matches everything beneath (2048).
- * `match_host` is required on create — it is in the request's `required` list
- * — so the form defaults it to `*` rather than letting empty mean anything.
+ * any host and `*.example.com` is any subdomain (253 chars, the DNS limit),
+ * or `@app` for every host the rule's app serves, custom domains included —
+ * what recipes and the docs use for a gate (docs/edge-rules.md §Matching).
+ * Path is a Go `path.Match` glob (2048): `/api/*` one or more segments,
+ * `/api/**` the prefix and everything beneath, `/users/?*` one segment.
+ * OpenAPI templates are refused by apid, which suggests the glob; the form
+ * says so first. `match_host` is required on create — it is in the request's
+ * `required` list — so the form defaults it to `*` rather than letting empty
+ * mean anything.
  */
-const HOST_GLOB = /^(\*|(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/i;
+const HOST_GLOB =
+  /^(@app|\*|(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/i;
 
 function validateMatch(m: Match, kind: Kind): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -59,11 +73,11 @@ function validateMatch(m: Match, kind: Kind): Record<string, string> {
   if (!host) errors.match_host = 'Required. Use * to match any host.';
   else if (host.length > 253) errors.match_host = 'Hosts are at most 253 characters.';
   else if (!HOST_GLOB.test(host))
-    errors.match_host = 'A hostname, or a glob like * or *.example.com.';
+    errors.match_host = 'A hostname, @app, or a glob like * or *.example.com.';
   if (!path.startsWith('/')) errors.match_path = 'Paths start with /.';
   else if (path.length > 2048) errors.match_path = 'Paths are at most 2048 characters.';
-  else if (path.includes('*') && !path.endsWith('*'))
-    errors.match_path = 'Only a trailing * is allowed — it matches everything beneath.';
+  else if (/[{}]/.test(path))
+    errors.match_path = 'A glob, not a template: /users/?* matches what /users/{id} would.';
   if (
     kind === 'cache' &&
     (!m.match_methods.length ||
@@ -77,9 +91,44 @@ interface Match {
   match_host: string;
   match_path: string;
   match_methods: string[];
+  /** Exact-value request-header selectors (at most 10). */
+  match_headers: Record<string, string>;
   priority: number;
   enabled: boolean;
 }
+
+/** The rule's own fields beside the match: what it is called and whether it acts. */
+interface Details {
+  name: string;
+  description: string;
+  /** enforce acts; log is matched and counted but never acts (docs/edge-rules.md §Which rule applies). */
+  mode: 'enforce' | 'log';
+  /** A `datetime-local` value in the person's time zone; empty for no expiry. */
+  expires: string;
+  validate_mode: 'block' | 'warn' | 'observe';
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+/** An ISO instant as a datetime-local value in local time. */
+function localInput(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function detailsOf(rule: EdgeRule | null): Details {
+  return {
+    name: rule?.name ?? '',
+    description: rule?.description ?? '',
+    mode: rule?.mode ?? 'enforce',
+    expires: localInput(rule?.expires_at),
+    validate_mode: rule?.validate_mode ?? 'block',
+  };
+}
+
+const sameJson = (a: unknown, b: unknown) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 export interface EdgeRuleDialogProps {
   open: boolean;
@@ -88,7 +137,8 @@ export interface EdgeRuleDialogProps {
   rule: EdgeRule | null;
   /** The app a new rule is created on. Ignored when editing. */
   slug: string;
-  apps: { slug: string }[];
+  /** `preview_of_slug` marks a preview app, the only kind that takes respond rules. */
+  apps: { slug: string; preview_of_slug?: string }[];
   /** Suggested next priority for a new rule. */
   nextPriority: number;
 }
@@ -121,6 +171,20 @@ export function EdgeRuleDialog({
   const penaltyAccess = useCapabilityAccess('edge-penalty-box').access;
   const challengeReleased = contextCurrent && challengeAccess === 'on';
   const penaltyReleased = contextCurrent && penaltyAccess === 'on';
+  // The kinds a catalog capability releases per account (faas capgate
+  // edge_rule.<kind>, catalog.json): apid answers 403 capability_not_released
+  // before then (capability_settings.go:66).
+  const kindAccess: Record<string, CapabilityAccess> = {
+    'request-retry': useCapabilityAccess('request-retry').access,
+    'circuit-breaking': useCapabilityAccess('circuit-breaking').access,
+    'async-routes': useCapabilityAccess('async-routes').access,
+    'edge-protection': useCapabilityAccess('edge-protection').access,
+  };
+  // Warn and block WAF rules, and AI crawler conditions, are released by
+  // platform flags; unreleased, the gateway only observes or never matches
+  // (edgerules/release.go:16-20).
+  const wafBlockingAccess = useCapabilityAccess('edge-waf-blocking').access;
+  const aiCrawlerAccess = useCapabilityAccess('edge-ai-crawler-controls').access;
   const create = useCreateEdgeRule();
   const update = useUpdateEdgeRule();
   const editing = rule !== null;
@@ -131,9 +195,12 @@ export function EdgeRuleDialog({
     match_host: '*',
     match_path: '/*',
     match_methods: [],
+    match_headers: {},
     priority: nextPriority,
     enabled: true,
   });
+  const [conditions, setConditions] = useState<MatchState>(() => matchState(rule?.match));
+  const [details, setDetails] = useState<Details>(() => detailsOf(rule));
   const [action, setAction] = useState<ActionMap[Kind] | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<ApiError | null>(null);
@@ -151,6 +218,7 @@ export function EdgeRuleDialog({
         match_host: rule.match_host,
         match_path: rule.match_path,
         match_methods: rule.match_methods ?? [],
+        match_headers: rule.match_headers ?? {},
         priority: rule.priority,
         enabled: rule.enabled,
       });
@@ -161,22 +229,41 @@ export function EdgeRuleDialog({
         match_host: '*',
         match_path: '/*',
         match_methods: [],
+        match_headers: {},
         priority: nextPriority,
         enabled: true,
       });
       setAction(null);
     }
+    setConditions(matchState(rule?.match));
+    setDetails(detailsOf(rule));
     setFieldErrors({});
     setProblem(null);
     setSuggestOpen(false);
   }
 
   const def = kind ? KINDS[kind] : null;
-  const planAllows = (k: Kind) =>
-    k === 'cache'
-      ? canCache
-      : (k !== 'challenge' || challengeReleased) &&
-        (!KINDS[k].paid || (account?.plan ?? 'free') !== 'free');
+  const plan = account?.plan ?? 'free';
+  const target = apps.find((a) => a.slug === slug);
+  /** Why the picker cannot offer a kind, or null when it can. */
+  const refusal = (k: Kind): string | null => {
+    const d: { paid?: boolean; plans?: readonly string[]; capability?: string } = KINDS[k];
+    if (k === 'cache') return canCache ? null : 'Requires confirmed response-cache availability.';
+    if (k === 'challenge' && !challengeReleased) return 'Not released to this account yet.';
+    const access = d.capability ? kindAccess[d.capability] : 'on';
+    if (access === 'off' || (d.capability && !contextCurrent))
+      return 'Not released to this account yet.';
+    if (access === 'loading') return 'Checking availability…';
+    if (access === 'registry-error') return 'Availability could not be checked.';
+    if (access === 'runtime-unavailable') return 'Unavailable on this installation.';
+    if (access === 'plan-not-entitled') return 'Not included in your plan.';
+    if (d.plans && !d.plans.includes(plan)) return 'Needs the Pro plan or above.';
+    if (d.paid && plan === 'free') return 'Not on the free plan.';
+    if (k === 'respond' && !target?.preview_of_slug)
+      return 'Preview apps only; this app is not a preview.';
+    return null;
+  };
+  const planAllows = (k: Kind) => refusal(k) === null;
   const showPenalty =
     kind !== null && PENALTY_KINDS.has(kind) && (penaltyReleased || Boolean(rule?.penalty));
 
@@ -194,8 +281,25 @@ export function EdgeRuleDialog({
     if (kind === 'cache' && !canCache) return;
     // The match block and then the kind's own rules; the server is the
     // backstop, not the plan.
+    const expr = matchOf(conditions);
+    const expiresAt = details.expires ? new Date(details.expires) : null;
     const local = {
       ...validateMatch(match, kind),
+      ...(conditions.mode === 'builder'
+        ? validateConditions(conditions.conditions)
+        : expr === null
+          ? { match: 'Fix the JSON first.' }
+          : {}),
+      ...(Object.keys(match.match_headers).length > 10
+        ? { match_headers: 'At most 10 header selectors.' }
+        : {}),
+      ...(details.name.length > 100 ? { name: 'At most 100 characters.' } : {}),
+      ...(details.description.length > 1000 ? { description: 'At most 1000 characters.' } : {}),
+      ...(expiresAt &&
+      (Number.isNaN(expiresAt.getTime()) ||
+        (details.expires !== detailsOf(rule).expires && expiresAt.getTime() <= Date.now()))
+        ? { expires: 'Pick a time in the future.' }
+        : {}),
       ...def.validate(action as never),
       ...(showPenalty ? validatePenalty(penalty) : {}),
     };
@@ -206,13 +310,48 @@ export function EdgeRuleDialog({
     setFieldErrors({});
     setProblem(null);
 
+    const seeded = detailsOf(rule);
+    const expires_at = expiresAt ? expiresAt.toISOString() : undefined;
+    // Create sends what is set; an edit sends what changed, with the API's
+    // clear_* flags for a condition or expiry that was removed.
+    const extras = editing
+      ? {
+          ...(sameJson(expr, rule?.match) ? {} : expr ? { match: expr } : { clear_match: true }),
+          ...(sameJson(match.match_headers, rule?.match_headers ?? {})
+            ? {}
+            : { match_headers: match.match_headers }),
+          ...(details.name !== seeded.name ? { name: details.name.trim() } : {}),
+          ...(details.description !== seeded.description
+            ? { description: details.description.trim() }
+            : {}),
+          ...(details.mode !== seeded.mode ? { mode: details.mode } : {}),
+          ...(details.expires === seeded.expires
+            ? {}
+            : expires_at
+              ? { expires_at }
+              : { clear_expires_at: true }),
+        }
+      : {
+          ...(expr ? { match: expr } : {}),
+          ...(Object.keys(match.match_headers).length
+            ? { match_headers: match.match_headers }
+            : {}),
+          ...(details.name.trim() ? { name: details.name.trim() } : {}),
+          ...(details.description.trim() ? { description: details.description.trim() } : {}),
+          mode: details.mode,
+          ...(expires_at ? { expires_at } : {}),
+        };
+
     const body = {
       match_host: match.match_host.trim(),
       match_path: match.match_path.trim(),
       match_methods: match.match_methods,
       priority: match.priority,
       enabled: match.enabled,
-      validate_mode: rule?.validate_mode ?? 'block',
+      // The top-level field is validate's source of truth (spec
+      // CreateEdgeRuleRequest.validate_mode); other kinds carry the default.
+      validate_mode: kind === 'validate' ? details.validate_mode : (rule?.validate_mode ?? 'block'),
+      ...extras,
       action,
       // Sent only when it changed: clear_penalty removes one and releases the
       // clients it holds (faas pkg/api/dto.go:10729-10734).
@@ -305,6 +444,7 @@ export function EdgeRuleDialog({
         <div className="grid gap-2 sm:grid-cols-2">
           {KIND_ORDER.map((k) => {
             const allowed = planAllows(k);
+            const stage = (KINDS[k] as { stage?: string }).stage;
             return (
               <button
                 key={k}
@@ -322,18 +462,17 @@ export function EdgeRuleDialog({
                   {KINDS[k].label}
                   {KINDS[k].paid && (
                     <span className="label-mono rounded-full border border-border px-1.5 text-muted-foreground">
-                      paid
+                      {(KINDS[k] as { plans?: readonly string[] }).plans ? 'pro' : 'paid'}
+                    </span>
+                  )}
+                  {stage && (
+                    <span className="label-mono rounded-full border border-border px-1.5 text-muted-foreground">
+                      {stage}
                     </span>
                   )}
                 </span>
                 <span className="text-xs leading-relaxed text-muted-foreground">
-                  {allowed
-                    ? KINDS[k].desc
-                    : k === 'cache'
-                      ? 'Requires confirmed response-cache availability.'
-                      : k === 'challenge' && !challengeReleased
-                        ? 'Not released to this account yet.'
-                        : 'Not on the free plan.'}
+                  {refusal(k) ?? KINDS[k].desc}
                 </span>
               </button>
             );
@@ -407,11 +546,64 @@ export function EdgeRuleDialog({
           )}
 
           <section className="flex flex-col gap-4">
+            <p className="label-mono text-muted-foreground">Rule</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Name"
+                hint="Optional. Shown in events and stats."
+                error={fieldErrors.name}
+                mono={false}
+                value={details.name}
+                onChange={(name) => setDetails({ ...details, name })}
+                placeholder="Block scraper"
+              />
+              <Field
+                label="Expires"
+                hint="Optional, your local time. The gateway stops applying the rule then."
+                error={fieldErrors.expires ?? fieldErrors.expires_at}
+              >
+                <input
+                  type="datetime-local"
+                  value={details.expires}
+                  onChange={(e) => setDetails({ ...details, expires: e.target.value })}
+                  aria-invalid={fieldErrors.expires ? true : undefined}
+                  className={cn(INPUT, 'font-mono')}
+                />
+              </Field>
+            </div>
+            <TextField
+              label="Description"
+              hint="Optional notes for whoever reads the rule next."
+              error={fieldErrors.description}
+              mono={false}
+              value={details.description}
+              onChange={(description) => setDetails({ ...details, description })}
+            />
+            <div className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Mode</span>
+              <SegmentedControl
+                label="Rule mode"
+                value={details.mode}
+                options={[
+                  { key: 'enforce', label: 'Enforce' },
+                  { key: 'log', label: 'Log only' },
+                ]}
+                onChange={(mode) => setDetails({ ...details, mode })}
+              />
+              <span className="text-xs text-muted-foreground">
+                {details.mode === 'log'
+                  ? 'Matched and counted, never acts. Check its stats and events, then enforce it.'
+                  : 'Acts on every request it matches.'}
+              </span>
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-4 border-t border-border pt-5">
             <p className="label-mono text-muted-foreground">Match</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
                 label="Host"
-                hint="A hostname, or a glob: * for any, *.example.com for subdomains."
+                hint="@app for every host the app serves, a hostname, or a glob: * for any, *.example.com for subdomains."
                 error={fieldErrors.match_host}
                 value={match.match_host}
                 onChange={(match_host) => setMatch({ ...match, match_host })}
@@ -419,7 +611,7 @@ export function EdgeRuleDialog({
               />
               <TextField
                 label="Path"
-                hint="A path. A trailing * matches everything beneath it."
+                hint="A glob: /api/** is /api and everything beneath it, /api/* the paths beneath, /users/?* one segment."
                 error={fieldErrors.match_path}
                 value={match.match_path}
                 onChange={(match_path) => setMatch({ ...match, match_path })}
@@ -437,6 +629,21 @@ export function EdgeRuleDialog({
               options={kind === 'cache' ? CACHE_METHODS : METHODS}
               value={match.match_methods as (typeof METHODS)[number][]}
               onChange={(match_methods) => setMatch({ ...match, match_methods })}
+            />
+            <KeyValueField
+              label="Header selectors"
+              hint="Optional, up to 10. Each header must be present with exactly this value; names ignore case."
+              error={fieldErrors.match_headers}
+              value={match.match_headers}
+              onChange={(match_headers) => setMatch({ ...match, match_headers })}
+              keyPlaceholder="x-tenant"
+              valuePlaceholder="acme"
+            />
+            <MatchConditionsField
+              value={conditions}
+              onChange={setConditions}
+              errors={fieldErrors}
+              aiCrawlers={aiCrawlerAccess === 'on'}
             />
             <NumberField
               label="Priority"
@@ -459,6 +666,28 @@ export function EdgeRuleDialog({
 
           <section className="flex flex-col gap-4 border-t border-border pt-5">
             <p className="label-mono text-muted-foreground">{def?.label}</p>
+            {kind === 'validate' && (
+              <div className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">On a failure</span>
+                <SegmentedControl
+                  label="Validation mode"
+                  value={details.validate_mode}
+                  options={[
+                    { key: 'block', label: 'Block' },
+                    { key: 'warn', label: 'Warn' },
+                    { key: 'observe', label: 'Observe' },
+                  ]}
+                  onChange={(validate_mode) => setDetails({ ...details, validate_mode })}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {details.validate_mode === 'block'
+                    ? 'Answers 422 request_validation_failed, with each error.'
+                    : details.validate_mode === 'warn'
+                      ? 'Lets the request through and adds X-Validation-Warning to the response.'
+                      : 'Lets the request through and counts the failure.'}
+                </span>
+              </div>
+            )}
             {def && action && (
               // The registry keeps kind and action in step; this cast is the
               // one place the pairing is asserted rather than inferred.
@@ -467,6 +696,7 @@ export function EdgeRuleDialog({
                 onChange={(next: unknown) => setAction(next as ActionMap[Kind])}
                 errors={fieldErrors}
                 apps={apps}
+                wafBlocking={contextCurrent && wafBlockingAccess === 'on'}
                 slug={editing ? (apps.find((a) => a.slug === slug)?.slug ?? slug) : slug}
                 suggest={
                   kind === 'throttle' ? (

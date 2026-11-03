@@ -6,6 +6,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NO_ASYNC_OPTIONS, type AsyncInvokeOptions } from '@/lib/api/async-invocations';
 import { spyApi } from '@/test/api';
 
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ account: { id: 'acct', plan: 'pro' }, loading: false }),
+}));
 const cap = vi.hoisted(() => ({ access: 'on' as string, workPolicies: 'on' as string }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: (id: string) => ({
@@ -70,7 +73,9 @@ it('reads nothing until opened, and is labelled from the capability maturity', (
 it('picks a work policy, key, deadline and destinations', async () => {
   routes([{ name: 'document-index', revision: 3 }]);
   mount();
-  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  await userEvent.click(
+    screen.getByText(/Retries, retention, deadline, work policy and destinations/)
+  );
 
   const policy = await screen.findByLabelText('Work policy');
   await waitFor(() =>
@@ -103,7 +108,9 @@ it('picks a work policy, key, deadline and destinations', async () => {
 it('explains where policies come from when the app has none', async () => {
   routes([]);
   mount();
-  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  await userEvent.click(
+    screen.getByText(/Retries, retention, deadline, work policy and destinations/)
+  );
   expect(await screen.findByText(/no work policies/)).toBeInTheDocument();
 });
 
@@ -119,8 +126,42 @@ it('leaves out work policies, and never reads them, while that capability is hid
   cap.workPolicies = 'off';
   const get = routes([{ name: 'document-index', revision: 3 }]);
   mount();
-  await userEvent.click(screen.getByText(/Work policy, deadline and destinations/));
+  await userEvent.click(
+    screen.getByText(/Retries, retention, deadline, work policy and destinations/)
+  );
   expect(await screen.findByLabelText('On failure')).toBeInTheDocument();
   expect(screen.queryByLabelText('Work policy')).not.toBeInTheDocument();
   expect(get).not.toHaveBeenCalledWith('/v1/apps/{slug}/work-policies', expect.anything());
+});
+
+it('sets a retry curve and a shorter retention for this one invocation', async () => {
+  routes([]);
+  mount();
+  await userEvent.click(screen.getByText(/Retries, retention, deadline/));
+  const attempts = await screen.findByLabelText('Max attempts');
+  expect(attempts).toHaveAttribute('placeholder', 'Plan cap (10)');
+  await userEvent.type(attempts, '4');
+  await userEvent.type(screen.getByLabelText('First retry after (s)'), '2');
+  await userEvent.type(screen.getByLabelText('Jitter (±%)'), '20');
+  await userEvent.type(screen.getByLabelText('Keep the result for'), '12');
+  await userEvent.selectOptions(screen.getByLabelText('Keep the result for unit'), 'hours');
+  expect(latest).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      retry: { maxAttempts: '4', baseSeconds: '2', maxSeconds: '', jitter: '20' },
+      retention: { amount: '12', unit: 'hours' },
+    })
+  );
+  expect(screen.getByText(/up to 30 days on your plan/i)).toBeInTheDocument();
+});
+
+it('says what is wrong with a retry field once it is left', async () => {
+  routes([]);
+  mount();
+  await userEvent.click(screen.getByText(/Retries, retention, deadline/));
+  const attempts = await screen.findByLabelText('Max attempts');
+  await userEvent.type(attempts, '40');
+  expect(screen.queryByText(/whole number from 1 to 25/)).not.toBeInTheDocument();
+  await userEvent.tab();
+  expect(screen.getByText(/whole number from 1 to 25/)).toBeInTheDocument();
+  expect(attempts).toHaveAttribute('aria-invalid', 'true');
 });

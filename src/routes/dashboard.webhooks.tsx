@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { RotateSecretDialog } from '@/components/dashboard/rotate-secret-dialog';
 import { createFileRoute } from '@tanstack/react-router';
 import { List, Plus, Refresh, Trash } from 'iconoir-react';
@@ -6,31 +6,36 @@ import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Switch } from '@/components/ui/switch';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { SegmentedControl } from '@/components/dashboard/tabs';
+import { SegmentedControl, Tabs, tabId } from '@/components/dashboard/tabs';
+import { MaturityLabel } from '@/components/dashboard/maturity-label';
+import { ReleaseWebhooks } from '@/components/dashboard/release-webhooks';
+import { WebhookDeliveries } from '@/components/dashboard/webhook-deliveries';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import {
   useCreateWebhook,
   useDeleteWebhook,
-  useRetryDelivery,
   useRotateWebhookSecret,
   useUpdateWebhook,
-  useWebhookDeliveries,
   useWebhooks,
 } from '@/lib/api/queries';
+import { useCapability } from '@/lib/api/capabilities';
 import { useAuth } from '@/lib/auth';
 import { InboundWebhooks } from '@/components/dashboard/inbound-webhooks';
-import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 import type { components } from '@/lib/api/schema';
 
 export function validateWebhookSearch(search: Record<string, unknown>): {
   direction?: 'inbound' | 'outbound';
+  scope?: 'account';
 } {
-  return { direction: search.direction === 'inbound' ? 'inbound' : undefined };
+  return {
+    direction: search.direction === 'inbound' ? 'inbound' : undefined,
+    scope: search.scope === 'account' ? 'account' : undefined,
+  };
 }
 
 export const Route = createFileRoute('/dashboard/webhooks')({
@@ -121,24 +126,9 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-const DELIVERY_COLOR: Record<string, string | undefined> = {
-  succeeded: 'var(--status-good)',
-  failed: 'var(--status-serious)',
-  dead: 'var(--status-critical)',
-  pending: 'var(--status-warning)',
-  in_flight: 'var(--status-warning)',
-};
-
-function when(value: string | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : formatRelative(ms);
-}
-
 /**
- * Recent deliveries for one webhook, with a retry on the ones that died.
- * `useWebhookDeliveries` and `useRetryDelivery` both existed and had no
- * caller; this is what they were for.
+ * One webhook's delivery health, its deliveries and each one's attempts, with
+ * a retry on the dead ones (WebhookDeliveries, shared with account receivers).
  */
 function Deliveries({
   slug,
@@ -149,69 +139,15 @@ function Deliveries({
   hook: WebhookRow | null;
   onClose: () => void;
 }) {
-  const { toast } = useToast();
-  const deliveries = useWebhookDeliveries(slug, hook?.id ?? '');
-  const retry = useRetryDelivery(slug, hook?.id ?? '');
-  const list = deliveries.data?.deliveries ?? [];
-  const deliveriesPhase = queryPhase({
-    error: deliveries.error,
-    loading: deliveries.isPending,
-    isEmpty: list.length === 0,
-  });
-
   return (
     <Modal
       open={hook !== null}
       onClose={onClose}
       title="Deliveries"
       description={hook?.target}
-      width="max-w-2xl"
+      width="max-w-3xl"
     >
-      {deliveriesPhase !== 'ready' ? (
-        <InlinePhase
-          phase={deliveriesPhase}
-          error={deliveries.error}
-          loadingMessage="Loading deliveries…"
-          emptyMessage="Nothing has been delivered yet."
-        />
-      ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {list.map((d) => (
-            <li key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
-              <Pill label={d.status} color={DELIVERY_COLOR[d.status]} />
-              <span className="font-mono text-xs">{d.event}</span>
-              <span className="text-xs text-muted-foreground">{when(d.created_at)}</span>
-              {d.attempt > 1 && (
-                <span className="text-xs text-muted-foreground">attempt {d.attempt}</span>
-              )}
-              {d.last_error && (
-                <span className="font-mono text-xs text-muted-foreground">{d.last_error}</span>
-              )}
-              {(d.status === 'dead' || d.status === 'failed') && (
-                <button
-                  type="button"
-                  disabled={retry.isPending}
-                  onClick={() =>
-                    void retry
-                      .mutateAsync(d.id)
-                      .then(() => toast({ kind: 'success', title: 'Delivery re-armed' }))
-                      .catch((err: unknown) =>
-                        toast({
-                          kind: 'error',
-                          title: 'Could not retry',
-                          error: err,
-                        })
-                      )
-                  }
-                  className="ml-auto text-xs text-brand transition-colors hover:text-brand-hover disabled:opacity-50"
-                >
-                  Retry
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      {hook && <WebhookDeliveries scope={{ slug, id: hook.id }} />}
     </Modal>
   );
 }
@@ -486,6 +422,14 @@ export function WebhooksBody({ slug }: { slug: string }) {
         onRetry={() => void refetch()}
       />
 
+      <p className="text-xs text-muted-foreground">
+        Release events from every app can also go to one account receiver, with its own key:{' '}
+        <a className="text-brand underline" href="/dashboard/webhooks?scope=account">
+          account release webhooks
+        </a>
+        .
+      </p>
+
       <Deliveries slug={slug} hook={viewing} onClose={() => setViewing(null)} />
       {rotating && (
         <RotateSecretDialog
@@ -506,29 +450,62 @@ function WebhooksPage() {
   const appState = useSelectedApp();
   const { slug, select, apps } = appState;
   const { account } = useAuth();
-  const { direction } = Route.useSearch();
+  const { direction, scope } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const { capability } = useCapability('outbound-webhooks');
+  const panelId = useId();
+  const view = scope === 'account' ? 'account' : 'app';
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Webhooks"
         description={
-          direction === 'inbound'
-            ? 'Stripe events enter through verified, durable inbound endpoints.'
-            : 'Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries.'
+          view === 'account'
+            ? 'Release events from every app on the account, signed and delivered to one receiver.'
+            : direction === 'inbound'
+              ? 'Stripe events enter through verified, durable inbound endpoints.'
+              : 'Signed outbound deliveries. Failed attempts back off and dead-letter after seven tries.'
         }
-        actions={<AppSelect slug={slug} onSelect={select} apps={apps} />}
+        actions={
+          <>
+            <MaturityLabel capability={capability} />
+            {view === 'app' && <AppSelect slug={slug} onSelect={select} apps={apps} />}
+          </>
+        }
       />
-      <AppScope state={appState} resource="webhooks">
-        <WebhooksHub
-          accountId={account?.id ?? ''}
-          slug={slug}
-          direction={direction ?? 'outbound'}
-          onDirection={(next) =>
-            void navigate({ search: { direction: next === 'inbound' ? 'inbound' : undefined } })
-          }
-        />
-      </AppScope>
+      <Tabs
+        label="Webhooks"
+        value={view}
+        panelId={panelId}
+        options={[
+          { key: 'app', label: 'App webhooks' },
+          { key: 'account', label: 'Account release webhooks' },
+        ]}
+        onChange={(next) =>
+          void navigate({
+            search: next === 'account' ? { scope: 'account' } : {},
+            replace: true,
+          })
+        }
+      />
+      <div id={panelId} role="tabpanel" aria-labelledby={tabId(panelId, view)}>
+        {view === 'account' ? (
+          <ReleaseWebhooks />
+        ) : (
+          <AppScope state={appState} resource="webhooks">
+            <WebhooksHub
+              accountId={account?.id ?? ''}
+              slug={slug}
+              direction={direction ?? 'outbound'}
+              onDirection={(next) =>
+                void navigate({
+                  search: { direction: next === 'inbound' ? 'inbound' : undefined },
+                })
+              }
+            />
+          </AppScope>
+        )}
+      </div>
     </div>
   );
 }

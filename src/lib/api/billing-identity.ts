@@ -120,3 +120,21 @@ export function useBackfillInvoices() {
     onSettled: () => qc.invalidateQueries({ queryKey: keys.invoices }),
   });
 }
+
+export type InvoiceRefresh = components['schemas']['InvoiceRefreshResponse'];
+
+/**
+ * `POST /v1/invoices/{id}/refresh`: re-read one stored invoice's line items
+ * and lifecycle from the billing provider. Money, payment state and plan are
+ * never changed (faas handlers_invoice_refresh.go:16-40), so only the list is
+ * re-read afterwards. It refreshes the signed-in account's own invoices only:
+ * any other owner, a company's included, answers 404 (line 44).
+ */
+export function useRefreshInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST('/v1/invoices/{id}/refresh', { params: { path: { id } } })),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.invoices }),
+  });
+}

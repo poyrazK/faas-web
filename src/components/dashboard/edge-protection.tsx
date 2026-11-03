@@ -21,15 +21,13 @@ import {
 } from '@/lib/api/edge-protection';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { useAuth } from '@/lib/auth';
-import { cliPreAuthCommand } from '@/lib/cli-commands';
-import { CliCommand } from '@/components/dashboard/cli-command';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
+import { PreAuthGuardPanel } from '@/components/dashboard/pre-auth-guard';
 import { Timestamp } from '@/components/ui/timestamp';
 
 /**
- * An app's edge protection: what the edge refused, what the pre-auth guard
- * would have refused, and the attack-mode switch.
+ * An app's edge protection: what the edge refused, the pre-auth guard and
+ * what it would have refused, and the attack-mode switch.
  *
  * The counts are Prometheus increases over a range (faas
  * pkg/apid/edgerules/protection.go:42); when the metrics source fails, apid
@@ -78,11 +76,6 @@ function useActiveNow(status: AttackMode | undefined) {
     return () => clearTimeout(timer);
   }, [active, ends]);
   return active;
-}
-
-/** ADR-829's default pre-auth rate, clamped to the Free plan's 5 rps. */
-function defaultPreAuthRate(plan: string | undefined) {
-  return { rps: plan === 'free' ? 5 : 10, burst: 20 };
 }
 
 /**
@@ -151,6 +144,7 @@ export function EdgeProtectionBody({ slug }: { slug: string }) {
       </div>
       <AttackModePanel slug={slug} />
       <SummaryPanel slug={slug} range={range} />
+      <PreAuthGuardPanel slug={slug} />
       <PreAuthPanel slug={slug} range={range} />
     </div>
   );
@@ -457,7 +451,6 @@ const SUGGESTION: Record<string, { title: string; color?: string }> = {
 
 function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
   const explain = useExplain();
-  const { account } = useAuth();
   const q = usePreAuthObservations(slug, range);
   const phase = queryPhase({ error: q.error, loading: q.isPending });
   const data = q.data;
@@ -479,16 +472,10 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
             onRetry={() => void q.refetch()}
           />
         ) : data.policies.length === 0 ? (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="text-muted-foreground">
-              No pre-auth guard is on for this app, so nothing is observed. Turn it on in observe
-              mode first; it records without rejecting:
-            </p>
-            <CliCommand
-              command={cliPreAuthCommand(slug, 'observe', defaultPreAuthRate(account?.plan))}
-              copyLabel={`pre-auth observe command for ${slug}`}
-            />
-          </div>
+          <p className="text-sm text-muted-foreground">
+            No pre-auth guard is on for this app, so nothing is observed. Turn it on in observe mode
+            first, in the pre-auth guard above; it records without rejecting.
+          </p>
         ) : (
           <div className="flex flex-col gap-4">
             {degraded && (
@@ -504,10 +491,9 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
                 </div>
                 <p className="text-muted-foreground">{suggestion.reason}</p>
                 {suggestion.status === 'ready' && (
-                  <CliCommand
-                    command={cliPreAuthCommand(slug, 'enforce')}
-                    copyLabel={`pre-auth enforce command for ${slug}`}
-                  />
+                  <p className="text-muted-foreground">
+                    Switch the pre-auth guard above to Enforce to start refusing.
+                  </p>
                 )}
               </div>
             )}

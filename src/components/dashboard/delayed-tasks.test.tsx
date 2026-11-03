@@ -7,6 +7,9 @@ import { ConfirmProvider } from '@/components/ui/confirm';
 import { ToastProvider } from '@/components/ui/toast';
 import { spyApi } from '@/test/api';
 
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ account: { id: 'acct', plan: 'pro' }, loading: false }),
+}));
 const cap = vi.hoisted(() => ({ access: 'on' as string, maturity: 'beta' as string }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: cap.access, refresh: vi.fn() }),
@@ -313,5 +316,101 @@ describe('DelayedTasks schedule', () => {
     fireEvent.change(screen.getByLabelText(/run at/i), { target: { value: '2030-01-01T09:00' } });
     await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     expect(await screen.findByText(/pending-task limit/i)).toBeInTheDocument();
+  });
+
+  it('schedules after a relative delay, as delay_seconds rather than a time', async () => {
+    listRoute(spyApi('GET'), [page]);
+    const post = spyApi('POST').mockImplementation(() => ok(task(OLDER)));
+    mount();
+    await screen.findByText('POST /send-reminder');
+    await userEvent.click(screen.getByRole('button', { name: 'After a delay' }));
+    expect(screen.queryByLabelText(/run at/i)).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Run after'), '30');
+    await userEvent.selectOptions(screen.getByLabelText('Run after unit'), 'minutes');
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/delayed-tasks', {
+        params: { path: { slug: 'billing' } },
+        body: { delay_seconds: 1800, method: 'POST', path: '/', payload: {} },
+      })
+    );
+  });
+
+  it('refuses a delay past a year, before sending anything', async () => {
+    listRoute(spyApi('GET'), [page]);
+    const post = spyApi('POST');
+    mount();
+    await screen.findByText('POST /send-reminder');
+    await userEvent.click(screen.getByRole('button', { name: 'After a delay' }));
+    await userEvent.type(screen.getByLabelText('Run after'), '400');
+    await userEvent.selectOptions(screen.getByLabelText('Run after unit'), 'days');
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(await screen.findByText(/365 days/)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('sends headers, a retry policy, retention, a work policy and a destination', async () => {
+    const HOOK = '11111111-1111-4111-8111-111111111111';
+    spyApi('GET').mockImplementation((path: string) => {
+      if (path === '/v1/apps/{slug}/work-policies')
+        return ok({ policies: [{ name: 'reminders', revision: 2 }] });
+      if (path === '/v1/apps/{slug}/webhooks')
+        return ok([{ id: HOOK, target_url: 'https://hooks.example.com/failed' }]);
+      return ok(page);
+    });
+    const post = spyApi('POST').mockImplementation(() => ok(task(OLDER)));
+    mount();
+    await screen.findByText('POST /send-reminder');
+    fireEvent.change(screen.getByLabelText(/run at/i), { target: { value: '2030-01-01T09:00' } });
+    await userEvent.click(screen.getByText(/Headers, retries, retention/));
+    fireEvent.change(screen.getByLabelText(/^headers/i), {
+      target: { value: '{"X-Correlation-ID":"inv_123"}' },
+    });
+    expect(screen.queryByLabelText(/deadline/i)).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Max attempts'), '4');
+    await userEvent.type(screen.getByLabelText('Keep the result for'), '1');
+    await userEvent.selectOptions(screen.getByLabelText('Keep the result for unit'), 'days');
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'reminders' })).toBeInTheDocument()
+    );
+    await userEvent.selectOptions(screen.getByLabelText('Work policy'), 'reminders');
+    await userEvent.type(screen.getByLabelText('Work key'), 'inv_123');
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('option', { name: 'https://hooks.example.com/failed' })
+      ).toHaveLength(2)
+    );
+    await userEvent.selectOptions(screen.getByLabelText('On failure'), HOOK);
+    await userEvent.type(screen.getByLabelText(/idempotency key/i), 'reminder-inv-123');
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/delayed-tasks', {
+        params: { path: { slug: 'billing' }, header: { 'Idempotency-Key': 'reminder-inv-123' } },
+        body: {
+          scheduled_at: new Date('2030-01-01T09:00').toISOString(),
+          method: 'POST',
+          path: '/',
+          payload: {},
+          headers: { 'X-Correlation-ID': 'inv_123' },
+          retry_policy: { max_attempts: 4 },
+          retention_seconds: 86_400,
+          work: { policy: 'reminders', key: 'inv_123' },
+          destinations: { on_failure: HOOK },
+        },
+      })
+    );
+  });
+
+  it('refuses headers that are not a JSON object', async () => {
+    listRoute(spyApi('GET'), [page]);
+    const post = spyApi('POST');
+    mount();
+    await screen.findByText('POST /send-reminder');
+    fireEvent.change(screen.getByLabelText(/run at/i), { target: { value: '2030-01-01T09:00' } });
+    await userEvent.click(screen.getByText(/Headers, retries, retention/));
+    fireEvent.change(screen.getByLabelText(/^headers/i), { target: { value: '["x"]' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(await screen.findByText(/headers must be a JSON object/i)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
   });
 });

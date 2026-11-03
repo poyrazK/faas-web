@@ -32,7 +32,10 @@ import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
 import { HealthProbes } from './health-probes';
+import { SnapshotHooks } from './snapshot-hooks';
 import { AppReleaseSettings } from './app-release-settings';
+import { DeployDiffPreview } from './deploy-diff-preview';
+import { useCapabilityStage } from '@/lib/api/capabilities';
 
 /**
  * The app's own settings, editable.
@@ -187,6 +190,7 @@ function ConfigForm({ app }: { app: App }) {
   const operation = usePolicyOperation(account?.id ?? '', app.slug, app.id, 'configuration');
   const [savedEffects, setSavedEffects] = useState<ReturnType<typeof configurationEffects>>();
   const diff = useAppDiff(app.slug);
+  const diffStage = useCapabilityStage('deploy-diff');
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof diff.mutateAsync>> | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(app));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
@@ -565,57 +569,14 @@ function ConfigForm({ app }: { app: App }) {
         open={preview !== null}
         onClose={() => setPreview(null)}
         title="What this change would do"
-        description={preview ? `Plan ${preview.plan ?? ''} · ${app.slug}` : undefined}
+        description={
+          preview
+            ? `${diffStage ? `${diffStage} · ` : ''}Plan ${preview.plan ?? ''} · ${app.slug}`
+            : undefined
+        }
         width="max-w-xl"
       >
-        {preview && (
-          <div className="flex flex-col gap-4">
-            {(preview.diff?.changes?.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">No effective changes.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {preview.diff?.changes?.map((c) => (
-                  <li
-                    key={c.field}
-                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-xs"
-                  >
-                    <span className="w-44 shrink-0 font-mono">{c.field}</span>
-                    <span className="text-muted-foreground line-through">
-                      {String(c.before ?? '—')}
-                    </span>
-                    <span aria-hidden className="text-muted-foreground/50">
-                      →
-                    </span>
-                    <span className="text-foreground">{String(c.after ?? '—')}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {(preview.diff?.breaks?.length ?? 0) > 0 && (
-              <div>
-                <p className="label-mono mb-1.5" style={{ color: 'var(--status-warning)' }}>
-                  Breaking
-                </p>
-                <ul className="flex flex-col gap-1">
-                  {preview.diff?.breaks?.map((b) => (
-                    <li
-                      key={String(b)}
-                      className="text-xs"
-                      style={{ color: 'var(--status-warning)' }}
-                    >
-                      {String(b)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {preview.blocking && (
-              <p className="text-xs" style={{ color: 'var(--status-critical)' }}>
-                This change is blocking — the deploy path would refuse it.
-              </p>
-            )}
-          </div>
-        )}
+        {preview && <DeployDiffPreview preview={preview} />}
       </Modal>
     </>
   );
@@ -816,6 +777,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
       <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
+      <SnapshotHooks key={`hooks:${data.id}:${data.slug}`} app={data} />
       <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <DeployTokensPanel slug={data.slug} />

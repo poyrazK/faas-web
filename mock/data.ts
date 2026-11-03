@@ -361,7 +361,35 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
           stop_grace_period: 45_000_000_000 as unknown as string,
         }
       : { port: 8080 }),
-    ...(a.slug === 'api-gateway' ? { startup_deadline_s: 20, max_retries: 4 } : {}),
+    ...(a.slug === 'api-gateway'
+      ? {
+          startup_deadline_s: 20,
+          max_retries: 4,
+          // As a gregale.yaml lifecycle block would set it: reconnect after restore.
+          after_restore: { path: '/internal/after-restore', timeout_ms: 1500 },
+        }
+      : {}),
+    // The pre-auth guard docs/security.md walks through: observe, with a
+    // stricter login route that also counts failed sign-ins. The other apps
+    // predate ADR-829 and have none, so the "off" state shows too.
+    ...(a.slug === 'api-gateway'
+      ? {
+          pre_auth_rate_limit: {
+            mode: 'observe' as const,
+            requests_per_second: 20,
+            burst: 40,
+            routes: [
+              {
+                method: 'POST' as const,
+                path: '/login',
+                requests_per_second: 2,
+                burst: 4,
+                failed_responses: { failures_per_minute: 5, burst: 3 },
+              },
+            ],
+          },
+        }
+      : {}),
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',
@@ -1080,6 +1108,16 @@ export const domains: S['CustomDomainResponse'][] = [
     default: true,
   },
   { domain: 'img.acme.dev', app_id: apps[1].id, verified: true, verified_at: iso(19 * D) },
+  // A Pro wildcard with no host allowlist yet, and a domain bound to one
+  // environment of apps[0]'s project (mock/projects.ts acme-shop).
+  { domain: '*.tenants.acme.dev', app_id: apps[0].id, verified: true, verified_at: iso(12 * D) },
+  {
+    domain: 'staging.acme.dev',
+    app_id: apps[0].id,
+    environment: 'staging',
+    verified: true,
+    verified_at: iso(6 * D),
+  },
   {
     domain: 'hooks.acme.dev',
     app_id: apps[2].id,

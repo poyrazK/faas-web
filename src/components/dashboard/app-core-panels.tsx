@@ -2,17 +2,13 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD, Textarea } from '@/components/ui/field';
-import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { ErrorState, InlinePhase, LoadingState, Panel, StatTile, queryPhase } from './primitives';
+import { ErrorState, LoadingState, Panel, StatTile } from './primitives';
 import {
-  useAppRegistryCredentials,
   useAppSlo,
-  useDeleteAppRegistryCredential,
   useInvokeApp,
   useInvokeAppAsync,
   useInvocation,
-  useSetAppRegistryCredential,
   type AppSLOWindow,
 } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
@@ -318,146 +314,5 @@ export function SloPanel({ slug }: { slug: string }) {
   );
 }
 
-function date(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString();
-}
-
-export function RegistryCredentialsPanel({ slug }: { slug: string }) {
-  const { toast } = useToast();
-  const confirm = useConfirm();
-  const credentials = useAppRegistryCredentials(slug);
-  const credentialsPhase = queryPhase({
-    error: credentials.error,
-    loading: credentials.isPending,
-    isEmpty: (credentials.data?.credentials.length ?? 0) === 0,
-  });
-  const setCredential = useSetAppRegistryCredential(slug);
-  const deleteCredential = useDeleteAppRegistryCredential(slug);
-  const [registry, setRegistry] = useState('https://');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-
-  const save = () => {
-    void setCredential
-      .mutateAsync({ registry: registry.trim(), username: username.trim(), password })
-      .then(() => {
-        setPassword('');
-        toast({ kind: 'success', title: 'Registry credential saved' });
-      })
-      .catch((error: unknown) =>
-        toast({
-          kind: 'error',
-          title: 'Could not save credential',
-          error: error,
-        })
-      );
-  };
-
-  return (
-    <Panel
-      title="Private registries"
-      description="Credentials are sealed by the control plane and never returned to the browser after saving."
-    >
-      <div className="flex flex-col gap-5">
-        <form
-          className="grid gap-3 sm:grid-cols-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (registry.trim() && username.trim() && password && !setCredential.isPending) save();
-          }}
-        >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Registry URL</span>
-            <input
-              value={registry}
-              onChange={(e) => setRegistry(e.target.value)}
-              placeholder="https://registry.example.com"
-              spellCheck={false}
-              className={CODE_FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Username</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              className={FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              className={FIELD}
-            />
-          </label>
-          <div className="flex items-center justify-between gap-3 sm:col-span-3">
-            <p className="text-xs text-muted-foreground">Use an explicit https:// registry URL.</p>
-            <Button
-              size="sm"
-              type="submit"
-              disabled={!registry.trim() || !username.trim() || !password}
-              busy={setCredential.isPending}
-            >
-              Save credential
-            </Button>
-          </div>
-        </form>
-
-        {credentialsPhase !== 'ready' ? (
-          <InlinePhase
-            phase={credentialsPhase}
-            error={credentials.error}
-            loadingMessage="Reading credentials…"
-            emptyMessage="No private registry credentials configured."
-          />
-        ) : (
-          <ul className="flex flex-col divide-y divide-border border-t border-border">
-            {credentials.data?.credentials.map((credential) => (
-              <li key={credential.registry} className="flex flex-wrap items-center gap-3 py-3">
-                <span className="min-w-0 flex-1 font-mono text-xs">{credential.registry}</span>
-                <span className="text-xs text-muted-foreground">
-                  {credential.username} · saved {date(credential.updated_at)}
-                </span>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={deleteCredential.isPending}
-                  onClick={async () => {
-                    if (
-                      !(await confirm({
-                        title: `Remove ${credential.registry}?`,
-                        description:
-                          'Future private-image pulls will no longer have these credentials.',
-                        confirmLabel: 'Remove credential',
-                        destructive: true,
-                      }))
-                    )
-                      return;
-                    void deleteCredential
-                      .mutateAsync(credential.registry)
-                      .then(() => toast({ kind: 'success', title: 'Registry credential removed' }))
-                      .catch((error: unknown) =>
-                        toast({
-                          kind: 'error',
-                          title: 'Could not remove credential',
-                          error: error,
-                        })
-                      );
-                  }}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </Panel>
-  );
-}
+// Moved beside the job registries, which share its editor; kept importable from here.
+export { RegistryCredentialsPanel } from './registry-credentials';

@@ -9,7 +9,16 @@ const toast = vi.fn();
 const capability = vi.fn();
 const confirm = vi.fn();
 const navigate = vi.fn();
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
 
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => workspace,
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapability: () => capability() }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
@@ -103,6 +112,7 @@ async function openForm() {
 }
 
 beforeEach(() => {
+  Object.assign(workspace, { org: null, label: 'Personal', ready: true });
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
   navigate.mockReset();
@@ -316,5 +326,122 @@ describe('ReleasePreviews', () => {
     renderPanel();
     await userEvent.click(await screen.findByRole('button', { name: /pr-42-checkout/ }));
     expect(await screen.findByText(/is not a preview app/)).toBeInTheDocument();
+  });
+});
+
+describe('ReleasePreviews in a company workspace', () => {
+  const PROJECT = '3f2b8c1e-6a4d-4e5f-9b7a-1c2d3e4f5a6b';
+  const summary = (slug: string, status = 'active') => ({
+    id: `id-${slug}`,
+    slug,
+    type: 'app',
+    project_id: PROJECT,
+    status,
+    created_at: '2026-10-01T00:00:00Z',
+  });
+  const pr7 = {
+    ...pr42,
+    id: 'c2',
+    slug: 'pr-7-search-indexer',
+    url: 'https://pr-7-search-indexer.gregale.dev',
+    preview_of_slug: 'search-indexer',
+    preview_pr_number: 7,
+  };
+  let inventory: ReturnType<typeof summary>[];
+  let appReads: Record<string, unknown>;
+  function stubCompanyGets() {
+    return spyApi('GET').mockImplementation(async (path, init) => {
+      const slug = (init as { params?: { path?: { slug?: string } } })?.params?.path?.slug;
+      if (path === '/v1/orgs/{slug}/apps') return reply({ apps: inventory });
+      if (path === '/v1/preview/{slug}')
+        return previews[slug!] ?? problem(404, 'preview_not_found', 'not a preview');
+      if (path === '/v1/apps/{slug}') return appReads[slug!] ?? problem(404, 'not_found', 'gone');
+      throw new Error(`unexpected GET ${path}`);
+    });
+  }
+  beforeEach(() => {
+    Object.assign(workspace, { org: 'acme-corp', label: 'Acme Corp', ready: true });
+    inventory = [summary('search-indexer'), summary('pr-7-search-indexer', 'undeployed')];
+    appReads = { 'pr-7-search-indexer': reply(pr7) };
+    previews = { 'pr-7-search-indexer': reply(resource(pr7)) };
+  });
+
+  it("lists the company's previews and production apps from its inventory, not /v1/apps", async () => {
+    const get = stubCompanyGets();
+    renderPanel();
+    expect(await screen.findByText('pr-7-search-indexer')).toBeInTheDocument();
+    expect(screen.getByText(/PR #7 of search-indexer/)).toBeInTheDocument();
+    expect(screen.queryByText('pr-42-checkout')).not.toBeInTheDocument();
+    const form = await openForm();
+    expect(
+      within(within(form).getByLabelText('Production app'))
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['search-indexer']);
+    // The personal plan's allowance is not the company's.
+    expect(form).not.toHaveTextContent('Your Pro plan allows');
+    expect(form).toHaveTextContent(
+      'In Acme Corp, apid lets only the member who created an app create its previews'
+    );
+    expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/apps', expect.anything());
+    expect(get).not.toHaveBeenCalledWith('/v1/apps', expect.anything());
+  });
+
+  it("creates a company app's preview and lists it from the refreshed inventory", async () => {
+    const get = stubCompanyGets();
+    const created = { ...pr7, slug: 'pr-8-search-indexer', preview_pr_number: 8 };
+    previews['pr-8-search-indexer'] = reply(resource(created));
+    const post = spyApi('POST').mockImplementation(async () => {
+      inventory = [...inventory, summary('pr-8-search-indexer', 'undeployed')];
+      return reply(created, 201);
+    });
+    renderPanel();
+    const form = await openForm();
+    await userEvent.type(within(form).getByLabelText('Pull request number'), '8');
+    await userEvent.click(within(form).getByRole('button', { name: 'Create preview' }));
+    expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/previews', {
+      params: { path: { slug: 'search-indexer' } },
+      body: { pr_number: 8, ttl_hours: 168 },
+    });
+    expect(await screen.findByRole('button', { name: /pr-8-search-indexer/ })).toBeInTheDocument();
+    expect(get.mock.calls.filter(([path]) => path === '/v1/orgs/{slug}/apps').length).toBe(2);
+  });
+
+  it('explains a role refusal by naming the organization', async () => {
+    stubCompanyGets();
+    spyApi('POST').mockResolvedValue(
+      problem(
+        403,
+        'org_role_forbidden',
+        'your role does not allow use an application endpoint without a reviewed organization permission on this organization.'
+      )
+    );
+    renderPanel();
+    const form = await openForm();
+    await userEvent.type(within(form).getByLabelText('Pull request number'), '8');
+    await userEvent.click(within(form).getByRole('button', { name: 'Create preview' }));
+    const alert = await within(form).findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'apid lets only the member who created search-indexer create its previews, while they are an owner or admin of Acme Corp'
+    );
+    expect(alert).toHaveTextContent('org_role_forbidden');
+  });
+
+  it('falls back to the app read when the preview read is refused, and offers no teardown', async () => {
+    // GET /v1/preview/{slug} and its teardown are not reviewed organization
+    // routes (faas appaccess/indirect.go:107-109, access.go:263-270);
+    // GET /v1/apps/{slug} is (appaccess/routes.go:28).
+    stubCompanyGets();
+    previews['pr-7-search-indexer'] = problem(403, 'org_role_forbidden', 'role');
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: /pr-7-search-indexer/ }));
+    const detail = await screen.findByRole('region', { name: 'Preview pr-7-search-indexer' });
+    expect(await within(detail).findByText('PR #7 · open')).toBeInTheDocument();
+    expect(within(detail).getByText(/in 6 days/)).toBeInTheDocument();
+    expect(detail).toHaveTextContent(
+      'Only the member who created search-indexer, while an owner or admin of Acme Corp, can see this preview’s latest deployment'
+    );
+    expect(within(detail).queryByRole('button', { name: 'Tear down preview' })).toBeNull();
+    expect(within(detail).queryByRole('alert')).toBeNull();
   });
 });

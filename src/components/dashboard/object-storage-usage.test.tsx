@@ -1,15 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ObjectStorageUsagePanel } from './object-storage-usage';
 
-const useObjectStorageUsage = vi.fn();
-vi.mock('@/lib/api/object-storage', () => ({
-  useObjectStorageUsage: () => useObjectStorageUsage() as unknown,
-}));
-
-const { ObjectStorageUsagePanel } = await import('./object-storage-usage');
+// The panel draws the `object_storage` block of GET /v1/account/usage.
+const projection = vi.fn();
+const Panel = () => <ObjectStorageUsagePanel data={projection().data} />;
 
 beforeEach(() => {
-  useObjectStorageUsage.mockReset().mockReturnValue({
+  projection.mockReset().mockReturnValue({
     data: {
       usage: {
         observed_bytes: 41_237_899_264,
@@ -48,30 +46,30 @@ beforeEach(() => {
 
 describe('ObjectStorageUsagePanel', () => {
   it('shows stored bytes against the policy cap and the cost so far', () => {
-    render(<ObjectStorageUsagePanel />);
+    render(<Panel />);
     expect(screen.getByText('38 GB')).toBeInTheDocument();
     expect(screen.getByText('19% of 200 GB')).toBeInTheDocument();
     expect(screen.getByText('$4.128')).toBeInTheDocument();
   });
 
   it('falls back to the account currency, USD, when no charges block names one', () => {
-    const current = useObjectStorageUsage();
-    useObjectStorageUsage.mockReturnValue({
+    const current = projection();
+    projection.mockReturnValue({
       ...current,
       data: { usage: current.data.usage, policy: current.data.policy },
     });
-    render(<ObjectStorageUsagePanel />);
+    render(<Panel />);
     // Account amounts are USD (faas pkg/financial/currency.go, ADR-1430).
     expect(screen.getByText('$4.128')).toBeInTheDocument();
   });
 
   it('says so when the report is stale rather than presenting it as current', () => {
-    const current = useObjectStorageUsage();
-    useObjectStorageUsage.mockReturnValue({
+    const current = projection();
+    projection.mockReturnValue({
       ...current,
       data: { ...current.data, usage: { ...current.data.usage, fresh: false } },
     });
-    render(<ObjectStorageUsagePanel />);
+    render(<Panel />);
     expect(screen.getByText(/last report is stale/i)).toBeInTheDocument();
   });
 });

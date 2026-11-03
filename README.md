@@ -85,9 +85,10 @@ enable a flag, whitespace is not trimmed, and an unset variable is absent from
 the build rather than empty. Changing a flag needs a redeploy, because Vite
 inlines the value into the compiled client.
 
-| Environment variable   | Default | Effect                                        |
-| ---------------------- | ------- | --------------------------------------------- |
-| `VITE_FEATURE_EXAMPLE` | off     | Reference flag. Gates nothing; proves wiring. |
+| Environment variable           | Default | Effect                                                                                                                  |
+| ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `VITE_FEATURE_EXAMPLE`         | off     | Reference flag. Gates nothing; proves wiring.                                                                           |
+| `VITE_FEATURE_ERROR_REPORTING` | off     | Browser error capture and redaction (`lib/error-reporting.ts`). The transport is a no-op until a destination is chosen. |
 
 ### Adding a flag
 

@@ -14,7 +14,9 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import type { InvocationEnvelope } from './async-invocations';
 import { useWorkspaceTarget } from './workspace-apps';
+import { postgresDatabasesSettling, postgresKey } from './postgres';
 import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
@@ -121,7 +123,16 @@ export function useInstallRepos(installationId: number | null, accountId?: strin
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch?: string };
+type BindRepoInput = {
+  installationId: number;
+  repo: string;
+  branch?: string;
+  /**
+   * Branch → deployment scope. Left out, apid keeps the project's mappings;
+   * `{}` clears them (faas handlers_install_github.go:327, :347-350).
+   */
+  deployBranches?: Record<string, string>;
+};
 
 /**
  * Persist the (account, app, installation, repo, branch) binding. Leave
@@ -138,6 +149,7 @@ async function bindRepo(slug: string, input: BindRepoInput) {
         installation_id: input.installationId,
         repo_full_name: input.repo,
         ...(input.branch ? { production_branch: input.branch } : {}),
+        ...(input.deployBranches ? { deploy_branches: input.deployBranches } : {}),
       },
     })
   );
@@ -533,28 +545,51 @@ export type DelayedTask = components['schemas']['DelayedTaskResponse'];
  * write can refresh them all without knowing which ones are mounted. */
 const delayedTasksKey = ['delayed-tasks'] as const;
 
-/** Schedule a one-shot task to fire at a future time. */
+/**
+ * Schedule a one-shot task, at a time or after a delay — apid takes exactly
+ * one of `scheduled_at` and `delay_seconds` (handlers_invocations.go:787).
+ */
 export function useScheduleDelayedTask(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      scheduledAt: string;
-      payload: Record<string, unknown>;
-      /** The request the task makes; apid defaults to POST /. */
-      method?: string;
-      path?: string;
-    }) =>
-      unwrap(
+    mutationFn: (
+      input: (
+        | { scheduledAt: string; delaySeconds?: undefined }
+        | { delaySeconds: number; scheduledAt?: undefined }
+      ) & {
+        payload: Record<string, unknown>;
+        /** The request the task makes; apid defaults to POST /. */
+        method?: string;
+        path?: string;
+        headers?: Record<string, unknown>;
+        /** Work identity, destinations, retry curve and retention. */
+        envelope?: InvocationEnvelope;
+        /** apid answers a repeat within 24 h with the first task instead of a second. */
+        idempotencyKey?: string;
+      }
+    ) => {
+      const request = {
+        ...(input.method ? { method: input.method } : {}),
+        ...(input.path ? { path: input.path } : {}),
+        ...(input.headers ? { headers: input.headers } : {}),
+        payload: input.payload,
+        ...input.envelope,
+      };
+      return unwrap(
         api.POST('/v1/apps/{slug}/delayed-tasks', {
-          params: { path: { slug } },
-          body: {
-            scheduled_at: input.scheduledAt,
-            ...(input.method ? { method: input.method } : {}),
-            ...(input.path ? { path: input.path } : {}),
-            payload: input.payload,
+          params: {
+            path: { slug },
+            ...(input.idempotencyKey
+              ? { header: { 'Idempotency-Key': input.idempotencyKey } }
+              : {}),
           },
+          body:
+            input.delaySeconds !== undefined
+              ? { delay_seconds: input.delaySeconds, ...request }
+              : { scheduled_at: input.scheduledAt, ...request },
         })
-      ),
+      );
+    },
     onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
@@ -1128,20 +1163,35 @@ export function useUpdateDeploymentMinInstances() {
   });
 }
 
+/**
+ * `expected_serving_deployment_id` pins the release shown serving all
+ * traffic, or `''` for "no other release holds any"; a stale pin answers
+ * `409 traffic_serving_changed` without changing traffic
+ * (handlers_ext.go:2302-2303, :2343-2344).
+ */
 export function useUpdateDeploymentTraffic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, traffic_percent }: { id: string; traffic_percent: number }) =>
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      traffic_percent: number;
+      expected_serving_deployment_id?: string;
+    }) =>
       unwrap(
         api.PATCH('/v1/deployments/{id}/traffic', {
           params: { path: { id } },
-          body: { traffic_percent },
+          body,
         })
       ),
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: ['deployments', id] });
       void qc.invalidateQueries({ queryKey: keys.deployments });
     },
+    // A refused pin means traffic moved elsewhere: what serves must be re-read.
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.apps }),
   });
 }
 
@@ -2052,6 +2102,26 @@ export function useUsageSummary(options?: { enabled?: boolean }) {
     queryKey: keys.usageSummary,
     queryFn: () => unwrap(api.GET('/v1/usage/summary', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export type AccountUsage = components['schemas']['AccountUsageResponse'];
+
+/**
+ * The signed-in account's usage projection for the current UTC month: the
+ * compute summary (with its daily rollups) plus object storage and managed
+ * PostgreSQL when the account has them. An absent service block means the
+ * service is not enabled; a configured service that cannot be read fails the
+ * whole projection (faas handlers_ext.go accountUsage), so a missing meter is
+ * never shown as zero. Account-only: there is no organization variant.
+ */
+export function useAccountUsage(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...keys.usage, 'account'],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/account/usage', { signal })),
+    refetchInterval: 30_000,
+    retry: retryPolicy,
     enabled: options?.enabled ?? true,
   });
 }
@@ -3614,7 +3684,11 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
   });
 }
 
-/** apid's current health assessment: status, checks, capacity, request signal. */
+/**
+ * apid's current health assessment: status, checks, capacity, request signal.
+ * The read never wakes the app (faas docs/app-health.md), so it polls every
+ * 30 seconds while the page is visible; TanStack pauses it in a background tab.
+ */
 export function useAppHealth(slug: string) {
   return useQuery({
     queryKey: ['apps', slug, 'health'],
@@ -3626,17 +3700,26 @@ export function useAppHealth(slug: string) {
   });
 }
 
-/** Recorded health changes and evidence gaps, newest first. */
+/**
+ * Recorded health changes and evidence gaps, newest first, a page at a time:
+ * `next_cursor` is the next page's `before`. A pruned cursor is a 404, after
+ * which only a fresh first page helps.
+ */
 export function useAppHealthHistory(slug: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['apps', slug, 'health', 'history'],
-    queryFn: ({ signal }) =>
+    queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/health/history', {
-          params: { path: { slug }, query: { limit: 10 } },
+          params: {
+            path: { slug },
+            query: { limit: 10, ...(pageParam ? { before: pageParam } : {}) },
+          },
           signal,
         })
       ),
+    initialPageParam: '',
+    getNextPageParam: (page) => page.next_cursor || undefined,
     enabled: Boolean(slug),
     retry: retryPolicy,
   });
@@ -3871,9 +3954,9 @@ export type PostgresBinding = components['schemas']['ManagedPostgresBinding'];
 /**
  * Databases belong to the active workspace: the account's own, or a company's
  * under `/v1/orgs/{organization}/postgres/…` (faas org_postgres_routes.go, the
- * same shapes). Nothing is read until the workspace is known.
+ * same shapes). Nothing is read until the workspace is known. Usage, overage,
+ * undelete and the rest live in postgres.ts, under the same key prefix.
  */
-const postgresKey = (org: string | null) => ['postgres', org ?? 'personal', 'databases'] as const;
 
 export function usePostgresDatabases() {
   const { org, ready } = useWorkspaceTarget();
@@ -3890,11 +3973,7 @@ export function usePostgresDatabases() {
     enabled: ready,
     // Provisioning finishes on the provider's clock, not the browser's.
     refetchInterval: (query) =>
-      (query.state.data?.items ?? []).some(
-        (d) => d.state === 'provisioning' || d.state === 'deleting'
-      )
-        ? 5_000
-        : false,
+      postgresDatabasesSettling(query.state.data?.items ?? []) ? 5_000 : false,
   });
 }
 

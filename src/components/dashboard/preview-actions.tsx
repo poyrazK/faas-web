@@ -58,6 +58,18 @@ export function useTearDownPreview(slug: string, onDone?: () => void) {
         });
         return;
       }
+      if (err instanceof ApiError && err.code === 'org_role_forbidden') {
+        // Teardown is not a reviewed organization route: a company app's
+        // preview takes its creator, as an owner or admin (faas
+        // appaccess/indirect.go:107-109, access.go:263-270).
+        toast({
+          kind: 'error',
+          title: 'Could not tear down',
+          description:
+            'Only the member who created this preview’s app can tear it down, while they are an owner or admin of its organization.',
+        });
+        return;
+      }
       toast({ kind: 'error', title: 'Could not tear down', error: err });
     }
   };

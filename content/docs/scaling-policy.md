@@ -48,7 +48,7 @@ scaling rule, choose a stabilization window, or decide how signals combine.
 | `rps` | requests per second per instance | steady traffic with predictable per-request cost |
 | `cpu` | max CPU percent across instances | CPU-bound work whose request count understates its cost |
 | `queue_depth` | backlog each worker should drain, in Gregale's own queue | job and worker apps |
-| `queue_lag` | backlog still on the external broker | Kafka / AMQP / NATS / Redis Streams / SQS triggers |
+| `queue_lag` | backlog still on the external broker | Kafka / NATS / Redis Streams / SQS-compatible triggers |
 | `custom` | any number your app pushes | backlogs only your app knows about |
 
 `queue_lag` and `queue_depth` are different quantities and are not
@@ -136,9 +136,9 @@ you push is recorded for 15 days, so you can watch the number over time as
 well as scale on it:
 
 ```sh
-gregale metrics my-api --custom orders_pending            # last 24 hours
-gregale metrics my-api --custom orders_pending --range 7d
-gregale metrics my-api --custom orders_pending --json     # every point
+gregale metric my-api --custom orders_pending            # last 24 hours
+gregale metric my-api --custom orders_pending --range 7d
+gregale metric my-api --custom orders_pending --json     # every point
 ```
 
 `--range` is `1h`, `6h`, `24h`, `7d`, or `15d`. The dashboard's **Custom
@@ -161,7 +161,9 @@ OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Bearer $GREGALE_METRICS_KEY"
 OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative
 ```
 
-Both `http/protobuf` and `http/json` work; bodies are limited to 1 MiB.
+Both `http/protobuf` and `http/json` work, uncompressed or with gzip
+(`Content-Encoding: gzip`, the OpenTelemetry Collector's default); bodies
+are limited to 1 MiB, also once decompressed.
 Each data point becomes a custom metric under the same per-app name cap:
 
 - **Gauges** are stored like a pushed value and can drive scaling.

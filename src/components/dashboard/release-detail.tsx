@@ -25,6 +25,7 @@ import { LogView } from './log-view';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
 import { ReleaseProcess } from './release-process';
+import { ReleaseCommand } from './release-command';
 import { CanaryHealth } from './canary-health';
 import { releaseProcess } from '@/lib/release-process';
 import { DeploymentDiff } from './deployment-diff';
@@ -208,6 +209,7 @@ export function ReleaseDetailPanel({
                     <section aria-label="Process" className="rounded-lg border border-border p-4">
                       <ReleaseProcess phases={releaseProcess(deployment)} />
                     </section>
+                    <ReleaseCommand slug={slug} deployment={deployment} />
                     {slug && <DeploymentAliasesHere slug={slug} deployment={deployment} />}
                     {/* Only a canary has a stable release to be compared against. */}
                     {slug && deployment.canary_total_steps ? (
@@ -320,7 +322,11 @@ export function ReleaseDetailPanel({
                   <DeploymentReleaseSummary appSlug={slug} deploymentId={deployment.id} />
                 )}
                 {!deploymentUnavailable && deployment && (
-                  <DeploymentDiff deploymentId={deployment.id} />
+                  <DeploymentDiff
+                    deploymentId={deployment.id}
+                    slug={slug}
+                    deployment={deployment}
+                  />
                 )}
                 {!deploymentUnavailable && deployment && slug && (
                   <RollbackToRelease slug={slug} deployment={deployment} />
@@ -364,18 +370,20 @@ export function ReleaseDetailPanel({
             )}
             {!deploymentUnavailable && deployment && activeSection === 'lifecycle' && (
               <>
-                <AdvanceCanaryButton deployment={deployment} />
+                <AdvanceCanaryButton deployment={deployment} slug={slug} />
                 <ReorderDeploymentControl deployment={deployment} />
                 <DeploymentLifecycle key={deployment.id} deployment={deployment} />
                 {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
-                <PromoteDeployment deployment={deployment} />
+                {/* The serving pin is read from the app's history, so it needs the slug. */}
+                {slug && <PromoteDeployment slug={slug} deployment={deployment} />}
                 {slug && <RolloutObservation slug={slug} deployment={deployment} />}
                 <DeploymentStages deploymentId={deployment.id} />
               </>
             )}
-            {!deploymentUnavailable && deployment && activeSection === 'runtime' && (
+            {!deploymentUnavailable && deployment && slug && activeSection === 'runtime' && (
               <DeploymentControls
                 key={`${deployment.id}-${deployment.min_instances}-${deployment.traffic_percent}`}
+                slug={slug}
                 deployment={deployment}
                 version={deployment.id}
               />

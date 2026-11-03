@@ -7,6 +7,11 @@ import { useToast } from '@/components/ui/toast';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { CapabilityGate } from '@/components/dashboard/capability-gate';
+import { InvocationEnvelopeFields } from '@/components/dashboard/async-invoke-options';
+import { DurationField } from '@/components/dashboard/invocation-option-fields';
+import { SegmentedControl } from '@/components/dashboard/tabs';
+import { NO_ASYNC_OPTIONS, invocationEnvelope } from '@/lib/api/async-invocations';
+import { durationSeconds, type DurationDraft } from '@/lib/invocation-options';
 import { useCapability } from '@/lib/api/capabilities';
 import { safeCapabilityDocs } from '@/lib/capability-entrypoints';
 import {
@@ -242,39 +247,98 @@ function DelayedTasksPanel({ slug }: { slug: string }) {
 
 const METHODS = ['POST', 'GET', 'PUT', 'PATCH', 'DELETE'] as const;
 
+/** apid's horizon for both forms (api.MaxDelayedTaskDelaySeconds, handlers_invocations.go:795). */
+const MAX_DELAY_SECONDS = 31_536_000;
+
+function jsonObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The create form covers the whole of `DelayedTaskAtRequest` and
+ * `DelayedTaskAfterRequest`: an absolute time or a relative delay, the request
+ * (method, path, headers, payload), and the envelope it shares with an async
+ * invoke — work policy and key, retry curve, retention, and the webhooks told
+ * when it finishes. The envelope sits behind a disclosure and mounts only when
+ * opened, so its webhook and policy reads wait until someone wants them.
+ */
 function ScheduleForm({ slug }: { slug: string }) {
   const { toast } = useToast();
   const schedule = useScheduleDelayedTask(slug);
+  const [when, setWhen] = useState<'at' | 'after'>('at');
   const [at, setAt] = useState('');
+  const [delay, setDelay] = useState<DurationDraft>({ amount: '', unit: 'minutes' });
   const [method, setMethod] = useState<string>('POST');
   const [path, setPath] = useState('/');
   const [payload, setPayload] = useState('{}');
+  const [headers, setHeaders] = useState('{}');
+  const [options, setOptions] = useState(NO_ASYNC_OPTIONS);
+  const [idempotencyKey, setIdempotencyKey] = useState('');
+  const [open, setOpen] = useState(false);
+  const ready = when === 'at' ? Boolean(at) : delay.amount.trim() !== '';
 
   const submit = () => {
-    if (!at || schedule.isPending) return;
+    if (!ready || schedule.isPending) return;
+    const delaySeconds = when === 'after' ? durationSeconds(delay) : null;
+    if (
+      when === 'after' &&
+      (delaySeconds === null ||
+        Number.isNaN(delaySeconds) ||
+        delaySeconds < 1 ||
+        delaySeconds > MAX_DELAY_SECONDS)
+    ) {
+      toast({
+        kind: 'error',
+        title: 'Choose a delay from 1 second to 365 days',
+        description: 'The amount must come to a whole number of seconds.',
+      });
+      return;
+    }
     if (!path.startsWith('/')) {
       toast({ kind: 'error', title: 'The path must start with /' });
       return;
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(payload);
-    } catch {
-      parsed = null;
-    }
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    const body = jsonObject(payload);
+    if (!body) {
       toast({ kind: 'error', title: 'Payload must be a JSON object' });
       return;
     }
+    const headerObject = jsonObject(headers.trim() || '{}');
+    if (!headerObject) {
+      toast({ kind: 'error', title: 'Headers must be a JSON object' });
+      return;
+    }
+    let envelope;
+    try {
+      envelope = invocationEnvelope(options);
+    } catch (error) {
+      toast({ kind: 'error', title: 'Invalid task', error });
+      return;
+    }
+    const request = {
+      method,
+      path,
+      payload: body,
+      ...(Object.keys(headerObject).length > 0 ? { headers: headerObject } : {}),
+      ...(Object.keys(envelope).length > 0 ? { envelope } : {}),
+      ...(idempotencyKey.trim() ? { idempotencyKey: idempotencyKey.trim() } : {}),
+    };
     void schedule
-      .mutateAsync({
-        scheduledAt: new Date(at).toISOString(),
-        method,
-        path,
-        payload: parsed as Record<string, unknown>,
-      })
+      .mutateAsync(
+        delaySeconds !== null
+          ? { delaySeconds, ...request }
+          : { scheduledAt: new Date(at).toISOString(), ...request }
+      )
       .then((t) => {
         setAt('');
+        setDelay((current) => ({ ...current, amount: '' }));
         toast({
           kind: 'success',
           title: 'Task scheduled',
@@ -290,51 +354,115 @@ function ScheduleForm({ slug }: { slug: string }) {
           });
           return;
         }
-        toast({ kind: 'error', title: 'Could not schedule', description: errorMessage(err) });
+        toast({ kind: 'error', title: 'Could not schedule', error: err });
       });
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Run at</span>
-        <input
-          type="datetime-local"
-          value={at}
-          onChange={(e) => setAt(e.target.value)}
-          className={FIELD}
-        />
-      </label>
-      <label className="flex flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Method</span>
-        <Select value={method} onChange={(e) => setMethod(e.target.value)}>
-          {METHODS.map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </Select>
-      </label>
-      <label className="flex min-w-40 flex-1 flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Path</span>
-        <input
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          spellCheck={false}
-          className={`${FIELD} font-mono`}
-        />
-      </label>
-      <label className="flex min-w-56 flex-1 flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">JSON payload</span>
-        <Textarea
-          value={payload}
-          onChange={(e) => setPayload(e.target.value)}
-          rows={2}
-          spellCheck={false}
-          className="min-h-9 font-mono"
-        />
-      </label>
-      <Button size="sm" onClick={submit} disabled={!at} busy={schedule.isPending}>
-        Schedule
-      </Button>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">When</span>
+          <SegmentedControl
+            label="When the task runs"
+            value={when}
+            options={[
+              { key: 'at', label: 'At a time' },
+              { key: 'after', label: 'After a delay' },
+            ]}
+            onChange={setWhen}
+          />
+        </div>
+        {when === 'at' ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">Run at</span>
+            <input
+              type="datetime-local"
+              value={at}
+              onChange={(e) => setAt(e.target.value)}
+              className={FIELD}
+            />
+          </label>
+        ) : (
+          <div className="w-full min-w-48 sm:w-60">
+            <DurationField label="Run after" value={delay} onChange={setDelay} placeholder="30" />
+          </div>
+        )}
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Method</span>
+          <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+            {METHODS.map((m) => (
+              <option key={m}>{m}</option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex min-w-40 flex-1 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Path</span>
+          <input
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            spellCheck={false}
+            className={`${FIELD} font-mono`}
+          />
+        </label>
+        <label className="flex min-w-56 flex-1 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">JSON payload</span>
+          <Textarea
+            value={payload}
+            onChange={(e) => setPayload(e.target.value)}
+            rows={2}
+            spellCheck={false}
+            className="min-h-9 font-mono"
+          />
+        </label>
+        <Button size="sm" onClick={submit} disabled={!ready} busy={schedule.isPending}>
+          Schedule
+        </Button>
+      </div>
+      <details
+        className="rounded-md border border-border"
+        onToggle={(e) => setOpen(e.currentTarget.open)}
+      >
+        <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">
+          Headers, retries, retention, work policy and destinations
+        </summary>
+        {open && (
+          <div className="flex flex-col gap-4 border-t border-border p-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Headers (optional JSON)</span>
+              <Textarea
+                value={headers}
+                onChange={(e) => setHeaders(e.target.value)}
+                rows={2}
+                spellCheck={false}
+                placeholder='{"X-Correlation-ID": "inv_123"}'
+                className="min-h-9 font-mono"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 sm:max-w-sm">
+              <span className="label-mono text-muted-foreground">Idempotency key (optional)</span>
+              <input
+                value={idempotencyKey}
+                onChange={(e) => setIdempotencyKey(e.target.value)}
+                maxLength={255}
+                placeholder="reminder-inv-123"
+                spellCheck={false}
+                className={`${FIELD} font-mono`}
+              />
+              <span className="text-xs text-muted-foreground">
+                Scheduling again with the same key within 24 hours returns the first task.
+              </span>
+            </label>
+            <InvocationEnvelopeFields
+              slug={slug}
+              value={options}
+              onChange={setOptions}
+              deadline={false}
+              className="pt-4"
+            />
+          </div>
+        )}
+      </details>
     </div>
   );
 }

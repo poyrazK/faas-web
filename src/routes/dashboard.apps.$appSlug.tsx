@@ -10,6 +10,7 @@ import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { useCapabilityRegistry } from '@/lib/api/capabilities';
 import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, useParams } from '@tanstack/react-router';
@@ -78,14 +79,12 @@ import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { AppRetryDefaults } from '@/components/dashboard/app-retry-defaults';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
-import {
-  AppHealthPanel,
-  AwakeRoutesPanel,
-  DependencyLatencyPanel,
-} from '@/components/dashboard/app-observability';
+import { AppHealthPanel } from '@/components/dashboard/app-health';
+import { AwakeRoutesPanel, DependencyLatencyPanel } from '@/components/dashboard/app-observability';
 import { AppOverview } from '@/components/dashboard/app-overview';
 import { StatelessContract } from '@/components/dashboard/stateless-contract';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
@@ -184,6 +183,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
+      workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
@@ -194,6 +194,8 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
     webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
+    workflowRun:
+      typeof search.workflowRun === 'string' && search.workflowRun ? search.workflowRun : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -422,7 +424,20 @@ function FunctionDetailPage() {
                   }}
                 />
               )}
+              {tab === 'Workflows' && (
+                <WorkflowsBody
+                  slug={fn.id}
+                  run={search.workflowRun}
+                  onRun={(workflowRun) =>
+                    void navigate({
+                      search: (current) => ({ ...current, workflowRun }),
+                      hash: true,
+                    })
+                  }
+                />
+              )}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
+              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Overview' && (
                 <AppOverview
                   app={fn}
@@ -541,7 +556,6 @@ function FunctionDetailPage() {
                         </div>
                       )}
                     </Panel>
-                    <AppHealthPanel slug={fn.id} />
                     <SloPanel slug={fn.id} />
                     <AppAnalyticsPanel slug={fn.id} />
                     <CustomMetricsPanel slug={fn.id} />
@@ -564,16 +578,20 @@ function FunctionDetailPage() {
                 ))}
 
               {tab === 'Invoke' && (
-                <DeploymentCapability
-                  slug={fn.id}
-                  resource="Invoke"
-                  phase={deploymentPhase}
-                  error={deploymentError}
-                  hasRunnable={hasRunnable}
-                  onRetry={() => void appDeploymentQuery.refetch()}
-                >
-                  <InvokePanel slug={fn.id} />
-                </DeploymentCapability>
+                <>
+                  <DeploymentCapability
+                    slug={fn.id}
+                    resource="Invoke"
+                    phase={deploymentPhase}
+                    error={deploymentError}
+                    hasRunnable={hasRunnable}
+                    onRetry={() => void appDeploymentQuery.refetch()}
+                  >
+                    <InvokePanel slug={fn.id} />
+                  </DeploymentCapability>
+                  {/* An app setting, not a deployment's, so it stays editable before a deploy. */}
+                  <AppRetryDefaults slug={fn.id} />
+                </>
               )}
 
               {tab === 'Deployments' && (

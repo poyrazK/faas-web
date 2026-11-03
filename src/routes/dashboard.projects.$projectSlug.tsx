@@ -142,6 +142,7 @@ function ProjectPage() {
       <ProjectPreviews
         key={`previews:${account.id}:${project.id}`}
         accountId={account.id}
+        projectId={project.id}
         projectSlug={projectSlug}
         parents={project.workloads.map((workload) => workload.slug)}
         selected={preview}

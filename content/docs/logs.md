@@ -67,6 +67,31 @@ you filter by level.
 Save filters you use often with `gregale logs views save NAME ...` and reuse
 them with `--view NAME`.
 
+## Reading a whole project
+
+`--project` reads the runtime logs of every service of a
+[project](multi-service-apps.md) together, each line prefixed with its
+service, as `docker compose logs` does:
+
+```sh
+gregale logs --project shop --follow
+gregale logs --project shop --service api,billing --since 15m --level error
+```
+
+```text
+[api] GET /orders 200
+[billing] charge ok order=1042
+```
+
+`--service` takes service names in either form (`billing_api` or
+`billing-api`). With `--follow`, a parked service is asked again every few
+seconds, so its lines appear once a call wakes it. Without `--follow`, each
+running service prints its recent lines and a parked service is named with
+the command that reads its retained logs. `--since`, `--grep` and `--level`
+apply to every service; `--json` adds a `service` field to each line. To
+follow one request across services, use `--trace` on the app that received it
+([ADR-20261026190244](adr/20261026190244-project-logs.md)).
+
 ## Reading one archived day
 
 To read one instance's archived lines for one UTC day:
@@ -84,13 +109,17 @@ A log drain forwards your app's runtime lines to your own logging service as
 they are written. Drains are available on Hobby and above.
 
 ```sh
-LOG_TOKEN='Bearer …' gregale log-drains add --app my-api \
+LOG_TOKEN='Bearer …' gregale logs drain create --app my-api \
   --url https://logs.example.com/ingest --auth-header-env LOG_TOKEN
-gregale log-drains health my-api <drain-id>
+gregale logs drain health my-api <drain-id>
 ```
 
-- `--kind http_json` (the default) posts batches of JSON lines; `--kind otlp`
-  sends OTLP/HTTP log records.
+- `--kind http_json` (the default) posts each line as one JSON object;
+  `--kind otlp` sends OTLP/HTTP log records in batches of up to 100 lines,
+  as does the Datadog integration.
+- A drain picks up where it left off after a restart or a change: lines
+  still held by the running instances are forwarded once, and lines that
+  were no longer available are counted as gaps in `health`.
 - The credential is read from an environment variable, stored encrypted, and
   shown masked.
 - The destination must be a public `https://` or `http://` URL; private,
@@ -99,8 +128,26 @@ gregale log-drains health my-api <drain-id>
 - `health` shows the queue, delivered and failed counts and the last error.
   Lines a destination keeps refusing are retried and then dead-lettered, so a
   broken drain never holds up your app.
+- Drains follow your current plan. The plan's limits apply when you create a
+  drain and again when logs are delivered: if you move to a plan with fewer
+  drains (or to Free, which has none), your oldest enabled drains keep
+  delivering up to the new limits and the rest pause, with `health` showing
+  them as `inactive`. A company app's drains follow the organization's plan
+  once the organization pays for its apps. Disable or delete drains to choose
+  which ones deliver; upgrading resumes them all. You can list, read, disable
+  and delete drains on every plan; creating, enabling or changing one needs a
+  plan that includes drains.
+- Many destinations (Sumo Logic and Loggly, for example) put their ingestion
+  token in the URL, so only whoever may change a drain sees its full URL: you
+  in a browser session or with an `admin` or `deploy:write` key, and on a
+  company app the organization's owners and admins. Everyone else (viewers,
+  developers, `apps:read` keys) sees the destination without its path and
+  query, as `https://collectors.example.com/***`.
 
 ## Limits
 
 - A line is at most 1 MiB. Output without a newline beyond that is dropped.
+- An account can hold a limited number of log streams open at once (Free 2,
+  Hobby 5, Pro 20, Scale 50); more answer `429 log_streams_limit`.
+- `--follow` reconnects by itself after ten quiet minutes.
 - Logs have no separate charge.

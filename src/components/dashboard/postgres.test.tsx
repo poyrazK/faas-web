@@ -15,6 +15,14 @@ const deleteBinding = vi.fn();
 const rotateBinding = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
+const usePostgresUsage = vi.fn();
+const undeleteDb = vi.fn();
+const purgeDb = vi.fn();
+const workspace = vi.hoisted(() => ({
+  org: null as string | null,
+  label: 'Personal',
+  ready: true,
+}));
 
 vi.mock('@/lib/api/queries', () => ({
   usePostgresDatabases: () => usePostgresDatabases() as unknown,
@@ -26,6 +34,35 @@ vi.mock('@/lib/api/queries', () => ({
   useCreatePostgresBinding: () => ({ mutateAsync: createBinding, isPending: false }),
   useDeletePostgresBinding: () => ({ mutateAsync: deleteBinding, isPending: false }),
   useRotatePostgresBinding: () => ({ mutateAsync: rotateBinding, isPending: false }),
+}));
+vi.mock('@/lib/api/postgres', () => ({
+  usePostgresUsage: () => usePostgresUsage() as unknown,
+  useUndeletePostgresDatabase: () => ({ mutateAsync: undeleteDb, isPending: false }),
+  usePurgePostgresDatabase: () => ({ mutateAsync: purgeDb, isPending: false }),
+}));
+vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+// The usage panel and the conditions and connection planning sections have
+// their own tests; here they only need to be placed, or not.
+vi.mock('./postgres-usage', () => ({ PostgresUsage: () => <p>usage panel</p> }));
+vi.mock('./postgres-health', () => ({
+  DatabaseConditions: () => <p>conditions section</p>,
+  ConnectionBudget: () => <p>connection planning section</p>,
+}));
+vi.mock('./postgres-compute', () => ({
+  DatabaseCompute: ({
+    operation,
+    onOperation,
+  }: {
+    operation?: { id: string };
+    onOperation: (op: { kind: 'resize'; id: string }) => void;
+  }) => (
+    <div>
+      <p>compute section following {operation?.id ?? 'nothing'}</p>
+      <button type="button" onClick={() => onOperation({ kind: 'resize', id: 'r-1' })}>
+        start a change
+      </button>
+    </div>
+  ),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
@@ -65,6 +102,20 @@ const binding = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const usage = (over: Record<string, unknown> = {}) => ({
+  period_start: '2026-11-01T00:00:00Z',
+  policy_enabled: true,
+  fresh: true,
+  guardrail_state: 'healthy',
+  ready_databases: 1,
+  database_limit: 3,
+  compute_unit_seconds: 3600,
+  compute_allowance_unit_seconds: 75 * 3600,
+  compute_cap_state: 'healthy',
+  ...over,
+});
+const inDays = (days: number) => new Date(Date.now() + days * 86_400_000 + 60_000).toISOString();
+
 beforeEach(() => {
   usePostgresDatabases.mockReset().mockReturnValue(ready({ items: [database()] }));
   usePostgresBindings.mockReset().mockReturnValue(ready({ items: [binding()] }));
@@ -81,6 +132,11 @@ beforeEach(() => {
     .mockResolvedValue(binding({ credential_generation: 3, rotation_pending: true }));
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
+  usePostgresUsage.mockReset().mockReturnValue(ready(usage()));
+  undeleteDb.mockReset().mockResolvedValue(database());
+  purgeDb.mockReset().mockResolvedValue(database({ state: 'deleted' }));
+  workspace.org = null;
+  workspace.label = 'Personal';
 });
 
 describe('explainPostgres', () => {
@@ -223,6 +279,234 @@ describe('PostgresDatabases', () => {
       expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ typeToConfirm: 'orders' }))
     );
     expect(deleteDb).toHaveBeenCalledWith('db1');
+  });
+
+  it('places the usage panel above the databases', () => {
+    render(<PostgresDatabases />);
+    expect(screen.getByText('usage panel')).toBeInTheDocument();
+  });
+
+  describe('deleting, recovering and purging', () => {
+    const scheduled = (over: Record<string, unknown> = {}) =>
+      database({ state: 'deleting', restorable_until: inDays(6), ...over });
+    const openScheduled = async (over: Record<string, unknown> = {}) => {
+      usePostgresDatabases.mockReturnValue(ready({ items: [scheduled(over)] }));
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    };
+
+    it('says a ready database is kept for seven days and can be recovered', async () => {
+      deleteDb.mockResolvedValue(scheduled());
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /^delete$/i }));
+      await waitFor(() => expect(deleteDb).toHaveBeenCalled());
+      const asked = confirm.mock.calls[0]![0] as { description: string };
+      expect(asked.description).toMatch(/kept for 7 days/i);
+      expect(asked.description).toMatch(/recovered/i);
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'orders is scheduled for deletion' })
+      );
+    });
+
+    it('says a database that never became ready is deleted at once', async () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ state: 'failed', last_error_code: 'provider_capacity' })] })
+      );
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /^delete$/i }));
+      await waitFor(() => expect(confirm).toHaveBeenCalled());
+      const asked = confirm.mock.calls[0]![0] as { description: string };
+      expect(asked.description).toMatch(/deleted at once/i);
+      expect(asked.description).not.toMatch(/recovered/i);
+    });
+
+    it('marks a scheduled delete in the list with how long it can be recovered', () => {
+      usePostgresDatabases.mockReturnValue(ready({ items: [scheduled()] }));
+      render(<PostgresDatabases />);
+      expect(screen.getByText(/recoverable until/i)).toBeInTheDocument();
+      expect(screen.getByText('in 6d')).toBeInTheDocument();
+    });
+
+    it('recovers a scheduled database without asking, and offers no bindings or restore', async () => {
+      await openScheduled();
+      expect(screen.getByText(/deletion scheduled/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText('Environment key')).toBeNull();
+      expect(screen.queryByLabelText('Restored database name')).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await waitFor(() =>
+        expect(undeleteDb).toHaveBeenCalledWith({
+          id: 'db1',
+          idempotencyKey: expect.any(String) as string,
+        })
+      );
+      expect(confirm).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'success', title: 'orders is recovered' })
+      );
+    });
+
+    it('says the window has ended when the API no longer has the database', async () => {
+      undeleteDb.mockRejectedValue(
+        new ApiError({ status: 404, code: 'managed_postgres_not_found', title: 't', detail: 'd' })
+      );
+      await openScheduled();
+      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'The recovery window has ended' })
+        )
+      );
+    });
+
+    it('says the plan no longer allows it when undelete fails the plan check', async () => {
+      undeleteDb.mockRejectedValue(
+        new ApiError({ status: 403, code: 'managed_postgres_not_in_plan', title: 't', detail: 'd' })
+      );
+      await openScheduled();
+      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Your plan no longer allows this database' })
+        )
+      );
+    });
+
+    it('replays the same key after an unknown outcome, and a new one after a refusal', async () => {
+      undeleteDb
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(
+          new ApiError({ status: 409, code: 'managed_postgres_conflict', title: 't', detail: 'd' })
+        )
+        .mockResolvedValue(database());
+      await openScheduled();
+      const recover = screen.getByRole('button', { name: /recover database/i });
+      await userEvent.click(recover);
+      await waitFor(() => expect(undeleteDb).toHaveBeenCalledTimes(1));
+      await userEvent.click(recover);
+      await waitFor(() => expect(undeleteDb).toHaveBeenCalledTimes(2));
+      await userEvent.click(recover);
+      await waitFor(() => expect(undeleteDb).toHaveBeenCalledTimes(3));
+      const keys = undeleteDb.mock.calls.map(
+        (c) => (c[0] as { idempotencyKey: string }).idempotencyKey
+      );
+      expect(keys[1]).toBe(keys[0]);
+      expect(keys[2]).not.toBe(keys[1]);
+    });
+
+    it('purges only after the name is typed, and says it cannot be undone', async () => {
+      await openScheduled();
+      await userEvent.click(screen.getByRole('button', { name: /delete now/i }));
+      await waitFor(() => expect(purgeDb).toHaveBeenCalledWith('db1'));
+      const asked = confirm.mock.calls[0]![0] as {
+        typeToConfirm: string;
+        destructive: boolean;
+        description: string;
+      };
+      expect(asked).toMatchObject({ typeToConfirm: 'orders', destructive: true });
+      expect(asked.description).toMatch(/cannot be undone/i);
+    });
+
+    it('does not purge when the confirm is declined', async () => {
+      confirm.mockResolvedValue(false);
+      await openScheduled();
+      await userEvent.click(screen.getByRole('button', { name: /delete now/i }));
+      await waitFor(() => expect(confirm).toHaveBeenCalled());
+      expect(purgeDb).not.toHaveBeenCalled();
+    });
+
+    it('offers no recovery once the window has passed', async () => {
+      await openScheduled({ restorable_until: inDays(-1) });
+      expect(screen.queryByRole('button', { name: /recover database/i })).toBeNull();
+      expect(screen.getByText(/recovery window has ended/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('suspended databases', () => {
+    it('marks ready databases suspended while the compute cap holds them', async () => {
+      usePostgresUsage.mockReturnValue(
+        ready(
+          usage({ compute_cap_state: 'suspended', compute_suspended_at: '2026-11-02T00:00:00Z' })
+        )
+      );
+      render(<PostgresDatabases />);
+      expect(screen.getByText(/suspended · compute cap/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(
+        await screen.findByText(/refuses connections until the compute cap lifts/i)
+      ).toBeInTheDocument();
+    });
+
+    it('explains a database the plan no longer includes, and how to resume it', async () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ plan_excess: 'service_class' })] })
+      );
+      render(<PostgresDatabases />);
+      expect(screen.getByText(/suspended · class not in plan/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(await screen.findByText(/does not include the production class/i)).toBeInTheDocument();
+    });
+
+    it('explains a database past the plan’s database limit', () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ plan_excess: 'database_limit' })] })
+      );
+      render(<PostgresDatabases />);
+      expect(screen.getByText(/suspended · over the database limit/i)).toBeInTheDocument();
+    });
+
+    it('says when a restored copy holds the slot past the database limit', async () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ restore_slot_until: inDays(5) })] })
+      );
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(await screen.findByText(/past your plan's database limit/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('resize and compute policy', () => {
+    it('keeps following a change while the database is closed and reopened', async () => {
+      render(<PostgresDatabases />);
+      const row = screen.getByRole('button', { name: /orders/i });
+      await userEvent.click(row);
+      expect(await screen.findByText('compute section following nothing')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'start a change' }));
+      expect(screen.getByText('compute section following r-1')).toBeInTheDocument();
+      await userEvent.click(row);
+      expect(screen.queryByText(/compute section/)).toBeNull();
+      await userEvent.click(row);
+      expect(await screen.findByText('compute section following r-1')).toBeInTheDocument();
+    });
+
+    it('offers no change to a database whose delete is scheduled', async () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ state: 'deleting', restorable_until: inDays(6) })] })
+      );
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await screen.findByText(/deletion scheduled/i);
+      expect(screen.queryByText(/compute section/)).toBeNull();
+    });
+  });
+
+  describe('conditions and connection planning', () => {
+    it('shows both for a personal database', async () => {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(await screen.findByText('conditions section')).toBeInTheDocument();
+      expect(screen.getByText('connection planning section')).toBeInTheDocument();
+    });
+
+    it('says the API has no organization route for them in a company workspace', async () => {
+      workspace.org = 'acme';
+      workspace.label = 'Acme';
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(await screen.findByText(/no organization route/i)).toBeInTheDocument();
+      expect(screen.queryByText('conditions section')).toBeNull();
+    });
   });
 
   describe('rotating a binding’s credentials', () => {

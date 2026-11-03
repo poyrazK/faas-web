@@ -118,7 +118,7 @@ export function EdgeRuleSuggestions({ slug }: { slug: string }) {
   );
 }
 
-function RecipeDialog({
+export function RecipeDialog({
   slug,
   recipe,
   params,
