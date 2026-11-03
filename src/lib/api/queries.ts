@@ -122,7 +122,16 @@ export function useInstallRepos(installationId: number | null, accountId?: strin
   });
 }
 
-type BindRepoInput = { installationId: number; repo: string; branch?: string };
+type BindRepoInput = {
+  installationId: number;
+  repo: string;
+  branch?: string;
+  /**
+   * Branch → deployment scope. Left out, apid keeps the project's mappings;
+   * `{}` clears them (faas handlers_install_github.go:327, :347-350).
+   */
+  deployBranches?: Record<string, string>;
+};
 
 /**
  * Persist the (account, app, installation, repo, branch) binding. Leave
@@ -139,6 +148,7 @@ async function bindRepo(slug: string, input: BindRepoInput) {
         installation_id: input.installationId,
         repo_full_name: input.repo,
         ...(input.branch ? { production_branch: input.branch } : {}),
+        ...(input.deployBranches ? { deploy_branches: input.deployBranches } : {}),
       },
     })
   );

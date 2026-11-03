@@ -843,6 +843,8 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
     ...db.apps[0],
     id: db.id(),
     slug,
+    // A created app is standalone; the seed it copies may be in a project.
+    project_id: undefined,
     type: (body.type as db.App['type']) ?? 'function',
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
@@ -2839,6 +2841,7 @@ route('DELETE', '/v1/apps/{slug}/edge-protection/attack-mode', ({ params }) => {
 route('GET', '/v1/templates', () => db.templates);
 
 route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
+  if (db.appBySlug(params.slug)) requireCompanyCreator(params.slug);
   const i = db.apps.findIndex((a) => a.slug === params.slug && /^pr-\d+-/.test(a.slug));
   if (i < 0)
     throw new Problem(
@@ -2855,6 +2858,7 @@ route('POST', '/v1/preview/{slug}/destroy', ({ params }) => {
 // repeat for the same PR renews it. The plan caps open PR environments.
 route('POST', '/v1/apps/{slug}/previews', ({ params, body }) => {
   const parent = app(params.slug);
+  requireCompanyCreator(parent.slug);
   if (parent.preview_of_slug)
     throw new Problem(
       400,
@@ -2911,10 +2915,15 @@ route('POST', '/v1/apps/{slug}/previews', ({ params, body }) => {
     status: 'undeployed',
   };
   db.apps.push(created);
+  // A preview carries its parent's organization and project
+  // (faas handlers_preview_create.go:211, :216).
+  const workspace = appWorkspace.get(parent.slug) ?? companyOf(parent.slug);
+  if (workspace) appWorkspace.set(slug, workspace);
   return status(201, created);
 });
 route('GET', '/v1/preview/{slug}', ({ params }) => {
   const a = app(params.slug);
+  requireCompanyCreator(a.slug);
   if (!a.preview_of_slug)
     throw new Problem(
       404,
@@ -8490,6 +8499,31 @@ function inventoryForOrg(slug: string) {
       : slug === 'acme-corp' && app.slug === 'search-indexer';
   });
 }
+/** The company workspace an app was created in, or undefined for a personal one. */
+function companyOf(slug: string): string | undefined {
+  const attributed = appWorkspace.get(slug);
+  if (attributed)
+    return db.orgs.find((org) => org.slug === attributed)?.personal ? undefined : attributed;
+  return slug === 'search-indexer' ? 'acme-corp' : undefined;
+}
+/**
+ * The preview routes are not reviewed organization routes, so a company app
+ * passes only for its creator, while an owner or admin (faas
+ * appaccess/access.go:263-270). The mock's account created every app;
+ * MOCK_ORG_ROLE=developer shows the refusal.
+ */
+function requireCompanyCreator(appSlug: string) {
+  const company = companyOf(appSlug);
+  if (!company) return;
+  const forced = process.env.MOCK_ORG_ROLE;
+  if (forced && !['owner', 'admin'].includes(forced))
+    throw new Problem(
+      403,
+      'org_role_forbidden',
+      'your role does not allow use an application endpoint without a reviewed organization permission on this organization.'
+    );
+  requireOrgRole(company, ['owner', 'admin']);
+}
 const createdAt = (app: db.App) =>
   (app as { created_at?: string }).created_at ?? new Date(Date.UTC(2026, 8, 1)).toISOString();
 route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
@@ -8499,6 +8533,7 @@ route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
       slug: app.slug,
       type: app.type,
       runtime: app.runtime,
+      ...(app.project_id ? { project_id: app.project_id } : {}),
       status: app.status,
       created_at: createdAt(app),
     }))
@@ -8817,7 +8852,12 @@ const githubBindings = new Map<
 >();
 const githubInstall = { reconciledAt: db.iso(12 * 60_000), repoCount: 4, detached: 0 };
 const GITHUB_MANAGE_CSRF = 'mock-github-manage';
+// Branch → deployment scope, per project (faas state/github_deploy_branches.go):
+// every app in the project reports the same mappings.
+const projectDeployBranches = new Map<string, Record<string, string>>();
 if (!db.EMPTY) {
+  const gateway = db.appBySlug('api-gateway');
+  if (gateway?.project_id) projectDeployBranches.set(gateway.project_id, { staging: 'staging' });
   const sha = '9f2c4e1a7b3d5f60718293a4b5c6d7e8f9012345';
   githubBindings.set('api-gateway', {
     repo: 'acme-corp/storefront',
@@ -8880,13 +8920,18 @@ function githubStatus(slug: string): GitHubStatus {
     last_reconcile_detached_count: githubInstall.detached,
   };
   const binding = githubBindings.get(slug);
-  if (!binding) return { state: 'installed', connected: false, ...install };
+  const projectId = db.appBySlug(slug)?.project_id;
+  const branches = projectId ? projectDeployBranches.get(projectId) : undefined;
+  // handlers_github_connection.go:534-544: a project's mappings, bound or not.
+  const deploy = branches && Object.keys(branches).length ? { deploy_branches: branches } : {};
+  if (!binding) return { state: 'installed', connected: false, ...install, ...deploy };
   return {
     state: 'bound',
     connected: true,
     ...install,
     repo_full_name: binding.repo,
     production_branch: binding.branch,
+    ...deploy,
     binding_id: binding.id,
     linked_at: binding.linkedAt,
     activity: binding.activity ?? { webhook_deliveries: [], check_updates: [] },
@@ -8934,6 +8979,31 @@ route('POST', '/v1/apps/{slug}/install/sync', ({ params, body }) => {
     },
   };
 });
+// Requeues up to ten recent dead pushes and Check Run updates and answers
+// with counts only (faas handlers_github_connection.go:132-157, :196-203).
+route('POST', '/v1/apps/{slug}/install/activity/retry', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  app(params.slug);
+  const binding = githubBindings.get(params.slug);
+  if (!binding)
+    throw new Problem(409, 'github_not_bound', 'bind a repository before retrying GitHub activity');
+  const now = new Date().toISOString();
+  const requeue = (items: { status: string; updated_at: string }[]) => {
+    let n = 0;
+    for (const item of items)
+      if (item.status === 'dead' && n < 10) {
+        Object.assign(item, { status: 'pending', updated_at: now });
+        n++;
+      }
+    return n;
+  };
+  return {
+    ok: true as const,
+    retried_webhooks: requeue(binding.activity?.webhook_deliveries ?? []),
+    retried_checks: requeue(binding.activity?.check_updates ?? []),
+    status: 'pending' as const,
+  };
+});
 route('DELETE', '/v1/apps/{slug}/install/bind', ({ params, body }) => {
   requireGitHubManageCSRF(body);
   app(params.slug);
@@ -8943,16 +9013,49 @@ route('DELETE', '/v1/apps/{slug}/install/bind', ({ params, body }) => {
 });
 route('POST', '/v1/apps/{slug}/install/bind', async ({ params, body }) => {
   requireGitHub();
+  const target = app(params.slug);
   const repo = String(body.repo_full_name ?? '');
   const branch = String(body.production_branch ?? 'main');
+  // Mappings belong to the project and change only with a bind
+  // (faas handlers_install_github.go:327, :347-350, :494-503).
+  const branches = body.deploy_branches as Record<string, string> | undefined;
+  if (branches !== undefined) {
+    if (!target.project_id)
+      throw new Problem(
+        409,
+        'project_required',
+        'branch deployment scopes are available for project-backed apps only'
+      );
+    const bad = Object.entries(branches).find(
+      ([name, scope]) => !name || !/^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/.test(String(scope))
+    );
+    if (Object.keys(branches).length > 32 || bad)
+      throw new Problem(
+        400,
+        'invalid_request',
+        bad
+          ? `invalid deployment scope "${bad[1]}" for branch "${bad[0]}"`
+          : 'deploy_branches may contain at most 32 entries'
+      );
+  }
+  const previous = githubBindings.get(params.slug);
   const binding = {
     repo,
     branch,
     id: `bind-${params.slug}-${repo}`,
     linkedAt: new Date().toISOString(),
+    // Binding the same repository again keeps its recorded activity.
+    activity: previous?.repo === repo ? previous.activity : undefined,
   };
   githubBindings.set(params.slug, binding);
-  return { binding_id: binding.id, repo_full_name: repo, production_branch: branch };
+  if (branches !== undefined && target.project_id)
+    projectDeployBranches.set(target.project_id, { ...branches });
+  return {
+    binding_id: binding.id,
+    repo_full_name: repo,
+    production_branch: branch,
+    ...(branches !== undefined ? { deploy_branches: branches } : {}),
+  };
 });
 
 // --- Organisations, org keys, invitations ---
@@ -10547,6 +10650,7 @@ route('GET', '/v1/projects/{slug}/environments/{environment}/diff', ({ params, q
   return item;
 });
 route('GET', '/v1/preview/{slug}/environment', ({ params }) => {
+  if (db.appBySlug(params.slug)) requireCompanyCreator(params.slug);
   const item = previewSet(params.slug);
   if (!item) throw new Problem(404, 'preview_environment_not_found', 'No recorded preview set.');
   return item;

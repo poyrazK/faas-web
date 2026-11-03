@@ -63,13 +63,11 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 5,
     name: 'GitHub: App install, push-to-deploy, Checks status',
-    status: 'partial',
+    status: 'full',
     surfaces: [
       '/dashboard/settings?section=integrations',
       '/dashboard/apps/$appSlug?tab=Configuration',
     ],
-    gap: 'Retry failed GitHub activity; show deploy-branch mappings',
-    wave: 1,
   },
   // A6 · preview
   {
@@ -213,11 +211,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 27,
     name: 'Pull-request previews',
-    status: 'partial',
-    surfaces: ['/dashboard/releases'],
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/projects/$projectSlug'],
     capability: 'pr-previews',
-    gap: 'Previews of a company project',
-    wave: 1,
   },
   // B28 · preview
   {

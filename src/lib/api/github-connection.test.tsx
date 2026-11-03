@@ -6,6 +6,7 @@ import {
   githubConnectionKey,
   useDisconnectGitHub,
   useGitHubConnection,
+  useRetryGitHubActivity,
   useSyncGitHub,
 } from './github-connection';
 import { spyApi } from '@/test/api';
@@ -133,4 +134,72 @@ it('refreshes the connection after the deploy dialog binds a repository', async 
     });
   });
   expect(client.getQueryState(githubConnectionKey('storefront'))?.isInvalidated).toBe(true);
+});
+
+it('retries failed activity through the session route, with a fresh token and the attempt’s key', async () => {
+  // POST /v1/apps/{slug}/github/activity/retry is the bearer-only alias
+  // (faas server.go:5165, requireBearer): a browser session gets 403 there.
+  const get = spyApi('GET').mockResolvedValue(ok(bound));
+  const retried = { ok: true, retried_webhooks: 1, retried_checks: 2, status: 'pending' };
+  const post = spyApi('POST').mockResolvedValue(ok(retried));
+  const { client, wrapper } = setup();
+  const cancel = vi.spyOn(client, 'cancelQueries');
+  const hook = renderHook(() => useRetryGitHubActivity('storefront'), { wrapper });
+  let result: unknown;
+  await act(async () => {
+    result = await hook.result.current.mutateAsync('attempt-1');
+  });
+  expect(result).toEqual(retried);
+  expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(get.mock.invocationCallOrder[0]);
+  expect(get).toHaveBeenCalledWith('/v1/apps/{slug}/install', {
+    params: { path: { slug: 'storefront' } },
+  });
+  expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/install/activity/retry', {
+    params: { path: { slug: 'storefront' } },
+    body: { csrf_token: 'fresh-token' },
+    headers: { 'Idempotency-Key': 'attempt-1' },
+  });
+  // The requeued rows read as queued once the status is read again.
+  expect(client.getQueryState(githubConnectionKey('storefront'))?.isInvalidated).toBe(true);
+});
+
+it('sends edited branch mappings with the same repository and production branch', async () => {
+  spyApi('GET').mockResolvedValue(ok({ csrf_token: 'bind-proof' }));
+  const post = spyApi('POST').mockResolvedValue(
+    ok({ binding_id: 'b', repo_full_name: 'acme-corp/storefront', production_branch: 'main' })
+  );
+  const { useBindRepo } = await import('./queries');
+  const { wrapper } = setup();
+  const hook = renderHook(() => useBindRepo('storefront'), { wrapper });
+  await act(async () => {
+    await hook.result.current.mutateAsync({
+      installationId: 48213377,
+      repo: 'acme-corp/storefront',
+      branch: 'main',
+      deployBranches: { staging: 'staging' },
+    });
+  });
+  expect(post).toHaveBeenLastCalledWith('/v1/apps/{slug}/install/bind', {
+    params: { path: { slug: 'storefront' } },
+    body: {
+      csrf_token: 'bind-proof',
+      installation_id: 48213377,
+      repo_full_name: 'acme-corp/storefront',
+      production_branch: 'main',
+      deploy_branches: { staging: 'staging' },
+    },
+  });
+  // An empty object clears the mappings; leaving it out keeps them.
+  await act(async () => {
+    await hook.result.current.mutateAsync({
+      installationId: 48213377,
+      repo: 'acme-corp/storefront',
+      branch: 'main',
+      deployBranches: {},
+    });
+  });
+  expect(post).toHaveBeenLastCalledWith(
+    '/v1/apps/{slug}/install/bind',
+    expect.objectContaining({ body: expect.objectContaining({ deploy_branches: {} }) })
+  );
 });
