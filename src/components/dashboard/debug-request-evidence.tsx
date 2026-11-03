@@ -9,6 +9,7 @@ import { useDebugRequestEvidence, useDeployment } from '@/lib/api/queries';
 import { safeDebugBundle, suggestedDebugChecks } from './debug-support';
 import { regressionKey } from './debug-search';
 import { DebugGate } from './debug-gate';
+import { DebugReplayAction } from './debug-replay';
 
 /**
  * One request, in full: the telemetry row, the spans the gateway recorded
@@ -338,6 +339,14 @@ export function DebugRequestEvidence({
                       ? 'Support bundle copied'
                       : ''}
                 </p>
+                {(data.request.request_id ?? data.request.id) && (
+                  <DebugReplayAction
+                    slug={slug}
+                    reqId={(data.request.request_id ?? data.request.id)!}
+                    method={data.request.method}
+                    route={data.request.route}
+                  />
+                )}
               </section>
               <p className="text-xs text-muted-foreground">
                 Evidence generated: {data.generated_at || 'Not reported'}

@@ -884,10 +884,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 134,
     name: 'Debug: debug bundle and telemetry, dependency view, post-deploy regressions',
-    status: 'partial',
-    surfaces: ['/dashboard/debug'],
-    gap: 'Request replay and export, debug status, regression review',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/debug', '/dashboard/apps/$appSlug?tab=Debugger'],
+    capability: 'debug',
   },
   // G135 · preview
   {

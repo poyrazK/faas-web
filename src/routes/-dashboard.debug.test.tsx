@@ -18,6 +18,8 @@ const fixtures = vi.hoisted(() => ({
   requestSample: 'normal',
   regressionState: 'ready',
   calls: [] as string[],
+  off: [] as string[],
+  review: vi.fn(),
   compare: vi.fn(),
   retry: vi.fn(),
   requests: [
@@ -83,8 +85,27 @@ const fixtures = vi.hoisted(() => ({
 vi.mock('@/lib/api/capabilities', async (original) => ({
   ...(await original<typeof import('@/lib/api/capabilities')>()),
   useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
-  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+  useCapabilityAccess: (id: string) => ({
+    access: fixtures.off.includes(id) ? 'off' : 'on',
+    refresh: () => {},
+  }),
 }));
+// The status, signal and triage reads are covered beside their components.
+vi.mock('@/lib/api/debug', () => {
+  const pending = { data: undefined, isPending: true, error: null, refetch: vi.fn() };
+  return {
+    useDebugStatus: () => pending,
+    useDebugCoverage: () => pending,
+    useDebugRunning: () => pending,
+    useDebugRegressionReview: (...args: unknown[]) => {
+      fixtures.review(...args);
+      return pending;
+    },
+    useDebugRegressionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useDebugReplay: () => ({ mutate: vi.fn(), isPending: false }),
+    exportDebugRequests: vi.fn(),
+  };
+});
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -241,6 +262,8 @@ beforeEach(() => {
   fixtures.requestSample = 'normal';
   fixtures.regressionState = 'ready';
   fixtures.calls = [];
+  fixtures.off = [];
+  fixtures.review.mockClear();
   fixtures.compare.mockReset().mockResolvedValue({ routes: [] });
   fixtures.retry.mockClear();
   localStorage.clear();
@@ -691,5 +714,57 @@ describe('Debugger investigation navigation', () => {
   it('opens a wake from a pasted link in the app Debugger tab', async () => {
     await mount('/dashboard/apps/alpha?tab=Debugger&wake=wk-cold');
     expect(await screen.findByRole('dialog', { name: 'Wake' })).toBeInTheDocument();
+  });
+});
+
+describe('Debugger without the production-debugger preview', () => {
+  it('keeps the beta views for every account and reads no preview route', async () => {
+    fixtures.off = ['production-debugger'];
+    await mount('/dashboard/apps/alpha?tab=Debugger');
+    const views = screen.getByRole('group', { name: 'Debugger views' });
+    expect(
+      within(views)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Regressions', 'Dependencies', 'Coverage', 'Running']);
+    expect(within(views).getByRole('button', { name: 'Regressions' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    expect(
+      screen.getByText(/Production debugger preview, which is not enabled/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Debug status' })).not.toBeInTheDocument();
+    expect(fixtures.calls).toEqual([]);
+  });
+
+  it('reviews a regression without sampling requests or offering a compare', async () => {
+    fixtures.off = ['production-debugger'];
+    await mount('/dashboard/debug?app=alpha&debugView=regressions');
+    fireEvent.click(screen.getByText('/failed'));
+    const detail = await screen.findByRole('region', { name: 'Regression details' });
+    expect(within(detail).getByRole('region', { name: 'Triage' })).toBeInTheDocument();
+    expect(fixtures.review).toHaveBeenCalledWith('alpha', 'dep-new', '/failed');
+    expect(
+      within(detail).queryByRole('button', { name: 'Compare this deployment' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(detail).getByText(/part of the\s+Production debugger preview/)
+    ).toBeInTheDocument();
+    expect(fixtures.calls).toEqual([]);
+  });
+
+  it('does not open a linked request while the preview is off', async () => {
+    fixtures.off = ['production-debugger'];
+    await mount('/dashboard/debug?app=alpha&debugView=requests&request=failed');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Quick filter')).not.toBeInTheDocument();
+    expect(fixtures.calls).toEqual([]);
+  });
+
+  it('shows the status summary and the export control when the preview is on', async () => {
+    await mount('/dashboard/debug?app=alpha');
+    expect(screen.getByRole('region', { name: 'Debug status' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Export format')).toBeInTheDocument();
   });
 });

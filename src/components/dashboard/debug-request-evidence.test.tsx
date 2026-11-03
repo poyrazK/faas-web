@@ -14,6 +14,11 @@ vi.mock('@/lib/api/queries', () => ({
   }),
 }));
 
+// The replay control has its own tests (debug-replay.test.tsx); here it only has to be offered.
+vi.mock('./debug-replay', () => ({
+  DebugReplayAction: ({ reqId }: { reqId: string }) => <p>Replay offered for {reqId}</p>,
+}));
+
 const { DebugRequestEvidence } = await import('./debug-request-evidence');
 
 const request = {
@@ -133,6 +138,7 @@ describe('DebugRequestEvidence', () => {
       '/dashboard/logs?app=api'
     );
     expect(screen.getByText(/Wake and instance IDs were not returned/)).toBeInTheDocument();
+    expect(screen.getByText('Replay offered for req1')).toBeInTheDocument();
   });
 
   it('renders relative span durations without inventing start offsets or blame', () => {

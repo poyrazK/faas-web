@@ -1,7 +1,29 @@
 import type { components } from '@/lib/api/schema';
 
 export const WINDOWS = ['1h', '6h', '24h', '72h'] as const;
-export const DEBUG_VIEWS = ['requests', 'regressions', 'compare'] as const;
+export const DEBUG_VIEWS = [
+  'requests',
+  'regressions',
+  'dependencies',
+  'coverage',
+  'running',
+  'compare',
+] as const;
+export type DebugView = (typeof DEBUG_VIEWS)[number];
+/**
+ * Views over production-debugger routes (faas catalog: /debug/requests and
+ * everything under it, /debug/compare, /debug/status). The rest belong to the
+ * beta `debug` family every account has.
+ */
+export const PREVIEW_DEBUG_VIEWS: ReadonlySet<DebugView> = new Set(['requests', 'compare']);
+export const DEBUG_VIEW_LABELS: Record<DebugView, string> = {
+  requests: 'Requests',
+  regressions: 'Regressions',
+  dependencies: 'Dependencies',
+  coverage: 'Coverage',
+  running: 'Running',
+  compare: 'Compare',
+};
 export const QUICK_FILTERS = [
   ['all', 'All requests'],
   ['failed', 'Failed (4xx / 5xx)'],
@@ -12,7 +34,7 @@ export const QUICK_FILTERS = [
 export const SLOW_MS = 1000;
 export interface DebugSearch extends Record<string, unknown> {
   app?: string;
-  debugView?: (typeof DEBUG_VIEWS)[number];
+  debugView?: DebugView;
   debugFilter?: (typeof QUICK_FILTERS)[number][0];
   debugWindow?: (typeof WINDOWS)[number];
   request?: string;
