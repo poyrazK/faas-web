@@ -28,6 +28,9 @@ export interface AsyncMock {
 const HOUR = 3_600_000;
 /** The Pro plan's MaxAsyncInvocationDeadlineSeconds (faas pkg/api/limits.go:5955). */
 const DEADLINE_CEILING = 6 * HOUR;
+/** The Pro plan's MaxQueueAttempts and MaxAsyncResultRetentionSeconds (limits.go:6236, 6244). */
+const ATTEMPT_CAP = 10;
+const RETENTION_CEILING_S = 2_592_000;
 const SETTLE_MS = 3_000;
 const newId = () => randomBytes(16).toString('hex');
 const at = (ms: number) => new Date(ms).toISOString();
@@ -151,7 +154,7 @@ function scalar(value: unknown): boolean {
 /** `POST /v1/apps/{slug}/invoke/async` (faas handlers_invocations.go:55). */
 export function createAsyncInvocation(
   mock: AsyncMock,
-  app: { id: string; slug: string; account_id?: string },
+  app: { id: string; slug: string; account_id?: string; retry_policy?: S['RetryPolicyDTO'] | null },
   hooks: { id: string }[],
   body: Record<string, unknown>,
   now: number
@@ -178,6 +181,16 @@ export function createAsyncInvocation(
         'work fairness_key must be a bounded string, number, or boolean'
       );
   }
+  // Request policy, else the app default; attempts always end up plan-capped
+  // (faas effectiveInvocationRetryPolicy, handlers_invocations.go:987).
+  const requested = (body.retry_policy ?? app.retry_policy ?? {}) as S['RetryPolicyDTO'];
+  const attempts = requested.max_attempts ?? 0;
+  const retryPolicy = {
+    ...requested,
+    max_attempts: attempts > 0 && attempts < ATTEMPT_CAP ? attempts : ATTEMPT_CAP,
+  };
+  const retention = Number(body.retention_seconds ?? 0);
+  const retentionS = retention > 0 ? Math.min(retention, RETENTION_CEILING_S) : RETENTION_CEILING_S;
   const destinations = (body.destinations ?? {}) as { on_success?: string; on_failure?: string };
   for (const field of ['on_success', 'on_failure'] as const) {
     const hook = destinations[field];
@@ -200,6 +213,8 @@ export function createAsyncInvocation(
     created_at: at(now),
     attempts: 0,
     deadline_at: at(deadline),
+    retry_policy: retryPolicy,
+    result_retention_until: at(now + retentionS * 1000),
     ...(named
       ? {
           work_policy_name: named.name,

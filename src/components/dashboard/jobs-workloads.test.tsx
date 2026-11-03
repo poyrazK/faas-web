@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const startRun = vi.fn();
 const deleteJob = vi.fn();
 const confirm = vi.fn();
+const readJobs = vi.fn();
+const cap = vi.hoisted(() => ({ access: 'on' as string }));
 
 const job = {
   id: 'job-1',
@@ -17,14 +19,24 @@ const job = {
   retry_max: 1,
 };
 
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: cap.access, refresh: vi.fn() }),
+  useCapabilityStage: () => 'Beta',
+}));
+vi.mock('@/components/dashboard/registry-credentials', () => ({
+  JobRegistryCredentialsPanel: ({ name }: { name: string }) => <p>registries for {name}</p>,
+}));
 vi.mock('@/lib/api/queries', () => ({
-  useInfiniteJobs: () => ({
-    data: { pages: [{ jobs: [job] }] },
-    error: null,
-    isPending: false,
-    hasNextPage: false,
-    refetch: vi.fn(),
-  }),
+  useInfiniteJobs: () => {
+    readJobs();
+    return {
+      data: { pages: [{ jobs: [job] }] },
+      error: null,
+      isPending: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    };
+  },
   useJobs: () => ({ data: { jobs: [job] }, error: null, isPending: false, refetch: vi.fn() }),
   useStartJobRun: () => ({ mutateAsync: startRun, isPending: false }),
   useDeleteJob: () => ({ mutateAsync: deleteJob, isPending: false }),
@@ -47,6 +59,8 @@ beforeEach(() => {
   startRun.mockReset().mockResolvedValue({ id: 'run-new', tasks: 1, aggregate_status: 'queued' });
   deleteJob.mockReset().mockResolvedValue(undefined);
   confirm.mockReset().mockResolvedValue(true);
+  readJobs.mockReset();
+  cap.access = 'on';
 });
 
 function setup(selected = true) {
@@ -90,5 +104,25 @@ describe('Workloads start and delete', () => {
       })
     );
     expect(deleteJob).toHaveBeenCalledWith('nightly-export');
+  });
+});
+
+describe('Workloads capability', () => {
+  it('labels the section with the capability maturity', () => {
+    setup(false);
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+  });
+
+  it("shows the selected workload's own registries", () => {
+    setup();
+    expect(screen.getByText('registries for nightly-export')).toBeInTheDocument();
+  });
+
+  it('reads nothing while the account does not have jobs and workflows', () => {
+    cap.access = 'off';
+    setup(false);
+    expect(readJobs).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent(/Not enabled for this account/);
+    expect(screen.queryByRole('button', { name: /New workload/ })).not.toBeInTheDocument();
   });
 });

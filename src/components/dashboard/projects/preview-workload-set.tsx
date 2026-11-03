@@ -1,24 +1,38 @@
-import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { ApiError } from '@/lib/api/errors';
+import { parsePreviewSlug } from '@/lib/api/pr-previews';
 import {
-  usePreviewSet,
   usePreviewApp,
+  usePreviewSet,
   useProjectPreviewApps,
   type PreviewApp,
 } from '@/lib/api/preview-environments';
-import { useAuth } from '@/lib/auth';
-import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { ApiError } from '@/lib/api/errors';
+import { useOrgApps, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { publicAppUrl } from '@/lib/app-url';
-import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth';
+import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { ErrorState, LoadingState, Panel } from '../primitives';
 function evidenceHref(value: string) {
   if (value.startsWith('/v1/') && !value.includes('\\') && !/\s/.test(value)) return value;
   return publicAppUrl(value);
 }
-export function PreviewWorkloadSet({ accountId, app }: { accountId: string; app: PreviewApp }) {
+export function PreviewWorkloadSet({
+  accountId,
+  app,
+  organization = 'its organization',
+}: {
+  accountId: string;
+  app: PreviewApp;
+  /** Names the company in a role refusal. */
+  organization?: string;
+}) {
   const query = usePreviewSet(accountId, app.slug, app.preview_pr_number ?? 0);
   const unavailable = query.error instanceof ApiError && query.error.status === 404;
+  // The preview environment is not a reviewed organization route, so a
+  // company preview's passes only for its app's creator, as an owner or admin
+  // (faas appaccess/indirect.go:107-109, access.go:263-270).
+  const refused = query.error instanceof ApiError && query.error.code === 'org_role_forbidden';
   const data = query.isError ? undefined : query.data;
   const ready = Boolean(
     data?.ready &&
@@ -68,6 +82,12 @@ export function PreviewWorkloadSet({ accountId, app }: { accountId: string; app:
             <p className="font-medium">Workload set unavailable</p>
             <p className="mt-1 text-muted-foreground">App-level information only.</p>
           </div>
+        ) : refused ? (
+          <p role="status" className="text-muted-foreground">
+            Only the member who created {app.preview_of_slug ?? 'its app'}, while an owner or admin
+            of {organization}, can read this preview’s workload set: the API has not opened it to
+            other members yet. The app-level facts above come from the app itself.
+          </p>
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         ) : query.isPending ? (
@@ -208,29 +228,130 @@ export function PreviewDiscovery({ slug }: { slug: string }) {
 }
 type ProjectPreviewsProps = {
   accountId: string;
+  projectId: string;
   projectSlug: string;
   parents: string[];
   selected?: string;
   onSelect: (slug?: string) => void;
 };
 /**
- * Discovery reads GET /v1/apps, the signed-in account's own apps, so in a
- * company workspace it would list personal previews. The workspace inventory
- * (OrgAppSummary) has no preview fields and GET /v1/preview/{slug}/environment
- * is not a route company members reach (faas pkg/apid/appaccess/routes.go),
- * so a company's project says so and reads nothing.
+ * Personal discovery reads GET /v1/apps, the signed-in account's own apps, so
+ * a company's project reads the organization's inventory instead
+ * (GET /v1/orgs/{slug}/apps), where a preview carries its parent's
+ * organization and project (faas handlers_preview_create.go:211, :216).
  */
 export function ProjectPreviews(props: ProjectPreviewsProps) {
   const { org, label } = useWorkspaceTarget();
-  if (org)
-    return (
-      <Panel title="PR previews">
-        <p role="status" className="text-sm text-muted-foreground">
-          PR previews for {label}'s projects are not listed in the console yet.
-        </p>
-      </Panel>
-    );
+  if (org) return <CompanyProjectPreviews {...props} org={org} label={label} />;
   return <PersonalProjectPreviews {...props} />;
+}
+/**
+ * A company project's previews. The inventory (OrgAppSummary) has no preview
+ * fields, so a preview is known by its reserved `pr-{N}-{parent}` slug (faas
+ * pkg/api/app_slug.go:39-43) and the project's id; selecting one reads the app
+ * itself, a route every member reaches (appaccess/routes.go:28).
+ */
+function CompanyProjectPreviews({
+  accountId,
+  projectId,
+  projectSlug,
+  parents,
+  selected,
+  onSelect,
+  org,
+  label,
+}: ProjectPreviewsProps & { org: string; label: string }) {
+  const [open, setOpen] = useState(Boolean(selected));
+  const [limit, setLimit] = useState(10);
+  const shown = open || Boolean(selected);
+  const query = useOrgApps(shown ? org : null);
+  const candidates = (query.data?.apps ?? []).flatMap((app) => {
+    const preview = parsePreviewSlug(app.slug);
+    return preview &&
+      preview.prNumber > 0 &&
+      app.project_id === projectId &&
+      parents.includes(preview.parent)
+      ? [{ id: app.id, slug: app.slug, ...preview }]
+      : [];
+  });
+  const found = candidates.find((item) => item.slug === selected);
+  return (
+    <Panel
+      title="PR previews"
+      help={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
+    >
+      <div className="space-y-4 p-4">
+        <Button
+          size="sm"
+          variant="outline"
+          aria-expanded={shown}
+          onClick={() => {
+            setOpen(!open);
+            if (selected) onSelect(undefined);
+          }}
+        >
+          {shown ? 'Hide previews' : 'Browse previews'}
+        </Button>
+        {shown &&
+          (query.isError ? (
+            <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+          ) : query.isPending ? (
+            <LoadingState message="Loading preview apps…" />
+          ) : (
+            <>
+              <ul aria-label={`Previews of ${projectSlug}`} className="space-y-2">
+                {candidates.slice(0, limit).map((item) => (
+                  <li key={item.id}>
+                    <Button
+                      size="sm"
+                      variant={item.slug === selected ? 'secondary' : 'ghost'}
+                      onClick={() => onSelect(item.slug)}
+                    >
+                      {item.slug} · PR #{item.prNumber} of {item.parent}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              {!candidates.length && (
+                <p className="text-sm text-muted-foreground">No project preview apps reported.</p>
+              )}
+              {candidates.length > limit && (
+                <Button size="sm" variant="outline" onClick={() => setLimit(limit + 10)}>
+                  Show 10 more previews
+                </Button>
+              )}
+              {selected && !found && (
+                <p role="alert" className="text-sm text-destructive">
+                  Selected preview is unavailable in this project.
+                </p>
+              )}
+              {found && (
+                <CompanyPreviewSelection
+                  key={`${accountId}:${found.slug}`}
+                  accountId={accountId}
+                  slug={found.slug}
+                  organization={label}
+                />
+              )}
+            </>
+          ))}
+      </div>
+    </Panel>
+  );
+}
+function CompanyPreviewSelection({
+  accountId,
+  slug,
+  organization,
+}: {
+  accountId: string;
+  slug: string;
+  organization: string;
+}) {
+  const query = usePreviewApp(accountId, slug);
+  if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
+  if (query.isPending) return <LoadingState message="Reading preview…" />;
+  return <PreviewWorkloadSet accountId={accountId} app={query.data} organization={organization} />;
 }
 function PersonalProjectPreviews({
   accountId,

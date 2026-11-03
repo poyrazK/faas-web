@@ -1,8 +1,9 @@
 import type { components } from '@/lib/api/schema';
 
 /**
- * Edge protection recipes (faas ADR-986), the ones the suggestions endpoint
- * recommends. A recipe is not an API call of its own: faas expands it into one
+ * Edge protection recipes (faas ADR-986): the whole catalog, in apid's order
+ * (pkg/api/edge_rule_recipes.go:96-188), which the suggestions endpoint draws
+ * from and the Recipes panel lists. A recipe is not an API call of its own: faas expands it into one
  * ordinary create request on the client (`api.BuildEdgeRuleRecipe`,
  * pkg/api/edge_rule_recipes.go:205) and sends it through
  * `POST /v1/apps/{slug}/edge-rules`, which keeps validation, plan gates and
@@ -17,8 +18,10 @@ export type RecipeId =
   | 'block-unverified-bots'
   | 'rate-limit-path'
   | 'allow-ips-only'
+  | 'block-countries'
   | 'block-scanner-paths'
-  | 'challenge-path';
+  | 'challenge-path'
+  | 'control-ai-crawlers';
 
 export interface RecipeParam {
   name: string;
@@ -59,11 +62,35 @@ const PATH: RecipeParam = {
   default: '/**',
 };
 
-export const RECIPES: Record<RecipeId, { title: string; kind: string; params: RecipeParam[] }> = {
-  'block-unverified-bots': { title: 'Block unverified bots', kind: 'ip', params: [PATH] },
+export interface Recipe {
+  title: string;
+  /** The kind it creates, which decides the plan gate. */
+  kind: string;
+  /** What it does, apid's wording. */
+  summary: string;
+  /** What its match count means in log mode. */
+  logNote: string;
+  params: RecipeParam[];
+}
+
+const BLOCKS = 'In log mode the match count is the requests it would block.';
+
+export const RECIPES: Record<RecipeId, Recipe> = {
+  'block-unverified-bots': {
+    title: 'Block unverified bots',
+    kind: 'ip',
+    summary:
+      'Answer 403 to requests whose User-Agent says bot or crawler, unless the crawler is verified (Googlebot, Bingbot, Applebot, …). Real search engines keep crawling.',
+    logNote: BLOCKS,
+    params: [PATH],
+  },
   'rate-limit-path': {
     title: 'Rate-limit a path per client IP',
     kind: 'throttle',
+    summary:
+      'Limit how often one client IP may call a path, such as a login or sign-up form. Over the limit the edge answers 429.',
+    logNote:
+      'In log mode the match count is every request the limit covers, not only the ones it would reject.',
     params: [
       { name: 'path', label: 'Path', help: 'Path to limit.', default: '/login' },
       {
@@ -90,6 +117,9 @@ export const RECIPES: Record<RecipeId, { title: string; kind: string; params: Re
   'allow-ips-only': {
     title: 'Allow only listed IPs on a path',
     kind: 'ip',
+    summary:
+      'Answer 403 on a path, such as an admin area, unless the client IP is in your list. A client whose IP cannot be determined is blocked.',
+    logNote: BLOCKS,
     params: [
       {
         name: 'path',
@@ -106,9 +136,29 @@ export const RECIPES: Record<RecipeId, { title: string; kind: string; params: Re
       },
     ],
   },
+  'block-countries': {
+    title: 'Block countries',
+    kind: 'ip',
+    summary:
+      'Answer 403 to clients located in the listed countries. A client whose country is unknown is let through.',
+    logNote: BLOCKS,
+    params: [
+      PATH,
+      {
+        name: 'countries',
+        label: 'Countries',
+        help: 'ISO 3166-1 alpha-2 codes, comma- or space-separated.',
+        placeholder: 'KP, IR',
+        required: true,
+      },
+    ],
+  },
   'block-scanner-paths': {
     title: 'Block vulnerability scanner paths',
     kind: 'ip',
+    summary:
+      'Answer 403 to requests for paths scanners probe on every public site, such as /.env, /.git/ and /wp-login.php. Remove any your app really serves.',
+    logNote: BLOCKS,
     params: [
       {
         name: 'paths',
@@ -122,6 +172,10 @@ export const RECIPES: Record<RecipeId, { title: string; kind: string; params: Re
   'challenge-path': {
     title: 'Challenge visitors on a path',
     kind: 'challenge',
+    summary:
+      'Ask browsers on a path, such as a sign-in page or a whole site under attack, to solve a short proof of work before they reach your app. Verified search crawlers and requests with a verified API key or JWT pass straight through; scripts that cannot run JavaScript get 403.',
+    logNote:
+      'In log mode the match count is the requests it would challenge, including visitors who would already hold a pass.',
     params: [
       {
         name: 'path',
@@ -136,7 +190,32 @@ export const RECIPES: Record<RecipeId, { title: string; kind: string; params: Re
       },
     ],
   },
+  'control-ai-crawlers': {
+    title: 'Control AI crawlers',
+    kind: 'ip',
+    summary:
+      'Block or challenge the crawlers AI companies run (GPTBot, ClaudeBot, CCBot, PerplexityBot, Bytespider and others) by what they fetch for: training models, AI search, or assistants answering a user. By default it blocks training crawlers only; search engines and people are unaffected.',
+    logNote: 'In log mode the match count is the AI crawler requests it would block or challenge.',
+    params: [
+      {
+        name: 'purposes',
+        label: 'Purposes',
+        help: 'Comma-separated: training (collects pages to train models), search (indexes pages for AI search), assistant (fetches a page a user asked about), or all.',
+        default: 'training',
+      },
+      {
+        name: 'action',
+        label: 'Action',
+        help: 'block answers 403; challenge asks for the browser check, which crawlers cannot pass.',
+        default: 'block',
+      },
+      PATH,
+    ],
+  },
 };
+
+/** AI crawler purposes (faas pkg/api AICrawlerPurposes). */
+const AI_PURPOSES = ['training', 'search', 'assistant'];
 
 export const isRecipeId = (id: string): id is RecipeId => id in RECIPES;
 
@@ -255,6 +334,24 @@ export function buildRecipe(
       };
       break;
     }
+    case 'block-countries': {
+      const codes = split(v.countries).map((c) => c.toUpperCase());
+      if (!codes.length) return fail('List at least one country code.', 'countries');
+      if (codes.length > MAX_VALUES)
+        return fail(
+          `At most ${MAX_VALUES} countries; use an edge rule list for more.`,
+          'countries'
+        );
+      const bad = codes.find((c) => !/^[A-Z]{2}$/.test(c));
+      if (bad) return fail(`${bad} is not a two-letter country code.`, 'countries');
+      rule = {
+        match_path: v.path,
+        kind: 'ip',
+        action: DENY_ALL,
+        match: { field: 'country', op: 'in', values: codes },
+      };
+      break;
+    }
     case 'block-scanner-paths': {
       const prefixes = split(v.paths);
       if (!prefixes.length) return fail('List at least one path prefix.', 'paths');
@@ -278,6 +375,30 @@ export function buildRecipe(
         match: { field: 'verified_bot', op: 'missing' },
       };
       break;
+    case 'control-ai-crawlers': {
+      // edge_rule_recipes.go:408-437.
+      const purposes: string[] = [];
+      for (const p of split(v.purposes.toLowerCase())) {
+        if (p === 'all') {
+          purposes.splice(0, purposes.length, ...AI_PURPOSES);
+          break;
+        }
+        if (!AI_PURPOSES.includes(p))
+          return fail(`Unknown purpose ${p}: ${AI_PURPOSES.join(', ')}, or all.`, 'purposes');
+        if (!purposes.includes(p)) purposes.push(p);
+      }
+      if (!purposes.length)
+        return fail(`Name at least one of ${AI_PURPOSES.join(', ')}, or all.`, 'purposes');
+      const how = v.action.toLowerCase();
+      if (how !== 'block' && how !== 'challenge')
+        return fail('The action is block or challenge.', 'action');
+      rule = {
+        match_path: v.path,
+        ...(how === 'block' ? { kind: 'ip', action: DENY_ALL } : { kind: 'challenge', action: {} }),
+        match: { field: 'ai_crawler_purpose', op: 'in', values: purposes },
+      };
+      break;
+    }
   }
 
   let penalty: CreateEdgeRule['penalty'];
@@ -330,6 +451,16 @@ export function recipeEffect(id: RecipeId, input: Record<string, string>, enforc
       break;
     case 'challenge-path':
       what = `Browsers must solve a short check before reaching ${verbs}${v.path}; scripts that cannot run JavaScript get 403.`;
+      break;
+    case 'block-countries':
+      what = `Clients located in ${
+        split(v.countries)
+          .map((c) => c.toUpperCase())
+          .join(', ') || 'the listed countries'
+      } get 403 on ${v.path}; a client whose country is unknown is let through.`;
+      break;
+    case 'control-ai-crawlers':
+      what = `AI crawlers that fetch for ${v.purposes || 'training'} ${v.action.toLowerCase() === 'challenge' ? 'are challenged, which they cannot pass,' : 'get 403'} on ${v.path}; search engines and people are unaffected.`;
       break;
   }
   const penalty = v.penalty_minutes

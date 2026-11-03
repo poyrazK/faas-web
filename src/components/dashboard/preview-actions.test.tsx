@@ -71,4 +71,20 @@ describe('TearDownPreviewButton', () => {
       expect.objectContaining({ kind: 'info', title: 'Not a preview app' })
     );
   });
+
+  it("says who may tear down a company app's preview when a role refuses it", async () => {
+    destroy.mockRejectedValue(
+      new ApiError({ status: 403, code: 'org_role_forbidden', title: 'Insufficient role' })
+    );
+    render(<TearDownPreviewButton slug="pr-42-api-gateway" />);
+    await userEvent.click(screen.getByRole('button'));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'error',
+          description: expect.stringMatching(/only the member who created this preview’s app/i),
+        })
+      )
+    );
+  });
 });

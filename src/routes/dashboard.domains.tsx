@@ -1,15 +1,21 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { Activity, Plus, Trash } from 'iconoir-react';
+import { Plus } from 'iconoir-react';
+import { Select } from '@/components/ui/field';
+import { DomainAddForm, isDomainName } from '@/components/dashboard/domain-add-form';
+import { DomainDetailButton } from '@/components/dashboard/domain-detail';
+import { DomainDoctor } from '@/components/dashboard/domain-doctor';
+import { Sheet } from '@/components/dashboard/kit/sheet';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
-import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
-import { useConfirm } from '@/components/ui/confirm';
+import { useToast } from '@/components/ui/toast';
+import { slugIndex } from '@/lib/api/adapters';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { ApiError } from '@/lib/api/errors';
 import {
   useAddDomain,
   useApps,
@@ -17,18 +23,10 @@ import {
   useDomains,
   useRetryDomain,
 } from '@/lib/api/queries';
-import { DomainDetailButton } from '@/components/dashboard/domain-detail';
-import { DomainDoctor } from '@/components/dashboard/domain-doctor';
-import { slugIndex } from '@/lib/api/adapters';
-import { ApiError } from '@/lib/api/errors';
-import { FieldError, fieldErrorProps, useFormValidation, Select } from '@/components/ui/field';
-import { Sheet } from '@/components/dashboard/kit/sheet';
-import { cn } from '@/lib/utils';
-
-/** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
-const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
-import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Activity, Trash } from 'iconoir-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
@@ -42,7 +40,8 @@ export const Route = createFileRoute('/dashboard/domains')({
     ...raw,
     q: typeof raw.q === 'string' && raw.q.trim() ? raw.q : undefined,
     status: raw.status === 'pending' || raw.status === 'verified' ? raw.status : undefined,
-    doctor: typeof raw.doctor === 'string' && HOST_RULE.test(raw.doctor) ? raw.doctor : undefined,
+    // A wildcard has a doctor too: it probes the wildcard's check host.
+    doctor: typeof raw.doctor === 'string' && isDomainName(raw.doctor) ? raw.doctor : undefined,
   }),
   head: () => consoleHead('domains'),
 });
@@ -102,13 +101,6 @@ function DomainsPage() {
   const setDoctorFor = (doctor?: string) => select({ doctor });
 
   const [creating, setCreating] = useState(false);
-  const [host, setHost] = useState('');
-  const [appSlug, setAppSlug] = useState('');
-  const validation = useFormValidation<'host'>();
-  const hostOk = HOST_RULE.test(host.trim());
-  const hostError = hostOk ? undefined : 'Enter a full hostname, like api.example.com.';
-  const showHostError = validation.submitAttempted ? hostError : undefined;
-
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
     return (data ?? []).map((d) => ({
@@ -255,8 +247,12 @@ function DomainsPage() {
       key: 'app',
       label: 'Routes to',
       priority: 'secondary',
+      // An environment-bound domain names its environment under the app.
       render: (d) => (
-        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+        <span className="flex flex-col items-start gap-1">
+          <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+          {d.environment && <Pill label={d.environment} />}
+        </span>
       ),
     },
     {
@@ -366,32 +362,6 @@ function DomainsPage() {
     },
   ];
 
-  const submit = () => {
-    // The create endpoint binds by app id, while everything the user sees is a
-    // slug — so the selection is resolved back to an id here.
-    const target = (apps ?? []).find((a) => a.slug === (appSlug || apps?.[0]?.slug));
-    if (!target) {
-      toast({ kind: 'error', title: 'Pick an app to route the domain to' });
-      return;
-    }
-
-    void addDomain
-      .mutateAsync({ domain: host.trim(), app_id: target.id })
-      .then((created) => {
-        setHost('');
-        validation.resetValidation();
-        setCreating(false);
-        toast({
-          kind: 'success',
-          title: 'Domain added',
-          description: created.txt_record
-            ? 'Publish the TXT record shown in the table to verify it.'
-            : undefined,
-        });
-      })
-      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -416,60 +386,8 @@ function DomainsPage() {
           onRetry={() => void appQuery.refetch()}
         />
       )}
-
       <Sheet open={creating} onClose={() => setCreating(false)} title="Add domain">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!validation.validate({ host: hostError }, e.currentTarget) || addDomain.isPending)
-              return;
-            submit();
-          }}
-        >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Hostname</span>
-            <input
-              name="host"
-              autoFocus
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              {...fieldErrorProps(showHostError, 'domain-host-error')}
-              placeholder="api.example.com"
-              className={cn(
-                'h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-brand',
-                showHostError ? 'border-[color:var(--status-critical)]' : 'border-border'
-              )}
-            />
-            {showHostError && <FieldError id="domain-host-error">{showHostError}</FieldError>}
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Routes to</span>
-            <Select
-              value={appSlug}
-              onChange={(e) => setAppSlug(e.target.value)}
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
-            >
-              {(apps ?? []).map((a) => (
-                <option key={a.slug} value={a.slug}>
-                  {a.slug}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              size="sm"
-              busy={addDomain.isPending}
-              disabled={!apps?.length || Boolean(appQuery.error)}
-            >
-              Add domain
-            </Button>
-          </div>
-        </form>
+        <DomainAddForm onCreated={() => setCreating(false)} />
       </Sheet>
 
       <ResourceTable

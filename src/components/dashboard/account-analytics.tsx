@@ -1,8 +1,8 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import { useAccountSlo, useAppsMetrics, type AppsMetrics } from '@/lib/api/queries';
-import { InlinePhase, Panel, RangeSelector, Stats, StatTile, queryPhase } from './primitives';
+import { useNavigate } from '@tanstack/react-router';
+import type { Dispatch, SetStateAction } from 'react';
 import { PlanGated } from './plan-gated';
+import { InlinePhase, Panel, queryPhase, RangeSelector, Stats, StatTile } from './primitives';
 import { ResourceTable, type Column } from './resource-table';
 
 /**

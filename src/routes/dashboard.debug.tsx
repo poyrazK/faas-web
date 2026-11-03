@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, Navigate, redirect } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { remembered } from '@/components/dashboard/selected-app';
@@ -10,11 +10,10 @@ import { consoleHead } from '@/lib/seo';
 export const Route = createFileRoute('/dashboard/debug')({
   component: DebugPage,
   validateSearch: validateDebugSearch,
-  // The Debugger is an app's Observe section now. A link that names an app,
-  // or an app picked earlier, opens it there with the investigation intact;
-  // this page remains only as the picker for someone who has chosen none.
+  // Explicit deep links can redirect immediately. A remembered selection
+  // must first be checked against the current inventory in DebugPage.
   beforeLoad: ({ search }) => {
-    const app = search.app ?? remembered();
+    const app = search.app;
     if (!app) return;
     throw redirect({
       to: '/dashboard/apps/$appSlug',
@@ -48,6 +47,17 @@ function DebugPage() {
       resetScroll: false,
     });
   };
+
+  if (!search.app && remembered() && !appState.loadingApps && !appState.appsError && available)
+    return (
+      <Navigate
+        to="/dashboard/apps/$appSlug"
+        params={{ appSlug: slug }}
+        search={{ ...search, app: undefined, tab: 'Debugger' }}
+        hash
+        replace
+      />
+    );
 
   return (
     <div className="flex flex-col gap-6">

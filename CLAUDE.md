@@ -90,6 +90,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   seen in their off state.
   `MOCK_DOMAIN_EXPIRED=1` seeds the pending domain with an expired TXT challenge,
   so "Check again" answers 409 and the "Get a new TXT record" recovery shows.
+  `MOCK_PG_CAP=suspended|warning|overage` seeds the month's managed Postgres
+  compute so the compute cap's states show; turning overage on lifts a
+  suspension.
 - **`npm run tour` walks the console and fails on what a unit test cannot see** —
   an error boundary, a spinner nothing resolves, a path the mock does not
   answer, a page that threw. Point it at a running dev server

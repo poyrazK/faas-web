@@ -1,7 +1,8 @@
 import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
-import { errorMessage } from '@/lib/api/errors';
-import { useObjectStorageUsage } from '@/lib/api/object-storage';
+import type { components } from '@/lib/api/schema';
 import { ACCOUNT_CURRENCY } from '@/lib/money';
+
+type ObjectStorageUsage = components['schemas']['ObjectStorageUsageResponse'];
 
 /**
  * Object-storage accounting for the account, against the caps it is measured
@@ -12,6 +13,10 @@ import { ACCOUNT_CURRENCY } from '@/lib/money';
  * said to be stale rather than presented as current. Costs arrive in
  * millicents, so they are converted once, here, and never rounded into a
  * shape the invoice will not match.
+ *
+ * The figures are the `object_storage` block of the account usage projection
+ * (`GET /v1/account/usage`), which the Usage page reads once; the block is
+ * absent when object storage is not enabled, and the page then omits this.
  */
 
 function bytes(value: number): string {
@@ -43,69 +48,58 @@ function pct(used: number, cap: number): string | undefined {
   return `${Math.round((used / cap) * 100)}% of ${bytes(cap)}`;
 }
 
-export function ObjectStorageUsagePanel() {
-  const query = useObjectStorageUsage();
-  const data = query.data;
-  const state = query.isPending ? 'loading' : query.error ? 'unavailable' : 'ready';
-  const usage = data?.usage;
-  const policy = data?.policy;
-  const charges = data?.charges;
+export function ObjectStorageUsagePanel({ data }: { data: ObjectStorageUsage }) {
+  const { usage, policy, charges } = data;
 
   return (
     <Panel
       title="Object storage"
       padded={false}
       actions={
-        usage && (
-          <span className="text-xs text-muted-foreground">
-            Since {new Date(usage.period_start).toLocaleDateString()}
-            {!usage.fresh && <span style={{ color: 'var(--status-warning)' }}> · delayed</span>}
-          </span>
-        )
+        <span className="text-xs text-muted-foreground">
+          Since {new Date(usage.period_start).toLocaleDateString()}
+          {!usage.fresh && (
+            <span style={{ color: 'var(--status-warning)' }}>
+              {' '}
+              · The last report is stale; these figures lag behind.
+            </span>
+          )}
+        </span>
       }
+      help={`Since ${new Date(usage.period_start).toLocaleDateString()}.${usage.fresh ? '' : ' The last report is stale; these figures lag behind.'}`}
     >
-      {query.error ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">{errorMessage(query.error)}</p>
-      ) : (
-        <Stats columns={4}>
-          <StatTile
-            label="Stored"
-            value={usage ? bytes(usage.observed_bytes) : undefined}
-            note={usage && policy ? pct(usage.observed_bytes, policy.max_account_bytes) : undefined}
-            state={state}
-          />
-          <StatTile
-            label="Requests"
-            value={usage?.request_count}
-            note={policy ? `cap ${policy.max_monthly_requests.toLocaleString()}/month` : undefined}
-            state={state}
-            tone="grey"
-          />
-          <StatTile
-            label="Storage egress"
-            value={usage ? bytes(usage.egress_bytes) : undefined}
-            note={policy ? `cap ${bytes(policy.max_monthly_egress_bytes)}/month` : undefined}
-            state={state}
-            tone="orange"
-          />
-          <StatTile
-            label="Cost so far"
-            value={
-              charges
-                ? money(charges.total_millicents, charges.currency)
-                : usage
-                  ? money(usage.cost_millicents)
-                  : undefined
-            }
-            note={
-              charges
-                ? `storage ${money(charges.storage_millicents, charges.currency)} · requests ${money(charges.requests_millicents, charges.currency)} · egress ${money(charges.egress_millicents, charges.currency)}`
-                : undefined
-            }
-            state={state}
-          />
-        </Stats>
-      )}
+      <Stats columns={4}>
+        <StatTile
+          label="Stored"
+          value={bytes(usage.observed_bytes)}
+          note={pct(usage.observed_bytes, policy.max_account_bytes)}
+        />
+        <StatTile
+          label="Requests"
+          value={usage.request_count}
+          note={`cap ${policy.max_monthly_requests.toLocaleString()}/month`}
+          tone="grey"
+        />
+        <StatTile
+          label="Storage egress"
+          value={bytes(usage.egress_bytes)}
+          note={`cap ${bytes(policy.max_monthly_egress_bytes)}/month`}
+          tone="orange"
+        />
+        <StatTile
+          label="Cost so far"
+          value={
+            charges
+              ? money(charges.total_millicents, charges.currency)
+              : money(usage.cost_millicents)
+          }
+          note={
+            charges
+              ? `storage ${money(charges.storage_millicents, charges.currency)} · requests ${money(charges.requests_millicents, charges.currency)} · egress ${money(charges.egress_millicents, charges.currency)}`
+              : undefined
+          }
+        />
+      </Stats>
     </Panel>
   );
 }

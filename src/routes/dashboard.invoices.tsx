@@ -13,6 +13,8 @@ import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { orgBillingMessage } from '@/components/dashboard/org-billing';
 import { InvoiceSource } from '@/components/dashboard/invoice-source';
 import { BillingIdentityPanel } from '@/components/dashboard/billing-identity';
+import { InvoiceRefreshButton } from '@/components/dashboard/invoice-refresh';
+import { useBillingStatus } from '@/lib/api/billing-identity';
 
 export const Route = createFileRoute('/dashboard/invoices')({
   component: InvoicesPage,
@@ -30,6 +32,7 @@ export const Route = createFileRoute('/dashboard/invoices')({
 interface InvoiceRow {
   id: string;
   number: string;
+  provider: string;
   status: string;
   period: string;
   total: number;
@@ -71,6 +74,18 @@ function InvoicesBody() {
   const { org, label } = useWorkspaceTarget();
   const invoices = useInfiniteInvoices();
   const portal = useBillingPortal();
+  // Shared with InvoiceSource's read; it decides where per-invoice refresh can
+  // be answered. Company invoices are never refreshable (see below).
+  const billing = useBillingStatus({ enabled: !org });
+  const status = billing.data;
+  // apid refreshes only the signed-in account's own invoices (404 otherwise),
+  // answers 501 with billing off, and 409 without a provider customer or for
+  // another provider's invoice (faas handlers_invoice_refresh.go:44-60,
+  // pkg/billing/invoice_refresh.go ValidateInvoiceSource).
+  const refreshable = (row: InvoiceRow) =>
+    !org &&
+    Boolean(status?.enabled && status.customer_configured) &&
+    row.provider === status?.provider;
   const data = useMemo(
     () => invoices.data?.pages.flatMap((page) => page.items) ?? [],
     [invoices.data]
@@ -85,6 +100,7 @@ function InvoicesBody() {
       data.map((i) => ({
         id: i.id,
         number: i.number ?? i.provider_invoice_id,
+        provider: i.provider,
         status: i.status,
         period: `${formatDay(i.period_start)} – ${formatDay(i.period_end)}`,
         total: i.total_cents,
@@ -124,6 +140,13 @@ function InvoicesBody() {
       render: (i) => (
         <span className="text-xs text-muted-foreground">{formatDay(i.createdAt)}</span>
       ),
+    },
+    {
+      key: 'provider',
+      label: 'Details',
+      sortable: false,
+      width: 'w-28',
+      render: (i) => (refreshable(i) ? <InvoiceRefreshButton id={i.id} number={i.number} /> : null),
     },
   ];
 

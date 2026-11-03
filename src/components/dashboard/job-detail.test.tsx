@@ -76,6 +76,45 @@ describe('JobDefinition', () => {
     render(<JobDefinition name="nightly-export" />);
     expect(screen.getByText(/no longer exists/i)).toBeInTheDocument();
   });
+
+  it('shows the schedule, its zone and its policy, with a way to edit it', () => {
+    const current = useJob();
+    useJob.mockReturnValue({
+      ...current,
+      data: {
+        ...current.data,
+        schedule: '0 3 * * *',
+        timezone: 'Europe/Istanbul',
+        schedule_policy: {
+          version: 1,
+          overlap: 'replace',
+          missed_runs: 'coalesce_latest',
+          start_deadline_seconds: 120,
+        },
+      },
+    });
+    render(<JobDefinition name="nightly-export" />);
+    expect(screen.getByText('Europe/Istanbul')).toBeInTheDocument();
+    expect(
+      screen.getByText('Replace the running one · run the latest missed time · start within 120s')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument();
+  });
+
+  it('offers to add a schedule to a batch job', () => {
+    const current = useJob();
+    useJob.mockReturnValue({ ...current, data: { ...current.data, kind: 'batch' } });
+    render(<JobDefinition name="nightly-export" />);
+    expect(screen.getByRole('button', { name: 'Add a schedule' })).toBeInTheDocument();
+    expect(screen.getByText(/Runs start only when you start them/)).toBeInTheDocument();
+  });
+
+  it("offers no schedule for an image run's runner job, which apid manages", () => {
+    const current = useJob();
+    useJob.mockReturnValue({ ...current, data: { ...current.data, kind: 'image_run' } });
+    render(<JobDefinition name="nightly-export" />);
+    expect(screen.queryByRole('button', { name: /schedule/i })).not.toBeInTheDocument();
+  });
 });
 
 describe('JobRunDetail', () => {

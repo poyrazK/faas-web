@@ -3,6 +3,14 @@ import { api, unwrap } from './client';
 import { ApiError } from './errors';
 import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
+import {
+  NO_RETRY_DRAFT,
+  durationSeconds,
+  retryPolicyFromDraft,
+  type DurationDraft,
+  type RetryDraft,
+  type RetryPolicy,
+} from '@/lib/invocation-options';
 
 export type Invocation = components['schemas']['Invocation'];
 type InvokeRequest = components['schemas']['InvokeRequest'];
@@ -118,6 +126,10 @@ export interface AsyncInvokeOptions {
   deadline: string;
   onSuccess: string;
   onFailure: string;
+  /** Overrides the app's retry default for this one invocation. */
+  retry: RetryDraft;
+  /** Shortens how long the finished result is kept; blank keeps the plan's window. */
+  retention: DurationDraft;
 }
 
 export const NO_ASYNC_OPTIONS: AsyncInvokeOptions = {
@@ -127,29 +139,59 @@ export const NO_ASYNC_OPTIONS: AsyncInvokeOptions = {
   deadline: '',
   onSuccess: '',
   onFailure: '',
+  retry: NO_RETRY_DRAFT,
+  retention: { amount: '', unit: 'hours' },
 };
 
-/** The async-only part of an invoke body. Throws a readable error on bad input. */
-export function asyncInvokeExtras(
-  options: AsyncInvokeOptions
-): Pick<InvokeRequest, 'work' | 'deadline_at' | 'destinations'> {
-  const body: Pick<InvokeRequest, 'work' | 'deadline_at' | 'destinations'> = {};
+/**
+ * What an async invoke and a delayed task both accept beyond the request
+ * itself: work identity, destinations, retry curve and retention (faas
+ * InvokeRequest; DelayedTaskAtRequest and DelayedTaskAfterRequest). Only an
+ * async invoke takes a deadline: a delayed task's is the plan's, counted from
+ * its scheduled time (handlers_invocations.go:768).
+ */
+export interface InvocationEnvelope {
+  work?: InvokeRequest['work'];
+  destinations?: components['schemas']['InvocationDestinations'];
+  retry_policy?: RetryPolicy;
+  retention_seconds?: number;
+}
+
+/** The shared part of an invocation body. Throws a readable error on bad input. */
+export function invocationEnvelope(options: AsyncInvokeOptions): InvocationEnvelope {
+  const body: InvocationEnvelope = {};
   if (options.policy) {
     body.work = { policy: options.policy, key: parseWorkKey(options.key, 'Work key') };
     if (options.fairnessKey.trim())
       body.work.fairness_key = parseWorkKey(options.fairnessKey, 'Fairness key');
-  }
-  if (options.deadline) {
-    const at = new Date(options.deadline);
-    if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now())
-      throw new Error('The deadline must be in the future.');
-    body.deadline_at = at.toISOString();
   }
   if (options.onSuccess || options.onFailure) {
     body.destinations = {
       ...(options.onSuccess ? { on_success: options.onSuccess } : {}),
       ...(options.onFailure ? { on_failure: options.onFailure } : {}),
     };
+  }
+  const retry = retryPolicyFromDraft(options.retry);
+  if (retry) body.retry_policy = retry;
+  const retention = durationSeconds(options.retention);
+  if (retention !== null) {
+    if (Number.isNaN(retention))
+      throw new Error('Retention must be a positive whole number of seconds.');
+    body.retention_seconds = retention;
+  }
+  return body;
+}
+
+/** The async-only part of an invoke body. Throws a readable error on bad input. */
+export function asyncInvokeExtras(
+  options: AsyncInvokeOptions
+): InvocationEnvelope & Pick<InvokeRequest, 'deadline_at'> {
+  const body: InvocationEnvelope & Pick<InvokeRequest, 'deadline_at'> = invocationEnvelope(options);
+  if (options.deadline) {
+    const at = new Date(options.deadline);
+    if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now())
+      throw new Error('The deadline must be in the future.');
+    body.deadline_at = at.toISOString();
   }
   return body;
 }

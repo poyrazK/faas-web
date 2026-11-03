@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
+import { Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import {
@@ -9,7 +9,8 @@ import {
   useReorderDeployment,
   type Deployment,
 } from '@/lib/api/queries';
-import { Select } from '@/components/ui/field';
+import { useState } from 'react';
+import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 
 /**
  * The write half of deployment control (ADR-122 canary, ADR-124 queue).
@@ -30,10 +31,23 @@ export function canAdvanceCanary(deployment: Deployment): boolean {
   return deployment.rollout_state === 'rolling_out' && total > 0 && step < total;
 }
 
-export function AdvanceCanaryButton({ deployment }: { deployment: Deployment }) {
+/**
+ * An advance raises the canary's traffic, so under an enforced binding release
+ * policy it runs the bindings check first (faas handlers_canary.go:109,
+ * binding_release_traffic.go:26-86); a refusal is listed in place with what
+ * to do about each blocker. The app slug names where to verify.
+ */
+export function AdvanceCanaryButton({
+  deployment,
+  slug,
+}: {
+  deployment: Deployment;
+  slug?: string;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const advance = useAdvanceCanary();
+  const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
   if (!canAdvanceCanary(deployment)) return null;
 
   const step = deployment.canary_step ?? 0;
@@ -49,6 +63,7 @@ export function AdvanceCanaryButton({ deployment }: { deployment: Deployment }) 
       }))
     )
       return;
+    setRefusal(null);
     try {
       const result = await advance.mutateAsync({ id: deployment.id, expected_step: step });
       const percent = result.deployment.traffic_percent;
@@ -59,6 +74,11 @@ export function AdvanceCanaryButton({ deployment }: { deployment: Deployment }) 
           percent != null ? `${percent}% of traffic now reaches this deployment.` : undefined,
       });
     } catch (err) {
+      const gate = bindingsGateRefusal(err);
+      if (gate && slug) {
+        setRefusal(gate);
+        return;
+      }
       if (err instanceof ApiError && err.code === 'canary_step_conflict') {
         toast({
           kind: 'info',
@@ -80,14 +100,24 @@ export function AdvanceCanaryButton({ deployment }: { deployment: Deployment }) 
   };
 
   return (
-    <Button
-      size="xs"
-      variant="outline"
-      onClick={() => void onAdvance()}
-      disabled={advance.isPending}
-    >
-      Advance canary ({step}/{total})
-    </Button>
+    <>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={() => void onAdvance()}
+        disabled={advance.isPending}
+      >
+        Advance canary ({step}/{total})
+      </Button>
+      {refusal && slug && (
+        <BindingsGateNotice
+          refusal={refusal}
+          slug={slug}
+          deploymentId={deployment.id}
+          action="canary advance"
+        />
+      )}
+    </>
   );
 }
 

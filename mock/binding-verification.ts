@@ -37,9 +37,10 @@ interface MockApp {
   /** The app's live deployment, which reviews and canaries select. */
   live?: string;
 }
+type StoredRun = Run & { admittedAt: Record<number, number>; completedAt?: number };
 interface AppState {
   policies: Map<string, Policy>;
-  runs: Map<string, Run & { admittedAt: Record<number, number> }>;
+  runs: Map<string, StoredRun>;
   canaries: Map<string, Canary & { at: number; cancelled?: boolean }>;
 }
 const states = new Map<string, AppState>();
@@ -170,7 +171,8 @@ function stateFor(a: MockApp): AppState {
   };
   // Pending for ten minutes after the mock first serves this app.
   run(randomUUID(), 60e3, 'pending');
-  const passed = run(randomUUID(), 2 * 3600e3, 'passed');
+  const passed: StoredRun = run(randomUUID(), 2 * 3600e3, 'passed');
+  passed.completedAt = now - 2 * 3600e3 + 120e3;
   passed.steps = passed.steps.map((s) =>
     s.plan.action === 'probe' || s.plan.action === 'queue-canary'
       ? {
@@ -222,8 +224,8 @@ function taskStatus(admitted: number, cancelled: boolean): string {
   return age < 2000 ? 'queued' : age < 4500 ? 'running' : 'succeeded';
 }
 
-function runView(a: MockApp, r: Run & { admittedAt: Record<number, number> }): Run {
-  const { admittedAt, ...run } = r;
+function runView(a: MockApp, r: StoredRun): Run {
+  const { admittedAt, completedAt, ...run } = r;
   const state = stateFor(a);
   run.steps = run.steps.map((step, i) => {
     if (!step.resource_id || !step.owned || !admittedAt[i]) return step;
@@ -359,7 +361,12 @@ export function writeReleasePolicy(
 
 export function listRuns(a: MockApp, query: URLSearchParams): S['BindingVerificationRunList'] {
   const status = query.get('status');
+  const members = query.get('include_members');
+  if (members !== null && members !== 'true' && members !== 'false')
+    fail(400, 'validation_failed', 'invalid verification list options');
   const runs = [...stateFor(a).runs.values()]
+    // Graph members list only on request (state/binding_verification_run_list.go:100).
+    .filter((r) => members === 'true' || !r.graph_run_id)
     .map((r) => runView(a, r))
     .sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at))
     .map((r) => ({
@@ -367,6 +374,13 @@ export function listRuns(a: MockApp, query: URLSearchParams): S['BindingVerifica
       app: r.app,
       deployment_id: r.deployment_id,
       scope: r.scope,
+      ...(r.graph_run_id
+        ? {
+            graph_run_id: r.graph_run_id,
+            project: graphOf.get(r.graph_run_id)?.project,
+            environment: r.scope,
+          }
+        : {}),
       // Summaries carry stored state; "blocked" is only ever a live recheck.
       status: (r.status === 'blocked'
         ? 'pending'
@@ -414,6 +428,17 @@ export function reviewRun(
     fail(400, 'validation_failed', 'invalid verification run or missing write/publication consent');
   const deployment = (body.deployment_id as string | undefined) ?? liveDeployment;
   if (!deployment) fail(404, 'not_found', 'No owned run or eligible deployment was found.');
+  // binding_verification_service_targets.go:13-38, reduced to the selector's shape.
+  const targets = (body.service_targets ?? {}) as Record<string, unknown>;
+  if (
+    typeof targets !== 'object' ||
+    Object.values(targets).some((id) => typeof id !== 'string' || !UUID.test(id))
+  )
+    fail(
+      400,
+      'validation_failed',
+      'service targets require declared services and canonical deployment UUIDs'
+    );
   const policy = policyFor(a, 'default');
   // validVerificationRunInventory: an enforced policy with a revision.
   if (policy.mode !== 'enforce' || policy.revision < 1) changed();
@@ -422,7 +447,7 @@ export function reviewRun(
     app: a.slug,
     deployment_id: deployment as string,
     scope: 'default',
-    service_targets: {},
+    service_targets: targets as Record<string, string>,
     reviewed_at: new Date().toISOString(),
     ready: true,
     review_digest: digest(a, policy),
@@ -535,8 +560,7 @@ export function resumeRun(a: MockApp, id: string) {
   return activeRun(a, id).view;
 }
 
-export function completeRun(a: MockApp, id: string) {
-  const { r, view } = activeRun(a, id);
+function assertCompletable(view: Run) {
   for (const step of view.steps) {
     if (
       (step.plan.action === 'probe' || step.plan.action === 'queue-canary') &&
@@ -546,7 +570,15 @@ export function completeRun(a: MockApp, id: string) {
     if (step.owned && step.status !== 'succeeded')
       fail(409, 'binding_verification_run_changed', 'owned resource did not succeed');
   }
+}
+
+export function completeRun(a: MockApp, id: string) {
+  const { r, view } = activeRun(a, id);
+  if (r.graph_run_id)
+    fail(409, 'binding_verification_run_changed', 'complete a graph member through its graph');
+  assertCompletable(view);
   r.status = 'passed';
+  r.completedAt = Date.now();
   return runView(a, r);
 }
 
@@ -638,6 +670,344 @@ export function runDiagnostics(a: MockApp, id: string): S['BindingVerificationRu
       max_concurrency: max,
       active_resources: active,
       waiting_steps: waiting,
+      full: active >= max,
+    },
+  };
+}
+
+// --- Release gate -----------------------------------------------------------
+
+/**
+ * The bindings check a traffic increase runs under an enforced release policy
+ * (faas handlers_binding_promotion.go:121-199, binding_release_traffic.go:26-86),
+ * reduced to its evidence rule: the release needs a run of this app that
+ * passed within the policy's maximum age. Null when the scope is not enforced
+ * or the evidence is fresh; otherwise the report, one blocker per step the plan
+ * would have to run.
+ */
+export function releaseGate(
+  a: MockApp,
+  deploymentId: string,
+  scope: string | null | undefined
+): S['BindingCheckReport'] | null {
+  const target = scope || 'default';
+  const policy = policyFor(a, target);
+  if (policy.mode !== 'enforce') return null;
+  const age = (parseAge(policy.max_verification_age) ?? 600) * 1000;
+  const passed = [...stateFor(a).runs.values()].filter(
+    (r) =>
+      r.deployment_id === deploymentId &&
+      r.scope === target &&
+      r.status === 'passed' &&
+      r.completedAt
+  );
+  const now = Date.now();
+  if (passed.some((r) => now - (r.completedAt as number) <= age)) return null;
+  const stale = passed.length > 0;
+  const blockers: S['BindingCheckFinding'][] = plan(policy).flatMap(
+    (step): S['BindingCheckFinding'][] => {
+      const at = { type: step.type, name: step.name, binding: step.binding, scope: target };
+      if (step.action === 'probe')
+        return [
+          {
+            ...at,
+            code: stale ? 'verification_expired' : 'verification_unknown',
+            message: stale
+              ? `The newest probe evidence is older than this scope’s ${policy.max_verification_age} maximum age.`
+              : 'No probe has verified this binding for this release.',
+          },
+        ];
+      if (step.action === 'queue-canary')
+        return [
+          {
+            ...at,
+            code: 'queue_completion_unverified',
+            message: 'No canary message has proven that the handler completes this queue’s work.',
+          },
+        ];
+      return [];
+    }
+  );
+  const checked = new Date(now).toISOString();
+  return {
+    app: a.slug,
+    scope: target,
+    deployment_id: deploymentId,
+    checked_at: checked,
+    inventory_generated_at: checked,
+    max_verification_age: policy.max_verification_age,
+    allow_unsupported: false,
+    require_application_ack: policy.require_application_ack,
+    passed: false,
+    coverage: 'complete',
+    bindings: [],
+    runtime: [],
+    issues: [],
+    blockers,
+    warnings: [],
+  };
+}
+
+/** Rollout recovery runs no check, so an enforced scope refuses it outright. */
+export function recoveryRefused(a: MockApp, scope: string | null | undefined) {
+  return policyFor(a, scope || 'default').mode === 'enforce';
+}
+
+// --- Project graph runs -----------------------------------------------------
+
+type Graph = S['ProjectBindingVerificationRun'];
+interface StoredGraph extends Omit<Graph, 'members'> {
+  /** Member app slug to its member run's id, stored with that app's runs. */
+  members: Record<string, string>;
+}
+const graphs = new Map<string, Map<string, StoredGraph>>();
+const graphOf = new Map<string, StoredGraph>();
+/** Seeded: acme-shop's production graph over its first two services. */
+export const GRAPH_PROJECT = 'acme-shop';
+export const GRAPH_ENVIRONMENT = 'production';
+
+/** Seeds an environment's graphs, whose members the app listings also read. */
+export function seedGraphs(project: string, environment: string, apps: MockApp[]) {
+  graphsFor(project, environment, apps);
+}
+
+/** A member is an app run in the graph's environment, under an enforced policy there. */
+function memberRun(a: MockApp, graph: StoredGraph, created: number): StoredRun {
+  const state = stateFor(a);
+  let policy = state.policies.get(graph.environment);
+  if (!policy || policy.mode !== 'enforce') {
+    policy = {
+      ...offPolicy(a, graph.environment),
+      mode: 'enforce',
+      revision: (policy?.revision ?? 0) + 1,
+      updated_at: iso(created - 3600e3),
+      reason: 'Qualify release sets before activation',
+    };
+    state.policies.set(graph.environment, policy);
+  }
+  const record: StoredRun = {
+    id: randomUUID(),
+    app: a.slug,
+    deployment_id: graph.manifest.deployments[a.slug],
+    scope: graph.environment,
+    graph_run_id: graph.id,
+    status: 'pending',
+    created_at: graph.created_at,
+    expires_at: graph.expires_at,
+    object_storage_write: graph.object_storage_write,
+    queue_publish: graph.queue_publish,
+    review_digest: digest(a, policy),
+    max_concurrency: graph.max_concurrency,
+    policy,
+    inventory: { app: a.slug, generated_at: graph.created_at, complete: true, bindings: [] },
+    steps: plan(policy).map(frozen),
+    admittedAt: {},
+  };
+  state.runs.set(record.id, record);
+  return record;
+}
+
+function graphsFor(project: string, environment: string, apps: MockApp[]) {
+  const key = `${project}/${environment}`;
+  const existing = graphs.get(key);
+  if (existing) return existing;
+  const map = new Map<string, StoredGraph>();
+  graphs.set(key, map);
+  if (project !== GRAPH_PROJECT || environment !== GRAPH_ENVIRONMENT) return map;
+  const members = apps.slice(0, 2);
+  const now = Date.now();
+  const seed = (createdAgo: number, status: StoredGraph['status']) => {
+    const created = now - createdAgo;
+    const graph: StoredGraph = {
+      id: randomUUID(),
+      project,
+      environment,
+      status,
+      ...(status === 'cancelled' ? { reason: 'cancelled' } : {}),
+      created_at: iso(created),
+      expires_at: iso(created + 600e3),
+      review_digest: createHash('sha256').update(`${project}:${created}`).digest('hex'),
+      manifest: {
+        project,
+        environment,
+        ttl_seconds: 3600,
+        deployments: Object.fromEntries(members.map((m) => [m.slug, m.live ?? randomUUID()])),
+        expected_active_release_id: '',
+        expected_fallback_deployments: {},
+        expected_policy_revisions: {},
+        service_targets: {},
+      },
+      object_storage_write: false,
+      queue_publish: false,
+      max_concurrency: 2,
+      members: {},
+    };
+    for (const m of members) {
+      const run = memberRun(m, graph, created);
+      graph.members[m.slug] = run.id;
+      graph.manifest.expected_policy_revisions[m.slug] = run.policy.revision;
+      if (status === 'cancelled') Object.assign(run, { status: 'cancelled', reason: 'cancelled' });
+    }
+    map.set(graph.id, graph);
+    graphOf.set(graph.id, graph);
+  };
+  // Pending for ten minutes after the mock first serves this environment.
+  seed(60e3, 'pending');
+  seed(26 * 3600e3, 'pending'); // reads as expired
+  seed(50 * 3600e3, 'cancelled');
+  return map;
+}
+
+function memberApp(apps: MockApp[], slug: string) {
+  return apps.find((a) => a.slug === slug) ?? changed();
+}
+
+function graphView(graph: StoredGraph, apps: MockApp[]): Graph {
+  const members = Object.fromEntries(
+    Object.entries(graph.members).map(([slug, id]) => {
+      const a = memberApp(apps, slug);
+      return [slug, runView(a, storedRun(a, id))];
+    })
+  );
+  const view: Graph = { ...graph, members };
+  if (graph.status !== 'cancelled' && Date.parse(graph.expires_at) <= Date.now())
+    return { ...view, status: 'expired', reason: 'run_expired' };
+  if (graph.status === 'pending' && Object.values(members).some((m) => m.status !== 'pending'))
+    return { ...view, status: 'blocked', reason: 'review_changed_or_evidence_expired' };
+  return view;
+}
+
+function storedGraph(project: string, environment: string, apps: MockApp[], id: string) {
+  return (
+    graphsFor(project, environment, apps).get(id) ??
+    fail(404, 'not_found', 'No owned run or eligible deployment was found.')
+  );
+}
+
+/** handlers_binding_verification_run_list.go:13-47 and :71-93. */
+export function listGraphRuns(
+  project: string,
+  environment: string,
+  apps: MockApp[],
+  query: URLSearchParams
+): S['BindingVerificationRunList'] {
+  for (const key of query.keys())
+    if (!['limit', 'cursor', 'deployment_id', 'status'].includes(key))
+      fail(400, 'validation_failed', 'invalid verification list options');
+  const status = query.get('status');
+  if (status && !['pending', 'passed', 'cancelled', 'expired'].includes(status))
+    fail(400, 'validation_failed', 'invalid verification list options');
+  const runs = [...graphsFor(project, environment, apps).values()]
+    .map((g) => graphView(g, apps))
+    .sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at))
+    .map((g) => ({
+      id: g.id,
+      project: g.project,
+      environment: g.environment,
+      status: (g.status === 'blocked'
+        ? 'pending'
+        : g.status) as S['BindingVerificationRunSummary']['status'],
+      created_at: g.created_at,
+      expires_at: g.expires_at,
+    }))
+    .filter((g) => !status || g.status === status);
+  return {
+    runs: runs.slice(0, Number(query.get('limit') ?? 20)),
+    observed_at: new Date().toISOString(),
+  };
+}
+
+export function getGraphRun(project: string, environment: string, apps: MockApp[], id: string) {
+  return graphView(storedGraph(project, environment, apps, id), apps);
+}
+
+function activeGraph(project: string, environment: string, apps: MockApp[], id: string) {
+  const graph = storedGraph(project, environment, apps, id);
+  const view = graphView(graph, apps);
+  if (view.status !== 'pending') changed();
+  return { graph, view };
+}
+
+export function resumeGraphRun(project: string, environment: string, apps: MockApp[], id: string) {
+  return activeGraph(project, environment, apps, id).view;
+}
+
+/** Every member passes at once, or none does. */
+export function completeGraphRun(
+  project: string,
+  environment: string,
+  apps: MockApp[],
+  id: string
+) {
+  const { graph, view } = activeGraph(project, environment, apps, id);
+  for (const member of Object.values(view.members)) assertCompletable(member);
+  const now = Date.now();
+  for (const [slug, runId] of Object.entries(graph.members))
+    Object.assign(storedRun(memberApp(apps, slug), runId), { status: 'passed', completedAt: now });
+  graph.status = 'passed';
+  return graphView(graph, apps);
+}
+
+export function cancelGraphRun(project: string, environment: string, apps: MockApp[], id: string) {
+  const graph = storedGraph(project, environment, apps, id);
+  for (const [slug, runId] of Object.entries(graph.members))
+    cancelRun(memberApp(apps, slug), runId);
+  graph.status = 'cancelled';
+  graph.reason = 'cancelled';
+  return graphView(graph, apps);
+}
+
+export function graphRunDiagnostics(
+  project: string,
+  environment: string,
+  apps: MockApp[],
+  id: string
+): S['ProjectBindingVerificationRunDiagnostics'] {
+  const graph = storedGraph(project, environment, apps, id);
+  const view = graphView(graph, apps);
+  const members = Object.fromEntries(
+    Object.entries(graph.members).map(([slug, runId]) => [
+      slug,
+      runDiagnostics(memberApp(apps, slug), runId),
+    ])
+  );
+  const sum = (pick: (m: S['BindingVerificationRunDiagnostics']) => number) =>
+    Object.values(members).reduce((total, m) => total + pick(m), 0);
+  const active = sum((m) => m.budget?.active_resources ?? 0);
+  const max = graph.max_concurrency ?? 2;
+  return {
+    run_id: graph.id,
+    project,
+    environment,
+    status: view.status,
+    checked_at: new Date().toISOString(),
+    expires_at: graph.expires_at,
+    complete: true,
+    members,
+    blockers: [],
+    changes: [],
+    recovery:
+      view.status === 'pending'
+        ? [
+            {
+              action: 'resume',
+              message:
+                'Continue the original graph: admit each member’s waiting steps, then complete it.',
+            },
+          ]
+        : view.status === 'passed'
+          ? []
+          : [
+              {
+                action: 'review_new_run',
+                message: 'This graph can no longer pass. Prepare and verify the release set again.',
+              },
+            ],
+    budget: {
+      run_id: graph.id,
+      max_concurrency: max,
+      active_resources: active,
+      waiting_steps: sum((m) => m.budget?.waiting_steps ?? 0),
       full: active >= max,
     },
   };

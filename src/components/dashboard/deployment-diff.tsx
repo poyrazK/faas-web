@@ -1,6 +1,15 @@
-import type { ReactNode } from 'react';
-import { useReleaseDiff, type ReleaseDiff } from '@/lib/api/deployment-detail';
+import { useState, type ReactNode } from 'react';
+import { useCapabilityStage } from '@/lib/api/capabilities';
+import {
+  deploymentScope,
+  useReleaseDiff,
+  useServingRows,
+  type ReleaseDiff,
+} from '@/lib/api/deployment-detail';
+import type { Deployment } from '@/lib/api/queries';
+import { CliCommand } from './cli-command';
 import { InlinePhase, queryPhase } from './primitives';
+import { SegmentedControl } from './tabs';
 
 type Package = ReleaseDiff['dependencies']['added'][number];
 
@@ -22,20 +31,93 @@ function safeCompareUrl(raw?: string): string | undefined {
 
 const short = (commit?: string) => (commit ? commit.slice(0, 7) : '—');
 
+/** The CLI's handle for a release: `v42`, or its full id when it has no revision. */
+const cliRef = (side: { deployment_id: string; revision?: number }) =>
+  side.revision ? `v${side.revision}` : side.deployment_id;
+const sameId = (a?: string, b?: string) =>
+  Boolean(a && b) && a!.replace(/-/g, '').toLowerCase() === b!.replace(/-/g, '').toLowerCase();
+
 /**
  * What a release changed against the one that served before it
- * (GET /v1/deployments/{id}/diff, ADR-20261021101117). The API compares keys,
- * never values, and reports a section it cannot reach as unknown with a note,
- * which is shown as such rather than as "nothing changed".
+ * (GET /v1/deployments/{id}/diff, ADR-20261021101117), or against what serves
+ * now: for a release still queued, building or in a canary, the predecessor
+ * the API picks is not always the release it would replace, so the serving
+ * releases of its scope (read from the app's history, `useServingRows`) are
+ * offered as `?against=` — the CLI's `gregale release diff --against`. The
+ * API compares keys, never values, and reports a section it cannot reach as
+ * unknown with a note, which is shown as such rather than as "nothing
+ * changed".
  */
-export function DeploymentDiff({ deploymentId }: { deploymentId: string }) {
-  const query = useReleaseDiff(deploymentId);
+export function DeploymentDiff({
+  deploymentId,
+  slug,
+  deployment,
+}: {
+  deploymentId: string;
+  /** With the release itself, enables comparing with what serves now. */
+  slug?: string;
+  deployment?: Deployment;
+}) {
+  const stage = useCapabilityStage('deploy-diff');
+  const [picked, setPicked] = useState('');
+  const servingRead = useServingRows(
+    slug ?? '',
+    deployment ? deploymentScope(deployment) : 'default',
+    { enabled: Boolean(slug && deployment) }
+  );
+  const serving = slug && deployment ? servingRead.data : undefined;
+  const others = (serving?.rows ?? []).filter((row) => !sameId(row.id, deploymentId));
+  const base = useReleaseDiff(deploymentId);
+  const predecessor = base.data?.from?.deployment_id;
+  const choices = others.filter((row) => !sameId(row.id, predecessor));
+  // A pick that stops serving (the rollout moved on) falls back to the default.
+  const selected = choices.find((row) => row.id === picked);
+  const against = selected?.id ?? '';
+  const chosen = useReleaseDiff(against ? deploymentId : '', against || undefined);
+  const query = against ? chosen : base;
   const diff = query.data;
   const phase = queryPhase({ error: query.error, loading: query.isPending, isEmpty: !diff });
+  const split = (serving?.rows.length ?? 0) > 1;
+  const predecessorServes = Boolean(
+    predecessor && others.some((row) => sameId(row.id, predecessor))
+  );
+  const command = diff
+    ? `gregale release diff ${cliRef(diff.to)}${selected ? ` --against ${cliRef({ deployment_id: selected.id, revision: selected.revision })}` : ''} --app ${slug}`
+    : undefined;
 
   return (
     <section aria-label="What changed" className="rounded-lg border border-border p-4">
-      <p className="label-mono text-muted-foreground">What changed</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 label-mono text-muted-foreground">
+          What changed
+          {stage && <span className="rounded-full border border-border px-2 py-0.5">{stage}</span>}
+        </p>
+        {choices.length > 0 && (
+          <SegmentedControl
+            label="Compare with"
+            value={against}
+            options={[
+              { key: '', label: 'Release before it' },
+              ...choices.map((row) => ({
+                key: row.id,
+                label: `Serving ${cliRef({ deployment_id: row.id.slice(0, 8), revision: row.revision })}${split ? ` · ${row.traffic_percent ?? 0}%` : ''}`,
+              })),
+            ]}
+            onChange={setPicked}
+          />
+        )}
+      </div>
+      {!against && predecessorServes && base.data?.from && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {releaseLabel(base.data.from)} serves now, so this is what the release would change.
+        </p>
+      )}
+      {serving && !serving.complete && others.length === 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          What serves now is not in the releases read from the app’s history, so only the release
+          before it is offered.
+        </p>
+      )}
       {phase !== 'ready' || !diff ? (
         <div className="mt-3">
           <InlinePhase
@@ -48,6 +130,15 @@ export function DeploymentDiff({ deploymentId }: { deploymentId: string }) {
         </div>
       ) : (
         <DiffBody diff={diff} />
+      )}
+      {slug && command && (
+        <div className="mt-4">
+          <CliCommand
+            command={command}
+            label="The same comparison from the CLI"
+            copyLabel={`release diff command for ${cliRef(diff!.to)}`}
+          />
+        </div>
       )}
     </section>
   );

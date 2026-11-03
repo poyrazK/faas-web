@@ -16,6 +16,24 @@ import { spyApi } from '@/test/api';
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 const doctor = vi.hoisted(() => ({ access: 'on' }));
+// The add form's plan gate and environment choice (domain-add-form.tsx).
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1', plan: 'pro' } }) }));
+vi.mock('@/lib/api/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/projects')>()),
+  useProjectMembership: () => ({
+    projectOfApp: new Map(),
+    state: 'ready',
+    list: { error: null },
+    details: [],
+    retry: () => {},
+  }),
+  useProjectEnvironments: () => ({
+    data: undefined,
+    isPending: true,
+    error: null,
+    refetch: () => {},
+  }),
+}));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: doctor.access, refresh: () => {} }),
 }));

@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { FIELD as BASE_FIELD, Select } from '@/components/ui/field';
 import { AsyncInvocationsMaturity } from '@/components/dashboard/async-invocations';
+import { DurationField, RetryPolicyFields } from '@/components/dashboard/invocation-option-fields';
 import { useAppWorkPolicies, type AsyncInvokeOptions } from '@/lib/api/async-invocations';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { errorMessage } from '@/lib/api/errors';
 import { useWebhooks } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { durationSeconds, formatDuration, invocationLimits } from '@/lib/invocation-options';
 
 const FIELD = `${BASE_FIELD} w-full`;
 
 /**
  * The async-only fields of `POST /v1/apps/{slug}/invoke/async`
  * (faas pkg/api/dto.go:5945): a named work policy with its key, a hard-stop
- * deadline, and webhooks told when the work finishes. Closed by default, and
- * its reads wait until it is opened.
+ * deadline, a retry curve and result retention for this one invocation, and
+ * webhooks told when the work finishes. Closed by default, and its reads wait
+ * until it is opened.
  */
 export function AsyncInvokeOptionsFields({
   slug,
@@ -32,23 +36,36 @@ export function AsyncInvokeOptionsFields({
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-        Work policy, deadline and destinations
+        Retries, retention, deadline, work policy and destinations
         <AsyncInvocationsMaturity />
       </summary>
-      {open && <Fields slug={slug} value={value} onChange={onChange} />}
+      {open && (
+        <InvocationEnvelopeFields slug={slug} value={value} onChange={onChange} className="p-3" />
+      )}
     </details>
   );
 }
 
-function Fields({
+/**
+ * The fields an async invoke and a delayed task share (`invocationEnvelope`).
+ * A delayed task has no deadline of its own, so it passes `deadline={false}`.
+ */
+export function InvocationEnvelopeFields({
   slug,
   value,
   onChange,
+  deadline = true,
+  className = '',
 }: {
   slug: string;
   value: AsyncInvokeOptions;
   onChange: (next: AsyncInvokeOptions) => void;
+  deadline?: boolean;
+  className?: string;
 }) {
+  const { account } = useAuth();
+  const retentionCap = invocationLimits(account?.plan)?.retentionSeconds;
+  const retention = durationSeconds(value.retention);
   const policiesOn = useCapabilityAccess('work-policies').access === 'on';
   const policies = useAppWorkPolicies(slug, policiesOn);
   const hooks = useWebhooks(slug);
@@ -76,7 +93,27 @@ function Fields({
   );
 
   return (
-    <div className="grid gap-4 border-t border-border p-3 sm:grid-cols-2">
+    <div className={`grid gap-4 border-t border-border sm:grid-cols-2 ${className}`}>
+      <div className="sm:col-span-2">
+        <RetryPolicyFields value={value.retry} onChange={(retry) => set({ retry })} />
+      </div>
+      <DurationField
+        label="Keep the result for"
+        value={value.retention}
+        onChange={(next) => set({ retention: next })}
+        units={['minutes', 'hours', 'days']}
+        placeholder={retentionCap ? formatDuration(retentionCap) : 'Plan window'}
+        error={
+          retention !== null && Number.isNaN(retention)
+            ? 'Enter a positive amount that comes to whole seconds.'
+            : undefined
+        }
+        hint={
+          retentionCap
+            ? `Up to ${formatDuration(retentionCap)} on your plan; longer is cut to that. Blank keeps the full window. Failed work is kept at least 30 days.`
+            : "Blank keeps the plan's full window. Failed work is kept at least 30 days."
+        }
+      />
       {policiesOn && (
         <label className="flex min-w-0 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Work policy</span>
@@ -103,20 +140,22 @@ function Fields({
           </span>
         </label>
       )}
-      <label className="flex min-w-0 flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Deadline (optional)</span>
-        <input
-          type="datetime-local"
-          aria-label="Deadline (optional)"
-          value={value.deadline}
-          onChange={(e) => set({ deadline: e.target.value })}
-          className={FIELD}
-        />
-        <span className="text-xs text-muted-foreground">
-          Still pending or running then, it is dead-lettered. Later than your plan allows is clamped
-          to the plan limit.
-        </span>
-      </label>
+      {deadline && (
+        <label className="flex min-w-0 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Deadline (optional)</span>
+          <input
+            type="datetime-local"
+            aria-label="Deadline (optional)"
+            value={value.deadline}
+            onChange={(e) => set({ deadline: e.target.value })}
+            className={FIELD}
+          />
+          <span className="text-xs text-muted-foreground">
+            Still pending or running then, it is dead-lettered. Later than your plan allows is
+            clamped to the plan limit.
+          </span>
+        </label>
+      )}
       {policiesOn && value.policy && (
         <>
           <label className="flex min-w-0 flex-col gap-1.5">

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { ApiError } from './errors';
-import { keys, retryPolicy } from './queries';
+import { keys, retryPolicy, type Deployment } from './queries';
 import type { components } from './schema';
 
 /**
@@ -72,23 +72,126 @@ export function useRuntimeUpgradePreview(id: string, target: string) {
  * (handlers_binding_promotion.go). The strict variant has its own route so an
  * older server answers 404 instead of silently ignoring the policy, which is
  * why a failure there is never retried on the ordinary route.
+ *
+ * `expectedServingDeploymentId` is the release the console showed serving all
+ * traffic. apid checks it under the same live-row locks as the write and
+ * answers `409 traffic_serving_changed`, changing nothing, when another
+ * release took over first (handlers_binding_promotion.go:248-256, :289-290).
  */
 export function usePromoteDeployment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, requireApplicationAck }: { id: string; requireApplicationAck: boolean }) =>
-      unwrap(
+    mutationFn: ({
+      id,
+      requireApplicationAck,
+      expectedServingDeploymentId,
+    }: {
+      id: string;
+      requireApplicationAck: boolean;
+      expectedServingDeploymentId?: string;
+    }) => {
+      const pin = expectedServingDeploymentId
+        ? { expected_serving_deployment_id: expectedServingDeploymentId }
+        : {};
+      return unwrap(
         requireApplicationAck
           ? api.POST('/v1/deployments/{id}/promote-with-application-ack', {
               params: { path: { id } },
-              body: { require_application_ack: true },
+              body: { require_application_ack: true, ...pin },
             })
-          : api.POST('/v1/deployments/{id}/promote', { params: { path: { id } }, body: {} })
-      ),
+          : api.POST('/v1/deployments/{id}/promote', { params: { path: { id } }, body: pin })
+      );
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.deployments });
       void qc.invalidateQueries({ queryKey: keys.apps });
     },
+  });
+}
+
+/** apid stores the default scope as an empty string or `default`; both mean the same routes. */
+export function deploymentScope(deployment: Pick<Deployment, 'scope'>): string {
+  return deployment.scope || 'default';
+}
+
+/** Deployment ids arrive dashed or as 32 hex; apid compares them either way. */
+function sameDeployment(a: string, b: string): boolean {
+  const canonical = (id: string) => id.replace(/-/g, '').toLowerCase();
+  return canonical(a) === canonical(b);
+}
+
+/** The live releases holding traffic in one scope, and whether every weight is accounted for. */
+export interface ServingRows {
+  rows: Deployment[];
+  complete: boolean;
+}
+
+/**
+ * What a traffic change can be pinned to. apid accepts one expectation: that
+ * a single other live release serves 100% of the scope (pgstore.go:8713-8727,
+ * memstore.go:6164-6177), which is the CLI's `--if-serving` (faas
+ * cmd/gregale/deploy_success.go:125-151). A split cannot be expressed, so it
+ * is shown and not pinned; neither is a history the read could not finish.
+ */
+export type ServingPin =
+  | { kind: 'sole'; serving: Deployment }
+  | { kind: 'split'; serving: Deployment[] }
+  | { kind: 'none' }
+  | { kind: 'unknown' };
+
+export function servingPin(candidate: Deployment, read: ServingRows): ServingPin {
+  const own = candidate.traffic_percent ?? 0;
+  const others = read.rows.filter((d) => !sameDeployment(d.id, candidate.id));
+  if (own === 0 && others.length === 1 && others[0].traffic_percent === 100) {
+    return { kind: 'sole', serving: others[0] };
+  }
+  if (others.length > 0 || (own > 0 && own < 100)) {
+    return { kind: 'split', serving: [...(own > 0 ? [candidate] : []), ...others] };
+  }
+  return read.complete || own === 100 ? { kind: 'none' } : { kind: 'unknown' };
+}
+
+const SERVING_PAGE = 200;
+const SERVING_PAGES = 5;
+
+/**
+ * The live, weighted releases of one scope, read from the app's deployment
+ * history (there is no serving-release read). Weights in a scope sum to 100
+ * by construction (openapi PATCH /v1/deployments/{id}/traffic), so paging
+ * stops as soon as they do; a history that outruns the page budget first is
+ * reported incomplete rather than guessed at.
+ */
+export function useServingRows(slug: string, scope: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...keys.appDeployments(slug), 'serving', scope],
+    queryFn: async ({ signal }): Promise<ServingRows> => {
+      const rows: Deployment[] = [];
+      let before: string | undefined;
+      for (let page = 0; page < SERVING_PAGES; page++) {
+        const data = await unwrap(
+          api.GET('/v1/apps/{slug}/deployments', {
+            params: {
+              path: { slug },
+              query: { limit: SERVING_PAGE, ...(before ? { before } : {}) },
+            },
+            signal,
+          })
+        );
+        for (const d of data.items)
+          if (
+            d.status.toLowerCase() === 'live' &&
+            deploymentScope(d) === scope &&
+            (d.traffic_percent ?? 0) > 0
+          )
+            rows.push(d);
+        const weight = rows.reduce((sum, d) => sum + (d.traffic_percent ?? 0), 0);
+        if (weight >= 100 || !data.next_before) return { rows, complete: true };
+        before = data.next_before;
+      }
+      return { rows, complete: false };
+    },
+    enabled: Boolean(slug) && (options?.enabled ?? true),
+    retry: retryPolicy,
   });
 }
 

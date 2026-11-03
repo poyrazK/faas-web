@@ -37,6 +37,7 @@ vi.mock('./deployment-release-summary', () => ({ DeploymentReleaseSummary: () =>
 vi.mock('./rollout-recovery', () => ({ RolloutRecovery: () => null }));
 const marker = (name: string) => () => <p>{name}</p>;
 vi.mock('./deployment-diff', () => ({ DeploymentDiff: marker('diff') }));
+vi.mock('./release-command', () => ({ ReleaseCommand: marker('release command') }));
 vi.mock('./deployment-rollout-state', () => ({ DeploymentRolloutState: marker('rollout state') }));
 vi.mock('./deployment-promote', () => ({ PromoteDeployment: marker('promote') }));
 vi.mock('./deployment-runtime', () => ({ DeploymentRuntime: marker('runtime base') }));
@@ -231,7 +232,7 @@ describe('DeploymentDetailPanel app scope', () => {
   });
 
   it.each([
-    ['overview', ['rollout state', 'diff', 'rollback to release']],
+    ['overview', ['release command', 'rollout state', 'diff', 'rollback to release']],
     ['lifecycle', ['promote', 'worker rollout']],
     ['runtime', ['runtime base']],
   ] as const)('wires the %s section to its deployment detail panels', (section, panels) => {

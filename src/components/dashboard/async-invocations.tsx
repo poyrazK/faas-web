@@ -13,6 +13,7 @@ import {
 } from '@/lib/api/async-invocations';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { useReplayInvocation, useWebhooks } from '@/lib/api/queries';
+import { describeRetryPolicy, type RetryPolicy } from '@/lib/invocation-options';
 
 type ReplayTarget = Pick<Invocation, 'id' | 'state' | 'work_policy_name' | 'queue_name'>;
 
@@ -114,11 +115,16 @@ type DeliveryFields = Pick<
   | 'deadline_at'
   | 'on_success_destination_id'
   | 'on_failure_destination_id'
+  | 'retry_policy'
+  | 'result_retention_until'
 >;
 
 /**
  * How an async invocation was admitted: its work policy, its two lifetimes,
- * and the webhooks told when it finishes. Destinations are app webhook ids
+ * the retry curve and retention it carries, and the webhooks told when it
+ * finishes. The stored curve is already the effective one — request, else app
+ * default, with attempts capped at the plan (handlers_invocations.go:987) — so
+ * it is described as it is, without the plan. Destinations are app webhook ids
  * (faas handlers_invocations.go:283); they are named by target URL, as the
  * Webhooks page shows them, and never by secret.
  */
@@ -161,6 +167,20 @@ export function InvocationDelivery({
       invocation.work_expires_at ? <Timestamp value={invocation.work_expires_at} /> : null,
     ],
     ['Deadline', <Timestamp key="deadline" value={invocation.deadline_at} />],
+    [
+      'Retries',
+      invocation.retry_policy ? (
+        <span>{describeRetryPolicy(invocation.retry_policy as RetryPolicy, undefined)}</span>
+      ) : null,
+    ],
+    [
+      'Kept until',
+      invocation.result_retention_until ? (
+        <Timestamp value={invocation.result_retention_until} />
+      ) : (
+        <span className="text-muted-foreground">The plan&apos;s window</span>
+      ),
+    ],
     ['On success', target(invocation.on_success_destination_id)],
     ['On failure', target(invocation.on_failure_destination_id)],
   ];

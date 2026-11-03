@@ -1,7 +1,11 @@
-import { Pill } from '@/components/dashboard/resource-table';
 import { Stats, StatTile } from '@/components/dashboard/primitives';
+import { Pill } from '@/components/dashboard/resource-table';
+import { Button } from '@/components/ui/button';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useJob, useJobRun } from '@/lib/api/queries';
+import { Calendar } from 'iconoir-react';
+import { useState } from 'react';
+import { JobScheduleDialog, jobScheduleRows } from './job-schedule';
 
 /**
  * The two job reads the list cannot carry: what a job is defined to do, and
@@ -15,6 +19,11 @@ import { useJob, useJobRun } from '@/lib/api/queries';
  * A run's counts are broken out as the API reports them, including
  * `dead_letter_count`, which the aggregate status hides: a run can read
  * `succeeded` while individual tasks were dead-lettered.
+ *
+ * The schedule is the one part of the definition edited here: adding,
+ * changing or removing it is a PATCH that cannot strand a run, since apid
+ * refuses it while tasks are in flight. An image run's runner job is managed
+ * by its run and refuses updates (409 image_run_managed), so it offers none.
  */
 
 function seconds(value: number): string {
@@ -32,6 +41,7 @@ function duration(started?: string, finished?: string): string {
 export function JobDefinition({ name }: { name: string }) {
   const job = useJob(name);
   const data = job.data;
+  const [editingSchedule, setEditingSchedule] = useState(false);
 
   if (job.isPending)
     return <p className="text-sm text-muted-foreground">Reading the definition…</p>;
@@ -68,6 +78,34 @@ export function JobDefinition({ name }: { name: string }) {
           </div>
         ))}
       </dl>
+      {data.kind !== 'image_run' && (
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="label-mono text-muted-foreground">Schedule</p>
+            <Button size="xs" variant="outline" onClick={() => setEditingSchedule(true)}>
+              <Calendar className="h-3.5 w-3.5" />
+              {data.schedule ? 'Edit schedule' : 'Add a schedule'}
+            </Button>
+          </div>
+          {data.schedule ? (
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              {jobScheduleRows(data).map(([label, value]) => (
+                <div key={label} className="flex min-w-0 flex-col gap-0.5">
+                  <dt className="label-mono text-muted-foreground">{label}</dt>
+                  <dd className="break-words font-mono text-xs">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Runs start only when you start them. Add a schedule to run this workload on a cron.
+            </p>
+          )}
+          {editingSchedule && (
+            <JobScheduleDialog job={data} onClose={() => setEditingSchedule(false)} />
+          )}
+        </div>
+      )}
       {env.length > 0 && (
         <div>
           <p className="label-mono mb-1.5 text-muted-foreground">Environment overrides</p>

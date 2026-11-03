@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useRecoverRollout, type Deployment } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 
 /**
  * The escape hatch for a rollout that stopped moving (ADR-122).
@@ -20,7 +21,10 @@ import { cn } from '@/lib/utils';
  *
  * Offered only while a rollout is actually in flight, and only on the plans
  * that have canaries at all; `403 plan_traffic_split_not_allowed` is read as
- * a plan gate.
+ * a plan gate. Recovery runs no bindings check, so under an enforced binding
+ * release policy a promote or advance is refused with
+ * `bindings_release_required` (faas handlers_rollouts.go:159-160), which is
+ * explained in place with what to do instead.
  */
 
 export function isRolloutInFlight(deployment: Deployment): boolean {
@@ -32,6 +36,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
   const confirm = useConfirm();
   const recover = useRecoverRollout(slug);
   const [reason, setReason] = useState('');
+  const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
   if (!isRolloutInFlight(deployment)) return null;
 
   const act = async (action: 'advance' | 'promote' | 'abort') => {
@@ -54,6 +59,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
       );
       if (!ok) return;
     }
+    setRefusal(null);
     try {
       const result = await recover.mutateAsync({
         action,
@@ -71,6 +77,11 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
         description: `Recorded as audit ${result.audit_id.slice(0, 12)}.`,
       });
     } catch (err) {
+      const gate = bindingsGateRefusal(err);
+      if (gate) {
+        setRefusal(gate);
+        return;
+      }
       if (err instanceof ApiError && err.code === 'rollout_not_stuck') {
         toast({
           kind: 'info',
@@ -143,6 +154,14 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           Abort
         </Button>
       </div>
+      {refusal && (
+        <BindingsGateNotice
+          refusal={refusal}
+          slug={slug}
+          deploymentId={deployment.id}
+          action="rollout recovery"
+        />
+      )}
     </div>
   );
 }

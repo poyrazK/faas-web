@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +18,9 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
 
 const { AdvanceCanaryButton, ClearObsoleteDeploymentsButton, ReorderDeploymentControl } =
   await import('./deployment-actions');
@@ -83,6 +87,47 @@ describe('AdvanceCanaryButton', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'info', title: 'The rollout moved on' })
     );
+  });
+});
+
+describe('AdvanceCanaryButton under an enforced release policy', () => {
+  it('lists the bindings blockers in place instead of a toast', async () => {
+    advance.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'bindings_check_changed',
+        title: 'Bindings check changed',
+        bindings_check: {
+          app: 'api',
+          scope: 'default',
+          deployment_id: 'd1',
+          checked_at: '2026-11-03T10:00:00Z',
+          inventory_generated_at: '2026-11-03T10:00:00Z',
+          max_verification_age: '10m0s',
+          allow_unsupported: false,
+          passed: false,
+          coverage: 'complete',
+          bindings: [],
+          runtime: [],
+          issues: [],
+          blockers: [
+            {
+              code: 'verification_expired',
+              message:
+                'Binding verification expired before promotion; verify this deployment again.',
+            },
+          ],
+          warnings: [],
+        },
+      })
+    );
+    render(<AdvanceCanaryButton deployment={canary()} slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: /advance canary/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/bindings check changed\. traffic is unchanged/i);
+    expect(alert).toHaveTextContent(/before the canary advance committed/i);
+    expect(alert).toHaveTextContent(/verify this release, then retry/i);
+    expect(toast).not.toHaveBeenCalled();
   });
 });
 

@@ -190,6 +190,80 @@ describe('a deployment created through the mock', () => {
   });
 });
 
+describe('reviewed source and pinned promotion', () => {
+  it('stages a reviewed commit dark, refuses a stale review, and pins the promotion', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-17T14:00:00Z');
+    vi.setSystemTime(t0);
+    await connect({ csrf_token: 'mock-csrf' });
+    const slug = 'reviewed';
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+    const first = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify({ repo: 'acme-corp/storefront', ref: 'main' }),
+    });
+    vi.setSystemTime(t0 + 12_000);
+    expect((await json(`/v1/deployments/${first.body.id}`)).body.traffic_percent).toBe(100);
+
+    const reviewed = await json(`/v1/apps/${slug}/source-review`, {
+      method: 'POST',
+      body: JSON.stringify({ repo: 'acme-corp/storefront', ref: 'main' }),
+    });
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.commit_sha).toMatch(/^[a-f0-9]{40}$/);
+    expect(reviewed.body.release_review.serving_deployment_ids).toEqual([first.body.id]);
+    const body = {
+      repo: reviewed.body.repo,
+      ref: reviewed.body.commit_sha,
+      format: 'tarball',
+      no_triggers: true,
+      traffic_percent: 0,
+      expected_source: reviewed.body,
+    };
+    const tampered = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, ref: 'b'.repeat(40) }),
+    });
+    expect(tampered).toMatchObject({ status: 409, body: { code: 'source_ref_stale' } });
+    const staged = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    expect(staged.status).toBe(202);
+    // The same review again: a newer deployment exists now.
+    const again = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    expect(again).toMatchObject({ status: 409, body: { code: 'release_review_changed' } });
+
+    vi.setSystemTime(t0 + 30_000);
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body).toMatchObject({
+      status: 'live',
+      traffic_percent: 0,
+    });
+    const promote = (expected: string) =>
+      json(`/v1/deployments/${staged.body.id}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ expected_serving_deployment_id: expected }),
+      });
+    expect(await promote('c'.repeat(32))).toMatchObject({
+      status: 409,
+      body: { code: 'traffic_serving_changed' },
+    });
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body.traffic_percent).toBe(0);
+    expect((await promote(first.body.id)).status).toBe(200);
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body.traffic_percent).toBe(100);
+  });
+});
+
 describe('PATCH /v1/crons/{id}', () => {
   async function createCron(slug: string) {
     const app = await json('/v1/apps', {
@@ -284,6 +358,113 @@ describe('PATCH /v1/crons/{id}', () => {
     expect(badZone.body.code).toBe('invalid_timezone');
     const listed = (await json('/v1/crons')).body.find((c: { id: string }) => c.id === cron.id);
     expect(listed).toMatchObject({ schedule: '0 2 * * *', timezone: 'UTC' });
+  });
+});
+
+describe('deleting a managed database through the mock', () => {
+  async function readyDatabase(name: string) {
+    const created = await json('/v1/postgres/databases', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        region: 'fra',
+        postgres_major: 17,
+        service_class: 'development',
+        availability: 'single_zone',
+        scale_to_zero: true,
+      }),
+    });
+    vi.setSystemTime(Date.now() + 5000);
+    return created.body as { id: string };
+  }
+
+  it('schedules a ready database, recovers it once per key, then purges it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { id } = await readyDatabase('grace-a');
+    const scheduled = await json(`/v1/postgres/databases/${id}`, { method: 'DELETE' });
+    expect(scheduled.body).toMatchObject({ state: 'deleting' });
+    expect(scheduled.body.restorable_until).toEqual(expect.any(String));
+    // Still listed days later: the window is seven days, not a tick.
+    vi.setSystemTime(Date.now() + 3 * 86_400_000);
+    const listed = (await json('/v1/postgres/databases')).body.items as { id: string }[];
+    expect(listed.some((d) => d.id === id)).toBe(true);
+
+    const undelete = (key: string) =>
+      json(`/v1/postgres/databases/${id}/undelete`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+      });
+    expect((await undelete('k1')).body).toMatchObject({ state: 'ready' });
+    expect((await undelete('k1')).status).toBe(200);
+    expect((await undelete('k2')).body.code).toBe('managed_postgres_not_found');
+
+    const purged = await json(`/v1/postgres/databases/${id}?purge=true`, { method: 'DELETE' });
+    expect(purged.body.restorable_until).toBeUndefined();
+    vi.setSystemTime(Date.now() + 5000);
+    expect((await json(`/v1/postgres/databases/${id}/undelete`, { method: 'POST' })).status).toBe(
+      404
+    );
+  });
+
+  it('resizes by request id: replayed, conflicting, then settled', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { id } = await readyDatabase('resize-a');
+    const resize = (requestId: string, serviceClass: string) =>
+      json(`/v1/postgres/databases/${id}/resize`, {
+        method: 'POST',
+        body: JSON.stringify({ request_id: requestId, service_class: serviceClass }),
+      });
+    const first = await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'burstable');
+    expect(first.status).toBe(202);
+    expect(first.body).toMatchObject({ state: 'pending', from_class: 'development' });
+    expect((await json(`/v1/postgres/databases/${id}`)).body.state).toBe('updating');
+    // The same id and target recovers the change; another target with it conflicts.
+    expect((await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'burstable')).body.id).toBe(
+      first.body.id
+    );
+    expect((await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'development')).body.code).toBe(
+      'managed_postgres_conflict'
+    );
+    // Pro does not include production; a second change waits for the first.
+    expect((await resize('7a1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'production')).body.code).toBe(
+      'managed_postgres_not_in_plan'
+    );
+    vi.setSystemTime(Date.now() + 7000);
+    const settled = await json(`/v1/postgres/databases/${id}/resizes/${first.body.id}`);
+    expect(settled.body).toMatchObject({ state: 'succeeded', target_class: 'burstable' });
+    expect((await json(`/v1/postgres/databases/${id}`)).body).toMatchObject({
+      state: 'ready',
+      service_class: 'burstable',
+    });
+    const alwaysOn = await json(`/v1/postgres/databases/${id}/compute-policy`, {
+      method: 'POST',
+      body: JSON.stringify({
+        request_id: '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+        scale_to_zero: false,
+      }),
+    });
+    expect(alwaysOn.body.code).toBe('managed_postgres_not_in_plan');
+  });
+
+  it('refuses to delete a database an app is bound to', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'grace-bound', type: 'app', runtime: 'node24' }),
+    });
+    const { id } = await readyDatabase('grace-b');
+    await json(`/v1/postgres/databases/${id}/bindings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        app_id: app.body.id,
+        scope: 'default',
+        environment_key: 'DATABASE_URL',
+        access: 'read_write',
+      }),
+    });
+    const res = await json(`/v1/postgres/databases/${id}`, { method: 'DELETE' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('managed_postgres_conflict');
   });
 });
 
@@ -579,6 +760,69 @@ describe('custom domain verification retry and re-add', () => {
     await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
     await json('/v1/domains/retry-e.example.com/verify', { method: 'POST' });
     expect((await retry('retry-e.example.com')).status).toBe(409);
+  });
+});
+
+describe('wildcard and environment-bound custom domains', () => {
+  const app = async (slug: string) =>
+    (
+      await json('/v1/apps', {
+        method: 'POST',
+        body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+      })
+    ).body.id as string;
+  const add = (body: Record<string, unknown>) =>
+    json('/v1/domains', { method: 'POST', body: JSON.stringify(body) });
+  const hosts = (domain: string, init?: RequestInit) =>
+    fetch(`${base}/v1/domains/${domain}/hosts`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('adds a wildcard on Pro, proved at its zone, and refuses one below Pro with 402', async () => {
+    const id = await app('wild-app-a');
+    const created = await add({ domain: '*.wild-a.example.com', app_id: id });
+    expect(created.status).toBe(201);
+    expect(created.body.txt_record).toContain('_gregale-challenge.wild-a.example.com ');
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const refused = await add({ domain: '*.wild-b.example.com', app_id: id });
+    expect(refused.status).toBe(402);
+    expect(refused.body.code).toBe('wildcard_domains_not_allowed');
+  });
+
+  it('refuses an environment for an app outside every project with 400', async () => {
+    const id = await app('wild-app-b');
+    const refused = await add({ domain: 'env.example.com', app_id: id, environment: 'staging' });
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe('validation_failed');
+  });
+
+  it('reads, replaces and removes a wildcard host allowlist', async () => {
+    const id = await app('wild-app-c');
+    await add({ domain: '*.wild-c.example.com', app_id: id });
+    const domain = '*.wild-c.example.com';
+    expect(await (await hosts(domain)).json()).toEqual({ domain, names: [], restricted: false });
+    const saved = await hosts(domain, {
+      method: 'PUT',
+      body: JSON.stringify({ names: ['API', 'eu.shop.wild-c.example.com', 'api'] }),
+    });
+    expect(await saved.json()).toEqual({ domain, names: ['api', 'eu.shop'], restricted: true });
+    expect((await (await hosts(domain)).json()).names).toEqual(['api', 'eu.shop']);
+    const many = await hosts(domain, {
+      method: 'PUT',
+      body: JSON.stringify({ names: Array.from({ length: 101 }, (_, i) => `n${i}`) }),
+    });
+    expect(many.status).toBe(422);
+    expect(await many.json()).toMatchObject({ limit: 100, observed: 101 });
+    expect((await hosts(domain, { method: 'DELETE' })).status).toBe(204);
+    expect((await (await hosts(domain)).json()).restricted).toBe(false);
+  });
+
+  it('answers 422 for a domain that is not a wildcard, and 404 for an unknown one', async () => {
+    const id = await app('wild-app-d');
+    await add({ domain: 'plain-d.example.com', app_id: id });
+    expect((await hosts('plain-d.example.com')).status).toBe(422);
+    expect((await hosts('*.nobody.example.com')).status).toBe(404);
   });
 });
 
@@ -1028,5 +1272,190 @@ describe('/v1/apps/{slug}/deployment-aliases', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('validation_failed');
     expect((await put('alias-long', 'a'.repeat(26), live.id)).status).toBe(200);
+  });
+});
+
+describe('invocation retry settings in the mock', () => {
+  const createApp = async (slug: string) =>
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+  const patch = (slug: string, body: unknown) =>
+    json(`/v1/apps/${slug}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('stores an app retry default, clears it with {}, and refuses an out-of-range one', async () => {
+    await createApp('retry-app');
+    const set = await patch('retry-app', { retry_policy: { max_attempts: 4, max_seconds: 30 } });
+    expect(set.status).toBe(200);
+    expect((await json('/v1/apps/retry-app')).body.retry_policy).toEqual({
+      max_attempts: 4,
+      max_seconds: 30,
+    });
+    const refused = await patch('retry-app', { retry_policy: { max_attempts: 40 } });
+    expect(refused.status).toBe(422);
+    expect(refused.body.code).toBe('trigger_invalid_retry_policy');
+    expect((await patch('retry-app', { retry_policy: {} })).status).toBe(200);
+    expect((await json('/v1/apps/retry-app')).body.retry_policy ?? null).toBeNull();
+  });
+
+  it('schedules a delayed task after a relative delay, and wants exactly one form', async () => {
+    await createApp('delay-app');
+    const before = Date.now();
+    const made = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ delay_seconds: 1800, retry_policy: { max_attempts: 3 } }),
+    });
+    expect(made.status).toBe(201);
+    const runs = Date.parse(made.body.scheduled_at);
+    expect(runs - before).toBeGreaterThanOrEqual(1_799_000);
+    expect(runs - before).toBeLessThan(1_810_000);
+    const both = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        delay_seconds: 60,
+        scheduled_at: new Date(before + 1e6).toISOString(),
+      }),
+    });
+    expect(both.status).toBe(400);
+    expect(both.body.code).toBe('invalid_scheduled_at');
+    const tooFar = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ delay_seconds: 31_536_001 }),
+    });
+    expect(tooFar.status).toBe(400);
+  });
+
+  it('keeps an async invocation’s retry curve and retention on its row', async () => {
+    await createApp('async-retry');
+    expect((await patch('async-retry', { retry_policy: { max_attempts: 5 } })).status).toBe(200);
+    const inherited = await json('/v1/apps/async-retry/invoke/async', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    expect((await json(`/v1/invocations/${inherited.body.id}`)).body.retry_policy).toEqual({
+      max_attempts: 5,
+    });
+    const own = await json('/v1/apps/async-retry/invoke/async', {
+      method: 'POST',
+      body: JSON.stringify({ retry_policy: { max_attempts: 2 }, retention_seconds: 3600 }),
+    });
+    const row = (await json(`/v1/invocations/${own.body.id}`)).body;
+    expect(row.retry_policy).toEqual({ max_attempts: 2 });
+    expect(Date.parse(row.result_retention_until) - Date.now()).toBeLessThanOrEqual(3_600_000);
+  });
+});
+
+describe('job recovery, results, registries and schedules in the mock', () => {
+  const create = (body: Record<string, unknown>) =>
+    json('/v1/jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'batch',
+        image_ref: 'registry.gregale.dev/acme/x:v1',
+        command: ['true'],
+        ...body,
+      }),
+    });
+  const runs = async (name: string) =>
+    (await json(`/v1/jobs/${name}/runs`)).body.runs as {
+      id: string;
+      aggregate_status: string;
+      source_run_id?: string;
+    }[];
+
+  it('retries a failed task once, then refuses a task that is no longer failed', async () => {
+    const failed = (await runs('nightly-export')).find((r) => r.aggregate_status === 'failed')!;
+    const tasks = (await json(`/v1/jobs/nightly-export/runs/${failed.id}/tasks`)).body.tasks as {
+      task_index: number;
+      status: string;
+    }[];
+    const index = tasks.find((t) => t.status === 'failed')!.task_index;
+    const path = `/v1/jobs/nightly-export/runs/${failed.id}/tasks/${index}/retry`;
+    const retried = await json(path, { method: 'POST' });
+    expect(retried.status).toBe(200);
+    expect(retried.body.task.status).toBe('queued');
+    expect(retried.body.next_attempt_at).toBeTruthy();
+    const again = await json(path, { method: 'POST' });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('job_task_not_retriable');
+  });
+
+  it('replays a finished run’s failed inputs as a linked run', async () => {
+    const cancelled = (await runs('reindex-search')).find(
+      (r) => r.aggregate_status === 'cancelled'
+    )!;
+    const replay = await json(`/v1/jobs/reindex-search/runs/${cancelled.id}/replay-failed`, {
+      method: 'POST',
+    });
+    expect(replay.status).toBe(201);
+    expect(replay.body.source_run_id).toBe(cancelled.id);
+    const tasks = (await json(`/v1/jobs/reindex-search/runs/${replay.body.id}/tasks`)).body
+      .tasks as { source_task_index?: number }[];
+    expect(tasks.length).toBe(replay.body.tasks);
+    expect(tasks.every((t) => t.source_task_index !== undefined)).toBe(true);
+    const running = (await runs('reindex-search')).find((r) => r.aggregate_status === 'running')!;
+    const refused = await json(`/v1/jobs/reindex-search/runs/${running.id}/replay-failed`, {
+      method: 'POST',
+    });
+    expect(refused.status).toBe(409);
+  });
+
+  it('signs a managed artifact and refuses a customer-managed one', async () => {
+    const done = (await runs('legacy-backfill')).find((r) => r.aggregate_status === 'succeeded')!;
+    const base = `/v1/jobs/legacy-backfill/runs/${done.id}/tasks/0/artifacts`;
+    const signed = await json(`${base}/result/download`);
+    expect(signed.status).toBe(200);
+    expect(signed.body.download.method).toBe('GET');
+    expect(signed.body.sha256).toMatch(/^sha256:/);
+    expect((await json(`${base}/report/download`)).status).toBe(409);
+    expect((await json(`${base}/missing/download`)).status).toBe(404);
+  });
+
+  it('stores, lists and removes a job registry credential by host', async () => {
+    const path = '/v1/jobs/nightly-export/registry-credentials';
+    const put = await json(path, {
+      method: 'PUT',
+      body: JSON.stringify({ registry: 'https://ghcr.io', username: 'bot', password: 'pw' }),
+    });
+    expect(put.status).toBe(200);
+    expect(put.body).not.toHaveProperty('password');
+    expect((await json(path)).body).toMatchObject({ count: 1, quota_max: 5 });
+    const bad = await json(path, {
+      method: 'PUT',
+      body: JSON.stringify({ registry: 'ghcr.io/x', username: 'bot', password: 'pw' }),
+    });
+    expect(bad.status).toBe(400);
+    const res = await fetch(`${base}${path}?registry=${encodeURIComponent('https://ghcr.io')}`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(204);
+    expect((await json(path)).body.count).toBe(0);
+  });
+
+  it('wants a schedule for a recurring job, and adds, changes and removes one', async () => {
+    expect((await create({ name: 'needs-cron', kind: 'recurring' })).status).toBe(400);
+    const made = await create({
+      name: 'cron-job',
+      kind: 'recurring',
+      schedule: '0 3 * * *',
+      timezone: 'Europe/Istanbul',
+      schedule_policy: { version: 1, overlap: 'skip', missed_runs: 'skip' },
+    });
+    expect(made.status).toBe(201);
+    expect(made.body).toMatchObject({ schedule: '0 3 * * *', timezone: 'Europe/Istanbul' });
+    const patch = (body: unknown) =>
+      json('/v1/jobs/cron-job', { method: 'PATCH', body: JSON.stringify(body) });
+    expect((await patch({ schedule: '*/5 * * * *' })).body.schedule).toBe('*/5 * * * *');
+    expect((await patch({ schedule: 'nope' })).status).toBe(400);
+    expect((await patch({ schedule: '', timezone: 'UTC' })).status).toBe(400);
+    const removed = await patch({ schedule: '' });
+    expect(removed.status).toBe(200);
+    expect(removed.body.kind).toBe('batch');
+    expect(removed.body.schedule).toBeUndefined();
   });
 });

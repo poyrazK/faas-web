@@ -394,17 +394,18 @@ describe('Debugger investigation navigation', () => {
     expect(router.state.location.search.regression).toBe('["missing","/gone"]');
   });
 
-  it('includes the resolved global app in a newly selected investigation URL', async () => {
+  it('keeps the resolved remembered app when selecting an investigation filter', async () => {
     localStorage.setItem('gregale.selectedApp', 'beta');
     const router = await mount('/dashboard/debug?keep=yes#context');
     fireEvent.change(screen.getByLabelText('Quick filter'), { target: { value: 'cold' } });
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
-        app: 'beta',
+        tab: 'Debugger',
         debugFilter: 'cold',
         keep: 'yes',
       })
     );
+    expect(router.state.location.pathname).toBe('/dashboard/apps/beta');
   });
 
   it('keeps investigation context when moving between app tabs and browser history', async () => {

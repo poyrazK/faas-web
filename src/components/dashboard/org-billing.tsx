@@ -18,7 +18,7 @@ import { InlinePhase, Panel, queryPhase } from './primitives';
 export function orgBillingMessage(
   err: unknown,
   label: string,
-  what: 'invoices' | 'usage' | 'plan'
+  what: 'invoices' | 'usage' | 'plan' | 'spend cap'
 ): string {
   if (err instanceof ApiError && err.code === 'org_role_forbidden')
     return what === 'invoices'

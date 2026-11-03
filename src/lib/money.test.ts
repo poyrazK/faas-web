@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_CURRENCY, formatCents, formatMillicents } from './money';
+import { ACCOUNT_CURRENCY, formatCents, formatMillicentRate, formatMillicents } from './money';
 
 describe('account money', () => {
   it('is USD, as apid reports it (faas pkg/financial/currency.go)', () => {
@@ -11,6 +11,11 @@ describe('account money', () => {
     expect(formatCents(2000)).toBe('$20.00');
     expect(formatCents(0)).toBe('$0.00');
     expect(formatMillicents(412_000)).toBe('$4.12');
+  });
+  it('keeps a fraction-of-a-cent unit price to the millicent', () => {
+    expect(formatMillicentRate(1_000)).toBe('$0.01');
+    expect(formatMillicentRate(1)).toBe('$0.00001');
+    expect(formatMillicentRate(0)).toBe('$0.00');
   });
 });
 

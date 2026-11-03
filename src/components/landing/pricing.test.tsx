@@ -54,7 +54,7 @@ describe('beta pricing', () => {
     const cards = within(pricing).getAllByRole('article', { hidden: true });
     const labels = [
       'Deployed apps',
-      'PR preview apps',
+      'PR preview environments',
       'Developer apps',
       'Concurrent instances / app',
       'RAM / app',
