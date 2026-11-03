@@ -8,10 +8,13 @@ import { JobActions } from '@/components/dashboard/job-actions';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
+import { JobRegistryCredentialsPanel } from '@/components/dashboard/registry-credentials';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
+import { useCapabilityStage } from '@/lib/api/capabilities';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -23,6 +26,11 @@ import type { JobsSelectionProps } from './jobs-search';
  * leads with that rather than an error when the account cannot use them.
  *
  * New definitions can be created here or through the CLI.
+ *
+ * `/v1/jobs` belongs to the `workflows-and-jobs` capability (faas
+ * catalog.json), which apid's capability gate answers with 404 while hidden,
+ * so nothing here mounts or reads until the account has it, and the section
+ * carries the capability's maturity.
  */
 interface JobRow {
   id: string;
@@ -41,7 +49,16 @@ const STATUS_COLOR: Record<string, string> = {
   deleted: 'var(--status-idle)',
 };
 
-export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
+export function WorkloadsBody(props: JobsSelectionProps) {
+  return (
+    <CapabilityGate capability="workflows-and-jobs" title="Workloads">
+      <Workloads {...props} />
+    </CapabilityGate>
+  );
+}
+
+function Workloads({ search, onSelection }: JobsSelectionProps) {
+  const stage = useCapabilityStage('workflows-and-jobs');
   const [creating, setCreating] = useState(false);
   // Browsing uses the paged query so a large account is not silently capped
   // at the first response. A selected URL keeps the older lookup query, which
@@ -174,12 +191,15 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         title="Workloads"
         description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
         actions={
-          !isPlanGate(error) && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" />
-              New workload
-            </Button>
-          )
+          <>
+            {stage && <Pill label={stage} />}
+            {!isPlanGate(error) && (
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus className="h-4 w-4" />
+                New workload
+              </Button>
+            )}
+          </>
         }
       />
       {creating && (
@@ -249,7 +269,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration. Changing the image, command, environment, resources, or schedule still takes gregale jobs update."
+            description="Current configuration and schedule. Changing the image, command, environment or resources still takes gregale job update."
             actions={
               <JobActions
                 name={job}
@@ -263,10 +283,12 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
           </Panel>
         )}
 
+        {job && <JobRegistryCredentialsPanel name={job} />}
+
         {job && (
           <Panel
             title={`Runs — ${job}`}
-            description="Newest first. Cancel stops tasks still in flight."
+            description="Newest first. Cancel stops tasks still in flight; Replay failed reruns a finished run's failed inputs."
           >
             <JobRuns
               name={job}
@@ -282,7 +304,7 @@ export function WorkloadsBody({ search, onSelection }: JobsSelectionProps) {
                   </Panel>
                   <Panel
                     title="Tasks"
-                    description="One row per task. Open a task for the tail of its log."
+                    description="One row per task. Open a task for the tail of its log; retry a failed one, or download what a successful one published."
                   >
                     <JobTasks
                       name={job}

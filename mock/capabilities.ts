@@ -155,9 +155,10 @@ const entries: Capability[] = [
     name: 'Jobs and workflows',
     category: 'async',
     description: 'Asynchronous jobs and durable workflows.',
-    maturity: 'preview',
+    // Beta, with /docs/jobs, as faas's catalog.json has it.
+    maturity: 'beta',
     plans: PAID,
-    docs_url: '/docs/faas_openapi_spec',
+    docs_url: '/docs/jobs',
     acceptance: 'mock-only',
     enabled: true,
   },

@@ -13,6 +13,13 @@ import { useToast } from '@/components/ui/toast';
 import { useCreateJob, type Job } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { PlanGated } from './plan-gated';
+import {
+  JobScheduleFields,
+  NO_SCHEDULE,
+  scheduleDraftErrors,
+  schedulePolicyFrom,
+} from './job-schedule';
+import { useScheduleClock } from './schedule-field';
 
 const RESOURCE_FIELDS = [
   ['ram_mb', 'Memory (MB)'],
@@ -21,9 +28,15 @@ const RESOURCE_FIELDS = [
   ['retry_max', 'Maximum retries'],
 ] as const;
 type Resource = (typeof RESOURCE_FIELDS)[number][0];
-type Field = 'name' | 'image' | 'executable' | 'arguments' | Resource;
+type Field =
+  'name' | 'image' | 'executable' | 'arguments' | 'schedule' | 'start-deadline' | Resource;
 
-/** The API receives argv, never a whitespace-split shell command. */
+/**
+ * The API receives argv, never a whitespace-split shell command. A recurring
+ * workload needs a schedule: apid refuses `kind: recurring` without one
+ * (handlers_jobs.go:789-792), so choosing it asks for the cron, its zone and
+ * an optional schedule policy.
+ */
 export function JobCreateDialog({
   onClose,
   onCreated,
@@ -45,6 +58,8 @@ export function JobCreateDialog({
     max_parallelism: '',
     retry_max: '',
   });
+  const [schedule, setSchedule] = useState(NO_SCHEDULE);
+  const now = useScheduleClock();
   const { submitAttempted, validate } = useFormValidation<Field>();
   const command = executable.trim() ? [executable.trim(), ...(args ? args.split('\n') : [])] : [];
   const errors: Partial<Record<Field, string>> = {};
@@ -58,6 +73,11 @@ export function JobCreateDialog({
     const value = resources[key];
     if (value && (!Number.isSafeInteger(Number(value)) || Number(value) < 1))
       errors[key] = 'Enter a positive whole number, or leave blank for the plan default.';
+  }
+  if (kind === 'recurring') {
+    const scheduleErrors = scheduleDraftErrors(schedule, now);
+    if (scheduleErrors.schedule) errors.schedule = scheduleErrors.schedule;
+    if (scheduleErrors.deadline) errors['start-deadline'] = scheduleErrors.deadline;
   }
   const errorFor = (field: Field) => (submitAttempted ? errors[field] : undefined);
   const complaint = (field: Field) =>
@@ -101,6 +121,7 @@ export function JobCreateDialog({
           const overrides: Partial<Record<Resource, number>> = {};
           for (const [key] of RESOURCE_FIELDS)
             if (resources[key]) overrides[key] = Number(resources[key]);
+          const policy = kind === 'recurring' ? schedulePolicyFrom(schedule) : undefined;
           try {
             const job = await create.mutateAsync({
               name: name.trim(),
@@ -108,11 +129,20 @@ export function JobCreateDialog({
               image_ref: image.trim(),
               command,
               ...overrides,
+              ...(kind === 'recurring'
+                ? {
+                    schedule: schedule.schedule.trim(),
+                    timezone: schedule.timezone.trim() || 'UTC',
+                    ...(policy ? { schedule_policy: policy } : {}),
+                  }
+                : {}),
             });
             toast({
               kind: 'success',
               title: 'Workload created',
-              description: `${job.name} is ready for its first run.`,
+              description: job.schedule
+                ? `${job.name} runs on its schedule once its image is ready.`
+                : `${job.name} is ready for its first run.`,
             });
             onCreated(job);
           } catch {
@@ -152,6 +182,25 @@ export function JobCreateDialog({
               </Select>
             </div>
           </div>
+          {kind === 'recurring' && (
+            <div className="space-y-3 rounded-lg border border-border bg-background/40 p-4">
+              <div>
+                <h3 className="text-xs font-medium">Schedule</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Each matching time starts a one-task run. Pausing the workload stops scheduled
+                  runs.
+                </p>
+              </div>
+              <JobScheduleFields
+                value={schedule}
+                onChange={setSchedule}
+                errors={{
+                  schedule: errorFor('schedule'),
+                  deadline: errorFor('start-deadline'),
+                }}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <label htmlFor="job-image" className="text-xs font-medium">
               Container image
