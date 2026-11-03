@@ -23,6 +23,7 @@ import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
 import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analytics'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
+import { Route as DashboardBudgetsRouteImport } from './routes/dashboard.budgets'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
 import { Route as DashboardCustomersRouteImport } from './routes/dashboard.customers'
@@ -149,6 +150,11 @@ const DashboardApisRoute = DashboardApisRouteImport.update({
 const DashboardAuditRoute = DashboardAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardBudgetsRoute = DashboardBudgetsRouteImport.update({
+  id: '/budgets',
+  path: '/budgets',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardBuildsRoute = DashboardBuildsRouteImport.update({
@@ -453,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -523,6 +530,7 @@ export interface FileRoutesByTo {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -596,6 +604,7 @@ export interface FileRoutesById {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -671,6 +680,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -741,6 +751,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -813,6 +824,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -983,6 +995,13 @@ declare module '@tanstack/react-router' {
       path: '/audit'
       fullPath: '/dashboard/audit'
       preLoaderRoute: typeof DashboardAuditRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/budgets': {
+      id: '/dashboard/budgets'
+      path: '/budgets'
+      fullPath: '/dashboard/budgets'
+      preLoaderRoute: typeof DashboardBudgetsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/builds': {
@@ -1419,6 +1438,7 @@ interface DashboardRouteChildren {
   DashboardAnalyticsRoute: typeof DashboardAnalyticsRoute
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
+  DashboardBudgetsRoute: typeof DashboardBudgetsRoute
   DashboardBuildsRoute: typeof DashboardBuildsRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
   DashboardCustomersRoute: typeof DashboardCustomersRoute
@@ -1473,6 +1493,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAnalyticsRoute: DashboardAnalyticsRoute,
   DashboardApisRoute: DashboardApisRoute,
   DashboardAuditRoute: DashboardAuditRoute,
+  DashboardBudgetsRoute: DashboardBudgetsRoute,
   DashboardBuildsRoute: DashboardBuildsRoute,
   DashboardCronsRoute: DashboardCronsRoute,
   DashboardCustomersRoute: DashboardCustomersRoute,

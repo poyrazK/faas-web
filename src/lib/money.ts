@@ -32,3 +32,15 @@ const rates = new Intl.NumberFormat('en-US', {
 export function formatMillicentRate(millicents: number): string {
   return rates.format(millicents / 100_000);
 }
+
+/**
+ * Dollars typed by a person ("10", "$8.50") as exact integer millicents, or
+ * undefined. Whole cents only, and no float ever multiplies the amount: the
+ * digits are joined, so "0.29" is 29_000 and not 28_999.
+ */
+export function parseUsdMillicents(text: string): number | undefined {
+  const match = /^\$?((?:0|[1-9]\d*))(?:\.(\d{1,2}))?$/.exec(text.trim());
+  if (!match) return undefined;
+  const value = Number(`${match[1]}${(match[2] ?? '').padEnd(2, '0')}`) * 1000;
+  return Number.isSafeInteger(value) ? value : undefined;
+}

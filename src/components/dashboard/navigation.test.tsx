@@ -268,6 +268,7 @@ const RAIL = [
   'Invocations',
   'Audit Log',
   'Usage',
+  'Budgets',
   'Invoices',
   'Plans',
   'Settings',
@@ -291,7 +292,7 @@ const RAIL_GROUP_ROWS: Record<string, string[]> = {
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
   Observe: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'],
-  Account: ['Usage', 'Invoices', 'Plans', 'Settings'],
+  Account: ['Usage', 'Budgets', 'Invoices', 'Plans', 'Settings'],
 };
 
 /** The rows under one rail heading: the wrapper that holds the heading and its list. */
@@ -315,6 +316,7 @@ const GROUPS = [
     anchor: '/dashboard/usage',
     links: [
       ['Usage', '/dashboard/usage'],
+      ['Budgets', '/dashboard/budgets'],
       ['Invoices', '/dashboard/invoices'],
       ['Plans', '/dashboard/plans'],
     ],
@@ -451,7 +453,7 @@ describe('dashboard navigation foundation', () => {
       within(main)
         .getAllByRole('link')
         .map((link) => link.getAttribute('aria-label'))
-    ).toEqual(RAIL.filter((label) => !['Usage', 'Invoices', 'Plans'].includes(label)));
+    ).toEqual(RAIL.filter((label) => !['Usage', 'Budgets', 'Invoices', 'Plans'].includes(label)));
     expect(within(main).getByRole('button', { name: 'Billing' })).toHaveAttribute(
       'aria-expanded',
       'false'
