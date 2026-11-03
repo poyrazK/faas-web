@@ -33,6 +33,7 @@ import { ruleAction } from '@/lib/api/edge-rules';
 import { KINDS, type ActionMap, type Kind } from './kinds';
 import { OUTCOMES, OUTCOME_GROUPS, SIMPLE_FIELDS, SIMPLE_FORMS } from './creation';
 import { explainRule, ruleScope } from './explain';
+import { RuleSummary } from './rule-summary';
 import { MatchConditionsField, matchOf, matchState, type MatchState } from './match-conditions';
 import {
   PENALTY_KINDS,
@@ -469,6 +470,13 @@ export function EdgeRuleDialog({
     (conditions.mode === 'builder'
       ? !Object.keys(validateConditions(conditions.conditions)).length
       : matchOf(conditions) !== null);
+  const previewEmphasis: string[] = [];
+  const previewText = previewReady
+    ? explainRule(preview, slug, {
+        wafBlocking: wafBlockingAccess === 'on',
+        onEmphasis: (text) => previewEmphasis.push(text),
+      })
+    : '';
   const visibleGroups = OUTCOME_GROUPS.map((group) => ({
     ...group,
     kinds: group.kinds.filter((key) =>
@@ -698,9 +706,11 @@ export function EdgeRuleDialog({
                   If you create this rule
                 </p>
                 <p className="text-sm font-medium leading-relaxed [overflow-wrap:anywhere]">
-                  {previewReady
-                    ? explainRule(preview, slug, { wafBlocking: wafBlockingAccess === 'on' })
-                    : 'Complete the settings to see what this rule will do.'}
+                  {previewReady ? (
+                    <RuleSummary text={previewText} emphasis={previewEmphasis} />
+                  ) : (
+                    'Complete the settings to see what this rule will do.'
+                  )}
                 </p>
                 {preview && (
                   <p className="mt-2 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">

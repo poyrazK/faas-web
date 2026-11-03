@@ -2,6 +2,7 @@ import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { EdgeRuleDialog } from '@/components/dashboard/edge-rules/dialog';
 import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
+import { RuleSummary } from '@/components/dashboard/edge-rules/rule-summary';
 import { explainRule, ruleScope } from '@/components/dashboard/edge-rules/explain';
 import { summarise } from '@/components/dashboard/edge-rules/kinds';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
@@ -50,6 +51,7 @@ interface EdgeRuleRow {
   condition: string;
   action: string;
   explanation: string;
+  emphasis: string[];
   scope: string;
   name: string;
   /** A log-mode rule is matched and counted but never acts. */
@@ -122,33 +124,38 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
 
   const rows = useMemo<EdgeRuleRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return rules.map((r) => ({
-      id: r.id,
-      accountId: r.account_id,
-      priority: r.priority,
-      kind: r.kind,
-      app: scoped ?? bySlug.get(r.app_id) ?? r.app_id,
-      host: r.match_host || '*',
-      path: r.match_path || '/*',
-      methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
-      condition: summariseMatch(r.match),
-      action: summarise(r.kind, ruleAction(r)),
-      explanation: explainRule(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id, {
-        wafBlocking,
-        corsPreset:
-          !corsPresets.error && !corsPresets.isPending
-            ? corsPresets.data?.presets.find(
-                (preset) =>
-                  preset.id ===
-                  (ruleAction(r) as { cors_preset_id?: string } | undefined)?.cors_preset_id
-              )
-            : undefined,
-      }),
-      scope: ruleScope(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id),
-      name: r.name ?? '',
-      logOnly: r.mode === 'log',
-      enabled: r.enabled,
-    }));
+    return rules.map((r) => {
+      const emphasis: string[] = [];
+      return {
+        id: r.id,
+        accountId: r.account_id,
+        priority: r.priority,
+        kind: r.kind,
+        app: scoped ?? bySlug.get(r.app_id) ?? r.app_id,
+        host: r.match_host || '*',
+        path: r.match_path || '/*',
+        methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
+        condition: summariseMatch(r.match),
+        action: summarise(r.kind, ruleAction(r)),
+        emphasis,
+        explanation: explainRule(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id, {
+          wafBlocking,
+          onEmphasis: (text) => emphasis.push(text),
+          corsPreset:
+            !corsPresets.error && !corsPresets.isPending
+              ? corsPresets.data?.presets.find(
+                  (preset) =>
+                    preset.id ===
+                    (ruleAction(r) as { cors_preset_id?: string } | undefined)?.cors_preset_id
+                )
+              : undefined,
+        }),
+        scope: ruleScope(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id),
+        name: r.name ?? '',
+        logOnly: r.mode === 'log',
+        enabled: r.enabled,
+      };
+    });
   }, [
     rules,
     apps,
@@ -207,9 +214,11 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
             const full = byId.get(r.id);
             if (full) setEditing(full);
           }}
-          className="flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-sm py-2 text-left whitespace-normal outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]"
+          className="flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-sm py-2 text-left whitespace-normal outline-none focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]"
         >
-          <span className="text-sm font-medium leading-relaxed">{r.explanation}</span>
+          <span className="text-sm font-medium leading-relaxed text-foreground">
+            <RuleSummary text={r.explanation} emphasis={r.emphasis} />
+          </span>
           {r.scope && (
             <span className="text-xs leading-relaxed text-muted-foreground">{r.scope}</span>
           )}

@@ -89,11 +89,11 @@ export function explainCondition(match: MatchExpr, depth = 0): string {
 }
 
 /** The request selector in ordinary language, keeping globs literal. */
-function requestsFor(rule: EdgeRule, app: string) {
-  const methods = rule.match_methods?.length ? `${join(rule.match_methods)} ` : '';
+function requestsFor(rule: EdgeRule, app: string, mark = (value: string) => value) {
+  const methods = rule.match_methods?.length ? `${join(rule.match_methods.map(mark))} ` : '';
   const host = rule.match_host === '@app' ? app : rule.match_host;
   const path = rule.match_path && rule.match_path !== '/**' ? rule.match_path : '';
-  return `${methods}requests${path ? ` for ${path}` : ''}${host && host !== '*' ? ` on ${host}` : ''}`;
+  return `${methods}requests${path ? ` for ${mark(path)}` : ''}${host && host !== '*' ? ` on ${mark(host)}` : ''}`;
 }
 
 export function ruleScope(rule: EdgeRule, app: string): string {
@@ -116,16 +116,28 @@ export function explainRule(
   options: {
     wafBlocking?: boolean;
     now?: number;
+    /** Values to emphasize visually; plain sentence output stays unchanged. */
+    onEmphasis?: (text: string) => void;
     corsPreset?: Pick<
       CorsPreset,
       'id' | 'account_id' | 'app_id' | 'name' | 'allow_origins' | 'allow_methods'
     >;
   } = {}
 ): string {
+  const mark = (value: string) => {
+    options.onEmphasis?.(value);
+    return value;
+  };
+  const names = (values: string[], format = (value: string) => value) =>
+    named(values, (value) => mark(format(value)));
   const action = ruleAction(rule);
   const a = action && typeof action === 'object' ? (action as Record<string, unknown>) : {};
-  const num = (key: string, fallback: number) => (typeof a[key] === 'number' ? a[key] : fallback);
-  const str = (key: string, fallback = '') => (typeof a[key] === 'string' ? a[key] : fallback);
+  const num = (key: string, fallback: number) => {
+    const value = typeof a[key] === 'number' ? a[key] : fallback;
+    mark(String(value));
+    return value;
+  };
+  const str = (key: string, fallback = '') => mark(typeof a[key] === 'string' ? a[key] : fallback);
   const list = (key: string) =>
     Array.isArray(a[key])
       ? a[key].filter((value): value is string => typeof value === 'string')
@@ -134,27 +146,27 @@ export function explainRule(
   let activeEffect: string | undefined;
   switch (rule.kind) {
     case 'route':
-      effect = `send ${requestsFor(rule, app)} to ${str('target_app_slug', 'the saved target app')}`;
+      effect = `send ${requestsFor(rule, app, mark)} to ${str('target_app_slug', 'the saved target app')}`;
       break;
     case 'rewrite':
       effect = `rewrite paths starting with ${str('from', '/')} to ${str('to', '/')}`;
       break;
     case 'redirect':
-      effect = `redirect ${requestsFor(rule, app)} to ${str('to', 'the saved destination')} (${num('status_code', 302)})`;
+      effect = `redirect ${requestsFor(rule, app, mark)} to ${str('to', 'the saved destination')} (${num('status_code', 302)})`;
       break;
     case 'maintenance':
-      effect = `return a maintenance response (503); callers can retry after ${duration(num('retry_after_seconds', 60) || 60)}`;
+      effect = `return a maintenance response (503); callers can retry after ${mark(duration(num('retry_after_seconds', 60) || 60))}`;
       break;
     case 'respond':
-      effect = `return ${num('status_code', 200)}${a.body === undefined ? ' with no body' : ' with the saved JSON body'}, without running ${app}`;
+      effect = `return ${num('status_code', 200)}${a.body === undefined ? ' with no body' : ' with the saved JSON body'}, without running ${mark(app)}`;
       break;
     case 'geo': {
       const allowed = list('allow'),
         denied = list('deny');
       effect = allowed.length
-        ? `allow requests only from ${named(allowed, country)}${denied.length ? `, excluding ${named(denied, country)}` : ''}`
+        ? `allow requests only from ${names(allowed, country)}${denied.length ? `, excluding ${names(denied, country)}` : ''}`
         : denied.length
-          ? `block requests from ${named(denied, country)}`
+          ? `block requests from ${names(denied, country)}`
           : 'leave requests unchanged; no countries are selected';
       break;
     }
@@ -165,9 +177,9 @@ export function explainRule(
       effect = all
         ? 'block matching requests from any IP address'
         : allowed.length
-          ? `allow requests only from ${named(allowed)}${denied.length ? `, excluding ${named(denied)}` : ''}`
+          ? `allow requests only from ${names(allowed)}${denied.length ? `, excluding ${names(denied)}` : ''}`
           : denied.length
-            ? `block requests from ${named(denied)}`
+            ? `block requests from ${names(denied)}`
             : 'leave requests unchanged; no IP addresses are selected';
       break;
     }
@@ -178,7 +190,7 @@ export function explainRule(
           .filter((op): op is Record<string, unknown> => typeof op === 'object' && op !== null)
           .map(
             (op) =>
-              `${op.action === 'remove' ? 'remove' : 'set'} ${String(op.name)} on ${direction}`
+              `${op.action === 'remove' ? 'remove' : 'set'} ${mark(String(op.name))} on ${direction}`
           );
       };
       const ops = [
@@ -187,7 +199,9 @@ export function explainRule(
       ];
       effect = ops.length ? join(ops) : 'leave headers unchanged; no header changes are selected';
       if (ops.length)
-        activeEffect = join(ops.map((op) => op.replace(/^(set|remove)/, (verb) => `${verb}s`)));
+        activeEffect = join(
+          ops.map((op) => op.replace(/^(set|remove)/, (verb) => mark(`${verb}s`)))
+        );
       break;
     }
     case 'cors': {
@@ -210,14 +224,14 @@ export function explainRule(
       const methods = list('allow_methods').length
         ? list('allow_methods')
         : (resolved?.allow_methods ?? []);
-      effect = `allow browser calls from ${origins.includes('*') ? 'any website' : named(origins) || 'no other websites'}${methods.length ? ` using ${join(methods)}` : ''}${resolved ? ` (${resolved.name})` : ''}`;
+      effect = `allow browser calls from ${origins.includes('*') ? 'any website' : names(origins) || 'no other websites'}${methods.length ? ` using ${join(methods.map(mark))}` : ''}${resolved ? ` (${mark(resolved.name)})` : ''}`;
       break;
     }
     case 'jwt':
-      effect = `require a signed token${str('issuer') ? ` issued by ${str('issuer')}` : ''}${list('audience').length ? ` for ${named(list('audience'))}` : ''}`;
+      effect = `require a signed token${str('issuer') ? ` issued by ${str('issuer')}` : ''}${list('audience').length ? ` for ${names(list('audience'))}` : ''}`;
       break;
     case 'limit':
-      effect = `reject request bodies larger than ${size(num('max_body_bytes', 0))}${num('max_body_bytes_streaming', 0) ? ` (${size(num('max_body_bytes_streaming', 0))} for streamed bodies)` : ''}`;
+      effect = `reject request bodies larger than ${mark(size(num('max_body_bytes', 0)))}${num('max_body_bytes_streaming', 0) ? ` (${mark(size(num('max_body_bytes_streaming', 0)))} for streamed bodies)` : ''}`;
       break;
     case 'throttle': {
       const key = str('key_by', 'none') || 'none';
@@ -239,7 +253,7 @@ export function explainRule(
         key === 'none'
           ? 'across matching requests'
           : key === 'composite'
-            ? `for each combination of ${named(list('key_fields'), dimension)}`
+            ? `for each combination of ${names(list('key_fields'), dimension)}`
             : `per ${dimension(key)}`;
       effect = `limit traffic to ${num('requests_per_second', 0)} requests per second ${scope}, with bursts of ${num('burst', 0)}`;
       break;
@@ -248,7 +262,7 @@ export function explainRule(
       effect = `stop waiting for a response after ${num('budget_ms', 0)} ms`;
       break;
     case 'cache':
-      effect = `reuse eligible GET and HEAD responses for ${duration(num('max_age_seconds', 60) || 60)}`;
+      effect = `reuse eligible GET and HEAD responses for ${mark(duration(num('max_age_seconds', 60) || 60))}`;
       break;
     case 'validate': {
       const mode = rule.validate_mode ?? str('validate_mode', 'block');
@@ -259,7 +273,7 @@ export function explainRule(
       break;
     }
     case 'challenge':
-      effect = `challenge unverified browsers; a successful check lasts ${duration(num('pass_ttl_seconds', 3600) || 3600)}`;
+      effect = `challenge unverified browsers; a successful check lasts ${mark(duration(num('pass_ttl_seconds', 3600) || 3600))}`;
       break;
     case 'waf': {
       const mode = str('mode', 'observe');
@@ -277,19 +291,21 @@ export function explainRule(
       effect = `retry transport failures on another healthy instance, up to ${num('max_attempts', 2) || 2} total attempts`;
       break;
     case 'circuit_breaker':
-      effect = `stop sending traffic to an instance when ${Math.round((num('failure_threshold', 0.5) || 0.5) * 100)}% of at least ${num('min_requests', 5) || 5} requests fail within ${duration(num('window_seconds', 10) || 10)}`;
+      effect = `stop sending traffic to an instance when ${Math.round((num('failure_threshold', 0.5) || 0.5) * 100)}% of at least ${num('min_requests', 5) || 5} requests fail within ${mark(duration(num('window_seconds', 10) || 10))}`;
       break;
     case 'async':
-      effect = `accept requests with 202 and run them later${num('max_age_seconds', 0) ? `, within ${duration(num('max_age_seconds', 0))}` : ''}`;
+      effect = `accept requests with 202 and run them later${num('max_age_seconds', 0) ? `, within ${mark(duration(num('max_age_seconds', 0)))}` : ''}`;
       break;
     default:
       effect = 'apply this rule’s saved action to matching requests';
   }
-  if (!rule.enabled) return `Paused. Would ${effect}.`;
+  const hypothetical = () => effect.replace(/^\S+/, mark);
+  if (!rule.enabled) return `Paused. Would ${hypothetical()}.`;
   if (rule.expires_at && Date.parse(rule.expires_at) <= (options.now ?? Date.now()))
-    return `Expired. Would ${effect}.`;
-  if (rule.mode === 'log') return `Log only. Would ${effect}.`;
-  if (activeEffect) return `${activeEffect[0].toUpperCase()}${activeEffect.slice(1)}.`;
+    return `Expired. Would ${hypothetical()}.`;
+  if (rule.mode === 'log') return `Log only. Would ${hypothetical()}.`;
+  if (activeEffect)
+    return `${activeEffect[0].toUpperCase()}${activeEffect.slice(1)}.`.replace(/^\S+/, mark);
   const [verb, ...rest] = effect.split(' ');
   const present =
     verb === 'apply'
@@ -299,5 +315,5 @@ export function explainRule(
         : verb === 'watch'
           ? 'watches'
           : `${verb}s`;
-  return `${present[0].toUpperCase()}${present.slice(1)} ${rest.join(' ')}.`;
+  return `${mark(present[0].toUpperCase() + present.slice(1))} ${rest.join(' ')}.`;
 }

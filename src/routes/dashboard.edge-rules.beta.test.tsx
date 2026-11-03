@@ -121,7 +121,7 @@ it('finds a country rule by its plain-English effect', async () => {
   ];
   render(<EdgeRulesBody slug="api" />);
   await userEvent.type(screen.getByPlaceholderText('Find a rule by what it does…'), 'Turkey');
-  expect(screen.getByText('Blocks requests from Turkey.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Blocks requests from Turkey/ })).toBeInTheDocument();
 });
 
 it('keeps the known app scope when settings open before the app inventory arrives', async () => {

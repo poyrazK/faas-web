@@ -111,5 +111,5 @@ it('summarises the kind-wrapped action apid returns (faas edgerules/rules.go:46)
     },
   ];
   render(<EdgeRulesBody slug="api" />);
-  expect(screen.getByText(/Sends .* to billing\./)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Sends .* to billing/ })).toBeInTheDocument();
 });
