@@ -762,9 +762,11 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 112,
     name: 'Realtime channels: resume, tickets, access, occupancy',
-    status: 'none',
-    surfaces: [],
-    gap: 'Realtime endpoints, connections, occupancy, send and publish',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Realtime'],
+    capability: 'realtime',
+    cli: 'gregale realtime drain',
+    gap: 'Consumer-group controls (create, pause, drain, dead letters, replay, policies); publisher and worker credentials; connection drain (CLI) and subscribe; principal send and inbox; schedules, reducers, snapshots and event schemas; push devices, deliveries and preferences; channel-rule editing',
     wave: 3,
   },
   // F113 · preview

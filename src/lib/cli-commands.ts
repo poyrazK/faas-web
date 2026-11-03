@@ -116,3 +116,8 @@ export function cliEdgeRuleTraceCommand(
   if (country) parts.push(`--country ${shellArg(country)}`);
   return parts.join(' ');
 }
+
+/** Close a selection of realtime connections; `--dry-run` lists what it would close. */
+export function cliRealtimeDrainCommand(appSlug: string, endpointId: string): string {
+  return `gregale realtime drain ${appSlug} ${endpointId} --reason <reason> --channel <channel> --dry-run`;
+}
