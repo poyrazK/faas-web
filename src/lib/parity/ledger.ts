@@ -165,7 +165,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/projects/$projectSlug'],
     capability: 'environments',
-    gap: 'Create, config, secrets and routes; promotions, approvals, release sets, GitOps; environments of a company project',
+    gap: 'Release-set publish, activate and rollback; workload routes and policies; GitOps source, review and adoption (CLI); full clones; promotion abort, recover and secret changes; company-project promotions, approvals and shared secrets (not in the vendored spec yet)',
     wave: 3,
   },
   // A21 · preview

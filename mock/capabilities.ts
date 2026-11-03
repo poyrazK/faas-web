@@ -573,6 +573,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'environments',
+    name: 'Environments',
+    category: 'delivery',
+    description: 'Run named project environments, clone them and manage them from Git.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/env',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'custom-metrics',
     name: 'Custom metrics',
     category: 'observability',

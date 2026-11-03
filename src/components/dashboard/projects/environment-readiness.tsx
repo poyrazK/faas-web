@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   usePromotionPreview,
   usePromotionHistory,
@@ -9,6 +9,12 @@ import {
   type PromotionFilters,
 } from '@/lib/api/environment-readiness';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
+import { useToast } from '@/components/ui/toast';
+import { ApiError } from '@/lib/api/errors';
+import { usePromoteEnvironment, useRollbackPromotion } from '@/lib/api/environments';
+import { cliEnvironmentGitopsExplainCommand } from '@/lib/cli-commands';
+import { CliCommand } from '../cli-command';
 import { Panel } from '../primitives';
 
 export type ReadinessSearch = {
@@ -18,6 +24,43 @@ export type ReadinessSearch = {
   promotionStatus?: PromotionFilters['status'];
 };
 export const validApprovalId = (value: string) => Boolean(canonicalApprovalId(value));
+
+type Toast = { kind: 'info' | 'error'; title: string; description?: string; error?: unknown };
+
+/**
+ * What a refused promotion means, by the stable code
+ * (handlers_project_environment_promotion.go:636-760, release_approvals.go,
+ * release_freezes.go, project_promotion_admission.go).
+ */
+export function promotionFailure(error: unknown): Toast {
+  const code = error instanceof ApiError ? error.code : '';
+  switch (code) {
+    case 'project_environment_approval_invalid':
+      return {
+        kind: 'info',
+        title: 'The preview is out of date',
+        description:
+          'The live releases or configuration changed since this preview. Review the fresh preview and promote again.',
+      };
+    case 'release_approval_self':
+      return { kind: 'error', title: 'Someone else must approve', error };
+    case 'release_approval_canary_required':
+      return { kind: 'error', title: 'An app needs more approvals than a promotion gives', error };
+    case 'release_frozen':
+      return { kind: 'error', title: 'A deploy freeze covers an app', error };
+    case 'project_promotion_queue_full':
+      return {
+        kind: 'info',
+        title: 'Promotions are queued up',
+        description: 'Nothing was started. Try again in a few minutes.',
+        error,
+      };
+    case 'validation_failed':
+      return { kind: 'error', title: 'Promotion is blocked', error };
+    default:
+      return { kind: 'error', title: 'Promotion did not start', error };
+  }
+}
 function Identity({ label, value }: { label: string; value: string | number | undefined }) {
   return (
     <div>
@@ -49,6 +92,14 @@ export function EnvironmentReadiness({
   const approvalReceipt = useApprovalReceipt(identity, approval ?? '');
   const [approvalDraft, setApprovalDraft] = useState('');
   const [approvalError, setApprovalError] = useState('');
+  const confirm = useConfirm();
+  const { toast } = useToast();
+  const scope = { accountId: identity.accountId, slug: identity.project, org: null };
+  const promote = usePromoteEnvironment(scope, identity.target);
+  const rollback = useRollbackPromotion(scope, identity.target);
+  // One key per reviewed promotion: retrying after a dropped response resumes
+  // the same operation instead of starting a second one.
+  const keys = useRef(new Map<string, string>());
   const p =
     !preview.error &&
     !preview.isFetching &&
@@ -72,31 +123,90 @@ export function EnvironmentReadiness({
     approvalReceipt.data.approval_id === approval
       ? approvalReceipt.data
       : undefined;
+  const onPromote = async (plan: NonNullable<typeof p>) => {
+    const changing = plan.changes.filter((c) => c.kind !== 'unchanged').length;
+    if (
+      !(await confirm({
+        title: `Promote ${plan.from_environment} to ${plan.to_environment}?`,
+        description: `${changing} of ${plan.changes.length} workload${plan.changes.length === 1 ? '' : 's'} change: ${plan.to_environment} starts serving the releases live in ${plan.from_environment}. ${plan.approval_required ? `${plan.to_environment} is protected, so this also approves this exact promotion as you. ` : ''}The target keeps its own configuration and secrets. If verification after cutover fails, the promotion rolls back by itself.`,
+        confirmLabel: plan.approval_required ? 'Approve and promote' : 'Promote',
+      }))
+    )
+      return;
+    const key = keys.current.get(plan.promotion_hash) ?? crypto.randomUUID();
+    keys.current.set(plan.promotion_hash, key);
+    try {
+      const result = await promote.mutateAsync({
+        source: plan.from_environment,
+        promotionToken: plan.promotion_token,
+        approve: plan.approval_required,
+        key,
+      });
+      toast(
+        result.status === 'failed'
+          ? {
+              kind: 'error',
+              title: 'Promotion failed',
+              description: 'Its operation below says what was restored.',
+            }
+          : {
+              kind: 'success',
+              title: result.status === 'running' ? 'Promotion accepted' : 'Promoted',
+              description:
+                result.status === 'running'
+                  ? 'Destination health is checked before cutover. Follow the operation below.'
+                  : undefined,
+            }
+      );
+      onSearch({ promotion: result.promotion_id });
+    } catch (err) {
+      toast(promotionFailure(err));
+      if (err instanceof ApiError && err.code === 'project_environment_approval_invalid')
+        void preview.refetch();
+    }
+  };
+  const onRollback = async (promotion: string, from: string) => {
+    if (
+      !(await confirm({
+        title: `Roll back the promotion from ${from}?`,
+        description: `Each workload in ${identity.target} returns to the deployment it served before this promotion, and workloads the promotion created are taken out of traffic. It is refused if ${identity.target} changed since.`,
+        confirmLabel: 'Roll back',
+        destructive: true,
+      }))
+    )
+      return;
+    try {
+      await rollback.mutateAsync({ promotion });
+      toast({ kind: 'success', title: 'Promotion rolled back' });
+      void receipt.refetch();
+    } catch (err) {
+      const changed = err instanceof ApiError && err.code === 'conflict';
+      toast({
+        kind: 'error',
+        title: changed ? `${identity.target} changed since the promotion` : 'Rollback failed',
+        description: changed ? 'Nothing was restored. Review what serves now first.' : undefined,
+        error: err,
+      });
+    }
+  };
   return (
     <div className="space-y-5">
       <Panel
-        title="Environment readiness"
-        description="Read-only promotion preview and durable evidence. Mutations remain gated."
+        title="Promotion"
+        description="Preview, approve and promote the source's live releases into this environment, and inspect recorded promotions."
       >
         <div className="space-y-4 p-4 text-sm">
           <p>
-            Promote and rollback require separate isolated staging qualification. Complete clone is
-            unavailable: coordinated data checkpoints, full resource coverage and fresh managed
-            bindings are not qualified. Customer GitOps enforcement and continuous graph activation
-            remain unavailable.
+            Promotion moves the source&apos;s live releases into {identity.target}. Configuration
+            and secrets stay {identity.target}&apos;s own, every promoted artifact is verified after
+            cutover, and a failed verification rolls the promotion back on its own. Complete clones
+            and GitOps are managed from the CLI.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled>Promote</Button>
-            <Button disabled variant="outline">
-              Rollback
-            </Button>
-            <Button disabled variant="outline">
-              Create full clone
-            </Button>
-            <Button disabled variant="outline">
-              Enforce GitOps
-            </Button>
-          </div>
+          <CliCommand
+            command={cliEnvironmentGitopsExplainCommand(identity.project, identity.target)}
+            label="GitOps source, approvals and serving progress"
+            copyLabel={`GitOps explain command for ${identity.target}`}
+          />
           {!source ? (
             <p>Select Compare from above to inspect an exact source-to-target preview.</p>
           ) : preview.error ? (
@@ -129,9 +239,22 @@ export function EnvironmentReadiness({
                 {p.can_promote
                   ? 'Server preview records no promotion blockers.'
                   : 'Server preview blocks promotion.'}{' '}
-                This does not establish console authorization, complete resource coverage or
-                execution health. Changed source or target needs a fresh preview and review.
+                This does not establish complete resource coverage or execution health. Changed
+                source or target needs a fresh preview and review.
               </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={!p.can_promote || promote.isPending}
+                  onClick={() => void onPromote(p)}
+                >
+                  Promote {p.from_environment} to {p.to_environment}
+                </Button>
+                {p.approval_required && (
+                  <span className="text-xs text-muted-foreground">
+                    Protected: promoting approves this exact preview as you.
+                  </span>
+                )}
+              </div>
               {!!p.blocking_reasons.length && (
                 <ul aria-label="Promotion blockers" className="list-disc pl-5">
                   {p.blocking_reasons.map((reason, i) => (
@@ -328,6 +451,18 @@ export function EnvironmentReadiness({
               >
                 Refresh operation
               </Button>
+              {r &&
+                r.status !== 'running' &&
+                r.rollback_status !== 'rolled_back' &&
+                r.rollback_status !== 'rolling_back' && (
+                  <Button
+                    variant="outline"
+                    disabled={rollback.isPending}
+                    onClick={() => void onRollback(r.promotion_id, r.from_environment)}
+                  >
+                    Roll back this promotion
+                  </Button>
+                )}
               {receipt.error ? (
                 <p role="alert">
                   This operation could not be read in the selected target. No recovery mutation was

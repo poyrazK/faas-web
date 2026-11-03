@@ -43,6 +43,7 @@ import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { registerDeadLetterMocks } from './dead-letters';
 import { registerForkMocks } from './forks';
+import { registerEnvironmentAdminMocks } from './environment-admin';
 import { registerEventConsumerMocks } from './event-consumers';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -12499,6 +12500,11 @@ registerDeadLetterMocks(route, Problem, NO_CONTENT);
 registerForkMocks(route, Problem, NO_CONTENT, {
   hidden: (capability) => hiddenCapabilities.has(capability),
   plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
+registerEnvironmentAdminMocks(route, Problem, NO_CONTENT, (organization, slug, admin) => {
+  if (admin) return companyProject(organization, slug);
+  requireOrgRole(organization, ANY_MEMBER);
+  return findCompanyProject(organization, slug);
 });
 registerEventConsumerMocks(route, Problem);
 

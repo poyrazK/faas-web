@@ -10,7 +10,23 @@ const workspace = vi.hoisted(() => ({
   ready: true,
 }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
-afterEach(() => vi.restoreAllMocks());
+const access = vi.hoisted(() => ({ value: 'on' as string }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: access.value, refresh: vi.fn() }),
+}));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+afterEach(() => {
+  vi.restoreAllMocks();
+  access.value = 'on';
+});
+const config = (environment: string) => ({
+  project_slug: 'shop',
+  environment,
+  version: 2,
+  config_hash: 'b'.repeat(64),
+  values: { LOG_LEVEL: 'info' },
+});
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const environments = ['production', 'staging'].map((slug) => ({
   id: slug,
@@ -53,6 +69,10 @@ it('selects production only when registered, and reads its exact state', async (
     if (path === '/v1/projects/{slug}/environments/{environment}') return ok(environments[0]);
     if (path === '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs')
       return ok({ runs: [], observed_at: '2026-10-09T10:00:00Z' });
+    if (path === '/v1/projects/{slug}/environments/{environment}/config')
+      return ok(config('production'));
+    if (path === '/v1/projects/{slug}/environments/{environment}/secrets')
+      return ok({ project_slug: 'shop', environment: 'production', secrets: [], limit: 50 });
     return ok({
       project_slug: 'shop',
       environment: 'production',
@@ -88,21 +108,58 @@ it('does not invent a named environment for an empty registry', async () => {
   expect(get).toHaveBeenCalledTimes(1);
 });
 
-it("reads no environments for a company's project, and says why", async () => {
-  // Environment routes are account-scoped (ProjectBySlug(acct.ID, slug)): in a
-  // company workspace they would show a same-named personal project's
-  // environments. Org environments are Wave 3 (A20).
+it.each(['off', 'plan-not-entitled', 'runtime-unavailable'])(
+  'reads no environments while the environments capability is %s',
+  async (state) => {
+    access.value = state;
+    const get = spyApi('GET').mockResolvedValue(ok(environments));
+    mount();
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+    expect(get).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /create environment/i })).toBeNull();
+  }
+);
+
+it("reads a company project's environments under its organization", async () => {
+  // Environment routes are account-scoped (ProjectBySlug(acct.ID, slug)), so a
+  // company workspace reads /v1/orgs/{organization}/projects/{slug}/environments….
   workspace.org = 'acme';
   workspace.label = 'Acme';
-  const get = spyApi('GET').mockResolvedValue(ok(environments));
+  const get = spyApi('GET').mockImplementation(async (path) => {
+    if (path === '/v1/orgs/{organization}/projects/{slug}/environments') return ok(environments);
+    if (path === '/v1/orgs/{organization}/projects/{slug}/environments/{environment}')
+      return ok(environments[0]);
+    if (path === '/v1/orgs/{organization}/projects/{slug}/environments/{environment}/config')
+      return ok(config('production'));
+    return ok({
+      project_slug: 'shop',
+      environment: 'production',
+      protected: true,
+      configuration: {
+        project_slug: 'shop',
+        environment: 'production',
+        version: 0,
+        config_hash: 'a'.repeat(64),
+        values: {},
+      },
+      workloads: [],
+      shared_resources: [],
+      generated_at: '2026-10-09T10:00:00Z',
+    });
+  });
   try {
     mount();
-    expect(
-      await screen.findByText(
-        /Environments for Acme's projects are not available in the console yet/
-      )
-    ).toBeInTheDocument();
-    expect(get).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText('Environment')).toHaveValue('production');
+    expect(await screen.findByText(/no shared secrets, promotions/)).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(
+      '/v1/orgs/{organization}/projects/{slug}/environments/{environment}/state',
+      expect.objectContaining({
+        params: { path: { organization: 'acme', slug: 'shop', environment: 'production' } },
+      })
+    );
+    const paths = (get.mock.calls as unknown as string[][]).map((call) => call[0]);
+    expect(paths.every((path) => path.startsWith('/v1/orgs/'))).toBe(true);
+    expect(screen.getByText(/New Acme environments start empty/)).toBeInTheDocument();
   } finally {
     workspace.org = null;
     workspace.label = 'Personal';

@@ -77,6 +77,10 @@ async function mount(
 ) {
   const get = spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/projects') return ok(data);
+    // Environments are gated on their preview capability; an empty registry
+    // releases everything it does not list.
+    if (path === '/v1/capabilities')
+      return ok({ registry_version: 1, plan: 'free', capabilities: [] });
     if (path === '/v1/projects/{slug}')
       return ok({
         ...summary,
