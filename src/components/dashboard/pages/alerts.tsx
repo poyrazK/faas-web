@@ -1,5 +1,10 @@
 import { AlertDetail, AlertState } from '@/components/dashboard/alert-detail';
-import { describeCondition, metricSpec } from '@/components/dashboard/alert-metrics';
+import {
+  alertActionLabel,
+  alertConditionParts,
+  explainAlertCondition,
+} from '@/components/dashboard/alert-language';
+import type { AlertRule } from '@/lib/api/alert-rules';
 import { AlertPresets } from '@/components/dashboard/alert-presets';
 import { AlertRuleForm } from '@/components/dashboard/alert-rule-form';
 import { Sheet } from '@/components/dashboard/kit/sheet';
@@ -11,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { useNotificationChannels } from '@/lib/api/notification-channels';
 import { useAlerts, useDeleteAlert, useUpdateAlert } from '@/lib/api/queries';
-import { ListSelect, Plus, Trash } from 'iconoir-react';
+import { Plus, Trash } from 'iconoir-react';
 import { useMemo, useState } from 'react';
 
 export type AlertsView = 'rules' | 'channels';
@@ -24,7 +29,7 @@ interface AlertRow {
   id: string;
   name: string;
   condition: string;
-  window: string;
+  rule: AlertRule;
   destination: string;
   enabled: boolean;
   state: string;
@@ -53,15 +58,14 @@ export function AlertsBody({ slug }: { slug: string }) {
     const names = new Map((channels.data ?? []).map((c) => [c.id, c.name]));
     return (data ?? []).map((a) => {
       const to = [
-        ...(a.channel_ids ?? []).map((id) => names.get(id) ?? 'channel'),
+        ...(a.channel_ids ?? []).map((id) => names.get(id) ?? `Channel ${id}`),
         ...(a.webhook_url ? [a.webhook_url.replace(/^https:\/\//, '')] : []),
       ];
       return {
         id: a.id,
         name: a.name,
-        condition: describeCondition(a),
-        // apid ignores the window for SLO metrics and consecutive check failures.
-        window: metricSpec(a.metric)?.ignoresWindow ? '—' : a.window_spec,
+        condition: explainAlertCondition(a),
+        rule: a,
         destination: to.join(', '),
         enabled: a.enabled,
         state: a.state,
@@ -80,38 +84,87 @@ export function AlertsBody({ slug }: { slug: string }) {
   const columns: Column<AlertRow>[] = [
     {
       key: 'name',
-      label: 'Rule',
+      label: 'When this happens',
+      render: (a) => {
+        const condition = alertConditionParts(a.rule);
+        const selectors = [
+          a.rule.custom_metric_name && `Metric: ${a.rule.custom_metric_name}`,
+          a.rule.failure_source &&
+            a.rule.failure_source !== 'any' &&
+            `Source: ${a.rule.failure_source.replaceAll('_', ' ')}`,
+          a.rule.slo_id && `SLO: ${a.rule.slo_id}`,
+          a.rule.synthetic_check_id && `Check: ${a.rule.synthetic_check_id}`,
+          a.rule.log_query && `Log query: ${a.rule.log_query}`,
+          a.rule.edge_rule_id && `Edge rule: ${a.rule.edge_rule_id}`,
+          a.rule.event_subscription_id && `Subscription: ${a.rule.event_subscription_id}`,
+        ].filter(Boolean);
+        return (
+          <button
+            type="button"
+            aria-label={`Details for ${a.name}`}
+            aria-expanded={selected === a.id}
+            onClick={() => setSelected((cur) => (cur === a.id ? null : a.id))}
+            className="flex w-full min-w-0 flex-col gap-1.5 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]"
+          >
+            <span className="text-sm leading-relaxed">
+              {condition.subject} is {condition.comparison}{' '}
+              <span className={a.enabled ? 'font-medium text-brand' : 'font-medium'}>
+                {condition.value}
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {a.name}
+              {condition.window && ` · ${condition.window} evaluation window`}
+              {a.rule.app_id === '' && ' · Account-wide rule'}
+            </span>
+            {selectors.length > 0 && (
+              <span className="text-xs text-muted-foreground">{selectors.join(' · ')}</span>
+            )}
+            <span className="md:hidden">
+              {a.enabled ? (
+                <AlertState state={a.state} />
+              ) : (
+                <span className="text-xs text-muted-foreground">Paused</span>
+              )}
+            </span>
+            {condition.baseline && (
+              <span className="text-xs text-muted-foreground">
+                Usual value at this time of day over the last 7 days.
+              </span>
+            )}
+          </button>
+        );
+      },
+    },
+    {
+      key: 'destination',
+      label: 'Then',
+      priority: 'secondary',
       render: (a) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate">{a.name}</span>
-          <span className="truncate font-mono text-xs text-muted-foreground" title={a.destination}>
-            {a.destination ? `→ ${a.destination}` : 'Delivers nowhere'}
+        <span className="flex max-w-sm flex-col gap-1.5 text-xs leading-relaxed [overflow-wrap:anywhere]">
+          <span>{alertActionLabel(a.rule.action)}</span>
+          <span className="text-muted-foreground">
+            {a.destination || 'No notification destination configured'}
           </span>
         </span>
       ),
     },
     {
-      key: 'condition',
-      label: 'Condition',
-      render: (a) => <span className="font-mono text-xs">{a.condition}</span>,
-    },
-    {
-      key: 'window',
-      label: 'Window',
-      width: 'w-20',
-      priority: 'secondary',
-      render: (a) => <span className="font-mono text-xs text-muted-foreground">{a.window}</span>,
-    },
-    {
       key: 'state',
       label: 'State',
+      priority: 'secondary',
       width: 'w-28',
-      render: (a) => <AlertState state={a.state} />,
+      render: (a) =>
+        a.enabled ? (
+          <AlertState state={a.state} />
+        ) : (
+          <span className="text-xs text-muted-foreground">Paused</span>
+        ),
     },
     {
       key: 'enabled',
       label: 'Enabled',
-      width: 'w-24',
+      width: 'w-20 md:w-24',
       render: (a) => (
         <Switch
           size="sm"
@@ -145,7 +198,14 @@ export function AlertsBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-xl">
+          <h2 className="text-base font-medium">Know when something needs you</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Choose what to watch and where to send a notification. Open a rule to see its settings
+            and delivery history.
+          </p>
+        </div>
         <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="h-3.5 w-3.5" />
           Add rule
@@ -166,24 +226,15 @@ export function AlertsBody({ slug }: { slug: string }) {
         columns={columns}
         initialSort={{ key: 'name', dir: 'asc' }}
         searchKeys={['name', 'condition', 'destination']}
-        searchPlaceholder="Filter by rule name…"
+        searchPlaceholder="Find a rule, condition or destination…"
         emptyMessage={`No alert rules for ${slug}.`}
-        minWidth="min-w-[860px]"
+        minWidth="min-w-0"
+        desktopMinWidth="md:min-w-[700px]"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
-        onRowClick={(a) => setSelected(a.id)}
         rowActions={(a) => (
           <span className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label={`Details for ${a.name}`}
-              aria-pressed={selected === a.id}
-              onClick={() => setSelected((cur) => (cur === a.id ? null : a.id))}
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ListSelect className="h-3.5 w-3.5" />
-            </button>
             <button
               type="button"
               aria-label={`Delete rule ${a.name}`}
@@ -199,7 +250,7 @@ export function AlertsBody({ slug }: { slug: string }) {
       {selected && <AlertDetail slug={slug} ruleId={selected} onClose={() => setSelected(null)} />}
 
       <Panel
-        title="Presets"
+        title="Start with a common alert"
         help="Rules worth having, already written. Enabling one creates a normal rule — the preset supplies the metric and threshold, you choose where it delivers."
       >
         <AlertPresets slug={slug} />

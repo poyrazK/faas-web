@@ -1079,9 +1079,9 @@ export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
     [
       {
         url: 'https://ops.example.com/hooks/gregale',
-        filter: ['app.deployed', 'deployment.failed'],
+        filter: ['deployment.live', 'deployment.failed'],
       },
-      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['error.new'] },
+      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['issue.created'] },
     ].map((w): S['AppWebhookResponse'] => ({
       id: id(),
       app_id: a.id,

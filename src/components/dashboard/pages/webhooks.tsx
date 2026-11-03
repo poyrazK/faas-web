@@ -23,8 +23,12 @@ import {
   useUpdateWebhook,
   useWebhooks,
 } from '@/lib/api/queries';
-import type { components } from '@/lib/api/schema';
-import { List, Plus, Refresh, Trash } from 'iconoir-react';
+import {
+  WEBHOOK_EVENTS,
+  webhookEventLabel,
+  type WebhookEvent,
+} from '@/components/dashboard/webhook-events';
+import { Plus, Refresh, Trash } from 'iconoir-react';
 import { useMemo, useState } from 'react';
 
 export function validateWebhookSearch(search: Record<string, unknown>): {
@@ -54,8 +58,8 @@ export function WebhooksHub({
         label="Webhook direction"
         value={direction}
         options={[
-          { key: 'outbound', label: 'Outbound' },
-          { key: 'inbound', label: 'Inbound' },
+          { key: 'outbound', label: 'Send events' },
+          { key: 'inbound', label: 'Receive events' },
         ]}
         onChange={onDirection}
       />
@@ -72,43 +76,17 @@ interface WebhookRow {
   id: string;
   target: string;
   events: string;
+  eventCodes: string;
   retryPolicy: string;
   enabled: boolean;
 }
 
-/** One event a webhook may subscribe to, as the vendored spec enumerates them. */
-type SpecEvent = NonNullable<
-  components['schemas']['CreateAppWebhookRequest']['event_filter']
->[number];
-/**
- * The platform events offered here: every one is in apid's closed vocabulary
- * (faas api/webhooks.go:81, AllowedAppWebhookEvents), which rejects anything
- * else with 400 app_webhook_invalid (handlers_webhooks.go:88-106). Typed by the
- * spec so a renamed or removed event stops compiling. API monetization and
- * realtime preview events are left out: apid only accepts them on accounts
- * that have those features.
- */
-const EVENTS = [
-  'deployment.live',
-  'deployment.failed',
-  'rollout.completed',
-  'rollout.aborted',
-  'app.parked',
-  'app.woken',
-  'app.health.changed',
-  'job.finished',
-  'operation.finished',
-  'workflow.finished',
-  'issue.created',
-  'issue.regressed',
-  'issue.resolved',
-  'debug.regression.detected',
-  'debug.regression.resolved',
-  'routes.health.blocked',
-  'usage_statement.finalized',
-] as const satisfies readonly SpecEvent[];
-type Event = (typeof EVENTS)[number];
 type RetryPolicy = 'default' | 'aggressive' | 'none';
+const RETRY_LABELS: Record<string, string> = {
+  default: 'Automatic retries',
+  aggressive: 'Retry sooner',
+  none: 'One attempt',
+};
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -165,11 +143,12 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const [creating, setCreating] = useState(false);
   const [target, setTarget] = useState('');
   const [secret, setSecret] = useState('');
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<WebhookEvent[]>([]);
+  const [eventMode, setEventMode] = useState<'all' | 'selected'>('all');
   const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>('default');
   const [viewing, setViewing] = useState<WebhookRow | null>(null);
   const [rotating, setRotating] = useState<WebhookRow | null>(null);
-  const validation = useFormValidation<'target' | 'secret'>();
+  const validation = useFormValidation<'target' | 'secret' | 'eventMode'>();
   const targetError =
     target.trim().length > 2048
       ? 'Target URLs can be at most 2048 characters.'
@@ -180,6 +159,11 @@ export function WebhooksBody({ slug }: { slug: string }) {
     secret.length >= 1 && secret.length <= 256
       ? undefined
       : 'Enter a secret of no more than 256 characters.';
+  const eventError =
+    eventMode === 'selected' && events.length === 0
+      ? 'Choose at least one event, or select All events.'
+      : undefined;
+  const shownEventError = validation.submitAttempted ? eventError : undefined;
   const shownTargetError = validation.submitAttempted ? targetError : undefined;
   const shownSecretError = validation.submitAttempted ? secretError : undefined;
 
@@ -188,7 +172,10 @@ export function WebhooksBody({ slug }: { slug: string }) {
       (data ?? []).map((w) => ({
         id: w.id,
         target: w.target_url,
-        events: w.event_filter?.length ? w.event_filter.join(', ') : 'all events',
+        events: w.event_filter?.length
+          ? w.event_filter.map(webhookEventLabel).join('; ')
+          : 'All events',
+        eventCodes: w.event_filter?.join(' ') ?? '',
         retryPolicy: w.retry_policy,
         enabled: w.enabled,
       })),
@@ -204,24 +191,45 @@ export function WebhooksBody({ slug }: { slug: string }) {
   const columns: Column<WebhookRow>[] = [
     {
       key: 'target',
-      label: 'Target URL',
-      render: (w) => <span className="break-all font-mono text-xs">{w.target}</span>,
+      label: 'Send to',
+      render: (w) => (
+        <button
+          type="button"
+          onClick={() => setViewing(w)}
+          aria-label={`View deliveries to ${w.target}`}
+          className="flex w-full flex-col gap-1.5 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]"
+        >
+          <span className="text-sm">{w.target}</span>
+          <span className="text-xs leading-relaxed text-muted-foreground md:hidden">
+            {w.events}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {w.enabled ? 'Active' : 'Paused'} · View deliveries
+          </span>
+        </button>
+      ),
     },
     {
       key: 'events',
-      label: 'Events',
-      render: (w) => <span className="text-xs text-muted-foreground">{w.events}</span>,
+      label: 'When',
+      priority: 'secondary',
+      render: (w) => (
+        <span className="block max-w-sm text-sm leading-relaxed [overflow-wrap:anywhere]">
+          {w.events}
+        </span>
+      ),
     },
     {
       key: 'retryPolicy',
-      label: 'Retries',
-      width: 'w-28',
-      render: (w) => <Pill label={w.retryPolicy} />,
+      label: 'If delivery fails',
+      width: 'w-36',
+      priority: 'secondary',
+      render: (w) => <Pill label={RETRY_LABELS[w.retryPolicy] ?? w.retryPolicy} />,
     },
     {
       key: 'enabled',
       label: 'Enabled',
-      width: 'w-24',
+      width: 'w-20 md:w-24',
       render: (w) => (
         <Switch
           size="sm"
@@ -235,17 +243,9 @@ export function WebhooksBody({ slug }: { slug: string }) {
     {
       key: 'id',
       label: '',
-      width: 'w-28',
+      width: 'w-20',
       render: (w) => (
         <span className="flex items-center gap-3">
-          <button
-            type="button"
-            aria-label={`Deliveries for ${w.target}`}
-            onClick={() => setViewing(w)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <List className="h-3.5 w-3.5" />
-          </button>
           <button
             type="button"
             aria-label={`Rotate secret for ${w.target}`}
@@ -289,7 +289,14 @@ export function WebhooksBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-xl">
+          <h2 className="text-base font-medium">Keep your other tools in the loop</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            When something happens in {slug}, send an event to a URL you choose. Open a webhook to
+            check its deliveries.
+          </p>
+        </div>
         <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="h-3.5 w-3.5" />
           Add webhook
@@ -298,11 +305,14 @@ export function WebhooksBody({ slug }: { slug: string }) {
       <Sheet open={creating} onClose={() => setCreating(false)} title="Add webhook">
         <form
           noValidate
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-5"
           onSubmit={(e) => {
             e.preventDefault();
             if (
-              !validation.validate({ target: targetError, secret: secretError }, e.currentTarget) ||
+              !validation.validate(
+                { target: targetError, secret: secretError, eventMode: eventError },
+                e.currentTarget
+              ) ||
               create.isPending
             )
               return;
@@ -310,7 +320,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
               .mutateAsync({
                 target_url: target.trim(),
                 webhook_secret: secret,
-                event_filter: events,
+                event_filter: eventMode === 'all' ? [] : events,
                 retry_policy: retryPolicy,
                 enabled: true,
               })
@@ -318,6 +328,8 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 setTarget('');
                 setSecret('');
                 setEvents([]);
+                setEventMode('all');
+                setRetryPolicy('default');
                 validation.resetValidation();
                 setCreating(false);
                 toast({ kind: 'success', title: 'Webhook added' });
@@ -327,12 +339,11 @@ export function WebhooksBody({ slug }: { slug: string }) {
               );
           }}
         >
-          <p className="text-xs text-muted-foreground">
-            Every matching event is POSTed as JSON with an HMAC signature. The secret is sealed on
-            save and never shown again.
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Choose where to send events from {slug} and which changes you care about.
           </p>
           <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Target URL</span>
+            <span className="text-sm font-medium">Target URL</span>
             <input
               name="target"
               maxLength={2048}
@@ -340,6 +351,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
               onChange={(e) => setTarget(e.target.value)}
               {...fieldErrorProps(shownTargetError, 'webhook-target-error')}
               placeholder="https://ops.example.com/hooks/gregale"
+              type="url"
               spellCheck={false}
               className={`${FIELD} font-mono`}
             />
@@ -347,9 +359,12 @@ export function WebhooksBody({ slug }: { slug: string }) {
               <FieldError id="webhook-target-error">{shownTargetError}</FieldError>
             )}
           </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Secret</span>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="app-webhook-secret" className="text-sm font-medium">
+              Signing secret
+            </label>
             <input
+              id="app-webhook-secret"
               name="secret"
               type="password"
               value={secret}
@@ -357,50 +372,113 @@ export function WebhooksBody({ slug }: { slug: string }) {
               {...fieldErrorProps(shownSecretError, 'webhook-secret-error')}
               placeholder="1–256 characters"
               autoComplete="new-password"
+              aria-describedby={
+                shownSecretError
+                  ? 'webhook-secret-error app-webhook-secret-help'
+                  : 'app-webhook-secret-help'
+              }
               className={`${FIELD} font-mono`}
             />
             {shownSecretError && (
               <FieldError id="webhook-secret-error">{shownSecretError}</FieldError>
             )}
-          </label>
-          <fieldset className="flex flex-col gap-1.5">
-            <legend className="label-mono text-muted-foreground">Events</legend>
-            <div className="flex flex-wrap gap-1.5 pt-1.5">
-              {EVENTS.map((ev) => {
-                const on = events.includes(ev);
-                return (
-                  <button
-                    key={ev}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() =>
-                      setEvents((prev) => (on ? prev.filter((x) => x !== ev) : [...prev, ev]))
-                    }
-                    className={`h-8 rounded-md border px-2.5 font-mono text-xs pressable ${
-                      on
-                        ? 'border-brand bg-brand/10 text-foreground'
-                        : 'border-border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {ev}
-                  </button>
-                );
-              })}
-            </div>
-            <span className="text-xs text-muted-foreground">None selected means every event.</span>
-          </fieldset>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Retries</span>
-            <Select
-              value={retryPolicy}
-              onChange={(e) => setRetryPolicy(e.target.value as RetryPolicy)}
-              className={FIELD}
+            <span
+              id="app-webhook-secret-help"
+              className="text-xs leading-relaxed text-muted-foreground"
             >
-              <option value="default">default — back off over 7 tries</option>
-              <option value="aggressive">aggressive — tighter back-off</option>
-              <option value="none">none — one attempt</option>
-            </Select>
-          </label>
+              Use the same secret in your receiver to verify messages came from Gregale. You cannot
+              read it back after saving.
+            </span>
+          </div>
+          <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+            <legend className="text-sm font-medium">Which events should we send?</legend>
+            <div className="grid gap-2">
+              {(['all', 'selected'] as const).map((mode) => (
+                <label
+                  key={mode}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm ${eventMode === mode ? 'border-brand/50 bg-brand/5' : 'border-border'}`}
+                >
+                  <input
+                    type="radio"
+                    name="eventMode"
+                    value={mode}
+                    checked={eventMode === mode}
+                    onChange={() => setEventMode(mode)}
+                    className="size-4 accent-[color:var(--brand)]"
+                    {...fieldErrorProps(shownEventError, 'webhook-events-error')}
+                  />
+                  {mode === 'all' ? 'All events' : 'Choose events'}
+                </label>
+              ))}
+            </div>
+            {eventMode === 'all' ? (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Includes all supported app events, including new event types added in the future.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4 rounded-lg border border-border p-3">
+                {[...new Set(WEBHOOK_EVENTS.map((item) => item.group))].map((group) => (
+                  <fieldset key={group}>
+                    <legend className="mb-2 text-xs font-medium text-muted-foreground">
+                      {group}
+                    </legend>
+                    <div className="grid gap-1 sm:grid-cols-2 sm:gap-x-4">
+                      {WEBHOOK_EVENTS.filter((item) => item.group === group).map(
+                        ({ event, label }) => (
+                          <label
+                            key={event}
+                            className="flex cursor-pointer items-start gap-2.5 rounded px-1 py-2 text-sm hover:bg-muted/50"
+                            title={event}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={events.includes(event)}
+                              onChange={(e) =>
+                                setEvents((prev) =>
+                                  e.target.checked
+                                    ? [...prev, event]
+                                    : prev.filter((item) => item !== event)
+                                )
+                              }
+                              className="mt-0.5 size-4 shrink-0 accent-[color:var(--brand)]"
+                            />
+                            {label}
+                          </label>
+                        )
+                      )}
+                    </div>
+                  </fieldset>
+                ))}
+                <p className="text-xs text-muted-foreground">{events.length} selected</p>
+              </div>
+            )}
+            {shownEventError && (
+              <FieldError id="webhook-events-error">{shownEventError}</FieldError>
+            )}
+          </fieldset>
+          <details className="border-t border-border pt-4">
+            <summary className="cursor-pointer text-sm font-medium">Advanced settings</summary>
+            <div className="flex flex-col gap-3 pt-4">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Events are sent as JSON in a signed HTTP POST request.
+              </p>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">If delivery fails</span>
+                <Select
+                  value={retryPolicy}
+                  onChange={(e) => setRetryPolicy(e.target.value as RetryPolicy)}
+                  className={FIELD}
+                >
+                  <option value="default">Retry automatically</option>
+                  <option value="aggressive">Retry sooner</option>
+                  <option value="none">Do not retry</option>
+                </Select>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Automatic retries wait longer between attempts. Retry sooner uses shorter waits.
+              </p>
+            </div>
+          </details>
           <div className="flex justify-end">
             <Button type="submit" size="sm" busy={create.isPending}>
               Add webhook
@@ -413,10 +491,11 @@ export function WebhooksBody({ slug }: { slug: string }) {
         rows={rows}
         columns={columns}
         initialSort={{ key: 'target', dir: 'asc' }}
-        searchKeys={['target', 'events']}
-        searchPlaceholder="Filter by target URL…"
+        searchKeys={['target', 'events', 'eventCodes']}
+        searchPlaceholder="Find a destination or event…"
         emptyMessage={`No webhooks for ${slug}.`}
-        minWidth="min-w-[900px]"
+        minWidth="min-w-0"
+        desktopMinWidth="md:min-w-[740px]"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}

@@ -47,7 +47,7 @@ describe('webhook form validation', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
     const sheet = await screen.findByRole('dialog');
     const target = within(sheet).getByRole('textbox', { name: 'Target URL' });
-    const secret = within(sheet).getByLabelText('Secret');
+    const secret = within(sheet).getByLabelText('Signing secret');
 
     await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
     expect(target).toHaveFocus();
@@ -76,15 +76,16 @@ describe('webhook form validation', () => {
     render(<WebhooksBody slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
     const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByRole('radio', { name: 'Choose events' }));
     for (const stale of ['cron.fired', 'app.created', 'build.failed', 'budget.threshold']) {
-      expect(within(sheet).queryByRole('button', { name: stale })).not.toBeInTheDocument();
+      expect(within(sheet).queryByRole('checkbox', { name: stale })).not.toBeInTheDocument();
     }
     await userEvent.type(
       within(sheet).getByRole('textbox', { name: 'Target URL' }),
       'https://hooks.example.com'
     );
-    await userEvent.type(within(sheet).getByLabelText('Secret'), 'x');
-    await userEvent.click(within(sheet).getByRole('button', { name: 'deployment.live' }));
+    await userEvent.type(within(sheet).getByLabelText('Signing secret'), 'x');
+    await userEvent.click(within(sheet).getByRole('checkbox', { name: 'A deployment goes live' }));
     await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
 
     await waitFor(() =>
@@ -101,7 +102,7 @@ describe('webhook form validation', () => {
     const sheet = await screen.findByRole('dialog');
     const target = within(sheet).getByRole('textbox', { name: 'Target URL' });
     fireEvent.change(target, { target: { value: `https://example.com/${'a'.repeat(2030)}` } });
-    await userEvent.type(within(sheet).getByLabelText('Secret'), 'x{Enter}');
+    await userEvent.type(within(sheet).getByLabelText('Signing secret'), 'x{Enter}');
 
     expect(target).toHaveAccessibleDescription('Target URLs can be at most 2048 characters.');
     expect(createWebhook).not.toHaveBeenCalled();
@@ -131,7 +132,61 @@ describe('webhook directions', () => {
       <WebhooksHub accountId="account-1" slug="api" direction="inbound" onDirection={onDirection} />
     );
     expect(screen.getByText('Inbound endpoints for api')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Outbound' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send events' }));
     expect(onDirection).toHaveBeenCalledWith('outbound');
   });
+});
+
+it('requires a selected event instead of silently subscribing to everything', async () => {
+  createWebhook.mockReset().mockResolvedValue({ id: 'webhook-1' });
+  render(<WebhooksBody slug="api" />);
+  await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+  const sheet = await screen.findByRole('dialog');
+  await userEvent.type(
+    within(sheet).getByRole('textbox', { name: 'Target URL' }),
+    'https://hooks.example.com'
+  );
+  await userEvent.type(within(sheet).getByLabelText('Signing secret'), 'x');
+  const choose = within(sheet).getByRole('radio', { name: 'Choose events' });
+  await userEvent.click(choose);
+  const deployment = within(sheet).getByRole('checkbox', { name: 'A deployment goes live' });
+  await userEvent.click(deployment);
+  await userEvent.click(deployment);
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
+  expect(createWebhook).not.toHaveBeenCalled();
+  expect(choose).toHaveFocus();
+  expect(choose).toHaveAccessibleDescription('Choose at least one event, or select All events.');
+  await userEvent.click(within(sheet).getByRole('radio', { name: 'All events' }));
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
+  await waitFor(() =>
+    expect(createWebhook).toHaveBeenCalledWith(expect.objectContaining({ event_filter: [] }))
+  );
+});
+
+it('retains selected events across mode changes and submits advanced retry policy', async () => {
+  createWebhook.mockReset().mockResolvedValue({ id: 'webhook-1' });
+  render(<WebhooksBody slug="api" />);
+  await userEvent.click(screen.getByRole('button', { name: 'Add webhook' }));
+  const sheet = await screen.findByRole('dialog');
+  await userEvent.type(
+    within(sheet).getByRole('textbox', { name: 'Target URL' }),
+    'https://hooks.example.com'
+  );
+  await userEvent.type(within(sheet).getByLabelText('Signing secret'), 'x');
+  await userEvent.click(within(sheet).getByRole('radio', { name: 'Choose events' }));
+  await userEvent.click(within(sheet).getByRole('checkbox', { name: 'A deployment fails' }));
+  await userEvent.click(within(sheet).getByRole('radio', { name: 'All events' }));
+  await userEvent.click(within(sheet).getByRole('radio', { name: 'Choose events' }));
+  expect(within(sheet).getByRole('checkbox', { name: 'A deployment fails' })).toBeChecked();
+  await userEvent.click(within(sheet).getByText('Advanced settings'));
+  await userEvent.selectOptions(
+    within(sheet).getByRole('combobox', { name: 'If delivery fails' }),
+    'none'
+  );
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Add webhook' }));
+  await waitFor(() =>
+    expect(createWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ event_filter: ['deployment.failed'], retry_policy: 'none' })
+    )
+  );
 });

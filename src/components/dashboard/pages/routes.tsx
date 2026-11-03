@@ -70,6 +70,13 @@ export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="max-w-2xl">
+        <h2 className="text-base font-medium">See which routes receive traffic</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          These paths appeared in requests to {slug}. Routes are defined in your app’s code; this
+          list fills in as traffic arrives.
+        </p>
+      </div>
       {unavailable && (
         <p
           role="status"
@@ -104,7 +111,7 @@ export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }
               ? `No routes observed for ${slug} yet.`
               : 'Create an app first.'
         }
-        minWidth="min-w-[600px]"
+        minWidth="min-w-0"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}

@@ -114,7 +114,7 @@ describe('AlertRuleForm', () => {
       'https://hooks.example.com/a'
     );
     await userEvent.type(screen.getByLabelText('Webhook secret'), 'shh');
-    await userEvent.click(screen.getByRole('checkbox', { name: /alert.resolved/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /when the issue is resolved/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
@@ -170,7 +170,8 @@ describe('AlertRuleForm', () => {
     const windows = within(screen.getByRole('combobox', { name: 'Window' }))
       .getAllByRole('option')
       .map((o) => o.textContent);
-    expect(windows).not.toContain('7d');
+    expect(windows).not.toContain('7 days');
+    expect(windows).toContain('15 minutes');
     await userEvent.click(await screen.findByRole('checkbox', { name: /ops-slack/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
     expect(screen.getByRole('textbox', { name: 'Log query' })).toHaveFocus();
@@ -231,4 +232,46 @@ describe('AlertRuleForm', () => {
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({ failure_source: 'inbound_webhook' });
   });
+});
+
+it('reveals an invalid advanced setting before focusing it, preserving the draft', async () => {
+  api();
+  renderWithProviders(<AlertRuleForm slug="api" />);
+  await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Quiet overnight');
+  await userEvent.click(await screen.findByRole('checkbox', { name: /ops-slack/ }));
+  const toggle = screen.getByText('Advanced settings');
+  const details = toggle.closest('details')!;
+  expect(details.open).toBe(false);
+  await userEvent.click(toggle);
+  const cooldown = screen.getByRole('spinbutton', { name: /Minutes between repeat alerts/ });
+  await userEvent.clear(cooldown);
+  await userEvent.type(cooldown, '2');
+  await userEvent.click(toggle);
+  expect(details.open).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+  expect(details.open).toBe(true);
+  expect(cooldown).toHaveFocus();
+  expect(cooldown).toHaveAccessibleDescription('Enter whole minutes from 5 to 1440.');
+  expect(created).toHaveLength(0);
+  await userEvent.clear(cooldown);
+  await userEvent.type(cooldown, '60');
+  await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+  await waitFor(() => expect(created).toHaveLength(1));
+  expect(created[0]).toMatchObject({
+    name: 'Quiet overnight',
+    cooldown_minutes: 60,
+    channel_ids: [CHANNEL.id],
+  });
+});
+
+it('keeps the condition preview aligned with comparison and time range', async () => {
+  api();
+  renderWithProviders(<AlertRuleForm slug="api" />);
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Is' }), 'lte');
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Window' }), '1h');
+  expect(screen.getByText('Error rate is at most 5%')).toBeInTheDocument();
+  expect(screen.getByText(/1 hour evaluation window/)).toBeInTheDocument();
+  await userEvent.clear(screen.getByRole('spinbutton', { name: 'Threshold' }));
+  expect(screen.queryByText('Error rate is at most 0%')).not.toBeInTheDocument();
+  expect(screen.getByText(/Choose a valid threshold to preview/)).toBeInTheDocument();
 });
