@@ -4,7 +4,7 @@ import type { CapabilityAccess } from '@/lib/capability-state';
 import { Panel } from './primitives';
 
 /** Same wording as CAPABILITY_LABELS, so every gate reads alike. */
-const MESSAGES: Record<Exclude<CapabilityAccess, 'on'>, string> = {
+export const GATE_MESSAGES: Record<Exclude<CapabilityAccess, 'on'>, string> = {
   loading: 'Checking availability…',
   off: 'Not enabled for this account',
   'plan-not-entitled': 'Not included in your plan',
@@ -34,7 +34,7 @@ export function CapabilityGate({
         role="status"
         className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"
       >
-        <span>{MESSAGES[access]}</span>
+        <span>{GATE_MESSAGES[access]}</span>
         {access === 'off' && (
           <a className="text-brand underline" href="/dashboard/settings?section=previews">
             See previews you can join

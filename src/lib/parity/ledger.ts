@@ -351,11 +351,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 48,
     name: 'Snapshot lifecycle hooks: run app code before checkpoint and after restore',
-    status: 'cli',
-    surfaces: [],
-    cli: 'gregale deploy (gregale.yaml before_checkpoint and after_restore)',
-    gap: 'Snapshot lifecycle hooks are not shown in the console',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    capability: 'snapshot-lifecycle-hooks',
   },
   // C49 · GA
   {

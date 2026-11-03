@@ -31,6 +31,7 @@ import { PolicyStatus } from './policy-status';
 import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
 import { HealthProbes } from './health-probes';
+import { SnapshotHooks } from './snapshot-hooks';
 import { AppReleaseSettings } from './app-release-settings';
 
 /**
@@ -810,6 +811,7 @@ export function AppConfiguration({ slug }: { slug: string }) {
       <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
       <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
       <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
+      <SnapshotHooks key={`hooks:${data.id}:${data.slug}`} app={data} />
       <GatedSupplyChainPanel slug={data.slug} />
       <RegistryCredentialsPanel slug={data.slug} />
       <DeployTokensPanel slug={data.slug} />
