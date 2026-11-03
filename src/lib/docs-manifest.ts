@@ -91,6 +91,13 @@ export const DOC_SECTIONS: DocSection[] = [
           'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
       },
       {
+        slug: 'cli-command-tree',
+        source: 'docs/cli-command-tree.md',
+        title: 'CLI command tree',
+        summary:
+          'How every gregale command is named (noun, subnoun, verb) and the older names that still work.',
+      },
+      {
         slug: 'agents',
         source: 'docs/agents.md',
         title: 'Use Gregale from coding agents',
@@ -115,6 +122,13 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Scaling policy',
         summary:
           'Instance bounds, scaling signals, custom metrics, and scheduled warm windows per app.',
+      },
+      {
+        slug: 'postgres',
+        source: 'docs/postgres.md',
+        title: 'Managed PostgreSQL',
+        summary:
+          'A database per app with its URL delivered as a secret, point-in-time restore, compute that stops when idle, and the plan limits.',
       },
       {
         slug: 'storage',

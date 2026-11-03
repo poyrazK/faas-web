@@ -232,6 +232,30 @@ describe('InvocationDelivery', () => {
     mount(<InvocationDelivery appSlug="docs" invocation={invocation()} />);
     expect(get).not.toHaveBeenCalled();
   });
+
+  it('shows the retry curve the invocation was admitted with, and how long it is kept', () => {
+    mount(
+      <InvocationDelivery
+        appSlug="docs"
+        invocation={invocation({
+          retry_policy: { max_attempts: 4, base_seconds: 1, max_seconds: 30, jitter_seconds: 0.2 },
+          result_retention_until: iso(24 * HOUR),
+        })}
+      />
+    );
+    expect(
+      screen.getByText(
+        'Up to 4 attempts, first retry after 1 s, doubling to at most 30 s, ±20% jitter'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText('Kept until')).toBeInTheDocument();
+  });
+
+  it("says the plan's window applies when no retention was asked for", () => {
+    mount(<InvocationDelivery appSlug="docs" invocation={invocation({ retry_policy: null })} />);
+    expect(screen.queryByText('Retries')).not.toBeInTheDocument();
+    expect(screen.getByText("The plan's window")).toBeInTheDocument();
+  });
 });
 
 describe('AsyncInvocationsMaturity', () => {

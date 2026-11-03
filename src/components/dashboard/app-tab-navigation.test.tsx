@@ -50,3 +50,9 @@ describe('visibleAppTabs', () => {
     );
   });
 });
+
+it('includes Workflows in Automate and honors its capability', () => {
+  expect(group('Automate')).toContain('Workflows');
+  expect(APP_TAB_CAPABILITY.Workflows).toBe('workflows');
+  expect(visibleAppTabs((id) => (id === 'workflows' ? 'off' : 'on'))).not.toContain('Workflows');
+});

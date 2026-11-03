@@ -36,6 +36,14 @@ export const projects: Project[] = db.EMPTY
         }),
       };
     });
+// Apps report their project (AppResponse.project_id; faas handlers.go:1003),
+// so the GitHub panel can tell a project app from a standalone one.
+for (const project of projects)
+  for (const workload of project.workloads) {
+    const member = db.apps.find((app) => app.slug === workload.slug);
+    if (member) member.project_id = project.id;
+  }
+
 export function projectSummaries() {
   return projects.map(({ workloads, exclusions, ...project }) => ({
     ...project,

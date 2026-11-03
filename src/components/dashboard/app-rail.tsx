@@ -73,6 +73,7 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Consumers: Community,
   'Consumer plans': CreditCard,
   Automations: GitFork,
+  Workflows: GitFork,
   Queues: List,
   Webhooks: Antenna,
   Environment: Key,

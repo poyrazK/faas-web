@@ -1,5 +1,6 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
+import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.ts';
 
 /**
  * Documentation for coding agents, written by `scripts/prerender.mjs`:
@@ -37,8 +38,28 @@ export function markdownPage(entry: DocEntry, source: string, siteUrl: string): 
   );
 }
 
+/**
+ * Claims the intro may carry, by placeholder. The intro is hand-written prose,
+ * but a figure in it is still public copy: `platform-claims.ts` stays its one
+ * home, and the intro names it as `{{RESTORE_TARGET}}` rather than retyping
+ * it. An unknown placeholder fails the build instead of shipping braces.
+ */
+const INTRO_CLAIMS: Record<string, string> = {
+  BETA_STATUS,
+  RESTORE_CONTEXT,
+  RESTORE_TARGET,
+};
+
+export function renderIntro(intro: string): string {
+  return intro.trim().replace(/\{\{([A-Z_]+)\}\}/g, (match, name: string) => {
+    const claim = INTRO_CLAIMS[name];
+    if (claim === undefined) throw new Error(`llms intro: unknown placeholder ${match}`);
+    return claim;
+  });
+}
+
 export function llmsIndex(intro: string, siteUrl: string): string {
-  const parts = [intro.trim()];
+  const parts = [renderIntro(intro)];
   if (findDoc(AGENTS_SLUG)) {
     parts.push(
       `Coding agents: start with [Use Gregale from coding agents](${markdownUrl(siteUrl, AGENTS_SLUG)}). ` +
@@ -60,7 +81,7 @@ export function llmsIndex(intro: string, siteUrl: string): string {
 }
 
 export function llmsFull(intro: string, pages: string[]): string {
-  return [intro.trim(), ...pages.map((page) => page.trim())].join('\n\n') + '\n';
+  return [renderIntro(intro), ...pages.map((page) => page.trim())].join('\n\n') + '\n';
 }
 
 /**

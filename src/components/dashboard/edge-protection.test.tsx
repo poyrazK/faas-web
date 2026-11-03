@@ -33,6 +33,10 @@ const account = vi.fn();
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: account() as unknown }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+// The guard's editor has its own tests (pre-auth-guard.test.tsx).
+vi.mock('./pre-auth-guard', () => ({
+  PreAuthGuardPanel: ({ slug }: { slug: string }) => <div>pre-auth guard for {slug}</div>,
+}));
 
 const { EdgeProtectionBody } = await import('./edge-protection');
 
@@ -308,21 +312,17 @@ describe('pre-auth observations', () => {
     expect(screen.getByText(/rejected 3 requests that succeeded/)).toBeInTheDocument();
   });
 
-  it('says no guard is configured and gives the command when there are no policies', () => {
+  it('says no guard is configured and points to the editor when there are no policies', () => {
     usePreAuthObservations.mockReturnValue(ready(observations({ policies: [] })));
     render(<EdgeProtectionBody slug="api" />);
-    expect(screen.getByText(/no pre-auth guard is on/i)).toBeInTheDocument();
-    expect(
-      screen.getByText('gregale app api --pre-auth observe --pre-auth-rps 10 --pre-auth-burst 20')
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no pre-auth guard is on/i)).toHaveTextContent(
+      /in the pre-auth guard above/
+    );
+    expect(screen.queryByText(/gregale app api --pre-auth/)).toBeNull();
   });
 
-  it("starts a Free app's guard at the plan's rate", () => {
-    account.mockReturnValue({ id: 'acct', plan: 'free' });
-    usePreAuthObservations.mockReturnValue(ready(observations({ policies: [] })));
+  it('puts the guard editor beside its observations', () => {
     render(<EdgeProtectionBody slug="api" />);
-    expect(
-      screen.getByText('gregale app api --pre-auth observe --pre-auth-rps 5 --pre-auth-burst 20')
-    ).toBeInTheDocument();
+    expect(screen.getByText('pre-auth guard for api')).toBeInTheDocument();
   });
 });

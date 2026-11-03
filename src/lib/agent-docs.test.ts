@@ -1,6 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { absoluteLinks, llmsFull, llmsIndex, markdownPage, markdownUrl } from './agent-docs';
+import {
+  absoluteLinks,
+  llmsFull,
+  llmsIndex,
+  markdownPage,
+  markdownUrl,
+  renderIntro,
+} from './agent-docs';
 import { DOC_ENTRIES, findDoc } from './docs-manifest';
+import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims';
 
 const SITE = 'https://gregale.dev';
 
@@ -85,6 +95,27 @@ describe('llmsFull', () => {
   it('joins the intro and pages with blank lines', () => {
     expect(llmsFull('# Gregale\n', ['# A\n\nbody\n', '# B\n'])).toBe(
       '# Gregale\n\n# A\n\nbody\n\n# B\n'
+    );
+  });
+});
+
+describe('renderIntro', () => {
+  it('fills each claim from its one home', () => {
+    expect(renderIntro('A ({{RESTORE_TARGET}}). {{RESTORE_CONTEXT}} {{BETA_STATUS}}\n')).toBe(
+      `A (${RESTORE_TARGET}). ${RESTORE_CONTEXT} ${BETA_STATUS}`
+    );
+  });
+
+  it('refuses a placeholder it does not know rather than shipping braces', () => {
+    expect(() => renderIntro('{{FASTEST_COLD_START}}')).toThrow(/unknown placeholder/);
+  });
+
+  it('renders the real intro with every claim filled', () => {
+    const intro = renderIntro(readFileSync(resolve('content/llms-intro.md'), 'utf8'));
+    expect(intro).not.toContain('{{');
+    expect(intro).toContain(RESTORE_TARGET);
+    expect(llmsIndex(readFileSync(resolve('content/llms-intro.md'), 'utf8'), SITE)).toContain(
+      RESTORE_TARGET
     );
   });
 });

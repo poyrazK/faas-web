@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
+import { projectKeys } from './projects';
 import { retryPolicy } from './queries';
 import type { components } from './schema';
 
@@ -20,6 +21,8 @@ export type VerificationRunSummary = S['BindingVerificationRunSummary'];
 export type VerificationDiagnostics = S['BindingVerificationRunDiagnostics'];
 export type CreateVerificationRunBody = S['CreateBindingVerificationRunRequest'];
 export type QueueCanary = S['QueueBindingCanary'];
+export type ProjectVerificationRun = S['ProjectBindingVerificationRun'];
+export type ProjectVerificationDiagnostics = S['ProjectBindingVerificationRunDiagnostics'];
 export type QueueEvidence = 'consumer_readiness' | 'handler_completion';
 export type StorageMode = 'read' | 'write' | 'read_write';
 
@@ -199,6 +202,13 @@ export const verificationRunsKey = (accountId: string, slug: string) =>
   [...appKey(accountId, slug), 'binding-verification-runs'] as const;
 export const verificationRunKey = (accountId: string, slug: string, run: string) =>
   [...verificationRunsKey(accountId, slug), run] as const;
+export const verificationRunListKey = (accountId: string, slug: string, filter: RunListFilter) =>
+  [
+    ...verificationRunsKey(accountId, slug),
+    'list',
+    filter.status,
+    Boolean(filter.includeMembers),
+  ] as const;
 export const runDiagnosticsKey = (accountId: string, slug: string, run: string) =>
   [...verificationRunKey(accountId, slug, run), 'diagnostics'] as const;
 export const queueCanaryKey = (accountId: string, slug: string, canary: string) =>
@@ -254,16 +264,41 @@ export function useSetReleasePolicy(accountId: string, slug: string, scope: stri
 const RUNS = '/v1/apps/{slug}/bindings/verification-runs' as const;
 const RUN = '/v1/apps/{slug}/bindings/verification-runs/{run}' as const;
 
-export function useVerificationRuns(accountId: string, slug: string) {
+/**
+ * The list filters both listings take (faas handlers_binding_verification_run_list.go:13-47):
+ * a status is the effective retained one, so `expired` is a pending or passed
+ * receipt past its deadline at the page's observation time
+ * (state/binding_verification_run_list.go:49-54). A cursor is bound to the
+ * filter it was issued for, so every page resends it.
+ */
+export const RUN_STATUSES = ['pending', 'passed', 'cancelled', 'expired'] as const;
+export type RunStatusFilter = (typeof RUN_STATUSES)[number] | 'all';
+export interface RunListFilter {
+  status: RunStatusFilter;
+  /** App listings only: include receipts created as members of project graphs. */
+  includeMembers?: boolean;
+}
+
+function runListQuery(filter: RunListFilter, cursor: string) {
+  return {
+    limit: 20,
+    ...(filter.status !== 'all' ? { status: filter.status } : {}),
+    ...(filter.includeMembers ? { include_members: true } : {}),
+    ...(cursor ? { cursor } : {}),
+  };
+}
+
+export function useVerificationRuns(
+  accountId: string,
+  slug: string,
+  filter: RunListFilter = { status: 'all' }
+) {
   return useInfiniteQuery({
-    queryKey: verificationRunsKey(accountId, slug),
+    queryKey: verificationRunListKey(accountId, slug, filter),
     queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET(RUNS, {
-          params: {
-            path: { slug },
-            query: { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) },
-          },
+          params: { path: { slug }, query: runListQuery(filter, pageParam) },
           signal,
         })
       ),
@@ -303,14 +338,33 @@ export function useRunDiagnostics(accountId: string, slug: string, run: string, 
 }
 
 /** Side-effect free: no receipt, no task, no message (ADR-1357). */
-export function reviewVerification(slug: string, deploymentId?: string) {
+/**
+ * `serviceTargets` pins a declared service binding to one live deployment of
+ * its target app in the caller's scope, so a run verifies against that exact
+ * target, such as a candidate before it serves. The server refuses targets
+ * for undeclared services, non-canonical UUIDs, an ineligible deployment, or
+ * a managed caller whose targets come from its reviewed release (faas
+ * apidserver/binding_verification_service_targets.go:13-38). A run's create
+ * echoes the reviewed targets back.
+ */
+export function reviewVerification(
+  slug: string,
+  deploymentId?: string,
+  serviceTargets: Record<string, string> = {}
+) {
   return unwrap(
     api.POST('/v1/apps/{slug}/bindings/verification-runs/review', {
       params: { path: { slug } },
-      body: deploymentId ? { deployment_id: deploymentId } : {},
+      body: {
+        ...(deploymentId ? { deployment_id: deploymentId } : {}),
+        ...(Object.keys(serviceTargets).length ? { service_targets: serviceTargets } : {}),
+      },
     })
   );
 }
+
+/** api.IsServiceBindingTargetProbeCommand takes only the canonical lowercase form. */
+export const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function createVerificationRun(slug: string, body: CreateVerificationRunBody) {
   return unwrap(api.POST(RUNS, { params: { path: { slug } }, body }));
@@ -338,6 +392,131 @@ export function admitStep(slug: string, run: string, step: number) {
 export function useRunWrites(accountId: string, slug: string) {
   const client = useQueryClient();
   return () => void client.invalidateQueries({ queryKey: verificationRunsKey(accountId, slug) });
+}
+
+// --- Project graph runs -----------------------------------------------------
+
+/**
+ * Durable project verification graphs (faas handlers_project_binding_
+ * verification_runs.go): one receipt that pins a prepared release set's
+ * members, each an app run with a shared admission budget and deadline. As
+ * with app runs, nothing advances on its own: member steps are admitted
+ * through each member app's own admit route (pkg/bindingrun/runner.go:554),
+ * and completion is asked of the graph.
+ */
+const GRAPH_RUNS =
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs' as const;
+const GRAPH_RUN =
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}' as const;
+
+export const projectRunsKey = (accountId: string, project: string, environment: string) =>
+  [
+    ...projectKeys.detail(accountId, project),
+    'environments',
+    environment,
+    'graph-verification-runs',
+  ] as const;
+const projectRunListKey = (
+  accountId: string,
+  project: string,
+  environment: string,
+  status: RunStatusFilter
+) => [...projectRunsKey(accountId, project, environment), 'list', status] as const;
+const projectRunKey = (accountId: string, project: string, environment: string, run: string) =>
+  [...projectRunsKey(accountId, project, environment), run] as const;
+
+export function useProjectVerificationRuns(
+  accountId: string,
+  project: string,
+  environment: string,
+  status: RunStatusFilter
+) {
+  return useInfiniteQuery({
+    queryKey: projectRunListKey(accountId, project, environment, status),
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET(GRAPH_RUNS, {
+          params: {
+            path: { slug: project, environment },
+            query: runListQuery({ status }, pageParam),
+          },
+          signal,
+        })
+      ),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    enabled: Boolean(accountId && project && environment),
+    retry: retryPolicy,
+  });
+}
+
+/** Status rechecks the frozen graph on every read, so poll while pending. */
+export function useProjectVerificationRun(
+  accountId: string,
+  project: string,
+  environment: string,
+  run: string
+) {
+  return useQuery({
+    queryKey: projectRunKey(accountId, project, environment, run),
+    queryFn: ({ signal }) =>
+      unwrap(api.GET(GRAPH_RUN, { params: { path: { slug: project, environment, run } }, signal })),
+    enabled: Boolean(accountId && project && environment && run),
+    retry: retryPolicy,
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 5_000 : false),
+  });
+}
+
+export function useProjectRunDiagnostics(
+  accountId: string,
+  project: string,
+  environment: string,
+  run: string,
+  live = false
+) {
+  return useQuery({
+    queryKey: [...projectRunKey(accountId, project, environment, run), 'diagnostics'],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET(
+          '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/diagnostics',
+          { params: { path: { slug: project, environment, run } }, signal }
+        )
+      ),
+    enabled: Boolean(accountId && project && environment && run),
+    retry: retryPolicy,
+    refetchInterval: live ? 5_000 : false,
+  });
+}
+
+export function projectRunAction(
+  project: string,
+  environment: string,
+  run: string,
+  action: RunAction
+) {
+  const params = { params: { path: { slug: project, environment, run } } };
+  if (action === 'cancel') return unwrap(api.DELETE(GRAPH_RUN, params));
+  if (action === 'complete')
+    return unwrap(
+      api.POST(
+        '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/complete',
+        params
+      )
+    );
+  return unwrap(
+    api.POST(
+      '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/resume',
+      params
+    )
+  );
+}
+
+/** A graph write changes the graph, its members and every listing of it. */
+export function useProjectRunWrites(accountId: string, project: string, environment: string) {
+  const client = useQueryClient();
+  return () =>
+    void client.invalidateQueries({ queryKey: projectRunsKey(accountId, project, environment) });
 }
 
 // --- Queue canaries ---------------------------------------------------------

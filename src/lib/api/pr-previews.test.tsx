@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './errors';
 import {
   PREVIEW_SLUG_MAX,
+  parsePreviewSlug,
   previewSlugFor,
   useCreatePreview,
   usePreview,
@@ -85,6 +86,37 @@ describe('useCreatePreview', () => {
     await hook.result.current.mutateAsync({ parent: 'checkout', prNumber: 42, ttlHours: 168 });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['apps'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['preview', 'pr-42-checkout'] });
+  });
+
+  it("refreshes a company's inventory when the preview is the company's", async () => {
+    // A preview carries its parent's organization (faas handlers_preview_create.go:211),
+    // so it joins GET /v1/orgs/{slug}/apps, not the personal /v1/apps.
+    spyApi('POST').mockResolvedValue(reply(app, 201));
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const hook = renderHook(() => useCreatePreview(), { wrapper: wrapper(client) });
+    await hook.result.current.mutateAsync({
+      parent: 'checkout',
+      prNumber: 42,
+      ttlHours: 168,
+      org: 'acme-corp',
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orgs', 'acme-corp', 'apps'] });
+  });
+});
+
+describe('parsePreviewSlug', () => {
+  it('reads the PR number and parent the way faas IsPreviewAppSlug does', () => {
+    expect(parsePreviewSlug('pr-42-checkout')).toEqual({ prNumber: 42, parent: 'checkout' });
+    expect(parsePreviewSlug('pr-7-search-indexer')).toEqual({
+      prNumber: 7,
+      parent: 'search-indexer',
+    });
+    expect(parsePreviewSlug('checkout')).toBeNull();
+    expect(parsePreviewSlug('pr-x-checkout')).toBeNull();
+    expect(parsePreviewSlug('pr-07-checkout')).toBeNull();
+    expect(parsePreviewSlug('pr-42-')).toBeNull();
+    expect(parsePreviewSlug('pr-42')).toBeNull();
   });
 });
 

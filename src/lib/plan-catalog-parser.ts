@@ -2,7 +2,8 @@ export interface CatalogPlan {
   name: string;
   monthly: number;
   deployedApps: number;
-  previewApps: number;
+  /** Open pull requests that may hold a preview environment at once. */
+  previewEnvironments: number;
   developerApps: number;
   concurrentInstances: number;
   ramMb: number;
@@ -13,7 +14,7 @@ export interface CatalogPlan {
 }
 
 const HEADER =
-  '| Plan | Monthly | Deployed apps | PR preview apps | Developer apps | Concurrent instances | RAM / app | Included GB-RAM-hours | App layer | Idle timeout | Max request timeout |';
+  '| Plan | Monthly | Deployed apps | PR preview environments | Developer apps | Concurrent instances | RAM / app | Included GB-RAM-hours | App layer | Idle timeout | Max request timeout |';
 
 const CELL_PATTERNS = [
   /^\*\*([A-Za-z]+)\*\*$/,
@@ -33,7 +34,7 @@ const CELL_PATTERNS = [
  * Reject format changes during build rather than publishing guessed prices.
  *
  * Only the "At a glance" table is read: the generated page also carries
- * developer-environment and realtime tables whose rows use the same bold
+ * developer-environment, realtime and object-storage tables whose rows use the same bold
  * plan-name cells, so rows are taken from directly under the known header
  * rather than from anywhere in the document. */
 export function parsePlanCatalog(source: string): {
@@ -69,7 +70,7 @@ export function parsePlanCatalog(source: string): {
       name: values[0]!,
       monthly: Number(values[1]),
       deployedApps: Number(values[2]),
-      previewApps: Number(values[3]),
+      previewEnvironments: Number(values[3]),
       developerApps: Number(values[4]),
       concurrentInstances: Number(values[5]),
       ramMb: Number(values[6]),

@@ -1,21 +1,29 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { Deployment } from '@/lib/api/queries';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const promote = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
 const capability = vi.fn();
+const serving = vi.fn();
+const refetchServing = vi.fn();
 
-vi.mock('@/lib/api/deployment-detail', () => ({
+vi.mock('@/lib/api/deployment-detail', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/deployment-detail')>()),
   usePromoteDeployment: () => ({ mutateAsync: promote, isPending: false }),
+  useServingRows: (...args: unknown[]) => serving(...args) as unknown,
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: (key: string) => capability(key) as unknown,
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 
 const { PromoteDeployment } = await import('./deployment-promote');
@@ -36,6 +44,18 @@ function deployment(over: Partial<Deployment> = {}): Deployment {
 
 const available = { accountId: 'acc', state: 'available', refresh: vi.fn() };
 
+const SERVING_ID = 'b1b2b3b4-0000-4000-8000-000000000043';
+const servingRow = (over: Partial<Deployment> = {}) =>
+  deployment({ id: SERVING_ID, revision: 43, traffic_percent: 100, ...over });
+const servingRead = (rows: Deployment[], over: Record<string, unknown> = {}) => ({
+  data: { rows, complete: true },
+  error: null,
+  isPending: false,
+  isFetching: false,
+  refetch: refetchServing,
+  ...over,
+});
+
 beforeEach(() => {
   promote
     .mockReset()
@@ -43,11 +63,13 @@ beforeEach(() => {
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
   capability.mockReset().mockReturnValue(available);
+  refetchServing.mockReset().mockResolvedValue({});
+  serving.mockReset().mockReturnValue(servingRead([servingRow()]));
 });
 
 describe('PromoteDeployment', () => {
   it('is offered only for a live release that does not already serve everything', () => {
-    const { rerender } = render(<PromoteDeployment deployment={deployment()} />);
+    const { rerender } = render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
     expect(screen.getByRole('button', { name: /promote v44/i })).toBeInTheDocument();
     const cases: Partial<Deployment>[] = [
       { status: 'superseded' },
@@ -68,13 +90,13 @@ describe('PromoteDeployment', () => {
       },
     ];
     for (const over of cases) {
-      rerender(<PromoteDeployment deployment={deployment(over)} />);
+      rerender(<PromoteDeployment slug="alpha" deployment={deployment(over)} />);
       expect(screen.queryByRole('button', { name: /promote/i })).not.toBeInTheDocument();
     }
   });
 
   it('names what moves before promoting, then reports the traffic receipt', async () => {
-    render(<PromoteDeployment deployment={deployment({ traffic_percent: 10 })} />);
+    render(<PromoteDeployment slug="alpha" deployment={deployment({ traffic_percent: 10 })} />);
     await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -95,14 +117,14 @@ describe('PromoteDeployment', () => {
 
   it('does nothing when the confirmation is dismissed', async () => {
     confirm.mockResolvedValue(false);
-    render(<PromoteDeployment deployment={deployment()} />);
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
     await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
     expect(promote).not.toHaveBeenCalled();
   });
 
   it('uses the strict route when application acknowledgements are required, and says what that means', async () => {
-    render(<PromoteDeployment deployment={deployment()} />);
-    expect(screen.getByText(/without secret reload will block/i)).toBeInTheDocument();
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+    expect(screen.getByText(/self-attestations/i)).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('checkbox', { name: /require application acknowledgements/i })
     );
@@ -144,12 +166,38 @@ describe('PromoteDeployment', () => {
         },
       })
     );
-    render(<PromoteDeployment deployment={deployment()} />);
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
     await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/traffic is unchanged/i);
     expect(alert).toHaveTextContent('orders-db');
     expect(alert).toHaveTextContent('No application acknowledgement');
+    // What to do about it, and where to get fresh evidence.
+    expect(alert).toHaveTextContent(/has not reported applying the current secret version/i);
+    expect(alert).toHaveTextContent(/verify bindings on the services tab/i);
+    expect(alert).toHaveTextContent(
+      'gregale app binding verify alpha --release d2c4e6f8-0000-4000-8000-000000000001 --all'
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('explains a write the enforced release policy fenced, without a toast', async () => {
+    promote.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'bindings_release_required',
+        title: 'Binding release policy blocked traffic',
+        detail: 'This scope requires fresh checked binding evidence before traffic can increase.',
+      })
+    );
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+    await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      /binding release policy blocked traffic\. traffic is unchanged/i
+    );
+    expect(alert).toHaveTextContent(/fresh checked binding evidence/i);
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -172,7 +220,7 @@ describe('PromoteDeployment', () => {
     'reads %s on the strict route and never retries the ordinary route',
     async (_, err, pattern) => {
       promote.mockRejectedValue(err);
-      render(<PromoteDeployment deployment={deployment()} />);
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
       await userEvent.click(
         screen.getByRole('checkbox', { name: /require application acknowledgements/i })
       );
@@ -198,7 +246,7 @@ describe('PromoteDeployment', () => {
     ['traffic_change_during_canary', /canary/i],
   ])('explains %s', async (code, pattern) => {
     promote.mockRejectedValue(new ApiError({ status: 409, code, title: code, detail: 'x' }));
-    render(<PromoteDeployment deployment={deployment()} />);
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
     await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(
@@ -214,9 +262,116 @@ describe('PromoteDeployment', () => {
       capability: { maturity: 'beta', docs_url: '/docs/deploys' },
       refresh: vi.fn(),
     });
-    render(<PromoteDeployment deployment={deployment()} />);
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
     expect(capability).toHaveBeenCalledWith('progressive-rollouts');
     expect(screen.queryByRole('button', { name: /promote/i })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(/not included in your plan/i);
+    // Nothing is read for a promotion the account cannot make.
+    expect(serving).toHaveBeenCalledWith('alpha', 'default', { enabled: false });
+  });
+
+  describe('serving pin', () => {
+    it('reads what serves in the release’s own scope', () => {
+      render(<PromoteDeployment slug="alpha" deployment={deployment({ scope: 'canary' })} />);
+      expect(serving).toHaveBeenCalledWith('alpha', 'canary', { enabled: true });
+    });
+
+    it('names the release serving all traffic and pins the promotion to it', async () => {
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      expect(screen.getByText(/serves all traffic now/i)).toHaveTextContent('v43');
+      await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+      expect(confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ description: expect.stringMatching(/pinned to v43/i) })
+      );
+      expect(promote).toHaveBeenCalledWith({
+        id: 'd2c4e6f8-0000-4000-8000-000000000001',
+        requireApplicationAck: false,
+        expectedServingDeploymentId: SERVING_ID,
+      });
+    });
+
+    it('pins on the strict route too', async () => {
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: /require application acknowledgements/i })
+      );
+      await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+      expect(promote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requireApplicationAck: true,
+          expectedServingDeploymentId: SERVING_ID,
+        })
+      );
+    });
+
+    it('says a split cannot be pinned, and promotes without a pin', async () => {
+      serving.mockReturnValue(
+        servingRead([
+          servingRow({ traffic_percent: 60 }),
+          deployment({ id: 'c3', revision: 42, traffic_percent: 40 }),
+        ])
+      );
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      const note = screen.getByText(/traffic is split/i);
+      expect(note).toHaveTextContent('v43 60%');
+      expect(note).toHaveTextContent('v42 40%');
+      expect(note).toHaveTextContent(/not pinned/i);
+      await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+      expect(promote).toHaveBeenCalledWith({
+        id: 'd2c4e6f8-0000-4000-8000-000000000001',
+        requireApplicationAck: false,
+      });
+    });
+
+    it.each([
+      [{ rows: [], complete: true }, /no other release serves/i],
+      [{ rows: [], complete: false }, /could not account for/i],
+    ])('explains why nothing is pinned (%#)', (data, pattern) => {
+      serving.mockReturnValue(servingRead([], { data }));
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      expect(screen.getByText(pattern)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /promote v44/i })).toBeEnabled();
+    });
+
+    it('waits for the serving read before offering the promotion', () => {
+      serving.mockReturnValue(servingRead([], { data: undefined, isPending: true }));
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      expect(screen.getByRole('status')).toHaveTextContent(/reading which release serves/i);
+      expect(screen.getByRole('button', { name: /promote v44/i })).toBeDisabled();
+    });
+
+    it('will not promote unpinned when the serving read fails', async () => {
+      serving.mockReturnValue(
+        servingRead([], {
+          data: undefined,
+          error: new ApiError({ status: 500, code: 'internal', title: 'Internal error' }),
+        })
+      );
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      expect(screen.getByRole('button', { name: /promote v44/i })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+      expect(refetchServing).toHaveBeenCalled();
+    });
+
+    it('says another release took over when the pin is stale, and offers a refresh', async () => {
+      promote.mockRejectedValue(
+        new ApiError({
+          status: 409,
+          code: 'traffic_serving_changed',
+          title: 'Production revision changed',
+          detail: 'the expected revision is no longer the sole 100% serving deployment',
+        })
+      );
+      render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+      await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/another release took over/i);
+      expect(alert).toHaveTextContent(/v43 no longer serves all/i);
+      expect(alert).toHaveTextContent(/nothing moved/i);
+      expect(toast).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole('button', { name: /refresh/i }));
+      expect(refetchServing).toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    });
   });
 });

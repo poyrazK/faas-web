@@ -7,12 +7,14 @@ import {
   cliBucketVersioningCommand,
   cliDeployCommand,
   cliDomainSetDefaultCommand,
+  cliEdgeRuleTraceCommand,
   cliInitCommand,
   cliInitDeployCommand,
   cliJobRemoveCommand,
   cliJobRunCommand,
   cliPostgresRestoreCommand,
-  cliPreAuthCommand,
+  cliSloCreateCommand,
+  cliSyntheticCheckCreateCommand,
 } from './cli-commands';
 
 // The CLI's own usage lines, copied from poyrazK/faas cmd/gregale:
@@ -139,15 +141,39 @@ describe('domain commands', () => {
   });
 });
 
-describe('cliPreAuthCommand', () => {
-  // cmd/gregale/app_pre_auth.go:39-41: observe and enforce need
-  // --pre-auth-rps and --pre-auth-burst of at least 1 when nothing is stored.
-  it('names a rate and burst when turning the guard on', () => {
-    expect(cliPreAuthCommand('api', 'observe', { rps: 10, burst: 20 })).toBe(
-      'gregale app api --pre-auth observe --pre-auth-rps 10 --pre-auth-burst 20'
+describe('alert target commands', () => {
+  // commands_slos.go:115: "usage: gregale alert slo create --app <slug> --name <name> --objective <pct> ..."
+  it('defines an SLO with the required name and objective', () => {
+    expect(cliSloCreateCommand('shop')).toBe(
+      'gregale alert slo create --app shop --name <name> --objective 99.9'
     );
   });
-  it('switches an existing guard to enforce without restating its rate', () => {
-    expect(cliPreAuthCommand('api', 'enforce')).toBe('gregale app api --pre-auth enforce');
+  // commands_synthetics.go:104: "usage: gregale alert check create --app <slug> --name <name> [--path /healthz] ..."
+  it('defines a synthetic check on a path', () => {
+    expect(cliSyntheticCheckCreateCommand('shop')).toBe(
+      'gregale alert check create --app shop --name <name> --path /healthz'
+    );
+  });
+});
+
+describe('cliEdgeRuleTraceCommand', () => {
+  // cmd/gregale/commands_edge_rules_trace.go:30-40: --app, --url, --method
+  // (default GET), --client-ip, --country.
+  it('leaves a placeholder for the URL the page does not know', () => {
+    expect(cliEdgeRuleTraceCommand('api', {})).toBe(
+      'gregale edge rule trace --app api --url https://<host>/<path>'
+    );
+  });
+  it('adds the method, client IP and country a person typed', () => {
+    expect(
+      cliEdgeRuleTraceCommand('api', {
+        url: 'https://api.example.com/login?next=/a b',
+        method: 'post',
+        clientIp: '203.0.113.7',
+        country: 'de',
+      })
+    ).toBe(
+      "gregale edge rule trace --app api --url 'https://api.example.com/login?next=/a b' --method POST --client-ip 203.0.113.7 --country DE"
+    );
   });
 });

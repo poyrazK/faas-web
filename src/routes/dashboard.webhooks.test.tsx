@@ -12,9 +12,9 @@ vi.mock('@/lib/api/queries', () => ({
   useDeleteWebhook: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRotateWebhookSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateWebhook: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useWebhookDeliveries: () => ({ data: { deliveries: [] }, isPending: false, error: null }),
-  useRetryDelivery: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/components/dashboard/release-webhooks', () => ({ ReleaseWebhooks: () => null }));
+vi.mock('@/components/dashboard/webhook-deliveries', () => ({ WebhookDeliveries: () => null }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/resource-table', () => ({
@@ -105,6 +105,21 @@ describe('webhook form validation', () => {
 
     expect(target).toHaveAccessibleDescription('Target URLs can be at most 2048 characters.');
     expect(createWebhook).not.toHaveBeenCalled();
+  });
+});
+
+describe('webhook scopes', () => {
+  it('keeps the account receivers view in the URL and drops anything else', () => {
+    expect(validateWebhookSearch({ scope: 'account' }).scope).toBe('account');
+    expect(validateWebhookSearch({ scope: 'org' }).scope).toBeUndefined();
+  });
+
+  it('points an app webhook list at the account release receivers', () => {
+    render(<WebhooksBody slug="api" />);
+    expect(screen.getByRole('link', { name: 'account release webhooks' })).toHaveAttribute(
+      'href',
+      '/dashboard/webhooks?scope=account'
+    );
   });
 });
 

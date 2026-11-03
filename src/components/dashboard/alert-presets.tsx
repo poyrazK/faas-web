@@ -5,6 +5,7 @@ import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useAlertPresets, useEnableAlertPreset, useTestAlertPreset } from '@/lib/api/queries';
+import { ChannelPicker } from './notification-channels';
 
 /**
  * The seeded alert-preset catalog: the rules worth having, already written.
@@ -44,10 +45,17 @@ function EnableForm({
   const enable = useEnableAlertPreset();
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
-  const ready = /^https:\/\//.test(url.trim()) && secret.trim().length > 0;
+  const [channelIds, setChannelIds] = useState<string[]>([]);
+  const hasWebhook = /^https:\/\//.test(url.trim()) && secret.trim().length > 0;
+  // Presets take channels too; with one, the webhook is optional (faas
+  // EnableAlertPresetRequest, handlers_alert_presets.go).
+  const ready = hasWebhook || (channelIds.length > 0 && !url.trim());
 
   return (
     <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-border p-3">
+      <div className="w-full">
+        <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix={`preset-${name}`} />
+      </div>
       <label className="flex min-w-56 flex-1 flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Webhook URL</span>
         <input
@@ -75,7 +83,11 @@ function EnableForm({
             .mutateAsync({
               slug,
               name,
-              body: { webhook_url: url.trim(), webhook_secret: secret, enabled: true },
+              body: {
+                ...(hasWebhook ? { webhook_url: url.trim(), webhook_secret: secret } : {}),
+                ...(channelIds.length ? { channel_ids: channelIds } : {}),
+                enabled: true,
+              },
             })
             .then(() => {
               toast({ kind: 'success', title: 'Preset enabled' });

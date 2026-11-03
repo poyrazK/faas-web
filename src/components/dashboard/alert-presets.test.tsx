@@ -14,6 +14,21 @@ vi.mock('@/lib/api/queries', () => ({
   useTestAlertPreset: () => ({ mutateAsync: test_, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@/lib/api/notification-channels', () => ({
+  useNotificationChannels: () => ({
+    data: [
+      {
+        id: '7c0d3a52-6c1c-4a4e-9d57-0c5b1e8d6a11',
+        name: 'ops-slack',
+        kind: 'slack',
+        target: 'T0001/B0002',
+        created_at: '2026-10-01T00:00:00Z',
+      },
+    ],
+    isPending: false,
+    error: null,
+  }),
+}));
 
 const { AlertPresets } = await import('./alert-presets');
 
@@ -55,6 +70,20 @@ describe('AlertPresets', () => {
     await openEnable();
     expect(screen.getByRole('button', { name: /^enable preset$/i })).toBeDisabled();
     expect(enable).not.toHaveBeenCalled();
+  });
+
+  it('enables with a notification channel and no webhook', async () => {
+    render(<AlertPresets slug="api" />);
+    await openEnable();
+    await userEvent.click(screen.getByRole('checkbox', { name: /ops-slack/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^enable preset$/i }));
+    await waitFor(() =>
+      expect(enable).toHaveBeenCalledWith({
+        slug: 'api',
+        name: 'error_rate_2pct',
+        body: { channel_ids: ['7c0d3a52-6c1c-4a4e-9d57-0c5b1e8d6a11'], enabled: true },
+      })
+    );
   });
 
   it('enables with the webhook it was given', async () => {

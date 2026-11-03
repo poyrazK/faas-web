@@ -85,16 +85,34 @@ export function cliDomainSetDefaultCommand(domain: string): string {
   return `gregale domains set-default ${domain}`;
 }
 
+/** Define an SLO an slo_budget_* alert can name (one objective; 7- or 30-day window). */
+export function cliSloCreateCommand(appSlug: string): string {
+  return `gregale alert slo create --app ${appSlug} --name <name> --objective 99.9`;
+}
+
+/** Define a synthetic check a synthetic_check_* alert can name. */
+export function cliSyntheticCheckCreateCommand(appSlug: string): string {
+  return `gregale alert check create --app ${appSlug} --name <name> --path /healthz`;
+}
+
 /**
- * Set an app's pre-auth guard. With no guard stored, observe and enforce need
- * a rate and burst of at least 1 (faas cmd/gregale/app_pre_auth.go:39-41);
- * switching a stored guard's mode keeps its rate, so `rate` is optional.
+ * Trace which edge rules a request would match. apid has no trace endpoint:
+ * the CLI simulates the gateway locally over the rules it reads (faas
+ * cmd/gregale/commands_edge_rules_trace.go:28, pkg/edgeruletrace), so the
+ * console builds the command. GET is the CLI's default and is left out.
  */
-export function cliPreAuthCommand(
+export function cliEdgeRuleTraceCommand(
   appSlug: string,
-  mode: 'off' | 'observe' | 'enforce',
-  rate?: { rps: number; burst: number }
+  request: { url?: string; method?: string; clientIp?: string; country?: string }
 ): string {
-  const base = `gregale app ${appSlug} --pre-auth ${mode}`;
-  return rate ? `${base} --pre-auth-rps ${rate.rps} --pre-auth-burst ${rate.burst}` : base;
+  const parts = [`gregale edge rule trace --app ${appSlug}`];
+  const url = request.url?.trim();
+  parts.push(`--url ${url ? shellArg(url) : 'https://<host>/<path>'}`);
+  const method = request.method?.trim().toUpperCase();
+  if (method && method !== 'GET') parts.push(`--method ${shellArg(method)}`);
+  const ip = request.clientIp?.trim();
+  if (ip) parts.push(`--client-ip ${shellArg(ip)}`);
+  const country = request.country?.trim().toUpperCase();
+  if (country) parts.push(`--country ${shellArg(country)}`);
+  return parts.join(' ');
 }

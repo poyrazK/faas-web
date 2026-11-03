@@ -1,8 +1,15 @@
-import { useMemo } from 'react';
-import { Link, getRouteApi } from '@tanstack/react-router';
+import { DeployQueue } from '@/components/dashboard/deploy-queue';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
+import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import { ReleasePreviews } from '@/components/dashboard/release-previews';
+import { ReleaseProcess } from '@/components/dashboard/release-process';
+import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
+import { sourceSize, type ReleasesSearch } from '@/components/dashboard/releases-search';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { TabNav, tabClassName } from '@/components/dashboard/tabs';
+import { Button } from '@/components/ui/button';
 import { CopyableId } from '@/components/ui/copyable-id';
+import { Select } from '@/components/ui/field';
 import { Timestamp } from '@/components/ui/timestamp';
 import {
   useApps,
@@ -11,15 +18,9 @@ import {
   useInfiniteDeployments,
 } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
-import { Button } from '@/components/ui/button';
-import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
-import { TabNav, tabClassName } from '@/components/dashboard/tabs';
-import { sourceSize, type ReleasesSearch } from '@/components/dashboard/releases-search';
-import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
-import { ReleaseProcess } from '@/components/dashboard/release-process';
-import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
-import { Select } from '@/components/ui/field';
+import { Link, getRouteApi } from '@tanstack/react-router';
+import { useMemo } from 'react';
 
 type Build = components['schemas']['BuildResponse'];
 type Deployment = components['schemas']['DeploymentResponse'];
@@ -247,6 +248,13 @@ export function DeploymentsPage() {
           </Link>
         ))}
       </TabNav>
+      {view === 'releases' && (
+        <DeployQueue
+          onOpen={(deployment) =>
+            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
+          }
+        />
+      )}
       <ResourceTable
         rows={rows}
         columns={columns}

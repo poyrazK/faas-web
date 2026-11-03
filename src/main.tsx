@@ -3,7 +3,13 @@ import ReactDOM from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { routeTree } from './routeTree.gen';
 import { RouteError, RoutePending } from './components/route-status';
+import { featureFlags } from './lib/feature-flags';
+import { installErrorReporting } from './lib/error-reporting';
 import './index.css';
+
+// Off by default; with the flag off this folds away and the reporter is not
+// in the bundle at all (see `lib/feature-flags.ts`).
+if (featureFlags.errorReporting) installErrorReporting();
 
 /**
  * `defaultPreload: 'intent'` warms a route's code-split chunk and loaders on

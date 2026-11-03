@@ -52,7 +52,7 @@ export function readStageState(raw: unknown): StageState | undefined {
   return { current, history };
 }
 
-export type PhaseKey = 'build' | 'verify' | 'prepare' | 'rollout' | 'serve';
+export type PhaseKey = 'build' | 'verify' | 'release' | 'prepare' | 'rollout' | 'serve';
 /** `unrecorded` is not a failure: older deployments carry no stage history. */
 export type PhaseState = 'done' | 'active' | 'failed' | 'pending' | 'skipped' | 'unrecorded';
 
@@ -76,6 +76,7 @@ const STAGES: Record<'build' | 'verify' | 'prepare', StageName[]> = {
 const LABELS: Record<PhaseKey, string> = {
   build: 'Build',
   verify: 'Verify',
+  release: 'Release command',
   prepare: 'Prepare',
   rollout: 'Roll out',
   serve: 'Serve',
@@ -89,17 +90,85 @@ const PRESETS: Record<string, string> = {
   adaptive: 'adaptive canary',
 };
 
-const ORDER: PhaseKey[] = ['build', 'verify', 'prepare', 'rollout', 'serve'];
+const ORDER: PhaseKey[] = ['build', 'verify', 'release', 'prepare', 'rollout', 'serve'];
+
+type ReleaseRun = NonNullable<Deployment['release']>;
+/** The release task has been admitted and has not ended. */
+const RELEASE_IN_FLIGHT: readonly ReleaseRun['status'][] = ['queued', 'restoring', 'running'];
+const RELEASE_DETAIL: Record<ReleaseRun['status'], string> = {
+  pending: 'Waits for the image',
+  queued: 'Queued',
+  restoring: 'Starting',
+  running: 'Running',
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  timed_out: 'Timed out',
+  cancelled: 'Cancelled',
+};
 
 /**
- * A release as a process: build, verify, prepare, roll out, serve — each
- * done, active, failed, pending, skipped, or not recorded, read only from
- * fields the deployment carries. Nothing is inferred as done that the record
- * does not show, except that a deployment which is live or superseded
- * finished every phase before rollout.
+ * The release command (`release:` in a Procfile, `release.command` in the
+ * manifest), when the deployment declares one. imaged runs it once the image
+ * is built and before the first serving VM boots (faas imaged/handler.go
+ * handoffSnapshotPrime); a failure fails the deployment with
+ * `release_command_failed` and the previous release keeps serving, and an
+ * installation without release execution fails it with
+ * `release_phase_unavailable` rather than skipping the command.
+ */
+function releaseCommandPhase(
+  deployment: Deployment,
+  earlierFailed: boolean
+): ReleasePhase | undefined {
+  const run = deployment.release;
+  const label = LABELS.release;
+  if (deployment.error_code === 'release_phase_unavailable')
+    return { key: 'release', label, state: 'failed', detail: 'Release commands cannot run here' };
+  if (!run) return undefined;
+  const detail = RELEASE_DETAIL[run.status] ?? run.status;
+  switch (run.status) {
+    case 'succeeded': {
+      const ms = Date.parse(run.finished_at ?? '') - Date.parse(run.started_at ?? '');
+      return {
+        key: 'release',
+        label,
+        state: 'done',
+        detail: ms >= 0 ? `${Math.max(1, Math.round(ms / 1000))} s` : undefined,
+      };
+    }
+    case 'failed':
+      // "Failed" already says it; the panel below has the exit code and output.
+      return { key: 'release', label, state: 'failed' };
+    case 'timed_out':
+      return { key: 'release', label, state: 'failed', detail };
+    case 'cancelled':
+      // A command cancelled with its own deployment did not fail on its own.
+      return deployment.status.toLowerCase() === 'cancelled'
+        ? { key: 'release', label, state: 'skipped', detail }
+        : { key: 'release', label, state: 'failed', detail };
+    case 'pending': {
+      const phase = deploymentPhase(deployment.status);
+      if (earlierFailed || phase === 'failed') return { key: 'release', label, state: 'skipped' };
+      // A shipped deployment ran its command; the task record is what is missing.
+      if (phase === 'live' || phase === 'superseded')
+        return { key: 'release', label, state: 'unrecorded' };
+      return { key: 'release', label, state: 'pending', detail };
+    }
+    default:
+      return RELEASE_IN_FLIGHT.includes(run.status)
+        ? { key: 'release', label, state: 'active', detail }
+        : { key: 'release', label, state: 'unrecorded', detail };
+  }
+}
+
+/**
+ * A release as a process: build, verify, the release command when there is
+ * one, prepare, roll out, serve — each done, active, failed, pending, skipped,
+ * or not recorded, read only from fields the deployment carries. Nothing is
+ * inferred as done that the record does not show, except that a deployment
+ * which is live or superseded finished every phase before rollout.
  *
- * When apid's per-deployment `release` object (release commands such as
- * migrations) lands, it slots in between Prepare and Roll out.
+ * `release` is filled only on single-deployment reads (GET /v1/deployments/{id}
+ * and the summary), so list rows show it only when the failure code names it.
  */
 export function releaseProcess(deployment: Deployment): ReleasePhase[] {
   const phase = deploymentPhase(deployment.status);
@@ -162,8 +231,19 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
 
   const build = prep('build');
   const verify = prep('verify');
-  const prepare = prep('prepare');
-  const earlierFailed = [build, verify, prepare].some((p) => p.state === 'failed');
+  const release = releaseCommandPhase(
+    deployment,
+    [build, verify].some((p) => p.state === 'failed')
+  );
+  let prepare = prep('prepare');
+  // snapshot_prepare opens before the command runs, but no serving VM is
+  // prepared until it succeeds; after a failure, nothing was.
+  if (release && prepare.state !== 'done') {
+    if (release.state === 'failed') prepare = { ...prepare, state: 'skipped', detail: undefined };
+    else if (release.state === 'active' || release.state === 'pending')
+      prepare = { ...prepare, state: 'pending', detail: undefined };
+  }
+  const earlierFailed = [build, verify, release, prepare].some((p) => p?.state === 'failed');
 
   const rollout = ((): ReleasePhase => {
     const preset = deployment.canary_preset ? PRESETS[deployment.canary_preset] : undefined;
@@ -237,7 +317,7 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
     return { key: 'serve', label: LABELS.serve, state: 'pending' };
   })();
 
-  return [build, verify, prepare, rollout, serve];
+  return [build, verify, ...(release ? [release] : []), prepare, rollout, serve];
 }
 
 function phaseOfStage(stage: StageName): PhaseKey {

@@ -155,6 +155,13 @@
       }
     },
     {
+      "src": "^/docs/managed-postgres/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/postgres"
+      }
+    },
+    {
       "src": "^/docs/orgs/?$",
       "status": 308,
       "headers": {

@@ -24,13 +24,15 @@ export function capStanding(overageCents: number, capCents: number | null) {
       detail: `${formatCents(overageCents)} of overage so far. Nothing stops overage from growing.`,
       pct: null,
     };
+  // apid parks once overage >= cap, so a $0 cap is reached at once: a pause
+  // switch, not "no overage" (faas pkg/sched/overage.go:207, docs/billing.md:33).
   if (capCents === 0)
     return {
-      tone: overageCents > 0 ? 'var(--status-critical)' : 'var(--status-good)',
-      label: 'Overage not allowed',
+      tone: 'var(--status-critical)',
+      label: 'Workloads paused',
       detail:
-        'Once the included allowance is used, new wakes are refused until the next period or a higher cap.',
-      pct: overageCents > 0 ? 100 : 0,
+        'A $0 cap counts as reached immediately: new wakes are refused and running apps park, even within the included allowance, until the cap is raised or cleared.',
+      pct: 100,
     };
   const pct = Math.min(100, (overageCents / capCents) * 100);
   if (overageCents >= capCents)
