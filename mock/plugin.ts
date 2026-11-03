@@ -20,6 +20,7 @@ import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
+import * as debugMock from './debug';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -3429,6 +3430,27 @@ route('GET', '/v1/apps/{slug}/analytics/route-customers', ({ params, query }) =>
   )
 );
 
+// Before /debug/requests/{req_id}, which would otherwise take "export" as an id.
+route('GET', '/v1/apps/{slug}/debug/requests/export', ({ params, query, res }) => {
+  gateDebug('production-debugger');
+  const a = app(params.slug);
+  const format = query.get('format') || 'ndjson';
+  if (format !== 'ndjson' && format !== 'csv')
+    throw new Problem(400, 'validation_failed', 'format must be one of: ndjson, csv');
+  const asked = query.get('since') || '24h';
+  // Retention is 7 days on the mock's plan; 72h fits, so only longer asks clamp.
+  res.statusCode = 200;
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader(
+    'Content-Type',
+    format === 'csv' ? 'text/csv; charset=utf-8' : 'application/x-ndjson; charset=utf-8'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${a.slug}-requests.${format}"`);
+  res.setHeader('X-Faas-Request-Log-Window', asked.endsWith('h') ? `${asked}0m0s` : asked);
+  res.setHeader('X-Faas-Request-Log-Retention-Clamped', 'false');
+  res.end(debugMock.exportFor(a, format));
+});
+
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();
   app(params.slug);
@@ -3658,6 +3680,7 @@ route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
   };
 });
 route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
+  gateDebug('debug-dependencies');
   const a = app(params.slug);
   const dep = (
     type: string,
@@ -7319,7 +7342,13 @@ route('DELETE', '/v1/domains/{domain}/hosts', ({ params }) => {
 // whether the page reads as broken or as "not on your plan".
 const debugGated = process.env.MOCK_PLAN === 'free';
 
-function gateDebug() {
+/**
+ * apid's capgate answers a hidden capability as a route that does not exist,
+ * and hiding `debug` hides its children too (faas capgate, catalog parents).
+ */
+function gateDebug(capability = 'production-debugger') {
+  if (hiddenCapabilities.has('debug') || hiddenCapabilities.has(capability))
+    throw new Problem(404, 'not_found', 'no such API route');
   if (debugGated) {
     throw new Problem(
       402,
@@ -7351,33 +7380,56 @@ route('GET', '/v1/apps/{slug}/debug/requests', ({ query }) => {
   return { since, requests };
 });
 
-route('GET', '/v1/apps/{slug}/debug/regressions', ({ query }) => {
-  gateDebug();
-  return {
-    since: query.get('since') || '24h',
-    regressions: [
-      {
-        deployment_id: db.deployments[0].id,
-        route: '/orders/{id}',
-        p95_ms: 1840,
-        p95_base_ms: 260,
-        affected_count: 412,
-        regression_factor: '7.08',
-        first_detected_at: db.iso(5_400_000),
-        last_detected_at: db.iso(120_000),
-      },
-      {
-        deployment_id: db.deployments[0].id,
-        route: '/search',
-        p95_ms: 390,
-        p95_base_ms: 300,
-        affected_count: 27,
-        regression_factor: '1.30',
-        first_detected_at: db.iso(9_000_000),
-        last_detected_at: db.iso(600_000),
-      },
-    ],
-  };
+route('GET', '/v1/apps/{slug}/debug/regressions', ({ params, query }) => {
+  gateDebug('debug-regressions');
+  return debugMock.regressionsFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/regressions/review', ({ params, query }) => {
+  gateDebug('debug-regressions');
+  const review = debugMock.reviewFor(
+    app(params.slug),
+    query.get('deployment_id') ?? '',
+    query.get('route') ?? ''
+  );
+  if (!review)
+    throw new Problem(404, 'not_found', 'no debugger regression matches the deployment and route');
+  return review;
+});
+
+route('POST', '/v1/apps/{slug}/debug/regressions/actions', ({ params, body }) => {
+  gateDebug('debug-regressions');
+  const result = debugMock.applyAction(app(params.slug), body);
+  if (!result.ok) throw new Problem(result.status, result.code, result.detail);
+  return result.body;
+});
+
+route('GET', '/v1/apps/{slug}/debug/status', ({ params, query, res }) => {
+  gateDebug('production-debugger');
+  res.setHeader('Cache-Control', 'no-store');
+  return debugMock.statusFor(app(params.slug), query.get('since') || '1h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/coverage', ({ params, query }) => {
+  gateDebug('debug');
+  return debugMock.coverageFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/running', ({ params, query }) => {
+  gateDebug('debug');
+  return debugMock.runningFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params }) => {
+  gateDebug('production-debugger');
+  const replay = debugMock.replayFor(app(params.slug));
+  if (!replay)
+    throw new Problem(
+      409,
+      'debug_replay_unsupported',
+      "the request's serving deployment has no enabled mirror rule; enable a mirror rule for that deployment before replaying"
+    );
+  return status(202, replay);
 });
 
 route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {

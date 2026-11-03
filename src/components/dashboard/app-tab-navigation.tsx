@@ -52,7 +52,9 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
   'Tenant surfaces': 'tenant-surfaces',
-  Debugger: 'production-debugger',
+  // The beta `debug` family owns the tab; the production-debugger preview
+  // inside it is gated view by view (debug-body.tsx).
+  Debugger: 'debug',
   Issues: 'issues',
   Errors: 'issues',
   MCP: 'mcp-hosting',

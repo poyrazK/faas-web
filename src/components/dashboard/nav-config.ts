@@ -201,6 +201,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/debug',
     label: 'Debugger',
     icon: Search,
+    capability: 'debug',
     sidebarIconClassName: 'text-cat-security/80',
   },
   {

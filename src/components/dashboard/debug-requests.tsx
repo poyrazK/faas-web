@@ -6,6 +6,7 @@ import {
 } from '@/lib/api/queries';
 import { formatRelative } from '@/lib/mock-data';
 import { DebugGate } from './debug-gate';
+import { DebugExport } from './debug-export';
 import {
   WINDOWS,
   QUICK_FILTERS,
@@ -194,6 +195,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
             </span>
           )}
         </label>
+        <DebugExport slug={slug} since={since} />
 
         <ResourceTable
           rows={rows}

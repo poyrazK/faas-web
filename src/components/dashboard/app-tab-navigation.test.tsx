@@ -119,7 +119,7 @@ describe('visibleAppTabs', () => {
     expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('Issues');
   });
   it('maps every gated tab to a catalog id', () => {
-    expect(APP_TAB_CAPABILITY.Debugger).toBe('production-debugger');
+    expect(APP_TAB_CAPABILITY.Debugger).toBe('debug');
     expect(APP_TAB_CAPABILITY.Automations).toBe('automations');
   });
   it('hides Log drains when apid gates the log-drains capability off', () => {
