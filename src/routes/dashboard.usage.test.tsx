@@ -75,6 +75,13 @@ vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace
 vi.mock('@/components/dashboard/org-billing', () => ({
   OrgUsage: ({ label }: { label: string }) => <p>org usage for {label}</p>,
 }));
+// The breakdown's own reads and states are covered in billing-costs.test.tsx.
+vi.mock('@/components/dashboard/billing-costs', () => ({
+  CostBreakdown: () => <section aria-label="Cost breakdown" />,
+  CostBreakdownPersonalOnly: ({ label }: { label: string }) => (
+    <p>cost breakdown is personal only, not {label}</p>
+  ),
+}));
 
 const { Route } = await import('./dashboard.usage');
 const UsagePage = (Route as unknown as { component: React.ComponentType }).component;
@@ -89,6 +96,14 @@ beforeEach(() => {
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ overage_cap_cents: 1250 });
   toast.mockReset();
+});
+
+describe('cost breakdown', () => {
+  it('shows the personal cost breakdown in the personal workspace', () => {
+    render(<UsagePage />);
+    expect(screen.getByRole('region', { name: 'Cost breakdown' })).toBeInTheDocument();
+    expect(screen.queryByText(/personal only/)).toBeNull();
+  });
 });
 
 describe('app capacity', () => {
@@ -128,6 +143,9 @@ describe('usage in a company workspace', () => {
       expect(screen.getByText('workspace spend cap')).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Spend control' })).toBeNull();
       expect(usage.reads).toBe(0);
+      // apid has no organization cost route: say so, never the personal report.
+      expect(screen.getByText('cost breakdown is personal only, not Acme')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Cost breakdown' })).toBeNull();
     } finally {
       workspace.org = null;
       workspace.label = 'Personal';

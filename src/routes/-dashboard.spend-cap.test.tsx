@@ -68,7 +68,23 @@ beforeEach(() => {
               }
             : path === '/v1/audit-events'
               ? { events: [], limit: 20 }
-              : [];
+              : path === '/v1/billing/costs'
+                ? {
+                    account_id: 'acct-1',
+                    currency: 'USD',
+                    period_start: '2026-09-01T00:00:00Z',
+                    period_end: '2026-10-01T00:00:00Z',
+                    as_of: '2026-09-15T00:00:00Z',
+                    retained_from: '2026-09-01T00:00:00Z',
+                    evidence_through_id: 1,
+                    known_usage_millicents: 0,
+                    meters: [],
+                    scope: 'retained_compute_and_interface_egress',
+                    invoices: [],
+                    invoice_reconciliation: 'not_reconciled',
+                    missing_bill_components: [],
+                  }
+                : [];
     return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
@@ -231,6 +247,7 @@ it("a company workspace reads and writes the organization's cap on Plans and Usa
     expect(touched.filter((t) => t.includes('/v1/account/'))).toEqual([]);
     expect(touched).not.toContain('GET /v1/audit-events');
     expect(touched).not.toContain('GET /v1/billing/forecast');
+    expect(touched).not.toContain('GET /v1/billing/costs');
   } finally {
     setActiveOrg(null);
   }
