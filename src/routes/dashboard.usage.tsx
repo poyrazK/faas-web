@@ -27,6 +27,7 @@ import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { OrgUsage } from '@/components/dashboard/org-billing';
 import { formatCents } from '@/lib/money';
+import { CostBreakdown, CostBreakdownPersonalOnly } from '@/components/dashboard/billing-costs';
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -252,9 +253,10 @@ function PerAppUsagePanel() {
 
 /**
  * In a company workspace the page reads the organization's billing subject:
- * its usage and its own spend cap. The account projection, allowance and
- * forecast belong to the signed-in account and have no organization variant,
- * so they are not shown there.
+ * its usage and its own spend cap. The account projection, allowance,
+ * forecast and cost breakdown belong to the signed-in account and have no
+ * organization variant, so they are not shown there; the cost breakdown says
+ * so in place.
  */
 function UsagePage() {
   const { org, label, ready } = useWorkspaceTarget();
@@ -266,6 +268,7 @@ function UsagePage() {
       <PageHeader title="Usage" description={`What ${label} uses this billing period.`} />
       <OrgUsage org={org} label={label} />
       <SpendCap />
+      <CostBreakdownPersonalOnly label={label} />
     </div>
   );
 }
@@ -422,6 +425,8 @@ function PersonalUsage() {
           {projection?.managed_postgres && (
             <ManagedPostgresUsagePanel data={projection.managed_postgres} />
           )}
+
+          <CostBreakdown />
 
           {account?.limits && (
             <p className="text-xs text-muted-foreground">

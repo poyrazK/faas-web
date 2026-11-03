@@ -83,6 +83,7 @@ import {
 } from './trigger-contract';
 import {
   mockDailyUsage,
+  mockFinancialCosts,
   mockInvoiceRefresh,
   mockManagedPostgresUsage,
   orgOverageCap,
@@ -10075,6 +10076,37 @@ route('GET', '/v1/billing/forecast', () => {
     bill_estimate_available: false,
     missing_bill_components: ['egress_gb', 'tax'],
   };
+});
+// The signed-in account's cost report (faas handlers_financial.go:15-80): one
+// optional current or past UTC month, nothing else in the query. Personal, so
+// X-Active-Org is ignored as apid ignores it. MOCK_COSTS_MFA=1 answers the
+// session MFA gate (middleware.go:1337) until a code is verified in this run.
+route('GET', '/v1/billing/costs', ({ query }) => {
+  if ([...query.keys()].some((k) => k !== 'month') || query.getAll('month').length > 1)
+    throw new Problem(400, 'validation_failed', 'expected at most one month parameter');
+  if (process.env.MOCK_COSTS_MFA === '1' && !mockAuth.steppedUpAt)
+    throw new Problem(
+      403,
+      'mfa_required',
+      'complete /v1/account/mfa/enroll or /v1/account/mfa/verify to access this route'
+    );
+  const now = Date.now();
+  const month = query.get('month') || new Date(now).toISOString().slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || Date.parse(`${month}-01T00:00:00Z`) > now)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'expected a current or historical month in YYYY-MM format'
+    );
+  return mockFinancialCosts({
+    month,
+    now,
+    accountId: db.account.id,
+    plan: db.account.plan,
+    includedGbHours: db.account.limits?.included_gb_hours ?? 0,
+    invoices: db.invoices,
+    apps: db.apps,
+  });
 });
 // The dev mock answers JSON for every format; apid serves ZIP/CSV/JSON.
 route('GET', '/v1/billing/focus', ({ query }) => {

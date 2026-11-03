@@ -972,12 +972,10 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 151,
     name: 'Plans, usage, invoices, overage cap, cost breakdown and forecast, FOCUS 1.4 invoice export',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/plans', '/dashboard/usage', '/dashboard/invoices'],
-    // Invoice refresh, the account usage projection and the company spend cap
-    // are in; the attributed cost breakdown is the one part not surfaced.
-    gap: 'Cost breakdown (GET /v1/billing/costs) is not surfaced',
-    wave: 1,
+    // The cost breakdown (GET /v1/billing/costs) is on personal Usage; apid
+    // has no organization cost route, and a company's Usage page says so.
   },
   // H152 · beta
   {
