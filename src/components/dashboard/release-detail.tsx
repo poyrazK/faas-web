@@ -36,6 +36,7 @@ import { RollbackToRelease } from './rollback-status';
 import { RolloutObservation } from './rollout-observation';
 import { WhenCapable } from './capability-gate';
 import { ReleaseSchedule } from './release-schedule';
+import { ReleaseApprovalSection } from './release-approvals';
 
 function relativeTime(value?: string): string {
   if (!value) return '—';
@@ -378,6 +379,14 @@ export function ReleaseDetailPanel({
                 {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
                 {/* The serving pin is read from the app's history, so it needs the slug. */}
                 {slug && <PromoteDeployment slug={slug} deployment={deployment} />}
+                <WhenCapable capability="release-approvals">
+                  <ReleaseApprovalSection
+                    deploymentId={deployment.id}
+                    release={
+                      deployment.revision ? `v${deployment.revision}` : deployment.id.slice(0, 8)
+                    }
+                  />
+                </WhenCapable>
                 {slug && (
                   <WhenCapable capability="scheduled-releases">
                     <ReleaseSchedule slug={slug} deployment={deployment} />

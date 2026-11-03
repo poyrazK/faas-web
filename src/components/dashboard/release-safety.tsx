@@ -1,13 +1,16 @@
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { CapabilityGate, WhenCapable } from './capability-gate';
+import { ReleaseApprovals } from './release-approvals';
 import { ReleaseFreezes } from './release-freezes';
+import { ReleaseGates } from './release-gates';
 import { ScheduledReleases } from './release-schedule';
 
 /**
  * An app's release guards in one place, as faas's own dashboard groups them
- * (handlers_dashboard_release_safety.go): its freezes and its scheduled
- * releases. Each is its own preview capability, so each section is gated on
- * its own and explains itself when the account does not have it.
+ * (handlers_dashboard_release_safety.go): its freezes, approval policy and
+ * waiting releases, gates, and scheduled releases. Each is its own preview
+ * capability, so each section is gated on its own and explains itself when
+ * the account does not have it.
  */
 export function ReleaseSafety({
   slug,
@@ -20,6 +23,12 @@ export function ReleaseSafety({
     <>
       <CapabilityGate capability="deploy-freezes" title="Deploy freezes">
         <ReleaseFreezes owner={{ kind: 'app', slug }} />
+      </CapabilityGate>
+      <CapabilityGate capability="release-approvals" title="Release approvals">
+        <ReleaseApprovals slug={slug} />
+      </CapabilityGate>
+      <CapabilityGate capability="release-gates" title="Release gates">
+        <ReleaseGates slug={slug} />
       </CapabilityGate>
       <CapabilityGate capability="scheduled-releases" title="Scheduled releases">
         <ScheduledReleases app={slug} onOpen={onOpenDeployment} />

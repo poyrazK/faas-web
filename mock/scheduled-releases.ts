@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import { channels } from './notification-channels';
+import { requiresApproval } from './release-approvals';
 import { GuardProblem, checkRelease } from './release-freezes';
 
 type S = components['schemas'];
@@ -121,6 +122,12 @@ export function schedule(id: string, req: Request, actor: string, now = Date.now
   const notify = channelNames(req.notify_channels);
   if (req.canary && !PRESETS.includes(req.canary.preset))
     throw validation('canary.preset must be a catalog preset');
+  if (req.canary?.preset === 'none' && requiresApproval(a.slug))
+    throw new GuardProblem(
+      409,
+      'release_approval_canary_required',
+      `${a.slug} requires approvals for production releases, and this release would take traffic without a canary to wait in.`
+    );
   const overridden = checkRelease(a.slug, at, req.override_freeze, true);
   const pending = schedules.find((s) => s.app === a.slug && s.state === 'scheduled');
   const canary =

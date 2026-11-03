@@ -89,7 +89,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
  * tab hides only when every one of them is off.
  */
 export const APP_TAB_ANY_CAPABILITY: Partial<Record<AppTab, readonly string[]>> = {
-  'Release safety': ['deploy-freezes', 'scheduled-releases'],
+  'Release safety': ['deploy-freezes', 'release-approvals', 'release-gates', 'scheduled-releases'],
 };
 
 /** Hide a tab only once the registry has said its capability is off. */

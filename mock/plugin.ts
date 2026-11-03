@@ -28,6 +28,8 @@ import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
 import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
+import * as approvalMock from './release-approvals';
+import * as gateMock from './release-gates';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -174,28 +176,6 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
-// Release approval policies (faas release_approvals.go). webhook-router requires
-// approvals, so switching it to the immediate release policy is warned about.
-route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
-  if (params.slug !== 'webhook-router')
-    throw new Problem(
-      404,
-      'release_approval_policy_not_found',
-      'This app does not require approvals.'
-    );
-  return {
-    app: params.slug,
-    required_approvals: 1,
-    after_stage: 1,
-    timeout_minutes: 60,
-    approvers: ['design@gregale.dev'],
-    allow_self_approval: false,
-    notify_channels: [],
-    updated_by: 'design@gregale.dev',
-    created_at: '2026-10-20T09:00:00Z',
-    updated_at: '2026-10-20T09:00:00Z',
-  };
-});
 // Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
 // scheduled releases (scheduled_releases.go); the logic is in
 // mock/release-freezes.ts and mock/scheduled-releases.ts.
@@ -296,6 +276,47 @@ route('PUT', '/v1/deployments/{id}/schedule', ({ params, body }) =>
 );
 route('DELETE', '/v1/deployments/{id}/schedule', ({ params }) =>
   guarded(() => scheduleMock.cancel(params.id, db.account.email))
+);
+
+// Release approvals (release_approvals.go) and release gates
+// (release_gates.go); the logic is in mock/release-approvals.ts and
+// mock/release-gates.ts. webhook-router requires approvals, so switching it to
+// the immediate release policy is warned about.
+const approvalDeployment = (id: string) => {
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  return d;
+};
+route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) =>
+  guarded(() => approvalMock.getPolicy(freezeApp(params.slug)))
+);
+route('PUT', '/v1/apps/{slug}/release-approval-policy', ({ params, body }) =>
+  guarded(() => approvalMock.setPolicy(freezeApp(params.slug), body))
+);
+route('DELETE', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
+  guarded(() => approvalMock.removePolicy(freezeApp(params.slug)));
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/release-approvals', ({ params }) => ({
+  items: approvalMock.waiting(freezeApp(params.slug)),
+}));
+route('GET', '/v1/deployments/{id}/approvals', ({ params }) =>
+  approvalMock.statusOf(approvalDeployment(params.id))
+);
+route('POST', '/v1/deployments/{id}/approvals', ({ params, body }) =>
+  guarded(() => approvalMock.decide(approvalDeployment(params.id), body))
+);
+route('GET', '/v1/apps/{slug}/release-gates', ({ params }) => ({
+  gates: gateMock.list(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/release-gates', ({ params, body }) =>
+  status(
+    201,
+    guarded(() => gateMock.create(freezeApp(params.slug), body, db.account.email))
+  )
+);
+route('DELETE', '/v1/apps/{slug}/release-gates/{name}', ({ params }) =>
+  guarded(() => gateMock.remove(freezeApp(params.slug), params.name))
 );
 
 const HIDDEN_AT_BOOT = new Set(
