@@ -30,7 +30,7 @@ const CHECK_NAMES: Record<string, string> = {
 /** apid names where to look next; these are the app tabs that answer it. */
 const ACTION_TABS = {
   deployments: 'Deployments',
-  configuration: 'Configuration',
+  configuration: 'Runtime',
   logs: 'Logs',
   metrics: 'Metrics',
   errors: 'Errors',

@@ -237,7 +237,7 @@ export function CommandPalette({
         (
           [
             { tab: 'Logs', verb: 'Tail logs' },
-            { tab: 'Configuration', verb: 'Configure' },
+            { tab: 'General', verb: 'Configure' },
           ] as const
         ).map(({ tab, verb }) => ({
           id: `act-${tab.toLowerCase()}-${fn.id}`,

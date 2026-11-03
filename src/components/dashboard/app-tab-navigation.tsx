@@ -41,7 +41,11 @@ export const APP_TAB_GROUPS = [
   // this one is the commercial relationship with whoever sends it.
   { label: 'Monetize', tabs: ['Consumers', 'Consumer plans'] },
   { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
-  { label: 'Configure', tabs: ['Environment', 'Configuration'] },
+  // Configuration was one 16-panel page; it is four screens now.
+  {
+    label: 'Configure',
+    tabs: ['Environment', 'General', 'Runtime', 'Health and releases', 'Source and access'],
+  },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
 type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
@@ -79,12 +83,13 @@ export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab
  * Tabs that were merged away. Env vars and secrets are one question — what
  * does this app's environment contain — so they are one page now; links that
  * still name either land on it. Invoke is a header action on Overview now
- * (`?invoke=1`).
+ * (`?invoke=1`), and Configuration's first screen is General.
  */
 const LEGACY_APP_TABS: Record<string, AppTab> = {
   Secrets: 'Environment',
   'Env vars': 'Environment',
   Invoke: 'Overview',
+  Configuration: 'General',
 };
 
 /** The tab a `?tab=` value names, including retired names; undefined if none. */

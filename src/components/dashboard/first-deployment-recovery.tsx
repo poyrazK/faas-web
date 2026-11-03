@@ -71,7 +71,7 @@ export function FirstDeploymentRecovery({
     code === 'env_var_missing'
       ? 'Environment'
       : code === 'app_runtime_oom' || code === 'app_startup_timeout' || code === 'app_not_listening'
-        ? 'Configuration'
+        ? 'Runtime'
         : undefined;
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">

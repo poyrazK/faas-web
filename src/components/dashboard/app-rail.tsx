@@ -6,6 +6,7 @@ import {
   Bell,
   Bug,
   ClockRotateRight,
+  Cpu,
   Code,
   Community,
   Copy,
@@ -16,10 +17,12 @@ import {
   GitFork,
   Globe,
   GraphUp,
+  Heart,
   Journal,
   Key,
   Link as LinkIcon,
   List,
+  Lock,
   Page,
   Puzzle,
   Rocket,
@@ -71,7 +74,10 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Queues: List,
   Webhooks: Antenna,
   Environment: Key,
-  Configuration: Settings,
+  General: Settings,
+  Runtime: Cpu,
+  'Health and releases': Heart,
+  'Source and access': Lock,
 };
 
 /** The app a pathname is inside, or undefined off an app page. */

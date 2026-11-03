@@ -181,14 +181,14 @@ describe('App Overview', () => {
     expect(fixtures.buildIds).toEqual([]);
   });
 
-  it("shows the app's stateless contract under Configuration", async () => {
+  it("shows the app's local disk watch under Runtime", async () => {
     const router = await mount();
     expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
     await act(async () => {
       await router.navigate({
         to: '/dashboard/apps/$appSlug',
         params: { appSlug: 'alpha' },
-        search: { tab: 'Configuration' },
+        search: { tab: 'Runtime' },
       });
     });
     expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');

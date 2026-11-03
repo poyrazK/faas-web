@@ -262,7 +262,7 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
         <Link
           to="/dashboard/apps/$appSlug"
           params={{ appSlug: appSlug }}
-          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Configuration' }}
+          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Runtime' }}
           className="inline-block text-xs text-brand hover:underline"
         >
           View affected configuration
