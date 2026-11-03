@@ -652,7 +652,7 @@ function RenamePanel({ app }: { app: App }) {
               void navigate({
                 to: '/dashboard/apps/$appSlug',
                 params: { appSlug: next },
-                search: { tab: 'Configuration' },
+                search: { tab: 'General' },
               });
             })
             .catch((err: unknown) =>
@@ -747,7 +747,10 @@ function DangerZone({ app }: { app: App }) {
   );
 }
 
-export function AppConfiguration({ slug }: { slug: string }) {
+export type ConfigSection = 'general' | 'runtime' | 'health' | 'source';
+
+/** One screen of an app's configuration; `section` picks which. */
+export function AppConfiguration({ slug, section }: { slug: string; section: ConfigSection }) {
   const { account } = useAuth();
   const { data, isPending, error, refetch } = useApp(
     slug,
@@ -760,8 +763,27 @@ export function AppConfiguration({ slug }: { slug: string }) {
   if (phase === 'error') return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (phase === 'loading' || !data) return <LoadingState message="Loading configuration…" />;
 
+  if (section === 'runtime')
+    // Keyed on the id so a rename or a fresh read reseeds the draft.
+    return <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />;
+  if (section === 'health')
+    return (
+      <div className="flex flex-col gap-5">
+        <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
+        <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
+      </div>
+    );
+  if (section === 'source')
+    return (
+      <div className="flex flex-col gap-5">
+        <GatedSupplyChainPanel slug={data.slug} />
+        <RegistryCredentialsPanel slug={data.slug} />
+        <DeployTokensPanel slug={data.slug} />
+      </div>
+    );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <AppVisibility
         key={`${account?.id ?? ''}:${data.id}`}
         accountId={account?.id ?? ''}
@@ -803,13 +825,6 @@ export function AppConfiguration({ slug }: { slug: string }) {
           })}
         </dl>
       </Panel>
-      {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
-      <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
-      <GatedSupplyChainPanel slug={data.slug} />
-      <RegistryCredentialsPanel slug={data.slug} />
-      <DeployTokensPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

@@ -797,13 +797,19 @@ function FunctionDetailPage() {
               {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
               {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}
 
-              {tab === 'Configuration' && (
+              {tab === 'General' && <AppConfiguration slug={fn.id} section="general" />}
+              {tab === 'Runtime' && (
                 <>
-                  {/* Source first: AppConfiguration ends in the danger zone. */}
-                  <GitHubConnectionPanel slug={fn.id} />
-                  <AppConfiguration slug={fn.id} />
+                  <AppConfiguration slug={fn.id} section="runtime" />
                   <PrewarmPanel slug={fn.id} />
                   <StatelessContract slug={appSlug} />
+                </>
+              )}
+              {tab === 'Health and releases' && <AppConfiguration slug={fn.id} section="health" />}
+              {tab === 'Source and access' && (
+                <>
+                  <GitHubConnectionPanel slug={fn.id} />
+                  <AppConfiguration slug={fn.id} section="source" />
                 </>
               )}
             </div>

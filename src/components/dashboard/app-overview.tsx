@@ -8,7 +8,7 @@ import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
-type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
+type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Runtime';
 
 interface AppOverviewProps {
   app: Workflow;
@@ -235,7 +235,7 @@ export function AppOverview({
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('Configuration')}
+            onClick={() => onNavigate('Runtime')}
             className="mt-5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-brand"
           >
             View app configuration

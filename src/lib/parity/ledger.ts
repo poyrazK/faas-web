@@ -68,7 +68,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: [
       '/dashboard/settings?section=integrations',
-      '/dashboard/apps/$appSlug?tab=Configuration',
+      '/dashboard/apps/$appSlug?tab=Source+and+access',
     ],
     gap: 'Retry failed GitHub activity; show deploy-branch mappings',
     wave: 1,
@@ -106,7 +106,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 11,
     name: '`gregale.yaml` deploy overrides, app config',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // A12 · beta
   {
@@ -120,14 +120,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 13,
     name: 'Per-app deploy tokens for CI',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Source+and+access'],
   },
   // A15 · GA
   {
     row: 15,
     name: 'Private registry credentials',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Source+and+access'],
   },
   // A16 · GA
   {
@@ -304,7 +304,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 38,
     name: 'Scale to zero: park idle, wake on request',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C39 · GA
   {
@@ -327,14 +327,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 42,
     name: 'Manual park / wake, prewarm',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C43 · GA
   {
     row: 43,
     name: 'Autoscaling and min instances (target RPS / CPU), scheduled scaling',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C44 · GA
   {
@@ -375,7 +375,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 49,
     name: 'Resource sizing: RAM, CPU millicores, scratch disk, disk I/O profile, workload classes (http / worker / job), replicas',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C50 · beta
   {
@@ -391,7 +391,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 51,
     name: 'Reserved concurrency and eviction priority',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
     capability: 'reserved-concurrency',
   },
   // C52 · preview
@@ -399,7 +399,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 52,
     name: 'Application companions (sidecars)',
     status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
     capability: 'companions',
     gap: 'Sidecar timeline',
     wave: 3,
@@ -510,7 +510,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 67,
     name: 'Private apps',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=General'],
   },
   // D68 · preview
   {
@@ -539,7 +539,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 72,
     name: 'Egress allowlist and extra egress ports',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // D74 · beta
   {
@@ -572,7 +572,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 77,
     name: 'App access control: per-app authentication (`require_authn`), public bearer / basic auth, IP allowlist',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // D79 · beta
   {

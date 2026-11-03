@@ -103,7 +103,7 @@ describe('App deletion contract copy', () => {
     render(
       <QueryClientProvider client={client}>
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="runtime" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
@@ -123,7 +123,7 @@ describe('App deletion contract copy', () => {
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="runtime" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
@@ -140,7 +140,7 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
     const idle = screen.getByLabelText(/Idle timeout/);
@@ -154,7 +154,7 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     const slug = screen.getByLabelText('Slug');
@@ -169,7 +169,7 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     const slug = screen.getByLabelText('Slug');
@@ -180,7 +180,7 @@ describe('App deletion contract copy', () => {
   it('explains live policy convergence separately from boot-time memory', async () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
     expect(screen.queryByText(/Applied on the next wake/)).not.toBeInTheDocument();
@@ -190,7 +190,7 @@ describe('App deletion contract copy', () => {
   it('disables memory sizes above the account limit in configuration', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
     expect(screen.getByRole('button', { name: '2048 MB' })).toBeDisabled();
@@ -200,7 +200,7 @@ describe('App deletion contract copy', () => {
   it('shows the health probes and restart contract for the app and the account plan', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="health" />
       </ConfirmProvider>
     );
     expect(screen.getByText('Health and restarts for alpha on scale')).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('App deletion contract copy', () => {
   it('makes the API-assigned endpoint clickable in configuration', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     expect(
@@ -219,7 +219,7 @@ describe('App deletion contract copy', () => {
   it('explains the restore window without weakening typed confirmation', async () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     expect(screen.getByText(/Recently deleted for 7 days/)).toBeInTheDocument();
@@ -247,7 +247,7 @@ describe('Release settings', () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="health" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
