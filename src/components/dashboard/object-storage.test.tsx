@@ -12,15 +12,20 @@ const mocks = vi.hoisted(() => ({
   sign: vi.fn(),
   toast: vi.fn(),
   capability: vi.fn(),
+  access: vi.fn(),
   confirm: vi.fn(),
   upload: vi.fn(),
   versioning: vi.fn(),
   remove: vi.fn(),
   lifecycle: vi.fn(),
+  versions: vi.fn(),
   selected: 'demo',
   appState: null as null | { slug: string; apps: { slug: string }[]; select: () => void },
 }));
-vi.mock('@/lib/api/capabilities', () => ({ useCapability: mocks.capability }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: mocks.capability,
+  useCapabilityAccess: mocks.access,
+}));
 vi.mock('./app-select', () => ({
   useSelectedApp: () =>
     mocks.appState ?? {
@@ -46,6 +51,7 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   useBucketS3Credentials: () => ({ data: { items: [] }, isPending: false, error: null }),
   useBucketVersioning: mocks.versioning,
   useBucketLifecycle: mocks.lifecycle,
+  useObjectVersions: mocks.versions,
 }));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<typeof import('@/lib/api/queries')>()),
@@ -81,6 +87,7 @@ beforeEach(() => {
   mocks.appState = null;
   mocks.confirm.mockResolvedValue(true);
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
+  mocks.access.mockReturnValue({ access: 'on', refresh: vi.fn() });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
   mocks.objects.mockReturnValue({
     data: { items: [{ key: 'file.txt', size_bytes: 3 }] },
@@ -88,6 +95,23 @@ beforeEach(() => {
     error: null,
   });
   mocks.create.mockResolvedValue(bucket);
+  mocks.versions.mockReturnValue({
+    data: {
+      items: [
+        {
+          key: 'gone.txt',
+          version_id: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c03',
+          is_latest: true,
+          delete_marker: true,
+          size_bytes: 0,
+          last_modified: '2026-10-01T00:00:00Z',
+        },
+      ],
+      common_prefixes: [],
+    },
+    isPending: false,
+    error: null,
+  });
   mocks.versioning.mockReturnValue({
     data: {
       bucket_id: 'bucket-one',
@@ -263,8 +287,6 @@ it('points to the CLI for bucket features the console lacks, with the chosen app
   await user.click(screen.getByRole('tab', { name: 'Settings' }));
   const more = screen.getByRole('region', { name: 'More in the CLI' });
   for (const command of [
-    'gregale bucket versioning status demo bucket-one',
-    'gregale bucket lifecycle get demo bucket-one',
     'gregale bucket encryption status demo bucket-one',
     'gregale bucket object-lock status demo bucket-one',
     'gregale bucket uploads list demo bucket-one',
@@ -282,8 +304,6 @@ it('names each CLI copy button as a command for the chosen bucket', async () => 
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label'))
   ).toEqual([
-    'Copy: versioning command for assets',
-    'Copy: lifecycle command for assets',
     'Copy: encryption command for assets',
     'Copy: Object Lock command for assets',
     'Copy: multipart uploads command for assets',
@@ -548,4 +568,33 @@ it('follows a linked app once the app list has loaded', () => {
     </QueryClientProvider>
   );
   expect(select).toHaveBeenCalledWith('shop');
+});
+
+it('shows every version, deleted objects included, from the Objects tab', async () => {
+  const user = userEvent.setup();
+  show();
+  expect(screen.queryByText('gone.txt')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'All versions' }));
+  expect(screen.getByRole('button', { name: 'Undelete gone.txt' })).toBeInTheDocument();
+  expect(mocks.versions).toHaveBeenLastCalledWith('demo', 'bucket-one', '', null);
+});
+
+it('offers no version view, and reads no versioning, when the capability is off', () => {
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'object-versioning' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  show();
+  expect(screen.queryByRole('button', { name: 'All versions' })).not.toBeInTheDocument();
+  expect(mocks.versioning).not.toHaveBeenCalledWith('demo', 'bucket-one');
+});
+
+it('says a delete is undoable when versioning keeps the versions', async () => {
+  const user = userEvent.setup();
+  mocks.confirm.mockResolvedValue(false);
+  show();
+  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(mocks.confirm).toHaveBeenCalledWith(
+    expect.objectContaining({ description: expect.stringMatching(/a delete marker hides it/) })
+  );
 });

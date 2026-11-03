@@ -13,6 +13,7 @@ import {
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
+import * as storageMock from './object-storage';
 import * as preAuthMock from './pre-auth';
 import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
@@ -4341,6 +4342,7 @@ const storageSignatures = new Map<
     method: 'GET' | 'HEAD' | 'PUT';
     expiresAt: number;
     contentType: string;
+    versionId?: string;
   }
 >();
 const storageBytes = new Map<string, { bytes: Buffer; contentType: string }>();
@@ -4460,6 +4462,32 @@ function ownedBucket(slug: string, id: string) {
   return bucket;
 }
 
+/** Answers a refusal from mock/object-storage.ts as this plugin's own Problem. */
+function storageCall<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (err) {
+    if (err instanceof storageMock.StorageRefusal)
+      throw new Problem(err.status, err.code, err.message);
+    throw err;
+  }
+}
+
+/** The bucket a route names, with its version history seeded before anything changes it. */
+function storageBucket(params: Record<string, string>) {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const where = `${slug}/${bucket.id}`;
+  storageMock.ensureVersions(where, bucket, storageObjects.get(where) ?? []);
+  return { slug, bucket, where };
+}
+
+/** Keep the current listing in step with the newest version of a key. */
+function syncCurrent(where: string, key: string, current: storageMock.StoredObject | null) {
+  const list = (storageObjects.get(where) ?? []).filter((o) => o.key !== key);
+  storageObjects.set(where, current ? [...list, current] : list);
+}
+
 route('GET', '/v1/apps/{slug}/buckets', ({ params }) => ({
   items: bucketsFor(app(params.slug).slug),
   enabled: true,
@@ -4493,6 +4521,12 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}', ({ params }) => {
   const bucket = ownedBucket(slug, params.bucket);
   if ((storageObjects.get(`${slug}/${bucket.id}`) ?? []).length)
     throw new Problem(409, 'conflict', 'Only an empty bucket can be deleted.');
+  if (storageMock.holdsVersions(`${slug}/${bucket.id}`))
+    throw new Problem(
+      409,
+      'bucket_not_empty',
+      'Empty the bucket, including any versions, before deleting it.'
+    );
   storageBuckets.set(
     slug,
     bucketsFor(slug).filter((b) => b.id !== bucket.id)
@@ -4515,9 +4549,9 @@ route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => 
   };
 });
 route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
+  const { slug, bucket, where } = storageBucket(params);
   const key = query.get('key') ?? '';
+  storageMock.recordDelete(where, bucket, key);
   const list = storageObjects.get(`${slug}/${bucket.id}`) ?? [];
   storageObjects.set(
     `${slug}/${bucket.id}`,
@@ -4544,6 +4578,7 @@ route('POST', '/v1/apps/{slug}/buckets/{bucket}/signed-url', ({ params, body, re
     method,
     expiresAt,
     contentType: String(body.content_type ?? 'application/octet-stream'),
+    ...(body.version_id ? { versionId: String(body.version_id) } : {}),
   });
   const url = new URL(MOCK_S3_OBJECT_PATH, `http://${req.headers.host ?? 'localhost'}`);
   url.searchParams.set('bucket', bucket.name);
@@ -4576,10 +4611,11 @@ route('PUT', '/mock-s3/object', async ({ query, req, res }) => {
   const bytes = Buffer.concat(chunks);
   const where = `${signed.slug}/${signed.bucketId}`;
   const list = storageObjects.get(where) ?? [];
-  storageObjects.set(where, [
-    ...list.filter((o) => o.key !== signed.key),
-    { key: signed.key, size_bytes: bytes.length, last_modified: db.iso(0) },
-  ]);
+  const bucket = ownedBucket(signed.slug, signed.bucketId);
+  storageMock.ensureVersions(where, bucket, list);
+  const written = { key: signed.key, size_bytes: bytes.length, last_modified: db.iso(0) };
+  storageObjects.set(where, [...list.filter((o) => o.key !== signed.key), written]);
+  storageMock.recordWrite(where, bucket, written);
   const contentType = String(req.headers['content-type'] ?? signed.contentType);
   if (bytes.length <= MOCK_S3_KEEP_BYTES)
     storageBytes.set(`${where}/${signed.key}`, { bytes, contentType });
@@ -4592,10 +4628,19 @@ route('GET', '/mock-s3/object', ({ query, res }) => {
   const signed = signedFor(query, 'GET');
   if (!signed) return s3Refusal(res, 403, 'AccessDenied');
   const where = `${signed.slug}/${signed.bucketId}`;
-  const object = (storageObjects.get(where) ?? []).find((o) => o.key === signed.key);
+  const version = signed.versionId
+    ? storageMock.findVersion(where, signed.key, signed.versionId)
+    : undefined;
+  if (signed.versionId && (!version || version.delete_marker))
+    return s3Refusal(res, 404, 'NoSuchVersion');
+  const object =
+    version && !version.is_latest
+      ? version
+      : (storageObjects.get(where) ?? []).find((o) => o.key === signed.key);
   if (!object) return s3Refusal(res, 404, 'NoSuchKey');
   // Seeded objects, and uploads too large to keep, have no bytes here.
-  const kept = storageBytes.get(`${where}/${signed.key}`);
+  const kept =
+    version && !version.is_latest ? undefined : storageBytes.get(`${where}/${signed.key}`);
   res.statusCode = 200;
   res.setHeader('Content-Type', kept?.contentType ?? 'text/plain; charset=utf-8');
   const name = signed.key.split('/').pop() || 'object';
@@ -4681,41 +4726,35 @@ route(
     return binding;
   }
 );
-route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
-  const on = bucket.name === 'assets';
-  return {
-    bucket_id: bucket.id,
-    desired_status: on ? 'Enabled' : '',
-    observed_status: on ? 'Enabled' : '',
-    state: 'ready',
-    revision: on ? 2 : 0,
-    versions_required: on,
-    updated_at: bucket.created_at,
-  };
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) =>
+  storageMock.readVersioning(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params, body }) =>
+  storageCall(() =>
+    status(202, storageMock.requestVersioning(storageBucket(params).bucket, body.status, false))
+  )
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/versions', ({ params, query }) =>
+  storageCall(() => storageMock.listVersions(storageBucket(params).where, query))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects/versions', ({ params, query }) => {
+  const { where } = storageBucket(params);
+  const key = query.get('key') ?? '';
+  const { result, current } = storageCall(() =>
+    storageMock.deleteVersion(where, key, query.get('version_id') ?? '')
+  );
+  syncCurrent(where, key, current);
+  return result;
 });
-route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
-  return {
-    bucket_id: bucket.id,
-    revision: bucket.name === 'assets' ? 1 : 0,
-    rules:
-      bucket.name === 'assets'
-        ? [
-            {
-              id: 'expire-tmp',
-              status: 'Enabled',
-              filter: { prefix: 'tmp/' },
-              expiration: { days: 7 },
-            },
-            { id: 'abort-uploads', status: 'Enabled', abort_incomplete_multipart_days: 3 },
-          ]
-        : [],
-    updated_at: bucket.created_at,
-  };
-});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) =>
+  storageMock.readLifecycle(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params, body }) =>
+  storageCall(() => storageMock.writeLifecycle(storageBucket(params).bucket, body))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) =>
+  storageMock.clearLifecycle(storageBucket(params).bucket)
+);
 
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.

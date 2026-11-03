@@ -18,21 +18,20 @@ import { Timestamp } from '@/components/ui/timestamp';
 import { FIELD } from '@/components/ui/field';
 import { BucketAccess } from './bucket-access';
 import { CliCommand } from './cli-command';
-import { useCapability } from '@/lib/api/capabilities';
+import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import { CapabilityNotice } from './capability-notice';
-import { Tabs, tabId } from './tabs';
+import { SegmentedControl, Tabs, tabId } from './tabs';
 import { AccessMap } from './storage/access-map';
 import { CodeAccess } from './storage/code-access';
 import { BucketSettings } from './storage/bucket-settings';
+import { ObjectVersions } from './storage/object-versions';
 import { accessModel, type AccessConnection } from '@/lib/storage-access';
 import { formatUsageBytes } from '@/lib/usage-format';
 import { cn } from '@/lib/utils';
 import {
   cliBucketEncryptionCommand,
-  cliBucketLifecycleCommand,
   cliBucketObjectLockCommand,
   cliBucketUploadsCommand,
-  cliBucketVersioningCommand,
 } from '@/lib/cli-commands';
 import {
   bucketKey,
@@ -46,6 +45,7 @@ import {
   useBucketBindings,
   useBucketObjects,
   useBucketS3Credentials,
+  useBucketVersioning,
   useObjectBuckets,
   type ObjectBucket,
 } from '@/lib/api/object-storage';
@@ -521,7 +521,13 @@ function BucketDetail({
         )}
         {tab === 'settings' && (
           <div className="flex flex-col gap-10">
-            <BucketSettings slug={slug} bucket={bucket} onDelete={onDelete} deleting={deleting} />
+            <BucketSettings
+              slug={slug}
+              bucket={bucket}
+              enabled={enabled}
+              onDelete={onDelete}
+              deleting={deleting}
+            />
             {enabled && (
               <BucketCliPanel slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
             )}
@@ -563,16 +569,6 @@ function BucketCliPanel({
         </p>
       </div>
       <CliCommand
-        label="Versioning: check it, then enable or suspend it"
-        copyLabel={copyLabel('versioning')}
-        command={cliBucketVersioningCommand(slug, bucketId)}
-      />
-      <CliCommand
-        label="Lifecycle rules: read them, then set or clear them"
-        copyLabel={copyLabel('lifecycle')}
-        command={cliBucketLifecycleCommand(slug, bucketId)}
-      />
-      <CliCommand
         label="Default encryption"
         copyLabel={copyLabel('encryption')}
         command={cliBucketEncryptionCommand(slug, bucketId)}
@@ -610,6 +606,12 @@ function ObjectBrowser({
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [view, setView] = useState<'current' | 'versions'>('current');
+  const versionsOn = useCapabilityAccess('object-versioning').access === 'on';
+  const showVersions = versionsOn && view === 'versions';
+  // Read only behind the capability: apid answers its routes 404 when it is off.
+  const versioning = useBucketVersioning(slug, versionsOn ? bucket.id : '');
+  const deleteKeepsVersions = versioning.data?.observed_status === 'Enabled';
   const choose = (f: File | null) => {
     setFile(f);
     setKey(f ? `${prefix}${f.name}` : '');
@@ -700,33 +702,49 @@ function ObjectBrowser({
 
   return (
     <section className="flex flex-col gap-4" aria-label={`Objects in ${bucket.name}`}>
-      <nav aria-label="Path" className="storage-path flex flex-wrap items-center font-mono text-sm">
-        <button
-          type="button"
-          onClick={() => goTo('')}
-          className="pressable rounded px-1 hover:text-[color:var(--brand)]"
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav
+          aria-label="Path"
+          className="storage-path flex flex-wrap items-center font-mono text-sm"
         >
-          s3://{bucket.name}/
-        </button>
-        {segments.map((segment, i) => {
-          const target = `${segments.slice(0, i + 1).join('/')}/`;
-          const last = i === segments.length - 1;
-          return (
-            <button
-              key={target}
-              type="button"
-              aria-current={last ? 'location' : undefined}
-              onClick={() => goTo(target)}
-              className={cn(
-                'pressable rounded px-1',
-                last ? 'text-foreground' : 'text-muted-foreground hover:text-[color:var(--brand)]'
-              )}
-            >
-              {segment}/
-            </button>
-          );
-        })}
-      </nav>
+          <button
+            type="button"
+            onClick={() => goTo('')}
+            className="pressable rounded px-1 hover:text-[color:var(--brand)]"
+          >
+            s3://{bucket.name}/
+          </button>
+          {segments.map((segment, i) => {
+            const target = `${segments.slice(0, i + 1).join('/')}/`;
+            const last = i === segments.length - 1;
+            return (
+              <button
+                key={target}
+                type="button"
+                aria-current={last ? 'location' : undefined}
+                onClick={() => goTo(target)}
+                className={cn(
+                  'pressable rounded px-1',
+                  last ? 'text-foreground' : 'text-muted-foreground hover:text-[color:var(--brand)]'
+                )}
+              >
+                {segment}/
+              </button>
+            );
+          })}
+        </nav>
+        {versionsOn && (
+          <SegmentedControl
+            label="Show"
+            value={view}
+            options={[
+              { key: 'current', label: 'Current objects' },
+              { key: 'versions', label: 'All versions' },
+            ]}
+            onChange={setView}
+          />
+        )}
+      </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -795,7 +813,16 @@ function ObjectBrowser({
         </form>
       </div>
 
-      {query.isPending ? (
+      {showVersions ? (
+        <ObjectVersions
+          slug={slug}
+          bucket={bucket}
+          prefix={prefix}
+          onPrefix={goTo}
+          maxBytes={maxBytes}
+          signingEnabled={signingEnabled}
+        />
+      ) : query.isPending ? (
         <LoadingState message="Loading objects…" />
       ) : query.error ? (
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -895,7 +922,9 @@ function ObjectBrowser({
                         if (
                           await confirm({
                             title: `Delete ${o.key}?`,
-                            description: 'This cannot be undone through Gregale.',
+                            description: deleteKeepsVersions
+                              ? 'Versioning is on, so a delete marker hides it and its versions are kept. Undelete it from All versions.'
+                              : 'This cannot be undone through Gregale.',
                             confirmLabel: 'Delete object',
                             destructive: true,
                           })
