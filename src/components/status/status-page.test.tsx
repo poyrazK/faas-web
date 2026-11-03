@@ -215,6 +215,9 @@ describe('when the status service is unreachable', () => {
     expect(screen.getByRole('region', { name: 'Last known platform status' })).toBeInTheDocument();
     expect(screen.queryByText('Current platform status')).not.toBeInTheDocument();
     expect(screen.queryByText(/Updates delayed/)).not.toBeInTheDocument();
+    // The stored snapshot says data_status "fresh"; it is not live any more.
+    expect(screen.getByText('Not live')).toBeInTheDocument();
+    expect(screen.queryByText('Live telemetry')).not.toBeInTheDocument();
   });
 
   it('offers a retry when there is no snapshot to show', async () => {

@@ -123,7 +123,9 @@ export function StatusOverview({
             <h1>{overallLabels[snapshot.overall_status]}</h1>
           </div>
           <div className="status-freshness">
-            <strong>{dataStatusLabel(snapshot.data_status)}</strong>
+            {/* A stored snapshot keeps the data_status it had when it was live;
+                saying "Live telemetry" now would contradict the banner above. */}
+            <strong>{lastKnown ? 'Not live' : dataStatusLabel(snapshot.data_status)}</strong>
             <span>
               Updated{' '}
               <time dateTime={snapshot.updated_at}>{formatDateTime(snapshot.updated_at)}</time>
@@ -409,7 +411,7 @@ export function StatusUnavailable({ onRetry }: { onRetry?: () => void } = {}) {
           responds.
         </p>
         {onRetry && (
-          <Button variant="outline" size="sm" onClick={onRetry}>
+          <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
             Try again
           </Button>
         )}
