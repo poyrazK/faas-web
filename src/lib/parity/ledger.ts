@@ -255,10 +255,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 34,
     name: 'Release commands: a command (e.g. migrations) that must succeed before a deployment takes traffic',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/releases'],
-    gap: 'Release command status on the deployment',
-    wave: 2,
   },
   // B35 · preview
   {

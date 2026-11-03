@@ -25,6 +25,7 @@ import { LogView } from './log-view';
 import { failureSummary } from './failure-summary';
 import { FailurePanel } from './failure-panel';
 import { ReleaseProcess } from './release-process';
+import { ReleaseCommand } from './release-command';
 import { CanaryHealth } from './canary-health';
 import { releaseProcess } from '@/lib/release-process';
 import { DeploymentDiff } from './deployment-diff';
@@ -208,6 +209,7 @@ export function ReleaseDetailPanel({
                     <section aria-label="Process" className="rounded-lg border border-border p-4">
                       <ReleaseProcess phases={releaseProcess(deployment)} />
                     </section>
+                    <ReleaseCommand slug={slug} deployment={deployment} />
                     {slug && <DeploymentAliasesHere slug={slug} deployment={deployment} />}
                     {/* Only a canary has a stable release to be compared against. */}
                     {slug && deployment.canary_total_steps ? (

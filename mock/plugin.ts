@@ -20,6 +20,7 @@ import {
   pgUsage,
 } from './postgres';
 import * as deploymentDetail from './deployment-detail';
+import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -5645,6 +5646,27 @@ function deploymentById(id: string) {
   if (!d) throw new Problem(404, 'not_found', 'no such deployment');
   return d;
 }
+
+// Release commands: the release task's receipt behind a deployment's `release`.
+releaseCommand.seedReleaseCommands(db.deployments, db.apps);
+route('GET', '/v1/apps/{slug}/tasks', ({ params, query }) => {
+  const a = app(params.slug);
+  const limit = Number(query.get('limit') ?? 50);
+  const offset = Number(query.get('offset') ?? 0);
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 200 ||
+    !Number.isInteger(offset) ||
+    offset < 0
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a limit from 1 to 200 and a non-negative offset.'
+    );
+  return releaseCommand.listAppTasks(a.id, limit, offset);
+});
 
 route('GET', '/v1/deployments/{id}/diff', ({ params, query }) => {
   const d = deploymentById(params.id);
