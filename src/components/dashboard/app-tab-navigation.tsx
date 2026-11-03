@@ -16,7 +16,7 @@ export const APP_TAB_GROUPS = [
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
   {
     label: 'Observe',
-    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit'],
+    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'SLOs', 'Debugger', 'Request audit'],
   },
   {
     label: 'Connect',
@@ -69,6 +69,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Debugger: 'debug',
   Issues: 'issues',
   Errors: 'issues',
+  SLOs: 'custom-slos',
   MCP: 'mcp-hosting',
   OpenAPI: 'openapi-contract-preview',
   Consumers: 'api-consumers',

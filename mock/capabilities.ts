@@ -29,6 +29,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'custom-slos',
+    name: 'SLOs and error budgets',
+    category: 'observability',
+    description:
+      'Define availability and latency objectives per app and track how much of each error budget is left over a 7- or 30-day window, with live burn rates.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/slos',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'deploy-diff',
     name: 'Deploy diff',
     category: 'delivery',

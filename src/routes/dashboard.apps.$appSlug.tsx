@@ -57,6 +57,7 @@ import { QueuesBody } from './dashboard.queues';
 import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
+import { SlosBody } from '@/components/dashboard/slos-body';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
@@ -789,6 +790,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+              {tab === 'SLOs' && <SlosBody slug={fn.id} />}
               {tab === 'Webhooks' && (
                 <WebhooksHub
                   accountId={account?.id ?? ''}

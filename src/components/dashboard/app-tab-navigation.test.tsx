@@ -97,7 +97,16 @@ it('puts the request audit with the other Observe pages', () => {
     within(pages('Observe'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-  ).toEqual(['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit']);
+  ).toEqual([
+    'Logs',
+    'Log drains',
+    'Errors',
+    'Issues',
+    'Alerts',
+    'SLOs',
+    'Debugger',
+    'Request audit',
+  ]);
   expect(resolveAppTab('Request audit')).toBe('Request audit');
 });
 
@@ -165,4 +174,17 @@ it('puts realtime with the other messaging pages under Automate, gated on its ca
   expect(APP_TAB_CAPABILITY.Realtime).toBe('realtime');
   expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
   expect(resolveAppTab('Realtime')).toBe('Realtime');
+});
+
+it('puts SLOs beside alerts under Observe, gated on custom-slos', () => {
+  render(<Navigation initial="SLOs" />);
+  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Observe'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('SLOs')).toBe(names.indexOf('Alerts') + 1);
+  expect(APP_TAB_CAPABILITY.SLOs).toBe('custom-slos');
+  expect(visibleAppTabs((id) => (id === 'custom-slos' ? 'off' : 'on'))).not.toContain('SLOs');
+  expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('SLOs');
+  expect(resolveAppTab('SLOs')).toBe('SLOs');
 });
