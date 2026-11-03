@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
@@ -32,6 +32,8 @@ import { AppVisibility } from './app-visibility';
 import { usePolicyOperation } from './policy-operation';
 import { HealthProbes } from './health-probes';
 import { AppReleaseSettings } from './app-release-settings';
+import { HelpTip } from './kit/help-tip';
+import { FieldLabel } from './kit/field-label';
 
 /**
  * The app's own settings, editable.
@@ -103,13 +105,16 @@ const FIELD = `${BASE_FIELD} w-full [font-variant-numeric:tabular-nums]`;
 
 function NumberField({
   label,
-  hint,
+  help,
+  range,
   value,
   min,
   onChange,
 }: {
   label: string;
-  hint: string;
+  help: string;
+  /** Allowed values, shown under the field ("1–100"). */
+  range?: string;
   value: number;
   min: number;
   onChange: (n: number) => void;
@@ -117,6 +122,7 @@ function NumberField({
   // The text is a draft: clamping on each keystroke turned "30" into 530 when
   // the minimum is 5, because "3" was raised to 5 before the "0" arrived.
   // Values below the minimum are only raised once the field loses focus.
+  const id = useId();
   const [text, setText] = useState(String(value));
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
@@ -124,9 +130,10 @@ function NumberField({
     if (Number(text) !== value) setText(String(value));
   }
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="label-mono text-muted-foreground">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <FieldLabel label={label} help={help} htmlFor={id} />
       <input
+        id={id}
         type="number"
         min={min}
         value={text}
@@ -143,39 +150,40 @@ function NumberField({
         }}
         className={FIELD}
       />
-      <span className="text-xs text-muted-foreground">{hint}</span>
-    </label>
+      {range && <span className="text-xs text-muted-foreground">{range}</span>}
+    </div>
   );
 }
 
 function Toggle({
   label,
-  hint,
+  help,
   checked,
   onChange,
 }: {
   label: string;
-  hint: string;
+  help: string;
   checked: boolean;
   onChange: (on: boolean) => void;
 }) {
   return (
-    <li className="flex items-start justify-between gap-6 py-4 first:pt-0 last:pb-0">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">{hint}</p>
-      </div>
+    <li className="flex items-center justify-between gap-6 py-2.5 first:pt-0 last:pb-0">
+      <p className="flex items-center gap-1 text-sm font-medium">
+        {label}
+        <HelpTip label={`About ${label}`}>{help}</HelpTip>
+      </p>
       <Switch
         checked={checked}
         onCheckedChange={onChange}
         aria-label={label}
-        className="mt-1 data-[state=checked]:bg-brand"
+        className="data-[state=checked]:bg-brand"
       />
     </li>
   );
 }
 
 function ConfigForm({ app }: { app: App }) {
+  const formId = useId();
   const { account, loading: limitsLoading } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -315,8 +323,8 @@ function ConfigForm({ app }: { app: App }) {
           </p>
         ) : null}
         <div className="grid gap-5 sm:grid-cols-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Memory</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel label="Memory" help="Billed as GB-seconds while resident." />
             <MemorySelect
               value={draft.ram_mb}
               maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
@@ -324,50 +332,52 @@ function ConfigForm({ app }: { app: App }) {
             />
             <span className="text-xs text-muted-foreground">
               {account
-                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance. `
-                : 'Checking plan limits… '}
-              Billed as GB-seconds while resident.
+                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
+                : 'Checking plan limits…'}
             </span>
-          </label>
+          </div>
 
           <NumberField
             label="Idle timeout (s)"
-            hint="Seconds without a request before the instance snapshots and parks. This is scale-to-zero."
+            help="Seconds without a request before the instance snapshots and parks. This is scale-to-zero."
             value={draft.idle_timeout_s}
             min={5}
             onChange={(n) => set('idle_timeout_s', n)}
           />
           <NumberField
             label="Minimum instances"
-            hint="Kept resident even when idle, and billed the whole time. 0 means park when quiet."
+            help="Kept resident even when idle, and billed the whole time. 0 means park when quiet."
             value={draft.min_instances}
             min={0}
             onChange={(n) => set('min_instances', n)}
           />
           <NumberField
             label="Max concurrency"
-            hint="Instances this app may run at once. Each one costs memory."
+            help="Instances this app may run at once. Each one costs memory."
             value={draft.max_concurrency}
             min={1}
             onChange={(n) => set('max_concurrency', n)}
           />
           <NumberField
             label="Autoscale target (rps)"
-            hint="Requests per second per instance before another one is added."
+            help="Requests per second per instance before another one is added."
             value={draft.autoscale_target_rps}
             min={1}
             onChange={(n) => set('autoscale_target_rps', n)}
           />
           <NumberField
             label="Autoscale target (CPU %)"
-            hint="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
+            help="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
             value={draft.autoscale_target_cpu_pct}
             min={0}
             onChange={(n) => set('autoscale_target_cpu_pct', Math.min(100, n))}
           />
 
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Eviction tier</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel
+              label="Eviction tier"
+              help="Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per account."
+            />
             <div className="flex gap-1.5">
               {(['best_effort', 'reserved'] as const).map((tier) => (
                 <button
@@ -385,28 +395,31 @@ function ConfigForm({ app }: { app: App }) {
                 </button>
               ))}
             </div>
-            <span className="text-xs text-muted-foreground">
-              Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per
-              account.
-            </span>
-          </label>
+          </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Overflow node</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel
+              label="Overflow node"
+              htmlFor={`${formId}-overflow-node`}
+              help="Preferred spill target under node pressure. Empty leaves placement to the scheduler."
+            />
             <input
+              id={`${formId}-overflow-node`}
               value={draft.overflow_node}
               onChange={(e) => set('overflow_node', e.target.value)}
               placeholder="fra-metal-2"
               spellCheck={false}
               className={FIELD}
             />
-            <span className="text-xs text-muted-foreground">
-              Preferred spill target under node pressure. Empty leaves placement to the scheduler.
-            </span>
-          </label>
-          <label className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="label-mono text-muted-foreground">Egress allowlist</span>
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <FieldLabel
+              label="Egress allowlist"
+              htmlFor={`${formId}-egress-allowlist`}
+              help="Empty means the platform denylist alone applies. Pro allows 16 entries, Scale 64."
+            />
             <textarea
+              id={`${formId}-egress-allowlist`}
               value={draft.egress_allowlist}
               onChange={(e) => set('egress_allowlist', e.target.value)}
               rows={3}
@@ -414,11 +427,8 @@ function ConfigForm({ app }: { app: App }) {
               placeholder={'10.0.0.0/8\n203.0.113.4/32'}
               className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
             />
-            <span className="text-xs text-muted-foreground">
-              One CIDR per line. Empty means the platform denylist alone applies. Pro allows 16,
-              Scale 64.
-            </span>
-          </label>
+            <span className="text-xs text-muted-foreground">One CIDR per line</span>
+          </div>
           <div className="sm:col-span-2">
             <StaticEgressIP slug={app.slug} />
           </div>
@@ -432,38 +442,38 @@ function ConfigForm({ app }: { app: App }) {
         <ul className="flex flex-col divide-y divide-border">
           <Toggle
             label="Streaming responses"
-            hint="Flush the response as the handler writes it, instead of buffering to the end."
+            help="Flush the response as the handler writes it, instead of buffering to the end."
             checked={draft.streaming_enabled}
             onChange={(on) => set('streaming_enabled', on)}
           />
           <StreamingCapNote slug={app.slug} />
           <Toggle
             label="WebSockets"
-            hint="Allow upgrade requests. An open socket keeps the instance resident."
+            help="Allow upgrade requests. An open socket keeps the instance resident."
             checked={draft.websocket_enabled}
             onChange={(on) => set('websocket_enabled', on)}
           />
           <Toggle
             label="Per-route metrics"
-            hint="Record latency and errors per route, so the Routes tab can list them. Paid plans."
+            help="Record latency and errors per route, so the Routes tab can list them. Paid plans."
             checked={draft.route_metrics_enabled}
             onChange={(on) => set('route_metrics_enabled', on)}
           />
           <Toggle
             label="Maintenance mode"
-            hint="Answer every request with 503 and park. Deployments still work."
+            help="Answer every request with 503 and park. Deployments still work."
             checked={draft.maintenance_mode}
             onChange={(on) => set('maintenance_mode', on)}
           />
           <Toggle
             label="Require API key for app requests"
-            hint="Require an API key to call the app's public URL. Pro and Scale."
+            help="Require an API key to call the app's public URL. Pro and Scale."
             checked={draft.require_authn}
             onChange={(on) => set('require_authn', on)}
           />
           <Toggle
             label="Warm snapshots"
-            hint="Keep a second, post-traffic snapshot tier so a wake restores an already-warm process. Pro and Scale."
+            help="Keep a second, post-traffic snapshot tier so a wake restores an already-warm process. Pro and Scale."
             checked={draft.warm_snapshot_enabled}
             onChange={(on) => set('warm_snapshot_enabled', on)}
           />
@@ -471,14 +481,16 @@ function ConfigForm({ app }: { app: App }) {
             <li className="grid gap-5 py-4 sm:grid-cols-2">
               <NumberField
                 label="Warm capture after (ms)"
-                hint="Time since first-ready before the warm tier is captured. 100–60,000."
+                help="Time since first-ready before the warm tier is captured."
+                range="100–60,000 ms"
                 value={draft.warm_snapshot_min_ms}
                 min={100}
                 onChange={(n) => set('warm_snapshot_min_ms', Math.min(60000, n))}
               />
               <NumberField
                 label="Warm capture after (requests)"
-                hint="Requests served before the warm tier is captured. 1–100."
+                help="Requests served before the warm tier is captured."
+                range="1–100"
                 value={draft.warm_snapshot_min_requests}
                 min={1}
                 onChange={(n) => set('warm_snapshot_min_requests', Math.min(100, n))}
@@ -487,7 +499,7 @@ function ConfigForm({ app }: { app: App }) {
           )}
           <Toggle
             label="Default CORS headers"
-            hint="Answer preflights at the edge with the origins below, before the app wakes."
+            help="Answer preflights at the edge with the origins below, before the app wakes."
             checked={draft.cors_default_enabled}
             onChange={(on) => set('cors_default_enabled', on)}
           />

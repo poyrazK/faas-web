@@ -107,7 +107,9 @@ describe('App deletion contract copy', () => {
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    fireEvent.change(screen.getByLabelText(/Max concurrency/), { target: { value: '2' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Max concurrency' }), {
+      target: { value: '2' },
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ max_concurrency: 2 }));
     expect(await screen.findByText('Pending')).toBeVisible();
@@ -127,7 +129,7 @@ describe('App deletion contract copy', () => {
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    const idle = screen.getByLabelText(/Idle timeout/);
+    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
     await user.clear(idle);
     await user.type(idle, '30');
     expect(idle).toHaveValue(30);
@@ -143,7 +145,7 @@ describe('App deletion contract copy', () => {
         <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
-    const idle = screen.getByLabelText(/Idle timeout/);
+    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
     await user.clear(idle);
     await user.type(idle, '2');
     expect(idle).toHaveValue(2);

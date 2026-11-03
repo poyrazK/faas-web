@@ -108,8 +108,9 @@ describe('AppReleaseSettings', () => {
     expect(within(policy).getByText(/5%, 50%, then 100%/)).toBeInTheDocument();
     expect(within(policy).getByText(/all traffic moves at once/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Rollout probe paths')).toHaveValue('/healthz\n/api/orders');
-    expect(screen.getByText('gregale app api-gateway --release-policy')).toBeInTheDocument();
-    expect(screen.getByText('gregale app api-gateway --release-probe-paths')).toBeInTheDocument();
+    // Where else each is set lives behind its label's "?".
+    expect(screen.getByRole('button', { name: 'About Release policy' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Rollout probe paths' })).toBeInTheDocument();
     // function_concurrency means nothing outside a function app.
     expect(screen.queryByLabelText('Function concurrency')).not.toBeInTheDocument();
   });
@@ -194,7 +195,7 @@ describe('AppReleaseSettings', () => {
     const field = screen.getByLabelText('Function concurrency');
     expect(field).toHaveValue(4);
     expect(screen.getByText(/up to 25 on your plan/i)).toBeInTheDocument();
-    expect(screen.getByText(/functions:/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Function concurrency' })).toBeInTheDocument();
 
     await user.clear(field);
     await user.type(field, '26');
