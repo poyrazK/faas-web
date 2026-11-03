@@ -5,6 +5,7 @@ import {
   cliBucketObjectLockCommand,
   cliBucketUploadsCommand,
   cliBucketVersioningCommand,
+  cliDataApiLiveCommand,
   cliDeployCommand,
   cliDomainSetDefaultCommand,
   cliEdgeRuleTraceCommand,
@@ -12,6 +13,7 @@ import {
   cliInitDeployCommand,
   cliJobRemoveCommand,
   cliJobRunCommand,
+  cliPostgresLiveCommand,
   cliPostgresRestoreCommand,
   cliRealtimeDrainCommand,
   cliSloCreateCommand,
@@ -153,6 +155,23 @@ describe('alert target commands', () => {
   it('defines a synthetic check on a path', () => {
     expect(cliSyntheticCheckCreateCommand('shop')).toBe(
       'gregale alert check create --app shop --name <name> --path /healthz'
+    );
+  });
+});
+
+describe('live query commands', () => {
+  // commands_postgres_live_queries.go:21: "usage: gregale postgres live <status|enable|rotate|disable> DATABASE"
+  it('reads and enables live queries on a database by ID', () => {
+    expect(cliPostgresLiveCommand('status', 'db-1')).toBe('gregale postgres live status db-1');
+    expect(cliPostgresLiveCommand('enable', 'db-1')).toBe('gregale postgres live enable db-1');
+  });
+  // commands_data_api_live.go:62-65: data-api live <enable|status> NAME, flag --scope (default "default")
+  it('sets up a Data API for live reads, naming a scope only when it is not the default', () => {
+    expect(cliDataApiLiveCommand('status', 'shop-data')).toBe(
+      'gregale data-api live status shop-data'
+    );
+    expect(cliDataApiLiveCommand('enable', 'shop-data', 'staging')).toBe(
+      'gregale data-api live enable shop-data --scope staging'
     );
   });
 });

@@ -770,7 +770,16 @@ export const LEDGER: LedgerEntry[] = [
     wave: 3,
   },
   // F113 · preview
-  { row: 113, name: 'Live queries', status: 'none', surfaces: [], gap: 'Live queries', wave: 3 },
+  {
+    row: 113,
+    name: 'Live queries',
+    status: 'cli',
+    surfaces: ['/dashboard/postgres'],
+    capability: 'live-queries',
+    cli: 'gregale data-api live enable',
+    gap: 'Enable, status, secret rotation and disable (/v1/postgres/databases/{id}/live) stay out of the public OpenAPI spec until launch, so the console explains live reads and hands over the CLI; there is no API read of live subscriptions or live connection counts',
+    wave: 3,
+  },
   // F114 · preview
   {
     row: 114,
