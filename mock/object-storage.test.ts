@@ -92,3 +92,99 @@ describe('lifecycle in the mock', () => {
     expect(storage.clearLifecycle(b)).toMatchObject({ rules: [], revision: 2 });
   });
 });
+
+describe('encryption, Object Lock and protection in the mock', () => {
+  it('verifies a new encryption default before it applies, and refuses unenrolled keys', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const b = bucket('plain');
+    expect(() =>
+      storage.requestEncryption(b, { algorithm: 'aws:kms', key_id: 'arn:other' })
+    ).toThrow(expect.objectContaining({ code: 'object_storage_invalid' }));
+    expect(storage.requestEncryption(b, { algorithm: 'AES256' })).toMatchObject({
+      state: 'waiting',
+      desired_encryption: { algorithm: 'AES256' },
+    });
+    expect(() => storage.requestEncryption(b, undefined)).toThrow(
+      expect.objectContaining({ code: 'object_storage_conflict' })
+    );
+    vi.advanceTimersByTime(7_000);
+    expect(storage.readEncryption(b)).toMatchObject({
+      state: 'ready',
+      encryption: { algorithm: 'AES256' },
+    });
+  });
+
+  it('turns versioning on with Object Lock, and never off again', () => {
+    const b = bucket('plain');
+    expect(() => storage.requestLock(b, { configuration: { enabled: false } })).toThrow(
+      expect.objectContaining({ code: 'object_storage_invalid' })
+    );
+    expect(storage.requestLock(b, { configuration: { enabled: true } })).toMatchObject({
+      enabled_required: true,
+      state: 'waiting',
+    });
+    expect(storage.readVersioning(b).desired_status).toBe('Enabled');
+    expect(storage.lockOn(b)).toBe(true);
+  });
+
+  it('applies a legal hold through an operation, and a held version cannot be deleted', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const b = bucket('locked');
+    const where = `app/${b.id}`;
+    storage.requestLock(b, { configuration: { enabled: true } });
+    vi.advanceTimersByTime(10_000);
+    storage.ensureVersions(where, b, [
+      { key: 'a.pdf', size_bytes: 1, last_modified: '2026-10-01T00:00:00Z' },
+    ]);
+    const [v] = storage.listVersions(where, new URLSearchParams()).items;
+    const op = storage.requestLegalHold(where, b, 'a.pdf', v.version_id, {
+      id: 'op-1',
+      legal_hold: { status: 'ON' },
+    });
+    expect(op.state).toBe('waiting');
+    vi.advanceTimersByTime(4_000);
+    expect(storage.readOperation(b, 'op-1').state).toBe('ready');
+    expect(storage.readLegalHold(where, 'a.pdf', v.version_id).legal_hold.status).toBe('ON');
+    expect(() => storage.deleteVersion(where, 'a.pdf', v.version_id)).toThrow(
+      expect.objectContaining({ code: 'object_storage_conflict' })
+    );
+  });
+
+  it('refuses to shorten active retention', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const b = bucket('locked');
+    const where = `app/${b.id}`;
+    storage.requestLock(b, { configuration: { enabled: true } });
+    storage.ensureVersions(where, b, [
+      { key: 'a.pdf', size_bytes: 1, last_modified: '2026-10-01T00:00:00Z' },
+    ]);
+    const [v] = storage.listVersions(where, new URLSearchParams()).items;
+    storage.requestRetention(where, b, 'a.pdf', v.version_id, {
+      id: 'r-1',
+      retention: { mode: 'GOVERNANCE', retain_until_date: '2099-06-01T00:00:00Z' },
+    });
+    vi.advanceTimersByTime(4_000);
+    expect(() =>
+      storage.requestRetention(where, b, 'a.pdf', v.version_id, {
+        id: 'r-2',
+        retention: { mode: 'GOVERNANCE', retain_until_date: '2099-01-01T00:00:00Z' },
+      })
+    ).toThrow(expect.objectContaining({ code: 'object_storage_conflict' }));
+  });
+
+  it('keeps CORS rules as a set and clears them', () => {
+    const b = bucket('plain');
+    expect(() =>
+      storage.writeCors(b, {
+        rules: [{ allowed_origins: ['example.com'], allowed_methods: ['GET'] }],
+      })
+    ).toThrow(expect.objectContaining({ code: 'object_storage_invalid' }));
+    expect(
+      storage.writeCors(b, {
+        rules: [{ allowed_origins: ['https://app.example.com'], allowed_methods: ['GET'] }],
+      }).revision
+    ).toBe(1);
+    storage.clearCors(b);
+    expect(storage.readCors(b).rules).toEqual([]);
+  });
+});

@@ -13,14 +13,19 @@ import {
   objectKey,
   restoreObjectVersion,
   signStoredObject,
+  useBucketObjectLock,
   useBucketVersioning,
+  useObjectLockCapabilities,
   useObjectVersions,
   versionsKey,
   type ObjectBucket,
   type ObjectVersion,
   type VersionMarker,
 } from '@/lib/api/object-storage';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { lockEnabled } from './object-lock-setting';
 import { storageRefusal } from './refusals';
+import { VersionProtection } from './version-protection';
 import { StatusChip } from './status-chip';
 
 /** apid's selector for data written while versioning was off; signed reads refuse it. */
@@ -102,6 +107,16 @@ export function ObjectVersions({
     isEmpty: items.length === 0 && folders.length === 0,
   });
   const kept = versioning.data?.observed_status === 'Enabled';
+  // Retention and legal holds exist only on an Object Lock bucket, behind their
+  // own capability; nothing is read here while either is off.
+  const protectionOn = useCapabilityAccess('object-protection').access === 'on';
+  const lock = useBucketObjectLock(slug, protectionOn ? bucket.id : '');
+  const lockCaps = useObjectLockCapabilities(slug, protectionOn ? bucket.id : '');
+  const protectable =
+    protectionOn &&
+    lockEnabled(lock.data) &&
+    Boolean(lockCaps.data?.version_legal_hold || lockCaps.data?.version_retention);
+  const [protecting, setProtecting] = useState('');
   const neverOn = versioning.data?.observed_status === '' && !versioning.data.versions_required;
   const next =
     query.data?.next_key_marker && query.data.next_version_id_marker
@@ -286,7 +301,28 @@ export function ObjectVersions({
                                 Delete
                               </Button>
                             )}
+                            {protectable && readable && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-expanded={protecting === v.version_id}
+                                aria-label={`Protection for version ${v.version_id} of ${v.key}`}
+                                onClick={() =>
+                                  setProtecting(protecting === v.version_id ? '' : v.version_id)
+                                }
+                              >
+                                Protect
+                              </Button>
+                            )}
                           </span>
+                          {protectable && lockCaps.data && protecting === v.version_id && (
+                            <VersionProtection
+                              slug={slug}
+                              bucket={bucket}
+                              version={v}
+                              capabilities={lockCaps.data}
+                            />
+                          )}
                         </li>
                       );
                     })}

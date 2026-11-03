@@ -4380,6 +4380,7 @@ function bucketsFor(slug: string) {
         };
         seeded.push(bucket);
         if (name === 'assets') seedAssets(slug, bucket.id);
+        if (name === 'user-uploads') seedUploads(slug, bucket.id);
       }
     }
     storageBuckets.set(slug, seeded);
@@ -4443,6 +4444,18 @@ function seedAssets(slug: string, bucket: string) {
     created_at: db.iso(8 * 24 * 3_600_000),
     last_used_at: db.iso(9 * 3_600_000),
   });
+}
+
+/** `user-uploads` sits under Object Lock, with a contract on legal hold. */
+function seedUploads(slug: string, bucket: string) {
+  storageObjects.set(`${slug}/${bucket}`, [
+    { key: 'avatars/42.png', size_bytes: 18_231, last_modified: db.iso(4 * 24 * 3_600_000) },
+    {
+      key: 'contracts/msa-2026.pdf',
+      size_bytes: 412_908,
+      last_modified: db.iso(9 * 24 * 3_600_000),
+    },
+  ]);
 }
 
 function bindingSecretKeys(prefix: string): S_['ObjectStorageComputeBindingSecretKeys'] {
@@ -4731,7 +4744,14 @@ route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) =>
 );
 route('PUT', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params, body }) =>
   storageCall(() =>
-    status(202, storageMock.requestVersioning(storageBucket(params).bucket, body.status, false))
+    status(
+      202,
+      storageMock.requestVersioning(
+        storageBucket(params).bucket,
+        body.status,
+        storageMock.lockOn(storageBucket(params).bucket)
+      )
+    )
   )
 );
 route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/versions', ({ params, query }) =>
@@ -4755,6 +4775,90 @@ route('PUT', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params, body }) =>
 route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) =>
   storageMock.clearLifecycle(storageBucket(params).bucket)
 );
+
+// Browser access, tags, encryption and Object Lock (mock/object-storage.ts).
+type StorageCtx = Parameters<Handler>[0];
+const objectKeyOf = ({ query }: StorageCtx) => query.get('key') ?? '';
+const versionOf = ({ query }: StorageCtx) => query.get('version_id') ?? '';
+const getTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.readTags(storageBucket(c.params).where, objectKeyOf(c)));
+const putTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.writeTags(storageBucket(c.params).where, objectKeyOf(c), c.body));
+const deleteTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.clearTags(storageBucket(c.params).where, objectKeyOf(c)));
+const getHold = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.readLegalHold(storageBucket(c.params).where, objectKeyOf(c), versionOf(c))
+  );
+const putHold = (c: StorageCtx) => {
+  const { where, bucket } = storageBucket(c.params);
+  return storageCall(() =>
+    status(202, storageMock.requestLegalHold(where, bucket, objectKeyOf(c), versionOf(c), c.body))
+  );
+};
+const getRetention = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.readRetention(storageBucket(c.params).where, objectKeyOf(c), versionOf(c))
+  );
+const putRetention = (c: StorageCtx) => {
+  const { where, bucket } = storageBucket(c.params);
+  return storageCall(() =>
+    status(202, storageMock.requestRetention(where, bucket, objectKeyOf(c), versionOf(c), c.body))
+  );
+};
+const readOp = (c: StorageCtx) =>
+  storageCall(() => storageMock.readOperation(storageBucket(c.params).bucket, c.params.operation));
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params }) =>
+  storageMock.readCors(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params, body }) =>
+  storageCall(() => storageMock.writeCors(storageBucket(params).bucket, body))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params }) => {
+  storageMock.clearCors(storageBucket(params).bucket);
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', getTags);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', putTags);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', deleteTags);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/encryption-capabilities', ({ params }) => {
+  storageBucket(params);
+  return storageMock.encryptionCapabilities();
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params }) =>
+  storageMock.readEncryption(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params, body }) =>
+  storageCall(() =>
+    status(
+      202,
+      storageMock.requestEncryption(
+        storageBucket(params).bucket,
+        body.encryption as S_['ObjectEncryption'] | undefined
+      )
+    )
+  )
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params }) =>
+  storageCall(() =>
+    status(202, storageMock.requestEncryption(storageBucket(params).bucket, undefined))
+  )
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/object-lock-capabilities', ({ params }) => {
+  storageBucket(params);
+  return storageMock.lockCapabilities();
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/object-lock', ({ params }) =>
+  storageMock.readLock(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/object-lock', ({ params, body }) =>
+  storageCall(() => status(202, storageMock.requestLock(storageBucket(params).bucket, body)))
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/legal-hold', getHold);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/legal-hold', putHold);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', getRetention);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', putRetention);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/protection-operations/{operation}', readOp);
 
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.

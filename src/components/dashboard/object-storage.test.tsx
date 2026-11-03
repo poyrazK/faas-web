@@ -52,6 +52,24 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   useBucketVersioning: mocks.versioning,
   useBucketLifecycle: mocks.lifecycle,
   useObjectVersions: mocks.versions,
+  useBucketCors: () => ({ data: { rules: [] }, isPending: false, error: null }),
+  useBucketEncryption: () => ({ data: { state: 'ready' }, isPending: false, error: null }),
+  useEncryptionCapabilities: () => ({
+    data: { algorithms: ['AES256'], key_ids: [], bucket_defaults: true },
+    isPending: false,
+    error: null,
+  }),
+  useBucketObjectLock: () => ({
+    data: { state: 'ready', enabled_required: false, observed_known: true },
+    isPending: false,
+    error: null,
+  }),
+  useObjectLockCapabilities: () => ({
+    data: { bucket_configuration: true, version_legal_hold: true, version_retention: true },
+    isPending: false,
+    error: null,
+  }),
+  useObjectTags: () => ({ data: { tags: { team: 'web' } }, isPending: false, error: null }),
 }));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<typeof import('@/lib/api/queries')>()),
@@ -286,11 +304,7 @@ it('points to the CLI for bucket features the console lacks, with the chosen app
   await user.click(screen.getByRole('button', { name: 'assets' }));
   await user.click(screen.getByRole('tab', { name: 'Settings' }));
   const more = screen.getByRole('region', { name: 'More in the CLI' });
-  for (const command of [
-    'gregale bucket encryption status demo bucket-one',
-    'gregale bucket object-lock status demo bucket-one',
-    'gregale bucket uploads list demo bucket-one',
-  ])
+  for (const command of ['gregale bucket uploads list demo bucket-one'])
     expect(within(more).getByText(command)).toBeInTheDocument();
 });
 it('names each CLI copy button as a command for the chosen bucket', async () => {
@@ -303,11 +317,7 @@ it('names each CLI copy button as a command for the chosen bucket', async () => 
     within(more)
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label'))
-  ).toEqual([
-    'Copy: encryption command for assets',
-    'Copy: Object Lock command for assets',
-    'Copy: multipart uploads command for assets',
-  ]);
+  ).toEqual(['Copy: multipart uploads command for assets']);
 });
 it("keeps the CLI panel in a bucket's Settings, not on the everyday tabs", async () => {
   const user = userEvent.setup();
@@ -597,4 +607,28 @@ it('says a delete is undoable when versioning keeps the versions', async () => {
   expect(mocks.confirm).toHaveBeenCalledWith(
     expect.objectContaining({ description: expect.stringMatching(/a delete marker hides it/) })
   );
+});
+
+it("opens an object's tags under its row", async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'Tags on file.txt' }));
+  const tags = screen.getByRole('group', { name: 'Tags on file.txt' });
+  expect(within(tags).getByText('team=web')).toBeInTheDocument();
+});
+
+it('moves encryption and Object Lock out of the CLI panel into Settings', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('tab', { name: 'Settings' }));
+  for (const heading of [
+    'Versions',
+    'Cleanup rules',
+    'Encryption',
+    'Object Lock',
+    'Browser access (CORS)',
+  ])
+    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+  const more = screen.getByRole('region', { name: 'More in the CLI' });
+  expect(within(more).queryByText(/encryption status|object-lock status/)).toBeNull();
 });
