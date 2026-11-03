@@ -47,6 +47,7 @@ import { registerDeadLetterMocks } from './dead-letters';
 import { registerForkMocks } from './forks';
 import { registerEventConsumerMocks } from './event-consumers';
 import { registerProfileCaptureMocks } from './profile-captures';
+import { registerListenerMocks } from './listeners';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -12523,6 +12524,7 @@ registerForkMocks(route, Problem, NO_CONTENT, {
   plan: () => process.env.MOCK_PLAN ?? db.account.plan,
 });
 registerEventConsumerMocks(route, Problem);
+registerListenerMocks(route, Problem, NO_CONTENT);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------
 

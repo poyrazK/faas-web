@@ -40,6 +40,8 @@ export const APP_TAB_GROUPS = [
       'Edge protection',
       'Mirrors',
       'Tenant surfaces',
+      'TCP listeners',
+      'UDP listeners',
       'OpenAPI',
     ],
   },
@@ -74,6 +76,8 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
   'Tenant surfaces': 'tenant-surfaces',
+  'TCP listeners': 'tcp-listeners',
+  'UDP listeners': 'udp-listeners',
   // The beta `debug` family owns the tab; the production-debugger preview
   // inside it is gated view by view (debug-body.tsx).
   Debugger: 'debug',

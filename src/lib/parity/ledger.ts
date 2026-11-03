@@ -505,9 +505,21 @@ export const LEDGER: LedgerEntry[] = [
     wave: 3,
   },
   // D69 · preview
-  { row: 69, name: 'TCP listeners', status: 'none', surfaces: [], gap: 'TCP listeners', wave: 3 },
+  {
+    row: 69,
+    name: 'TCP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=TCP listeners'],
+    capability: 'tcp-listeners',
+  },
   // D70 · preview
-  { row: 70, name: 'UDP listeners', status: 'none', surfaces: [], gap: 'UDP listeners', wave: 3 },
+  {
+    row: 70,
+    name: 'UDP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=UDP listeners'],
+    capability: 'udp-listeners',
+  },
   // D71 · preview
   {
     row: 71,
