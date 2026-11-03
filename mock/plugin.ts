@@ -745,7 +745,8 @@ function startSourceDeployment(
   a: db.App,
   kind: 'github' | 'tarball',
   source: string,
-  extra: Partial<db.Deployment> = {}
+  extra: Partial<db.Deployment> = {},
+  { staged = false }: { staged?: boolean } = {}
 ): db.Deployment {
   const deployment: db.Deployment = { ...newDeployment(a, kind), ...extra, build_id: db.id() };
   const build: db.Build = {
@@ -765,6 +766,7 @@ function startSourceDeployment(
     fail: process.env.MOCK_BUILD_FAIL === '1',
     now: Date.now(),
     source,
+    staged,
   });
   return deployment;
 }
@@ -1286,9 +1288,21 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   const a = app(params.slug);
   if (!body.repo || !body.ref)
     throw new Problem(400, 'missing_field', 'repo and ref are required.');
+  if (body.native_rollout !== undefined && body.expected_source === undefined)
+    throw new Problem(400, 'validation_failed', 'native_rollout requires expected_source');
+  if (body.expected_source !== undefined) checkReviewedSource(a, body);
   return status(
     202,
-    startSourceDeployment(a, 'github', `${String(body.repo)}@${String(body.ref)}`)
+    startSourceDeployment(
+      a,
+      'github',
+      `${String(body.repo)}@${String(body.ref)}`,
+      {},
+      {
+        // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
+        staged: body.traffic_percent === 0,
+      }
+    )
   );
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
@@ -5282,10 +5296,47 @@ route('GET', '/v1/deployments/{id}/runtime/upgrade-preview', ({ params, query })
   if (!release) throw new Problem(404, 'not_found', 'no such runtime release');
   return deploymentDetail.runtimePreview(runtime, release);
 });
-route('POST', '/v1/deployments/{id}/promote', ({ params }) => promote(params.id, false));
-route('POST', '/v1/deployments/{id}/promote-with-application-ack', ({ params }) =>
-  promote(params.id, true)
+route('POST', '/v1/deployments/{id}/promote', ({ params, body }) =>
+  promote(params.id, false, body)
 );
+route('POST', '/v1/deployments/{id}/promote-with-application-ack', ({ params, body }) =>
+  promote(params.id, true, body)
+);
+// The traffic split (handlers_ext.go:2210-2350), with its optional serving pin.
+route('PATCH', '/v1/deployments/{id}/traffic', ({ params, body }) => {
+  const d = deploymentById(params.id);
+  const percent = body.traffic_percent;
+  if (typeof percent !== 'number' || !Number.isInteger(percent) || percent < 0 || percent > 100)
+    throw new Problem(422, 'invalid_traffic_percent', 'traffic_percent must be between 0 and 100');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      403,
+      'plan_traffic_split_not_allowed',
+      'traffic splitting is available on the Pro and Scale plans'
+    );
+  if (d.status !== 'live')
+    throw new Problem(409, 'deployment_not_live', `deployment is ${d.status}, not live`);
+  if (d.rollout_state === 'pending' || d.rollout_state === 'rolling_out')
+    throw new Problem(
+      409,
+      'traffic_change_during_canary',
+      'traffic cannot be changed directly while a canary rollout is pending or running; advance or recover the rollout, then retry.'
+    );
+  const expected = body.expected_serving_deployment_id;
+  if (typeof expected === 'string' && deploymentDetail.servingChanged(db.deployments, d, expected))
+    throw new Problem(
+      409,
+      'traffic_serving_changed',
+      'the expected revision is no longer the sole 100% serving deployment; run gregale traffic status before promoting again.'
+    );
+  if (!deploymentDetail.setTrafficWeight(db.deployments, d, percent))
+    throw new Problem(
+      409,
+      'traffic_residual_unassigned',
+      `no other live deployment can take the remaining ${100 - percent}%`
+    );
+  return d;
+});
 route('GET', '/v1/apps/{slug}/rollouts/{id}/observation', ({ params, query }) => {
   const a = app(params.slug);
   const selectors = [...query.keys()];
@@ -5307,10 +5358,25 @@ route('GET', '/v1/apps/{slug}/rollouts/{id}/observation', ({ params, query }) =>
 /**
  * Binding-checked promotion (handlers_binding_promotion.go). The strict route
  * fails for the first app: its seeded orders database binding has no
- * application acknowledgement, which is what most real apps look like.
+ * application acknowledgement, which is what most real apps look like. A
+ * serving pin that no longer holds is refused before anything moves.
  */
-function promote(id: string, strict: boolean) {
+function promote(id: string, strict: boolean, body: Record<string, unknown>) {
   const d = deploymentById(id);
+  const expected = body.expected_serving_deployment_id;
+  if (
+    expected !== undefined &&
+    (typeof expected !== 'string' ||
+      !/^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})$/.test(
+        expected
+      ) ||
+      expected.replace(/-/g, '').toLowerCase() === d.id.replace(/-/g, '').toLowerCase())
+  )
+    throw new Problem(
+      422,
+      'validation_failed',
+      'expected_serving_deployment_id must name a different deployment UUID'
+    );
   if (d.status !== 'live')
     throw new Problem(
       409,
@@ -5358,6 +5424,18 @@ function promote(id: string, strict: boolean) {
       { bindings_check: check }
     );
   }
+  // Checked with the traffic write, after the bindings check; an already
+  // promoted target is idempotent before it (memstore.go:6160-6177).
+  if (
+    typeof expected === 'string' &&
+    d.traffic_percent !== 100 &&
+    deploymentDetail.servingChanged(db.deployments, d, expected)
+  )
+    throw new Problem(
+      409,
+      'traffic_serving_changed',
+      'the expected revision is no longer the sole 100% serving deployment; run gregale traffic status before promoting again.'
+    );
   return {
     ...deploymentDetail.promoteDeployment(db.deployments, d),
     bindings_check: check,
@@ -8179,6 +8257,139 @@ route('POST', '/v1/install/repos/list', () => {
     });
   return seeded;
 });
+
+/**
+ * Source review (faas handlers_source_review.go): resolve a branch or exact
+ * commit through the installation and pin the app's release state, without
+ * building. A branch resolves to a commit derived from its name, so the same
+ * branch reviews to the same commit.
+ */
+function reviewedRepository(repo: string) {
+  const found = INSTALL_REPOS.find((r) => r.full_name.toLowerCase() === repo.toLowerCase());
+  if (!found)
+    throw new Problem(
+      409,
+      'source_ref_stale',
+      'the reviewed GitHub repository is no longer accessible through its installation'
+    );
+  return found;
+}
+route('POST', '/v1/apps/{slug}/source-review', ({ params, body }) => {
+  const a = app(params.slug);
+  const repo = typeof body.repo === 'string' ? body.repo : '';
+  const ref = typeof body.ref === 'string' ? body.ref : '';
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_][A-Za-z0-9._-]*$/.test(repo) ||
+    !ref ||
+    ref.length > 200 ||
+    /\s/.test(ref) ||
+    ref.startsWith('refs/tags/')
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'provide a connected GitHub owner/repository and a branch or full lowercase commit SHA'
+    );
+  if (body.environment)
+    throw new Problem(404, 'environment_not_found', 'no such environment for this app');
+  const mode = a.manifest?.execution_mode;
+  if (mode && mode !== 'request' && mode !== 'service' && mode !== 'worker')
+    throw new Problem(
+      400,
+      'validation_failed',
+      'reviewed source releases support request, service and worker modes'
+    );
+  requireGitHub();
+  const repository = reviewedRepository(repo);
+  const commit = /^[a-f0-9]{40}$/.test(ref)
+    ? ref
+    : createHash('sha1')
+        .update(`${repository.full_name}@${ref.replace(/^refs\/heads\//, '')}`)
+        .digest('hex');
+  return {
+    app_id: a.id,
+    repo: repository.full_name,
+    commit_sha: commit,
+    installation_id: Number(db.account.github_install_id),
+    repository_id: repository.id,
+    source_root: '',
+    release_review: deploymentDetail.releaseReview(db.deployments, a),
+  } satisfies S_['SourceReviewResponse'];
+});
+
+/**
+ * `expected_source` on a source-ref deploy (handlers_source_review.go:107-138,
+ * handlers_source_ref.go:110-155): the shape a reviewed release must have,
+ * then the review against what is there now.
+ */
+function checkReviewedSource(a: db.App, body: Record<string, unknown>): void {
+  const expected = body.expected_source as S_['SourceReviewResponse'];
+  const native = body.native_rollout;
+  if (
+    !/^[a-f0-9]{40}$/.test(String(body.ref)) ||
+    body.source_branch ||
+    body.no_triggers !== true ||
+    body.canary != null ||
+    body.healthcheck != null ||
+    body.rollback_on_5xx != null ||
+    body.disable_startup_cpu_boost != null
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'reviewed source staging requires an immutable commit, no declaration changes, and no rollout overrides'
+    );
+  const review = expected.release_review;
+  const staged = native === undefined && body.traffic_percent === 0;
+  const handover =
+    (native === 'service' || native === 'worker') &&
+    body.traffic_percent === undefined &&
+    !review.protected;
+  if ((!staged && !handover) || (review.serving_deployment_ids ?? []).length > 1)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Reviewed candidates must name the reviewed environment; native rollouts require service or worker mode, omitted traffic and an unprotected target'
+    );
+  const mode = a.manifest?.execution_mode;
+  if (staged && mode && mode !== 'request')
+    throw new Problem(
+      400,
+      'validation_failed',
+      'service and worker source releases require their dedicated rollout workflow'
+    );
+  if (handover && mode !== native)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'native_rollout must match the reviewed workload mode'
+    );
+  const repository = reviewedRepository(String(body.repo));
+  if (
+    expected.app_id !== a.id ||
+    expected.source_root !== '' ||
+    expected.installation_id !== Number(db.account.github_install_id) ||
+    expected.repository_id !== repository.id ||
+    expected.repo.toLowerCase() !== String(body.repo).toLowerCase() ||
+    expected.commit_sha !== body.ref
+  )
+    throw new Problem(
+      409,
+      'source_ref_stale',
+      'repository, installation, app or source root changed after review'
+    );
+  const now = deploymentDetail.releaseReview(db.deployments, a);
+  if (
+    now.configuration_hash !== review.configuration_hash ||
+    now.latest_deployment_id !== review.latest_deployment_id ||
+    now.serving_deployment_ids.join() !== (review.serving_deployment_ids ?? []).join()
+  )
+    throw new Problem(
+      409,
+      'release_review_changed',
+      'App configuration or release changed; inspect it and create a new plan'
+    );
+}
 
 // Per-app bindings and the installation's reconcile record, as
 // handlers_github_connection.go projects them. Health is the installation's,

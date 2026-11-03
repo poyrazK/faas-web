@@ -9,14 +9,17 @@ import {
   observationPollInterval,
   observationSelector,
   rollbackPollInterval,
+  servingPin,
   usePromoteDeployment,
   useReleaseDiff,
   useRollbackOperation,
   useRollbackToRelease,
   useRuntimeUpgradePreview,
+  useServingRows,
   useWorkerRolloutObservation,
   type RollbackOperation,
 } from './deployment-detail';
+import type { Deployment } from './queries';
 
 const ok = (data: unknown, status = 200) =>
   ({ data, response: new Response(null, { status }) }) as never;
@@ -108,6 +111,137 @@ describe('promotion', () => {
       params: { path: { id: 'dep-1' } },
       body: { require_application_ack: true },
     });
+  });
+
+  it('pins the serving release on either route when one is given', async () => {
+    const post = spyApi('POST').mockResolvedValue(
+      ok({ from_percent: 0, to_percent: 100, already_promoted: false })
+    );
+    const { wrapper } = setup();
+    const hook = renderHook(() => usePromoteDeployment(), { wrapper });
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        id: 'dep-1',
+        requireApplicationAck: false,
+        expectedServingDeploymentId: 'dep-0',
+      });
+    });
+    expect(post).toHaveBeenLastCalledWith('/v1/deployments/{id}/promote', {
+      params: { path: { id: 'dep-1' } },
+      body: { expected_serving_deployment_id: 'dep-0' },
+    });
+    await act(async () => {
+      await hook.result.current.mutateAsync({
+        id: 'dep-1',
+        requireApplicationAck: true,
+        expectedServingDeploymentId: 'dep-0',
+      });
+    });
+    expect(post).toHaveBeenLastCalledWith('/v1/deployments/{id}/promote-with-application-ack', {
+      params: { path: { id: 'dep-1' } },
+      body: { require_application_ack: true, expected_serving_deployment_id: 'dep-0' },
+    });
+  });
+});
+
+const row = (id: string, traffic: number, over: Partial<Deployment> = {}): Deployment => ({
+  id,
+  app_id: 'app-a',
+  image_digest: 'sha256:abc',
+  kind: 'github',
+  status: 'live',
+  traffic_percent: traffic,
+  created_at: '2026-11-01T10:00:00Z',
+  ...over,
+});
+
+describe('serving pin', () => {
+  it('pins the one other release that serves all traffic', () => {
+    const old = row('old', 100);
+    expect(servingPin(row('new', 0), { rows: [old], complete: true })).toEqual({
+      kind: 'sole',
+      serving: old,
+    });
+  });
+
+  it('cannot pin a split, including one the candidate holds part of', () => {
+    const candidate = row('new', 10);
+    expect(
+      servingPin(candidate, { rows: [candidate, row('old', 90)], complete: true })
+    ).toMatchObject({ kind: 'split', serving: [candidate, row('old', 90)] });
+    expect(
+      servingPin(row('new', 0), { rows: [row('a', 60), row('b', 40)], complete: true })
+    ).toMatchObject({ kind: 'split' });
+  });
+
+  it('says nothing serves only when every weight is accounted for', () => {
+    expect(servingPin(row('new', 0), { rows: [], complete: true })).toEqual({ kind: 'none' });
+    expect(servingPin(row('new', 0), { rows: [], complete: false })).toEqual({
+      kind: 'unknown',
+    });
+  });
+
+  it('recognises the candidate in dashed or compact form', () => {
+    const dashed = row('d2c4e6f8-0000-4000-8000-000000000001', 100);
+    const compact = row('d2c4e6f8000040008000000000000001', 100);
+    expect(servingPin(dashed, { rows: [compact], complete: true })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('serving rows', () => {
+  it('keeps live, weighted releases of the scope and stops paging once weights reach 100', async () => {
+    const get = spyApi('GET')
+      .mockResolvedValueOnce(
+        ok({
+          items: [
+            row('new', 0),
+            row('elsewhere', 100, { scope: 'canary' }),
+            row('failed', 0, { status: 'failed' }),
+          ],
+          next_before: 't1',
+        })
+      )
+      .mockResolvedValueOnce(
+        ok({ items: [row('old', 100, { scope: 'default' })], next_before: 't2' })
+      );
+    const { wrapper } = setup();
+    const hook = renderHook(() => useServingRows('alpha', 'default'), { wrapper });
+    await waitFor(() => expect(hook.result.current.data).toBeDefined());
+    expect(hook.result.current.data).toEqual({
+      rows: [row('old', 100, { scope: 'default' })],
+      complete: true,
+    });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenLastCalledWith(
+      '/v1/apps/{slug}/deployments',
+      expect.objectContaining({
+        params: { path: { slug: 'alpha' }, query: { limit: 200, before: 't1' } },
+      })
+    );
+  });
+
+  it('is complete when the history ends, and incomplete when it outruns the page budget', async () => {
+    const get = spyApi('GET').mockResolvedValue(ok({ items: [row('new', 0)], next_before: 't' }));
+    const { wrapper } = setup();
+    const hook = renderHook(() => useServingRows('alpha', 'default'), { wrapper });
+    await waitFor(() => expect(hook.result.current.data).toBeDefined());
+    expect(hook.result.current.data).toEqual({ rows: [], complete: false });
+    expect(get).toHaveBeenCalledTimes(5);
+
+    get.mockReset().mockResolvedValue(ok({ items: [row('new', 0)], next_before: null }));
+    const ended = renderHook(() => useServingRows('beta', 'default'), { wrapper });
+    await waitFor(() => expect(ended.result.current.data).toBeDefined());
+    expect(ended.result.current.data).toEqual({ rows: [], complete: true });
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('asks nothing without an app or while disabled', async () => {
+    const get = spyApi('GET');
+    const { wrapper } = setup();
+    renderHook(() => useServingRows('', 'default'), { wrapper });
+    renderHook(() => useServingRows('alpha', 'default', { enabled: false }), { wrapper });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

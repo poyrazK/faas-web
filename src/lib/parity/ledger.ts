@@ -131,10 +131,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 16,
     name: 'Stateless-contract checks and source review',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Overview'],
-    gap: 'Reviewed-source deploy: the source-review pin sent as expected_source on a source-ref deploy',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Overview', '/dashboard/apps/$appSlug?tab=Deployments'],
   },
   // A17 · beta
   {
@@ -198,11 +196,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 25,
     name: 'Progressive rollouts: canary ladder, traffic split, automatic rollback on 5xx',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Deployments'],
     capability: 'progressive-rollouts',
-    gap: 'Promote cannot pin the release expected to be serving (expected_serving_deployment_id)',
-    wave: 1,
   },
   // B26 · beta
   {

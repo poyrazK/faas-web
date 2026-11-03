@@ -368,14 +368,16 @@ export function ReleaseDetailPanel({
                 <ReorderDeploymentControl deployment={deployment} />
                 <DeploymentLifecycle key={deployment.id} deployment={deployment} />
                 {slug && <RolloutRecovery slug={slug} deployment={deployment} />}
-                <PromoteDeployment deployment={deployment} />
+                {/* The serving pin is read from the app's history, so it needs the slug. */}
+                {slug && <PromoteDeployment slug={slug} deployment={deployment} />}
                 {slug && <RolloutObservation slug={slug} deployment={deployment} />}
                 <DeploymentStages deploymentId={deployment.id} />
               </>
             )}
-            {!deploymentUnavailable && deployment && activeSection === 'runtime' && (
+            {!deploymentUnavailable && deployment && slug && activeSection === 'runtime' && (
               <DeploymentControls
                 key={`${deployment.id}-${deployment.min_instances}-${deployment.traffic_percent}`}
+                slug={slug}
                 deployment={deployment}
                 version={deployment.id}
               />
