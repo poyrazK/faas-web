@@ -12,7 +12,8 @@ import { ResourceTable, type Column } from './resource-table';
 import { AppAnalyticsBody } from './app-analytics';
 import { SloPanel } from './app-core-panels';
 import { WakeTimelinePanel } from './app-insights';
-import { AppHealthPanel, AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
+import { AppHealthPanel } from './app-health';
+import { AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
 
 export type AccountAnalyticsSearch = {
   app?: string;

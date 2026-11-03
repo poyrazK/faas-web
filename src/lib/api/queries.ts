@@ -3684,7 +3684,11 @@ export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsG
   });
 }
 
-/** apid's current health assessment: status, checks, capacity, request signal. */
+/**
+ * apid's current health assessment: status, checks, capacity, request signal.
+ * The read never wakes the app (faas docs/app-health.md), so it polls every
+ * 30 seconds while the page is visible; TanStack pauses it in a background tab.
+ */
 export function useAppHealth(slug: string) {
   return useQuery({
     queryKey: ['apps', slug, 'health'],
@@ -3696,17 +3700,26 @@ export function useAppHealth(slug: string) {
   });
 }
 
-/** Recorded health changes and evidence gaps, newest first. */
+/**
+ * Recorded health changes and evidence gaps, newest first, a page at a time:
+ * `next_cursor` is the next page's `before`. A pruned cursor is a 404, after
+ * which only a fresh first page helps.
+ */
 export function useAppHealthHistory(slug: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['apps', slug, 'health', 'history'],
-    queryFn: ({ signal }) =>
+    queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET('/v1/apps/{slug}/health/history', {
-          params: { path: { slug }, query: { limit: 10 } },
+          params: {
+            path: { slug },
+            query: { limit: 10, ...(pageParam ? { before: pageParam } : {}) },
+          },
           signal,
         })
       ),
+    initialPageParam: '',
+    getNextPageParam: (page) => page.next_cursor || undefined,
     enabled: Boolean(slug),
     retry: retryPolicy,
   });

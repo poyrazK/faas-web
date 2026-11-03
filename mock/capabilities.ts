@@ -18,6 +18,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'app-health',
+    name: 'App health',
+    category: 'observability',
+    description: "Read an app's health assessment without waking it.",
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/apps',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'deploy-diff',
     name: 'Deploy diff',
     category: 'delivery',

@@ -13,6 +13,7 @@ import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
 import * as releaseMock from './release-webhooks';
+import * as appHealthMock from './app-health';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -3547,86 +3548,23 @@ route('POST', '/v1/apps/{slug}/restore', ({ params }) => {
 
 // --- App observability: health, awake routes, dependency latency ---
 type S_ = components['schemas'];
-function healthFor(a: db.App): S_['AppHealthResponse'] {
-  const scenario = db.scenarioOf(a);
-  const status =
-    scenario === 'failing' ? 'unhealthy' : scenario === 'deploying' ? 'degraded' : 'healthy';
-  const phase = scenario === 'parked' ? 'idle' : scenario === 'deploying' ? 'deploying' : 'serving';
-  const failing = scenario === 'failing';
-  return {
-    app_id: a.id,
-    status,
-    phase,
-    summary: failing
-      ? 'The latest deployment fails readiness; no healthy instance serves traffic.'
-      : scenario === 'parked'
-        ? 'Parked at zero instances; the next request wakes it.'
-        : scenario === 'deploying'
-          ? 'A new release is starting alongside the serving one.'
-          : 'Serving normally.',
-    scope: 'app',
-    evaluated_at: db.iso(30_000),
-    valid_for_seconds: 60,
-    serving_deployment_ids: [],
-    capacity: {
-      known: true,
-      required: scenario === 'parked' ? 0 : 1,
-      ready: failing || scenario === 'parked' ? 0 : 1,
-      starting: scenario === 'deploying' ? 1 : 0,
-      unready: failing ? 1 : 0,
-      unknown: 0,
-    },
-    checks: [
-      {
-        code: 'readiness',
-        status: failing ? 'fail' : 'pass',
-        detail: failing
-          ? 'Readiness probe on :8080/health timed out after 30 s.'
-          : 'Readiness probe passing.',
-        ...(failing ? { action: 'logs' as const } : {}),
-      },
-      {
-        code: 'requests',
-        status: failing ? 'warning' : 'pass',
-        detail: failing
-          ? '7.1% of requests returned 5xx in the last 15 minutes.'
-          : 'Error rate normal.',
-      },
-    ],
-  };
+/** apid answers a capability hidden for the account as a route that does not exist. */
+function hiddenRoute(capability: string) {
+  if (hiddenCapabilities.has(capability)) throw new Problem(404, 'not_found', 'no such API route');
 }
-route('GET', '/v1/apps/{slug}/health', ({ params }) => healthFor(app(params.slug)));
-route('GET', '/v1/apps/{slug}/health/history', ({ params }) => {
-  const a = app(params.slug);
-  const now = healthFor(a);
-  const entries: S_['AppHealthHistoryEntry'][] = [
-    {
-      id: 'h3',
-      kind: 'transition',
-      observed_at: db.iso(40 * 60_000),
-      previous_status: 'healthy',
-      assessment: now,
-    },
-    {
-      id: 'h2',
-      kind: 'gap',
-      observed_at: db.iso(5 * 3600_000),
-      assessment: { ...now, status: 'unknown' },
-    },
-    {
-      id: 'h1',
-      kind: 'baseline',
-      observed_at: db.iso(26 * 3600_000),
-      assessment: { ...now, status: 'healthy' },
-    },
-  ];
-  return {
-    app_id: a.id,
-    scope: 'app',
-    entries: db.scenarioOf(a) === 'healthy' ? entries.slice(1) : entries,
-    collector_fresh: true,
-    interval_seconds: 60,
-  };
+const mockPlan = () => process.env.MOCK_PLAN ?? db.account.plan;
+route('GET', '/v1/apps/{slug}/health', ({ params, res }) => {
+  hiddenRoute('app-health');
+  res.setHeader('Cache-Control', 'no-store');
+  return appHealthMock.healthFor(app(params.slug), mockPlan());
+});
+route('GET', '/v1/apps/{slug}/health/history', ({ params, query, res }) => {
+  hiddenRoute('app-health');
+  res.setHeader('Cache-Control', 'no-store');
+  const limit = Math.min(100, Math.max(1, Number(query.get('limit') ?? 20) || 20));
+  const page = appHealthMock.historyFor(app(params.slug), mockPlan(), limit, query.get('before'));
+  if (!page) throw new Problem(404, 'not_found', 'history cursor is no longer retained');
+  return page;
 });
 route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
   const a = app(params.slug);
