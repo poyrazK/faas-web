@@ -37,11 +37,14 @@ export function TriggerSourceFields({
   errors,
   limits,
   onChange,
+  editing = false,
 }: {
   source: TriggerSourceDraft;
   errors: Record<string, string>;
   limits: TriggerLimits;
   onChange: (source: TriggerSourceDraft) => void;
+  /** Editing a saved trigger: a realtime binding is immutable (CheckRealtimeTriggerUpdate). */
+  editing?: boolean;
 }) {
   const [advanced, setAdvanced] = useState(false);
   const patch = (values: Record<string, unknown>) =>
@@ -140,6 +143,75 @@ export function TriggerSourceFields({
             onChange={(event) => patch({ longPollSecs: event.target.value })}
           />
         </Field>
+      </div>
+    );
+  }
+
+  if (source.kind === 'realtime') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Realtime endpoint ID"
+            error={errors.endpointId}
+            hint="The UUID of an endpoint in this account."
+          >
+            <Input
+              aria-label="Realtime endpoint ID"
+              aria-invalid={invalid('endpointId')}
+              className="font-mono"
+              disabled={editing}
+              value={source.endpointId}
+              onChange={(event) => patch({ endpointId: event.target.value })}
+            />
+          </Field>
+          <Field label="Channel" error={errors.channel}>
+            <Input
+              aria-label="Channel"
+              aria-invalid={invalid('channel')}
+              disabled={editing}
+              value={source.channel}
+              onChange={(event) => patch({ channel: event.target.value })}
+            />
+          </Field>
+          <Field
+            label="Consumer group"
+            error={errors.group}
+            hint="An existing group with a lease of at least 120 seconds."
+          >
+            <Input
+              aria-label="Consumer group"
+              aria-invalid={invalid('group')}
+              disabled={editing}
+              value={source.group}
+              onChange={(event) => patch({ group: event.target.value })}
+            />
+          </Field>
+          <Field
+            label="Maximum concurrency"
+            error={errors.maxConcurrency}
+            hint="Parallel invocations, 0 to 32; 0 means 1. Your plan's concurrency also caps it."
+          >
+            <Input
+              type="number"
+              min={0}
+              max={32}
+              aria-label="Maximum concurrency"
+              aria-invalid={invalid('maxConcurrency')}
+              value={source.maxConcurrency}
+              onChange={(event) =>
+                patch({
+                  maxConcurrency: event.target.value === '' ? 0 : Number(event.target.value),
+                })
+              }
+            />
+          </Field>
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          A group binds to one trigger. While bound, direct claims answer{' '}
+          <code className="font-mono">realtime_group_bound_to_trigger</code>; deleting the trigger
+          returns the group to your workers. Endpoint, channel and group cannot change later.
+        </p>
       </div>
     );
   }

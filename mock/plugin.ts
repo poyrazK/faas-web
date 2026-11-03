@@ -7716,9 +7716,16 @@ route('DELETE', '/v1/jobs/{name}', ({ params }) => {
 });
 
 // --- Triggers ---------------------------------------------------------------
-// Six kinds so every pill renders, one paused, and a spread of record states
-// and dead-letter reasons so each filter has something to find.
-const triggerSeed = [
+// Seven kinds so every pill renders, one paused, one batch-delivery realtime
+// trigger, and a spread of record states and dead-letter reasons so each
+// filter has something to find.
+const triggerSeed: Array<{
+  kind: string;
+  slug: string;
+  enabled: boolean;
+  delivery?: string;
+  config: Record<string, unknown>;
+}> = [
   { kind: 'cron', slug: 'nightly-report', enabled: true, config: { schedule: '0 3 * * *' } },
   {
     kind: 'kafka',
@@ -7745,6 +7752,18 @@ const triggerSeed = [
     config: { queue_url: 'http://sqs.local/q/mail', long_poll_secs: 20 },
   },
   { kind: 'queue', slug: 'delayed-tasks', enabled: true, config: { mode: 'delayed_task' } },
+  {
+    kind: 'realtime',
+    slug: 'chat-fanout',
+    enabled: true,
+    delivery: 'batch',
+    config: {
+      endpoint_id: '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f',
+      channel: 'orders',
+      group: 'billing',
+      max_concurrency: 4,
+    },
+  },
 ];
 
 // Typed as the API's read shape so a created trigger can join the seeded ones
@@ -7758,11 +7777,12 @@ const triggers: Record<string, unknown>[] = (db.EMPTY ? [] : triggerSeed).map((t
   slug: t.slug,
   enabled: t.enabled,
   config: t.config,
-  batch_size_max: t.kind === 'cron' ? 1 : 64,
+  batch_size_max: t.kind === 'cron' ? 1 : t.kind === 'realtime' ? 10 : 64,
   batch_window_ms: t.kind === 'cron' ? 0 : 1000,
-  max_attempts: t.kind === 'cron' ? 1 : 5,
+  max_attempts: t.kind === 'cron' || t.kind === 'realtime' ? 1 : 5,
   payload_max_bytes: t.kind === 'cron' ? 1024 : 6 * 1024 * 1024,
   broker_poison_strategy: 'commit',
+  ...(t.kind === 'cron' ? {} : { delivery: t.delivery ?? 'record' }),
   created_at: db.iso(0),
   updated_at: db.iso(0),
 }));
@@ -7785,7 +7805,52 @@ route('GET', '/v1/triggers/{id}', ({ params }) => {
 // refused outright (POST /v1/crons owns those), every broker kind needs a slug
 // and a config, and the config is checked field by field the way
 // pkg/gregalemanifest does it.
-const TRIGGER_KINDS = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'];
+const TRIGGER_KINDS = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue', 'realtime'];
+
+// A realtime trigger: the bound consumer group owns ordering, filters,
+// attempts and dead letters, and a batch above one message needs batch
+// delivery, up to 16 (faas managedrealtime/triggers.go).
+const REALTIME_GROUP_OWNED = [
+  'batch_window_ms',
+  'max_attempts',
+  'retry_policy',
+  'broker_poison_strategy',
+  'filter_criteria',
+];
+function checkRealtimeTrigger(body: Record<string, unknown>, delivery: string, batch: number) {
+  for (const field of REALTIME_GROUP_OWNED) {
+    if (body[field] !== undefined && body[field] !== null)
+      throw new Problem(
+        422,
+        'trigger_invalid_config',
+        `${field} is not supported for kind=realtime; configure it on the consumer group`
+      );
+  }
+  if (batch > 1 && delivery !== 'batch')
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'kind=realtime delivers one message per invocation unless delivery is batch; set delivery: batch or batch_size_max: 1'
+    );
+  if (batch > 16)
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'kind=realtime with delivery: batch receives at most 16 messages per invocation'
+    );
+}
+
+function checkTriggerDelivery(kind: string, delivery: unknown) {
+  if (delivery === undefined) return;
+  if (delivery !== 'record' && delivery !== 'batch')
+    throw new Problem(422, 'trigger_invalid_config', 'delivery must be "record" or "batch"');
+  if (delivery === 'batch' && kind === 'queue')
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'delivery "batch" is not available for queue triggers; use "record"'
+    );
+}
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -7909,6 +7974,24 @@ function validateTriggerConfig(kind: string, c: Record<string, unknown>) {
   }
   if (kind === 'queue' && !['queue', 'delayed_task'].includes(str('mode')))
     fail(`queue config mode "${str('mode')}" not in {queue, delayed_task}`);
+  if (kind === 'realtime') {
+    if (
+      !/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(
+        str('endpoint_id')
+      )
+    )
+      fail('realtime config requires endpoint_id to be a UUID');
+    if (!str('channel') || str('channel').length > 256)
+      fail('realtime config requires a channel of 1-256 bytes');
+    if (!str('group') || str('group').length > 128)
+      fail('realtime config requires a group of 1-128 bytes');
+    const concurrency = c.max_concurrency;
+    if (
+      concurrency !== undefined &&
+      (typeof concurrency !== 'number' || concurrency < 0 || concurrency > 32)
+    )
+      fail('realtime config max_concurrency must be 0-32');
+  }
 }
 
 route('POST', '/v1/triggers', ({ body }) => {
@@ -7919,11 +8002,12 @@ route('POST', '/v1/triggers', ({ body }) => {
       'trigger_immutable',
       'kind=cron not supported on POST /v1/triggers — use POST /v1/crons'
     );
-  if (!TRIGGER_KINDS.includes(kind))
+  // Outside the realtime preview the kind does not exist (PrepareRealtimeTrigger).
+  if (!TRIGGER_KINDS.includes(kind) || (kind === 'realtime' && hiddenCapabilities.has('realtime')))
     throw new Problem(
       400,
       'validation_failed',
-      'unknown kind: must be one of cron|kafka|nats|redis_streams|sqs_compat|queue'
+      'unknown kind: must be one of cron|kafka|nats|redis_streams|queue'
     );
   const slug = String(body.slug ?? '').trim();
   if (!slug) throw new Problem(400, 'validation_failed', 'slug is required for non-cron triggers');
@@ -7936,6 +8020,10 @@ route('POST', '/v1/triggers', ({ body }) => {
     throw new Problem(409, 'conflict', `a trigger named "${slug}" exists on this app`);
   enforceTriggerCaps(body, kind, appId);
   validateTriggerConfig(kind, config);
+  checkTriggerDelivery(kind, body.delivery);
+  const delivery = String(body.delivery ?? 'record');
+  const realtime = kind === 'realtime';
+  if (realtime) checkRealtimeTrigger(body, delivery, Number(body.batch_size_max ?? 1));
   const defaults = triggerDefaultsFor(db.account.plan);
   const trigger = {
     id: db.id(),
@@ -7945,11 +8033,16 @@ route('POST', '/v1/triggers', ({ body }) => {
     slug,
     enabled: body.enabled !== false,
     config: redactTriggerConfig(kind, config),
-    batch_size_max: Number(body.batch_size_max ?? defaults.batch_size_max),
+    batch_size_max: realtime
+      ? delivery === 'batch'
+        ? Number(body.batch_size_max ?? 10)
+        : 1
+      : Number(body.batch_size_max ?? defaults.batch_size_max),
     batch_window_ms: Number(body.batch_window_ms ?? defaults.batch_window_ms),
-    max_attempts: Number(body.max_attempts ?? defaults.max_attempts),
+    max_attempts: realtime ? 1 : Number(body.max_attempts ?? defaults.max_attempts),
     payload_max_bytes: Number(body.payload_max_bytes ?? defaults.payload_max_bytes),
     broker_poison_strategy: String(body.broker_poison_strategy ?? 'commit'),
+    delivery,
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
@@ -7984,6 +8077,22 @@ route('PATCH', '/v1/triggers/{id}', ({ params, body }) => {
     throw new Problem(403, 'trigger_tls_skip_verify_not_allowed');
   }
   validateTriggerConfig(kind, config);
+  checkTriggerDelivery(kind, body.delivery);
+  if (kind === 'realtime') {
+    const delivery = String(body.delivery ?? trigger.delivery ?? 'record');
+    checkRealtimeTrigger(body, delivery, Number(body.batch_size_max ?? trigger.batch_size_max));
+    const before = object(trigger.config);
+    if (
+      config.endpoint_id !== before.endpoint_id ||
+      config.channel !== before.channel ||
+      config.group !== before.group
+    )
+      throw new Problem(
+        422,
+        'trigger_immutable',
+        'endpoint_id, channel and group cannot change; delete the trigger and create a new one'
+      );
+  }
   if (body.config !== undefined) {
     trigger.config = redactTriggerConfig(kind, object(body.config), object(trigger.config));
   }
@@ -7995,6 +8104,7 @@ route('PATCH', '/v1/triggers/{id}', ({ params, body }) => {
     'payload_max_bytes',
     'broker_poison_strategy',
     'filter_criteria',
+    'delivery',
   ]) {
     if (body[field] !== undefined) trigger[field] = body[field];
   }

@@ -206,7 +206,7 @@ export const account: S['AccountResponse'] = {
     app_layer_max_mb: 2048,
     ephemeral_disk_max_mb: 2048,
     triggers_allowed: true,
-    trigger_kinds: ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'],
+    trigger_kinds: ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue', 'realtime'],
     trigger_limit_per_app: 10,
     trigger_limit_per_account: 50,
     trigger_batch_size_max: 500,
