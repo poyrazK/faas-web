@@ -1411,6 +1411,13 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  const warmRefusal = warmStartsRefusal(
+    a,
+    body,
+    process.env.MOCK_PLAN ?? db.account.plan,
+    hiddenCapabilities
+  );
+  if (warmRefusal) throw new Problem(warmRefusal.status, warmRefusal.code, warmRefusal.detail);
   // pre_auth_rate_limit belongs to the edge-protection capability (faas
   // catalog.json), and apid validates it before storing (lifecycle.go:54).
   const preAuth = body.pre_auth_rate_limit;
@@ -1436,13 +1443,6 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
         'capability_not_released',
         `app.${key} needs the Snapshot lifecycle hooks capability, which is not available to this account; remove it or contact support for access.`
       );
-  const warmRefusal = warmStartsRefusal(
-    a,
-    body,
-    process.env.MOCK_PLAN ?? db.account.plan,
-    hiddenCapabilities
-  );
-  if (warmRefusal) throw new Problem(warmRefusal.status, warmRefusal.code, warmRefusal.detail);
   const lifecycleRefusal = applyLifecycle(a, body, process.env.MOCK_PLAN ?? db.account.plan);
   if (lifecycleRefusal)
     throw new Problem(lifecycleRefusal.status, lifecycleRefusal.code, lifecycleRefusal.detail);
