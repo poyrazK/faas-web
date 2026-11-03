@@ -86,6 +86,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'profile-captures',
+    name: 'On-demand profile captures',
+    category: 'observability',
+    description:
+      'Capture CPU, heap, stack and Go lock profiles from a running instance on demand, compare two captures, and get automatic captures when memory runs low, a request is stuck or an instance uses its whole CPU limit.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/profiling#capture-a-running-instance-on-demand',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'realtime',
     name: 'Realtime',
     category: 'data',

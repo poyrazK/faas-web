@@ -10,6 +10,7 @@ import { safeDebugBundle, suggestedDebugChecks } from './debug-support';
 import { regressionKey } from './debug-search';
 import { DebugGate } from './debug-gate';
 import { DebugReplayAction } from './debug-replay';
+import { RequestCaptureLink } from './request-capture-link';
 
 /**
  * One request, in full: the telemetry row, the spans the gateway recorded
@@ -160,6 +161,7 @@ export function DebugRequestEvidence({
                 <p className="text-xs text-muted-foreground">
                   Wake and instance IDs were not returned for this request.
                 </p>
+                <RequestCaptureLink slug={slug} captureId={data.request.profile_capture_id} />
               </section>
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">Why</h3>

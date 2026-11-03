@@ -106,6 +106,7 @@ it('puts the request audit with the other Observe pages', () => {
     'Alerts',
     'Debugger',
     'Forks',
+    'Profile captures',
     'Request audit',
   ]);
   expect(resolveAppTab('Request audit')).toBe('Request audit');
@@ -140,6 +141,15 @@ describe('visibleAppTabs', () => {
     expect(
       visibleAppTabs((id) => (id === 'production-forks' ? 'plan-not-entitled' : 'on'))
     ).toContain('Forks');
+  });
+  it('hides Profile captures when apid gates the preview off, and keeps it for the plan notice', () => {
+    expect(APP_TAB_CAPABILITY['Profile captures']).toBe('profile-captures');
+    expect(visibleAppTabs((id) => (id === 'profile-captures' ? 'off' : 'on'))).not.toContain(
+      'Profile captures'
+    );
+    expect(
+      visibleAppTabs((id) => (id === 'profile-captures' ? 'plan-not-entitled' : 'on'))
+    ).toContain('Profile captures');
   });
   it('hides Log drains when apid gates the log-drains capability off', () => {
     expect(APP_TAB_CAPABILITY['Log drains']).toBe('log-drains');

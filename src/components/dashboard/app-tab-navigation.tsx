@@ -24,6 +24,7 @@ export const APP_TAB_GROUPS = [
       'Alerts',
       'Debugger',
       'Forks',
+      'Profile captures',
       'Request audit',
     ],
   },
@@ -94,6 +95,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Realtime: 'realtime',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
+  'Profile captures': 'profile-captures',
 };
 
 /**
