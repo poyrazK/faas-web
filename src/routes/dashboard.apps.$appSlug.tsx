@@ -570,10 +570,24 @@ function FunctionDetailPage() {
                       }
                     />
                     <CustomMetricsPanel slug={fn.id} />
-                    <div className="grid gap-4 xl:grid-cols-2">
-                      <AwakeRoutesPanel slug={fn.id} since="7d" />
-                      <DependencyLatencyPanel slug={fn.id} since="24h" />
-                    </div>
+                    <DependencyLatencyPanel slug={fn.id} since="24h" />
+                    <AppUsagePanel slug={fn.id} />
+                  </div>
+                ))}
+
+              {/* Why the app wakes and how each wake went: its own section, so
+                  Metrics ends with the traffic it describes. */}
+              {tab === 'Wakes' &&
+                (authLoading || account === null ? (
+                  <LoadingState message="Checking plan access…" />
+                ) : !paidAccess ? (
+                  <PlanGate
+                    feature="Wake analysis"
+                    description="What keeps an app awake, and each wake's timing, are available on Hobby and above."
+                  />
+                ) : (
+                  <div className="flex flex-col gap-5">
+                    <AwakeRoutesPanel slug={fn.id} since="7d" />
                     <WakeTimelinePanel
                       slug={fn.id}
                       onOpenWake={(wake) =>
@@ -584,7 +598,6 @@ function FunctionDetailPage() {
                         })
                       }
                     />
-                    <AppUsagePanel slug={fn.id} />
                   </div>
                 ))}
 

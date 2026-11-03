@@ -12,6 +12,7 @@ export const APP_TAB_GROUPS = [
     label: 'Observe',
     tabs: [
       'Metrics',
+      'Wakes',
       'Logs',
       'Log drains',
       'Errors',

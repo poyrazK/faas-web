@@ -14,6 +14,7 @@ import {
   Database,
   DownloadDataWindow,
   FilterList,
+  Flash,
   GitFork,
   Globe,
   GraphUp,
@@ -51,6 +52,7 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Deployments: Rocket,
   Activity: ClockRotateRight,
   Metrics: GraphUp,
+  Wakes: Flash,
   Logs: Page,
   'Log drains': DownloadDataWindow,
   Errors: WarningTriangle,
@@ -120,7 +122,10 @@ export function AppRail({
   })).filter((group) => group.tabs.length > 0);
 
   return (
-    <nav aria-label="App" className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto">
+    <nav
+      aria-label="App"
+      className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
+    >
       <div className="flex flex-col gap-px">
         {project ? (
           <Link
