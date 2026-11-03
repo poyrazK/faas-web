@@ -748,18 +748,18 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
-    gap: 'Versioning, lifecycle, CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts (after open PR #211)',
+    gap: 'Versioning toggle and version restore, lifecycle editing (both read-only today), CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts',
     wave: 3,
   },
-  // F109 · preview
+  // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview)
   {
     row: 109,
     name: 'Managed Postgres (account and org databases): point-in-time restore, scale-to-zero, availability classes, resize, connection pool',
     status: 'partial',
     surfaces: ['/dashboard/postgres'],
     capability: 'managed-postgres',
-    gap: 'Usage, compute cap, resize, compute policy, cutovers',
-    wave: 3,
+    gap: 'Usage, compute cap and its suspended state, undelete, resize (beta), compute policy; cutovers stay preview',
+    wave: 1,
   },
   // F110 · preview
   {
@@ -807,7 +807,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/integrations'],
     capability: 'outbound-integrations',
-    gap: 'Binding budget, usage and policy (bind/unbind in open PR #208)',
+    gap: 'Binding budget, usage and policy',
     wave: 3,
   },
   // G118 · GA
