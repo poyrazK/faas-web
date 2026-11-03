@@ -15,7 +15,9 @@ import { INSTALL_COMMAND, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-cla
  * `platform-claims.ts`; this test fails the moment a second copy appears.
  */
 
-const SCAN_ROOTS = ['src', 'index.html'];
+// content/llms-intro.md is hand-written public copy too: it names claims by
+// placeholder (see renderIntro in agent-docs.ts) and must not retype them.
+const SCAN_ROOTS = ['src', 'index.html', 'content/llms-intro.md'];
 const GENERATED = /routeTree\.gen\.ts$|schema\.d\.ts$/;
 
 function walk(path: string): string[] {
