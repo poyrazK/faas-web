@@ -117,6 +117,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'release-commands',
+    name: 'Release commands',
+    category: 'delivery',
+    description:
+      'Run a command such as a migration that must succeed before a deployment takes traffic.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/deploys',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'workflows-and-jobs',
     name: 'Jobs and workflows',
     category: 'async',
