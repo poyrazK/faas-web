@@ -3681,6 +3681,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/postgres/databases/{id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set and remove a database's labels.
+         * @description Preview (resource-labels capability). Sets and removes labels in one
+         *     atomic write and returns every label the database carries after it, with
+         *     the same rules, codes and audit event as PATCH /v1/apps/{slug}/labels.
+         *     Requires postgres:manage or admin scope and MFA. While the capability is on,
+         *     GET /v1/postgres/databases and GET /v1/postgres/databases/{id} include labels, and GET /v1/postgres/databases
+         *     takes ?selector=, a Kubernetes label selector.
+         */
+        patch: operations["updateManagedPostgresDatabaseLabels"];
+        trace?: never;
+    };
     "/v1/postgres/databases/{id}": {
         parameters: {
             query?: never;
@@ -3695,8 +3723,63 @@ export interface paths {
         get: operations["getManagedPostgresDatabase"];
         put?: never;
         post?: never;
-        /** Delete a managed PostgreSQL database */
+        /**
+         * Delete a managed PostgreSQL database
+         * @description A ready database is kept for 7 days with its compute stopped and its connections refused, and can be undeleted until restorable_until. It still counts toward the plan's database limit and keeps its name until it is purged. Any other database, or a delete with purge=true, is deleted at once. Bindings and restore dependencies must be removed first.
+         */
         delete: operations["deleteManagedPostgresDatabase"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/postgres/databases/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a managed database's conditions.
+         * @description Preview (resource-conditions capability). The database's Ready,
+         *     Progressing and Degraded conditions, mapped from the response
+         *     GET /v1/postgres/databases/{id} returns, cached health included, and
+         *     never stored. Ready follows the lifecycle state; a database whose
+         *     compute scaled to zero is Ready=True with reason suspended. Failed,
+         *     deleting and deleted databases report terminal conditions.
+         *     Cache-Control no-store.
+         */
+        get: operations["getManagedPostgresDatabaseStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/postgres/databases/{id}/undelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undelete a managed PostgreSQL database
+         * @description Returns a database whose delete is scheduled to ready, with its data, spec and restore history, while restorable_until is in the future. The plan must still allow the database's spec. After the window the database is gone and the request returns 404.
+         */
+        post: operations["undeleteManagedPostgresDatabase"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4011,7 +4094,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Restore a database into a new managed PostgreSQL database */
+        /**
+         * Restore a database into a new managed PostgreSQL database
+         * @description The restored database counts toward the plan's database limit. A restore may go one database past the limit: that copy reports restore_slot_until, 7 days out, and becomes an ordinary database once the account has room; otherwise its delete is scheduled then. A second restore past the limit while a copy holds the slot answers 403 managed_postgres_restore_slot_in_use.
+         */
         post: operations["restoreManagedPostgresDatabase"];
         delete?: never;
         options?: never;
@@ -4057,6 +4143,35 @@ export interface paths {
          * @description Lists independently sampled planning reports for the app's shared managed Data API databases, including other bindings in the same account. Requires managed PostgreSQL read permission. Reads metadata without waking SQL or changing admission; current adapters retain unknown capacity.
          */
         get: operations["getAppDataAPIConnectionBudgets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/data-api/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the current Data API runtime
+         * @description Returns the Data API runtime this control plane serves: its version,
+         *     and a gzipped tar of the runtime under one `data-api/` directory with
+         *     its SHA-256. `gregale data-api create` and `gregale data-api deploy`
+         *     deploy this archive, so an older CLI release does not redeploy an older
+         *     runtime. A running Data API reports the version it was built from as
+         *     `runtime_version` on `/healthz`; a different version is not the
+         *     platform's current runtime.
+         */
+        get: operations["getDataAPIRuntime"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9764,6 +9879,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/runtime/data-api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish recorded Data API row changes
+         * @description Private runtime surface for change hooks. Requires a short-lived gregale:data-api:events workload assertion from a live instance of an active app; account and app come from it, never from the body. Each event publishes as an app-scoped producer-key event under the app's own source with key data-api.change.ID, so a republished change deduplicates while its receipt is retained. Events publish in order; publication stops at the first event that may succeed later, and later events are reported as retryable without being attempted. Owner API keys and application JWTs are not accepted.
+         */
+        post: operations["publishDataAPIChangeEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runtime/operations/{id}/control": {
         parameters: {
             query?: never;
@@ -12510,7 +12645,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a notification channel
-         * @description Removes the channel; alert rules stop delivering to it.
+         * @description Removes the channel; alert rules stop delivering to it. Refused with 409 notification_channel_in_use while the channel is the only destination of a rule (no webhook and no other channel), naming those rules.
          */
         delete: operations["deleteNotificationChannel"];
         options?: never;
@@ -12863,6 +12998,75 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/status": {
+        parameters: {
+            query?: {
+                /** @description Registered app environment whose conditions are read; omit for its default environment. */
+                environment?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an app's conditions.
+         * @description Preview (resource-conditions capability). The app's Ready,
+         *     Progressing and Degraded conditions, derived when read
+         *     from the same evidence as GET /v1/apps/{slug}/health and never
+         *     stored. It never wakes or probes a workload. An idle app that scales
+         *     to zero is Ready=True with reason idle. A terminal condition will not
+         *     change without a new request. Requires apps:read or admin scope. No
+         *     MFA required. Cache-Control no-store.
+         */
+        get: operations["getAppStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set and remove an app's labels.
+         * @description Preview (resource-labels capability). Sets and removes labels in one
+         *     atomic write and returns every label the app carries after it. The
+         *     write is idempotent. A result over 32 labels is refused with
+         *     label_limit_exceeded; an invalid key or value with invalid_label_key
+         *     or invalid_label_value; a key under gregale.dev/ with
+         *     reserved_label_key. Emits a resource.labels.changed audit event.
+         *     Requires apps:deploy or admin scope and MFA. While the capability is
+         *     on, GET /v1/apps and GET /v1/apps/{slug} include each app's labels,
+         *     and GET /v1/apps and GET /v1/domains take ?selector=, a Kubernetes
+         *     label selector such as team=billing,tier in (web,api),!canary (=,
+         *     ==, !=, key, !key, in, notin; at most 4096 bytes); a domain matches
+         *     through its app. An invalid selector is a 400
+         *     invalid_label_selector, and a selector while the capability is off
+         *     a 403 capability_not_released. These fields join the GA
+         *     description of those routes when the capability does.
+         */
+        patch: operations["updateAppLabels"];
         trace?: never;
     };
     "/v1/apps/{slug}/health/history": {
@@ -17863,10 +18067,11 @@ export interface paths {
         /**
          * List repositories visible to the account's GitHub App installation.
          * @description Bearer API-key surface for customer automation. Requires the
-         *     dedicated `github:manage` scope. The account's durable GitHub App
-         *     installation is resolved server-side, so callers do not need to
-         *     copy or provide an installation id. Installation credentials are
-         *     never returned.
+         *     dedicated `github:manage` scope. `installation_id` names one of
+         *     the account's connected installations; without it the account's
+         *     only installation is used, and an account with several gets a 409
+         *     `github_installation_required` naming them. Installation
+         *     credentials are never returned.
          */
         get: operations["listGitHubRepositories"];
         put?: never;
@@ -17925,6 +18130,9 @@ export interface paths {
          *     calls. A missing policy row resolves to the safe defaults for a new
          *     project. Legacy allow_marked compatibility rows are migrated to deny;
          *     customers can explicitly opt back in when production calls are safe.
+         *     An app without a project reports the defaults with an empty
+         *     `project_id` and its own `production_trigger` and
+         *     `preview_enabled`.
          */
         get: operations["getGitHubDeploymentPolicy"];
         put?: never;
@@ -17940,7 +18148,9 @@ export interface paths {
          *     trailing `/**` directory patterns. `preview_service_policy=deny`
          *     rejects preview calls to production dependencies before discovery or
          *     wake-up; `allow_marked` preserves the marked-call compatibility mode.
-         *     Mutations require MFA.
+         *     An app without a project can set only `production_trigger` and
+         *     `preview_enabled`, once it is bound to a repository; other fields
+         *     answer 409 `project_required`. Mutations require MFA.
          */
         patch: operations["patchGitHubDeploymentPolicy"];
         trace?: never;
@@ -19290,14 +19500,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List deploy freezes.
-         * @description Unlifted freezes that have not ended: active and upcoming windows, weekly windows and after-rollback policies. `app` narrows the list to the freezes covering one app.
+         * List the account's deploy freezes.
+         * @description The account's unlifted freezes that have not ended: active and upcoming windows, weekly windows and after-rollback policies. They cover the account's personal apps; a company organization's freezes are on `/v1/orgs/{slug}/freezes`. `app` narrows the list to the freezes covering one personal app; a company app is refused with 409.
          */
         get: operations["listReleaseFreezes"];
         put?: never;
         /**
          * Freeze production releases.
-         * @description Creates a window, weekly or after-rollback freeze for one app or, without `app`, for every app of the account. While a freeze is active, new production deployments are refused with `release_frozen` unless the request carries `override_freeze`.
+         * @description Creates a window, weekly or after-rollback freeze for one personal app or, without `app`, for every personal app of the account. While a freeze is active, new production deployments are refused with `release_frozen` unless the request carries `override_freeze`. A company app's freezes belong to its organization: naming one is refused with 409.
          */
         post: operations["createReleaseFreeze"];
         delete?: never;
@@ -19321,7 +19531,7 @@ export interface paths {
         post?: never;
         /**
          * Lift a deploy freeze.
-         * @description Stops the freeze from withholding releases. The freeze is kept, with who lifted it and when, for the audit trail. 404 `release_freeze_not_found` when no unlifted freeze has this ID.
+         * @description Stops the freeze from withholding releases. Needs the admin scope (a signed-in session or an admin key); a deploy:write key gets 403. The freeze is kept, with who lifted it and when, for the audit trail. 404 `release_freeze_not_found` when no unlifted freeze has this ID.
          */
         delete: operations["liftReleaseFreeze"];
         options?: never;
@@ -19347,6 +19557,118 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/freezes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the deploy freezes covering an app.
+         * @description The app owner's unlifted freezes that have not ended, on all of its apps and on this app. A company app's freezes belong to its organization; a personal app's to its account. Requires `org.read_app` on a company app.
+         */
+        get: operations["listAppReleaseFreezes"];
+        put?: never;
+        /**
+         * Freeze production releases of an app.
+         * @description Creates a window, weekly or after-rollback freeze on the app, owned by the app's owner: the company organization of a company app. On a company app a member who deploys may create a window; weekly and after-rollback policies need an owner or admin (`org.manage_app_security`). `app` in the body must be empty or this app.
+         */
+        post: operations["createAppReleaseFreeze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/freezes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The ID of a freeze on this app. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Lift a deploy freeze on an app.
+         * @description Lifts a freeze on this app. Needs the admin scope (a signed-in session or an admin key). Freezes on all of an owner's apps are lifted on `/v1/freezes/{id}` or `/v1/orgs/{slug}/freezes/{id}`. On a company app a member who deploys may lift a window they created; any other freeze needs an owner or admin. 404 `release_freeze_not_found` when no unlifted freeze on this app has this ID.
+         */
+        delete: operations["liftAppReleaseFreeze"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/freezes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a company organization's deploy freezes.
+         * @description The organization's unlifted freezes that have not ended, on all of its apps and on single apps. Requires `org.read_app`. A personal organization's apps use `/v1/freezes` (409).
+         */
+        get: operations["listOrgReleaseFreezes"];
+        put?: never;
+        /**
+         * Freeze production releases of every app of a company organization.
+         * @description Creates a freeze on all of the organization's apps; `app` must be empty (freeze one app with `POST /v1/apps/{slug}/freezes`). A member who deploys (`org.deploy_app`) may create a window; weekly and after-rollback policies need an owner or admin.
+         */
+        post: operations["createOrgReleaseFreeze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/freezes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description The ID of one of the organization's freezes. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Lift a company organization's deploy freeze.
+         * @description Lifts one of the organization's freezes. Needs the admin scope (a signed-in session or an admin key). A member who deploys may lift a window they created; any other freeze needs an owner or admin. 404 `release_freeze_not_found` when the organization has no unlifted freeze with this ID.
+         */
+        delete: operations["liftOrgReleaseFreeze"];
         options?: never;
         head?: never;
         patch?: never;
@@ -19396,7 +19718,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a release gate.
-         * @description 404 `release_gate_not_found` when the app has no gate with this name.
+         * @description Needs the admin scope (a signed-in session or an admin key); a deploy:write key cannot remove the gates it deploys past. 404 `release_gate_not_found` when the app has no gate with this name.
          */
         delete: operations["deleteReleaseGate"];
         options?: never;
@@ -19421,13 +19743,13 @@ export interface paths {
         get: operations["getReleaseApprovalPolicy"];
         /**
          * Require approvals for an app's production releases.
-         * @description Creates or replaces the policy. Each production release then waits in a canary stage until enough eligible people approve it. Organization owners and admins may change the policy. An app outside an organization always counts its owner's own approval.
+         * @description Creates or replaces the policy. Needs the admin scope (a signed-in session or an admin key). Each production release then waits in a canary stage until enough eligible people approve it. Organization owners and admins may change the policy. An app outside an organization always counts its owner's own approval.
          */
         put: operations["setReleaseApprovalPolicy"];
         post?: never;
         /**
          * Stop requiring release approvals.
-         * @description Releases waiting for approval continue on the canary's next step.
+         * @description Needs the admin scope (a signed-in session or an admin key). Releases waiting for approval continue on the canary's next step.
          */
         delete: operations["deleteReleaseApprovalPolicy"];
         options?: never;
@@ -20034,7 +20356,7 @@ export interface paths {
         put?: never;
         /**
          * Approve or reject a release.
-         * @description Records one decision per person. A rejection is final and aborts the rollout, restoring the previous release. 403 `release_approval_self` when the deployer approves their own release and the policy does not allow it; 409 `release_approval_decided` for a second decision or a release that no longer accepts one.
+         * @description Records one decision per person. An approval needs a signed-in dashboard session: 403 `release_approval_session_required` to an API key or token, with the release's approval page as the hint; a rejection is accepted from either. A rejection is final and aborts the rollout, restoring the previous release. 403 `release_approval_self` when the deployer approves their own release and the policy does not allow it; 409 `release_approval_decided` for a second decision or a release that no longer accepts one.
          */
         post: operations["decideReleaseApproval"];
         delete?: never;
@@ -20061,6 +20383,29 @@ export interface paths {
          * @description Compares the code, configuration keys, packages, runtime settings and release command of two releases of one app. Never returns variable values, secret fingerprints or SBOM files. A section whose history is missing reports known=false with a note.
          */
         get: operations["getReleaseDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Show a release's phase and history.
+         * @description Composes what Gregale recorded about one release into a phase, a one-line summary and its events, oldest first: creation, schedule, approvals, rollout start, each canary step with the decision and gate results behind it, holds, completion, the post-release watch, abort or rollback, and the release that replaced it. Reads at most 500 audit rows; truncated=true means older history was left out.
+         */
+        get: operations["getReleaseTimeline"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20212,6 +20557,33 @@ export interface paths {
          *     limit).
          */
         get: operations["listDeploymentAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a deployment's conditions.
+         * @description Preview (resource-conditions capability). The deployment's Ready,
+         *     Progressing and RolledOut conditions, mapped from
+         *     the response GET /v1/deployments/{id} returns and never stored.
+         *     Failed, cancelled and superseded deployments report terminal
+         *     conditions. Cache-Control no-store.
+         */
+        get: operations["getDeploymentStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20735,6 +21107,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/domains/{domain}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain whose conditions are read. */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a custom domain's conditions.
+         * @description Preview (resource-conditions capability). The domain's Ready,
+         *     Verified and CertificateReady conditions, from the domain's recorded
+         *     verification and certificate state and never stored. Unlike
+         *     GET /v1/domains/{domain} it never connects to the domain, so it is
+         *     safe to poll. None of its conditions is terminal: DNS can change
+         *     outside Gregale. Cache-Control no-store.
+         */
+        get: operations["getDomainStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/domains/{domain}/verify": {
         parameters: {
             query?: never;
@@ -20848,6 +21248,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/domains/{domain}/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The wildcard custom domain (e.g. `*.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a wildcard domain's host allowlist.
+         * @description Returns the names below the wildcard that may hold an on-demand
+         *     certificate. `restricted: false` means no
+         *     allowlist is set and every name below the wildcard may.
+         */
+        get: operations["getDomainHosts"];
+        /**
+         * Replace a wildcard domain's host allowlist.
+         * @description Only the listed names below the wildcard get certificates; the edge
+         *     refuses every other server name, so random names cannot spend the
+         *     wildcard's new-host budget. Names are the part of the host before
+         *     the wildcard's suffix (`eu.shop` for `eu.shop.example.com`), or the
+         *     full host. Routing is unchanged, and certificates the edge already
+         *     holds for a removed name keep serving until their next reload or
+         *     renewal. The domain doctor's probe host is always allowed.
+         */
+        put: operations["setDomainHosts"];
+        post?: never;
+        /**
+         * Remove a wildcard domain's host allowlist.
+         * @description Every name below the wildcard may hold a certificate again.
+         */
+        delete: operations["clearDomainHosts"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/crons": {
         parameters: {
             query?: never;
@@ -20864,6 +21303,34 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/crons/{id}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set and remove a cron's labels.
+         * @description Preview (resource-labels capability). Sets and removes labels in one
+         *     atomic write and returns every label the cron carries after it, with
+         *     the same rules, codes and audit event as PATCH /v1/apps/{slug}/labels.
+         *     Requires deploy:write or admin scope and MFA. While the capability is on,
+         *     GET /v1/crons and GET /v1/crons/{id} include labels, and GET /v1/crons
+         *     takes ?selector=, a Kubernetes label selector.
+         */
+        patch: operations["updateCronLabels"];
         trace?: never;
     };
     "/v1/crons/{id}": {
@@ -20891,6 +21358,34 @@ export interface paths {
         head?: never;
         /** Partial-update a cron. */
         patch: operations["updateCron"];
+        trace?: never;
+    };
+    "/v1/crons/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a cron's conditions.
+         * @description Preview (resource-conditions capability). The cron's Ready and
+         *     LastRunSucceeded conditions, from the cron and its newest run as
+         *     GET /v1/crons/{id}/runs reports it, and never stored. A disabled cron
+         *     is terminally not ready; a suspended one is not ready until the
+         *     suspension clears. LastRunSucceeded describes the newest run, so it
+         *     is never terminal. Cache-Control no-store.
+         */
+        get: operations["getCronStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/crons/{id}/runs": {
@@ -22309,6 +22804,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/{name}/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the job whose labels change. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set and remove a job's labels.
+         * @description Preview (resource-labels capability). Sets and removes labels in one
+         *     atomic write and returns every label the job carries after it, with
+         *     the same rules, codes and audit event as PATCH /v1/apps/{slug}/labels.
+         *     Requires deploy:write or admin scope and MFA. While the capability is on,
+         *     GET /v1/jobs and GET /v1/jobs/{name} include labels, and GET /v1/jobs
+         *     takes ?selector=, a Kubernetes label selector.
+         */
+        patch: operations["updateJobLabels"];
+        trace?: never;
+    };
     "/v1/jobs/{name}": {
         parameters: {
             query?: never;
@@ -22456,6 +22979,35 @@ export interface paths {
         };
         /** Get one run of a job. */
         get: operations["getJobRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/jobs/{name}/runs/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Name of the job the run belongs to. */
+                name: string;
+                /** @description The id of the run whose conditions are read. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a job run's conditions.
+         * @description Preview (resource-conditions capability). The run's Succeeded and
+         *     Progressing conditions, mapped from the response
+         *     GET /v1/jobs/{name}/runs/{id} returns and never stored. A job run has
+         *     no Ready condition: it runs to completion. Failed, cancelled and
+         *     dead-letter runs report terminal conditions. Cache-Control no-store.
+         */
+        get: operations["getJobRunStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -23296,9 +23848,13 @@ export interface paths {
         put?: never;
         /**
          * Request a complete isolated environment clone.
-         * @description This dedicated route never falls back to partial cloning. Full admission
-         *     currently returns environment_full_clone_unavailable with named blockers
-         *     until complete coverage and coordinated data-copy proofs are available.
+         * @description This dedicated route never falls back to partial cloning. While full
+         *     admission is closed it returns environment_full_clone_unavailable with
+         *     named blockers. When open, a source whose every used resource has an
+         *     isolated strategy, including managed databases with point-in-time
+         *     restore, is captured and a durable clone operation is returned; any
+         *     other source is refused with each uncopyable resource named under
+         *     resource_coverage.
          */
         post: operations["createFullProjectEnvironmentClone"];
         delete?: never;
@@ -27413,7 +27969,7 @@ export interface paths {
          * Sync-invoke an app; long-poll for the result.
          * @description Enqueues an invocation row and waits for the drain to drive it
          *     to a terminal state. Server-side cap is 30s on paid plans, 5s
-         *     on Free. Returns 504 (long_poll_timeout) when the cap elapses;
+         *     on Free. Returns 503 (long_poll_timeout) when the cap elapses;
          *     the customer can immediately re-call /v1/invocations/{id}
          *     to pick up the eventual result.
          */
@@ -29552,7 +30108,7 @@ export interface paths {
         };
         /**
          * Read complete consumer pending counts and effective deadlines.
-         * @description Read-only, payload-free counts and earliest effective deadline across all retained captured pending application recipients for this subscription. One Repeatable Read snapshot includes current controls. Processing work, future arrivals and publications awaiting recipient capture are excluded. No sample cap; request and statement budgets bound scan time. Timeout returns 504 without partial counts. Incomplete or absent evidence is unknown, never zero or a successful recovery. Counts do not model future admission or guarantee deadline safety.
+         * @description Read-only, payload-free counts and earliest effective deadline across all retained captured pending application recipients for this subscription. One Repeatable Read snapshot includes current controls. Processing work, future arrivals and publications awaiting recipient capture are excluded. No sample cap; request and statement budgets bound scan time. Timeout returns 503 (504 from older edges) without partial counts. Incomplete or absent evidence is unknown, never zero or a successful recovery. Counts do not model future admission or guarantee deadline safety.
          */
         get: operations["getEventSubscriptionPendingSummary"];
         put?: never;
@@ -31267,6 +31823,106 @@ export interface paths {
         post?: never;
         /** Revoke an API key. */
         delete: operations["deleteKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the agents connected to the account.
+         * @description The account's connected agents, newest first:
+         *     hosted MCP sign-ins, whose `mcp-login` keys the hosted MCP server
+         *     holds, and API keys with the `agent` scope. Only keys that still work
+         *     are listed. A hosted sign-in shows the client name its consent page
+         *     showed and the site the client was verified at, when known.
+         */
+        get: operations["listAgentConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-connections/revoke_all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke every agent connected to the account.
+         * @description Revokes the API key of every connected agent; each must sign in
+         *     again. Needs an admin credential. Audits `key.revoked` with reason
+         *     `agent_disconnected` for each key and `agent_connections.revoke_all`
+         *     with the count.
+         */
+        post: operations["revokeAllAgentConnections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-connections/self": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Name the client of the calling hosted MCP key.
+         * @description Called by the hosted MCP server after a browser sign-in, with the
+         *     connection's own `mcp-login` key. Any other credential is refused.
+         *     The first name wins.
+         */
+        put: operations["nameAgentClient"];
+        post?: never;
+        /**
+         * Revoke the calling hosted MCP key.
+         * @description Called by the hosted MCP server when a connection ends (consent
+         *     denied, or the connection revoked or expired), with that connection's
+         *     own `mcp-login` key. Any other credential is refused.
+         */
+        delete: operations["disconnectAgent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent-connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The connected agent's API key id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one connected agent.
+         * @description Revokes the agent's API key; the agent must sign in again. Needs an
+         *     admin credential. Revoking it again succeeds; an id that is not one of
+         *     the account's connected agents is 404.
+         */
+        delete: operations["revokeAgentConnection"];
         options?: never;
         head?: never;
         patch?: never;
@@ -33330,7 +33986,8 @@ export interface paths {
          *     `^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$` (3..32 chars); name is
          *     trimmed-non-empty (1..256 chars). Personal orgs cannot be
          *     created via this endpoint — every account already has a
-         *     personal org (backfill).
+         *     personal org (backfill). A new org starts on the Free plan,
+         *     and an account may own one Free org at a time.
          */
         post: operations["createOrg"];
         delete?: never;
@@ -37219,6 +37876,42 @@ export interface paths {
         patch: operations["changeOrgPlan"];
         trace?: never;
     };
+    "/v1/orgs/{slug}/overage-cap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the organization's monthly spend cap.
+         * @description Requires current organization membership and usage:read. Integer cents, zero when no overage is allowed, or null when no cap is set. An organization that owns its resources is billed, and capped, apart from its members.
+         */
+        get: operations["getOrgOverageCap"];
+        put?: never;
+        /**
+         * Set or clear the organization's monthly spend cap.
+         * @description Requires the organization owner, admin credential scope, verified email,
+         *     MFA and recent step-up. `{"overage_cap_cents": <int|null>}`: null clears
+         *     the cap, 0 allows no overage. Once the organization's overage this month
+         *     meets the cap, the scheduler stops its apps' wakes (HTTP 402
+         *     `admission_refused`) until the cap is raised or the month ends. A paid
+         *     organization starts with its plan's default cap.
+         */
+        post: operations["setOrgOverageCap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/{organization}/projects": {
         parameters: {
             query?: never;
@@ -38123,7 +38816,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a company PostgreSQL resource.
-         * @description An owner or admin requests provider cleanup. Active bindings and retained restore dependencies must be removed first; accounting evidence remains available.
+         * @description An owner or admin requests provider cleanup. Active bindings and retained restore dependencies must be removed first; accounting evidence remains available. A ready database is kept for 7 days and can be undeleted until restorable_until; purge=true deletes at once.
          */
         delete: operations["deleteOrgManagedPostgresDatabase"];
         options?: never;
@@ -38237,6 +38930,31 @@ export interface paths {
         get: operations["getOrgManagedPostgresComputePolicyChange"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{organization}/postgres/databases/{id}/undelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization that owns the company database to undelete. */
+                organization: string;
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undelete a company PostgreSQL database.
+         * @description An owner or admin returns a company database whose delete is scheduled to ready while restorable_until is in the future. The company plan must still allow the database's spec.
+         */
+        post: operations["undeleteOrgManagedPostgresDatabase"];
         delete?: never;
         options?: never;
         head?: never;
@@ -47730,6 +48448,11 @@ export interface components {
             p95_latency_ms?: number;
             /**
              * Format: int64
+             * @description Requests the p95 ranked. The canary guard ranks only requests that did not cold boot, and the latency minimum applies to this count. Omitted when every request was ranked.
+             */
+            latency_requests?: number;
+            /**
+             * Format: int64
              * @description Synthetic probe responses rejected by customer auth gates (401/403). Only present in synthetic_windows; a window where at least half of either side was rejected is unknown (probe_unauthenticated).
              */
             unauthenticated?: number;
@@ -51663,6 +52386,35 @@ export interface components {
             updated_at: string;
             /** Format: date-time */
             deleted_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Set while the database's delete is scheduled: it can be undeleted until then, and is purged after.
+             */
+            restorable_until?: string;
+            /**
+             * Format: date-time
+             * @description Set while a restored database is one past the plan's database limit. It becomes an ordinary database once the account has room; otherwise its delete is scheduled at this time.
+             */
+            restore_slot_until?: string;
+            /**
+             * @description Set while the plan no longer includes this database, for example after a subscription ended, and it is suspended: database_limit when it ranks past the plan's database limit (oldest databases are kept), service_class when the plan does not include its class. Its data is kept. Upgrading, deleting a database or resizing to an included class resumes it.
+             * @enum {string}
+             */
+            plan_excess?: "database_limit" | "service_class";
+            restore_range?: components["schemas"]["ManagedPostgresRestoreRange"];
+        };
+        /** @description The span a point-in-time restore from this database can target now. Absent while the database cannot be restored from. */
+        ManagedPostgresRestoreRange: {
+            /**
+             * Format: date-time
+             * @description The later of the database's creation and the start of its restore window.
+             */
+            earliest: string;
+            /**
+             * Format: date-time
+             * @description When the response was made; a restore point must be before it.
+             */
+            latest: string;
         };
         /** @description Account-scoped managed PostgreSQL database collection. */
         ManagedPostgresDatabaseList: {
@@ -52046,6 +52798,18 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description The Data API runtime the control plane serves. */
+        DataAPIRuntime: {
+            /** @description Digest of the runtime's image files; running Data APIs report it as runtime_version on /healthz. */
+            version: string;
+            /** @description Lowercase hex SHA-256 of the decoded archive. */
+            archive_sha256: string;
+            /**
+             * Format: byte
+             * @description Base64 gzipped tar of the runtime under one data-api/ directory, at most 2 MiB decoded.
+             */
+            archive: string;
+        };
         /** @description Read-only planning snapshots. Not applicable means the app has no visible Data API binding. */
         DataAPIConnectionBudgets: {
             /** @enum {integer} */
@@ -52222,6 +52986,31 @@ export interface components {
         /** @description Answer to a runtime usage report. */
         DataAPIUsageReportResponse: {
             month_to_date: components["schemas"]["DataAPIUsageMonthToDate"];
+        };
+        /** @description One recorded row change. The id is the change's UUID in the database; the platform derives the producer key data-api.change.ID from it. */
+        DataAPIChangeEvent: {
+            id: string;
+            /** @description SCHEMA.TABLE.inserted */
+            type: string;
+            /**
+             * Format: date-time
+             * @description When the change was recorded.
+             */
+            time?: string;
+            /** @description The change */
+            data: unknown;
+        };
+        /** @description A runtime's private publication of recorded changes, in recorded order. */
+        DataAPIChangeEventBatch: {
+            /** @enum {integer} */
+            version: 1;
+            events: components["schemas"]["DataAPIChangeEvent"][];
+        };
+        /** @description Per-event outcomes in input order, with the app source the events published under. */
+        DataAPIChangeEventBatchResponse: {
+            /** @description The app's producer source */
+            source: string;
+            results: components["schemas"]["PublishEventBatchResult"][];
         };
         /** @description One hour or UTC day of an owner usage view. */
         DataAPIUsageBucket: components["schemas"]["DataAPIUsageCounts"] & {
@@ -53755,6 +54544,16 @@ export interface components {
             /** @default 168 */
             preview_ttl_hours: number;
             /**
+             * @description Preview pull requests opened by bots such as Dependabot and Renovate. Off by default so they do not use up the preview allowance.
+             * @default false
+             */
+            preview_bot_prs?: boolean;
+            /**
+             * @description Preview draft pull requests. When off, a draft gets its preview once it is marked ready for review.
+             * @default true
+             */
+            preview_draft_prs?: boolean;
+            /**
              * @description Controls calls from project previews to production internal
              *     services. `deny` rejects the call before discovery or wake-up;
              *     `allow_marked` permits it and marks the request as preview-origin
@@ -53777,6 +54576,8 @@ export interface components {
             ignored_paths?: string[];
             preview_enabled?: boolean;
             preview_ttl_hours?: number;
+            preview_bot_prs?: boolean;
+            preview_draft_prs?: boolean;
             /** @enum {string} */
             preview_service_policy?: "deny" | "allow_marked";
             /** @enum {string} */
@@ -53805,7 +54606,14 @@ export interface components {
             connected: boolean;
             /** Format: int64 */
             installation_id?: number;
+            /** @description The GitHub user or organization the App is installed on. */
             github_login?: string;
+            /**
+             * @deprecated
+             * @description Empty for newer connections: an installation has no default
+             *     branch, and a bind without a branch takes the repository's
+             *     default branch. Older connections report the `main` they stored.
+             */
             default_branch?: string;
             repo_full_name?: string;
             production_branch?: string;
@@ -53830,6 +54638,18 @@ export interface components {
                 synced_at?: string;
             };
             activity?: components["schemas"]["GitHubInstallActivity"];
+            /**
+             * @description The account's connected installations when it has more than
+             *     one. An unbound app then reports no `installation_id`; a bind or
+             *     repository listing names one of these.
+             */
+            installations?: components["schemas"]["GitHubInstallationSummary"][];
+        };
+        /** @description One GitHub App installation connected to the account. */
+        GitHubInstallationSummary: {
+            /** Format: int64 */
+            installation_id: number;
+            github_login?: string;
         };
         /**
          * @description Bounded, redacted activity for the currently bound app. Webhook
@@ -53852,6 +54672,8 @@ export interface components {
             processed_at?: string | null;
             /** Format: date-time */
             updated_at: string;
+            /** @description Why a processed event deployed nothing: actions_trigger (production deploys come from a GitHub Actions workflow), branch_not_deployed, superseded (a newer commit reached the branch first), not_enabled, tag_not_branch_head, no_binding, skip_marker, invalid_release_tag, release_tag_moved or ignored. Absent when the event did its work. */
+            skip_reason?: string;
         };
         /** @description Redacted Check Run synchronization activity for the bound GitHub app. */
         GitHubCheckActivity: {
@@ -54099,6 +54921,10 @@ export interface components {
             crons: components["schemas"]["CronResponse"][];
             api_keys: components["schemas"]["APIKeyExportResponse"][];
             app_secrets: components["schemas"]["AppSecretExportResponse"][];
+            /** @description Edge rules on the exported apps. */
+            edge_rules?: components["schemas"]["EdgeRuleResponse"][];
+            /** @description The account's edge rule lists, with their items. */
+            edge_rule_lists?: components["schemas"]["EdgeRuleListResponse"][];
             audit_trail?: components["schemas"]["GdprAuditExportResponse"][];
         };
         /** @description Organization membership lifecycle row included in export schema v2. */
@@ -61823,6 +62649,8 @@ export interface components {
             signals?: components["schemas"]["RolloutDecisionSignals"];
             /** @description The release gates judged with this decision. */
             gates?: components["schemas"]["ReleaseGateResult"][];
+            /** @description Post-release decisions only: why an automatic rollback did not take the release off: the problem code that refused it, such as rollback_crosses_release, or rollback_failed when it ran and did not restore the previous release. The regression was found; the release keeps serving until someone rolls back or ships a fix. */
+            rollback_skipped?: string;
             /** Format: date-time */
             decided_at: string;
         };
@@ -70349,6 +71177,26 @@ export interface components {
             /** @description DNS records to publish: the TXT ownership proof and the routing CNAME, plus A/AAAA alternatives for a zone apex when the platform publishes edge addresses. */
             dns_records?: components["schemas"]["DNSRecordInstruction"][];
         };
+        /** @description A wildcard custom domain's host allowlist. Names are the parts of hosts before the wildcard's suffix. */
+        CustomDomainHostsResponse: {
+            /** @example *.example.com */
+            domain: string;
+            /**
+             * @example [
+             *       "app",
+             *       "api",
+             *       "eu.shop"
+             *     ]
+             */
+            names: string[];
+            /** @description False when no allowlist is set: every name below the wildcard may hold a certificate. */
+            restricted: boolean;
+        };
+        /** @description Replaces a wildcard custom domain's host allowlist; DELETE the allowlist to allow every name again. */
+        SetCustomDomainHostsRequest: {
+            /** @description Names below the wildcard (or full hosts) that may hold certificates. */
+            names: string[];
+        };
         /** @description One DNS record a customer publishes for a custom domain. `alternative` marks an A/AAAA routing record that replaces the CNAME where a CNAME is not allowed, such as at a zone apex. */
         DNSRecordInstruction: {
             /**
@@ -74087,6 +74935,8 @@ export interface components {
             edge_rule_id?: string;
             /** @description Configured completed-release rollback eligibility window in seconds; 0 is disabled. Acceptance requires deployment-specific error_rate_pct evidence, a gt or gte comparison, and recorded predecessor lineage. */
             post_deploy_rollback_window_seconds?: number;
+            /** @description The webhook also receives a signed alert.resolved event when the rule recovers. Omitted when false. */
+            notify_resolved?: boolean;
             /** @example 0123456789abcdef0123456789abcdef */
             id: string;
             /**
@@ -74192,6 +75042,8 @@ export interface components {
             edge_rule_id?: string;
             /** @description Enable completed-release rollback for this many seconds after cutover; 0 disables it. Requires action=rollback. Only deployment-specific error_rate_pct breaches with gt or gte comparisons can qualify. */
             post_deploy_rollback_window_seconds?: number;
+            /** @description Also send the webhook a signed alert.resolved event when the rule recovers. Requires webhook_url; notification channels always receive resolves. Defaults to false, because receivers that predate it count every delivery as a fire. */
+            notify_resolved?: boolean;
             /** @example p99 > 500ms */
             name: string;
             /** @example true */
@@ -74271,6 +75123,8 @@ export interface components {
             mcp_for_minutes?: number;
             /** @description Change the completed-release recovery window. Omission preserves it and explicit 0 disables it. Positive values require action=rollback; only error_rate_pct with gt or gte and sufficient exact deployment telemetry qualifies. */
             post_deploy_rollback_window_seconds?: number;
+            /** @description Turn the webhook's alert.resolved events on or off. Turning them on requires the rule to have a webhook_url. */
+            notify_resolved?: boolean;
             name?: string;
             enabled?: boolean;
             /**
@@ -75882,7 +76736,7 @@ export interface components {
          *     override. Zero or omission leaves existing execution semantics.
          *     Both values are at most 15 min (`RequestBudgetPlanMax`); the plan
          *     ceiling (`Plan.RequestBudgetMaxMs`: Free 30 s, Hobby 60 s, Pro 5 min,
-         *     Scale 15 min) caps them at request time. Expiry returns a 504 problem with code
+         *     Scale 15 min) caps them at request time. Expiry returns a 503 problem with code
          *     request_budget_exceeded before response commitment; a committed
          *     ordinary response is terminated on expiry. Streaming and upgrades
          *     use their idle/session contract after successful response headers.
@@ -76108,6 +76962,63 @@ export interface components {
             mirror_invocation_id: string;
             /** @enum {string} */
             status: "queued";
+        };
+        /**
+         * @description One agent connected to the account. `id` is the API key the agent uses; revoking the connection revokes that key.
+         * @example {
+         *       "id": "3f2c9a7e-1b4d-4c8e-9f0a-6d5e4c3b2a19",
+         *       "kind": "hosted_mcp",
+         *       "client_name": "Claude",
+         *       "client_site": "claude.ai",
+         *       "label": "mcp-login",
+         *       "prefix": "fp_live_ab12cd34",
+         *       "scopes": [
+         *         "apps:read"
+         *       ],
+         *       "created_at": "2026-10-30T11:25:00Z",
+         *       "last_used_at": "2026-10-30T12:05:00Z",
+         *       "expires_at": "2026-11-06T12:05:00Z"
+         *     }
+         */
+        AgentConnectionResponse: {
+            /** @description The agent's API key id. */
+            id: string;
+            /**
+             * @description `hosted_mcp` for a browser sign-in through the hosted MCP server; `agent_key` for an API key with the `agent` scope.
+             * @enum {string}
+             */
+            kind: "hosted_mcp" | "agent_key";
+            /** @description The client name a hosted sign-in's consent page showed. */
+            client_name?: string;
+            /** @description The host the client was verified at: the site serving its metadata document, or its HTTPS redirect host. Empty for a local client. */
+            client_site?: string;
+            /** @description The key label. */
+            label?: string;
+            /** @description The key's display prefix. */
+            prefix: string;
+            scopes: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** Format: date-time */
+            expires_at?: string;
+        };
+        /** @description The agents connected to the account, newest first. */
+        AgentConnectionsResponse: {
+            items: components["schemas"]["AgentConnectionResponse"][];
+        };
+        /** @description The result of revoking every connected agent. */
+        AgentConnectionsRevokeAllResponse: {
+            /** @description The number of agent keys revoked. */
+            revoked: number;
+        };
+        /** @description The client a hosted MCP connection's key belongs to, named once by the hosted MCP server. */
+        AgentClientRequest: {
+            /** @description Printable client name, without control characters or surrounding spaces. */
+            client_name: string;
+            /** @description Lower-case host name the client was verified at. */
+            client_site?: string;
         };
         /**
          * @description API key metadata: id, prefix (first 8 chars), label, scopes, created/last-used timestamps, request count. **Plaintext is returned only on POST**. `org_id` is the org the key was minted against; legacy account-scoped responses stamp `org_id = caller's personal org`. See `org.create_api_key` / `org.revoke_api_key` for the new org-scoped verbs.
@@ -77024,12 +77935,14 @@ export interface components {
             /** @description IANA time zone, such as Europe/Istanbul or UTC. */
             time_zone: string;
         };
-        /** @description A deploy freeze on production releases of one app or, without `app`, of every app of the account. */
+        /** @description A deploy freeze on production releases of one app or, without `app`, of every app of its owner. An account's freezes cover its personal apps; a company organization's freezes (`org`) cover the organization's apps. */
         ReleaseFreeze: {
             /** Format: uuid */
             id: string;
-            /** @description The covered app's slug; omitted for an account-wide freeze. */
+            /** @description The covered app's slug; omitted for a freeze on all of the owner's apps. */
             app?: string;
+            /** @description Slug of the company organization that owns the freeze; omitted for an account's freeze. */
+            org?: string;
             /** @enum {string} */
             kind: "window" | "weekly" | "after_rollback";
             /**
@@ -77069,7 +77982,7 @@ export interface components {
         };
         /** @description Creates a freeze. A window takes `starts_at` (default now) and optional `ends_at`; a weekly freeze takes `weekly`; an after-rollback policy takes `after_rollback_minutes`. */
         CreateReleaseFreezeRequest: {
-            /** @description App slug; omit to freeze every app of the account. */
+            /** @description App slug. On `/v1/freezes`, omit to freeze every personal app of the account; a company app is refused with 409 (use `/v1/apps/{slug}/freezes`). On an app route, empty or that app; on an organization route, empty. */
             app?: string;
             /** @enum {string} */
             kind: "window" | "weekly" | "after_rollback";
@@ -77104,7 +78017,7 @@ export interface components {
         ReleaseGate: {
             name: string;
             /** @enum {string} */
-            kind: "slo" | "new_errors" | "custom_metric" | "ai";
+            kind: "slo" | "new_errors" | "custom_metric" | "ai" | "synthetic" | "metric_change";
             /** @description slo gates: the SLO judged. */
             slo?: string;
             /** @description slo gates: the burn rate that fails the gate. */
@@ -77113,10 +78026,10 @@ export interface components {
             max_new_groups?: number;
             /** @description new_errors gates: events before a group counts. */
             min_events?: number;
-            /** @description custom_metric gates: the custom metric. ai gates: error_rate, flagged_rate, cost_per_call or ttfb_ms. */
+            /** @description custom_metric and metric_change gates: the custom metric. ai gates: error_rate, flagged_rate, cost_per_call or ttfb_ms. */
             metric?: string;
             /**
-             * @description custom_metric gates: which side of the threshold fails.
+             * @description custom_metric gates: which side of the threshold fails; metric_change gates: which direction of change fails.
              * @enum {string}
              */
             comparison?: "below" | "above";
@@ -77124,7 +78037,13 @@ export interface components {
             threshold?: number;
             /** @description ai gates: the largest increase over the baseline, in percent. */
             max_increase_percent?: number;
-            /** @description Requests, metric values or AI calls (on each side, for ai gates) needed before the gate is judged. */
+            /** @description synthetic gates: the synthetic check probed on the canary and its stable revision. */
+            check?: string;
+            /** @description synthetic gates: the share of the candidate's probes that may fail. */
+            max_failure_percent?: number;
+            /** @description metric_change gates: how far the metric may move from its average before the rollout, in percent. */
+            max_change_percent?: number;
+            /** @description Requests, probes, metric values or AI calls (on each side, for ai gates) needed before the gate is judged. */
             min_samples: number;
             created_by: string;
             /** Format: date-time */
@@ -77134,7 +78053,7 @@ export interface components {
         CreateReleaseGateRequest: {
             name: string;
             /** @enum {string} */
-            kind: "slo" | "new_errors" | "custom_metric" | "ai";
+            kind: "slo" | "new_errors" | "custom_metric" | "ai" | "synthetic" | "metric_change";
             /** @description slo gates: the name of one of the app's SLOs. */
             slo?: string;
             /** @description slo gates: default 10. */
@@ -77143,10 +78062,10 @@ export interface components {
             max_new_groups?: number;
             /** @description new_errors gates: default 3. */
             min_events?: number;
-            /** @description custom_metric gates: the custom metric's name. ai gates: error_rate, flagged_rate, cost_per_call or ttfb_ms. */
+            /** @description custom_metric and metric_change gates: the custom metric's name. ai gates: error_rate, flagged_rate, cost_per_call or ttfb_ms. */
             metric?: string;
             /**
-             * @description custom_metric gates: fail when the average is below or above the threshold.
+             * @description custom_metric gates: fail when the average is below or above the threshold. metric_change gates: fail when the average fell (below) or rose (above) too far.
              * @enum {string}
              */
             comparison?: "below" | "above";
@@ -77154,7 +78073,13 @@ export interface components {
             threshold?: number;
             /** @description ai gates: fail when the release's metric is this many percent above its baseline's, and above a floor (1 percentage point, 50 ms or 1 millicent). Default 50. */
             max_increase_percent?: number;
-            /** @description Default 20. */
+            /** @description synthetic gates: the name of one of the app's synthetic checks. */
+            check?: string;
+            /** @description synthetic gates: default 10. */
+            max_failure_percent?: number;
+            /** @description metric_change gates: the change, in percent of the average before the rollout, that fails the gate. */
+            max_change_percent?: number;
+            /** @description Default 20; 6 probes for synthetic gates. */
             min_samples?: number;
         };
         /** @description An app's release gates, by name. */
@@ -77199,7 +78124,7 @@ export interface components {
             approvers?: "admin" | "developer";
             /** @description Default false; always true for an app outside an organization. */
             allow_self_approval?: boolean;
-            /** @description Names of Slack or email notification channels; PagerDuty channels are refused. Slack messages link to the approval page. */
+            /** @description Names of Slack or email notification channels; at least one is needed, so the approvers learn a release waits, and PagerDuty channels are refused. Slack messages link to the approval page. */
             notify_channels?: string[];
         };
         /** @description One person's decision on a release. A rejection needs a comment. */
@@ -77380,6 +78305,74 @@ export interface components {
         ListReleaseApprovalsResponse: {
             items: components["schemas"]["ReleaseApprovalStatus"][];
         };
+        /** @description One release's phase and what happened to it. */
+        ReleaseTimeline: {
+            /** Format: uuid */
+            deployment_id: string;
+            app: string;
+            revision?: number;
+            scope?: string;
+            /** @description The deployment's status, such as live or superseded. */
+            status: string;
+            /**
+             * @description Where the release is, matched in this order.
+             * @enum {string}
+             */
+            phase: "building" | "failed" | "cancelled" | "rolled_back" | "scheduled" | "awaiting_approval" | "superseded" | "held" | "rolling_out" | "watching" | "released";
+            /** @description One line, such as "Rolling out: step 2 of 4, 10% of traffic". */
+            summary: string;
+            traffic_percent: number;
+            /** @description Zero-based current canary step. */
+            canary_step?: number;
+            canary_total_steps?: number;
+            /** Format: date-time */
+            created_at: string;
+            deployed_by?: string;
+            commit_sha?: string;
+            pr_number?: number;
+            tag?: string;
+            reason?: string;
+            /**
+             * Format: uuid
+             * @description The release this one replaces; an abort returns traffic to it.
+             */
+            stable_deployment_id?: string;
+            stable_revision?: number;
+            /**
+             * Format: uuid
+             * @description The newer release of the same scope that took over.
+             */
+            replaced_by_deployment_id?: string;
+            replaced_by_revision?: number;
+            /**
+             * Format: date-time
+             * @description When the post-release watch stops judging the release.
+             */
+            watch_until?: string;
+            approval?: components["schemas"]["ReleaseApprovalStatus"];
+            schedule?: components["schemas"]["ScheduledRelease"];
+            /** @description The results of the newest decision that judged release gates. */
+            gates?: components["schemas"]["ReleaseGateResult"][];
+            events: components["schemas"]["ReleaseTimelineEvent"][];
+            /** @description Older audit history was left out. */
+            truncated?: boolean;
+        };
+        /** @description One thing that happened to a release. */
+        ReleaseTimelineEvent: {
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            kind: "created" | "scheduled" | "schedule_started" | "schedule_blocked" | "schedule_cancelled" | "approval_requested" | "approved" | "rejected" | "approval_expired" | "rollout_started" | "advanced" | "traffic_changed" | "held" | "completed" | "aborted" | "rollback_requested" | "rolled_back" | "watch_passed" | "watch_regressed" | "superseded" | "note";
+            /** @description What happened, in one sentence. */
+            summary: string;
+            /** @description A person's email, or Gregale for automatic steps. */
+            actor?: string;
+            /** @description The release's traffic share after this event. */
+            traffic_percent?: number;
+            /** @description Further holds with the same rule this event stands for. */
+            repeats?: number;
+            decision?: components["schemas"]["RolloutDecision"];
+        };
         /** @description What changed between two releases of one app. */
         ReleaseDiff: {
             app: string;
@@ -77466,19 +78459,21 @@ export interface components {
         ReleaseGateResult: {
             name: string;
             /** @enum {string} */
-            kind: "slo" | "new_errors" | "custom_metric" | "ai";
+            kind: "slo" | "new_errors" | "custom_metric" | "ai" | "synthetic" | "metric_change";
             passed: boolean;
-            /** @description The burn rate, new error groups, metric average, or the release's AI metric. */
+            /** @description The burn rate, new error groups, metric average, the release's AI metric, failed-probe percentage, or signed change in percent. */
             observed: number;
             /** @description The value that fails the gate. */
             bound: number;
             /**
              * Format: int64
-             * @description The release's requests, new-error events, metric values or AI calls.
+             * @description The release's requests, new-error events, probes, metric values or AI calls.
              */
             samples: number;
             /** @description slo gates: the predecessor's bad fraction. */
             baseline_bad_fraction?: number;
+            /** @description synthetic gates: the stable revision's failed-probe percentage; metric_change gates: the metric's average before the rollout. */
+            baseline?: number;
             /** @description new_errors gates: the new groups' error classes. */
             error_classes?: string[];
             /** @description What the gate measured, in one line. */
@@ -77853,6 +78848,69 @@ export interface components {
             /** @enum {string} */
             previous_status?: "healthy" | "degraded" | "unhealthy" | "unknown";
             assessment: components["schemas"]["AppHealthResponse"];
+        };
+        /**
+         * @description Labels to set and keys to remove, applied together. Setting a key to its current value and removing an absent key change nothing. A key may not be both set and removed, and keys under gregale.dev/ cannot be changed.
+         * @example {
+         *       "set": {
+         *         "team": "billing"
+         *       },
+         *       "remove": [
+         *         "tier"
+         *       ]
+         *     }
+         */
+        LabelChange: {
+            /** @description Keys to set and their values. */
+            set?: {
+                [key: string]: string;
+            };
+            /** @description Keys to remove. */
+            remove?: string[];
+        };
+        /** @description Every label the resource carries after a write. */
+        LabelsResponse: {
+            /**
+             * @description Key/value labels with Kubernetes syntax, at most 32. A key is an optional DNS-subdomain prefix and a slash, then a name of 1-63 letters, digits, '.', '_' or '-' that starts and ends with a letter or digit; a value is empty or 1-63 of the same. Keys under gregale.dev/ belong to Gregale. Labels are not secret: they appear in lists and audit events.
+             * @example {
+             *       "team": "billing",
+             *       "tier": "web"
+             *     }
+             */
+            labels: {
+                [key: string]: string;
+            };
+        };
+        /** @description A resource's status subresource: conditions derived when read, never stored. */
+        ResourceStatus: {
+            /** @enum {string} */
+            kind: "app" | "deployment" | "database" | "domain" | "cron" | "job_run";
+            /** @description The app slug, deployment ID, database name, domain, cron ID or job run ID. */
+            name: string;
+            /**
+             * Format: date-time
+             * @description When the evidence behind the conditions was read.
+             */
+            observed_at: string;
+            conditions: components["schemas"]["Condition"][];
+        };
+        /** @description One aspect of a resource's state, in the shape of a Kubernetes status condition. */
+        Condition: {
+            /** @enum {string} */
+            type: "Ready" | "Progressing" | "Degraded" | "RolledOut" | "Verified" | "CertificateReady" | "LastRunSucceeded" | "Succeeded";
+            /** @enum {string} */
+            status: "True" | "False" | "Unknown";
+            /** @description Stable snake_case code, safe to branch on: an app health phase or check code; a deployment, database, certificate or job run status; a cron suspension or run outcome; a database health error code; or one of not_assessed, deploying, complete, latest_deployment_failed, healthy, verifying, rolling_out, rolled_out, rollout_aborted, suspended, stale, verified, dns_pending, serving, scheduled, disabled, never_run. */
+            reason: string;
+            /** @description For people; may change. */
+            message: string;
+            /**
+             * Format: date-time
+             * @description When the condition last changed
+             */
+            since?: string;
+            /** @description True when the condition will not change without a new request. */
+            terminal?: boolean;
         };
         /** @description Read-only observed health of selected-scope HTTP serving workloads. */
         AppHealthResponse: {
@@ -79875,6 +80933,8 @@ export interface components {
              * @description Integer cents. Includes compute at $0.01/GB-h and configured live egress overage; shadow egress is excluded.
              */
             overage_cents: number;
+            /** @description GB-hours this month that instances spent quiet-paused between requests and were not billed for, in the same plan RAM + 8 MB unit as used_gb_hours and not included in it. Absent while zero. */
+            quiet_paused_gb_hours?: number;
             /** @description Per-month CPU-hours (informational; not billed). */
             used_cpu_hours?: number;
             /** @description Per-month canonical interface egress GB. Σ net_tx_bytes across all apps; tx_bytes is a diagnostic subset and is not added. Informational while egress_billing_mode is absent. */
@@ -103734,6 +104794,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Stripe could not be reached for the portal (`billing_provider_unavailable`). Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     closeConsumerBillingAccount: {
@@ -104450,6 +105519,42 @@ export interface operations {
             };
         };
     };
+    updateManagedPostgresDatabaseLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelChange"];
+            };
+        };
+        responses: {
+            /** @description The database's labels after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsResponse"];
+                };
+            };
+            /** @description An invalid change, missing sign-in, scope or MFA, a database this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getManagedPostgresDatabase: {
         parameters: {
             query?: never;
@@ -104484,7 +105589,10 @@ export interface operations {
     };
     deleteManagedPostgresDatabase: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true deletes the database at once, including one already scheduled for deletion. It cannot be undone. */
+                purge?: boolean;
+            };
             header?: {
                 /**
                  * @description Idempotency key for the POST. Stored for 24h. On replay the server
@@ -104510,6 +105618,76 @@ export interface operations {
                 };
             };
             /** @description Authentication or database deletion error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getManagedPostgresDatabaseStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The managed database's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in, database read scope or MFA, a database this account does not own, managed databases not configured, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    undeleteManagedPostgresDatabase: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Database returned to ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedPostgresDatabase"];
+                };
+            };
+            /** @description Window ended, database not scheduled for deletion, plan limit, or provider error */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -105071,6 +106249,40 @@ export interface operations {
                 };
             };
             /** @description Data API app lookup, permission or budget inventory failure */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDataAPIRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current runtime */
+            200: {
+                headers: {
+                    /** @description Prevents caching across control-plane releases. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataAPIRuntime"];
+                };
+            };
+            /** @description App lookup, permission or runtime failure */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -108721,6 +109933,15 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+            /** @description Snapshot exceeded its bounded read budget. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Snapshot exceeded its bounded read budget. */
             504: {
                 headers: {
@@ -109243,6 +110464,15 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             /** @description Version is not registered and no proposed schema was supplied. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bounded rollout observation timed out. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -113886,6 +115116,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The provider could not be reached (`billing_provider_unavailable`); retry to resume the platform tenant statement export. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getBillingConnection: {
@@ -113951,6 +115190,15 @@ export interface operations {
             };
             /** @description The provider could not be reached (`billing_provider_unavailable`). */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider could not be reached (`billing_provider_unavailable`). Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -115360,6 +116608,42 @@ export interface operations {
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    publishDataAPIChangeEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataAPIChangeEventBatch"];
+            };
+        };
+        responses: {
+            /** @description Per-event outcomes in input order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataAPIChangeEventBatchResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The publication exceeds 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             503: components["responses"]["ServiceUnavailable"];
         };
     };
@@ -118310,6 +119594,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The provider could not be reached (`billing_provider_unavailable`); retry to resume the app consumer statement export. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listAPIConsumerRateCards: {
@@ -120653,6 +121946,7 @@ export interface operations {
             };
             402: components["responses"]["PaymentRequired"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     testNotificationChannel: {
@@ -121245,6 +122539,77 @@ export interface operations {
             };
             /** @description Rate limit exceeded. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppStatus: {
+        parameters: {
+            query?: {
+                /** @description Registered app environment whose conditions are read; omit for its default environment. */
+                environment?: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in or read scope, an app this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateAppLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelChange"];
+            };
+        };
+        responses: {
+            /** @description The app's labels after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsResponse"];
+                };
+            };
+            /** @description An invalid change, missing sign-in, deploy scope or MFA, an app this account does not own, the capability turned off, or the rate limit. */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -129729,7 +131094,10 @@ export interface operations {
     };
     listGitHubRepositories: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A GitHub App installation connected to the account. */
+                installation_id?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -129745,10 +131113,20 @@ export interface operations {
                     "application/json": components["schemas"]["RepoResponse"][];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /** @description The account has not completed GitHub App installation. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The account has several connected installations and none was named. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -129940,6 +131318,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description GitHub could not be reached. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     syncGitHubConnection: {
@@ -129975,6 +131362,15 @@ export interface operations {
             409: components["responses"]["Conflict"];
             /** @description The GitHub repository catalog was unavailable during reconciliation. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The GitHub repository catalog was unavailable during reconciliation. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -130105,6 +131501,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description code: github_unreachable — the GitHub integration could not reach api.github.com when persisting the bind; retry in a minute. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: github_unreachable — the GitHub integration could not reach api.github.com when persisting the bind; retry in a minute. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -132391,6 +133796,212 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    listAppReleaseFreezes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The freezes covering the app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListReleaseFreezesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createAppReleaseFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "window",
+                 *       "ends_at": "2026-12-27T09:00:00Z",
+                 *       "reason": "incident 4711"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateReleaseFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description The freeze on the app, owned by the app's owner. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseFreeze"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    liftAppReleaseFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description The ID of a freeze on this app. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lifted freeze on the app. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseFreeze"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listOrgReleaseFreezes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's freezes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListReleaseFreezesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createOrgReleaseFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "window",
+                 *       "ends_at": "2026-12-27T09:00:00Z",
+                 *       "reason": "holiday freeze"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateReleaseFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description The freeze on all of the organization's apps. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseFreeze"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    liftOrgReleaseFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description The ID of one of the organization's freezes. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's lifted freeze. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseFreeze"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     listReleaseGates: {
         parameters: {
             query?: never;
@@ -133720,6 +135331,32 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    getReleaseTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The release timeline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseTimeline"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     getDeploymentSchedule: {
         parameters: {
             query?: never;
@@ -133929,6 +135566,38 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getDeploymentStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The deployment's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in, read scope or MFA, a deployment this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getDeploymentScan: {
@@ -134558,6 +136227,38 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    getDomainStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The custom domain whose conditions are read. */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The custom domain's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in, read scope or MFA, a domain this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     verifyDomain: {
         parameters: {
             query?: never;
@@ -134717,6 +136418,111 @@ export interface operations {
             };
         };
     };
+    getDomainHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The wildcard custom domain (e.g. `*.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The host allowlist. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomDomainHostsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Only a wildcard custom domain has a host allowlist to read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    setDomainHosts: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The wildcard custom domain (e.g. `*.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCustomDomainHostsRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved host allowlist. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomDomainHostsResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Not a wildcard domain, an invalid name, or more than 100 names (the problem carries `limit` and `observed`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    clearDomainHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The wildcard custom domain (e.g. `*.example.com`). */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The allowlist was removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Only a wildcard custom domain has a host allowlist to remove. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listCrons: {
         parameters: {
             query?: {
@@ -134792,6 +136598,42 @@ export interface operations {
             422: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
             501: components["responses"]["NotImplemented"];
+        };
+    };
+    updateCronLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelChange"];
+            };
+        };
+        responses: {
+            /** @description The cron's labels after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsResponse"];
+                };
+            };
+            /** @description An invalid change, missing sign-in, scope or MFA, a cron this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getCron: {
@@ -134874,6 +136716,38 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getCronStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 32-hex-char opaque ID (NOT canonical UUID). */
+                id: components["parameters"]["Id32"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cron's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in, read scope or MFA, a cron this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listCronRuns: {
@@ -137234,6 +139108,42 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    updateJobLabels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the job whose labels change. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelChange"];
+            };
+        };
+        responses: {
+            /** @description The job's labels after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelsResponse"];
+                };
+            };
+            /** @description An invalid change, missing sign-in, scope or MFA, a job this account does not own, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getJob: {
         parameters: {
             query?: never;
@@ -137609,6 +139519,40 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getJobRunStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Name of the job the run belongs to. */
+                name: string;
+                /** @description The id of the run whose conditions are read. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job run's conditions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceStatus"];
+                };
+            };
+            /** @description Missing sign-in, read scope or MFA, a run this account does not own or under another job's name, the capability turned off, or the rate limit. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     cancelJobRun: {
@@ -139050,6 +140994,17 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The source was captured; poll the clone operation until it is ready or compensated. */
+            202: {
+                headers: {
+                    /** @description The clone operation status URL. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvironmentResponse"];
+                };
+            };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
@@ -141968,6 +143923,23 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /**
+             * @description Webhook delivery failed after the dispatcher's retry
+             *     budget (5 attempts, 2s/8s/32s/128s backoff). The audit
+             *     log entry (`alert_preset.test_sent`) carries the
+             *     `delivery_status_code` + `delivery_attempts` for the
+             *     investigator; the customer's receiver likely rejected
+             *     the request, was unreachable, or returned 5xx.
+             *     Sent as 503 by the public edge.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     dashboardTestAlertPreset: {
@@ -142481,7 +144453,16 @@ export interface operations {
     };
     listEdgeRulesForApp: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description When true, also return the rules written on the account's other
+                 *     apps with the same owner whose host pattern (anything but `@app`)
+                 *     can cover this app's hosts. The gateway applies those to this
+                 *     app's hosts too. Each rule carries its own `app_id`; the ETag
+                 *     stays this app's rule set.
+                 */
+                covering?: boolean;
+            };
             header?: never;
             path: {
                 /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
@@ -146512,6 +148493,7 @@ export interface operations {
             403: components["responses"]["PlanFeatureGated"];
             413: components["responses"]["PlanSourceBytes"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["LongPollTimeout"];
             504: components["responses"]["LongPollTimeout"];
         };
     };
@@ -150023,6 +152005,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description The combined delivery health request exceeded its bounded deadline. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The combined delivery health request exceeded its bounded deadline. */
             504: {
                 headers: {
@@ -150086,6 +152077,15 @@ export interface operations {
             };
             /** @description Request exceeds the 65536-byte body limit. */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Control timed out; read current status, then repeat the desired control with the original UUID and creation guard. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150163,6 +152163,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Control timed out; read current status, then repeat the desired control with the original UUID and creation guard. Context: Resume a retained lineage diagnostic scan. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Control timed out; read current status, then repeat the desired control with the original UUID and creation guard. Context: Resume a retained lineage diagnostic scan. */
             504: {
                 headers: {
@@ -150233,6 +152242,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Control timed out; read current status, then repeat the desired control with the original UUID and creation guard. Context: Cancel a retained lineage diagnostic scan. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Control timed out; read current status, then repeat the desired control with the original UUID and creation guard. Context: Cancel a retained lineage diagnostic scan. */
             504: {
                 headers: {
@@ -150281,6 +152299,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Latest scan changed or is active; stable code event_lineage_case_backfill_changed. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request timed out; repeat the same request UUID and previous-request guard. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150356,6 +152383,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Request timed out; repeat the same request UUID and previous-request guard. Context: Backfill missing lineage cases from retained admission evidence. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Request timed out; repeat the same request UUID and previous-request guard. Context: Backfill missing lineage cases from retained admission evidence. */
             504: {
                 headers: {
@@ -150418,6 +152454,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Operation timed out; repeat submission with the same request identity and selection. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Operation timed out; repeat submission with the same request identity and selection. */
             504: {
                 headers: {
@@ -150473,6 +152518,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Listing timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Listing timed out. */
             504: {
                 headers: {
@@ -150534,6 +152588,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Case guard changed or retained request identity reused with another selection. Context: Submit a fixed reviewed lineage retry selection. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Operation timed out; repeat submission with the same request identity and selection. Context: Submit a fixed reviewed lineage retry selection. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150604,6 +152667,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Job creation guard changed; event_lineage_retry_job_changed. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description History read timed out. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150690,6 +152762,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Control timed out; repeat the same command UUID and inputs when supplied, otherwise read current state before repeating the desired action. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Control timed out; repeat the same command UUID and inputs when supplied, otherwise read current state before repeating the desired action. */
             504: {
                 headers: {
@@ -150762,6 +152843,15 @@ export interface operations {
             };
             /** @description Job already has 128 retained command receipts; event_lineage_retry_control_limit. Existing command repeats remain available. Context: Resume unprocessed cases in a paused bulk lineage retry job. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Control timed out; repeat the same command UUID and inputs when supplied, otherwise read current state before repeating the desired action. Context: Resume unprocessed cases in a paused bulk lineage retry job. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150848,6 +152938,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Cancellation timed out; repeat the same job UUID, original creation timestamp and command UUID if supplied. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Cancellation timed out; repeat the same job UUID, original creation timestamp and command UUID if supplied. */
             504: {
                 headers: {
@@ -150898,6 +152997,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Case guard changed or retained request identity reused with another selection. Context: Inspect retained bulk lineage retry progress and per-case results. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Operation timed out; repeat submission with the same request identity and selection. Context: Inspect retained bulk lineage retry progress and per-case results. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -150958,6 +153066,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Case revision or request identity changed. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Lineage operation timed out; repeat the same guarded request. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -151026,6 +153143,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Lineage operation timed out; repeat the same guarded request. Context: Recheck one reviewed lineage case with an idempotent guard. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Lineage operation timed out; repeat the same guarded request. Context: Recheck one reviewed lineage case with an idempotent guard. */
             504: {
                 headers: {
@@ -151072,6 +153198,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Subscription reconciliation request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Subscription reconciliation request timed out. */
             504: {
                 headers: {
@@ -151127,6 +153262,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Subscription reconciliation request timed out. Context: Request a forward-only execution coverage boundary. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Subscription reconciliation request timed out. Context: Request a forward-only execution coverage boundary. */
             504: {
                 headers: {
@@ -151176,6 +153320,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Subscription control request timed out. */
             504: {
                 headers: {
@@ -151225,6 +153378,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Inspect consumer routing health over a retained history window: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Inspect consumer routing health over a retained history window: subscription control request timed out. */
             504: {
                 headers: {
@@ -151271,6 +153433,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Inspect consumer circuit breaker state: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Inspect consumer circuit breaker state: subscription control request timed out. */
             504: {
                 headers: {
@@ -151321,6 +153492,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Enable or replace a consumer circuit breaker policy: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Enable or replace a consumer circuit breaker policy: subscription control request timed out. */
             504: {
                 headers: {
@@ -151367,6 +153547,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Disable a consumer circuit breaker: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Disable a consumer circuit breaker: subscription control request timed out. */
             504: {
                 headers: {
@@ -151413,6 +153602,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Close an enabled circuit breaker and start a fresh observation window: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Close an enabled circuit breaker and start a fresh observation window: subscription control request timed out. */
             504: {
                 headers: {
@@ -151459,6 +153657,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Inspect schema version selection for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Inspect schema version selection for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151509,6 +153716,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Replace schema version selection for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Replace schema version selection for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151555,6 +153771,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Accept all schema versions for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Accept all schema versions for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151601,6 +153826,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Inspect routing retry policy for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Inspect routing retry policy for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151651,6 +153885,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Replace routing retry policy for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Replace routing retry policy for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151697,6 +153940,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Restore legacy routing retry defaults for future events: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Restore legacy routing retry defaults for future events: subscription control request timed out. */
             504: {
                 headers: {
@@ -151743,6 +153995,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Inspect one consumer pause, pacing and backlog: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Inspect one consumer pause, pacing and backlog: subscription control request timed out. */
             504: {
                 headers: {
@@ -151789,6 +154050,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Pause new routing admissions for one event consumer: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Pause new routing admissions for one event consumer: subscription control request timed out. */
             504: {
                 headers: {
@@ -151839,6 +154109,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Resume one event consumer with controlled draining: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Resume one event consumer with controlled draining: subscription control request timed out. */
             504: {
                 headers: {
@@ -151900,6 +154179,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Deadline listing exceeded its read budget; no partial page was returned. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Deadline listing exceeded its read budget; no partial page was returned. */
             504: {
                 headers: {
@@ -151949,6 +154237,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Deadline-window read exceeded its budget; no partial counts were returned. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Deadline-window read exceeded its budget; no partial counts were returned. */
             504: {
                 headers: {
@@ -151995,6 +154292,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Full pending-summary read exceeded its budget; coverage is unknown. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Full pending-summary read exceeded its budget; coverage is unknown. */
             504: {
                 headers: {
@@ -152045,6 +154351,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Read-only pacing preview exceeded its request deadline; retry with a fresh observation. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Read-only pacing preview exceeded its request deadline; retry with a fresh observation. */
             504: {
                 headers: {
@@ -152113,6 +154428,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Configure rate bucket: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Configure rate bucket: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
             504: {
                 headers: {
@@ -152162,6 +154486,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description List rate history: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description List rate history: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
             504: {
                 headers: {
@@ -152210,6 +154543,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Look up rate command: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Look up rate command: Request deadline elapsed; after an uncertain mutation look up or replay the same command UUID. */
             504: {
                 headers: {
@@ -152278,6 +154620,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Set consumer delivery capacity: subscription control request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Set consumer delivery capacity: subscription control request timed out. */
             504: {
                 headers: {
@@ -152331,6 +154682,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Read-only command history timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Read-only command history timed out. */
             504: {
                 headers: {
@@ -152380,6 +154740,15 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             /** @description No owned target or unexpired command receipt is available. Receipt absence does not prove the command never ran. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Read-only capacity-command lookup timed out. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -152480,6 +154849,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description App retry backlog evidence deadline expired. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description App retry backlog evidence deadline expired. */
             504: {
                 headers: {
@@ -152524,6 +154902,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Recovery health request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Recovery health request timed out. */
             504: {
                 headers: {
@@ -152572,6 +154959,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Recovery request timed out. */
             504: {
                 headers: {
@@ -152631,6 +155027,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Recovery listing timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Recovery listing timed out. */
             504: {
                 headers: {
@@ -152694,6 +155099,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Create a durable recovery job for a frozen selection of routing failures: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Create a durable recovery job for a frozen selection of routing failures: recovery request timed out. */
             504: {
                 headers: {
@@ -152738,6 +155152,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Read bulk recovery progress: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Read bulk recovery progress: recovery request timed out. */
             504: {
                 headers: {
@@ -152787,6 +155210,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Cancel retries that have not yet been queued: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Cancel retries that have not yet been queued: recovery request timed out. */
             504: {
                 headers: {
@@ -152838,6 +155270,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Recovery job is completed, cancelled, or expired. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Pause further recovery admissions: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -152903,6 +155344,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Resume the frozen recovery selection: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Resume the frozen recovery selection: recovery request timed out. */
             504: {
                 headers: {
@@ -152953,6 +155403,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Change the current recovery admission rate: recovery job is completed, cancelled, or expired. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Change the current recovery admission rate: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -153103,6 +155562,15 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            /** @description Policy change preview inspection timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Policy change preview inspection timed out. */
             504: {
                 headers: {
@@ -154026,6 +156494,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Recovery preflight timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Recovery preflight timed out. */
             504: {
                 headers: {
@@ -154189,6 +156666,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Notification retry-preview request exceeded its time budget. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Notification retry-preview request exceeded its time budget. */
             504: {
                 headers: {
@@ -154281,6 +156767,15 @@ export interface operations {
             };
             /** @description Notification retry storage failure. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Notification retry request exceeded its time budget. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -154499,6 +156994,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Recovery history request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Recovery history request timed out. */
             504: {
                 headers: {
@@ -154548,6 +157052,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Read a stable page of selected recipients and recovery outcomes: recovery request timed out. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Read a stable page of selected recipients and recovery outcomes: recovery request timed out. */
             504: {
                 headers: {
@@ -155657,6 +158170,123 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAgentConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connected agents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConnectionsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeAllAgentConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many connections were revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConnectionsRevokeAllResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    nameAgentClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentClientRequest"];
+            };
+        };
+        responses: {
+            /** @description No body. The client is named. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    disconnectAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The key is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    revokeAgentConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The connected agent's API key id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No body. The agent's key is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
@@ -157534,6 +160164,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Provider-side failure. The CLI surfaces this as 'retry failed'. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     cancelAtPeriodEnd: {
@@ -157573,6 +160212,15 @@ export interface operations {
             };
             /** @description Provider-side failure. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provider-side failure. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -157828,6 +160476,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Provider rejected the refund or returned an incomplete response. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     setGithubWebhookSecret: {
@@ -158038,6 +160695,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description code: billing_sync_failed — Paddle SDK round-trip failed. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getBillingPaddleOveragePreflight: {
@@ -158116,6 +160782,15 @@ export interface operations {
             };
             /** @description code: billing_reconcile_failed — SDK round-trip failed. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description code: billing_reconcile_failed — SDK round-trip failed. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -159274,6 +161949,19 @@ export interface operations {
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description `403 Forbidden` — the caller already owns as many Free orgs
+             *     as an account may (`org_free_limit_exceeded`, with the limit
+             *     and the observed count). Upgrade or delete one first.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /**
              * @description `409 Conflict` — slug already taken (`org_slug_taken`) or the
              *     caller is already a member of an org with the same slug
@@ -166823,6 +169511,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Paginated acknowledgment read exceeded its request deadline. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Paginated acknowledgment read exceeded its request deadline. */
             504: {
                 headers: {
@@ -166872,6 +169569,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Acknowledgment history read exceeded its time budget. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Acknowledgment history read exceeded its time budget. */
             504: {
                 headers: {
@@ -166920,6 +169626,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Expired lease, replaced attempt or incompatible completion for getEventAcknowledgmentPolicy. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for getEventAcknowledgmentPolicy. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -166986,6 +169701,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Acknowledgment request timed out for setEventAcknowledgmentPolicy. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Acknowledgment request timed out for setEventAcknowledgmentPolicy. */
             504: {
                 headers: {
@@ -167034,6 +169758,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Expired lease, replaced attempt or incompatible completion for getEventAcknowledgment. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for getEventAcknowledgment. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -167100,6 +169833,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Acknowledgment request timed out for renewEventAcknowledgment. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Acknowledgment request timed out for renewEventAcknowledgment. */
             504: {
                 headers: {
@@ -167152,6 +169894,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Expired lease, replaced attempt or incompatible completion for completeEventAcknowledgment. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for completeEventAcknowledgment. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -167218,6 +169969,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Acknowledgment request timed out for retryEventAcknowledgment. Sent as 503 by the public edge. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Acknowledgment request timed out for retryEventAcknowledgment. */
             504: {
                 headers: {
@@ -167270,6 +170030,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Expired lease, replaced attempt or incompatible completion for deadLetterEventAcknowledgment. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Acknowledgment request timed out for deadLetterEventAcknowledgment. Sent as 503 by the public edge. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -167473,6 +170242,84 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOrgOverageCap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The saved monthly spend cap. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOverageCapResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    setOrgOverageCap: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "overage_cap_cents": 10000
+                 *     }
+                 */
+                "application/json": components["schemas"]["RaiseOverageCapRequest"];
+            };
+        };
+        responses: {
+            /** @description The organization's spend cap after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOverageCapResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -169318,7 +172165,10 @@ export interface operations {
     };
     deleteOrgManagedPostgresDatabase: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true deletes the company database at once, even during its undelete window. It cannot be undone. */
+                purge?: boolean;
+            };
             header?: {
                 /**
                  * @description Idempotency key for the POST. Stored for 24h. On replay the server
@@ -169591,6 +172441,49 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             /** @description Problem while attempting to read a company database compute-policy operation. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    undeleteOrgManagedPostgresDatabase: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Idempotency key for the POST. Stored for 24h. On replay the server
+                 *     returns the original response with `Idempotent-Replayed: true`.
+                 */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Organization that owns the company database to undelete. */
+                organization: string;
+                /** @description Opaque Gregale managed PostgreSQL resource identifier. */
+                id: components["parameters"]["ManagedPostgresID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result of the request to undelete a company PostgreSQL database. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedPostgresDatabase"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Problem while attempting to undelete a company PostgreSQL database. */
             default: {
                 headers: {
                     [name: string]: unknown;
