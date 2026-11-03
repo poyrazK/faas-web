@@ -1,6 +1,6 @@
 import { useId, useMemo, useState, type PointerEvent } from 'react';
 import { scaleLinear } from 'd3-scale';
-import { area, curveMonotoneX, line } from 'd3-shape';
+import { area, curveMonotoneX, curveStepAfter, line } from 'd3-shape';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,27 +32,37 @@ const formatTick = (v: number) => compact.format(v);
 /** Points to path strings, in viewBox units (y grows downward). */
 function useGeometry(data: Record<string, unknown>[], keys: string[], filled: boolean) {
   return useMemo(() => {
-    const values = (key: string) => data.map((d) => Number(d[key]) || 0);
+    const values = (key: string) => data.map((d) => (d[key] == null ? NaN : Number(d[key])));
     // A round top (500, not 481) so the three ticks read as round numbers.
     const max = scaleLinear()
-      .domain([0, Math.max(1, ...keys.flatMap(values))])
+      .domain([0, Math.max(1, ...keys.flatMap(values).filter(Number.isFinite))])
       .nice(2)
       .domain()[1];
     const n = Math.max(1, data.length - 1);
-    const x = (i: number) => (i / n) * 100;
+    const x = (i: number) => (data.length === 1 ? 50 : (i / n) * 100);
     const y = (v: number) => 100 - (v / max) * 100;
     const paths = keys.map((key) => {
       const vs = values(key);
       const pts: [number, number][] = vs.map((v, i) => [x(i), y(v)]);
       return {
         key,
-        line: line().curve(curveMonotoneX)(pts) ?? '',
+        isolated: pts.filter(
+          (point, index) =>
+            Number.isFinite(point[1]) &&
+            !Number.isFinite(pts[index - 1]?.[1]) &&
+            !Number.isFinite(pts[index + 1]?.[1])
+        ),
+        line:
+          line()
+            .defined((p) => Number.isFinite(p[1]))
+            .curve(curveStepAfter)(pts) ?? '',
         area: filled
           ? (area<[number, number]>()
+              .defined((p) => Number.isFinite(p[1]))
               .x((p) => p[0])
               .y0(100)
               .y1((p) => p[1])
-              .curve(curveMonotoneX)(pts) ?? '')
+              .curve(curveStepAfter)(pts) ?? '')
           : '',
       };
     });
@@ -73,6 +83,8 @@ export function TimeChart({
   kind = 'area',
   format = formatTick,
   className,
+  compact = false,
+  onInspect,
 }: {
   data: Record<string, unknown>[];
   x: string;
@@ -80,6 +92,8 @@ export function TimeChart({
   kind?: 'area' | 'line';
   format?: (v: number) => string;
   className?: string;
+  compact?: boolean;
+  onInspect?: () => void;
 }) {
   const keys = useMemo(() => Object.keys(series), [series]);
   const { max, paths } = useGeometry(data, keys, kind === 'area');
@@ -98,7 +112,7 @@ export function TimeChart({
 
   return (
     <figure className={cn('flex flex-col gap-1.5', className)}>
-      {keys.length > 1 && (
+      {!compact && keys.length > 1 && (
         <figcaption className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {keys.map((key) => (
             <span key={key} className="inline-flex items-center gap-1.5">
@@ -114,17 +128,45 @@ export function TimeChart({
       )}
       <div className="flex min-h-0 flex-1 gap-2">
         {/* Y ticks: max, half, zero. */}
+        {!compact && (
+          <div
+            aria-hidden="true"
+            className="flex w-9 shrink-0 flex-col justify-between text-right text-[11px] text-muted-foreground [font-variant-numeric:tabular-nums]"
+          >
+            <span className="-translate-y-1/2">{format(max)}</span>
+            <span>{format(max / 2)}</span>
+            <span className="translate-y-1/2">0</span>
+          </div>
+        )}
         <div
-          aria-hidden="true"
-          className="flex w-9 shrink-0 flex-col justify-between text-right text-[11px] text-muted-foreground [font-variant-numeric:tabular-nums]"
-        >
-          <span className="-translate-y-1/2">{format(max)}</span>
-          <span>{format(max / 2)}</span>
-          <span className="translate-y-1/2">0</span>
-        </div>
-        <div
-          className="relative min-w-0 flex-1"
-          onPointerMove={onMove}
+          tabIndex={compact ? undefined : 0}
+          role={onInspect ? 'button' : compact ? undefined : 'group'}
+          aria-label={`${onInspect ? 'Open details for ' : 'Explore '}${keys.map((k) => series[k].label).join(', ')}. Arrow keys read values.`}
+          onClick={onInspect}
+          onKeyDown={(event) => {
+            if ((event.key === 'Enter' || event.key === ' ') && onInspect) {
+              event.preventDefault();
+              onInspect();
+            } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+              event.preventDefault();
+              setHover((previous) =>
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? data.length - 1
+                    : Math.max(
+                        0,
+                        Math.min(
+                          data.length - 1,
+                          (previous ?? -1) + (event.key === 'ArrowRight' ? 1 : -1)
+                        )
+                      )
+              );
+            }
+          }}
+          onBlur={() => setHover(null)}
+          className="relative min-w-0 flex-1 rounded focus-visible:outline-2 focus-visible:outline-brand"
+          onPointerMove={compact ? undefined : onMove}
           onPointerLeave={() => setHover(null)}
         >
           <svg
@@ -137,7 +179,7 @@ export function TimeChart({
             <clipPath id={clipId}>
               <rect x="0" y="0" width="100" height="100" />
             </clipPath>
-            {[0, 50, 100].map((gy) => (
+            {(compact ? [100] : [0, 50, 100]).map((gy) => (
               <line
                 key={gy}
                 x1="0"
@@ -146,6 +188,7 @@ export function TimeChart({
                 y2={gy}
                 stroke="var(--chart-grid)"
                 strokeWidth="1"
+                strokeDasharray={compact ? undefined : '3 5'}
                 vectorEffect="non-scaling-stroke"
               />
             ))}
@@ -169,6 +212,20 @@ export function TimeChart({
               ))}
             </g>
           </svg>
+          {paths.flatMap((path) =>
+            path.isolated.map(([left, top], index) => (
+              <span
+                key={`${path.key}-${index}`}
+                aria-hidden
+                className="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  left: `${left}%`,
+                  top: `${top}%`,
+                  background: COLOR[series[path.key].color],
+                }}
+              />
+            ))
+          )}
           {hover !== null && (
             <>
               <span
@@ -196,7 +253,7 @@ export function TimeChart({
                       {series[key].label}
                     </span>
                     <span className="[font-variant-numeric:tabular-nums]">
-                      {format(Number(data[hover]?.[key]) || 0)}
+                      {data[hover]?.[key] == null ? 'No sample' : format(Number(data[hover][key]))}
                     </span>
                   </p>
                 ))}
@@ -208,7 +265,10 @@ export function TimeChart({
       {/* X labels: first, middle, last. */}
       <div
         aria-hidden="true"
-        className="ml-11 flex justify-between text-[11px] text-muted-foreground"
+        className={cn(
+          'ml-11 flex justify-between text-[11px] text-muted-foreground',
+          compact && 'hidden'
+        )}
       >
         <span>{String(data[0]?.[x] ?? '')}</span>
         {data.length > 2 && <span>{String(data[Math.floor(last / 2)]?.[x] ?? '')}</span>}

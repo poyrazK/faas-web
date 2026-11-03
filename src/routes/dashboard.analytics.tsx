@@ -25,6 +25,9 @@ export const Route = createFileRoute('/dashboard/analytics')({
     const app = typeof search.app === 'string' && search.app.trim() ? search.app : undefined;
     return {
       ...(window ? { window } : {}),
+      ...(typeof search.trendApp === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(search.trendApp)
+        ? { trendApp: search.trendApp }
+        : {}),
       // The per-app keys only matter long enough to redirect.
       ...(app
         ? {
@@ -73,10 +76,17 @@ function AnalyticsPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Analytics"
+        title="Account analytics"
         actions={<AnalyticsWindowSelector search={search} setSearch={setSearch} />}
       />
-      <AccountAnalytics search={search} />
+      <p className="-mt-2 max-w-3xl text-sm text-muted-foreground">
+        Traffic, response times, and the apps contributing to them. Select a metric to explore it
+        here.
+      </p>
+      <AccountAnalytics
+        search={search}
+        onTrendChange={(trendApp) => setSearch((previous) => ({ ...previous, trendApp }))}
+      />
     </div>
   );
 }

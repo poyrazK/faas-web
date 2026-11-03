@@ -14,7 +14,7 @@ const points: AnalyticsPoint[] = [0, 1, 2, 3].map((hour) => ({
   p95_ms: 80,
   p99_ms: 120,
 }));
-function Board() {
+function Board({ onInspect }: { onInspect?: (id: string) => void }) {
   const [picking, setPicking] = useState(false);
   return (
     <AnalyticsGrid
@@ -22,9 +22,22 @@ function Board() {
       build={(ids) => chosenCards(ids, points, 'the first half')}
       picking={picking}
       onPicking={setPicking}
+      onInspect={onInspect}
     />
   );
 }
+it('opens details by keyboard while keeping reordering and menus independent', async () => {
+  const inspect = vi.fn();
+  render(<Board onInspect={inspect} />);
+  screen.getByRole('button', { name: 'Move Requests' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  await userEvent.click(screen.getByRole('button', { name: 'Requests options' }));
+  await userEvent.keyboard('{Escape}');
+  expect(inspect).not.toHaveBeenCalled();
+  screen.getByRole('button', { name: 'View Requests details' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(inspect).toHaveBeenCalledExactlyOnceWith('requests');
+});
 const order = () =>
   [...screen.getByRole('list', { name: 'Metric cards' }).querySelectorAll('[data-metric-id]')].map(
     (card) => card.getAttribute('data-metric-id')

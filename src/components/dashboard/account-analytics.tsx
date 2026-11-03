@@ -1,17 +1,22 @@
+import { AnalyticsBreakdown } from './analytics-breakdown';
+import { AppAnalyticsPreview } from './app-analytics-preview';
+import { appMetricNumber, metricValue, utcLabel } from './analytics-data';
+import { useMetricInspector } from './metric-inspector';
+import { METRIC_LABELS, type DetailMetric } from './metric-detail-search';
+import { Select } from '@/components/ui/field';
 import { useAccountSlo, useAppsMetrics, type AppsMetrics } from '@/lib/api/queries';
-import { useNavigate } from '@tanstack/react-router';
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { PlanGated } from './plan-gated';
-import { InlinePhase, Panel, queryPhase, RangeSelector, Stats, StatTile } from './primitives';
+import { InlinePhase, Panel, queryPhase, RangeSelector } from './primitives';
 import { ResourceTable, type Column } from './resource-table';
 
 /**
- * The account's traffic, and every app's, over one window. One app's detail
- * (routes, health, wakes, dependencies) is that app's Metrics section: a row
- * opens it.
+ * Account snapshots and ranked apps share a window. A row opens that app's
+ * request history in the URL-backed inspector without leaving this page.
  */
 export type AccountAnalyticsSearch = {
   window?: '24h' | '7d';
+  trendApp?: string;
 };
 
 type SearchProps = {
@@ -33,9 +38,16 @@ export function AnalyticsWindowSelector({ search, setSearch }: SearchProps) {
   );
 }
 
-export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch }) {
+export function AccountAnalytics({
+  search,
+  onTrendChange,
+}: {
+  search: AccountAnalyticsSearch;
+  onTrendChange?: (slug: string) => void;
+}) {
   const window = search.window ?? '24h';
-  const navigate = useNavigate();
+  const inspect = useMetricInspector();
+  const [trendDraft, setTrendDraft] = useState('');
   const account = useAccountSlo(window);
   const metrics = useAppsMetrics(window);
   const data = account.data;
@@ -45,12 +57,6 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
     isEmpty: !data,
   });
   const accountDegraded = Boolean(data && data.source !== 'prometheus');
-  const accountTile =
-    accountPhase === 'loading'
-      ? 'loading'
-      : accountPhase === 'ready' && !accountDegraded
-        ? 'ready'
-        : 'unavailable';
   const appsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const appsPhase = queryPhase({
     error: metrics.error,
@@ -82,104 +88,237 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
       key: 'error_rate_pct',
       label: 'Error rate',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.error_rate_pct.toFixed(2)}%` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' && row.request_count > 0
+          ? `${row.error_rate_pct.toFixed(2)}%`
+          : '—',
     },
     {
       key: 'cold_start_pct',
       label: 'Cold boots',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.cold_start_pct.toFixed(2)}%` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' && row.request_count > 0
+          ? `${row.cold_start_pct.toFixed(2)}%`
+          : '—',
     },
     {
       key: 'latency_p50_ms',
       label: 'p50',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.latency_p50_ms} ms` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' && row.request_count > 0 ? `${row.latency_p50_ms} ms` : '—',
     },
     {
       key: 'latency_p95_ms',
       label: 'p95',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.latency_p95_ms} ms` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' && row.request_count > 0 ? `${row.latency_p95_ms} ms` : '—',
     },
     {
       key: 'latency_p99_ms',
       label: 'p99',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.latency_p99_ms} ms` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' && row.request_count > 0 ? `${row.latency_p99_ms} ms` : '—',
     },
     {
       key: 'wake_p95_ms',
       label: 'Wake p95 (fleet)',
       numeric: true,
-      render: (row) => (row.source === 'prometheus' ? `${row.wake_p95_ms} ms` : '—'),
+      render: (row) =>
+        row.source === 'prometheus' &&
+        row.wake_p95_ms > 0 &&
+        (row.wake_samples === undefined || row.wake_samples >= 20)
+          ? `${row.wake_p95_ms} ms`
+          : '—',
     },
   ];
 
+  const accountKnown = accountPhase === 'ready' && !accountDegraded;
+  const sorted = [...rows].sort((a, b) => b.request_count - a.request_count);
+  const trend = sorted.some((row) => row.slug === (search.trendApp ?? trendDraft))
+    ? (search.trendApp ?? trendDraft)
+    : (sorted[0]?.slug ?? '');
+  const traffic: { id: DetailMetric; value: number | undefined; note: string }[] = [
+    { id: 'requests', value: data?.requests_total, note: 'Across all apps' },
+    {
+      id: 'errors',
+      value: data ? Math.round((data.requests_total * data.error_rate_pct) / 100) : undefined,
+      note: 'Estimated from the 5xx rate',
+    },
+    {
+      id: 'error_rate',
+      value: data?.requests_total ? data.error_rate_pct : undefined,
+      note: 'Share of requests returning 5xx',
+    },
+    {
+      id: 'cold_rate',
+      value: data?.requests_total ? data.cold_boot_rate_pct : undefined,
+      note: 'Requests that started an instance',
+    },
+  ];
+  const latency: typeof traffic = [
+    {
+      id: 'p50',
+      value: data?.requests_total ? data.request_duration.p50_ms : undefined,
+      note: 'Half of successful responses were faster',
+    },
+    {
+      id: 'p95',
+      value: data?.requests_total ? data.request_duration.p95_ms : undefined,
+      note: '95% of successful responses were faster',
+    },
+    {
+      id: 'p99',
+      value: data?.requests_total ? data.request_duration.p99_ms : undefined,
+      note: '99% of successful responses were faster',
+    },
+    { id: 'throttled', value: data?.throttled_total, note: 'Requests limited by the platform' },
+  ];
+  const tiles = (items: typeof traffic) => (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          aria-label={`View ${METRIC_LABELS[item.id]} details`}
+          onClick={() => inspect({ metric: item.id, since: window, source: 'slo' })}
+          className="group rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-border-secondary focus-visible:outline-2 focus-visible:outline-brand"
+        >
+          <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS[item.id]}</p>
+          <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+            {accountPhase === 'loading'
+              ? 'Loading…'
+              : accountKnown
+                ? metricValue(item.id, item.value, true)
+                : '—'}
+          </p>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{item.note}</p>
+        </button>
+      ))}
+    </div>
+  );
+  const ranked = (metric: DetailMetric) =>
+    sorted
+      .filter((row) => row.source === 'prometheus')
+      .map((row) => ({
+        id: row.slug,
+        label: row.slug,
+        value: appMetricNumber(metric, row) ?? 0,
+        formatted: metricValue(metric, appMetricNumber(metric, row), true),
+        onSelect: () => inspect({ metric, app: row.slug, since: window }),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
   return (
-    <div className="flex flex-col gap-5">
-      <section aria-label="Account overview" className="flex flex-col gap-3">
+    <div className="flex flex-col gap-6">
+      <section aria-label="Account overview" className="flex flex-col gap-5">
         <PlanGated error={account.error} feature="Account analytics">
           <InlinePhase
             phase={accountPhase}
             error={account.error}
             loadingMessage="Loading account analytics…"
             emptyMessage="No account analytics are available yet."
+            onRetry={() => void account.refetch()}
           />
           {accountPhase === 'ready' && accountDegraded && (
             <p role="status" className="text-sm text-muted-foreground">
-              Metrics source: {data?.source}
+              Metrics source: {data?.source}. Account figures are unavailable.
             </p>
           )}
-          <Stats columns={4}>
-            <StatTile label="Requests" value={data?.requests_total} state={accountTile} />
-            <StatTile
-              label="Errors"
-              value={
-                data ? Math.round((data.requests_total * data.error_rate_pct) / 100) : undefined
-              }
-              state={accountTile}
-            />
-            <StatTile
-              label="Error rate"
-              value={data?.error_rate_pct.toFixed(2)}
-              unit="%"
-              state={accountTile}
-            />
-            <StatTile
-              label="Cold boots"
-              value={data?.cold_boot_rate_pct.toFixed(2)}
-              unit="%"
-              state={accountTile}
-            />
-            <StatTile
-              label="p50"
-              value={data?.request_duration.p50_ms}
-              unit="ms"
-              state={accountTile}
-            />
-            <StatTile
-              label="p95"
-              value={data?.request_duration.p95_ms}
-              unit="ms"
-              state={accountTile}
-            />
-            <StatTile
-              label="p99"
-              value={data?.request_duration.p99_ms}
-              unit="ms"
-              state={accountTile}
-            />
-            <StatTile label="Throttled" value={data?.throttled_total} state={accountTile} />
-          </Stats>
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold">Traffic</h2>
+            {tiles(traffic)}
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold">Response times and limits</h2>
+            {tiles(latency)}
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Account totals for the last {window}. Response times cover successful (2xx) requests.{' '}
+            {data?.as_of ? `Updated ${utcLabel(data.as_of, true)} UTC. ` : ''}Account history and
+            previous-period comparisons are not available.
+          </p>
+          {accountKnown && data?.requests_total === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No requests in this window. Response times and rates need traffic before they can be
+              measured.
+            </p>
+          )}
         </PlanGated>
       </section>
-
+      {appsPhase === 'ready' && !appsDegraded && (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section
+              aria-label="Top apps by requests"
+              className="rounded-lg border border-border bg-card p-4"
+            >
+              <h2 className="text-sm font-semibold">Top apps by requests</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Request totals in this window. Select an app to explore.
+              </p>
+              <AnalyticsBreakdown rows={ranked('requests')} label="Apps ranked by requests" />
+            </section>
+            <section
+              aria-label="Errors by app"
+              className="rounded-lg border border-border bg-card p-4"
+            >
+              <h2 className="text-sm font-semibold">Errors by app</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Estimated from each app’s request count and 5xx rate.
+              </p>
+              <AnalyticsBreakdown
+                rows={ranked('errors')}
+                label="Apps ranked by errors"
+                color="red"
+              />
+            </section>
+          </div>
+          {trend && (
+            <section
+              aria-label="App history"
+              className="space-y-4 rounded-lg border border-border p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">App history</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Explore one app’s real hourly history for the selected window.
+                  </p>
+                </div>
+                <Select
+                  aria-label="App history scope"
+                  value={trend}
+                  onChange={(event) => {
+                    setTrendDraft(event.target.value);
+                    onTrendChange?.(event.target.value);
+                  }}
+                  className="max-w-56"
+                >
+                  {sorted.map((row) => (
+                    <option key={row.slug} value={row.slug}>
+                      {row.slug}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <AppAnalyticsPreview
+                slug={trend}
+                since={window}
+                storageKey="gregale.analytics.account-history.order"
+              />
+            </section>
+          )}
+        </>
+      )}
       <section aria-label="Apps">
         <PlanGated error={metrics.error} feature="Per-app metrics">
           <Panel
             title="Apps"
-            help="Latency covers 2xx responses. Wake p95 is the fleet-wide figure, the same on every row. Open an app for its routes, health and wakes."
+            help="Latency covers 2xx responses. Wake p95 is fleet-wide. Select an app to inspect its requests here."
             padded={appsPhase === 'ready' && appsDegraded}
           >
             {appsPhase === 'ready' && appsDegraded ? (
@@ -197,13 +336,7 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
                 loading={appsPhase === 'loading'}
                 error={metrics.error}
                 onRetry={() => void metrics.refetch()}
-                onRowClick={(row) =>
-                  void navigate({
-                    to: '/dashboard/apps/$appSlug',
-                    params: { appSlug: row.slug },
-                    search: { tab: 'Metrics', analyticsSince: window },
-                  })
-                }
+                onRowClick={(row) => inspect({ metric: 'requests', app: row.slug, since: window })}
               />
             )}
           </Panel>

@@ -154,17 +154,19 @@ export function CommandPalette({
     return [
       // Driven by the nav config, so a new page becomes reachable by ⌘K the
       // moment it appears in the sidebar.
-      ...visibleNavItems(NAV_ITEMS, isOff).map((item) => ({
-        // Keep existing recent page commands while giving hub aliases their own IDs.
-        id: item.search
-          ? `nav-${item.to}-${item.search.section}`
-          : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
-        label: item.label,
-        group: 'Go to',
-        keywords: railGroupFor(item),
-        icon: item.icon,
-        run: go(item.to, item.search),
-      })),
+      ...visibleNavItems(NAV_ITEMS, isOff)
+        .filter((item) => item.to !== '/dashboard/edge-rules')
+        .map((item) => ({
+          // Keep existing recent page commands while giving hub aliases their own IDs.
+          id: item.search
+            ? `nav-${item.to}-${item.search.section}`
+            : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
+          label: item.label,
+          group: 'Go to',
+          keywords: railGroupFor(item),
+          icon: item.icon,
+          run: go(item.to, item.search),
+        })),
       {
         id: 'act-new',
         label: 'New app',

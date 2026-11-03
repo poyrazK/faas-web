@@ -544,6 +544,17 @@ const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
 // Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
 const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
 const analyticsIso = (msAgo: number) => new Date(ANALYTICS_NOW - msAgo).toISOString();
+// Reuse each seeded platform snapshot across account totals and app rankings.
+const metricsSnapshots = new Map<string, ReturnType<typeof db.metricsFor>>();
+function mockAppMetrics(app: db.App, range: string) {
+  const key = `${app.id}:${app.status}:${range}`;
+  let value = metricsSnapshots.get(key);
+  if (!value) {
+    value = db.metricsFor(app, range);
+    metricsSnapshots.set(key, value);
+  }
+  return value;
+}
 
 function sloWindow(query: URLSearchParams) {
   const window = query.get('window') ?? '24h';
@@ -555,18 +566,24 @@ function sloWindow(query: URLSearchParams) {
 function accountSlo(
   window: ReturnType<typeof sloWindow>
 ): components['schemas']['AccountSLOResponse'] {
+  // Use the same fixture volumes as app rankings; an account cannot have fewer
+  // requests than one of its apps. This is mock data, never a client aggregation.
+  const rows = db.apps.map((app) => mockAppMetrics(app, window));
+  const total = rows.reduce((sum, row) => sum + row.request_count, 0);
+  const weighted = (key: 'error_rate_pct' | 'cold_start_pct') =>
+    total ? rows.reduce((sum, row) => sum + row.request_count * row[key], 0) / total : 0;
   return {
     window,
     source: 'prometheus',
     as_of: analyticsIso(0),
     request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
-    error_rate_pct: 0.55,
-    cold_boot_rate_pct: 4.2,
+    error_rate_pct: weighted('error_rate_pct'),
+    cold_boot_rate_pct: weighted('cold_start_pct'),
     instance_hours: 12,
     gb_hours: 3,
     wake_queue_p95_ms: null,
     wake_queue_sample_status: 'unavailable',
-    requests_total: 12000,
+    requests_total: total,
     throttled_total: 23,
   };
 }
@@ -813,7 +830,7 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
     range,
     source: 'prometheus',
     as_of: db.iso(0),
-    apps: Object.fromEntries(db.apps.map((a) => [a.slug, db.metricsFor(a, range)])),
+    apps: Object.fromEntries(db.apps.map((a) => [a.slug, mockAppMetrics(a, range)])),
   };
 });
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
@@ -1594,7 +1611,7 @@ route('GET', '/v1/apps/{slug}/deployments/{id}/summary', ({ params }) => {
   } satisfies components['schemas']['DeploymentSummaryResponse'];
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
-  db.metricsFor(app(params.slug), query.get('range') ?? '24h')
+  mockAppMetrics(app(params.slug), query.get('range') ?? '24h')
 );
 route('GET', '/v1/apps/{slug}/slo', ({ params, query }) =>
   appSlo(app(params.slug), sloWindow(query))
@@ -3241,7 +3258,6 @@ type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResp
 type AnalyticsGroupBy = NonNullable<AnalyticsTimeseries['group_by']>;
 type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
 
-const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
 const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
@@ -3268,9 +3284,52 @@ const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy =>
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
-  const hours = ANALYTICS_WINDOW_HOURS[since];
-  // Anything longer than a week is clamped, as the retention does upstream.
-  return { since, hours: hours ?? 24, clamped: hours === undefined };
+  const until = query.has('until') ? Date.parse(query.get('until')!) : ANALYTICS_NOW;
+  const duration = /^(\d+(?:\.\d+)?)(m|h|d)$/.exec(since);
+  const length = duration
+    ? Number(duration[1]) * ({ m: 60_000, h: 3_600_000, d: 86_400_000 }[duration[2]] ?? 0)
+    : 0;
+  const requestedFrom = duration ? until - length : Date.parse(since);
+  const minimum = ANALYTICS_NOW - 7 * 86_400_000;
+  if (
+    !Number.isFinite(until) ||
+    until > ANALYTICS_NOW ||
+    until <= minimum ||
+    !Number.isFinite(requestedFrom) ||
+    requestedFrom >= until
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a positive duration or a timestamp before until, within the retained telemetry.'
+    );
+  const from = Math.max(minimum, requestedFrom);
+  return { since, from, until, clamped: from !== requestedFrom };
+}
+
+/** Deterministic hourly records, shared by summaries and exact-range drilldowns. */
+function analyticsPoints(from: number, until: number) {
+  const first = Math.floor(from / 3_600_000) * 3_600_000;
+  const count = Math.ceil((until - first) / 3_600_000);
+  return Array.from({ length: count }, (_, i) => {
+    const start = first + i * 3_600_000;
+    const at = new Date(start);
+    const share =
+      Math.max(0, Math.min(until, start + 3_600_000) - Math.max(from, start)) / 3_600_000;
+    const wave = Math.sin((at.getUTCHours() / 24) * Math.PI * 2) * 0.4 + 1;
+    const requests = Math.round(280 * wave * share);
+    const errors = Math.round(requests * (at.getUTCHours() === 3 ? 0.11 : 0.004));
+    return {
+      start: at.toISOString(),
+      requests,
+      error_requests: errors,
+      error_rate_pct: requests ? Math.round((errors / requests) * 10000) / 100 : 0,
+      cold_boots: Math.round((at.getUTCHours() % 6 === 0 ? 2 : 0) * share),
+      p50_ms: requests ? Math.round(42 * wave) : 0,
+      p95_ms: requests ? Math.round(180 * wave) : 0,
+      p99_ms: requests ? Math.round(420 * wave) : 0,
+    };
+  });
 }
 
 route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
@@ -3281,13 +3340,14 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
       'plan_per_app_metrics_not_allowed',
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
-  const { since, hours, clamped } = analyticsWindow(query);
+  const { since, from, until, clamped } = analyticsWindow(query);
   const groupBy = query.get('group_by') ?? 'route';
   if (!isAnalyticsGroupBy(groupBy))
     throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  const requests = hours * 351;
-  const errors = Math.round(requests * 0.0044);
+  const points = analyticsPoints(from, until);
+  const requests = points.reduce((sum, point) => sum + point.requests, 0);
+  const errors = points.reduce((sum, point) => sum + point.error_requests, 0);
   const group = (value: string, i: number) => {
     const share = [0.44, 0.3, 0.18, 0.08][i] ?? 0.05;
     const rq = Math.round(requests * share);
@@ -3298,7 +3358,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
       requests: rq,
       error_requests: err,
       error_rate_pct: rq === 0 ? 0 : Math.round((err / rq) * 10000) / 100,
-      cold_boots: Math.round(rq * 0.0017),
+      cold_boots: Math.round(points.reduce((sum, point) => sum + point.cold_boots, 0) * share),
       p50_ms: 42 + i * 9,
       p95_ms: 180 + i * 40,
       p99_ms: 420 + i * 90,
@@ -3307,13 +3367,13 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   return {
     slug: a.slug,
     since,
-    from: analyticsIso(hours * 3_600_000),
-    until: analyticsIso(0),
+    from: new Date(from).toISOString(),
+    until: new Date(until).toISOString(),
     window_clamped: clamped,
     requests,
     error_requests: errors,
-    error_rate_pct: Math.round((errors / requests) * 10000) / 100,
-    cold_boots: Math.round(requests * 0.0017),
+    error_rate_pct: requests ? Math.round((errors / requests) * 10000) / 100 : 0,
+    cold_boots: points.reduce((sum, point) => sum + point.cold_boots, 0),
     p50_ms: 42,
     p95_ms: 180,
     p99_ms: 420,
@@ -3337,27 +3397,8 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
       'plan_per_app_metrics_not_allowed',
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
-  const { since, hours, clamped } = analyticsWindow(query);
-  const now = ANALYTICS_NOW;
-  const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
-    const hour = hours - 1 - i;
-    // A diurnal shape, so the line is a shape rather than a flat run.
-    const at = new Date(now - hour * 3_600_000);
-    const wave = Math.sin((at.getUTCHours() / 24) * Math.PI * 2) * 0.4 + 1;
-    const requests = Math.round(280 * wave);
-    const errors =
-      at.getUTCHours() === 3 ? Math.round(requests * 0.11) : Math.round(requests * 0.004);
-    return {
-      start: new Date(at.setMinutes(0, 0, 0)).toISOString(),
-      requests,
-      error_requests: errors,
-      error_rate_pct: Math.round((errors / requests) * 10000) / 100,
-      cold_boots: at.getUTCHours() % 6 === 0 ? 2 : 0,
-      p50_ms: Math.round(42 * wave),
-      p95_ms: Math.round(180 * wave),
-      p99_ms: Math.round(420 * wave),
-    };
-  });
+  const { since, from, until, clamped } = analyticsWindow(query);
+  const unfilteredPoints = analyticsPoints(from, until);
   const requestedRoute = query.get('route');
   const requestedMethod = query.get('method');
   let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
@@ -3402,8 +3443,8 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
     slug: a.slug,
     ...routeMethodFilter,
     since,
-    from: points[0]?.start ?? analyticsIso(hours * 3_600_000),
-    until: analyticsIso(0),
+    from: new Date(from).toISOString(),
+    until: new Date(until).toISOString(),
     window_clamped: clamped,
     bucket: '1h',
     points,

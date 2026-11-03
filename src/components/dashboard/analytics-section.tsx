@@ -1,3 +1,6 @@
+import { useMetricInspector } from './metric-inspector';
+import { isDetailMetric } from './metric-detail-search';
+import { incompleteTelemetry, utcLabel } from './analytics-data';
 import { useId, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Plus, Refresh, ArrowRight } from 'iconoir-react';
@@ -47,6 +50,7 @@ export function AnalyticsSection({
   onRefresh?: () => void;
 }) {
   const id = useId();
+  const inspect = useMetricInspector();
   const { account } = useAuth();
   const paid = isPaidPlan(account?.plan);
   const [scope, setScope] = useState('');
@@ -60,7 +64,10 @@ export function AnalyticsSection({
   });
   const rollup = useAppsMetrics(rollupWindow(range), { enabled: paid && !slug });
   const result = slug ? series : rollup;
-  const degraded = !slug && rollup.data?.source !== 'prometheus';
+  const degraded =
+    !slug &&
+    (rollup.data?.source !== 'prometheus' ||
+      Object.values(rollup.data?.apps ?? {}).some((row) => row.source !== 'prometheus'));
   const phase = queryPhase({ error: result.error, loading: paid && result.isPending });
   const points = (series.data?.points ?? []) as AnalyticsPoint[];
   const rows = Object.values(rollup.data?.apps ?? {});
@@ -69,7 +76,9 @@ export function AnalyticsSection({
     (total, row) => total + (row.request_count * row.error_rate_pct) / 100,
     0
   );
-  const wake = rows.find((row) => row.wake_p95_ms > 0)?.wake_p95_ms;
+  const wake = rows.find(
+    (row) => row.wake_p95_ms > 0 && (row.wake_samples === undefined || row.wake_samples >= 20)
+  )?.wake_p95_ms;
   const known = paid && phase === 'ready' && !degraded;
   const compact = (value: number) =>
     new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -77,7 +86,7 @@ export function AnalyticsSection({
     {
       id: 'requests',
       label: 'Requests',
-      span: 2,
+      span: 1,
       value: known ? compact(requests) : '—',
       delta: null,
       deltaGood: true,
@@ -95,8 +104,8 @@ export function AnalyticsSection({
     {
       id: 'error_rate',
       label: 'Error rate',
-      span: 2,
-      value: known ? `${(requests ? (errors / requests) * 100 : 0).toFixed(2)}%` : '—',
+      span: 1,
+      value: known && requests > 0 ? `${((errors / requests) * 100).toFixed(2)}%` : '—',
       delta: null,
       deltaGood: false,
       caption: 'Weighted by requests across apps',
@@ -209,6 +218,21 @@ export function AnalyticsSection({
           Metrics degraded. Figures are unavailable for this window.
         </p>
       )}
+      {slug && (
+        <p className="text-xs text-muted-foreground">
+          Hourly history for {slug} · UTC
+          {series.data?.from && series.data.until
+            ? ` · ${utcLabel(series.data.from)} – ${utcLabel(series.data.until)}`
+            : ''}
+          . Changes compare equal groups of complete UTC hours within this window. Partial hours are
+          excluded.
+        </p>
+      )}
+      {slug && incompleteTelemetry(series.data) && (
+        <p role="status" className="text-xs text-status-warning">
+          Some request records are missing. These figures may be incomplete.
+        </p>
+      )}
       {slug && series.data?.window_clamped && (
         <p role="status" className="text-xs text-muted-foreground">
           Plan retention capped this to {series.data.since}.
@@ -229,15 +253,31 @@ export function AnalyticsSection({
           }
           catalog={catalog}
           defaults={defaults}
+          onInspect={(metric) => {
+            if (isDetailMetric(metric))
+              inspect({
+                metric,
+                app: slug || undefined,
+                since: slug ? (series.data?.from ?? since) : rollupWindow(range),
+                until: slug
+                  ? (series.data?.until ?? (range.kind === 'custom' ? range.until : undefined))
+                  : undefined,
+              });
+          }}
           showAddSlot={Boolean(slug)}
+          historyState={
+            phase === 'loading' ? 'loading' : phase === 'ready' ? 'ready' : 'unavailable'
+          }
           picking={picking}
           onPicking={setPicking}
           loading={paid && phase === 'loading'}
           build={(chosen) =>
             slug
-              ? chosenCards(chosen, phase === 'ready' ? points : [], rangeHalfLabel(drawn)).map(
-                  (card) => (phase === 'ready' ? card : { ...card, value: '—', delta: null })
-                )
+              ? chosenCards(chosen, phase === 'ready' ? points : [], rangeHalfLabel(drawn), {
+                  from: series.data?.from,
+                  until: series.data?.until,
+                  incomplete: incompleteTelemetry(series.data),
+                }).map((card) => (phase === 'ready' ? card : { ...card, value: '—', delta: null }))
               : chosen.flatMap((key) =>
                   [...accountCards, ...extras].filter((card) => card.id === key)
                 )

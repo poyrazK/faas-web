@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TimeChart } from './kit/chart';
 import { cn } from '@/lib/utils';
+import { compareRequestHalves, utcLabel } from './analytics-data';
 
 export interface AnalyticsPoint {
   start: string;
@@ -122,13 +123,13 @@ export const CATALOG: MetricDef[] = [
   {
     id: 'requests',
     label: 'Requests',
-    span: 2,
+    span: 1,
     series: 'requests',
     deltaGood: true,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'requests')),
       delta: halfOverHalf(points, 'requests'),
-      caption: `Served this window, against ${halfLabel}`,
+      caption: 'Total requests in this window',
     }),
     scalar: (row) => ({
       value: compact(row.request_count),
@@ -138,13 +139,13 @@ export const CATALOG: MetricDef[] = [
   {
     id: 'errors',
     label: 'Errors',
-    span: 2,
+    span: 1,
     series: 'error_requests',
     deltaGood: false,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'error_requests')),
       delta: halfOverHalf(points, 'error_requests'),
-      caption: `Errored responses, against ${halfLabel}`,
+      caption: 'Errored responses in this window',
     }),
     scalar: (row) => ({
       value: compact(Math.round((row.request_count * row.error_rate_pct) / 100)),
@@ -163,7 +164,7 @@ export const CATALOG: MetricDef[] = [
       const requests = sum(points, 'requests');
       const errors = sum(points, 'error_requests');
       return {
-        value: `${requests === 0 ? '0.00' : ((errors / requests) * 100).toFixed(2)}%`,
+        value: requests === 0 ? '—' : `${((errors / requests) * 100).toFixed(2)}%`,
         delta: null,
         caption: 'Errored share of the window',
       };
@@ -206,10 +207,10 @@ export const CATALOG: MetricDef[] = [
     span: 1,
     series: 'cold_boots',
     deltaGood: false,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'cold_boots')),
       delta: halfOverHalf(points, 'cold_boots'),
-      caption: `Wakes from a parked app, against ${halfLabel}`,
+      caption: 'Starts of parked instances in this window',
     }),
     // The series counts wakes; the rollup reports the share of requests that
     // caused one. Different question, so a different name on the card.
@@ -246,12 +247,24 @@ export function buildCard(
 export function chosenCards(
   chosen: string[],
   points: AnalyticsPoint[],
-  halfLabel: string
+  halfLabel: string,
+  comparison?: { from?: string; until?: string; incomplete?: boolean }
 ): AnalyticsCardSpec[] {
   return chosen
     .map((id) => CATALOG.find((def) => def.id === id))
     .filter((def): def is MetricDef => !!def)
-    .map((def) => buildCard(def, points, halfLabel));
+    .map((def) => {
+      const card = buildCard(def, points, halfLabel);
+      return comparison
+        ? {
+            ...card,
+            delta: comparison.incomplete
+              ? null
+              : (compareRequestHalves(points, card.id, comparison.from, comparison.until)?.delta ??
+                null),
+          }
+        : card;
+    });
 }
 
 /**
@@ -291,6 +304,8 @@ export function availableMetrics(chosen: string[]): MetricDef[] {
 export function AnalyticsGrid({
   points,
   build,
+  onInspect,
+  historyState = 'ready',
   loading = false,
   picking = false,
   onPicking,
@@ -300,6 +315,8 @@ export function AnalyticsGrid({
   storageKey = 'gregale.analytics.order',
 }: {
   points: AnalyticsPoint[];
+  onInspect?: (id: string) => void;
+  historyState?: 'loading' | 'ready' | 'unavailable';
   build: (chosen: string[]) => AnalyticsCardSpec[];
   loading?: boolean;
   picking?: boolean;
@@ -380,13 +397,22 @@ export function AnalyticsGrid({
               dragging.current = null;
             }}
             className={cn(
-              'group relative min-w-0 rounded-xl border border-border bg-card p-5',
+              'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand',
+              onInspect && 'hover:border-border-secondary',
               card.span === 2 && 'xl:col-span-2'
             )}
           >
+            {onInspect && (
+              <button
+                type="button"
+                onClick={() => onInspect(card.id)}
+                aria-label={`View ${card.label} details`}
+                className="absolute inset-0 z-10 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              />
+            )}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
-              <div className="flex items-center gap-1">
+              <div className="relative z-20 flex items-center gap-1">
                 <button
                   type="button"
                   draggable
@@ -465,7 +491,7 @@ export function AnalyticsGrid({
                 <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
               ) : (
                 <>
-                  <p className="text-[28px] font-semibold leading-none tracking-tight tabular-nums">
+                  <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums">
                     {card.value}
                   </p>
                   {card.delta !== null && (
@@ -473,33 +499,55 @@ export function AnalyticsGrid({
                       className="text-xs tabular-nums"
                       style={{
                         color:
-                          card.delta >= 0 === card.deltaGood
-                            ? 'var(--status-good)'
-                            : 'var(--status-critical)',
+                          card.delta === 0
+                            ? 'var(--muted-foreground)'
+                            : card.delta >= 0 === card.deltaGood
+                              ? 'var(--status-good)'
+                              : 'var(--status-critical)',
                       }}
                     >
-                      {card.delta >= 0 ? '↗' : '↘'} {Math.abs(card.delta).toFixed(1)}%
+                      {card.delta === 0
+                        ? 'No change'
+                        : `${card.delta > 0 ? '↗' : '↘'} ${Math.abs(card.delta).toFixed(1)}%`}
                     </span>
                   )}
                 </>
               )}
             </div>
-            {card.series && points.length > 1 && !loading && (
-              <TimeChart
-                data={points
-                  .filter((point) => !card.series?.endsWith('_ms') || point.requests > 0)
-                  .map((point) => ({
-                    at: new Date(point.start).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }),
-                    value: Number(point[card.series!] ?? 0),
+            {card.series &&
+              !loading &&
+              (historyState !== 'ready' ? (
+                <div
+                  role="status"
+                  className="mt-5 flex h-24 items-center justify-center text-xs text-muted-foreground"
+                >
+                  {historyState === 'loading' ? 'Loading history…' : 'History unavailable'}
+                </div>
+              ) : points.length > 0 && points.some((point) => point.requests > 0) ? (
+                <TimeChart
+                  data={points.map((point) => ({
+                    at: utcLabel(point.start),
+                    value:
+                      (card.series?.endsWith('_ms') || card.id === 'error_rate') &&
+                      point.requests === 0
+                        ? null
+                        : Number(point[card.series!] ?? 0),
                   }))}
-                x="at"
-                series={{ value: { label: card.label, color: card.deltaGood ? 'green' : 'blue' } }}
-                className="mt-4 h-28"
-              />
-            )}
+                  x="at"
+                  series={{
+                    value: {
+                      label: card.label,
+                      color: card.id === 'errors' || card.id === 'error_rate' ? 'red' : 'blue',
+                    },
+                  }}
+                  compact
+                  className="mt-5 h-24"
+                />
+              ) : (
+                <div className="mt-5 flex h-24 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground">
+                  No requests in this window
+                </div>
+              ))}
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{card.caption}</p>
           </motion.li>
         ))}
@@ -552,7 +600,7 @@ export function AnalyticsGrid({
       </ul>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <p id={moveHelpId}>
-          Drag a handle to arrange. Use arrow keys or the card menu to move a metric.
+          Drag a handle to arrange, or use its arrow keys. Select a card to explore.
         </p>
         <button
           type="button"

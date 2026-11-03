@@ -1347,7 +1347,7 @@ function CreateAppWizard({
             title: 'Deploy your first app',
             description: 'Choose a Git repository, configure it, and watch the real build go live.',
           }
-        : { title: 'New app', description: 'Choose how to start.', back: 'apps' };
+        : { title: 'New app', back: 'apps' };
     if (station === 'setup') {
       const back = onboarding ? undefined : { label: 'Sources', onBack: toSources };
       if (onboarding)
@@ -1401,7 +1401,9 @@ function CreateAppWizard({
   }
 
   const form = (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]">
+    <div
+      className={`mx-auto flex w-full flex-col gap-6 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)] ${station === 'sources' ? 'max-w-[640px]' : 'max-w-3xl'}`}
+    >
       {/* One tree, before and during creation: the content column swaps the
           station for the completion, so the import draft below it (and the
           rest of the form state) survives a failed attempt from any source. */}

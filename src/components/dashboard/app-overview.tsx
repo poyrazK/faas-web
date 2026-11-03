@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { CheckCircle, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/mock-data';
@@ -11,6 +12,7 @@ type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Runtime';
 
 interface AppOverviewProps {
+  analytics?: ReactNode;
   app: Workflow;
   releases: Read<Deployment[]>;
   metrics: Read<AppMetrics>;
@@ -47,6 +49,7 @@ function measured(value: number | undefined): value is number {
 /** A read-only landing view. All actions lead to existing, app-scoped workflows. */
 export function AppOverview({
   app,
+  analytics,
   releases,
   metrics,
   metricsAccess,
@@ -250,67 +253,70 @@ export function AppOverview({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-medium">
             Traffic{' '}
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              {observed?.range ?? '24h'}
-            </span>
+            {!analytics && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {observed?.range ?? '24h'}
+              </span>
+            )}
           </h2>
-          {metricsAccess === 'available' && (
+          {metricsAccess === 'available' && !analytics && (
             <Button size="xs" variant="ghost" onClick={() => onNavigate('Metrics')}>
               View metrics
             </Button>
           )}
         </div>
-        {metricsAccess === 'checking' || (metricsAccess === 'available' && metrics.isPending) ? (
-          <p className="mt-4 text-sm text-muted-foreground" role="status">
-            Loading traffic signals…
-          </p>
-        ) : metricsAccess === 'restricted' ? (
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            Request metrics are available on Hobby and above.
-          </p>
-        ) : !observed ? (
-          <div className="mt-4" role="status">
-            <p className="text-sm text-muted-foreground">Traffic metrics are unavailable.</p>
-            <Button className="mt-3" size="xs" variant="outline" onClick={onRetryMetrics}>
-              Retry metrics
-            </Button>
-          </div>
-        ) : (
-          <>
-            <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-5">
-              <Signal
-                label="Requests"
-                value={
-                  measured(observed.request_count)
-                    ? formatCompact(observed.request_count)
-                    : 'Unavailable'
-                }
-              />
-              <Signal
-                label="Error rate"
-                value={
-                  hasTraffic && measured(observed.error_rate_pct)
-                    ? `${observed.error_rate_pct.toFixed(2)}%`
-                    : '—'
-                }
-              />
-              <Signal
-                label="p95 response time"
-                value={
-                  hasTraffic && measured(observed.latency_p95_ms)
-                    ? formatMs(observed.latency_p95_ms)
-                    : '—'
-                }
-                note="Successful (2xx) responses"
-              />
-            </dl>
-            <p className="mt-5 text-xs text-muted-foreground">
-              {observed.request_count === 0
-                ? 'No requests in this window.'
-                : `As of ${timestamp(observed.as_of)}.`}
+        {analytics ??
+          (metricsAccess === 'checking' || (metricsAccess === 'available' && metrics.isPending) ? (
+            <p className="mt-4 text-sm text-muted-foreground" role="status">
+              Loading traffic signals…
             </p>
-          </>
-        )}
+          ) : metricsAccess === 'restricted' ? (
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              Request metrics are available on Hobby and above.
+            </p>
+          ) : !observed ? (
+            <div className="mt-4" role="status">
+              <p className="text-sm text-muted-foreground">Traffic metrics are unavailable.</p>
+              <Button className="mt-3" size="xs" variant="outline" onClick={onRetryMetrics}>
+                Retry metrics
+              </Button>
+            </div>
+          ) : (
+            <>
+              <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-5">
+                <Signal
+                  label="Requests"
+                  value={
+                    measured(observed.request_count)
+                      ? formatCompact(observed.request_count)
+                      : 'Unavailable'
+                  }
+                />
+                <Signal
+                  label="Error rate"
+                  value={
+                    hasTraffic && measured(observed.error_rate_pct)
+                      ? `${observed.error_rate_pct.toFixed(2)}%`
+                      : '—'
+                  }
+                />
+                <Signal
+                  label="p95 response time"
+                  value={
+                    hasTraffic && measured(observed.latency_p95_ms)
+                      ? formatMs(observed.latency_p95_ms)
+                      : '—'
+                  }
+                  note="Successful (2xx) responses"
+                />
+              </dl>
+              <p className="mt-5 text-xs text-muted-foreground">
+                {observed.request_count === 0
+                  ? 'No requests in this window.'
+                  : `As of ${timestamp(observed.as_of)}.`}
+              </p>
+            </>
+          ))}
       </section>
     </div>
   );

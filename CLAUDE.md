@@ -124,14 +124,21 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   not mean `npm run check` passes — run the latter before claiming done.
 - **Sign in with a real email and password.** The `123456` demo code is gone —
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
-- **The console says little.** No page subtitles, no panel descriptions:
-  explanations go in `help` (a "?" popover). Create and edit flows open in a
-  `Sheet`; ordinary figures use `Stats`, while Overview and app Metrics use the
-  customizable `AnalyticsGrid`. Content stays still outside the Overview greeting;
-  the foil New app control and profile rim retain their main-branch interactions.
+- **Use concise, plain English.** Show essential scope and effects in place;
+  secondary technical details can go in `help` or an expandable section. Edge
+  rules explain their configured behavior, including paused and log-only states.
+  Preserve the seven-source New app wizard and its deployment recovery. Overview
+  and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
+  URL-backed `MetricInspectorProvider` without changing the underlying route.
+  Drag handles and menus remain separate from the card's detail button. Sidebar
+  disclosures, the foil New app control, and profile rim retain main's motion
+  and respect reduced-motion preferences.
   Check `/dashboard/kit` (dev only) after changing a primitive. Analytics controls
   must share one time window for every figure they govern; never chart account
-  scalars or average hourly percentiles into a window percentile.
+  scalars or average hourly percentiles into a window percentile. Request history
+  uses UTC and explicit retained bounds; comparisons use equal groups of complete
+  hours within that window, excluding partial hours. Account metrics are platform
+  snapshots (latency covers 2xx); request records include all response statuses.
 - **Do not add `dark:` variants or literal hex to components.** The two
   polarities are token-driven in `index.css`; a component that needs a new
   colour needs a new token defined in _both_ `:root` and `.console`.

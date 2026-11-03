@@ -1,3 +1,6 @@
+import { useMetricInspector } from './metric-inspector';
+import { isDetailMetric } from './metric-detail-search';
+import { utcLabel, incompleteTelemetry } from './analytics-data';
 import { AnalyticsGrid, chosenCards, scalarCards, type AnalyticsPoint } from './analytics-grid';
 import { rangeHalfLabel } from './range-picker';
 import { useState, type KeyboardEvent } from 'react';
@@ -63,12 +66,7 @@ export type AppAnalyticsBodyProps = {
   onRouteChange: (route: string | undefined, method: AnalyticsMethod | undefined) => void;
 };
 
-function hourLabel(iso: string): string {
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms)
-    ? iso
-    : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+const hourLabel = utcLabel;
 
 export function AppAnalyticsBody({
   slug,
@@ -81,6 +79,7 @@ export function AppAnalyticsBody({
   onGroupByChange,
   onRouteChange,
 }: AppAnalyticsBodyProps) {
+  const inspect = useMetricInspector();
   const analytics = useAppAnalytics(slug, since, groupBy);
   const hasRouteFilter = groupBy === 'route' && Boolean(route && method);
   const series = useAppAnalyticsTimeseries(slug, since, {
@@ -93,17 +92,27 @@ export function AppAnalyticsBody({
   const planGateError = [analytics.error, series.error].find(isPlanGate);
   const [metric, setMetric] = useState<ChartMetric>('traffic');
   const [picking, setPicking] = useState(false);
-  const points = (series.data?.points ?? [])
-    .filter((point) => metric !== 'latency' || point.requests > 0)
-    .map((point) => ({
-      at: hourLabel(point.start),
-      requests: point.requests,
-      error_requests: point.error_requests,
-      p50_ms: point.p50_ms,
-      p95_ms: point.p95_ms,
-      p99_ms: point.p99_ms,
-      cold_boots: point.cold_boots,
-    }));
+  const points = (series.data?.points ?? []).map((point) => ({
+    at: hourLabel(point.start),
+    requests: point.requests,
+    error_requests: point.error_requests,
+    p50_ms: point.requests ? point.p50_ms : null,
+    p95_ms: point.requests ? point.p95_ms : null,
+    p99_ms: point.requests ? point.p99_ms : null,
+    cold_boots: point.cold_boots,
+  }));
+  const inspectMetric = (selected: string) => {
+    if (isDetailMetric(selected))
+      inspect({
+        metric: selected,
+        app: slug,
+        since: series.data?.from ?? since,
+        until: series.data?.until,
+        route: hasRouteFilter ? route : undefined,
+        method: hasRouteFilter ? method : undefined,
+        group: groupBy,
+      });
+  };
   const chart = CHART_METRICS[metric];
   const analyticsPhase = queryPhase({
     error: analytics.error,
@@ -113,9 +122,8 @@ export function AppAnalyticsBody({
   const seriesPhase = queryPhase({
     error: series.error,
     loading: enabled && series.isPending,
-    // The unfiltered series decides whether there is a chart at all: the
-    // latency view drops idle hours, and must not hide the metric switch.
-    isEmpty: (series.data?.points ?? []).length < 2,
+    // Preserve idle buckets as gaps in latency, keeping their place on the time axis.
+    isEmpty: (series.data?.points ?? []).length === 0,
   });
   const groupsPhase = queryPhase({
     error: analytics.error,
@@ -193,6 +201,14 @@ export function AppAnalyticsBody({
         ) : (
           <div className="flex flex-col gap-5">
             <AnalyticsGrid
+              onInspect={inspectMetric}
+              historyState={
+                seriesPhase === 'loading'
+                  ? 'loading'
+                  : seriesPhase === 'error' || seriesPhase === 'unreachable'
+                    ? 'unavailable'
+                    : 'ready'
+              }
               points={
                 (seriesPhase === 'ready' ? (series.data?.points ?? []) : []) as AnalyticsPoint[]
               }
@@ -206,7 +222,12 @@ export function AppAnalyticsBody({
                 const cards = chosenCards(
                   chosen,
                   raw,
-                  rangeHalfLabel({ kind: 'preset', value: since })
+                  rangeHalfLabel({ kind: 'preset', value: since }),
+                  {
+                    from: series.data?.from,
+                    until: series.data?.until,
+                    incomplete: incompleteTelemetry(series.data) || incompleteTelemetry(data),
+                  }
                 );
                 if (hasRouteFilter)
                   return cards.map((card) =>
@@ -229,13 +250,14 @@ export function AppAnalyticsBody({
                     return {
                       ...card,
                       value: String(data.error_requests),
-                      caption: 'Errored responses in this window',
+                      caption:
+                        card.delta === null ? 'Errored responses in this window' : card.caption,
                     };
                   if (card.id === 'cold_boots')
                     return {
                       ...card,
                       value: String(data.cold_boots),
-                      caption: 'Cold boots in this window',
+                      caption: card.delta === null ? 'Cold boots in this window' : card.caption,
                     };
                   const total = totals.find((item) => item.id === card.id);
                   return total
@@ -243,7 +265,7 @@ export function AppAnalyticsBody({
                         ...card,
                         value: total.value,
                         caption: card.id.startsWith('p')
-                          ? 'Successful responses in this window'
+                          ? 'Recorded responses in this window'
                           : card.delta !== null
                             ? card.caption
                             : total.caption,
@@ -252,6 +274,15 @@ export function AppAnalyticsBody({
                 });
               }}
             />
+            <p className="text-xs text-muted-foreground">
+              Hourly history · UTC. Changes compare equal groups of complete hours within this
+              window; partial hours are excluded.
+            </p>
+            {(incompleteTelemetry(data) || incompleteTelemetry(series.data)) && (
+              <p role="status" className="text-xs text-status-warning">
+                Some request records are missing. These figures may be incomplete.
+              </p>
+            )}
             {data?.window_clamped && (
               <p className="text-xs text-muted-foreground">
                 The window was clamped to the retention this plan keeps.
@@ -288,8 +319,17 @@ export function AppAnalyticsBody({
                     onChange={setMetric}
                   />
                 </div>
-                {points.length ? (
+                {points.some((point) => point.requests > 0) ? (
                   <TimeChart
+                    onInspect={() =>
+                      inspectMetric(
+                        metric === 'traffic'
+                          ? 'requests'
+                          : metric === 'latency'
+                            ? 'p95'
+                            : 'cold_boots'
+                      )
+                    }
                     data={points}
                     x="at"
                     series={chart.config}

@@ -20,6 +20,8 @@ import {
 } from './account-analytics';
 
 const navigate = vi.hoisted(() => vi.fn());
+const inspect = vi.hoisted(() => vi.fn());
+vi.mock('./metric-inspector', () => ({ useMetricInspector: () => inspect }));
 vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   useNavigate: () => navigate,
@@ -204,9 +206,9 @@ describe('AccountAnalytics', () => {
   it('shows server-wide scalars and derives rounded errors without summing apps', async () => {
     render(<Harness />);
     const overview = within(accountRegion());
-    expect(await overview.findByText('10,001')).toBeInTheDocument();
+    expect(await overview.findByText('10K')).toBeInTheDocument();
     expect(await overview.findByText('125')).toBeInTheDocument();
-    for (const value of ['1.25', '2.75', '12', '53', '104', '17']) {
+    for (const value of ['1.25%', '2.75%', '12 ms', '53 ms', '104 ms', '17']) {
       expect(await overview.findByText(value)).toBeInTheDocument();
     }
     expect(overview.queryByRole('img')).not.toBeInTheDocument();
@@ -241,14 +243,11 @@ describe('AccountAnalytics', () => {
     }
   );
 
-  it('opens an app’s Metrics from its row', async () => {
+  it('opens an app metric in place from its row', async () => {
     render(<Harness />);
     await userEvent.click(within(appsRegion()).getByRole('button', { name: /alpha/ }));
-    expect(navigate).toHaveBeenCalledWith({
-      to: '/dashboard/apps/$appSlug',
-      params: { appSlug: 'alpha' },
-      search: { tab: 'Metrics', analyticsSince: '24h' },
-    });
+    expect(inspect).toHaveBeenCalledWith({ metric: 'requests', app: 'alpha', since: '24h' });
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('uses one 24h/7d control for both reads', async () => {
@@ -275,7 +274,7 @@ describe('AccountAnalytics', () => {
     );
     render(<Harness />);
     expect(within(accountRegion()).getByText(/degraded: prometheus timeout/)).toBeInTheDocument();
-    expect(within(accountRegion()).getAllByText('unavailable')).toHaveLength(8);
+    expect(within(accountRegion()).getAllByText('—')).toHaveLength(8);
   });
 
   it('shows account loading independently from an already available app table', () => {
@@ -289,7 +288,7 @@ describe('AccountAnalytics', () => {
     hooks.useAppsMetrics.mockReturnValue(pending());
     render(<Harness />);
     expect(within(appsRegion()).getByText('Loading…')).toBeInTheDocument();
-    expect(await within(accountRegion()).findByText('10,001')).toBeInTheDocument();
+    expect(await within(accountRegion()).findByText('10K')).toBeInTheDocument();
     expect(hooks.useAppAnalytics).not.toHaveBeenCalled();
     expect(hooks.useAppSlo).not.toHaveBeenCalled();
   });
@@ -298,7 +297,7 @@ describe('AccountAnalytics', () => {
     hooks.useAccountSlo.mockReturnValue(ready(undefined));
     hooks.useAppsMetrics.mockReturnValue(ready({ ...apps, apps: {} }));
     render(<Harness />);
-    expect(within(accountRegion()).getAllByText('unavailable')).toHaveLength(8);
+    expect(within(accountRegion()).getAllByText('—')).toHaveLength(8);
     expect(screen.getByText('No account analytics are available yet.')).toBeInTheDocument();
     expect(screen.getByText('No apps in this window.')).toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
@@ -318,7 +317,7 @@ describe('AccountAnalytics', () => {
       const region = within(scope === 'account' ? accountRegion() : appsRegion());
       expect(region.getByRole('alert')).toHaveTextContent('Telemetry failed');
       expect(region.queryByText('Loading…')).not.toBeInTheDocument();
-      if (scope === 'account') expect(region.getAllByText('unavailable')).toHaveLength(8);
+      if (scope === 'account') expect(region.getAllByText('—')).toHaveLength(8);
     }
   );
 

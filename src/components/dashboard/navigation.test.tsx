@@ -258,7 +258,6 @@ const RAIL = [
   'Object storage',
   'Postgres',
   'Domains',
-  'Edge rules',
   'Events',
   'Integrations',
   'Customers',
@@ -285,7 +284,7 @@ const RAIL_PARENTS = ['Billing'];
 const RAIL_GROUP_ROWS: Record<string, string[]> = {
   Compute: ['Projects', 'Releases', 'Jobs', 'Instances'],
   Storage: ['Object storage', 'Postgres'],
-  Networking: ['Domains', 'Edge rules'],
+  Networking: ['Domains'],
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
   Observe: ['Analytics', 'Invocations', 'Audit log'],
@@ -507,19 +506,12 @@ describe('dashboard navigation foundation', () => {
     await waitFor(() =>
       expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/edge-rules')
     );
-    // Edge rules is a rail row now. Its page is the account view, so the
-    // per-app strip goes; the app page's Connect tab is the per-app way in.
-    expect(within(main).getByRole('link', { name: 'Edge rules' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-    expect(screen.queryByRole('navigation', { name: 'App sections' })).not.toBeInTheDocument();
+    expect(within(main).queryByRole('link', { name: 'Edge rules' })).not.toBeInTheDocument();
   });
 
   it.each([
     ['/dashboard/instances', 'Instances'],
     ['/dashboard/postgres', 'Postgres'],
-    ['/dashboard/edge-rules', 'Edge rules'],
   ])('lights %s as its own rail row', async (path, label) => {
     await renderShell(path);
     const main = screen.getByRole('navigation', { name: 'Main' });
@@ -794,7 +786,7 @@ describe('dashboard navigation foundation', () => {
 
   it.each([
     ['Observe', ['Analytics', 'Invocations', 'Audit log']],
-    ['Networking', ['Domains', 'Edge rules']],
+    ['Networking', ['Domains']],
     ['Storage', ['Object storage', 'Postgres']],
   ])('finds the pages filed under %s from the command palette', async (heading, labels) => {
     await renderShell();
@@ -813,7 +805,6 @@ describe('dashboard navigation foundation', () => {
     ['Builds', '/dashboard/builds'],
     ['Object storage', '/dashboard/storage'],
     ['Debugger', '/dashboard/debug'],
-    ['Edge rules', '/dashboard/edge-rules'],
     ['Instances', '/dashboard/instances'],
     ['Templates', '/dashboard/templates'],
     ['Import', '/dashboard/import'],

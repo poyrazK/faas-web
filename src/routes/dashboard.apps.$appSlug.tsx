@@ -1,3 +1,4 @@
+import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
 import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
@@ -458,9 +459,26 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
-              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Overview' && (
                 <AppOverview
+                  analytics={
+                    paidAccess ? (
+                      <AppAnalyticsPreview
+                        slug={fn.id}
+                        since={search.analyticsSince ?? '24h'}
+                        onSinceChange={(value) =>
+                          void navigate({
+                            search: (previous) => ({
+                              ...previous,
+                              analyticsSince: value as AppAnalyticsSearch['analyticsSince'],
+                            }),
+                            replace: true,
+                            resetScroll: false,
+                          })
+                        }
+                      />
+                    ) : undefined
+                  }
                   app={fn}
                   releases={releases}
                   metrics={metrics}
@@ -545,6 +563,7 @@ function FunctionDetailPage() {
                   </div>
                 ))}
 
+              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Deployments' && (
                 <>
                   <ImageDeploymentPanel key={appSlug} slug={appSlug} />

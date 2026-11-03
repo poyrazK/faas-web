@@ -32,7 +32,7 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { NeedsAttentionButton } from './needs-attention';
 import { CommandPalette } from './command-palette';
-import { EASE } from './motion';
+import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
   findNavHub,
   isDisclosureHub,
@@ -199,8 +199,20 @@ function NavDisclosure({
   labelCls: string;
   children: ReactNode;
 }) {
+  const reduce = useReducedMotion();
   const Icon = hub.icon;
   const panelId = `nav-${hub.to.replace(/\W+/g, '-')}`;
+  // The panel clips itself while its height is in motion, and stops once it
+  // has settled — a focus ring on the first or last row is drawn outside the
+  // row's box, and a permanently clipped panel would shave it off.
+  //
+  // Seeded from `open` rather than from `true`: the rail mounts with
+  // `initial={false}`, so a group that is already open never
+  // animates and never fires the handlers below. Starting clipped would leave
+  // it clipped until its first toggle.
+  const [clip, setClip] = useState(() => !open);
+  const openT = reduce ? { duration: 0 } : DISCLOSURE_OPEN;
+  const closeT = reduce ? { duration: 0 } : DISCLOSURE_CLOSE;
   return (
     <>
       <Tooltip content={hub.label} side="right">
@@ -212,10 +224,10 @@ function NavDisclosure({
           data-sidebar-disclosure
           aria-label={collapsed ? hub.label : undefined}
           className={cn(
-            'pressable flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+            'pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
             'text-muted-foreground hover:bg-muted hover:text-foreground',
             onBranch && 'text-foreground',
-            onBranch && collapsed && 'bg-muted'
+            onBranch && collapsed && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
           )}
         >
           <Icon
@@ -228,24 +240,42 @@ function NavDisclosure({
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
-          <span aria-hidden="true" className={cn('ml-auto flex shrink-0', labelCls)}>
-            <NavArrowDown className={cn('h-3.5 w-3.5', !open && '-rotate-90')} />
-          </span>
+          {/* The chevron rides the panel's own curve and direction rather than
+              a CSS transition of its own, so the two read as one gesture
+              instead of two things that happen to start together. */}
+          <motion.span
+            aria-hidden="true"
+            className={cn('ml-auto flex shrink-0', labelCls)}
+            initial={false}
+            animate={{ rotate: open ? 0 : -90 }}
+            transition={open ? openT : closeT}
+          >
+            <NavArrowDown className="h-3.5 w-3.5" />
+          </motion.span>
         </button>
       </Tooltip>
-      {/* Kept mounted while shut, so keyboard focus never loses its trigger. */}
-      <ul
+      {/* Keep the group mounted through rail changes, so icons slide into
+          place and keyboard focus never loses its disclosure trigger. */}
+      <motion.ul
         id={panelId}
         data-sidebar-panel
         inert={!open}
         aria-hidden={!open}
+        initial={false}
+        animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
+        transition={{
+          height: open ? openT : closeT,
+          opacity: { duration: reduce ? 0 : open ? 0.14 : 0.07, delay: reduce || !open ? 0 : 0.04 },
+        }}
+        onAnimationStart={() => setClip(true)}
+        onAnimationComplete={() => setClip(!open)}
         className={cn(
-          'relative ml-[18px] flex-col gap-px border-l border-border',
-          open ? 'flex' : 'hidden'
+          'relative ml-[18px] flex flex-col gap-0.5 border-l border-border',
+          clip && 'overflow-hidden'
         )}
       >
         {children}
-      </ul>
+      </motion.ul>
     </>
   );
 }

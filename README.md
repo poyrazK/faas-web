@@ -792,3 +792,24 @@ cursor. Its separate limits and permission failures are stated beside the feed.
 The account audit log remains linked for security/account events outside the
 resource timeline. Mock mode includes scoped inventory, curated actor categories,
 config/environment/domain/TLS events, and older pages.
+
+### Console analytics and creation
+
+New app starts with seven compact source choices and keeps the existing wizard,
+source fields, OAuth handoffs and deployment recovery. Edge rules live under each
+app and describe what the configured rule does before exposing technical settings.
+Sidebar groups animate their expansion and respect reduced motion.
+
+Overview and app analytics cards retain add, remove and reorder controls. Select
+a card or the larger request chart to open an in-place detail dialog. Its metric,
+app, grouping, route and time bounds use the `inspect*` URL keys; closing preserves
+the page's existing filters. Drag handles use arrow keys independently of opening
+details. Charts support arrow-key readouts and the dialog offers hourly table data.
+
+Account Analytics presents platform totals, response times, ranked apps and a
+clearly labelled selected-app history. Account totals have no hourly series or
+previous-period comparison in the current API. Platform latency covers successful
+(2xx) responses; per-app request history includes all recorded statuses. Estimated
+error counts from platform rates are labelled. Request charts use UTC and the
+server's retained bounds; partial hours are excluded from within-window comparisons.
+Missing telemetry, empty windows, plan limits and failed reads have distinct states.

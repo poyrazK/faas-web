@@ -3132,9 +3132,10 @@ export function useChangePlan() {
   });
 }
 
-export function useAccountSlo(window: AppSLOWindow = '24h') {
+export function useAccountSlo(window: AppSLOWindow = '24h', options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: keys.accountSlo(window),
+    enabled: options.enabled ?? true,
     queryFn: () => unwrap(api.GET('/v1/account/slo', { params: { query: { window } } })),
   });
 }
@@ -3670,13 +3671,21 @@ export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceRe
 export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
 
 /** Aggregated request analytics; `402` on Free, like the rest of per-app metrics. */
-export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsGroupBy) {
+export function useAppAnalytics(
+  slug: string,
+  since: string,
+  groupBy: AnalyticsGroupBy,
+  until?: string
+) {
   return useQuery({
-    queryKey: ['apps', slug, 'analytics', since, groupBy],
+    queryKey: ['apps', slug, 'analytics', since, groupBy, ...(until ? [until] : [])],
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/analytics', {
-          params: { path: { slug }, query: { since, group_by: groupBy } },
+          params: {
+            path: { slug },
+            query: { since, group_by: groupBy, ...(until ? { until } : {}) },
+          },
         })
       ),
     enabled: Boolean(slug),

@@ -1,3 +1,5 @@
+import { MetricInspectorProvider } from '@/components/dashboard/metric-inspector';
+import { validateMetricDetailSearch } from '@/components/dashboard/metric-detail-search';
 import { useEffect } from 'react';
 import {
   createFileRoute,
@@ -13,6 +15,7 @@ import { validateSettingsSearch } from '@/components/dashboard/settings-search';
 import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/dashboard')({
+  validateSearch: validateMetricDetailSearch,
   // Guards run before the route loads, so a signed-out visitor never sees a
   // flash of the shell. Session lives in localStorage, so this stays sync.
   beforeLoad: ({ location }) => {
@@ -53,7 +56,9 @@ function DashboardLayout() {
   }, [sessionExpired]);
   return (
     <DashboardShell>
-      <Outlet />
+      <MetricInspectorProvider>
+        <Outlet />
+      </MetricInspectorProvider>
     </DashboardShell>
   );
 }

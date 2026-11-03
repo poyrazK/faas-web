@@ -13,7 +13,6 @@ describe('railGroupFor', () => {
     ['/dashboard/instances', 'Instances', 'Compute'],
     ['/dashboard/builds', 'Builds', 'Compute'],
     ['/dashboard/postgres', 'Postgres', 'Storage'],
-    ['/dashboard/edge-rules', 'Edge rules', 'Networking'],
     ['/dashboard/integrations', 'Integrations', 'Messaging'],
     ['/dashboard/customers', 'Customers', 'Monetize'],
     ['/dashboard/invocations', 'Invocations', 'Observe'],
@@ -29,6 +28,7 @@ describe('railGroupFor', () => {
     ['/dashboard/logs', 'Logs'],
     ['/dashboard/templates', 'Templates'],
     ['/dashboard/debug', 'Debugger'],
+    ['/dashboard/edge-rules', 'Edge rules'],
   ])('gives %s (%s) no heading', (to, label) => {
     expect(railGroupFor({ to, label })).toBeUndefined();
   });

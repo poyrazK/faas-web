@@ -118,6 +118,35 @@ vi.mock('@/lib/api/queries', async (original) => ({
     fixtures.buildIds = ids;
     return [];
   },
+  useAppAnalytics: () => ({
+    data:
+      fixtures.metrics && fixtures.metrics.source === 'prometheus'
+        ? {
+            requests: fixtures.metrics.request_count,
+            error_requests: Math.round(
+              (fixtures.metrics.request_count * fixtures.metrics.error_rate_pct) / 100
+            ),
+            error_rate_pct: fixtures.metrics.error_rate_pct,
+            p50_ms: fixtures.metrics.latency_p50_ms,
+            p95_ms: fixtures.metrics.latency_p95_ms,
+            p99_ms: fixtures.metrics.latency_p99_ms,
+            cold_boots: 0,
+            groups: [],
+            since: '24h',
+            from: '2026-09-11T12:00:00Z',
+            until: '2026-09-12T12:00:00Z',
+          }
+        : undefined,
+    isPending: fixtures.metricsLoading,
+    error: fixtures.metricsError,
+    refetch: fixtures.retry,
+  }),
+  useAppAnalyticsTimeseries: () => ({
+    data: { points: [] },
+    isPending: false,
+    error: null,
+    refetch: fixtures.retry,
+  }),
   useAppMetrics: () => ({
     data: fixtures.metrics,
     isPending: fixtures.metricsLoading,

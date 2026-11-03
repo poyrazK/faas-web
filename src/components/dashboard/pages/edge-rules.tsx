@@ -2,7 +2,8 @@ import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { EdgeRuleDialog } from '@/components/dashboard/edge-rules/dialog';
 import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
-import { summarise } from '@/components/dashboard/edge-rules/kinds';
+import { explainRule } from '@/components/dashboard/edge-rules/explain';
+import { KINDS, type Kind, summarise } from '@/components/dashboard/edge-rules/kinds';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Tabs, tabId } from '@/components/dashboard/tabs';
@@ -47,6 +48,7 @@ interface EdgeRuleRow {
   /** The match condition in one line; empty when the rule has none. */
   condition: string;
   action: string;
+  explanation: string;
   name: string;
   /** A log-mode rule is matched and counted but never acts. */
   logOnly: boolean;
@@ -124,6 +126,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
       condition: summariseMatch(r.match),
       action: summarise(r.kind, ruleAction(r)),
+      explanation: explainRule(r.kind, ruleAction(r), r.enabled, r.mode === 'log'),
       name: r.name ?? '',
       logOnly: r.mode === 'log',
       enabled: r.enabled,
@@ -191,11 +194,31 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     },
     {
       key: 'action',
-      label: 'Does',
+      label: 'Rule and effect',
       render: (r) => (
         <span className="flex min-w-0 flex-col">
-          {r.name && <span className="truncate text-xs">{r.name}</span>}
-          <span className="font-mono text-xs">{r.action}</span>
+          <span className="text-sm font-medium">
+            {r.name || KINDS[r.kind as Kind]?.label || r.kind}
+            {r.logOnly && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-status-warning">
+                <Eye aria-hidden className="size-3" />
+                log only
+              </span>
+            )}
+          </span>
+          <span className="mt-1 max-w-lg whitespace-normal text-xs leading-relaxed text-muted-foreground">
+            {r.explanation}
+          </span>
+          <details
+            className="mt-1 text-xs text-muted-foreground"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <summary className="w-fit cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-brand">
+              Technical settings
+            </summary>
+            <span className="mt-1 block whitespace-normal font-mono">{r.action}</span>
+          </details>
         </span>
       ),
     },
@@ -323,6 +346,12 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       >
         {view === 'rules' && (
           <>
+            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Edge rules decide what happens to a request before it reaches{' '}
+              {scoped ? <span className="font-medium text-foreground">{scoped}</span> : 'an app'}.
+              Use them to redirect visitors, require authentication, or return a maintenance
+              message. Rules are evaluated in priority order.
+            </p>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <div className="mr-auto flex flex-wrap items-center gap-2">
                 <MaturityLabel capability={rulesCapability.capability} />
@@ -373,12 +402,14 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
 
             <ResourceTable
               rows={rows}
-              columns={columns}
+              columns={columns.filter(
+                (column) => column.key !== 'kind' && (!scoped || column.key !== 'app')
+              )}
               initialSort={{ key: 'priority', dir: 'asc' }}
               searchKeys={['kind', 'name', 'host', 'path', 'app', 'action', 'condition']}
               searchPlaceholder="Filter by kind, host, or path…"
-              emptyMessage="No edge rules yet."
-              minWidth="min-w-[980px]"
+              emptyMessage="No edge rules yet. Add a rule to change how matching requests are handled."
+              minWidth={scoped ? 'min-w-[760px]' : 'min-w-[900px]'}
               loading={isPending}
               error={error}
               onRetry={() => void refetch()}

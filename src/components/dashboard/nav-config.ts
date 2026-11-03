@@ -265,7 +265,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Compute', hubs: ['Projects', 'Releases', 'Jobs', 'Instances'] },
   { title: 'Storage', hubs: ['Object storage', 'Postgres'] },
-  { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
+  { title: 'Networking', hubs: ['Domains'] },
   { title: 'Messaging', hubs: ['Events', 'Integrations'] },
   { title: 'Monetize', hubs: ['Customers'] },
   // The Debugger is per app (the app's Observe section); its account route is
