@@ -16,7 +16,16 @@ export const APP_TAB_GROUPS = [
   { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
   {
     label: 'Observe',
-    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit'],
+    tabs: [
+      'Logs',
+      'Log drains',
+      'Errors',
+      'Issues',
+      'Alerts',
+      'Synthetic checks',
+      'Debugger',
+      'Request audit',
+    ],
   },
   {
     label: 'Connect',
@@ -80,6 +89,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Workflow insights': 'workflow-insights',
   Queues: 'queues',
   Realtime: 'realtime',
+  'Synthetic checks': 'synthetic-checks',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
 };

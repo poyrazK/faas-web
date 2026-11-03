@@ -97,7 +97,16 @@ it('puts the request audit with the other Observe pages', () => {
     within(pages('Observe'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-  ).toEqual(['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit']);
+  ).toEqual([
+    'Logs',
+    'Log drains',
+    'Errors',
+    'Issues',
+    'Alerts',
+    'Synthetic checks',
+    'Debugger',
+    'Request audit',
+  ]);
   expect(resolveAppTab('Request audit')).toBe('Request audit');
 });
 
@@ -165,4 +174,19 @@ it('puts realtime with the other messaging pages under Automate, gated on its ca
   expect(APP_TAB_CAPABILITY.Realtime).toBe('realtime');
   expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
   expect(resolveAppTab('Realtime')).toBe('Realtime');
+});
+
+it('puts synthetic checks beside alerts under Observe, gated on their capability', () => {
+  render(<Navigation initial="Synthetic checks" />);
+  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Observe'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Synthetic checks')).toBe(names.indexOf('Alerts') + 1);
+  expect(APP_TAB_CAPABILITY['Synthetic checks']).toBe('synthetic-checks');
+  expect(visibleAppTabs((id) => (id === 'synthetic-checks' ? 'off' : 'on'))).not.toContain(
+    'Synthetic checks'
+  );
+  expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('Synthetic checks');
+  expect(resolveAppTab('Synthetic checks')).toBe('Synthetic checks');
 });
