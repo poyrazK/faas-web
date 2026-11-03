@@ -361,7 +361,14 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
           stop_grace_period: 45_000_000_000 as unknown as string,
         }
       : { port: 8080 }),
-    ...(a.slug === 'api-gateway' ? { startup_deadline_s: 20, max_retries: 4 } : {}),
+    ...(a.slug === 'api-gateway'
+      ? {
+          startup_deadline_s: 20,
+          max_retries: 4,
+          // As a gregale.yaml lifecycle block would set it: reconnect after restore.
+          after_restore: { path: '/internal/after-restore', timeout_ms: 1500 },
+        }
+      : {}),
     // The pre-auth guard docs/security.md walks through: observe, with a
     // stricter login route that also counts failed sign-ins. The other apps
     // predate ADR-829 and have none, so the "off" state shows too.

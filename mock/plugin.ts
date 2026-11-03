@@ -1417,6 +1417,18 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
     const refused = preAuthMock.refusal(preAuth, process.env.MOCK_PLAN ?? db.account.plan);
     if (refused) throw new Problem(400, 'validation_failed', refused);
   }
+  // capgate refuses a hook while its capability is off for the account (faas
+  // capgate/settings.go:74); clearing one with {} turns nothing on, so it passes.
+  for (const key of ['after_restore', 'before_checkpoint'])
+    if (
+      hiddenCapabilities.has('snapshot-lifecycle-hooks') &&
+      Object.keys((body[key] as object | null) ?? {}).length > 0
+    )
+      throw new Problem(
+        403,
+        'capability_not_released',
+        `app.${key} needs the Snapshot lifecycle hooks capability, which is not available to this account; remove it or contact support for access.`
+      );
   const lifecycleRefusal = applyLifecycle(a, body, process.env.MOCK_PLAN ?? db.account.plan);
   if (lifecycleRefusal)
     throw new Problem(lifecycleRefusal.status, lifecycleRefusal.code, lifecycleRefusal.detail);

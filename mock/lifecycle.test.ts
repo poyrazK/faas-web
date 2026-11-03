@@ -64,3 +64,43 @@ it('refuses what apid refuses, with its 400 validation_failed, and writes nothin
     /restart_policy=always is rejected for execution_mode=job/
   );
 });
+
+it('stores snapshot hooks under the manifest, and clears one on an empty object', () => {
+  const app = fresh();
+  expect(
+    applyLifecycle(
+      app,
+      {
+        after_restore: { path: '/internal/after-restore', timeout_ms: 1500 },
+        before_checkpoint: { path: '/flush' },
+      },
+      'free'
+    )
+  ).toBeUndefined();
+  expect(app.manifest).toMatchObject({
+    after_restore: { path: '/internal/after-restore', timeout_ms: 1500 },
+    before_checkpoint: { path: '/flush' },
+  });
+  applyLifecycle(app, { after_restore: {} }, 'free');
+  expect(app.manifest?.after_restore).toBeUndefined();
+  expect(app.manifest?.before_checkpoint).toEqual({ path: '/flush' });
+});
+
+it('refuses the hooks apid refuses (appmanifest.go validateLifecycleHook)', () => {
+  const cases: [Record<string, unknown>, RegExp][] = [
+    [{ after_restore: { path: 'relative' } }, /after_restore\.path must be an absolute path/],
+    [{ before_checkpoint: { path: '/x?y' } }, /before_checkpoint\.path must be an absolute path/],
+    [{ after_restore: { path: '/x', timeout_ms: 2001 } }, /timeout_ms must be between 0 and 2000/],
+  ];
+  for (const [body, detail] of cases) {
+    const app = fresh();
+    const refusal = applyLifecycle(app, body, 'pro');
+    expect(refusal).toMatchObject({ status: 400, code: 'validation_failed' });
+    expect(refusal?.detail).toMatch(detail);
+    expect(app.manifest).toEqual({ entrypoint: ['node'] });
+  }
+  const worker = fresh({ execution_mode: 'worker' });
+  expect(applyLifecycle(worker, { after_restore: { path: '/x' } }, 'pro')?.detail).toMatch(
+    /after_restore requires request or service execution mode/
+  );
+});

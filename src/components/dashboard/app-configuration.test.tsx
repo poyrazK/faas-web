@@ -41,6 +41,9 @@ vi.mock('./health-probes', () => ({
     </p>
   ),
 }));
+vi.mock('./snapshot-hooks', () => ({
+  SnapshotHooks: ({ app }: { app: { slug: string } }) => <p>Snapshot hooks for {app.slug}</p>,
+}));
 vi.mock('./app-release-settings', () => ({
   AppReleaseSettings: ({ app }: { app: { slug: string } }) => (
     <section aria-label="Releases">release settings for {app.slug}</section>

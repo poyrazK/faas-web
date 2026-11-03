@@ -73,6 +73,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'snapshot-lifecycle-hooks',
+    name: 'Snapshot lifecycle hooks',
+    category: 'runtime',
+    description: 'Run app code before a snapshot is taken and after a restore.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/functions',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'container-deployments',
     name: 'Container deployments',
     category: 'delivery',
