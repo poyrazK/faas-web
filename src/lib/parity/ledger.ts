@@ -712,10 +712,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 103,
     name: 'Outbound webhooks (account and app)',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Webhooks'],
-    gap: 'Account release webhooks; webhook health and attempts',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/webhooks', '/dashboard/apps/$appSlug?tab=Webhooks'],
   },
   // E104 · preview
   {

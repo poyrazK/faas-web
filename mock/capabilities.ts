@@ -427,6 +427,28 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'outbound-webhooks',
+    name: 'Outbound webhooks',
+    category: 'async',
+    description: 'Receive signed webhooks for app and account events.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/event-driven',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'account-release-webhooks',
+    name: 'Account release webhooks',
+    category: 'async',
+    description: 'Receive release events for every app in the account.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/event-driven',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,

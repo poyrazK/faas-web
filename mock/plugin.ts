@@ -11,6 +11,7 @@ import * as preAuthMock from './pre-auth';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
+import * as releaseMock from './release-webhooks';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -5779,6 +5780,107 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/rotate-secret', ({ params }) => {
   hook.updated_at = db.iso(0);
   return { rotated_at: hook.updated_at, webhook_secret_sealed_masked: '***' as const };
 });
+route('GET', '/v1/apps/{slug}/webhooks/{id}/health', ({ params }) => {
+  app(params.slug);
+  return releaseMock.healthFor(params.id, db.deliveries.get(params.id) ?? []);
+});
+route('GET', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/attempts', ({ params }) => {
+  app(params.slug);
+  const d = (db.deliveries.get(params.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  return { attempts: releaseMock.attemptsFor(d) };
+});
+
+// Account release receivers (faas ADR-224, handlers_account_release_webhooks.go).
+const receiverProblem = (err: unknown): never => {
+  if (err instanceof releaseMock.ReceiverProblem)
+    throw new Problem(err.status, err.code, err.message);
+  throw err;
+};
+const receiverById = (id: string) => {
+  const r = releaseMock.receivers.find((x) => x.id === id);
+  if (!r) throw new Problem(404, 'not_found', 'release webhook not found');
+  return r;
+};
+route('GET', '/v1/account/release-webhooks', () => releaseMock.receivers);
+route('POST', '/v1/account/release-webhooks', ({ body }) => {
+  try {
+    return status(201, releaseMock.createReceiver(body));
+  } catch (err) {
+    return receiverProblem(err);
+  }
+});
+route('GET', '/v1/account/release-webhooks/{id}', ({ params }) => receiverById(params.id));
+route('PATCH', '/v1/account/release-webhooks/{id}', ({ params, body }) => {
+  const r = receiverById(params.id);
+  try {
+    if ('event_filter' in body)
+      r.event_filter = releaseMock.checkEvents(body.event_filter) as typeof r.event_filter;
+  } catch (err) {
+    return receiverProblem(err);
+  }
+  if (typeof body.target_url === 'string') {
+    if (!/^https:\/\//.test(body.target_url))
+      throw new Problem(400, 'app_webhook_invalid', 'target_url must be an https URL');
+    r.target_url = body.target_url;
+  }
+  if (body.retry_policy) r.retry_policy = body.retry_policy as typeof r.retry_policy;
+  if (body.delivery_format) r.delivery_format = body.delivery_format as typeof r.delivery_format;
+  if (typeof body.enabled === 'boolean') r.enabled = body.enabled;
+  r.updated_at = new Date().toISOString();
+  return r;
+});
+route('DELETE', '/v1/account/release-webhooks/{id}', ({ params }) => {
+  const r = receiverById(params.id);
+  releaseMock.receivers.splice(releaseMock.receivers.indexOf(r), 1);
+  releaseMock.receiverDeliveries.delete(r.id);
+  return NO_CONTENT;
+});
+route('POST', '/v1/account/release-webhooks/{id}/rotate-secret', ({ params, body }) => {
+  const r = receiverById(params.id);
+  const secret = String(body.webhook_secret ?? '');
+  if (secret.length < 1 || secret.length > 256)
+    throw new Problem(400, 'app_webhook_invalid', 'webhook_secret must be 1 to 256 bytes');
+  r.updated_at = new Date().toISOString();
+  return { rotated_at: r.updated_at, webhook_secret_sealed_masked: '***' as const };
+});
+route('GET', '/v1/account/release-webhooks/{id}/deliveries', ({ params, query }) => {
+  const r = receiverById(params.id);
+  const all = releaseMock.receiverDeliveries.get(r.id) ?? [];
+  const size = Math.min(100, Math.max(1, Number(query.get('page_size') ?? 50)));
+  const from = Number(query.get('page_token') ?? 0) || 0;
+  const page = all.slice(from, from + size);
+  return {
+    deliveries: page,
+    ...(from + size < all.length ? { next_token: String(from + size) } : {}),
+  };
+});
+route('GET', '/v1/account/release-webhooks/{id}/health', ({ params }) => {
+  const r = receiverById(params.id);
+  return releaseMock.healthFor(r.id, releaseMock.receiverDeliveries.get(r.id) ?? []);
+});
+route('GET', '/v1/account/release-webhooks/{id}/deliveries/{did}/attempts', ({ params }) => {
+  const r = receiverById(params.id);
+  const d = (releaseMock.receiverDeliveries.get(r.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  return { attempts: releaseMock.attemptsFor(d) };
+});
+route('POST', '/v1/account/release-webhooks/{id}/deliveries/{did}/retry', ({ params }) => {
+  const r = receiverById(params.id);
+  const d = (releaseMock.receiverDeliveries.get(r.id) ?? []).find((x) => x.id === params.did);
+  if (!d) throw new Problem(404, 'not_found', 'delivery not found');
+  if (d.status !== 'dead')
+    throw new Problem(
+      400,
+      'app_webhook_invalid',
+      "delivery is not in 'dead' state; only dead deliveries can be retried"
+    );
+  d.status = 'pending';
+  d.attempt = 0;
+  d.next_attempt_at = new Date().toISOString();
+  d.updated_at = d.next_attempt_at;
+  return { delivery: d };
+});
 route('GET', '/v1/apps/{slug}/webhooks/{id}/deliveries', ({ params }) => {
   app(params.slug);
   return { deliveries: db.deliveries.get(params.id) ?? [] };
@@ -5786,11 +5888,11 @@ route('GET', '/v1/apps/{slug}/webhooks/{id}/deliveries', ({ params }) => {
 route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params }) => {
   const d = (db.deliveries.get(params.id) ?? []).find((x) => x.id === params.did);
   if (!d) throw new Problem(404, 'delivery_not_found');
-  if (d.status !== 'dead' && d.status !== 'failed')
+  if (d.status !== 'dead')
     throw new Problem(
-      409,
-      'delivery_not_retryable',
-      'Only a failed or dead delivery can be retried.'
+      400,
+      'app_webhook_invalid',
+      "delivery is not in 'dead' state; only dead deliveries can be retried"
     );
   d.status = 'pending';
   d.next_attempt_at = db.iso(-5_000);
