@@ -78,6 +78,7 @@ import {
 } from './deploy-lifecycle';
 import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
 import { applyLifecycle } from './lifecycle';
+import { applyWarmStarts, warmPoolRows, warmStartsRefusal } from './warm-starts';
 import * as configHistory from './config-history';
 import {
   environmentInventory,
@@ -1363,7 +1364,6 @@ const PATCHABLE = [
   'websocket_enabled',
   'route_metrics_enabled',
   'maintenance_mode',
-  'warm_snapshot_enabled',
   'eviction_priority',
 ] as const;
 /**
@@ -1436,6 +1436,13 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
         'capability_not_released',
         `app.${key} needs the Snapshot lifecycle hooks capability, which is not available to this account; remove it or contact support for access.`
       );
+  const warmRefusal = warmStartsRefusal(
+    a,
+    body,
+    process.env.MOCK_PLAN ?? db.account.plan,
+    hiddenCapabilities
+  );
+  if (warmRefusal) throw new Problem(warmRefusal.status, warmRefusal.code, warmRefusal.detail);
   const lifecycleRefusal = applyLifecycle(a, body, process.env.MOCK_PLAN ?? db.account.plan);
   if (lifecycleRefusal)
     throw new Problem(lifecycleRefusal.status, lifecycleRefusal.code, lifecycleRefusal.detail);
@@ -1445,6 +1452,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       pre_auth_rate_limit: preAuth as NonNullable<db.App['manifest']>['pre_auth_rate_limit'],
     };
   applyReleaseSettings(a, body);
+  applyWarmStarts(a, body);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
@@ -6748,7 +6756,9 @@ route('POST', '/v1/apps/{slug}/queues/dead_letter/{id}/replay', ({ params }) => 
 
 route('GET', '/v1/apps/{slug}/instances', ({ params }) => {
   const a = app(params.slug);
-  return db.instances.filter((i) => i.app_id === a.id);
+  // The warm pool's paused rows; a $0 cap counts as reached at once.
+  const pool = warmPoolRows(a, process.env.MOCK_PLAN ?? db.account.plan, overageCapCents === 0);
+  return [...db.instances.filter((i) => i.app_id === a.id), ...pool];
 });
 
 route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
