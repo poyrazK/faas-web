@@ -221,19 +221,20 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 28,
     name: 'Release gates on customer signals',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release gates on customer signals',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'release-gates',
   },
   // B29 · preview
   {
     row: 29,
     name: 'Release approvals and approval policy',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release approvals and approval policy',
-    wave: 3,
+    status: 'full',
+    surfaces: [
+      '/dashboard/apps/$appSlug?tab=Release safety',
+      '/dashboard/releases/$deploymentId/approval',
+    ],
+    capability: 'release-approvals',
   },
   // B30 · preview
   {

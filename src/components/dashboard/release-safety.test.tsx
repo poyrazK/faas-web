@@ -7,6 +7,8 @@ const m = vi.hoisted(() => ({
   workspace: { org: null as string | null, label: 'Personal', ready: true },
   freezesFor: vi.fn(),
   schedulesFor: vi.fn(),
+  approvalsFor: vi.fn(),
+  gatesFor: vi.fn(),
 }));
 
 vi.mock('@/lib/api/capabilities', () => ({
@@ -18,6 +20,18 @@ vi.mock('./release-freezes', () => ({
   ReleaseFreezes: ({ owner }: { owner: FreezeOwner }) => {
     m.freezesFor(owner);
     return <p>freezes for {JSON.stringify(owner)}</p>;
+  },
+}));
+vi.mock('./release-approvals', () => ({
+  ReleaseApprovals: ({ slug }: { slug: string }) => {
+    m.approvalsFor(slug);
+    return <p>approvals for {slug}</p>;
+  },
+}));
+vi.mock('./release-gates', () => ({
+  ReleaseGates: ({ slug }: { slug: string }) => {
+    m.gatesFor(slug);
+    return <p>gates for {slug}</p>;
   },
 }));
 vi.mock('./release-schedule', () => ({
@@ -34,6 +48,8 @@ beforeEach(() => {
   m.workspace = { org: null, label: 'Personal', ready: true };
   m.freezesFor.mockReset();
   m.schedulesFor.mockReset();
+  m.approvalsFor.mockReset();
+  m.gatesFor.mockReset();
 });
 
 describe('ReleaseSafety (app tab)', () => {
@@ -41,16 +57,26 @@ describe('ReleaseSafety (app tab)', () => {
     render(<ReleaseSafety slug="shop" onOpenDeployment={vi.fn()} />);
     expect(m.freezesFor).toHaveBeenCalledWith({ kind: 'app', slug: 'shop' });
     expect(m.schedulesFor).toHaveBeenCalledWith('shop');
+    expect(m.approvalsFor).toHaveBeenCalledWith('shop');
+    expect(m.gatesFor).toHaveBeenCalledWith('shop');
   });
 
   it('explains each capability that is off, and never mounts its reads', () => {
-    m.access = { 'deploy-freezes': 'off', 'scheduled-releases': 'plan-not-entitled' };
+    m.access = {
+      'deploy-freezes': 'off',
+      'scheduled-releases': 'plan-not-entitled',
+      'release-approvals': 'off',
+      'release-gates': 'runtime-unavailable',
+    };
     render(<ReleaseSafety slug="shop" onOpenDeployment={vi.fn()} />);
-    expect(screen.getByText('Not enabled for this account')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'See previews you can join' })).toBeInTheDocument();
+    expect(screen.getAllByText('Not enabled for this account')).toHaveLength(2);
+    expect(screen.getByText('Unavailable on this installation')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'See previews you can join' })).toHaveLength(2);
     expect(screen.getByText('Not included in your plan')).toBeInTheDocument();
     expect(m.freezesFor).not.toHaveBeenCalled();
     expect(m.schedulesFor).not.toHaveBeenCalled();
+    expect(m.approvalsFor).not.toHaveBeenCalled();
+    expect(m.gatesFor).not.toHaveBeenCalled();
   });
 });
 
