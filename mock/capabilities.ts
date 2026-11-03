@@ -95,6 +95,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'deploy-queue-controls',
+    name: 'Deploy queue controls',
+    category: 'delivery',
+    description: 'Reorder, cancel or fast-track queued deploys.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/deploys',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'pr-previews',
     name: 'Pull-request previews',
     category: 'delivery',

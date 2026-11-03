@@ -396,6 +396,37 @@ describe('Releases hub', () => {
     );
   });
 
+  it('shows the deploy queue on the Releases view and opens a queued release at its lifecycle', async () => {
+    spyApi('GET').mockImplementation((path) =>
+      Promise.resolve(
+        path === '/v1/deployments'
+          ? {
+              data: {
+                items: [{ ...fixtures.deployment, id: 'dep-q', status: 'pending', revision: 9 }],
+                next_before: null,
+              },
+              response: new Response(),
+            }
+          : { data: undefined, error: { status: 404, code: 'not_found' }, response: new Response() }
+      )
+    );
+    const router = await mount();
+    const queue = await screen.findByRole('region', { name: 'Deploy queue' });
+    expect(await within(queue).findByText('alpha')).toBeInTheDocument();
+    expect(within(queue).getByRole('button', { name: 'Deploy now' })).toBeInTheDocument();
+    await userEvent.click(within(queue).getByRole('button', { name: 'Open release v9' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        deployment: 'dep-q',
+        releaseSection: 'lifecycle',
+      })
+    );
+    await act(() => router.navigate({ to: '/dashboard/releases', search: { view: 'builds' } }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Deploy queue' })).not.toBeInTheDocument()
+    );
+  });
+
   it('keeps deployment status and identity primary while preserving compact build facts', async () => {
     await mount();
     expect(screen.getAllByRole('columnheader')).toHaveLength(6);
