@@ -84,3 +84,13 @@ export function cliPostgresRestoreCommand(
 export function cliDomainSetDefaultCommand(domain: string): string {
   return `gregale domains set-default ${domain}`;
 }
+
+/** Define an SLO an slo_budget_* alert can name (one objective; 7- or 30-day window). */
+export function cliSloCreateCommand(appSlug: string): string {
+  return `gregale alert slo create --app ${appSlug} --name <name> --objective 99.9`;
+}
+
+/** Define a synthetic check a synthetic_check_* alert can name. */
+export function cliSyntheticCheckCreateCommand(appSlug: string): string {
+  return `gregale alert check create --app ${appSlug} --name <name> --path /healthz`;
+}

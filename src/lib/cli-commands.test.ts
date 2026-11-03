@@ -12,6 +12,8 @@ import {
   cliJobRemoveCommand,
   cliJobRunCommand,
   cliPostgresRestoreCommand,
+  cliSloCreateCommand,
+  cliSyntheticCheckCreateCommand,
 } from './cli-commands';
 
 // The CLI's own usage lines, copied from poyrazK/faas cmd/gregale:
@@ -134,6 +136,21 @@ describe('domain commands', () => {
   it('makes a domain its app default', () => {
     expect(cliDomainSetDefaultCommand('api.example.com')).toBe(
       'gregale domains set-default api.example.com'
+    );
+  });
+});
+
+describe('alert target commands', () => {
+  // commands_slos.go:115: "usage: gregale alert slo create --app <slug> --name <name> --objective <pct> ..."
+  it('defines an SLO with the required name and objective', () => {
+    expect(cliSloCreateCommand('shop')).toBe(
+      'gregale alert slo create --app shop --name <name> --objective 99.9'
+    );
+  });
+  // commands_synthetics.go:104: "usage: gregale alert check create --app <slug> --name <name> [--path /healthz] ..."
+  it('defines a synthetic check on a path', () => {
+    expect(cliSyntheticCheckCreateCommand('shop')).toBe(
+      'gregale alert check create --app shop --name <name> --path /healthz'
     );
   });
 });

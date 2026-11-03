@@ -840,13 +840,15 @@ export const LEDGER: LedgerEntry[] = [
     wave: 3,
   },
   // G125 · beta
+  // Rule actions other than webhook (rollback, demote, promote) belong to the
+  // alert-triggered rollbacks row (B35-B37, preview). Event consumer, workflow,
+  // MCP and edge-rule metrics are written from their own surfaces or the CLI,
+  // and still render on the alert detail.
   {
     row: 125,
     name: 'Alerts, notification channels, alert presets',
-    status: 'partial',
-    surfaces: ['/dashboard/alerts'],
-    gap: 'Notification channels; rule-form metrics, baselines, SLO and log queries; alert detail',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/alerts', '/dashboard/apps/$appSlug?tab=Alerts'],
   },
   // G127 · preview
   {
