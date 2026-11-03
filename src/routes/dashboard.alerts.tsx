@@ -6,6 +6,8 @@ import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AlertDetail, AlertState } from '@/components/dashboard/alert-detail';
 import { describeCondition, metricSpec } from '@/components/dashboard/alert-metrics';
+import { AlertRollbacks } from '@/components/dashboard/alert-rollbacks';
+import { WhenCapable } from '@/components/dashboard/capability-gate';
 import { AlertPresets } from '@/components/dashboard/alert-presets';
 import { AlertRuleForm } from '@/components/dashboard/alert-rule-form';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
@@ -199,6 +201,10 @@ export function AlertsBody({ slug }: { slug: string }) {
       />
 
       {selected && <AlertDetail slug={slug} ruleId={selected} onClose={() => setSelected(null)} />}
+
+      <WhenCapable capability="alert-rollbacks">
+        <AlertRollbacks slug={slug} />
+      </WhenCapable>
 
       <Panel
         title="Presets"

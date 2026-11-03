@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Pill } from '@/components/dashboard/resource-table';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
+import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { rollbackAllowedFor } from '@/lib/api/alert-rollbacks';
 import { ApiError } from '@/lib/api/errors';
 import { useAlertPresets, useEnableAlertPreset, useTestAlertPreset } from '@/lib/api/queries';
 import { ChannelPicker } from './notification-channels';
@@ -33,16 +36,26 @@ const CATEGORY_COLOR: Record<string, string> = {
 function EnableForm({
   slug,
   name,
+  label,
+  metric,
   minimumPlan,
   onDone,
 }: {
   slug: string;
   name: string;
+  label: string;
+  metric: string;
   minimumPlan: string;
   onDone: () => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const enable = useEnableAlertPreset();
+  // A preset can roll back too (EnableAlertPresetRequest.action), except for
+  // metrics whose rules may only notify.
+  const rollbacks = useCapabilityAccess('alert-rollbacks').access === 'on';
+  const canRollback = rollbacks && rollbackAllowedFor(metric);
+  const [rollback, setRollback] = useState(false);
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState('');
   const [channelIds, setChannelIds] = useState<string[]>([]);
@@ -74,11 +87,33 @@ function EnableForm({
           className="h-9 rounded-md border border-border bg-background px-2 font-mono text-sm outline-none focus:border-brand/50"
         />
       </label>
+      {canRollback && (
+        <label className="flex h-9 items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={rollback}
+            onChange={(e) => setRollback(e.target.checked)}
+          />
+          Also roll back the canary when it fires
+        </label>
+      )}
       <Button
         size="sm"
         disabled={!ready}
         busy={enable.isPending}
-        onClick={() => {
+        onClick={async () => {
+          const withRollback = canRollback && rollback;
+          if (
+            withRollback &&
+            !(await confirm({
+              title: `Roll ${slug} back when “${label}” fires?`,
+              description:
+                'When it fires while a production canary rolls out, the canary is aborted and the release it was replacing takes its traffic back. Each rollback leaves a receipt under Automatic rollbacks.',
+              confirmLabel: 'Enable preset',
+              destructive: true,
+            }))
+          )
+            return;
           void enable
             .mutateAsync({
               slug,
@@ -86,6 +121,7 @@ function EnableForm({
               body: {
                 ...(hasWebhook ? { webhook_url: url.trim(), webhook_secret: secret } : {}),
                 ...(channelIds.length ? { channel_ids: channelIds } : {}),
+                ...(withRollback ? { action: 'rollback' as const } : {}),
                 enabled: true,
               },
             })
@@ -194,6 +230,8 @@ export function AlertPresets({ slug }: { slug: string }) {
             <EnableForm
               slug={slug}
               name={p.name}
+              label={p.display_name}
+              metric={p.metric}
               minimumPlan={p.minimum_plan}
               onDone={() => setEnabling(null)}
             />

@@ -40,6 +40,7 @@ import {
   type AlertWindow,
 } from './alert-metrics';
 import { useCapabilityCheck } from './alert-rule-form';
+import { postDeployWindowAllowed, rollbackAllowedFor } from '@/lib/api/alert-rollbacks';
 import { ChannelPicker, channelKindLabel } from './notification-channels';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { RotateSecretDialog } from './rotate-secret-dialog';
@@ -267,6 +268,12 @@ function RuleDetail({
           </Fact>
           <Fact label="Cooldown">{rule.cooldown_minutes} min</Fact>
           <Fact label="Action">{ACTION[rule.action] ?? rule.action}</Fact>
+          {rule.post_deploy_rollback_window_seconds ? (
+            <Fact label="After cutover">
+              Rolls a release back for {Math.round(rule.post_deploy_rollback_window_seconds / 60)}{' '}
+              min after it takes all traffic
+            </Fact>
+          ) : null}
           <Fact label="Scope">{accountWide ? 'Every app on the account' : 'This app'}</Fact>
           <Fact label="Last fired">
             <Timestamp value={rule.last_fired_at} />
@@ -366,9 +373,15 @@ function EditRule({
   onDone: () => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const isOn = useCapabilityCheck();
   const update = useUpdateAlert(slug);
   const spec = metricSpec(rule.metric);
+  // Alert-triggered rollbacks (preview): switch a rule between notifying and
+  // rolling back, and set its window after cutover.
+  const canRollback = isOn('alert-rollbacks') && rollbackAllowedFor(rule.metric);
+  const [action, setAction] = useState(rule.action);
+  const [afterCutover, setAfterCutover] = useState(rule.post_deploy_rollback_window_seconds ?? 0);
   const comparisons = comparisonsFor(rule.metric, isOn('anomaly-alerts'));
   // A baseline rule keeps its comparison listed even after the flag goes off:
   // apid keeps evaluating it and only refuses changing it.
@@ -405,10 +418,25 @@ function EditRule({
   };
   const shown = (k: keyof typeof errors) => (attempted ? errors[k] : undefined);
 
-  const save = () => {
+  const windowAllowed = action === 'rollback' && postDeployWindowAllowed(rule.metric, comparison);
+  const postDeploy = windowAllowed ? afterCutover : 0;
+  const save = async () => {
     setAttempted(true);
     if (Object.values(errors).some(Boolean) || update.isPending) return;
     const body: UpdateAlertRule = {};
+    if (action !== rule.action) body.action = action;
+    if (postDeploy !== (rule.post_deploy_rollback_window_seconds ?? 0))
+      body.post_deploy_rollback_window_seconds = postDeploy;
+    if (
+      (body.action === 'rollback' || (body.post_deploy_rollback_window_seconds ?? 0) > 0) &&
+      !(await confirm({
+        title: `Roll ${slug} back when “${rule.name}” fires?`,
+        description: `When it fires while a production canary rolls out, the canary is aborted and the release it was replacing takes its traffic back.${postDeploy ? ` For ${postDeploy / 60} minutes after a release takes all traffic, a breach of its own 5xx rate rolls that release back too.` : ''}`,
+        confirmLabel: 'Save rule',
+        destructive: true,
+      }))
+    )
+      return;
     if (name.trim() !== rule.name) body.name = name.trim();
     if (comparison !== rule.comparison) body.comparison = comparison;
     if (parsedThreshold !== rule.threshold) body.threshold = parsedThreshold;
@@ -436,7 +464,7 @@ function EditRule({
       className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
-        save();
+        void save();
       }}
     >
       <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -513,6 +541,44 @@ function EditRule({
         />
         {shown('cooldown') && <FieldError id="edit-cooldown-error">{shown('cooldown')}</FieldError>}
       </label>
+      {(canRollback || rule.action !== 'webhook') && (
+        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+          <label className="flex min-w-56 flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">When it fires</span>
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value as typeof action)}
+              className={FIELD}
+            >
+              <option value="webhook">{ACTION.webhook}</option>
+              {(canRollback || rule.action === 'rollback') && (
+                <option value="rollback">Notify and roll back the canary</option>
+              )}
+              {rule.action !== 'webhook' && rule.action !== 'rollback' && (
+                <option value={rule.action}>{ACTION[rule.action] ?? rule.action}</option>
+              )}
+            </select>
+          </label>
+          {action === 'rollback' && (
+            <label className="flex min-w-56 flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">After cutover</span>
+              <select
+                value={postDeploy}
+                disabled={!windowAllowed}
+                onChange={(e) => setAfterCutover(Number(e.target.value))}
+                className={FIELD}
+              >
+                <option value={0}>Canaries only</option>
+                {[5, 10, 15, 30, 60].map((m) => (
+                  <option key={m} value={m * 60}>
+                    Also roll back a release {m} min after it takes all traffic
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-4">
         <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="edit-channel" />
         {shown('channels') && <FieldError id="edit-channels-error">{shown('channels')}</FieldError>}

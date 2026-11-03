@@ -14,6 +14,12 @@ vi.mock('@/lib/api/queries', () => ({
   useTestAlertPreset: () => ({ mutateAsync: test_, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+const confirm = vi.fn();
+const rollbackAccess = { value: 'on' };
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: rollbackAccess.value, refresh: vi.fn() }),
+}));
 vi.mock('@/lib/api/notification-channels', () => ({
   useNotificationChannels: () => ({
     data: [
@@ -51,6 +57,8 @@ beforeEach(() => {
   enable.mockReset().mockResolvedValue({});
   test_.mockReset().mockResolvedValue({ status: 'sent' });
   toast.mockReset();
+  confirm.mockReset().mockResolvedValue(true);
+  rollbackAccess.value = 'on';
   useAlertPresets.mockReturnValue({ data: [PRESET], isPending: false, error: null });
 });
 
@@ -135,5 +143,31 @@ describe('AlertPresets', () => {
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
     );
+  });
+
+  it('rolls the canary back too, after a confirmation, when asked', async () => {
+    render(<AlertPresets slug="api" />);
+    await openEnable();
+    await userEvent.click(screen.getByRole('checkbox', { name: /ops-slack/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /roll back the canary/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^enable preset$/i }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Roll api back when “Error rate exceeds 2%” fires?',
+        destructive: true,
+      })
+    );
+    await waitFor(() =>
+      expect(enable).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.objectContaining({ action: 'rollback' }) })
+      )
+    );
+  });
+
+  it('offers no rollback while alert-rollbacks is off for the account', async () => {
+    rollbackAccess.value = 'off';
+    render(<AlertPresets slug="api" />);
+    await openEnable();
+    expect(screen.queryByRole('checkbox', { name: /roll back the canary/ })).toBeNull();
   });
 });

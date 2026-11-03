@@ -44,6 +44,7 @@ const rule = {
   percent: 25,
   enabled: true,
   include_body: false,
+  allow_unsafe_methods: false,
   redact_headers: ['X-Tenant-Id'],
   always_stripped_headers: ['Authorization'],
   created_at: '2026-09-05T10:00:00Z',
@@ -51,6 +52,12 @@ const rule = {
 };
 const summary = {
   total_invocations: 420,
+  changed_response_count: 7,
+  changed_response_percent: 1.7,
+  incomplete_comparison_count: 3,
+  scheduler_admission_timeout_count: 1,
+  scheduler_admission_rejected_count: 1,
+  scheduler_admission_error_count: 0,
   status_diff_count: 5,
   schema_diff_count: 2,
   body_diff_count: 0,
@@ -106,6 +113,7 @@ describe('MirrorRules', () => {
         mirror_deployment_id: 'bbbbbbbb2222',
         percent: 100,
         include_body: false,
+        allow_unsafe_methods: false,
         redact_headers: ['X-Trace', 'X-Debug'],
       })
     );

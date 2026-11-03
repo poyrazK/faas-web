@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   schedulesFor: vi.fn(),
   approvalsFor: vi.fn(),
   gatesFor: vi.fn(),
+  routeHealthFor: vi.fn(),
 }));
 
 vi.mock('@/lib/api/capabilities', () => ({
@@ -34,6 +35,12 @@ vi.mock('./release-gates', () => ({
     return <p>gates for {slug}</p>;
   },
 }));
+vi.mock('./route-health-gate', () => ({
+  RouteHealthGatePanel: ({ slug }: { slug: string }) => {
+    m.routeHealthFor(slug);
+    return <p>route health for {slug}</p>;
+  },
+}));
 vi.mock('./release-schedule', () => ({
   ScheduledReleases: ({ app }: { app?: string }) => {
     m.schedulesFor(app);
@@ -50,6 +57,7 @@ beforeEach(() => {
   m.schedulesFor.mockReset();
   m.approvalsFor.mockReset();
   m.gatesFor.mockReset();
+  m.routeHealthFor.mockReset();
 });
 
 describe('ReleaseSafety (app tab)', () => {
@@ -59,6 +67,7 @@ describe('ReleaseSafety (app tab)', () => {
     expect(m.schedulesFor).toHaveBeenCalledWith('shop');
     expect(m.approvalsFor).toHaveBeenCalledWith('shop');
     expect(m.gatesFor).toHaveBeenCalledWith('shop');
+    expect(m.routeHealthFor).toHaveBeenCalledWith('shop');
   });
 
   it('explains each capability that is off, and never mounts its reads', () => {
@@ -67,16 +76,18 @@ describe('ReleaseSafety (app tab)', () => {
       'scheduled-releases': 'plan-not-entitled',
       'release-approvals': 'off',
       'release-gates': 'runtime-unavailable',
+      'route-health-canary-guard': 'off',
     };
     render(<ReleaseSafety slug="shop" onOpenDeployment={vi.fn()} />);
-    expect(screen.getAllByText('Not enabled for this account')).toHaveLength(2);
+    expect(screen.getAllByText('Not enabled for this account')).toHaveLength(3);
     expect(screen.getByText('Unavailable on this installation')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'See previews you can join' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: 'See previews you can join' })).toHaveLength(3);
     expect(screen.getByText('Not included in your plan')).toBeInTheDocument();
     expect(m.freezesFor).not.toHaveBeenCalled();
     expect(m.schedulesFor).not.toHaveBeenCalled();
     expect(m.approvalsFor).not.toHaveBeenCalled();
     expect(m.gatesFor).not.toHaveBeenCalled();
+    expect(m.routeHealthFor).not.toHaveBeenCalled();
   });
 });
 

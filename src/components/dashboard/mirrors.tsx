@@ -30,6 +30,7 @@ import {
   type MirrorWindow,
 } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { MirrorRuleDetail } from './mirror-detail';
 
 /**
  * Traffic mirroring (ADR-124 / ADR-125): a share of a live deployment's
@@ -180,6 +181,7 @@ function MirrorRuleCard({
   const confirm = useConfirm();
   const update = useUpdateMirrorRule(slug);
   const remove = useDeleteMirrorRule(slug);
+  const [open, setOpen] = useState(false);
 
   const onToggle = (enabled: boolean) => {
     void update
@@ -263,6 +265,14 @@ function MirrorRuleCard({
           </label>
           <Button
             size="xs"
+            variant="outline"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? 'Hide details' : 'Details and replay'}
+          </Button>
+          <Button
+            size="xs"
             variant="ghost"
             onClick={() => void onDelete()}
             disabled={remove.isPending}
@@ -274,6 +284,7 @@ function MirrorRuleCard({
         </span>
       </div>
       <MirrorSummary slug={slug} id={rule.id} />
+      {open && <MirrorRuleDetail slug={slug} id={rule.id} />}
     </div>
   );
 }
@@ -297,6 +308,12 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <StatTile label="Mirrored" value={data?.total_invocations} state={state} />
             <StatTile
+              label="Changed"
+              value={data?.changed_response_count}
+              state={state}
+              tone="orange"
+            />
+            <StatTile
               label="Status diffs"
               value={data?.status_diff_count}
               state={state}
@@ -315,6 +332,7 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
               tone="orange"
             />
             <StatTile label="Crashes" value={data?.crash_count} state={state} tone="red" />
+            <StatTile label="Incomplete" value={data?.incomplete_comparison_count} state={state} />
           </div>
           {data && (
             <p className="text-sm text-muted-foreground">
@@ -322,6 +340,16 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
               <span className="text-foreground">{latencyDirection(data.mean_latency_diff_ms)}</span>{' '}
               on average, {latencyDirection(data.p99_latency_diff_ms)} at p99
               {data.total_invocations === 0 ? ' — nothing mirrored in this window yet.' : '.'}
+            </p>
+          )}
+          {data && data.total_invocations > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {data.changed_response_percent.toFixed(1)}% of complete comparisons came back
+              different. Incomplete comparisons are left out of that share; of them,{' '}
+              {data.scheduler_admission_timeout_count} timed out waiting for a mirror,{' '}
+              {data.scheduler_admission_rejected_count} were refused by a capacity limit and{' '}
+              {data.scheduler_admission_error_count} failed otherwise. None of these count as
+              crashes.
             </p>
           )}
         </>
@@ -338,7 +366,9 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
   const [mirror, setMirror] = useState('');
   const [percent, setPercent] = useState('100');
   const [includeBody, setIncludeBody] = useState(false);
+  const [unsafe, setUnsafe] = useState(false);
   const [redact, setRedact] = useState('');
+  const confirm = useConfirm();
 
   const percentValue = Number(percent);
   // `Number('')` is 0, so an emptied field would otherwise pass as a legal 0%
@@ -349,12 +379,23 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
   const ready = Boolean(sourceId && mirrorId && sourceId !== mirrorId && percentOk);
 
   const submit = async () => {
+    if (
+      unsafe &&
+      !(await confirm({
+        title: 'Mirror POST, PUT, PATCH and DELETE too?',
+        description: `A copy of ${percentValue}% of ${shortId(sourceId)}'s writes is sent to ${shortId(mirrorId)} as well. Anything it does with them happens for real: rows written, emails sent, payments taken. Responses to callers still come only from the source.`,
+        confirmLabel: 'Mirror writes',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await create.mutateAsync({
         source_deployment_id: sourceId,
         mirror_deployment_id: mirrorId,
         percent: percentValue,
         include_body: includeBody,
+        allow_unsafe_methods: unsafe,
         redact_headers: redact
           .split(',')
           .map((h) => h.trim())
@@ -440,6 +481,15 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
             className="data-[state=checked]:bg-brand"
           />
           Compare bodies
+        </label>
+        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+          <Switch
+            checked={unsafe}
+            onCheckedChange={setUnsafe}
+            aria-label="Mirror writes"
+            className="data-[state=checked]:bg-brand"
+          />
+          Mirror writes
         </label>
         <Button
           type="submit"
