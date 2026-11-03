@@ -98,7 +98,16 @@ it('puts the request audit with the other Observe pages', () => {
     within(pages('Observe'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-  ).toEqual(['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit']);
+  ).toEqual([
+    'Logs',
+    'Log drains',
+    'Errors',
+    'Issues',
+    'Alerts',
+    'Debugger',
+    'Forks',
+    'Request audit',
+  ]);
   expect(resolveAppTab('Request audit')).toBe('Request audit');
 });
 
@@ -122,6 +131,15 @@ describe('visibleAppTabs', () => {
   it('maps every gated tab to a catalog id', () => {
     expect(APP_TAB_CAPABILITY.Debugger).toBe('debug');
     expect(APP_TAB_CAPABILITY.Automations).toBe('automations');
+  });
+  it('hides Forks when apid gates production forks off, and keeps it for the plan notice', () => {
+    expect(APP_TAB_CAPABILITY.Forks).toBe('production-forks');
+    expect(visibleAppTabs((id) => (id === 'production-forks' ? 'off' : 'on'))).not.toContain(
+      'Forks'
+    );
+    expect(
+      visibleAppTabs((id) => (id === 'production-forks' ? 'plan-not-entitled' : 'on'))
+    ).toContain('Forks');
   });
   it('hides Log drains when apid gates the log-drains capability off', () => {
     expect(APP_TAB_CAPABILITY['Log drains']).toBe('log-drains');

@@ -42,6 +42,7 @@ import * as deploymentDetail from './deployment-detail';
 import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { registerDeadLetterMocks } from './dead-letters';
+import { registerForkMocks } from './forks';
 import { registerEventConsumerMocks } from './event-consumers';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
@@ -12495,6 +12496,10 @@ route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
 
 registerEventMocks(route, Problem, NO_CONTENT);
 registerDeadLetterMocks(route, Problem, NO_CONTENT);
+registerForkMocks(route, Problem, NO_CONTENT, {
+  hidden: (capability) => hiddenCapabilities.has(capability),
+  plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
 registerEventConsumerMocks(route, Problem);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------

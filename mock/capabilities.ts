@@ -29,6 +29,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'crash-snapshots',
+    name: 'Crash snapshots',
+    category: 'observability',
+    description:
+      "Capture a running instance's memory after it answers a 5xx, keep it encrypted for 7 days, and open it as a quarantined production fork.",
+    maturity: 'preview',
+    plans: ['pro', 'scale'],
+    docs_url: '/docs/crash-snapshots',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'deploy-diff',
     name: 'Deploy diff',
     category: 'delivery',
@@ -58,6 +70,18 @@ const entries: Capability[] = [
     maturity: 'preview',
     plans: PAID,
     docs_url: '/docs/mcp',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'production-forks',
+    name: 'Production forks',
+    category: 'runtime',
+    description:
+      "Restore a copy of an app's live deployment into a quarantined, non-serving debug instance that is destroyed at its TTL.",
+    maturity: 'preview',
+    plans: ['pro', 'scale'],
+    docs_url: '/docs/forks',
     acceptance: 'mock-only',
     enabled: true,
   },

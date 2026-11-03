@@ -412,19 +412,17 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 55,
     name: 'Production forks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Production forks',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'production-forks',
   },
   // C56 · preview
   {
     row: 56,
     name: 'Crash snapshots',
-    status: 'none',
-    surfaces: [],
-    gap: 'Crash snapshots',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'crash-snapshots',
   },
   // C58 · preview
   {

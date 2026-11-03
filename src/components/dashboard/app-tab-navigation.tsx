@@ -16,7 +16,16 @@ export const APP_TAB_GROUPS = [
   { label: 'Delivery', tabs: ['Deployments', 'Release safety', 'Activity'] },
   {
     label: 'Observe',
-    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit'],
+    tabs: [
+      'Logs',
+      'Log drains',
+      'Errors',
+      'Issues',
+      'Alerts',
+      'Debugger',
+      'Forks',
+      'Request audit',
+    ],
   },
   {
     label: 'Connect',
@@ -67,6 +76,9 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   // The beta `debug` family owns the tab; the production-debugger preview
   // inside it is gated view by view (debug-body.tsx).
   Debugger: 'debug',
+  // Production forks; crash snapshots open as forks, so they live inside it
+  // behind their own `crash-snapshots` gate (app-forks.tsx).
+  Forks: 'production-forks',
   Issues: 'issues',
   Errors: 'issues',
   MCP: 'mcp-hosting',
