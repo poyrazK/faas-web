@@ -59,6 +59,11 @@ import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { ForksBody } from '@/components/dashboard/app-forks';
+import { ProfileCapturesBody } from '@/components/dashboard/profile-captures';
+import {
+  validateProfileCaptureSearch,
+  type ProfileCaptureSearch,
+} from '@/components/dashboard/profile-captures-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
@@ -182,6 +187,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
   validateSearch: (
     search: Record<string, unknown>
   ): DebugSearch &
+    ProfileCaptureSearch &
     LogsSearch &
     IssueSearch &
     ReturnType<typeof automationSearchPatch> & {
@@ -192,6 +198,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
+    ...validateProfileCaptureSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
@@ -840,6 +847,19 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Forks' && <ForksBody slug={fn.id} />}
+              {tab === 'Profile captures' && (
+                <ProfileCapturesBody
+                  slug={fn.id}
+                  search={search}
+                  onSelect={(patch) =>
+                    void navigate({
+                      search: (current) => ({ ...current, ...patch }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}

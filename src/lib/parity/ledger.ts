@@ -892,10 +892,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 168,
     name: 'On-demand profile captures: CPU, heap, stacks, Go locks; automatic captures; capture diff',
-    status: 'none',
-    surfaces: [],
-    gap: 'On-demand profile captures',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Profile captures'],
+    capability: 'profile-captures',
   },
   // G134 · beta
   {
