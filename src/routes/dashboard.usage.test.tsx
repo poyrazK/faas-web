@@ -1,28 +1,38 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 
 const setCap = vi.fn();
 const toast = vi.fn();
 const usage = vi.hoisted(() => ({
   rows: [] as { app_id: string; mb_seconds: number; requests: number; cold_boots: number }[],
   projection: {} as Record<string, unknown>,
+  breakdown: { isPending: false, error: null as unknown, refetch: (() => {}) as () => void },
   reads: 0,
+  compute: {
+    month: '2026-08',
+    used_gb_hours: 1,
+    included_gb_hours: 50,
+    overage_gb_hours: 0,
+    overage_cents: 0,
+  },
 }));
-const COMPUTE = {
-  month: '2026-08',
-  used_gb_hours: 1,
-  included_gb_hours: 50,
-  overage_gb_hours: 0,
-  overage_cents: 0,
-};
+const COMPUTE = usage.compute;
 
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
-  // The page reads the account usage projection (GET /v1/account/usage).
+  // Compute stands on the usage summary; the account projection
+  // (GET /v1/account/usage) only adds the daily and service breakdown.
+  useUsageSummary: () => ({
+    data: usage.compute,
+    isPending: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useAccountUsage: () => {
     usage.reads++;
-    return { data: usage.projection, isPending: false, error: null, refetch: vi.fn() };
+    return { data: usage.projection, ...usage.breakdown };
   },
   useApps: () => ({ data: [] }),
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
@@ -73,6 +83,7 @@ beforeEach(() => {
   usage.rows = [];
   usage.reads = 0;
   usage.projection = { month: '2026-08', compute: { ...COMPUTE } };
+  usage.breakdown = { isPending: false, error: null, refetch: vi.fn() };
   setCap
     .mockReset()
     .mockRejectedValueOnce(new Error('offline'))
@@ -283,5 +294,58 @@ describe('the account usage projection', () => {
     expect(screen.getByText('of 100 CU-hours included')).toBeInTheDocument();
     expect(screen.getByText('1 GiB-months')).toBeInTheDocument();
     expect(screen.getByText('Within the compute allowance')).toBeInTheDocument();
+  });
+});
+
+describe('when the account usage projection fails', () => {
+  // apid fails the whole projection when a configured service's accounting
+  // fails (handlers_ext.go accountUsage); compute must survive it.
+  const fail = (code: string, status: number) => {
+    usage.projection = undefined as never;
+    usage.breakdown = {
+      isPending: false,
+      error: new ApiError({ code, status, title: code, detail: `${code} detail` } as never),
+      refetch: vi.fn(),
+    };
+  };
+
+  it('keeps compute, the allowance and overage, and offers a retry for the breakdown', async () => {
+    fail('capacity_unavailable', 503);
+    render(<UsagePage />);
+    // Compute comes from the usage summary, unaffected.
+    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
+    expect(screen.getByText('Included')).toBeInTheDocument();
+    expect(screen.getByText('Overage cost')).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'Included allowance used' })).toBeInTheDocument();
+    expect(screen.getByText(/1 of 50 GB-hours/)).toBeInTheDocument();
+    // The breakdown is replaced by a scoped notice, not a page error.
+    expect(
+      screen.getByText(
+        "A service's usage accounting could not be read, so the daily breakdown and service usage are unavailable. Compute usage above is unaffected."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('capacity_unavailable detail');
+    expect(screen.queryByTestId('daily-chart')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Object storage' })).toBeNull();
+    expect(screen.queryByText('Managed PostgreSQL')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(usage.breakdown.refetch).toHaveBeenCalled();
+  });
+
+  it('names managed PostgreSQL when its accounting is the cause', () => {
+    fail('managed_postgres_usage_stale', 503);
+    render(<UsagePage />);
+    expect(
+      screen.getByText(/Managed PostgreSQL usage is stale, so the daily breakdown/)
+    ).toBeInTheDocument();
+    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
+  });
+
+  it('says it is reading the breakdown while compute is already shown', () => {
+    usage.projection = undefined as never;
+    usage.breakdown = { isPending: true, error: null, refetch: vi.fn() };
+    render(<UsagePage />);
+    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
+    expect(screen.getByText('Reading the daily and service breakdown…')).toBeInTheDocument();
   });
 });

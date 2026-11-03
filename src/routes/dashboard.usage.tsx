@@ -7,8 +7,10 @@ import {
   StatTile,
   UnreachableState,
   queryPhase,
+  type QueryPhase,
 } from '@/components/dashboard/primitives';
-import { useAccountUsage, useApps, usePerAppUsage } from '@/lib/api/queries';
+import { useAccountUsage, useApps, usePerAppUsage, useUsageSummary } from '@/lib/api/queries';
+import { ApiError } from '@/lib/api/errors';
 import { useAuth } from '@/lib/auth';
 import { useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -32,9 +34,10 @@ export const Route = createFileRoute('/dashboard/usage')({
 });
 
 /**
- * Billing-period usage, from the account usage projection (`/v1/account/usage`):
- * compute with its daily rollups, plus object storage and managed PostgreSQL
- * when the account has them.
+ * Billing-period usage. Compute, the allowance and overage are from
+ * `/v1/usage/summary`; the account usage projection (`/v1/account/usage`) adds
+ * the daily rollups, object storage and managed PostgreSQL when the account has
+ * them, and its failure only replaces that addition with a notice.
  *
  * The unit that matters is GB-hours: memory multiplied by time, which is how a
  * scale-to-zero platform charges. An idle app costs nothing, so a low number
@@ -267,9 +270,60 @@ function UsagePage() {
   );
 }
 
+/**
+ * Why the service breakdown is missing, by code. apid fails the whole account
+ * projection when a configured service's accounting fails (faas handlers_ext.go
+ * accountUsage: `capacity_unavailable` for object storage, `managed_postgres_*`
+ * for PostgreSQL), so compute above, read separately, is never what is lost.
+ */
+function breakdownNotice(error: unknown): string {
+  const unaffected = 'Compute usage above is unaffected.';
+  if (error instanceof ApiError) {
+    if (error.code === 'managed_postgres_usage_stale')
+      return `Managed PostgreSQL usage is stale, so the daily breakdown and service usage cannot be shown yet. ${unaffected}`;
+    if (error.code.startsWith('managed_postgres_'))
+      return `Managed PostgreSQL usage could not be read, so the daily breakdown and service usage are unavailable. ${unaffected}`;
+    if (error.code === 'capacity_unavailable')
+      return `A service's usage accounting could not be read, so the daily breakdown and service usage are unavailable. ${unaffected}`;
+  }
+  return `The daily breakdown and service usage are unavailable. ${unaffected}`;
+}
+
+/** Stands in for the daily chart and service panels while the projection is not ready. */
+function BreakdownPhase({
+  phase,
+  error,
+  onRetry,
+}: {
+  phase: QueryPhase;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  return (
+    <Panel
+      title="Day by day and services"
+      description="Daily rollups, object storage and managed PostgreSQL, from the account usage projection."
+    >
+      {phase === 'loading' ? (
+        <InlinePhase phase="loading" loadingMessage="Reading the daily and service breakdown…" />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">{breakdownNotice(error)}</p>
+          <InlinePhase phase={phase} error={error} onRetry={onRetry} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function PersonalUsage() {
-  const { data: projection, isPending, error, refetch } = useAccountUsage();
-  const data = projection?.compute;
+  // Compute, the allowance and overage come from the usage summary, which
+  // stands on its own; the account projection only adds to it.
+  const { data, isPending, error, refetch } = useUsageSummary();
+  const breakdown = useAccountUsage();
+  const breakdownPhase = queryPhase({ error: breakdown.error, loading: breakdown.isPending });
+  // A failed refetch keeps stale data; show the notice rather than old figures.
+  const projection = breakdownPhase === 'ready' ? breakdown.data : undefined;
   const { account } = useAuth();
   // The shared precedence: an unreachable API is an outage to wait out, not a
   // red error — and never a page of zeros.
@@ -346,7 +400,19 @@ function PersonalUsage() {
           <AppCapacity />
 
           <ForecastPanel used={used} included={included} month={data?.month} />
-          <DailyUsagePanel daily={data?.daily} month={projection?.month ?? ''} usedGbHours={used} />
+          {projection ? (
+            <DailyUsagePanel
+              daily={projection.compute.daily}
+              month={projection.month}
+              usedGbHours={used}
+            />
+          ) : (
+            <BreakdownPhase
+              phase={breakdownPhase}
+              error={breakdown.error}
+              onRetry={() => void breakdown.refetch()}
+            />
+          )}
           <PerAppUsagePanel />
 
           {/* Absent blocks mean the service is not enabled for the account. */}

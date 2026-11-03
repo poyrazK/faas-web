@@ -44,31 +44,31 @@ beforeEach(() => {
       if (readFails) throw new Error('Cap read unavailable');
       return { data: { overage_cap_cents: cap }, response: new Response() } as never;
     }
+    const compute = {
+      month: '2026-09',
+      used_gb_hours: 1,
+      included_gb_hours: 100,
+      overage_gb_hours: 0,
+      overage_cents: 0,
+    };
     const data =
-      path === '/v1/account/usage'
-        ? {
-            month: '2026-09',
-            compute: {
-              month: '2026-09',
-              used_gb_hours: 1,
-              included_gb_hours: 100,
-              overage_gb_hours: 0,
-              overage_cents: 0,
-            },
-          }
-        : path === '/v1/billing/forecast'
-          ? {
-              period_start: '2026-09-01T00:00:00Z',
-              period_end: '2026-10-01T00:00:00Z',
-              as_of: '2026-09-15T00:00:00Z',
-              currency: 'EUR',
-              meters: [],
-              bill_estimate_available: false,
-              missing_bill_components: [],
-            }
-          : path === '/v1/audit-events'
-            ? { events: [], limit: 20 }
-            : [];
+      path === '/v1/usage/summary'
+        ? compute
+        : path === '/v1/account/usage'
+          ? { month: '2026-09', compute }
+          : path === '/v1/billing/forecast'
+            ? {
+                period_start: '2026-09-01T00:00:00Z',
+                period_end: '2026-10-01T00:00:00Z',
+                as_of: '2026-09-15T00:00:00Z',
+                currency: 'EUR',
+                meters: [],
+                bill_estimate_available: false,
+                missing_bill_components: [],
+              }
+            : path === '/v1/audit-events'
+              ? { events: [], limit: 20 }
+              : [];
     return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
