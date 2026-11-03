@@ -6,22 +6,24 @@ const setCap = vi.fn();
 const toast = vi.fn();
 const usage = vi.hoisted(() => ({
   rows: [] as { app_id: string; mb_seconds: number; requests: number; cold_boots: number }[],
+  projection: {} as Record<string, unknown>,
+  reads: 0,
 }));
+const COMPUTE = {
+  month: '2026-08',
+  used_gb_hours: 1,
+  included_gb_hours: 50,
+  overage_gb_hours: 0,
+  overage_cents: 0,
+};
 
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
-  useUsageSummary: () => ({
-    data: {
-      month: '2026-08',
-      used_gb_hours: 1,
-      included_gb_hours: 50,
-      overage_gb_hours: 0,
-      overage_cents: 0,
-    },
-    isPending: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  // The page reads the account usage projection (GET /v1/account/usage).
+  useAccountUsage: () => {
+    usage.reads++;
+    return { data: usage.projection, isPending: false, error: null, refetch: vi.fn() };
+  },
   useApps: () => ({ data: [] }),
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
   useSetOverageCap: () => ({ mutateAsync: setCap, isPending: false }),
@@ -35,7 +37,23 @@ vi.mock('@/components/dashboard/app-capacity', () => ({
   AppCapacity: () => <section aria-label="App capacity" />,
 }));
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
-  ObjectStorageUsagePanel: () => null,
+  ObjectStorageUsagePanel: () => <section aria-label="Object storage" />,
+}));
+vi.mock('@/components/dither-kit', () => ({
+  BarChart: ({ data, children }: { data: unknown[]; children: React.ReactNode }) => (
+    <div data-testid="daily-chart" data-points={data.length}>
+      {children}
+    </div>
+  ),
+  Bar: ({ dataKey }: { dataKey: string }) => <span data-testid="series">{dataKey}</span>,
+  Grid: () => null,
+  Tooltip: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+}));
+vi.mock('@/components/dashboard/spend-cap', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/dashboard/spend-cap')>()),
+  SpendCap: () => <p>workspace spend cap</p>,
 }));
 
 const workspace = vi.hoisted(() => ({
@@ -53,6 +71,8 @@ const UsagePage = (Route as unknown as { component: React.ComponentType }).compo
 
 beforeEach(() => {
   usage.rows = [];
+  usage.reads = 0;
+  usage.projection = { month: '2026-08', compute: { ...COMPUTE } };
   setCap
     .mockReset()
     .mockRejectedValueOnce(new Error('offline'))
@@ -92,6 +112,11 @@ describe('usage in a company workspace', () => {
       // The personal allowance bar and cap belong to the signed-in account.
       expect(screen.queryByText(/GB-hours by month end/)).toBeNull();
       expect(screen.queryByRole('spinbutton', { name: 'Cap (EUR)' })).toBeNull();
+      // The workspace's own cap stands in for the personal spend control, and
+      // the account projection is never read.
+      expect(screen.getByText('workspace spend cap')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Spend control' })).toBeNull();
+      expect(usage.reads).toBe(0);
     } finally {
       workspace.org = null;
       workspace.label = 'Personal';
@@ -192,5 +217,71 @@ describe('spend-cap validation', () => {
     await userEvent.type(cap, '{Enter}');
     await waitFor(() => expect(setCap).toHaveBeenCalledTimes(2));
     expect(setCap).toHaveBeenLastCalledWith(1250);
+  });
+});
+
+describe('the account usage projection', () => {
+  it('draws one bar per day from the daily rollups and names the biggest day', () => {
+    usage.projection = {
+      month: '2026-08',
+      compute: {
+        ...COMPUTE,
+        daily: [
+          { date: '2026-08-01', gb_hours: 0.25 },
+          { date: '2026-08-03', gb_hours: 0.5, top_app_slug: 'api', top_app_gb_hours: 0.4 },
+        ],
+      },
+    };
+    render(<UsagePage />);
+    // Aug 1 to Aug 3: the day without a rollup keeps its place at zero.
+    expect(screen.getByTestId('daily-chart')).toHaveAttribute('data-points', '3');
+    expect(screen.getByText(/Biggest day: Aug 3, 0.5 GB-h, mostly api \(0.4 GB-h\)/)).toBeVisible();
+    expect(screen.getByText(/1 day has no rollup and is drawn at zero/)).toBeVisible();
+    expect(screen.getByText(/Daily rollups: 0.75 GB-h · live total: 1 GB-h/)).toBeVisible();
+  });
+
+  it('says so instead of drawing an empty chart when there are no rollups', () => {
+    render(<UsagePage />);
+    expect(screen.queryByTestId('daily-chart')).toBeNull();
+    expect(screen.getByText('No daily rollups for this month yet.')).toBeInTheDocument();
+  });
+
+  it('shows object storage and managed PostgreSQL only when the account has them', () => {
+    render(<UsagePage />);
+    expect(screen.queryByRole('region', { name: 'Object storage' })).toBeNull();
+    expect(screen.queryByText('Managed PostgreSQL')).toBeNull();
+  });
+
+  it('shows managed PostgreSQL as figures with its cap state in words', () => {
+    usage.projection = {
+      month: '2026-08',
+      compute: { ...COMPUTE },
+      object_storage: { usage: {}, policy: {}, billing_mode: 'off' },
+      managed_postgres: {
+        period_start: '2026-08-01T00:00:00Z',
+        policy_enabled: true,
+        fresh: true,
+        guardrail_state: 'healthy',
+        ready_databases: 2,
+        database_limit: 3,
+        storage_limit_bytes: 10 * 2 ** 30,
+        compute_unit_seconds: 36_000,
+        compute_allowance_unit_seconds: 360_000,
+        compute_cap_state: 'healthy',
+        storage_byte_seconds: 2 ** 30 * 31 * 24 * 3600,
+        storage_byte_seconds_limit: 10 * 2 ** 30 * 31 * 24 * 3600,
+        storage_byte_seconds_remaining: 0,
+        history_byte_seconds: 0,
+        egress_bytes: 0,
+      },
+    };
+    render(<UsagePage />);
+    expect(screen.getByRole('region', { name: 'Object storage' })).toBeInTheDocument();
+    expect(screen.getByText('Managed PostgreSQL')).toBeInTheDocument();
+    expect(screen.getByText('2 of 3')).toBeInTheDocument();
+    expect(screen.getByText('10 CU-hours')).toBeInTheDocument();
+    expect(screen.getByText('of 100 CU-hours included')).toBeInTheDocument();
+    expect(screen.getByText('1 GiB-months')).toBeInTheDocument();
+    expect(screen.getByText('Within the compute allowance')).toBeInTheDocument();
   });
 });

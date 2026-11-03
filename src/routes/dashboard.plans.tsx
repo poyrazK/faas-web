@@ -157,7 +157,10 @@ const PENDING_POLL_WINDOW_MS = 3 * 60_000;
 
 const planName = (id: Plan) => PLANS.find((p) => p.id === id)?.name ?? id;
 
-/** A company workspace shows the organization's plan; its owner changes it. */
+/**
+ * A company workspace shows the organization's plan and its own spend cap
+ * (`SpendCap` follows the workspace); its owner changes both.
+ */
 function PlansPage() {
   const { org, label, ready } = useWorkspaceTarget();
   // Until the workspace is bound, a chosen company reads as null: wait.
@@ -167,6 +170,7 @@ function PlansPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
       <OrgPlanSummary org={org} label={label} />
+      <SpendCap />
     </div>
   );
 }

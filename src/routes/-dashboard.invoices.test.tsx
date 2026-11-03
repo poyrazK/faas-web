@@ -13,7 +13,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Route as Invoices } from './dashboard.invoices';
 import { spyApi } from '@/test/api';
 
-vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toast = vi.hoisted(() => vi.fn());
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/auth/mfa-provider', () => ({ useMfa: () => ({ openMfa: vi.fn() }) }));
 const workspace = vi.hoisted(() => ({
   org: null as string | null,
@@ -25,6 +26,7 @@ vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace
 const invoice = {
   id: 'invoice-1',
   number: 'INV-001',
+  provider: 'stripe',
   provider_invoice_id: 'provider-1',
   status: 'paid',
   period_start: '2026-08-01T00:00:00Z',
@@ -64,8 +66,23 @@ async function mount() {
   });
 }
 
+let firstPage: Record<string, unknown>[];
+let billingStatus: Record<string, unknown>;
+
 beforeEach(() => {
   reads = [];
+  toast.mockReset();
+  firstPage = [invoice];
+  billingStatus = {
+    mode: 'live',
+    enabled: true,
+    provider: 'stripe',
+    plan: 'pro',
+    account_status: 'active',
+    customer_configured: true,
+    subscription_configured: true,
+    usage_reconciliation_enabled: false,
+  };
   spyApi('GET').mockImplementation(async (path, options) => {
     const query = (options as { params?: { query?: { before?: string; limit?: number } } })?.params
       ?.query;
@@ -74,24 +91,12 @@ beforeEach(() => {
       return {
         data: query?.before
           ? { items: [olderInvoice], next_before: null }
-          : { items: [invoice], next_before: 'invoice-cursor-1' },
+          : { items: firstPage, next_before: 'invoice-cursor-1' },
         response: new Response(),
       } as never;
     }
     if (path === '/v1/billing/status') {
-      return {
-        data: {
-          mode: 'live',
-          enabled: true,
-          provider: 'stripe',
-          plan: 'pro',
-          account_status: 'active',
-          customer_configured: true,
-          subscription_configured: true,
-          usage_reconciliation_enabled: false,
-        },
-        response: new Response(),
-      } as never;
+      return { data: billingStatus, response: new Response() } as never;
     }
     if (path === '/v1/account') {
       return {
@@ -192,10 +197,147 @@ it("shows a company's billing source without the account-only refresh or identit
     // (faas handlers_invoice_backfill.go:98, handlers_billing_identity.go:62).
     expect(screen.queryByRole('button', { name: /refresh invoices/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit billing identity' })).toBeNull();
+    // Per-invoice refresh reads the signed-in account's own invoices only;
+    // a company's answers 404 (faas handlers_invoice_refresh.go:44).
+    expect(screen.queryByRole('button', { name: /Refresh details for/ })).toBeNull();
     expect(reads).not.toContain('/v1/billing/status');
     expect(reads).not.toContain('/v1/account');
   } finally {
     workspace.org = null;
     workspace.label = 'Personal';
   }
+});
+
+const problem = (code: string, status: number, detail = code) => ({
+  error: { code, title: code, detail, status },
+  response: new Response(JSON.stringify({ code, title: code, detail, status }), {
+    status,
+    headers: { 'content-type': 'application/problem+json' },
+  }),
+});
+
+function refreshReplies(reply: () => unknown) {
+  const posts: { path: string; init: unknown }[] = [];
+  spyApi('POST').mockImplementation(async (path, init) => {
+    posts.push({ path, init });
+    return reply() as never;
+  });
+  return posts;
+}
+
+it("refreshes one invoice's provider facts and says its lines are complete", async () => {
+  const posts = refreshReplies(() => ({
+    data: {
+      invoice_id: 'invoice-1',
+      provider: 'stripe',
+      detailed: true,
+      line_items: 12,
+      updated_at: '2026-11-03T10:00:00Z',
+    },
+    response: new Response(),
+  }));
+  await mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Refresh details for INV-001' }));
+  await vi.waitFor(() =>
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'success',
+        title: 'INV-001 refreshed from Stripe',
+        description:
+          '12 line items, complete and reconciled. Amounts and payment state are unchanged.',
+      })
+    )
+  );
+  expect(posts).toEqual([
+    { path: '/v1/invoices/{id}/refresh', init: { params: { path: { id: 'invoice-1' } } } },
+  ]);
+  // The list is read again so any lifecycle change shows.
+  expect(reads.filter((r) => r.startsWith('/v1/invoices:'))).toHaveLength(2);
+});
+
+it('names the gap when the provider lines cannot be reconciled', async () => {
+  refreshReplies(() => ({
+    data: {
+      invoice_id: 'invoice-1',
+      provider: 'stripe',
+      detailed: false,
+      line_items: 3,
+      source_gap: 'totals_mismatch',
+      updated_at: '2026-11-03T10:00:00Z',
+    },
+    response: new Response(),
+  }));
+  await mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Refresh details for INV-001' }));
+  await vi.waitFor(() =>
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'info',
+        description:
+          "3 line items, but they do not add up to the invoice's total, so it is kept as one total. Amounts and payment state are unchanged.",
+      })
+    )
+  );
+});
+
+it.each([
+  ['not_implemented', 501, 'Your billing provider does not support refreshing invoice details.'],
+  [
+    'conflict',
+    409,
+    "The invoice changed while it was refreshing, or the provider's copy no longer matches it. Try again in a moment.",
+  ],
+  ['not_found', 404, 'This invoice is no longer in your billing history.'],
+  [
+    'capacity_unavailable',
+    503,
+    'The provider could not be reached, so the invoice was not changed. Try again later.',
+  ],
+])('explains %s by its code', async (code, status, description) => {
+  refreshReplies(() => problem(code, status, 'prose that may change'));
+  await mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Refresh details for INV-001' }));
+  await vi.waitFor(() =>
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', title: 'Could not refresh INV-001', description })
+    )
+  );
+});
+
+it('passes the limit through when an invoice is too large to refresh', async () => {
+  refreshReplies(() =>
+    problem('validation_failed', 422, 'invoice refresh exceeds 1000 line items')
+  );
+  await mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Refresh details for INV-001' }));
+  await vi.waitFor(() =>
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        description: 'invoice refresh exceeds 1000 line items',
+      })
+    )
+  );
+});
+
+it('offers refresh only where apid can answer it', async () => {
+  // Another provider's invoice answers 409 (handlers_invoice_refresh.go:58).
+  firstPage = [invoice, { ...invoice, id: 'invoice-3', number: 'INV-003', provider: 'paddle' }];
+  await mount();
+  expect(
+    await screen.findByRole('button', { name: 'Refresh details for INV-001' })
+  ).toBeInTheDocument();
+  expect(screen.getByText('INV-003')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Refresh details for INV-003' })).toBeNull();
+});
+
+it.each([
+  ['billing is off', { enabled: false, mode: 'disabled' }],
+  ['no provider customer is linked', { customer_configured: false }],
+])('offers no refresh when %s', async (_, patch) => {
+  billingStatus = { ...billingStatus, ...patch };
+  await mount();
+  expect(await screen.findByText('INV-001')).toBeInTheDocument();
+  await screen.findByText(/Billed through|Billing is off/);
+  expect(screen.queryByRole('button', { name: /Refresh details for/ })).toBeNull();
 });

@@ -8,7 +8,7 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { useUsageSummary, useApps, usePerAppUsage } from '@/lib/api/queries';
+import { useAccountUsage, useApps, usePerAppUsage } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { useId, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,10 @@ import { slugIndex } from '@/lib/api/adapters';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { SpendControl } from '@/components/dashboard/spend-control';
+import { SpendCap } from '@/components/dashboard/spend-cap';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
+import { ManagedPostgresUsagePanel } from '@/components/dashboard/account-postgres-usage';
+import { DailyUsagePanel } from '@/components/dashboard/usage-daily';
 import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { OrgUsage } from '@/components/dashboard/org-billing';
@@ -29,7 +32,9 @@ export const Route = createFileRoute('/dashboard/usage')({
 });
 
 /**
- * Billing-period usage, from `/v1/usage/summary`.
+ * Billing-period usage, from the account usage projection (`/v1/account/usage`):
+ * compute with its daily rollups, plus object storage and managed PostgreSQL
+ * when the account has them.
  *
  * The unit that matters is GB-hours: memory multiplied by time, which is how a
  * scale-to-zero platform charges. An idle app costs nothing, so a low number
@@ -243,8 +248,10 @@ function PerAppUsagePanel() {
 }
 
 /**
- * In a company workspace the page reads the organization's billing subject;
- * the allowance, forecast and cap below belong to the signed-in account.
+ * In a company workspace the page reads the organization's billing subject:
+ * its usage and its own spend cap. The account projection, allowance and
+ * forecast belong to the signed-in account and have no organization variant,
+ * so they are not shown there.
  */
 function UsagePage() {
   const { org, label, ready } = useWorkspaceTarget();
@@ -255,12 +262,14 @@ function UsagePage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Usage" description={`What ${label} uses this billing period.`} />
       <OrgUsage org={org} label={label} />
+      <SpendCap />
     </div>
   );
 }
 
 function PersonalUsage() {
-  const { data, isPending, error, refetch } = useUsageSummary();
+  const { data: projection, isPending, error, refetch } = useAccountUsage();
+  const data = projection?.compute;
   const { account } = useAuth();
   // The shared precedence: an unreachable API is an outage to wait out, not a
   // red error — and never a page of zeros.
@@ -279,8 +288,6 @@ function PersonalUsage() {
         title="Usage"
         description="This billing period. GB-hours are memory × time — a parked app accrues none."
       />
-
-      <ObjectStorageUsagePanel />
 
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={() => void refetch()} />
@@ -339,7 +346,16 @@ function PersonalUsage() {
           <AppCapacity />
 
           <ForecastPanel used={used} included={included} month={data?.month} />
+          <DailyUsagePanel daily={data?.daily} month={projection?.month ?? ''} usedGbHours={used} />
           <PerAppUsagePanel />
+
+          {/* Absent blocks mean the service is not enabled for the account. */}
+          {projection?.object_storage && (
+            <ObjectStorageUsagePanel data={projection.object_storage} />
+          )}
+          {projection?.managed_postgres && (
+            <ManagedPostgresUsagePanel data={projection.managed_postgres} />
+          )}
 
           {account?.limits && (
             <p className="text-xs text-muted-foreground">
