@@ -46,6 +46,8 @@ interface StoredRecipient {
   /** Forces a waiting reason until manually cleared; seeds the blocked state. */
   blocked?: S['EventBacklogRecipient']['waiting_reason'];
   failed?: string;
+  /** Routing itself failed for good; the receipt offers a routing replay. */
+  routingFailed?: string;
 }
 
 interface StoredEvent {
@@ -145,7 +147,11 @@ if (!EMPTY) {
       type: 'invoice.paid',
       data: { invoice: 'inv_2026_10_0042', amount: 4200, currency: 'eur' },
       accepted: t - 3 * 3_600_000,
-      recipients: [{ sub: webhook }, { sub: recon }, { sub: workflow }],
+      recipients: [
+        { sub: webhook },
+        { sub: recon, routingFailed: 'target unavailable after 12 routing attempts' },
+        { sub: workflow },
+      ],
     },
     {
       source: 'billing',
@@ -177,6 +183,7 @@ if (!EMPTY) {
 
 /** Routing state at read time: blocked recipients wait; others settle after SETTLE_MS. */
 function recipientState(event: StoredEvent, r: StoredRecipient) {
+  if (r.routingFailed) return 'failed' as const;
   if (r.blocked) return 'pending' as const;
   if (now() - event.accepted < SETTLE_MS) return 'pending' as const;
   // A failed handler is still a settled route; the failure lives in execution.
@@ -352,6 +359,7 @@ function receiptRecipient(
       ...(r.blocked === 'circuit_open'
         ? { last_error: 'consumer circuit open after 3 failed routes' }
         : {}),
+      ...(r.routingFailed ? { last_error: r.routingFailed } : {}),
     },
     ...(settled && !r.sub.workflow_name
       ? {
@@ -370,7 +378,33 @@ function receiptRecipient(
       ? { workflow_run_id: invocationId, workflow_run_status: 'completed' }
       : {}),
     ...(!settled ? { execution_unavailable: 'not_enqueued' as const } : {}),
-    recovery_actions: [],
+    // The actions apid lists (appevents/receipts.go eventReceiptActions).
+    recovery_actions: [
+      ...(r.routingFailed
+        ? [
+            {
+              kind: 'routing_replay' as const,
+              method: 'POST' as const,
+              url: `/v1/apps/${encodeURIComponent(r.sub.app.slug)}/event-deliveries:replay-fanout-failure`,
+              body: {
+                event_source: event.source,
+                event_id: event.id,
+                subscription_id: r.sub.subscription_id,
+                expected_accepted_at: iso(event.accepted),
+              },
+            },
+          ]
+        : []),
+      ...(settled && r.failed
+        ? [
+            {
+              kind: 'handler_replay' as const,
+              method: 'POST' as const,
+              url: `/v1/invocations/${invocationId}/replay`,
+            },
+          ]
+        : []),
+    ],
   };
 }
 
@@ -603,6 +637,26 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
     if (!queries.length || queries.length > 50)
       throw new Problem(400, 'validation_failed', 'queries must hold 1 to 50 items');
     return { items: queries.map((query) => ({ query, result: blocker(query) })) };
+  });
+
+  // Routing replay requeues one failed recipient, guarded by its acceptance instant.
+  route('POST', '/v1/apps/{slug}/event-deliveries:replay-fanout-failure', ({ params, body }) => {
+    const event = events.get(eventKey(String(body.event_source), String(body.event_id)));
+    const recipient = event?.recipients.find(
+      (r) => r.sub.subscription_id === body.subscription_id && r.sub.app.slug === params.slug
+    );
+    if (!event || !recipient) throw new Problem(404, 'not_found', 'no such failed recipient');
+    if (body.expected_accepted_at && body.expected_accepted_at !== iso(event.accepted))
+      throw new Problem(409, 'event_recovery_changed', 'the receipt was replaced');
+    if (!recipient.routingFailed)
+      throw new Problem(409, 'conflict', 'the recipient is not in a failed routing state');
+    delete recipient.routingFailed;
+    return status(202, {
+      event_id: event.id,
+      event_source: event.source,
+      subscription_id: recipient.sub.subscription_id,
+      state: 'pending',
+    });
   });
 
   route('POST', '/v1/events:preview', ({ body }) => {
