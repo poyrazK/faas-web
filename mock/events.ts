@@ -61,7 +61,7 @@ interface StoredEvent {
 
 const app = (slug: string) => apps.find((a) => a.slug === slug) ?? apps[0];
 
-const subscriptions: Subscription[] = EMPTY
+export const subscriptions: Subscription[] = EMPTY
   ? []
   : [
       {

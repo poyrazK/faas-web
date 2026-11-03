@@ -375,6 +375,17 @@ routing** posts only to `/v1/events:preview` and publishes nothing; **Publish**
 stable event ID so a retry deduplicates. Recovery actions the receipt lists are
 shown, not submitted.
 
+The **App consumers** tab (`?view=consumers`) picks an app and reads its side:
+the subscriptions its `gregale.yaml` declares (read-only, because a deploy
+creates, changes and disables them), each subscription's delivery control —
+pause, and resume at a drain rate of 0–100 a second, both confirmed — and the
+event deliveries it received, filterable by state, each opening its
+acknowledgment lease. Acknowledgment writes need the consumer's secret delivery
+token, so the console reads the lease and never acts on it. Each part is gated
+on its own capability (`event-subscriptions`, `event-delivery-controls`,
+`event-acknowledgments`); hooks live in `lib/api/event-consumers.ts` and the
+mock in `mock/event-consumers.ts`.
+
 **Integrations** (`/dashboard/integrations`) lists managed outbound
 integrations with credential state and today's requests against the daily
 budget. A row opens its overview and usage, credential set/rotate/revoke, the daily
