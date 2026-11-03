@@ -16,6 +16,7 @@ import { Play, Rocket } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/field';
 import { Sheet } from '@/components/dashboard/kit/sheet';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import {
   EmptyState,
   ErrorState,
@@ -133,18 +134,18 @@ type Tab = AppTab;
 /** One half of the Environment page — env vars and secrets share it. */
 function EnvironmentSection({
   title,
-  description,
+  help,
   children,
 }: {
   title: string;
-  description: string;
+  help: string;
   children: ReactNode;
 }) {
   return (
-    <section aria-label={title} className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-medium">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
+    <section aria-label={title} className="flex flex-col gap-3">
+      <div className="flex items-center gap-1">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <HelpTip label={`About ${title}`}>{help}</HelpTip>
       </div>
       {children}
     </section>
@@ -728,19 +729,19 @@ function FunctionDetailPage() {
                 <>
                   <EnvironmentSection
                     title="Variables"
-                    description="Plain configuration the app reads at start. Values are visible to anyone with access to this app."
+                    help="Read at start. Values are visible to anyone with access to this app."
                   >
                     <EnvBody slug={fn.id} />
                   </EnvironmentSection>
                   <EnvironmentSection
                     title="Secrets"
-                    description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
+                    help="Sealed and write-only: a value can be replaced or rotated, never read back."
                   >
                     <SecretsBody slug={fn.id} />
                   </EnvironmentSection>
                   <EnvironmentSection
                     title="History"
-                    description="Every change to variables and secrets is a revision you can roll back to, and the config guard undoes a change that breaks the app."
+                    help="Every change is a revision you can roll back to. The config guard undoes a change that breaks the app."
                   >
                     <ConfigHistory slug={fn.id} />
                   </EnvironmentSection>

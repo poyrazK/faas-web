@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash } from 'iconoir-react';
+import { Plus, Trash, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/dashboard/kit/sheet';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -55,6 +55,7 @@ export function EnvBody({ slug }: { slug: string }) {
   const deleteEnv = useDeleteEnv(slug);
 
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
@@ -129,7 +130,11 @@ export function EnvBody({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+          <Upload className="h-3.5 w-3.5" />
+          Import .env
+        </Button>
         <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="h-3.5 w-3.5" />
           Set variable
@@ -196,7 +201,15 @@ export function EnvBody({ slug }: { slug: string }) {
         </form>
       </Sheet>
 
-      <EnvTransferPanel key={slug} slug={slug} />
+      <Sheet
+        open={importing}
+        onClose={() => setImporting(false)}
+        title="Import environment variables"
+        size="lg"
+      >
+        <p className="mb-4 text-xs text-muted-foreground">Credentials belong in Secrets.</p>
+        <EnvTransferPanel key={slug} slug={slug} framed={false} />
+      </Sheet>
 
       <ResourceTable
         rows={rows}
