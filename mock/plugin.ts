@@ -22,6 +22,7 @@ import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
 import * as releaseMock from './release-webhooks';
+import * as issueMock from './issues';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
 import * as realtimeMock from './realtime';
@@ -6004,6 +6005,12 @@ route('GET', '/v1/apps/{slug}/issues', ({ params, query }) => {
     items = items.filter((item) => item.assignee_account_id === db.ACCOUNT_ID);
   if (query.get('assignee') === 'unassigned')
     items = items.filter((item) => !item.assignee_account_id);
+  // No seeded issue is on a team, and only PaymentError carries a route tag.
+  if (query.get('team')) items = [];
+  if (query.get('tag'))
+    items = items.filter(
+      (item) => item.fingerprint === 'payment-error' && query.get('tag') === 'route=/checkout'
+    );
   const minimum = Number(query.get('min_customers') ?? 0);
   items = items.filter((item) => (item.impact_24h?.identified_customers ?? 0) >= minimum);
   if (query.get('sort') === 'impact')
@@ -6067,14 +6074,17 @@ route('GET', '/v1/apps/{slug}/issues/{issue_id}', ({ params, query }) => {
     },
     events: [event(olderEvents)],
     next_event_cursor: olderEvents ? undefined : 'mock-event-next',
-    releases: [
-      {
-        deployment_id: deployment.id,
-        event_count: olderReleases ? 1 : issue.event_count,
-        first_seen_at: db.iso(48 * 3600_000),
-        last_seen_at: db.iso(3600_000),
-      },
-    ],
+    // One row per deployment across pages, as apid pages them: the older page
+    // holds the app's previous deployment, so the console's list keys stay unique.
+    releases: (olderReleases
+      ? db.deployments.filter((item) => item.app_id === issue.app_id).slice(1, 2)
+      : [deployment]
+    ).map((item) => ({
+      deployment_id: item.id,
+      event_count: olderReleases ? 1 : issue.event_count,
+      first_seen_at: db.iso(48 * 3600_000),
+      last_seen_at: db.iso(3600_000),
+    })),
     next_release_cursor: olderReleases ? undefined : 'mock-release-next',
     activity: [
       {
@@ -6161,6 +6171,69 @@ route('DELETE', '/v1/apps/{slug}/issue-ingest-tokens/{token_id}', ({ params }) =
   token.revoked_at = new Date().toISOString();
   return NO_CONTENT;
 });
+// Issue alert policies, saved views, source maps, Linear and tracker links
+// (mock/issues.ts). Each family answers 404 while its catalog capability is
+// hidden, as apid's capgate does.
+function issueAnswer(capability: string, answer: () => issueMock.Answer) {
+  if (hiddenCapabilities.has('issues') || hiddenCapabilities.has(capability))
+    throw new Problem(404, 'not_found', 'not released to this account');
+  const out = answer();
+  if (issueMock.isProblem(out)) throw new Problem(out.status, out.code, out.detail);
+  return out.status === 204 ? NO_CONTENT : status(out.status, out.body ?? null);
+}
+function issueDeployment(slug: string, id: string) {
+  const a = app(slug);
+  if (!db.deployments.some((d) => d.id === id && d.app_id === a.id))
+    throw new Problem(404, 'not_found', 'issue resource not found');
+  return id;
+}
+const POLICIES = 'issue-alert-policies';
+const VIEWS = 'issue-saved-views';
+const TRACKERS = 'issue-trackers';
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-impact-alert-policy', ({ params }) => issueAnswer(POLICIES, () => issueMock.getImpact(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-impact-alert-policy', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.putImpact(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-frequency-alert-policy', ({ params }) => issueAnswer(POLICIES, () => issueMock.getFrequency(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-frequency-alert-policy', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.putFrequency(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-lifecycle-alert-policy', ({ params }) => issueAnswer(POLICIES, () => issueMock.getLifecycle(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-lifecycle-alert-policy', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.putLifecycle(app(params.slug).slug, body)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/issue-lifecycle-alert-policy/preview', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.previewLifecycle(params.slug, issueFor(params.slug, String(body.issue_id)), body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-compound-alert-policy', ({ params }) => issueAnswer(POLICIES, () => issueMock.getCompound(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-compound-alert-policy', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.putCompound(app(params.slug).slug, body)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/issue-compound-alert-policy/preview', ({ params, body }) => issueAnswer(POLICIES, () => issueMock.previewCompound(params.slug, issueFor(params.slug, String(body.issue_id)), body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-saved-views', ({ params }) => issueAnswer(VIEWS, () => issueMock.listViews(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-saved-views/{view_key}', ({ params, body }) => issueAnswer(VIEWS, () => issueMock.putView(app(params.slug).slug, params.view_key, body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/issue-saved-views/{view_key}', ({ params }) => issueAnswer(VIEWS, () => issueMock.deleteView(app(params.slug).slug, params.view_key)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/deployments/{deployment_id}/issue-source-maps', ({ params }) => issueAnswer('issues', () => issueMock.getMaps(issueDeployment(params.slug, params.deployment_id))));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/deployments/{deployment_id}/issue-source-maps', ({ params, body }) => issueAnswer('issues', () => issueMock.publishMaps(params.slug, issueDeployment(params.slug, params.deployment_id), body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/deployments/{deployment_id}/issue-source-maps', ({ params }) => issueAnswer('issues', () => issueMock.retireMaps(issueDeployment(params.slug, params.deployment_id))));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issue-tracker-linear-connection', ({ params }) => issueAnswer(TRACKERS, () => issueMock.getConnection(app(params.slug).slug)));
+// prettier-ignore
+route('PUT', '/v1/apps/{slug}/issue-tracker-linear-connection', ({ params, body }) => issueAnswer(TRACKERS, () => issueMock.putConnection(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/issues/{issue_id}/tracker-links', ({ params }) => issueAnswer(TRACKERS, () => issueMock.listLinks(issueFor(params.slug, params.issue_id))));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/issues/{issue_id}/tracker-links', ({ params, body }) => issueAnswer(TRACKERS, () => issueMock.saveLink(issueFor(params.slug, params.issue_id), body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/issues/{issue_id}/tracker-links/{link_id}', ({ params }) => issueAnswer(TRACKERS, () => issueMock.deleteLink(issueFor(params.slug, params.issue_id), params.link_id)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/issues/{issue_id}/native-linear-tickets', ({ params, body }) => issueAnswer(TRACKERS, () => issueMock.createTicket(app(params.slug).slug, issueFor(params.slug, params.issue_id), body)));
 route('POST', '/v1/apps/{slug}/webhooks', ({ params, body }) => {
   const a = app(params.slug);
   const url = String(body.target_url ?? '');

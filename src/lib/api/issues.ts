@@ -14,6 +14,10 @@ export type IssueFilters = {
   assignee?: string;
   sort?: 'recent' | 'impact';
   min_customers?: number;
+  /** Exact operational `key=value` on retained occurrences in 24 hours. */
+  tag?: string;
+  /** A team inbox; apid refuses it together with `assignee`. */
+  team?: string;
 };
 export type IssueHistoryKind = 'events' | 'releases' | 'activity';
 
