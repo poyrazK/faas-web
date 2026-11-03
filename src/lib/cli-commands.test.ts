@@ -13,6 +13,7 @@ import {
   cliJobRemoveCommand,
   cliJobRunCommand,
   cliPostgresRestoreCommand,
+  cliRealtimeDrainCommand,
   cliSloCreateCommand,
   cliSyntheticCheckCreateCommand,
 } from './cli-commands';
@@ -174,6 +175,16 @@ describe('cliEdgeRuleTraceCommand', () => {
       })
     ).toBe(
       "gregale edge rule trace --app api --url 'https://api.example.com/login?next=/a b' --method POST --client-ip 203.0.113.7 --country DE"
+    );
+  });
+});
+
+describe('realtime commands', () => {
+  // commands_realtime_drain.go:37: "usage: gregale realtime drain APP_SLUG ENDPOINT_ID --reason TEXT
+  //   [--channel CHANNEL] [--principal PRINCIPAL] [--connection-id ID ... | --all] [--limit N] [--dry-run] ..."
+  it('drains with the reason the CLI requires, as a dry run first', () => {
+    expect(cliRealtimeDrainCommand('chat', 'ep-1')).toBe(
+      'gregale realtime drain chat ep-1 --reason <reason> --channel <channel> --dry-run'
     );
   });
 });

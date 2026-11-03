@@ -23,6 +23,7 @@ import * as channelMock from './notification-channels';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
+import * as realtimeMock from './realtime';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -11938,6 +11939,57 @@ route('GET', '/v1/apps/{slug}/workflow-performance/summary', wi.performance);
 route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
 
 registerEventMocks(route, Problem, NO_CONTENT);
+
+// --- Managed realtime (mock/realtime.ts) ---------------------------------------
+
+function realtime(answer: realtimeMock.Answer) {
+  if (realtimeMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+const idempotencyKey = (req: IncomingMessage) => {
+  const value = req.headers['idempotency-key'];
+  return Array.isArray(value) ? value[0] : value;
+};
+// One line per route, so each path stays where the spec-drift test reads it.
+route('GET', '/v1/usage/realtime', () => realtime(realtimeMock.usage()));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints', ({ params }) => realtime(realtimeMock.listEndpoints(params.slug)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints', ({ params, body }) => realtime(realtimeMock.createEndpoint(params.slug, body)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/realtime/endpoints/{id}', ({ params, body }) => realtime(realtimeMock.updateEndpoint(params.slug, params.id, body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}', ({ params }) => realtime(realtimeMock.deleteEndpoint(params.slug, params.id)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/auth/rotate', ({ params, body }) => realtime(realtimeMock.rotateAuth(params.slug, params.id, body)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/auth/rotate/finalize', ({ params }) => realtime(realtimeMock.finalizeAuth(params.slug, params.id)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/connections', ({ params, query }) => realtime(realtimeMock.listConnections(params.slug, params.id, query)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/connections/{connection_id}/close', ({ params }) => realtime(realtimeMock.closeConnection(params.slug, params.id, params.connection_id)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/connections/{connection_id}/send', ({ params }) => realtime(realtimeMock.sendConnection(params.slug, params.id, params.connection_id)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/occupancy', ({ params, query }) => realtime(realtimeMock.occupancy(params.slug, params.id, query)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/publish', ({ params, query, body, req }) => realtime(realtimeMock.publish(params.slug, params.id, params.channel, query, body, idempotencyKey(req))));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/retained-messages', ({ params, query }) => realtime(realtimeMock.retained(params.slug, params.id, params.channel, query)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/groups', ({ params }) => realtime(realtimeMock.consumerGroups(params.slug, params.id, params.channel)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets', ({ params, body }) => realtime(realtimeMock.issueTicket(params.slug, params.id, body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets', ({ params, query }) => realtime(realtimeMock.revokePrincipalTickets(params.slug, params.id, query)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets/{ticket}', ({ params }) => realtime(realtimeMock.revokeTicket(params.slug, params.id, params.ticket)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/access', ({ params }) => realtime(realtimeMock.readAccess(params.slug, params.id, params.principal)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/access', ({ params, body }) => realtime(realtimeMock.changeAccess(params.slug, params.id, params.principal, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/push/providers', ({ params }) => realtime(realtimeMock.pushProviders(params.slug, params.id)));
 
 // --- Plumbing ------------------------------------------------------------------
 

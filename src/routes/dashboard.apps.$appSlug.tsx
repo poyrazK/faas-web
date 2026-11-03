@@ -54,6 +54,7 @@ import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
 import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
+import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
@@ -770,6 +771,12 @@ function FunctionDetailPage() {
                 </>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
+              {tab === 'Realtime' && (
+                <RealtimeBody
+                  slug={fn.id}
+                  appUrl={fn.visibility === 'internal' ? undefined : fn.url}
+                />
+              )}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
               {tab === 'Services' && (
