@@ -117,6 +117,62 @@ describe('buildRecipe', () => {
     });
   });
 
+  it('blocks the listed countries, upper-casing the codes', () => {
+    const out = buildRecipe('block-countries', { countries: 'kp, ir' });
+    expect(out.ok && out.body).toMatchObject({
+      match_path: '/**',
+      kind: 'ip',
+      action: DENY_ALL,
+      match: { field: 'country', op: 'in', values: ['KP', 'IR'] },
+      name: 'Block countries',
+    });
+    expect(buildRecipe('block-countries', {})).toMatchObject({ ok: false, field: 'countries' });
+    expect(buildRecipe('block-countries', { countries: 'Korea' })).toMatchObject({
+      ok: false,
+      field: 'countries',
+    });
+  });
+
+  it('blocks training crawlers by default, and challenges by purpose when asked', () => {
+    const out = buildRecipe('control-ai-crawlers', {});
+    expect(out.ok && out.body).toMatchObject({
+      match_path: '/**',
+      kind: 'ip',
+      action: DENY_ALL,
+      match: { field: 'ai_crawler_purpose', op: 'in', values: ['training'] },
+    });
+    const all = buildRecipe('control-ai-crawlers', { purposes: 'all', action: 'challenge' });
+    expect(all.ok && all.body).toMatchObject({
+      kind: 'challenge',
+      action: {},
+      match: { values: ['training', 'search', 'assistant'] },
+    });
+    expect(buildRecipe('control-ai-crawlers', { purposes: 'news' })).toMatchObject({
+      ok: false,
+      field: 'purposes',
+    });
+    expect(buildRecipe('control-ai-crawlers', { action: 'tarpit' })).toMatchObject({
+      ok: false,
+      field: 'action',
+    });
+  });
+
+  it('lists the whole catalog in apid’s order, each with its kind', () => {
+    expect(Object.keys(RECIPES)).toEqual([
+      'block-unverified-bots',
+      'rate-limit-path',
+      'allow-ips-only',
+      'block-countries',
+      'block-scanner-paths',
+      'challenge-path',
+      'control-ai-crawlers',
+    ]);
+    for (const r of Object.values(RECIPES)) {
+      expect(r.summary).toMatch(/\.$/);
+      expect(r.logNote).toMatch(/^In log mode/);
+    }
+  });
+
   it('refuses a parameter the recipe does not have', () => {
     expect(buildRecipe('challenge-path', { cidrs: '1.2.3.4' })).toMatchObject({ ok: false });
   });

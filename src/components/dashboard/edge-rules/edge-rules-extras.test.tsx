@@ -23,6 +23,10 @@ vi.mock('./edge-rule-versions', () => ({ EdgeRuleVersions: () => <p>versions</p>
 vi.mock('./edge-rule-suggestions', () => ({ EdgeRuleSuggestions: () => <p>suggestions</p> }));
 vi.mock('./edge-waf-review', () => ({ EdgeWAFReview: () => <p>waf review</p> }));
 vi.mock('./edge-rule-lists', () => ({ EdgeRuleLists: () => <p>lists</p> }));
+vi.mock('./edge-rule-activity', () => ({
+  EdgeRuleActivity: ({ rules }: { rules: EdgeRule[] }) => <p>activity of {rules.length}</p>,
+}));
+vi.mock('./edge-rule-recipes-panel', () => ({ EdgeRuleRecipes: () => <p>recipes</p> }));
 
 const { EdgeRulesExtras } = await import('./edge-rules-extras');
 
@@ -45,6 +49,12 @@ describe('EdgeRulesExtras', () => {
     expect(screen.getByText('waf review')).toBeInTheDocument();
   });
 
+  it("shows an app's activity, given its rules, and the recipe catalog", () => {
+    render(<EdgeRulesExtras slug="api" rules={[rule('a', 'ip'), rule('b', 'geo')]} />);
+    expect(screen.getByText('activity of 2')).toBeInTheDocument();
+    expect(screen.getByText('recipes')).toBeInTheDocument();
+  });
+
   it('follows the rule set by id and update time', () => {
     render(<EdgeRulesExtras slug="api" rules={[rule('b', 'ip', 't2'), rule('a', 'ip', 't1')]} />);
     expect(state.follow).toHaveBeenCalledWith('api', 'a@t1,b@t2');
@@ -55,13 +65,16 @@ describe('EdgeRulesExtras', () => {
     expect(screen.getByText('lists')).toBeInTheDocument();
     expect(screen.queryByText('versions')).toBeNull();
     expect(screen.queryByText('waf review')).toBeNull();
+    expect(screen.queryByText(/^activity/)).toBeNull();
+    expect(screen.queryByText('recipes')).toBeNull();
   });
 
   it('gates each part on its own capability', () => {
-    state.off = new Set(['edge-rule-history', 'edge-rule-lists']);
+    state.off = new Set(['edge-rule-history', 'edge-rule-lists', 'edge-rule-suggestions']);
     render(<EdgeRulesExtras slug="api" rules={[]} />);
     expect(screen.getByText('Versions is off')).toBeInTheDocument();
     expect(screen.getByText('Rule lists is off')).toBeInTheDocument();
-    expect(screen.getByText('suggestions')).toBeInTheDocument();
+    expect(screen.getByText('Suggested protections is off')).toBeInTheDocument();
+    expect(screen.getByText('Recipes is off')).toBeInTheDocument();
   });
 });

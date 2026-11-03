@@ -531,11 +531,10 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 74,
     name: 'Edge rules (incl. host / path routing declared in `gregale.yaml`): route, rewrite, redirect, headers, CORS, JWT, IP, request validation, geo, async, throttle, cache, retry, circuit breaker, WAF, challenge, maintenance; rule lists; rule trace',
-    status: 'partial',
+    // Rule trace stays a CliCommand: the API has no trace endpoint the console can call.
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Edge rules', '/dashboard/edge-rules'],
     capability: 'edge-rules',
-    gap: 'Per-rule stats and sampled events; the full recipe catalog (block-countries and control-ai-crawlers, and recipes outside suggestions); rule trace stays CLI (gregale edge rule trace)',
-    wave: 2,
   },
   // D75 · beta
   {
