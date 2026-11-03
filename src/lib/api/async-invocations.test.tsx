@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
 import { ApiError } from './errors';
+import { NO_RETRY_DRAFT } from '@/lib/invocation-options';
 import {
+  NO_ASYNC_OPTIONS,
   asyncInvokeExtras,
+  invocationEnvelope,
   parseWorkKey,
   replayErrorDescription,
   replayPath,
@@ -75,14 +78,7 @@ describe('parseWorkKey', () => {
 });
 
 describe('asyncInvokeExtras', () => {
-  const empty = {
-    policy: '',
-    key: '',
-    fairnessKey: '',
-    deadline: '',
-    onSuccess: '',
-    onFailure: '',
-  };
+  const empty = NO_ASYNC_OPTIONS;
 
   it('adds nothing when no option is set', () => {
     expect(asyncInvokeExtras(empty)).toEqual({});
@@ -94,6 +90,7 @@ describe('asyncInvokeExtras', () => {
       .toISOString()
       .slice(0, 16);
     const body = asyncInvokeExtras({
+      ...empty,
       policy: 'document-index',
       key: '"d1"',
       fairnessKey: 'tenant-42',
@@ -118,6 +115,39 @@ describe('asyncInvokeExtras', () => {
     expect(asyncInvokeExtras({ ...empty, onFailure: 'hook-fail' })).toEqual({
       destinations: { on_failure: 'hook-fail' },
     });
+  });
+
+  it('sends a per-invocation retry policy and retention in seconds', () => {
+    expect(
+      asyncInvokeExtras({
+        ...empty,
+        retry: { ...NO_RETRY_DRAFT, maxAttempts: '4', baseSeconds: '1', jitter: '20' },
+        retention: { amount: '24', unit: 'hours' },
+      })
+    ).toEqual({
+      retry_policy: { max_attempts: 4, base_seconds: 1, jitter_seconds: 0.2 },
+      retention_seconds: 86_400,
+    });
+  });
+
+  it('refuses a retry policy apid would refuse, and a retention that is not whole seconds', () => {
+    expect(() =>
+      asyncInvokeExtras({ ...empty, retry: { ...NO_RETRY_DRAFT, maxAttempts: '30' } })
+    ).toThrow(/25/);
+    expect(() =>
+      asyncInvokeExtras({ ...empty, retention: { amount: '-1', unit: 'hours' } })
+    ).toThrow(/Retention/);
+  });
+});
+
+describe('invocationEnvelope', () => {
+  it('never carries a deadline, which a delayed task cannot set', () => {
+    const body = invocationEnvelope({
+      ...NO_ASYNC_OPTIONS,
+      deadline: '2999-01-01T00:00',
+      onSuccess: 'hook-ok',
+    });
+    expect(body).toEqual({ destinations: { on_success: 'hook-ok' } });
   });
 });
 

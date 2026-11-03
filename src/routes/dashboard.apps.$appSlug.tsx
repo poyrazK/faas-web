@@ -78,6 +78,7 @@ import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
 import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { AppRetryDefaults } from '@/components/dashboard/app-retry-defaults';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
@@ -564,16 +565,20 @@ function FunctionDetailPage() {
                 ))}
 
               {tab === 'Invoke' && (
-                <DeploymentCapability
-                  slug={fn.id}
-                  resource="Invoke"
-                  phase={deploymentPhase}
-                  error={deploymentError}
-                  hasRunnable={hasRunnable}
-                  onRetry={() => void appDeploymentQuery.refetch()}
-                >
-                  <InvokePanel slug={fn.id} />
-                </DeploymentCapability>
+                <>
+                  <DeploymentCapability
+                    slug={fn.id}
+                    resource="Invoke"
+                    phase={deploymentPhase}
+                    error={deploymentError}
+                    hasRunnable={hasRunnable}
+                    onRetry={() => void appDeploymentQuery.refetch()}
+                  >
+                    <InvokePanel slug={fn.id} />
+                  </DeploymentCapability>
+                  {/* An app setting, not a deployment's, so it stays editable before a deploy. */}
+                  <AppRetryDefaults slug={fn.id} />
+                </>
               )}
 
               {tab === 'Deployments' && (

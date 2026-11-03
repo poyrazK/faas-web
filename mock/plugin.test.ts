@@ -1274,3 +1274,78 @@ describe('/v1/apps/{slug}/deployment-aliases', () => {
     expect((await put('alias-long', 'a'.repeat(26), live.id)).status).toBe(200);
   });
 });
+
+describe('invocation retry settings in the mock', () => {
+  const createApp = async (slug: string) =>
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+  const patch = (slug: string, body: unknown) =>
+    json(`/v1/apps/${slug}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+  it('stores an app retry default, clears it with {}, and refuses an out-of-range one', async () => {
+    await createApp('retry-app');
+    const set = await patch('retry-app', { retry_policy: { max_attempts: 4, max_seconds: 30 } });
+    expect(set.status).toBe(200);
+    expect((await json('/v1/apps/retry-app')).body.retry_policy).toEqual({
+      max_attempts: 4,
+      max_seconds: 30,
+    });
+    const refused = await patch('retry-app', { retry_policy: { max_attempts: 40 } });
+    expect(refused.status).toBe(422);
+    expect(refused.body.code).toBe('trigger_invalid_retry_policy');
+    expect((await patch('retry-app', { retry_policy: {} })).status).toBe(200);
+    expect((await json('/v1/apps/retry-app')).body.retry_policy ?? null).toBeNull();
+  });
+
+  it('schedules a delayed task after a relative delay, and wants exactly one form', async () => {
+    await createApp('delay-app');
+    const before = Date.now();
+    const made = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ delay_seconds: 1800, retry_policy: { max_attempts: 3 } }),
+    });
+    expect(made.status).toBe(201);
+    const runs = Date.parse(made.body.scheduled_at);
+    expect(runs - before).toBeGreaterThanOrEqual(1_799_000);
+    expect(runs - before).toBeLessThan(1_810_000);
+    const both = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        delay_seconds: 60,
+        scheduled_at: new Date(before + 1e6).toISOString(),
+      }),
+    });
+    expect(both.status).toBe(400);
+    expect(both.body.code).toBe('invalid_scheduled_at');
+    const tooFar = await json('/v1/apps/delay-app/delayed-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ delay_seconds: 31_536_001 }),
+    });
+    expect(tooFar.status).toBe(400);
+  });
+
+  it('keeps an async invocation’s retry curve and retention on its row', async () => {
+    await createApp('async-retry');
+    expect((await patch('async-retry', { retry_policy: { max_attempts: 5 } })).status).toBe(200);
+    const inherited = await json('/v1/apps/async-retry/invoke/async', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    expect((await json(`/v1/invocations/${inherited.body.id}`)).body.retry_policy).toEqual({
+      max_attempts: 5,
+    });
+    const own = await json('/v1/apps/async-retry/invoke/async', {
+      method: 'POST',
+      body: JSON.stringify({ retry_policy: { max_attempts: 2 }, retention_seconds: 3600 }),
+    });
+    const row = (await json(`/v1/invocations/${own.body.id}`)).body;
+    expect(row.retry_policy).toEqual({ max_attempts: 2 });
+    expect(Date.parse(row.result_retention_until) - Date.now()).toBeLessThanOrEqual(3_600_000);
+  });
+});

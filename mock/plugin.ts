@@ -1358,8 +1358,34 @@ const PATCHABLE = [
   'warm_snapshot_enabled',
   'eviction_priority',
 ] as const;
+/**
+ * apid's bounds on an invocation retry curve (faas RetryPolicyDTO.Validate,
+ * pkg/api/dto.go:6087; the app default uses the same bounds,
+ * handlers_triggers.go:600).
+ */
+function retryPolicyRefusal(policy: Record<string, unknown>): string | null {
+  const n = (key: string) => Number(policy[key] ?? 0);
+  if (!Number.isInteger(n('max_attempts')) || n('max_attempts') < 0 || n('max_attempts') > 25)
+    return 'max_attempts must be between 1 and 25 when set';
+  if (!(n('base_seconds') >= 0)) return 'base_seconds must be finite and non-negative';
+  if (!(n('max_seconds') >= 0)) return 'max_seconds must be finite and non-negative';
+  if (n('base_seconds') > 0 && n('max_seconds') > 0 && n('max_seconds') < n('base_seconds'))
+    return 'max_seconds must be at least base_seconds';
+  if (!(n('jitter_seconds') >= 0 && n('jitter_seconds') <= 1))
+    return 'jitter_seconds must be between 0 and 1';
+  return null;
+}
 route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
   const a = app(params.slug);
+  // The app's invocation retry default: `{}` clears it (faas handlers.go:24-40).
+  if ('retry_policy' in body && body.retry_policy !== null) {
+    const policy = body.retry_policy as Record<string, unknown>;
+    const refusal = retryPolicyRefusal(policy);
+    if (refusal) throw new Problem(422, 'trigger_invalid_retry_policy', refusal);
+    if (Object.values(policy).some((value) => Number(value) !== 0))
+      a.retry_policy = policy as db.App['retry_policy'];
+    else a.retry_policy = null;
+  }
   const policyFields = [
     'allowed_service_callers',
     'allowed_service_call_scopes',
@@ -10431,13 +10457,31 @@ route('POST', '/v1/apps/{slug}/delayed-tasks', ({ params, body }) => {
       'plan_delayed_tasks_cap',
       `the plan caps this app at ${DELAYED_TASK_CAP} scheduled delayed_tasks; observed ${pending}.`
     );
-  const at = Date.parse(String(body.scheduled_at ?? ''));
+  // Exactly one of scheduled_at and delay_seconds, at most a year ahead
+  // (faas delayedTaskSchedule, handlers_invocations.go:787-809).
+  const relative = body.delay_seconds !== undefined;
+  if (relative === (body.scheduled_at !== undefined))
+    throw new Problem(
+      400,
+      'invalid_scheduled_at',
+      'exactly one of scheduled_at or delay_seconds is required'
+    );
+  const delay = Number(body.delay_seconds);
+  if (relative && (!Number.isInteger(delay) || delay < 1 || delay > 31_536_000))
+    throw new Problem(400, 'invalid_scheduled_at', 'delay_seconds must be between 1 and 31536000');
+  const at = relative ? Date.now() + delay * 1000 : Date.parse(String(body.scheduled_at ?? ''));
   if (!Number.isFinite(at) || at <= Date.now())
     throw new Problem(
       400,
       'invalid_scheduled_at',
       'scheduled_at must be a future timestamp; the server clock rejected the value'
     );
+  if (body.retry_policy && typeof body.retry_policy === 'object') {
+    const refusal = retryPolicyRefusal(body.retry_policy as Record<string, unknown>);
+    if (refusal) throw new Problem(422, 'validation_failed', refusal);
+  }
+  if (body.retention_seconds !== undefined && !(Number(body.retention_seconds) >= 0))
+    throw new Problem(422, 'validation_failed', 'retention_seconds must be non-negative');
   const id = hex(32);
   const t: MockDelayedTask = {
     id,

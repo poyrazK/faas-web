@@ -91,4 +91,30 @@ describe('delayed-task writes refresh the list', () => {
     });
     await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(before));
   });
+
+  it('sends a relative delay instead of a time, with the rest of the envelope', async () => {
+    spyApi('GET').mockImplementation(() => ok({ tasks: [] }));
+    const post = spyApi('POST').mockImplementation(() => ok(task(C)));
+    const { result } = renderHook(() => useScheduleDelayedTask('billing'), {
+      wrapper: wrapper(),
+    });
+    await act(async () => {
+      await result.current.mutateAsync({
+        delaySeconds: 1800,
+        payload: { invoice_id: 'inv_123' },
+        headers: { 'X-Correlation-ID': 'inv_123' },
+        envelope: { retry_policy: { max_attempts: 4 }, retention_seconds: 86_400 },
+      });
+    });
+    expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/delayed-tasks', {
+      params: { path: { slug: 'billing' } },
+      body: {
+        delay_seconds: 1800,
+        payload: { invoice_id: 'inv_123' },
+        headers: { 'X-Correlation-ID': 'inv_123' },
+        retry_policy: { max_attempts: 4 },
+        retention_seconds: 86_400,
+      },
+    });
+  });
 });
