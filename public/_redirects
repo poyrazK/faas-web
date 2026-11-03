@@ -17,6 +17,7 @@
 /docs/domains    /docs/custom-domains   301
 /docs/dpa/subprocessors    /docs/subprocessors   301
 /docs/gdpr    /docs/account   301
+/docs/managed-postgres    /docs/postgres   301
 /docs/orgs    /docs/account   301
 /docs/sidecars    /docs/companions   301
 /docs/:parent/*    /docs/:parent   301
