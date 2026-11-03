@@ -20,6 +20,7 @@ import { RegistryCredentialsPanel } from './app-core-panels';
 import { GatedSupplyChainPanel } from './supply-chain-gate';
 import { DeployTokensPanel } from './deploy-tokens';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { PurgeCacheControl } from './app-lifecycle';
 import { publicAppUrl } from '@/lib/app-url';
 import { appNameError } from './new-app-validation';
@@ -179,6 +180,9 @@ function ConfigForm({ app }: { app: App }) {
   const { account, loading: limitsLoading } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
+  // Static egress IP is a preview released per account, and its route answers
+  // 404 for everyone else, so the field mounts only once the registry says on.
+  const staticEgress = useCapabilityAccess('static-egress-ip').access;
   const update = useUpdateApp(app.slug);
   const operation = usePolicyOperation(account?.id ?? '', app.slug, app.id, 'configuration');
   const [savedEffects, setSavedEffects] = useState<ReturnType<typeof configurationEffects>>();
@@ -420,9 +424,11 @@ function ConfigForm({ app }: { app: App }) {
               Scale 64.
             </span>
           </label>
-          <div className="sm:col-span-2">
-            <StaticEgressIP slug={app.slug} />
-          </div>
+          {staticEgress === 'on' && (
+            <div className="sm:col-span-2">
+              <StaticEgressIP slug={app.slug} />
+            </div>
+          )}
           <div className="sm:col-span-2">
             <PurgeCacheControl slug={app.slug} appId={app.id} />
           </div>
