@@ -973,7 +973,9 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Plans, usage, invoices, overage cap, cost breakdown and forecast, FOCUS 1.4 invoice export',
     status: 'partial',
     surfaces: ['/dashboard/plans', '/dashboard/usage', '/dashboard/invoices'],
-    gap: 'Per-invoice refresh; account usage folded into Billing (#143)',
+    // Invoice refresh, the account usage projection and the company spend cap
+    // are in; the attributed cost breakdown is the one part not surfaced.
+    gap: 'Cost breakdown (GET /v1/billing/costs) is not surfaced',
     wave: 1,
   },
   // H152 · beta

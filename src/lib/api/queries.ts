@@ -2082,6 +2082,26 @@ export function useUsageSummary(options?: { enabled?: boolean }) {
   });
 }
 
+export type AccountUsage = components['schemas']['AccountUsageResponse'];
+
+/**
+ * The signed-in account's usage projection for the current UTC month: the
+ * compute summary (with its daily rollups) plus object storage and managed
+ * PostgreSQL when the account has them. An absent service block means the
+ * service is not enabled; a configured service that cannot be read fails the
+ * whole projection (faas handlers_ext.go accountUsage), so a missing meter is
+ * never shown as zero. Account-only: there is no organization variant.
+ */
+export function useAccountUsage(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...keys.usage, 'account'],
+    queryFn: ({ signal }) => unwrap(api.GET('/v1/account/usage', { signal })),
+    refetchInterval: 30_000,
+    retry: retryPolicy,
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useInstances(options?: Options<components['schemas']['ListInstancesResponse']>) {
   return useQuery({
     queryKey: keys.instances,

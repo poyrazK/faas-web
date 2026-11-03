@@ -8,9 +8,12 @@ describe('capStanding', () => {
     expect(standing.pct).toBeNull();
   });
 
-  it('treats a $0 cap as overage not allowed', () => {
-    expect(capStanding(0, 0).label).toBe('Overage not allowed');
-    expect(capStanding(0, 0).pct).toBe(0);
+  it('treats a $0 cap as reached at once, even within the allowance', () => {
+    // apid compares overage >= cap, so 0 >= 0 parks every workload (faas
+    // pkg/sched/overage.go:207, docs/billing.md:33-35).
+    expect(capStanding(0, 0).label).toBe('Workloads paused');
+    expect(capStanding(0, 0).tone).toBe('var(--status-critical)');
+    expect(capStanding(0, 0).pct).toBe(100);
     expect(capStanding(50, 0).pct).toBe(100);
   });
 

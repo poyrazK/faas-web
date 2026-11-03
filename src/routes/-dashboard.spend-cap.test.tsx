@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { bindWorkspaceAccount } from '@/lib/workspace';
+import { bindWorkspaceAccount, setActiveOrg } from '@/lib/workspace';
 import { api } from '@/lib/api/client';
 import { Route as Plans } from './dashboard.plans';
 import { Route as Usage } from './dashboard.usage';
@@ -44,28 +44,31 @@ beforeEach(() => {
       if (readFails) throw new Error('Cap read unavailable');
       return { data: { overage_cap_cents: cap }, response: new Response() } as never;
     }
+    const compute = {
+      month: '2026-09',
+      used_gb_hours: 1,
+      included_gb_hours: 100,
+      overage_gb_hours: 0,
+      overage_cents: 0,
+    };
     const data =
       path === '/v1/usage/summary'
-        ? {
-            month: '2026-09',
-            used_gb_hours: 1,
-            included_gb_hours: 100,
-            overage_gb_hours: 0,
-            overage_cents: 0,
-          }
-        : path === '/v1/billing/forecast'
-          ? {
-              period_start: '2026-09-01T00:00:00Z',
-              period_end: '2026-10-01T00:00:00Z',
-              as_of: '2026-09-15T00:00:00Z',
-              currency: 'EUR',
-              meters: [],
-              bill_estimate_available: false,
-              missing_bill_components: [],
-            }
-          : path === '/v1/audit-events'
-            ? { events: [], limit: 20 }
-            : [];
+        ? compute
+        : path === '/v1/account/usage'
+          ? { month: '2026-09', compute }
+          : path === '/v1/billing/forecast'
+            ? {
+                period_start: '2026-09-01T00:00:00Z',
+                period_end: '2026-10-01T00:00:00Z',
+                as_of: '2026-09-15T00:00:00Z',
+                currency: 'EUR',
+                meters: [],
+                bill_estimate_available: false,
+                missing_bill_components: [],
+              }
+            : path === '/v1/audit-events'
+              ? { events: [], limit: 20 }
+              : [];
     return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
@@ -142,7 +145,7 @@ it('edits the same cap on Plans and reflects it back on Usage', async () => {
 it('distinguishes zero overage from no cap and updates after clearing', async () => {
   cap = 0;
   await mount();
-  expect(await screen.findByText('Overage not allowed')).toBeInTheDocument();
+  expect(await screen.findByText('Workloads paused')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Change cap' }));
   await userEvent.click(screen.getByRole('button', { name: 'Clear cap' }));
   expect(await screen.findByText('No cap')).toBeInTheDocument();
@@ -165,7 +168,7 @@ it('refreshes a pristine cached editor but preserves an unsaved draft', async ()
   client.setQueryData(['account', 'overage-cap'], { overage_cap_cents: 1000 });
   cap = 0;
   await mount('/dashboard/plans', client);
-  expect(await screen.findByText('$0.00 · No overage allowed')).toBeInTheDocument();
+  expect(await screen.findByText('$0.00 · Workloads paused')).toBeInTheDocument();
   const input = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
   expect(input).toHaveValue(0);
   await userEvent.clear(input);
@@ -188,4 +191,47 @@ it('keeps the saved cap and draft unchanged when saving fails', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Save unavailable');
   expect(screen.getByText('$10.00')).toBeInTheDocument();
   expect(input).toHaveValue(5.5);
+});
+
+it("a company workspace reads and writes the organization's cap on Plans and Usage, never the account's", async () => {
+  // ADR-20261030093512: an organization that owns its resources is capped
+  // apart from its members, so its pages must never touch the personal cap.
+  setActiveOrg('acme');
+  const touched: string[] = [];
+  let orgCap: number | null = 1000;
+  const ok = (data: unknown) => ({ data, response: new Response() }) as never;
+  spyApi('GET').mockImplementation(async (path) => {
+    touched.push(`GET ${path}`);
+    if (path === '/v1/orgs') return ok({ orgs: [{ slug: 'acme', name: 'Acme', personal: false }] });
+    if (path === '/v1/orgs/{slug}/overage-cap') return ok({ overage_cap_cents: orgCap });
+    if (path === '/v1/orgs/{slug}/billing/status') return ok({ plan: 'pro' });
+    if (path === '/v1/orgs/{slug}/usage') return ok([]);
+    if (path === '/v1/orgs/{slug}/apps') return ok({ apps: [] });
+    throw new Error(`Unexpected GET ${path}`);
+  });
+  spyApi('POST').mockImplementation(async (path, options) => {
+    touched.push(`POST ${path}`);
+    orgCap = (options as unknown as { body: { overage_cap_cents: number | null } }).body
+      .overage_cap_cents;
+    return ok({ overage_cap_cents: orgCap });
+  });
+  try {
+    const router = await mount('/dashboard/plans');
+    expect(await screen.findByText("Acme's spend cap")).toBeInTheDocument();
+    const input = await screen.findByRole('spinbutton', { name: 'Cap (USD)' });
+    expect(input).toHaveValue(10);
+    await userEvent.clear(input);
+    await userEvent.type(input, '40');
+    await userEvent.click(screen.getByRole('button', { name: 'Set cap' }));
+    await waitFor(() => expect(touched).toContain('POST /v1/orgs/{slug}/overage-cap'));
+    await act(async () => {
+      await router.navigate({ to: '/dashboard/usage' });
+    });
+    expect(await screen.findByText('$40.00')).toBeInTheDocument();
+    expect(touched.filter((t) => t.includes('/v1/account/'))).toEqual([]);
+    expect(touched).not.toContain('GET /v1/audit-events');
+    expect(touched).not.toContain('GET /v1/billing/forecast');
+  } finally {
+    setActiveOrg(null);
+  }
 });

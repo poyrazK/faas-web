@@ -78,6 +78,13 @@ import {
   TRIGGER_CAPABILITIES_BY_PLAN,
   triggerDefaultsFor,
 } from './trigger-contract';
+import {
+  mockDailyUsage,
+  mockInvoiceRefresh,
+  mockManagedPostgresUsage,
+  orgOverageCap,
+  setOrgOverageCap,
+} from './billing';
 
 /**
  * Dev-only mock of `apid`, as a Vite middleware.
@@ -3919,7 +3926,10 @@ route('POST', '/v1/uploads/{id}/commit', ({ params }) => {
   return status(201, u.deployment);
 });
 
-route('GET', '/v1/account/object-storage-usage', () => ({
+// Also the `object_storage` block of GET /v1/account/usage, which the Usage page reads.
+route('GET', '/v1/account/object-storage-usage', () => objectStorageUsage());
+const objectStorageUsage = (): S_['ObjectStorageUsageResponse'] => ({
+  billing_mode: 'off',
   usage: {
     observed_bytes: 41_237_899_264,
     capacity_bytes: 214_748_364_800,
@@ -3949,7 +3959,7 @@ route('GET', '/v1/account/object-storage-usage', () => ({
     egress_millicents: 83_200,
     total_millicents: 412_800,
   },
-}));
+});
 
 // Bucket access: API-key grants and S3 credentials.
 const bucketGrants = new Map<
@@ -8392,6 +8402,27 @@ route('GET', '/v1/audit-log', ({ query }) => {
 });
 
 route('GET', '/v1/usage/summary', () => db.usage);
+// The account projection (faas handlers_ext.go accountUsage): compute with its
+// daily rollups, and the optional services only for the current UTC month.
+route('GET', '/v1/account/usage', ({ query }) => {
+  const current = new Date().toISOString().slice(0, 7);
+  const month = query.get('month') ?? current;
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Problem(400, 'validation_failed', 'expected YYYY-MM');
+  const daily = mockDailyUsage(
+    db.usage.used_gb_hours,
+    month,
+    Date.now(),
+    db.apps.map((a) => a.slug)
+  );
+  const compute = { ...db.usage, month, daily };
+  if (month !== current) return { month, compute };
+  return {
+    month,
+    compute,
+    object_storage: objectStorageUsage(),
+    managed_postgres: mockManagedPostgresUsage(Date.now()),
+  };
+});
 route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
@@ -8479,6 +8510,24 @@ route('GET', '/v1/orgs/{slug}/invoices', ({ params }) => {
 route('GET', '/v1/orgs/{slug}/billing/portal', ({ params }) => {
   requireOrgBillingRole(params.slug, ['owner']);
   return { url: 'https://billing.example.test/portal/acme', payment_method: 'card' };
+});
+// ADR-20261030093512: a company's own spend cap. Any member reads it; the owner
+// sets it behind a five-minute step-up (faas server.go:4814-4815,
+// org_billing_routes.go). MOCK_ORG_ROLE=developer shows the refusal.
+route('GET', '/v1/orgs/{slug}/overage-cap', ({ params }) => {
+  const org = requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return { overage_cap_cents: orgOverageCap(org.slug, org.plan) };
+});
+route('POST', '/v1/orgs/{slug}/overage-cap', ({ params, body }) => {
+  // apid checks membership (loadOrg), then the step-up, then the owner role.
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  requireMintStepUp();
+  const org = requireOrgBillingRole(params.slug, ['owner']);
+  const cap = body.overage_cap_cents ?? null;
+  if (cap !== null && (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap < 0))
+    throw new Problem(400, 'validation_failed', 'overage_cap_cents must be >= 0 or null');
+  setOrgOverageCap(org.slug, cap);
+  return { overage_cap_cents: cap };
 });
 
 route('GET', '/v1/orgs', () => ({
@@ -9520,6 +9569,33 @@ route('POST', '/v1/invoices/backfill', ({ query }) => {
     has_more: hasMore,
     ...(hasMore ? { next_cursor: `mock-history-${end}` } : {}),
   };
+});
+// Re-read one stored invoice from the provider (faas handlers_invoice_refresh.go):
+// 501 with billing off, 404 for an invoice that is not the account's, 409 for
+// another provider's. MOCK_BILLING=disabled shows the 501.
+route('POST', '/v1/invoices/{id}/refresh', ({ params, query }) => {
+  if ([...query.keys()].length)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'This operation accepts no body or query parameters.'
+    );
+  if (billingOff())
+    throw new Problem(
+      501,
+      'not_implemented',
+      'The configured billing provider does not support invoice refresh.'
+    );
+  const invoice = db.invoices.find((i) => i.id === params.id);
+  if (!invoice)
+    throw new Problem(404, 'not_found', 'No invoice belongs to this account with that ID.');
+  if (invoice.provider !== 'stripe')
+    throw new Problem(
+      409,
+      'conflict',
+      'The invoice changed or the provider identity/amounts differ; reconcile provider deliveries and retry.'
+    );
+  return mockInvoiceRefresh(invoice);
 });
 let overageCapCents: number | null = 2000;
 // apid audits every cap change (old/new cents, "null" for no cap) and, at most
