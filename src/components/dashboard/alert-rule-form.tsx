@@ -195,7 +195,7 @@ export function AlertRuleForm({
   return (
     <form
       noValidate
-      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
         void submit(e.currentTarget);
@@ -258,7 +258,7 @@ export function AlertRuleForm({
       )}
 
       <div className="flex gap-2 sm:col-span-2">
-        <label className="flex w-40 shrink-0 flex-col gap-1.5">
+        <label className="flex w-32 shrink-0 sm:w-40 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Is</span>
           <select
             value={comparison}

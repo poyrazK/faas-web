@@ -238,7 +238,7 @@ function RuleDetail({
       }
     >
       <div className="flex flex-col gap-6">
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="State">
             <AlertState state={rule.state} />
           </Fact>
@@ -433,7 +433,7 @@ function EditRule({
     <form
       noValidate
       aria-label="Edit rule"
-      className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
         save();
@@ -451,7 +451,7 @@ function EditRule({
         {shown('name') && <FieldError id="edit-name-error">{shown('name')}</FieldError>}
       </label>
       <div className="flex gap-2 sm:col-span-2">
-        <label className="flex w-40 shrink-0 flex-col gap-1.5">
+        <label className="flex w-32 shrink-0 sm:w-40 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Is</span>
           <select
             value={comparison}
