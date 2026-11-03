@@ -1349,3 +1349,113 @@ describe('invocation retry settings in the mock', () => {
     expect(Date.parse(row.result_retention_until) - Date.now()).toBeLessThanOrEqual(3_600_000);
   });
 });
+
+describe('job recovery, results, registries and schedules in the mock', () => {
+  const create = (body: Record<string, unknown>) =>
+    json('/v1/jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'batch',
+        image_ref: 'registry.gregale.dev/acme/x:v1',
+        command: ['true'],
+        ...body,
+      }),
+    });
+  const runs = async (name: string) =>
+    (await json(`/v1/jobs/${name}/runs`)).body.runs as {
+      id: string;
+      aggregate_status: string;
+      source_run_id?: string;
+    }[];
+
+  it('retries a failed task once, then refuses a task that is no longer failed', async () => {
+    const failed = (await runs('nightly-export')).find((r) => r.aggregate_status === 'failed')!;
+    const tasks = (await json(`/v1/jobs/nightly-export/runs/${failed.id}/tasks`)).body.tasks as {
+      task_index: number;
+      status: string;
+    }[];
+    const index = tasks.find((t) => t.status === 'failed')!.task_index;
+    const path = `/v1/jobs/nightly-export/runs/${failed.id}/tasks/${index}/retry`;
+    const retried = await json(path, { method: 'POST' });
+    expect(retried.status).toBe(200);
+    expect(retried.body.task.status).toBe('queued');
+    expect(retried.body.next_attempt_at).toBeTruthy();
+    const again = await json(path, { method: 'POST' });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('job_task_not_retriable');
+  });
+
+  it('replays a finished run’s failed inputs as a linked run', async () => {
+    const cancelled = (await runs('reindex-search')).find(
+      (r) => r.aggregate_status === 'cancelled'
+    )!;
+    const replay = await json(`/v1/jobs/reindex-search/runs/${cancelled.id}/replay-failed`, {
+      method: 'POST',
+    });
+    expect(replay.status).toBe(201);
+    expect(replay.body.source_run_id).toBe(cancelled.id);
+    const tasks = (await json(`/v1/jobs/reindex-search/runs/${replay.body.id}/tasks`)).body
+      .tasks as { source_task_index?: number }[];
+    expect(tasks.length).toBe(replay.body.tasks);
+    expect(tasks.every((t) => t.source_task_index !== undefined)).toBe(true);
+    const running = (await runs('reindex-search')).find((r) => r.aggregate_status === 'running')!;
+    const refused = await json(`/v1/jobs/reindex-search/runs/${running.id}/replay-failed`, {
+      method: 'POST',
+    });
+    expect(refused.status).toBe(409);
+  });
+
+  it('signs a managed artifact and refuses a customer-managed one', async () => {
+    const done = (await runs('legacy-backfill')).find((r) => r.aggregate_status === 'succeeded')!;
+    const base = `/v1/jobs/legacy-backfill/runs/${done.id}/tasks/0/artifacts`;
+    const signed = await json(`${base}/result/download`);
+    expect(signed.status).toBe(200);
+    expect(signed.body.download.method).toBe('GET');
+    expect(signed.body.sha256).toMatch(/^sha256:/);
+    expect((await json(`${base}/report/download`)).status).toBe(409);
+    expect((await json(`${base}/missing/download`)).status).toBe(404);
+  });
+
+  it('stores, lists and removes a job registry credential by host', async () => {
+    const path = '/v1/jobs/nightly-export/registry-credentials';
+    const put = await json(path, {
+      method: 'PUT',
+      body: JSON.stringify({ registry: 'https://ghcr.io', username: 'bot', password: 'pw' }),
+    });
+    expect(put.status).toBe(200);
+    expect(put.body).not.toHaveProperty('password');
+    expect((await json(path)).body).toMatchObject({ count: 1, quota_max: 5 });
+    const bad = await json(path, {
+      method: 'PUT',
+      body: JSON.stringify({ registry: 'ghcr.io/x', username: 'bot', password: 'pw' }),
+    });
+    expect(bad.status).toBe(400);
+    const res = await fetch(`${base}${path}?registry=${encodeURIComponent('https://ghcr.io')}`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(204);
+    expect((await json(path)).body.count).toBe(0);
+  });
+
+  it('wants a schedule for a recurring job, and adds, changes and removes one', async () => {
+    expect((await create({ name: 'needs-cron', kind: 'recurring' })).status).toBe(400);
+    const made = await create({
+      name: 'cron-job',
+      kind: 'recurring',
+      schedule: '0 3 * * *',
+      timezone: 'Europe/Istanbul',
+      schedule_policy: { version: 1, overlap: 'skip', missed_runs: 'skip' },
+    });
+    expect(made.status).toBe(201);
+    expect(made.body).toMatchObject({ schedule: '0 3 * * *', timezone: 'Europe/Istanbul' });
+    const patch = (body: unknown) =>
+      json('/v1/jobs/cron-job', { method: 'PATCH', body: JSON.stringify(body) });
+    expect((await patch({ schedule: '*/5 * * * *' })).body.schedule).toBe('*/5 * * * *');
+    expect((await patch({ schedule: 'nope' })).status).toBe(400);
+    expect((await patch({ schedule: '', timezone: 'UTC' })).status).toBe(400);
+    const removed = await patch({ schedule: '' });
+    expect(removed.status).toBe(200);
+    expect(removed.body.kind).toBe('batch');
+    expect(removed.body.schedule).toBeUndefined();
+  });
+});

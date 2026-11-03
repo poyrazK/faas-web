@@ -43,6 +43,26 @@ vi.mock('@/components/dashboard/automations-body', () => ({
   AutomationsBody: () => <p>Automations body</p>,
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+// Workloads sit behind the workflows-and-jobs capability; its own tests cover the gate.
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', refresh: vi.fn() }),
+  useCapabilityStage: () => 'Beta',
+}));
+vi.mock('@/lib/api/jobs', () => ({
+  isManagedArtifact: () => false,
+  useRetryJobTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReplayFailedJobRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDownloadJobArtifact: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateJobSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useJobRegistryCredentials: () => ({
+    data: { credentials: [], quota_max: 5, count: 0 },
+    isPending: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetJobRegistryCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteJobRegistryCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({

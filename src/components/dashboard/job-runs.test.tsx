@@ -7,10 +7,14 @@ const useJobRuns = vi.fn();
 const cancel = vi.fn();
 const toast = vi.fn();
 const confirm = vi.fn();
+const replay = vi.fn();
 
 vi.mock('@/lib/api/queries', () => ({
   useJobRuns: (name: string) => useJobRuns(name) as unknown,
   useCancelJobRun: () => ({ mutateAsync: cancel, isPending: false }),
+}));
+vi.mock('@/lib/api/jobs', () => ({
+  useReplayFailedJobRun: () => ({ mutateAsync: replay, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
@@ -46,6 +50,7 @@ beforeEach(() => {
   cancel.mockReset().mockResolvedValue({});
   toast.mockReset();
   confirm.mockReset().mockResolvedValue(true);
+  replay.mockReset().mockResolvedValue(run({ id: 'run2', tasks: 3, source_run_id: 'run1' }));
 });
 
 describe('JobRuns', () => {
@@ -96,5 +101,70 @@ describe('JobRuns', () => {
     useJobRuns.mockReturnValue(ok([]));
     render(<JobRuns name="nightly-export" onSelect={vi.fn()} selectedRunId={null} />);
     expect(screen.getByText(/has not run yet/i)).toBeInTheDocument();
+  });
+});
+
+describe('JobRuns replay failed', () => {
+  const finished = (over: Record<string, unknown> = {}) =>
+    run({
+      aggregate_status: 'failed',
+      tasks_failed: 2,
+      tasks_cancelled: 1,
+      finished_at: '2026-09-06T11:00:00Z',
+      ...over,
+    });
+
+  it('offers a replay only for a finished run with inputs that did not succeed', () => {
+    useJobRuns.mockReturnValue(
+      ok([
+        finished({ id: 'done-bad' }),
+        finished({
+          id: 'done-good',
+          aggregate_status: 'succeeded',
+          tasks_failed: 0,
+          tasks_cancelled: 0,
+        }),
+        run({ id: 'still-going', tasks_failed: 2 }),
+      ])
+    );
+    render(<JobRuns name="nightly-export" onSelect={vi.fn()} selectedRunId={null} />);
+    expect(screen.getAllByRole('button', { name: 'Replay failed' })).toHaveLength(1);
+  });
+
+  it('asks, replays, and selects the new run', async () => {
+    useJobRuns.mockReturnValue(ok([finished()]));
+    const onSelect = vi.fn();
+    render(<JobRuns name="nightly-export" onSelect={onSelect} selectedRunId={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Replay failed' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith('run2'));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/3 inputs/) })
+    );
+    expect(replay).toHaveBeenCalledWith({ name: 'nightly-export', runId: 'run1' });
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Replay queued' }));
+  });
+
+  it('explains apid refusing the replay', async () => {
+    useJobRuns.mockReturnValue(ok([finished()]));
+    replay.mockRejectedValue(
+      new ApiError({ status: 409, code: 'validation_failed', title: 'Run cannot be replayed' })
+    );
+    render(<JobRuns name="nightly-export" onSelect={vi.fn()} selectedRunId={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Replay failed' }));
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'error',
+        description: expect.stringMatching(/same ready image/),
+      })
+    );
+  });
+
+  it('links a replay to the run it came from', async () => {
+    useJobRuns.mockReturnValue(ok([run({ id: 'run2', source_run_id: 'abcdef1234567890' })]));
+    const onSelect = vi.fn();
+    render(<JobRuns name="nightly-export" onSelect={onSelect} selectedRunId={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'replay of abcdef12' }));
+    expect(onSelect).toHaveBeenCalledWith('abcdef1234567890');
   });
 });
