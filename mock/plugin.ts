@@ -7,6 +7,7 @@ import * as automationMock from './automations';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
+import * as preAuthMock from './pre-auth';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
@@ -1371,9 +1372,27 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  // pre_auth_rate_limit belongs to the edge-protection capability (faas
+  // catalog.json), and apid validates it before storing (lifecycle.go:54).
+  const preAuth = body.pre_auth_rate_limit;
+  if (preAuth != null) {
+    if (hiddenCapabilities.has('edge-protection'))
+      throw new Problem(
+        403,
+        'capability_not_released',
+        'app.pre_auth_rate_limit needs the Edge protection capability, which is not available to this account; remove it or contact support for access.'
+      );
+    const refused = preAuthMock.refusal(preAuth, process.env.MOCK_PLAN ?? db.account.plan);
+    if (refused) throw new Problem(400, 'validation_failed', refused);
+  }
   const lifecycleRefusal = applyLifecycle(a, body, process.env.MOCK_PLAN ?? db.account.plan);
   if (lifecycleRefusal)
     throw new Problem(lifecycleRefusal.status, lifecycleRefusal.code, lifecycleRefusal.detail);
+  if (preAuth != null)
+    a.manifest = {
+      ...(a.manifest ?? { entrypoint: [] }),
+      pre_auth_rate_limit: preAuth as NonNullable<db.App['manifest']>['pre_auth_rate_limit'],
+    };
   applyReleaseSettings(a, body);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
@@ -2839,48 +2858,20 @@ route('GET', '/v1/apps/{slug}/pre-auth-observations', ({ params, query }) => {
   const a = app(params.slug);
   const range = edgeRange(query, '5m');
   const base = { app_id: a.id, range, as_of: new Date().toISOString() };
-  // Only the first app has a guard; the others show the "not on" state.
-  if (a.id !== db.apps[0]?.id) return { ...base, source: 'prometheus', policies: [] };
+  // The policies follow the app's stored guard, so an edit shows here; an app
+  // without one (every seed but the first) shows the "not on" state.
+  const config = a.manifest?.pre_auth_rate_limit;
+  if (!config || config.mode === 'off') return { ...base, source: 'prometheus', policies: [] };
   const degraded = edgeDegraded();
   const k = degraded ? 0 : EDGE_RANGE_HOURS[range];
   const n = (v: number) => Math.round(v * k);
-  const policies = [
-    {
-      policy_id: 'app',
-      kind: 'app' as const,
-      would_block: n(37),
-      result_2xx: n(2),
-      result_3xx: 0,
-      result_4xx: n(31),
-      result_5xx: n(4),
-    },
-    {
-      policy_id: 'route_0',
-      kind: 'route' as const,
-      method: 'POST',
-      path: '/login',
-      would_block: n(12),
-      result_2xx: 0,
-      result_3xx: 0,
-      result_4xx: n(12),
-      result_5xx: 0,
-    },
-    {
-      policy_id: 'failures_0',
-      kind: 'failures' as const,
-      method: 'POST',
-      path: '/login',
-      would_block: n(3),
-      result_2xx: 0,
-      result_3xx: 0,
-      result_4xx: n(3),
-      result_5xx: 0,
-    },
-  ];
+  const policies = preAuthMock.policies(config, n);
   if (degraded) return { ...base, source: degraded, policies };
   const requests = n(4200);
   const succeeded = n(2);
   const long = ['24h', '7d', '15d'].includes(range);
+  // apid suggests only for an observe-mode guard (handlers_pre_auth_observations.go:119).
+  if (config.mode !== 'observe') return { ...base, source: 'prometheus', policies };
   return {
     ...base,
     source: 'prometheus',

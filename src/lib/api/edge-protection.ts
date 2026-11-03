@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { ruleAction } from './edge-rules';
-import { edgeRuleListFilters, type EdgeRule } from './queries';
+import { edgeRuleListFilters, keys, type EdgeRule } from './queries';
 import type { components } from './schema';
 
 /**
@@ -17,6 +17,7 @@ import type { components } from './schema';
 
 export type EdgeProtection = components['schemas']['EdgeProtectionResponse'];
 export type PreAuthObservations = components['schemas']['PreAuthObservationsResponse'];
+export type PreAuthRateLimit = components['schemas']['PreAuthRateLimitConfig'];
 export type AttackMode = components['schemas']['EdgeAttackModeStatus'];
 export type EdgeRange = EdgeProtection['range'];
 type UpdateCorsPreset = components['schemas']['UpdateCorsPresetRequest'];
@@ -40,7 +41,7 @@ export function useEdgeProtection(slug: string, range: EdgeRange) {
   });
 }
 
-export function usePreAuthObservations(slug: string, range: EdgeRange) {
+export function usePreAuthObservations(slug: string, range: EdgeRange, enabled = true) {
   return useQuery({
     queryKey: [...edgeProtectionKey(slug), 'pre-auth', range],
     queryFn: ({ signal }) =>
@@ -50,7 +51,33 @@ export function usePreAuthObservations(slug: string, range: EdgeRange) {
           signal,
         })
       ),
-    enabled: Boolean(slug),
+    enabled: Boolean(slug) && enabled,
+  });
+}
+
+/**
+ * Replace the app's pre-auth guard. apid takes the whole config in one field
+ * of `PATCH /v1/apps/{slug}` (faas pkg/apid/apidserver/lifecycle.go:325) and
+ * answers with the app, whose `manifest` carries what was stored; the
+ * observations are reread because the policies they count just changed.
+ */
+export function useUpdatePreAuthGuard(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (config: PreAuthRateLimit) =>
+      unwrap(
+        api.PATCH('/v1/apps/{slug}', {
+          params: { path: { slug } },
+          body: { pre_auth_rate_limit: config },
+        })
+      ),
+    onSuccess: (app) => {
+      qc.setQueryData(keys.app(slug), app);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.app(slug), exact: true });
+      void qc.invalidateQueries({ queryKey: [...edgeProtectionKey(slug), 'pre-auth'] });
+    },
   });
 }
 

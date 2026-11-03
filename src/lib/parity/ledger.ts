@@ -548,10 +548,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 76,
     name: 'Edge protection: pre-auth guard, challenge under attack, WAF',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Edge protection'],
-    gap: 'Configure the pre-auth guard (mode, rate, route overrides); it is set with `gregale app --pre-auth`',
-    wave: 2,
+    capability: 'edge-protection',
   },
   // D77 · GA
   {
