@@ -668,7 +668,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/events'],
     capability: 'events',
-    gap: 'Schemas, replays and recoveries; acknowledgment policy and history; per-subscription retry policy, schema versions, circuit breaker, rate-limit and capacity controls',
+    gap: 'Schemas, subscription replays and bulk recovery jobs; acknowledgment policy and history; per-subscription retry policy, schema versions, circuit breaker, rate-limit and capacity controls',
     wave: 3,
   },
   // E99 · preview
