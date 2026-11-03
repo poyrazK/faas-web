@@ -120,7 +120,7 @@ export function AppRail({
   })).filter((group) => group.tabs.length > 0);
 
   return (
-    <nav aria-label="App" className="scrollbar-none mt-3 flex flex-col gap-3 overflow-y-auto">
+    <nav aria-label="App" className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto">
       <div className="flex flex-col gap-px">
         {project ? (
           <Link

@@ -335,7 +335,7 @@ function SidebarBody({
           and shoves the icons off-center (it did). */
         <nav
           aria-label="Main"
-          className="scrollbar-none mt-3 flex flex-col gap-3 overflow-x-hidden overflow-y-auto"
+          className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
         >
           {groups.map((group, gi) => (
             <div key={group.title ?? `group-${gi}`}>
@@ -812,7 +812,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
-              <div className="mt-auto overflow-hidden pt-4">
+              <div className="mt-auto shrink-0 overflow-hidden border-t border-border pt-2">
                 <Tooltip
                   content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
                   side="right"
