@@ -45,7 +45,7 @@ it('remembers the page last open in each group', async () => {
   render(<Navigation initial="Edge rules" />);
   await userEvent.click(within(pages('Connect')).getByRole('button', { name: 'Mirrors' }));
   await userEvent.click(screen.getByRole('tab', { name: 'Automate' }));
-  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(6);
+  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(7);
   await userEvent.click(screen.getByRole('tab', { name: 'Connect' }));
   expect(within(pages('Connect')).getByRole('button', { name: 'Mirrors' })).toHaveAttribute(
     'aria-pressed',

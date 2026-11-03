@@ -631,10 +631,11 @@ export const LEDGER: LedgerEntry[] = [
     surfaces: [
       '/dashboard/apps/$appSlug?tab=Workflows',
       '/dashboard/apps/$appSlug?tab=Workflow schedules',
+      '/dashboard/apps/$appSlug?tab=Workflow insights',
       '/dashboard/apps/$appSlug?tab=Recovery policy',
     ],
     capability: 'workflows',
-    gap: 'Insights (attention, outcomes, performance); recovery reviews, initial-failure recovery, automatic queue, history, report and evaluation (CLI meanwhile); callback webhook bindings',
+    gap: 'Readiness, failures and action previews; performance drill-down past the overall measures; recovery reviews, initial-failure recovery, queue, history, report and evaluation (CLI meanwhile); callback webhook bindings',
     wave: 2,
   },
   // E95 · beta
