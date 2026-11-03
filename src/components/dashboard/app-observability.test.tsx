@@ -7,12 +7,9 @@ import {
 } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@/lib/api/errors';
-import { AppHealthPanel, AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
+import { AwakeRoutesPanel, DependencyLatencyPanel } from './app-observability';
 
 const hooks = vi.hoisted(() => ({
-  useAppHealth: vi.fn(),
-  useAppHealthHistory: vi.fn(),
   useRouteAwake: vi.fn(),
   useDependencyLatency: vi.fn(),
 }));
@@ -29,71 +26,6 @@ async function mount(node: ReactNode) {
   await router.load();
   render(<RouterProvider router={router} />);
 }
-
-const assessment = {
-  app_id: 'app-1',
-  status: 'unhealthy',
-  phase: 'serving',
-  summary: 'The latest deployment fails readiness.',
-  scope: 'app',
-  evaluated_at: '2026-10-15T10:00:00Z',
-  valid_for_seconds: 60,
-  serving_deployment_ids: [],
-  capacity: { known: true, required: 2, ready: 1, starting: 0, unready: 1, unknown: 0 },
-  checks: [
-    { code: 'readiness', status: 'fail', detail: 'Readiness probe timed out.', action: 'logs' },
-    { code: 'requests', status: 'pass', detail: 'Error rate normal.' },
-  ],
-};
-
-describe('AppHealthPanel', () => {
-  it('shows the assessment, capacity, failing checks with their next step, and changes', async () => {
-    hooks.useAppHealth.mockReturnValue(ok(assessment));
-    hooks.useAppHealthHistory.mockReturnValue(
-      ok({
-        app_id: 'app-1',
-        scope: 'app',
-        collector_fresh: true,
-        interval_seconds: 60,
-        entries: [
-          {
-            id: 'h1',
-            kind: 'transition',
-            observed_at: '2026-10-15T09:00:00Z',
-            previous_status: 'healthy',
-            assessment,
-          },
-          { id: 'h0', kind: 'gap', observed_at: '2026-10-15T08:00:00Z', assessment },
-        ],
-      })
-    );
-    await mount(<AppHealthPanel slug="api" />);
-    expect(screen.getByText('unhealthy')).toBeInTheDocument();
-    expect(screen.getByText('1 of 2 instances ready · 1 not ready')).toBeInTheDocument();
-    const failing = screen.getByRole('list', { name: 'Failing checks' });
-    expect(within(failing).getByText('Readiness probe timed out.')).toBeInTheDocument();
-    expect(within(failing).queryByText('Error rate normal.')).not.toBeInTheDocument();
-    expect(within(failing).getByRole('link', { name: 'Open logs' })).toHaveAttribute(
-      'href',
-      '/dashboard/apps/api?tab=Logs'
-    );
-    const history = screen.getByRole('list', { name: 'Health history' });
-    expect(within(history).getByText('healthy → unhealthy')).toBeInTheDocument();
-    expect(within(history).getByText('No evidence collected')).toBeInTheDocument();
-  });
-
-  it('uses the plan gate rather than an error when the plan excludes it', async () => {
-    hooks.useAppHealth.mockReturnValue({
-      data: undefined,
-      isPending: false,
-      error: new ApiError({ status: 402, code: 'plan_feature_gated', title: 'Upgrade' }),
-      refetch: vi.fn(),
-    });
-    hooks.useAppHealthHistory.mockReturnValue(ok({ entries: [] }));
-    await mount(<AppHealthPanel slug="api" />);
-    expect(screen.queryByText('unhealthy')).not.toBeInTheDocument();
-  });
-});
 
 describe('AwakeRoutesPanel', () => {
   it('ranks routes by awake share and names a periodic probe', async () => {

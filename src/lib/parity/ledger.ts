@@ -911,10 +911,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 137,
     name: 'App health assessment, read without waking the app',
-    status: 'none',
-    surfaces: [],
-    gap: 'App health assessment (open PR #125)',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Overview', '/dashboard/analytics'],
+    capability: 'app-health',
   },
   // G138 · GA
   {
