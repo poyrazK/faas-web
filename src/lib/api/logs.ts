@@ -5,10 +5,13 @@ import { ApiError, toApiError } from './errors';
 /**
  * The console's log streams, over Server-Sent Events.
  *
- * Two endpoints answer in the same SSE shape and so share this hook: an app's
- * logs (`/v1/apps/{slug}/logs`, live or read back from the archive) and a
- * build's (`/v1/deployments/{id}/logs`). Both emit `event: log` per line and a
- * terminal `event: end`; the archive puts a reason on the end frame.
+ * Three endpoints answer in the same SSE shape and so share this hook: an
+ * app's logs (`/v1/apps/{slug}/logs`, live or read back from the archive), a
+ * build's (`/v1/deployments/{id}/logs`), and a job task's live output
+ * (`/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs/stream`, served by the compute
+ * gateway on the same origin). Each emits `event: log` per line and a
+ * terminal `event: end`, whose data is `{"reason": …}` (apislogs/sse.go:17)
+ * or, from older producers, the bare reason.
  *
  * Deliberately not `openapi-fetch` and not TanStack Query — this is a held-open
  * connection, not a request.
@@ -53,7 +56,9 @@ export type StreamSource =
       grep?: string;
       level?: LogLevelFilter | '';
     }
-  | { kind: 'build'; deploymentId: string; limit?: number };
+  | { kind: 'build'; deploymentId: string; limit?: number }
+  /** One task of a job run: waits while queued, then follows each attempt in turn. */
+  | { kind: 'task'; job: string; runId: string; index: number };
 
 /** How many lines are kept. Older ones fall off the top, and the UI says so. */
 export const MAX_LINES = 2000;
@@ -116,7 +121,9 @@ export function parseFrame(data: string, id: string, receivedAt: number): LogLin
         ) ?? raw;
       return {
         id,
-        ts: asTimestamp(parsed.ts ?? parsed.time ?? parsed.timestamp) ?? receivedAt,
+        ts:
+          asTimestamp(parsed.ts ?? parsed.time ?? parsed.timestamp ?? parsed.written_at) ??
+          receivedAt,
         level: asLevel(parsed.level ?? parsed.severity),
         instanceId:
           typeof parsed.instance_id === 'string'
@@ -146,6 +153,13 @@ function levelFromText(line: string): LogLevel | undefined {
 
 /** The URL and the identity of a subscription. */
 function describe(source: StreamSource): { url: string; key: string } {
+  if (source.kind === 'task') {
+    const path = [source.job, source.runId, String(source.index)].map(encodeURIComponent);
+    return {
+      url: `/v1/jobs/${path[0]}/runs/${path[1]}/tasks/${path[2]}/logs/stream`,
+      key: `task|${source.job}|${source.runId}|${source.index}`,
+    };
+  }
   if (source.kind === 'build') {
     const params = new URLSearchParams({ follow: '1' });
     if (source.limit) params.set('limit', String(source.limit));
@@ -175,6 +189,10 @@ function describe(source: StreamSource): { url: string; key: string } {
 }
 
 function ready(source: StreamSource): boolean {
+  if (source.kind === 'task')
+    return (
+      Boolean(source.job && source.runId) && Number.isInteger(source.index) && source.index >= 0
+    );
   if (source.kind === 'build') return Boolean(source.deploymentId);
   if (source.kind === 'archive') return Boolean(source.slug && source.instance && source.date);
   return Boolean(source.slug);
@@ -190,9 +208,32 @@ interface StreamState {
   reason?: string;
   /** True once the ring buffer has dropped a line, so the UI can say so. */
   truncated: boolean;
+  /** `event: gap` frames: output the producer had already dropped before relaying it. */
+  gaps?: number;
 }
 
 const EMPTY: StreamState = { key: '', lines: [], status: 'idle', truncated: false };
+
+/** The end frame's reason: `{"reason":"…"}`, `{}`, or a bare word from older producers. */
+function endReason(data: string | undefined): string | undefined {
+  const trimmed = data?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as { reason?: unknown };
+      return typeof parsed.reason === 'string' && parsed.reason ? parsed.reason : undefined;
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+/** A task stream's line sequence, to resume after a dropped connection. */
+function frameSeq(data: string): number | undefined {
+  const match = /"seq"\s*:\s*(\d+)/.exec(data);
+  return match ? Number(match[1]) : undefined;
+}
 
 /**
  * Subscribe to a log stream.
@@ -231,7 +272,7 @@ async function fetchArchive(url: string, signal: AbortSignal) {
     if (!data.length && event === 'message') continue;
     const payload = data.join('\n');
     if (event === 'log') lines.push(parseFrame(payload, `a${seq++}`, Date.now()));
-    else if (event === 'end') reason = payload.trim() || undefined;
+    else if (event === 'end') reason = endReason(payload);
   }
   return { lines, reason };
 }
@@ -243,6 +284,7 @@ export function useLogStream(source: StreamSource, connected = true) {
 
   const enabled = ready(source);
   const isArchive = source.kind === 'archive';
+  const resumable = source.kind === 'task';
   const { url, key } = enabled ? describe(source) : { url: '', key: '' };
 
   useEffect(() => {
@@ -277,6 +319,9 @@ export function useLogStream(source: StreamSource, connected = true) {
     let current: EventSource | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
+    // A task stream resumes the attempt after the last relayed line; the
+    // cursor is an inclusive lower bound (vmmdgrpc/logs.go), hence the + 1.
+    let lastSeq = 0;
 
     const update = (fn: (prev: StreamState) => StreamState) => {
       if (disposed) return;
@@ -285,7 +330,8 @@ export function useLogStream(source: StreamSource, connected = true) {
 
     const connect = () => {
       if (disposed) return;
-      const connection = new EventSource(url, { withCredentials: true });
+      const target = resumable && lastSeq > 0 ? `${url}?since_seq=${lastSeq + 1}` : url;
+      const connection = new EventSource(target, { withCredentials: true });
       current = connection;
       // A retired connection can still deliver queued callbacks. Only the
       // current connection may update this subscription or schedule a retry.
@@ -303,6 +349,7 @@ export function useLogStream(source: StreamSource, connected = true) {
       connection.addEventListener('log', (event) => {
         if (!active()) return;
         const data = (event as MessageEvent<string>).data ?? '';
+        if (resumable) lastSeq = frameSeq(data) ?? lastSeq;
         update((prev) => {
           const line = parseFrame(data, `l${counter.current++}`, Date.now());
           const next = [...prev.lines, line];
@@ -310,14 +357,19 @@ export function useLogStream(source: StreamSource, connected = true) {
           return {
             key,
             status: 'streaming',
+            gaps: prev.gaps,
             truncated: prev.truncated || over,
             lines: over ? next.slice(next.length - MAX_LINES) : next,
           };
         });
       });
+      connection.addEventListener('gap', () => {
+        if (!active()) return;
+        update((prev) => ({ ...prev, gaps: (prev.gaps ?? 0) + 1 }));
+      });
       connection.addEventListener('end', (event) => {
         if (!active()) return;
-        const reason = (event as MessageEvent<string>).data?.trim() || undefined;
+        const reason = endReason((event as MessageEvent<string>).data);
         retire();
         update((prev) => ({ ...prev, status: 'ended', reason }));
       });
@@ -347,7 +399,7 @@ export function useLogStream(source: StreamSource, connected = true) {
       current?.close();
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [key, url, connected, isArchive, restart]);
+  }, [key, url, connected, isArchive, resumable, restart]);
 
   const clear = useCallback(() => {
     setState((prev) => ({ ...prev, lines: [], truncated: false }));

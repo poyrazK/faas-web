@@ -62,6 +62,20 @@ vi.mock('@/lib/api/jobs', () => ({
   }),
   useSetJobRegistryCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteJobRegistryCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateJobDefinition: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  ACTIVE_JOB_OCCURRENCE: new Set(),
+  useJobOccurrences: () => ({
+    data: { pages: [{ occurrences: [] }] },
+    isPending: false,
+    error: null,
+    hasNextPage: false,
+  }),
+  useJobTaskAttempts: () => ({
+    data: { pages: [{ attempts: [] }] },
+    isPending: false,
+    error: null,
+    hasNextPage: false,
+  }),
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/lib/auth', () => ({

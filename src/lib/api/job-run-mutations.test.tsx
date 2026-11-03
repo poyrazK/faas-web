@@ -51,6 +51,26 @@ describe('job run and delete mutations', () => {
     expect(client.getQueryState(['jobs', 'old-job', 'runs'])?.isInvalidated).toBe(true);
   });
 
+  it('sends run options as the request body, beside the key', async () => {
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useStartJobRun(), { wrapper });
+    await result.current.mutateAsync({
+      name: 'old-job',
+      idempotencyKey: 'key-2',
+      inputs: [{ input_id: 'a', input_ref: 's3://b/a' }],
+      failure_policy: 'fail_fast',
+      arguments: ['--dry-run'],
+    });
+    expect(post).toHaveBeenCalledWith('/v1/jobs/{name}/runs', {
+      params: { path: { name: 'old-job' }, header: { 'Idempotency-Key': 'key-2' } },
+      body: {
+        inputs: [{ input_id: 'a', input_ref: 's3://b/a' }],
+        failure_policy: 'fail_fast',
+        arguments: ['--dry-run'],
+      },
+    });
+  });
+
   it('treats a 404 as already deleted and still clears that job from the cache', async () => {
     // The job is soft-deleted, so every read of it is a 404: a second delete
     // (or a stale list row) must end in the state the user asked for, with the

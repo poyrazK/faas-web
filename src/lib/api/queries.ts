@@ -1781,19 +1781,20 @@ export function useCancelJobRun() {
 export function useStartJobRun() {
   const qc = useQueryClient();
   return useMutation({
+    // The rest is the run request as sent: a task count or inputs, and any
+    // per-run options (inputs, flexible window, fail-fast, arguments, overrides).
     mutationFn: ({
       name,
-      tasks,
       idempotencyKey,
-    }: {
+      ...body
+    }: components['schemas']['CreateJobRunRequest'] & {
       name: string;
-      tasks: number;
       idempotencyKey: string;
     }) =>
       unwrap(
         api.POST('/v1/jobs/{name}/runs', {
           params: { path: { name }, header: { 'Idempotency-Key': idempotencyKey } },
-          body: { tasks },
+          body,
         })
       ),
     // Awaited so the run list already holds the new run when the caller
