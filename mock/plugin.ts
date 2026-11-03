@@ -1077,7 +1077,15 @@ route('PUT', '/v1/apps/{slug}/bindings/release-policy-with-queues', ({ params, q
   )
 );
 route('GET', '/v1/apps/{slug}/bindings/verification-runs', ({ params, query }) =>
-  bindingCall(() => bindingVerification.listRuns(bindingApp(app(params.slug)), query))
+  bindingCall(() => {
+    // Graph members are app runs too, so the seeded graph lists with its members.
+    const seeded = projects.find((p) => p.slug === bindingVerification.GRAPH_PROJECT);
+    if (seeded) {
+      const target = { slug: seeded.slug, environment: bindingVerification.GRAPH_ENVIRONMENT };
+      bindingVerification.seedGraphs(target.slug, target.environment, graphTarget(target));
+    }
+    return bindingVerification.listRuns(bindingApp(app(params.slug)), query);
+  })
 );
 route('POST', '/v1/apps/{slug}/bindings/verification-runs/review', ({ params, body }) =>
   bindingCall(() => {
@@ -1108,6 +1116,109 @@ route('POST', '/v1/apps/{slug}/bindings/verification-runs/{run}/steps/{step}/adm
     bindingVerification.admitRunStep(bindingApp(app(params.slug)), params.run, Number(params.step))
   )
 );
+// Project graph verification runs (faas handlers_project_binding_verification_
+// runs.go). The members are the project's workloads; acme-shop's production
+// environment is seeded with a pending, an expired and a cancelled graph.
+function graphTarget(params: Record<string, string>) {
+  const project = projects.find((item) => item.slug === params.slug);
+  if (!project || !environmentInventory(params.slug)?.some((e) => e.slug === params.environment))
+    throw new Problem(404, 'not_found', 'project environment or release set not found');
+  return project.workloads.flatMap((workload) => {
+    const found = db.appBySlug(workload.slug);
+    return found ? [bindingApp(found)] : [];
+  });
+}
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs',
+  ({ params, query }) =>
+    bindingCall(() =>
+      bindingVerification.listGraphRuns(params.slug, params.environment, graphTarget(params), query)
+    )
+);
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}',
+  ({ params }) =>
+    bindingCall(() =>
+      bindingVerification.getGraphRun(
+        params.slug,
+        params.environment,
+        graphTarget(params),
+        params.run
+      )
+    )
+);
+route(
+  'DELETE',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}',
+  ({ params }) =>
+    bindingCall(() =>
+      bindingVerification.cancelGraphRun(
+        params.slug,
+        params.environment,
+        graphTarget(params),
+        params.run
+      )
+    )
+);
+route(
+  'POST',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/resume',
+  ({ params }) =>
+    bindingCall(() =>
+      bindingVerification.resumeGraphRun(
+        params.slug,
+        params.environment,
+        graphTarget(params),
+        params.run
+      )
+    )
+);
+route(
+  'POST',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/complete',
+  ({ params }) =>
+    bindingCall(() =>
+      bindingVerification.completeGraphRun(
+        params.slug,
+        params.environment,
+        graphTarget(params),
+        params.run
+      )
+    )
+);
+route(
+  'GET',
+  '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs/{run}/diagnostics',
+  ({ params }) =>
+    bindingCall(() =>
+      bindingVerification.graphRunDiagnostics(
+        params.slug,
+        params.environment,
+        graphTarget(params),
+        params.run
+      )
+    )
+);
+/**
+ * The binding release gate on a traffic increase: a failed check is a 409 with
+ * its report (handlers_binding_promotion.go:191), so promotion, the traffic
+ * weight and a canary advance can be seen refused under api-gateway's
+ * enforced default-scope policy until a run for the release passes.
+ */
+function bindingsGate(d: db.Deployment) {
+  const a = db.apps.find((x) => x.id === d.app_id);
+  if (!a) return;
+  const report = bindingVerification.releaseGate(bindingApp(a), d.id, d.scope);
+  if (report)
+    throw new Problem(
+      409,
+      'bindings_check_failed',
+      'Resolve the binding check blockers and verify this deployment before promoting.',
+      { bindings_check: report }
+    );
+}
 route('POST', '/v1/apps/{slug}/bindings/queue-canaries', ({ params, body }) =>
   bindingCall(() => {
     const a = bindingApp(app(params.slug));
@@ -3832,6 +3943,19 @@ route('POST', '/v1/apps/{slug}/rollouts/recover', ({ params, body }) => {
     (x) => x.app_id === a.id && (x.rollout_state === 'rolling_out' || x.rollout_state === 'pending')
   );
   if (!d) throw new Problem(409, 'rollout_state_invalid', 'no rollout is in flight for this app.');
+  // Recovery runs no bindings check (handlers_rollouts.go:159-160).
+  const refused = () => {
+    if (bindingVerification.recoveryRefused(bindingApp(a), d.scope))
+      throw new Problem(
+        409,
+        'bindings_release_required',
+        'This scope requires fresh checked binding evidence before traffic can increase.',
+        {
+          hint: 'Verify the exact deployment receiving traffic, then promote, advance its canary, or abort with both deployment_id and expected_predecessor_deployment_id. Recovery without exact selectors requires explicitly setting the release policy to off with its current revision and a reason.',
+        }
+      );
+  };
+  if (action === 'promote') refused();
   if (action === 'advance') {
     const startedAt = Date.parse(d.canary_step_started_at ?? d.created_at);
     if (Date.now() - startedAt < 30 * 60_000)
@@ -3840,6 +3964,7 @@ route('POST', '/v1/apps/{slug}/rollouts/recover', ({ params, body }) => {
         'rollout_not_stuck',
         'the rollout is still progressing; use promote instead to ship it now.'
       );
+    refused();
     d.canary_step = (d.canary_step ?? 0) + 1;
     d.canary_step_started_at = new Date().toISOString();
   } else if (action === 'promote') {
@@ -5685,6 +5810,8 @@ route('PATCH', '/v1/deployments/{id}/traffic', ({ params, body }) => {
     );
   if (d.status !== 'live')
     throw new Problem(409, 'deployment_not_live', `deployment is ${d.status}, not live`);
+  // binding_release_traffic.go observes before the write that refuses a canary.
+  if (percent > (d.traffic_percent ?? 0)) bindingsGate(d);
   if (d.rollout_state === 'pending' || d.rollout_state === 'rolling_out')
     throw new Problem(
       409,
@@ -5777,8 +5904,10 @@ function promote(id: string, strict: boolean, body: Record<string, unknown>) {
     blockers: [] as components['schemas']['BindingCheckFinding'][],
     warnings: [],
   };
-  if (strict && d.app_id === db.apps[0].id) {
-    check.passed = false;
+  const a = db.apps.find((x) => x.id === d.app_id);
+  const gate = a && bindingVerification.releaseGate(bindingApp(a), d.id, d.scope);
+  if (gate) check.blockers.push(...gate.blockers);
+  if (strict && d.app_id === db.apps[0].id)
     check.blockers.push({
       code: 'application_ack_missing',
       type: 'postgres',
@@ -5786,6 +5915,8 @@ function promote(id: string, strict: boolean, body: Record<string, unknown>) {
       scope: check.scope,
       message: 'The candidate has not acknowledged applying the current secret version.',
     });
+  if (check.blockers.length) {
+    check.passed = false;
     throw new Problem(
       409,
       'bindings_check_failed',
@@ -6032,6 +6163,7 @@ route('POST', '/v1/deployments/{id}/canary/advance', ({ params, body }) => {
       'canary_step_conflict',
       `expected step ${step}, got ${String(body.expected_step)}.`
     );
+  bindingsGate(d);
   const ladder = CANARY_LADDER[d.canary_preset ?? 'balanced'] ?? CANARY_LADDER.balanced;
   const next = step + 1;
   d.canary_step = next;

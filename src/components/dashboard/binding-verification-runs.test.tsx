@@ -147,7 +147,17 @@ beforeEach(() => {
     answers[key] ? answers[key](init) : fallback(init);
   spies = routeApi(
     {
-      [`GET ${RUNS}`]: () => ({ runs: summaries, observed_at: '2026-10-31T09:02:00Z' }),
+      [`GET ${RUNS}`]: (init: Init & { params?: { query?: Record<string, unknown> } }) => {
+        const query = init.params?.query ?? {};
+        return {
+          runs: summaries.filter(
+            (row) =>
+              (!query.status || row.status === query.status) &&
+              (query.include_members || !row.graph_run_id)
+          ),
+          observed_at: '2026-10-31T09:02:00Z',
+        };
+      },
       [`GET ${RUN}`]: answer('get', (init) => runOf(init) ?? problem(404, 'not_found')),
       [`GET ${DIAG}`]: answer('diag', () => diagnostics()),
       [`POST ${ADMIT}`]: answer('admit', (init) => {
@@ -172,11 +182,21 @@ beforeEach(() => {
         runs[RUN_ID] = { ...runs[RUN_ID], status: 'cancelled' };
         return runs[RUN_ID];
       }),
-      [`POST ${REVIEW}`]: answer('review', () => ({
+      'GET /v1/apps/{slug}': () => ({
+        id: 'x',
+        slug: 'api',
+        service_bindings: [
+          { service: 'billing', binding: 'GREGALE_SERVICE_BILLING_URL' },
+          { service: 'identity', binding: 'GREGALE_SERVICE_IDENTITY_URL' },
+        ],
+      }),
+      [`POST ${REVIEW}`]: answer('review', (init) => ({
         app: 'api',
         deployment_id: DEP,
         scope: 'default',
-        service_targets: {},
+        service_targets:
+          (init.body as { service_targets?: Record<string, string> } | undefined)
+            ?.service_targets ?? {},
         reviewed_at: '2026-10-31T09:05:00Z',
         ready: true,
         review_digest: 'b'.repeat(64),
@@ -213,6 +233,59 @@ it('lists retained runs with their stored status and says who drives them', asyn
   expect(within(list).getByText('Pending')).toBeInTheDocument();
   expect(within(list).getByText('Passed')).toBeInTheDocument();
   expect(screen.getByText(/never starts them on its own/i)).toBeInTheDocument();
+});
+
+it('filters the list by effective status, resending the filter the API took', async () => {
+  const user = userEvent.setup();
+  renderWithProviders(<BindingVerificationRuns slug="api" />);
+  await screen.findByRole('list', { name: /verification runs/i });
+  await user.click(screen.getByRole('button', { name: 'Passed' }));
+  await waitFor(() =>
+    expect(spies.GET).toHaveBeenLastCalledWith(
+      RUNS,
+      expect.objectContaining({
+        params: { path: { slug: 'api' }, query: { limit: 20, status: 'passed' } },
+      })
+    )
+  );
+  const list = await screen.findByRole('list', { name: /verification runs/i });
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
+  expect(within(list).getByText('Passed')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Expired' }));
+  expect(
+    await screen.findByText('No expired verification runs are retained for this app.')
+  ).toBeInTheDocument();
+});
+
+it('includes project graph members only when asked, and says whose graph they belong to', async () => {
+  const user = userEvent.setup();
+  summaries.push({
+    id: '66666666-6666-4666-8666-666666666666',
+    app: 'api',
+    deployment_id: DEP,
+    scope: 'production',
+    graph_run_id: '77777777-7777-4777-8777-777777777777',
+    project: 'shop',
+    environment: 'production',
+    status: 'pending',
+    created_at: '2026-10-29T09:00:00Z',
+    expires_at: '2026-10-29T09:10:00Z',
+  });
+  renderWithProviders(<BindingVerificationRuns slug="api" />);
+  let list = await screen.findByRole('list', { name: /verification runs/i });
+  expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+  await user.click(screen.getByRole('checkbox', { name: /include project graph members/i }));
+  await waitFor(() =>
+    expect(spies.GET).toHaveBeenLastCalledWith(
+      RUNS,
+      expect.objectContaining({
+        params: { path: { slug: 'api' }, query: { limit: 20, include_members: true } },
+      })
+    )
+  );
+  list = await screen.findByRole('list', { name: /verification runs/i });
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(3));
+  expect(within(list).getByText(/member of project shop graph 77777777/)).toBeInTheDocument();
 });
 
 it('says so when the app has no runs', async () => {
@@ -418,6 +491,42 @@ it('reviews the live deployment, then creates a run only with the consent it nee
   });
   expect(String(init.body.id)).toMatch(/^[0-9a-f-]{36}$/);
   expect(await screen.findByRole('region', { name: /run [0-9a-f]{8}/i })).toBeInTheDocument();
+});
+
+it('pins a declared service to one target deployment, and carries it into the run', async () => {
+  const user = userEvent.setup();
+  const target = '88888888-8888-4888-8888-888888888888';
+  renderWithProviders(<BindingVerificationRuns slug="api" />);
+  await user.click(await screen.findByRole('button', { name: /review a new run/i }));
+  const field = await screen.findByRole('textbox', { name: 'Target deployment for billing' });
+  expect(screen.getByRole('textbox', { name: 'Target deployment for identity' })).toBeVisible();
+
+  await user.type(field, target.replace(/-/g, ''));
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    /billing as a full lowercase deployment uuid/i
+  );
+  expect(screen.getByRole('button', { name: /review plan/i })).toBeDisabled();
+
+  await user.clear(field);
+  await user.type(field, target);
+  await user.click(screen.getByRole('button', { name: /review plan/i }));
+  const review = await screen.findByRole('region', { name: /reviewed plan/i });
+  expect(spies.POST).toHaveBeenCalledWith(
+    REVIEW,
+    expect.objectContaining({ body: { service_targets: { billing: target } } })
+  );
+  expect(review).toHaveTextContent('Service targets: billing → 88888888');
+
+  await user.click(within(review).getByRole('checkbox', { name: /publish queue canary/i }));
+  await user.click(within(review).getByRole('button', { name: /create run/i }));
+  await waitFor(() =>
+    expect(spies.POST).toHaveBeenCalledWith(
+      RUNS,
+      expect.objectContaining({
+        body: expect.objectContaining({ service_targets: { billing: target } }),
+      })
+    )
+  );
 });
 
 it('explains a review the server refused with every condition faas checks', async () => {

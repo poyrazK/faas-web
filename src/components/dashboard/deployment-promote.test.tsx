@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +21,9 @@ vi.mock('@/lib/api/capabilities', () => ({
   useCapability: (key: string) => capability(key) as unknown,
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 
 const { PromoteDeployment } = await import('./deployment-promote');
@@ -168,6 +172,32 @@ describe('PromoteDeployment', () => {
     expect(alert).toHaveTextContent(/traffic is unchanged/i);
     expect(alert).toHaveTextContent('orders-db');
     expect(alert).toHaveTextContent('No application acknowledgement');
+    // What to do about it, and where to get fresh evidence.
+    expect(alert).toHaveTextContent(/has not reported applying the current secret version/i);
+    expect(alert).toHaveTextContent(/verify bindings on the services tab/i);
+    expect(alert).toHaveTextContent(
+      'gregale app binding verify alpha --release d2c4e6f8-0000-4000-8000-000000000001 --all'
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('explains a write the enforced release policy fenced, without a toast', async () => {
+    promote.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'bindings_release_required',
+        title: 'Binding release policy blocked traffic',
+        detail: 'This scope requires fresh checked binding evidence before traffic can increase.',
+      })
+    );
+    render(<PromoteDeployment slug="alpha" deployment={deployment()} />);
+    await userEvent.click(screen.getByRole('button', { name: /promote v44/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      /binding release policy blocked traffic\. traffic is unchanged/i
+    );
+    expect(alert).toHaveTextContent(/fresh checked binding evidence/i);
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it.each([

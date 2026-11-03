@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useUpdateDeploymentMinInstances, useUpdateDeploymentTraffic } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
+import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 import {
   ServingChanged,
   ServingNote,
@@ -31,6 +32,9 @@ export function DeploymentControls({
   const live = deployment.status.toLowerCase() === 'live';
   const serving = useServingPin(slug, deployment, live);
   const [takenOver, setTakenOver] = useState<string | null>(null);
+  // Raising a release's weight runs the bindings check when its scope's
+  // release policy is enforced (handlers_ext.go:2293, binding_release_traffic.go:26-86).
+  const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -116,6 +120,7 @@ export function DeploymentControls({
                   )
                     return;
                   setTakenOver(null);
+                  setRefusal(null);
                   void updateTraffic
                     .mutateAsync({ id: deployment.id, traffic_percent: trafficPercent, ...pin })
                     .then(() => toast({ kind: 'success', title: 'Traffic weight updated' }))
@@ -124,6 +129,11 @@ export function DeploymentControls({
                         setTakenOver(
                           pinned ? deploymentLabel(pinned) : 'The release that was serving'
                         );
+                        return;
+                      }
+                      const gate = bindingsGateRefusal(error);
+                      if (gate) {
+                        setRefusal(gate);
                         return;
                       }
                       toast({
@@ -144,6 +154,14 @@ export function DeploymentControls({
               pinned={takenOver}
               refreshing={serving.read.isFetching}
               onRefresh={() => void serving.read.refetch().then(() => setTakenOver(null))}
+            />
+          )}
+          {refusal && (
+            <BindingsGateNotice
+              refusal={refusal}
+              slug={slug}
+              deploymentId={deployment.id}
+              action="traffic change"
             />
           )}
         </div>
