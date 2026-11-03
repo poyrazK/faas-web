@@ -2,10 +2,10 @@ import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { CorsPresetsPanel } from '@/components/dashboard/cors-presets';
 import { EdgeRuleDialog } from '@/components/dashboard/edge-rules/dialog';
 import { EdgeRulesExtras } from '@/components/dashboard/edge-rules/edge-rules-extras';
-import { explainRule } from '@/components/dashboard/edge-rules/explain';
-import { KINDS, type Kind, summarise } from '@/components/dashboard/edge-rules/kinds';
+import { explainRule, ruleScope } from '@/components/dashboard/edge-rules/explain';
+import { summarise } from '@/components/dashboard/edge-rules/kinds';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
-import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Tabs, tabId } from '@/components/dashboard/tabs';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -18,6 +18,7 @@ import { ruleAction } from '@/lib/api/edge-rules';
 import {
   useAppEdgeRules,
   useApps,
+  useCorsPresets,
   useDeleteEdgeRule,
   useEdgeRules,
   useUpdateEdgeRule,
@@ -49,6 +50,7 @@ interface EdgeRuleRow {
   condition: string;
   action: string;
   explanation: string;
+  scope: string;
   name: string;
   /** A log-mode rule is matched and counted but never acts. */
   logOnly: boolean;
@@ -71,6 +73,9 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   // off, existing rules keep applying and stay readable; new ones are refused.
   const rulesCapability = useCapability('edge-rules');
   const rulesAccess = useCapabilityAccess('edge-rules').access;
+  const wafAccess = useCapabilityAccess('edge-waf-blocking').access;
+  const wafBlocking =
+    wafAccess === 'loading' || wafAccess === 'registry-error' ? undefined : wafAccess === 'on';
   const rulesOff =
     rulesAccess === 'off' ||
     rulesAccess === 'plan-not-entitled' ||
@@ -91,6 +96,8 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const appRules = useAppEdgeRules(scoped ?? '', accountId);
   const { data, isPending, error, refetch } = scoped ? appRules : accountRules;
   const { data: apps } = useApps(undefined, accountId);
+  // The unfiltered endpoint includes account-wide policies referenced by app rules.
+  const corsPresets = useCorsPresets();
   const deleteRule = useDeleteEdgeRule();
   const updateRule = useUpdateEdgeRule();
 
@@ -120,18 +127,37 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       accountId: r.account_id,
       priority: r.priority,
       kind: r.kind,
-      app: bySlug.get(r.app_id) ?? r.app_id,
+      app: scoped ?? bySlug.get(r.app_id) ?? r.app_id,
       host: r.match_host || '*',
       path: r.match_path || '/*',
       methods: r.match_methods?.length ? r.match_methods.join(', ') : 'ANY',
       condition: summariseMatch(r.match),
       action: summarise(r.kind, ruleAction(r)),
-      explanation: explainRule(r.kind, ruleAction(r), r.enabled, r.mode === 'log'),
+      explanation: explainRule(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id, {
+        wafBlocking,
+        corsPreset:
+          !corsPresets.error && !corsPresets.isPending
+            ? corsPresets.data?.presets.find(
+                (preset) =>
+                  preset.id ===
+                  (ruleAction(r) as { cors_preset_id?: string } | undefined)?.cors_preset_id
+              )
+            : undefined,
+      }),
+      scope: ruleScope(r, scoped ?? bySlug.get(r.app_id) ?? r.app_id),
       name: r.name ?? '',
       logOnly: r.mode === 'log',
       enabled: r.enabled,
     }));
-  }, [rules, apps]);
+  }, [
+    rules,
+    apps,
+    scoped,
+    wafBlocking,
+    corsPresets.data,
+    corsPresets.error,
+    corsPresets.isPending,
+  ]);
 
   const canWriteRule = (r: EdgeRuleRow) =>
     r.accountId === accountId && (r.kind !== 'cache' || cacheAllowed);
@@ -171,78 +197,40 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
       render: (r) => <span className="[font-variant-numeric:tabular-nums]">{r.priority}</span>,
     },
     {
-      key: 'kind',
-      label: 'Kind',
-      width: 'w-32',
+      key: 'explanation',
+      label: 'Rule',
       render: (r) => (
-        <span className="flex flex-col items-start gap-1">
-          <Pill label={r.kind} />
-          {r.logOnly && (
-            <span
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-              style={{
-                borderColor: 'color-mix(in oklab, var(--status-warning) 35%, transparent)',
-                color: 'var(--status-warning)',
-              }}
-            >
-              <Eye aria-hidden className="h-3 w-3" />
-              log only
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => {
+            const full = byId.get(r.id);
+            if (full) setEditing(full);
+          }}
+          className="flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-sm py-2 text-left whitespace-normal outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]"
+        >
+          <span className="text-sm font-medium leading-relaxed">{r.explanation}</span>
+          {r.scope && (
+            <span className="text-xs leading-relaxed text-muted-foreground">{r.scope}</span>
+          )}
+          {(r.name || r.logOnly) && (
+            <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {r.name && <span>{r.name}</span>}
+              {r.logOnly && (
+                <span className="inline-flex items-center gap-1 text-status-warning">
+                  <Eye aria-hidden className="size-3" />
+                  log only
+                </span>
+              )}
             </span>
           )}
-        </span>
-      ),
-    },
-    {
-      key: 'action',
-      label: 'Rule and effect',
-      render: (r) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="text-sm font-medium">
-            {r.name || KINDS[r.kind as Kind]?.label || r.kind}
-            {r.logOnly && (
-              <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-status-warning">
-                <Eye aria-hidden className="size-3" />
-                log only
-              </span>
-            )}
-          </span>
-          <span className="mt-1 max-w-lg whitespace-normal text-xs leading-relaxed text-muted-foreground">
-            {r.explanation}
-          </span>
-          <details
-            className="mt-1 text-xs text-muted-foreground"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            <summary className="w-fit cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-brand">
-              Technical settings
-            </summary>
-            <span className="mt-1 block whitespace-normal font-mono">{r.action}</span>
-          </details>
-        </span>
+        </button>
       ),
     },
     {
       key: 'app',
       label: 'App',
       render: (r) => <span className="font-mono text-xs text-muted-foreground">{r.app}</span>,
-    },
-    {
-      key: 'host',
-      label: 'Matches',
-      render: (r) => (
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate font-mono text-xs">{r.host}</span>
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {r.path} · {r.methods}
-          </span>
-          {r.condition && (
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              if {r.condition}
-            </span>
-          )}
-        </span>
-      ),
     },
     {
       key: 'enabled',
@@ -347,10 +335,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
         {view === 'rules' && (
           <>
             <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Edge rules decide what happens to a request before it reaches{' '}
-              {scoped ? <span className="font-medium text-foreground">{scoped}</span> : 'an app'}.
-              Use them to redirect visitors, require authentication, or return a maintenance
-              message. Rules are evaluated in priority order.
+              Rules run in priority order. Open a rule to change its conditions and settings.
             </p>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <div className="mr-auto flex flex-wrap items-center gap-2">
@@ -402,21 +387,25 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
 
             <ResourceTable
               rows={rows}
-              columns={columns.filter(
-                (column) => column.key !== 'kind' && (!scoped || column.key !== 'app')
-              )}
+              columns={columns.filter((column) => !scoped || column.key !== 'app')}
               initialSort={{ key: 'priority', dir: 'asc' }}
-              searchKeys={['kind', 'name', 'host', 'path', 'app', 'action', 'condition']}
-              searchPlaceholder="Filter by kind, host, or path…"
+              searchKeys={[
+                'kind',
+                'name',
+                'host',
+                'path',
+                'app',
+                'action',
+                'condition',
+                'explanation',
+                'scope',
+              ]}
+              searchPlaceholder="Find a rule by what it does…"
               emptyMessage="No edge rules yet. Add a rule to change how matching requests are handled."
-              minWidth={scoped ? 'min-w-[760px]' : 'min-w-[900px]'}
+              minWidth={scoped ? 'min-w-[560px]' : 'min-w-[720px]'}
               loading={isPending}
               error={error}
               onRetry={() => void refetch()}
-              onRowClick={(r) => {
-                const full = byId.get(r.id);
-                if (full) setEditing(full);
-              }}
               rowActions={rowActionsFor}
             />
           </>

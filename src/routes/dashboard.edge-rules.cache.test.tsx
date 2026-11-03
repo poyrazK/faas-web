@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 vi.mock('@/lib/api/queries', () => ({
+  useCorsPresets: () => ({ data: { presets: [] }, isPending: false, error: null }),
   useEdgeRules: () => ({ data: state.rules, isPending: false, error: null, refetch: vi.fn() }),
   useAppEdgeRules: () => ({ data: state.rules, isPending: false, error: null, refetch: vi.fn() }),
   useApps: () => ({ data: [{ id: 'app-1', slug: 'api' }] }),
@@ -110,5 +111,5 @@ it('summarises the kind-wrapped action apid returns (faas edgerules/rules.go:46)
     },
   ];
   render(<EdgeRulesBody slug="api" />);
-  expect(screen.getByText('→ billing')).toBeInTheDocument();
+  expect(screen.getByText(/Sends .* to billing\./)).toBeInTheDocument();
 });

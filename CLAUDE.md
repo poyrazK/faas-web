@@ -126,7 +126,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
 - **Use concise, plain English.** Show essential scope and effects in place;
   secondary technical details can go in `help` or an expandable section. Edge
-  rules explain their configured behavior, including paused and log-only states.
+  rule rows lead with their saved outcome and values, including paused and log-only
+  states. Open the row for technical settings; keep generic kind descriptions inside
+  the editor. Country names, destinations and limits belong in the row summary.
   Preserve the seven-source New app wizard and its deployment recovery. Overview
   and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
   URL-backed `MetricInspectorProvider` without changing the underlying route.

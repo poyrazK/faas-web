@@ -3587,7 +3587,7 @@ export type AuditEvent = components['schemas']['AuditEventResponse'];
 
 const corsPresetsKey = ['cors-presets'] as const;
 
-/** Account-wide presets plus, when `appId` is given, that app's scoped ones. */
+/** All account presets, or only app-scoped presets when `appId` is given. */
 export function useCorsPresets(appId?: string) {
   return useQuery({
     queryKey: [...corsPresetsKey, appId ?? 'all'],

@@ -797,7 +797,8 @@ config/environment/domain/TLS events, and older pages.
 
 New app starts with seven compact source choices and keeps the existing wizard,
 source fields, OAuth handoffs and deployment recovery. Edge rules live under each
-app and describe what the configured rule does before exposing technical settings.
+app and describe each saved outcome, such as routing a path to a named app or
+blocking requests from a named country. Opening a row shows its technical settings.
 Sidebar groups animate their expansion and respect reduced motion.
 
 Overview and app analytics cards retain add, remove and reorder controls. Select
