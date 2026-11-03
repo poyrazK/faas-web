@@ -69,6 +69,7 @@ import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/de
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
+import { TcpListeners, UdpListeners } from '@/components/dashboard/listeners';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { OpenAPIBody } from './dashboard.openapi';
@@ -863,6 +864,8 @@ function FunctionDetailPage() {
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
+              {tab === 'TCP listeners' && <TcpListeners slug={fn.id} />}
+              {tab === 'UDP listeners' && <UdpListeners slug={fn.id} />}
               {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
               {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
               {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}

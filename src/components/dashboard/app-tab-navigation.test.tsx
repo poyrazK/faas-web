@@ -213,3 +213,16 @@ it('puts realtime with the other messaging pages under Automate, gated on its ca
   expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
   expect(resolveAppTab('Realtime')).toBe('Realtime');
 });
+
+it('puts the TCP and UDP listeners under Connect, each gated on its own capability', () => {
+  render(<Navigation initial="TCP listeners" />);
+  const names = within(pages('Connect'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('UDP listeners')).toBe(names.indexOf('TCP listeners') + 1);
+  expect(APP_TAB_CAPABILITY['TCP listeners']).toBe('tcp-listeners');
+  expect(APP_TAB_CAPABILITY['UDP listeners']).toBe('udp-listeners');
+  const tabs = visibleAppTabs((id) => (id === 'udp-listeners' ? 'off' : 'on'));
+  expect(tabs).toContain('TCP listeners');
+  expect(tabs).not.toContain('UDP listeners');
+});
