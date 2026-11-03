@@ -4,6 +4,53 @@
  */
 
 export interface paths {
+    "/v1/sales/inquiries/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prepare an anonymous website sales inquiry
+         * @description Requires the default-off sales intake flag. This opaque one-hour form token must be at least two seconds old when submitted. The challenge and submission share a separate ten-requests-per-minute IP budget.
+         */
+        get: operations["salesInquiryChallenge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sales/inquiries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a contact or demo request from the website
+         * @description Enabled only by FAAS_SALES_INTAKE_ENABLED and FAAS_SALES_ENABLED.
+         *     Browser writes must come from a trusted control-plane origin. A token
+         *     is consumed atomically with intake; retrying that token is idempotent
+         *     until expiry, including when a changed body is presented. Active emails
+         *     are deduplicated without overwriting staff data or ownership. Unknown,
+         *     paused, customer or unavailable salesperson codes enter manager review;
+         *     the response never reveals code validity or ownership. These messages
+         *     are unverified and grant no referral attribution, rewards or account access.
+         */
+        post: operations["submitSalesInquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/project-migrations": {
         parameters: {
             query?: never;
@@ -96374,6 +96421,90 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    salesInquiryChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Form check prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        challenge: string;
+                        ready_after_ms: number;
+                        expires_in_seconds: number;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    submitSalesInquiry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** Format: email */
+                    email: string;
+                    /** @default  */
+                    company?: string;
+                    /** @enum {string} */
+                    intent: "contact" | "demo";
+                    /** @description UTF-8 byte limit; other text limits are also measured in bytes. */
+                    message: string;
+                    /** @default  */
+                    salesperson_code?: string;
+                    challenge: string;
+                    /**
+                     * @description Leave blank.
+                     * @default
+                     */
+                    website?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Inquiry accepted without disclosing routing details */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        accepted: boolean;
+                    };
+                };
+            };
+            /** @description Invalid form input or sales_challenge_invalid; refresh the form check before resubmitting an expired challenge. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listProjectMigrations: {
         parameters: {
             query?: {
