@@ -4,6 +4,12 @@ import type { Connect, Logger, Plugin } from 'vite';
 import type { components } from '../src/lib/api/schema';
 import * as db from './data';
 import * as automationMock from './automations';
+import {
+  advance as advanceWorkflowRun,
+  findRun as findWorkflowRun,
+  startDeclaredRun,
+  workflowHandlers,
+} from './workflows';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
@@ -11742,9 +11748,18 @@ route(
   }
 );
 route('GET', '/v1/apps/{slug}/workflows/runs', ({ params, query }) => {
-  const list = (automationMock.runs.get(params.slug) ?? []).filter(
-    (run) => !query.get('workflow_name') || run.workflow_name === query.get('workflow_name')
-  );
+  // Exact status and name, inclusive created_at bounds (faas handlers_workflows.go).
+  const after = query.get('created_after');
+  const before = query.get('created_before');
+  const list = (automationMock.runs.get(params.slug) ?? [])
+    .map(advanceWorkflowRun)
+    .filter(
+      (run) =>
+        (!query.get('workflow_name') || run.workflow_name === query.get('workflow_name')) &&
+        (!query.get('status') || run.status === query.get('status')) &&
+        (!after || Date.parse(run.created_at) >= Date.parse(after)) &&
+        (!before || Date.parse(run.created_at) <= Date.parse(before))
+    );
   const offset = Number(query.get('offset') ?? 0);
   const limit = Number(query.get('limit') ?? 25);
   return { runs: list.slice(offset, offset + limit), total: list.length };
@@ -11754,6 +11769,18 @@ route('POST', '/v1/apps/{slug}/workflows/{name}/runs', ({ params, body, req }) =
   const requestKey = `${params.slug}/${params.name}/${req.headers['idempotency-key']}`;
   const previous = automationRunKeys.get(requestKey);
   if (previous) return status(201, previous);
+  if (!automationMock.definitions.get(params.slug)?.some((item) => item.name === params.name)) {
+    // A workflow the live deployment declares in gregale.yaml (mock/workflows.ts).
+    const declared = startDeclaredRun(params.slug, app(params.slug).id, params.name, body);
+    if (!declared)
+      throw new Problem(
+        404,
+        'workflow_definition_not_found',
+        "the requested workflow is not defined on the app's live deployment."
+      );
+    automationRunKeys.set(requestKey, declared);
+    return status(201, declared);
+  }
   const item = mockAutomation(params.slug, params.name);
   const now = new Date().toISOString();
   const run: components['schemas']['WorkflowRunResponse'] = {
@@ -11788,30 +11815,51 @@ route('POST', '/v1/apps/{slug}/workflows/{name}/runs', ({ params, body, req }) =
   automationRunKeys.set(requestKey, run);
   return status(201, run);
 });
-route('GET', '/v1/workflows/runs/{id}', ({ params }) => {
-  const run = [...automationMock.runs.values()].flat().find((run) => run.id === params.id);
-  if (!run) throw new Problem(404, 'workflow_run_not_found');
-  return run;
+const workflowMock = workflowHandlers(Problem);
+route('GET', '/v1/workflows/runs/{id}', workflowMock.run);
+route('GET', '/v1/workflows/runs/{id}/steps', ({ params }) => {
+  const run = findWorkflowRun(params.id);
+  if (run) advanceWorkflowRun(run);
+  return { steps: automationMock.steps.get(params.id) ?? [] };
 });
-route('GET', '/v1/workflows/runs/{id}/steps', ({ params }) => ({
-  steps: automationMock.steps.get(params.id) ?? [],
-}));
 route('GET', '/v1/workflows/runs/{id}/steps/{step}/attempts', ({ params }) => {
   const step = automationMock.steps.get(params.id)?.find((step) => step.step_name === params.step);
+  if (!step) throw new Problem(404, 'workflow_step_not_found');
+  // Earlier attempts failed; the last one carries the step's own outcome.
+  const started = Date.parse(step.started_at ?? step.created_at);
   return {
-    attempts: step
-      ? [
-          {
-            attempt: step.attempt,
-            status: 'succeeded',
-            http_status: 200,
-            started_at: step.started_at,
-            finished_at: step.finished_at,
-          },
-        ]
-      : [],
+    attempts: Array.from({ length: step.attempt }, (_, i) => {
+      const last = i === step.attempt - 1;
+      const outcome = !last
+        ? 'failed'
+        : step.status === 'succeeded'
+          ? 'succeeded'
+          : step.status === 'failed' || step.status === 'dead'
+            ? 'failed'
+            : 'running';
+      return {
+        attempt: i + 1,
+        status: outcome,
+        http_status: outcome === 'running' ? null : outcome === 'succeeded' ? 200 : 502,
+        started_at: new Date(started + i * 30_000).toISOString(),
+        finished_at:
+          outcome === 'running' ? null : new Date(started + i * 30_000 + 900).toISOString(),
+        error: outcome === 'failed' ? (step.error ?? 'HTTP 502') : null,
+      };
+    }),
   };
 });
+
+route('GET', '/v1/workflows/runs/{id}/diagnostics', workflowMock.diagnostics);
+route('GET', '/v1/workflows/runs/{id}/resumes', workflowMock.resumes);
+route('GET', '/v1/workflows/runs/{id}/callbacks', workflowMock.callbacks);
+route('POST', '/v1/workflows/runs/{id}/callbacks/{callback_id}', workflowMock.completeCallback);
+route('POST', '/v1/workflows/runs/{id}/events', workflowMock.event);
+route('POST', '/v1/workflows/runs/{id}/cancel', workflowMock.cancel);
+route('POST', '/v1/workflows/runs/{id}/resume', workflowMock.resume);
+route('POST', '/v1/workflows/runs/{id}/steps/{step}/retry', workflowMock.retryStep);
+route('POST', '/v1/apps/{slug}/workflows/runs:cancel-preview', workflowMock.cancelPreview);
+route('POST', '/v1/apps/{slug}/workflows/runs:cancel-queued', workflowMock.cancelQueued);
 
 registerEventMocks(route, Problem, NO_CONTENT);
 

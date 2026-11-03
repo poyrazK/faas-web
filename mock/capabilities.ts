@@ -185,6 +185,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'workflows',
+    name: 'Workflows',
+    category: 'async',
+    description: 'Run durable multi-step workflows.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'durable-inbound-webhooks',
     name: 'Durable inbound webhooks',
     category: 'integration',

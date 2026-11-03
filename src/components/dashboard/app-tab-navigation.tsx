@@ -37,7 +37,7 @@ export const APP_TAB_GROUPS = [
   // statements. Not under Connect — that group is how traffic reaches the app,
   // this one is the commercial relationship with whoever sends it.
   { label: 'Monetize', tabs: ['Consumers', 'Consumer plans'] },
-  { label: 'Automate', tabs: ['Automations', 'Queues', 'Webhooks'] },
+  { label: 'Automate', tabs: ['Automations', 'Workflows', 'Queues', 'Webhooks'] },
   { label: 'Configure', tabs: ['Environment', 'Configuration'] },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
@@ -60,6 +60,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Consumers: 'api-consumers',
   'Consumer plans': 'api-monetization',
   Automations: 'automations',
+  Workflows: 'workflows',
   Queues: 'queues',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
