@@ -125,6 +125,43 @@ describe('AlertDetail', () => {
     );
   });
 
+  it('switches a rule to rolling back, with its window after cutover, after a confirmation', async () => {
+    rule = { ...RULE, metric: 'error_rate_pct', comparison: 'gt', threshold: 5, slo_id: undefined };
+    const spies = api({
+      'PATCH /v1/apps/{slug}/alerts/{id}': ({ body }) => ({ ...rule, ...(body as object) }),
+    });
+    renderWithProviders(<AlertDetail slug="api" ruleId={RULE.id} onClose={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 4000 }));
+    const form = screen.getByRole('form', { name: 'Edit rule' });
+    await userEvent.selectOptions(
+      within(form).getByRole('combobox', { name: 'When it fires' }),
+      'rollback'
+    );
+    await userEvent.selectOptions(
+      within(form).getByRole('combobox', { name: 'After cutover' }),
+      '600'
+    );
+    await userEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/For 10 minutes after a release takes all traffic/);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save rule' }));
+    await waitFor(() =>
+      expect(spies.PATCH).toHaveBeenCalledWith('/v1/apps/{slug}/alerts/{id}', {
+        params: { path: { slug: 'api', id: RULE.id } },
+        body: { action: 'rollback', post_deploy_rollback_window_seconds: 600 },
+      })
+    );
+  });
+
+  it('offers no rollback while alert-rollbacks is off for the account', async () => {
+    registry.hidden = ['alert-rollbacks'];
+    rule = { ...RULE, metric: 'error_rate_pct', comparison: 'gt', threshold: 5, slo_id: undefined };
+    api();
+    renderWithProviders(<AlertDetail slug="api" ruleId={RULE.id} onClose={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /edit/i }, { timeout: 4000 }));
+    expect(screen.queryByRole('combobox', { name: 'When it fires' })).toBeNull();
+  });
+
   it('keeps a channel-only rule from losing its last channel', async () => {
     const spies = api();
     renderWithProviders(<AlertDetail slug="api" ruleId={RULE.id} onClose={vi.fn()} />);

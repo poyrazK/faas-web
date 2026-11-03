@@ -14,6 +14,8 @@ import {
   type CreateAlertRule,
 } from '@/lib/api/alert-rules';
 import { keys } from '@/lib/api/queries';
+import { postDeployWindowAllowed, rollbackAllowedFor } from '@/lib/api/alert-rollbacks';
+import { useConfirm } from '@/components/ui/confirm';
 import { cliSloCreateCommand, cliSyntheticCheckCreateCommand } from '@/lib/cli-commands';
 import { cn } from '@/lib/utils';
 import {
@@ -70,6 +72,7 @@ export function AlertRuleForm({
   onCreated?: (rule: AlertRule) => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const isOn = useCapabilityCheck();
   const metrics = availableMetrics(isOn);
@@ -90,6 +93,9 @@ export function AlertRuleForm({
   const [secret, setSecret] = useState('');
   const [notifyResolved, setNotifyResolved] = useState(false);
   const [cooldown, setCooldown] = useState('30');
+  // Alert-triggered rollbacks (preview, capability alert-rollbacks).
+  const [chosenAction, setAction] = useState<'webhook' | 'rollback'>('webhook');
+  const [afterCutover, setAfterCutover] = useState(0);
   const [saving, setSaving] = useState(false);
   const validation = useFormValidation<Field>();
   const formId = useId();
@@ -105,6 +111,10 @@ export function AlertRuleForm({
   const windows = windowsFor(metric);
   const window = windows.includes(chosenWindow) ? chosenWindow : windows[0];
   const target = spec?.target;
+  const canRollback = isOn('alert-rollbacks') && rollbackAllowedFor(metric);
+  const action = canRollback ? chosenAction : 'webhook';
+  const windowAllowed = action === 'rollback' && postDeployWindowAllowed(metric, comparison);
+  const postDeploy = windowAllowed ? afterCutover : 0;
 
   const slos = useAppSLOs(slug, target === 'slo');
   const checks = useAppSyntheticChecks(slug, target === 'synthetic_check');
@@ -155,6 +165,16 @@ export function AlertRuleForm({
 
   const submit = async (form: HTMLFormElement) => {
     if (!validation.validate(errors, form) || saving) return;
+    if (
+      action === 'rollback' &&
+      !(await confirm({
+        title: `Roll ${slug} back when “${name.trim()}” fires?`,
+        description: `When it fires while a production canary rolls out, the canary is aborted and the release it was replacing takes its traffic back.${postDeploy ? ` For ${postDeploy / 60} minutes after a release takes all traffic, a breach of its own 5xx rate rolls that release back too.` : ''} Each rollback leaves a receipt under Automatic rollbacks, and an after-rollback freeze, if you have one, applies.`,
+        confirmLabel: 'Create rule',
+        destructive: true,
+      }))
+    )
+      return;
     const body: CreateAlertRule = {
       name: name.trim(),
       metric,
@@ -162,7 +182,8 @@ export function AlertRuleForm({
       threshold: parsedThreshold,
       window_spec: window,
       cooldown_minutes: parsedCooldown,
-      action: 'webhook',
+      action,
+      ...(postDeploy ? { post_deploy_rollback_window_seconds: postDeploy } : {}),
       ...(target === 'failure_source' ? { failure_source: failureSource } : {}),
       ...(target === 'slo' ? { slo_id: slo } : {}),
       ...(target === 'synthetic_check' ? { synthetic_check_id: check } : {}),
@@ -333,6 +354,45 @@ export function AlertRuleForm({
           )}
         </label>
       </div>
+
+      {canRollback && (
+        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+          <label className="flex min-w-56 flex-col gap-1.5">
+            <span className="label-mono text-muted-foreground">When it fires</span>
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value as 'webhook' | 'rollback')}
+              className={FIELD}
+            >
+              <option value="webhook">Notify only</option>
+              <option value="rollback">Notify and roll back the canary</option>
+            </select>
+          </label>
+          {action === 'rollback' && (
+            <label className="flex min-w-56 flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">After cutover</span>
+              <select
+                value={postDeploy}
+                disabled={!windowAllowed}
+                onChange={(e) => setAfterCutover(Number(e.target.value))}
+                className={FIELD}
+              >
+                <option value={0}>Canaries only</option>
+                {[5, 10, 15, 30, 60].map((m) => (
+                  <option key={m} value={m * 60}>
+                    Also roll back a release {m} min after it takes all traffic
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {windowAllowed
+                  ? 'Judged on that release’s own 5xx rate.'
+                  : 'Only an error rate rule compared with > or ≥ can roll back a completed release.'}
+              </span>
+            </label>
+          )}
+        </div>
+      )}
 
       <div className="sm:col-span-2 lg:col-span-4">
         <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="rule-channel" />

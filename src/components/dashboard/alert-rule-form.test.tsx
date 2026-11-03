@@ -231,4 +231,43 @@ describe('AlertRuleForm', () => {
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({ failure_source: 'inbound_webhook' });
   });
+
+  describe('alert-triggered rollbacks', () => {
+    it('rolls the canary back, and a completed release within the window, after a confirmation', async () => {
+      api();
+      renderWithProviders(<AlertRuleForm slug="api" />);
+      await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Checkout errors');
+      await userEvent.click(await screen.findByRole('checkbox', { name: /ops-slack/ }));
+      await userEvent.selectOptions(
+        screen.getByRole('combobox', { name: 'When it fires' }),
+        'rollback'
+      );
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /After cutover/ }), '900');
+      await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('Roll api back when “Checkout errors” fires?');
+      expect(dialog).toHaveTextContent(/For 15 minutes after a release takes all traffic/);
+      expect(created).toHaveLength(0);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Create rule' }));
+      await waitFor(() => expect(created).toHaveLength(1));
+      expect(created[0]).toMatchObject({
+        action: 'rollback',
+        post_deploy_rollback_window_seconds: 900,
+      });
+    });
+
+    it('offers only notification for a metric whose rules may only notify', async () => {
+      api();
+      renderWithProviders(<AlertRuleForm slug="api" />);
+      await userEvent.selectOptions(metricSelect(), 'queue_backlog');
+      expect(screen.queryByRole('combobox', { name: 'When it fires' })).toBeNull();
+    });
+
+    it('offers no rollback while alert-rollbacks is off for the account', () => {
+      registry.hidden = ['alert-rollbacks'];
+      api();
+      renderWithProviders(<AlertRuleForm slug="api" />);
+      expect(screen.queryByRole('combobox', { name: 'When it fires' })).toBeNull();
+    });
+  });
 });

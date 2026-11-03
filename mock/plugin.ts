@@ -30,6 +30,9 @@ import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
 import * as approvalMock from './release-approvals';
 import * as gateMock from './release-gates';
+import * as mirrorMock from './mirrors';
+import * as routeGateMock from './route-health-gate';
+import * as alertRollbackMock from './alert-rollbacks';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -176,6 +179,13 @@ const NO_CONTENT = Symbol('no-content');
 const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
+
+route('GET', '/v1/apps/{slug}/alert-rollbacks', ({ params }) =>
+  alertRollbackMock.list(app(params.slug).id)
+);
+route('GET', '/v1/apps/{slug}/alert-rollbacks/{fire}', ({ params }) =>
+  guarded(() => alertRollbackMock.get(app(params.slug).id, params.fire))
+);
 
 // Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
 // scheduled releases (scheduled_releases.go); the logic is in
@@ -2196,6 +2206,9 @@ route('POST', '/v1/apps/{slug}/alerts', ({ params, body }) => {
     webhook_secret_sealed_masked: '***',
     cooldown_minutes: Number(body.cooldown_minutes ?? 30),
     action: (body.action ?? 'webhook') as (typeof list)[number]['action'],
+    ...(typeof body.post_deploy_rollback_window_seconds === 'number'
+      ? { post_deploy_rollback_window_seconds: body.post_deploy_rollback_window_seconds }
+      : {}),
     state: 'unknown',
     created_at: db.iso(0),
     updated_at: db.iso(0),
@@ -2273,6 +2286,8 @@ route('PATCH', '/v1/apps/{slug}/alerts/{id}', ({ params, body }) => {
     'webhook_url',
     'cooldown_minutes',
     'notify_resolved',
+    'action',
+    'post_deploy_rollback_window_seconds',
   ] as const)
     if (k in body && body[k] != null) (rule as Record<string, unknown>)[k] = body[k];
   if (Array.isArray(body.channel_ids)) {
@@ -2366,7 +2381,6 @@ route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
 // create-time plan gate; the list is never gated, as in apid.
 // Pro allows one mirror rule per app, Scale three.
 const mirrorQuota = () => (db.account.plan === 'scale' ? 3 : 1);
-const MIRROR_WINDOW_SECONDS: Record<string, number> = { '1h': 3600, '24h': 86400, '7d': 604800 };
 
 function mirrorRule(slug: string, id: string) {
   const rule = listOf(db.mirrorRules, slug).find((r) => r.id === id);
@@ -2418,7 +2432,7 @@ route('POST', '/v1/apps/{slug}/mirrors', ({ params, body }) => {
     include_body: body.include_body === true,
     allow_unsafe_methods: body.allow_unsafe_methods === true,
     redact_headers: Array.isArray(body.redact_headers) ? body.redact_headers.map(String) : [],
-    always_stripped_headers: ['Authorization', 'Cookie'],
+    always_stripped_headers: mirrorMock.ALWAYS_STRIPPED,
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
@@ -2437,6 +2451,8 @@ route('PATCH', '/v1/apps/{slug}/mirrors/{id}', ({ params, body }) => {
   }
   if (typeof body.enabled === 'boolean') rule.enabled = body.enabled;
   if (typeof body.include_body === 'boolean') rule.include_body = body.include_body;
+  if (typeof body.allow_unsafe_methods === 'boolean')
+    rule.allow_unsafe_methods = body.allow_unsafe_methods;
   if (Array.isArray(body.redact_headers)) rule.redact_headers = body.redact_headers.map(String);
   rule.updated_at = db.iso(0);
   return rule;
@@ -2448,24 +2464,20 @@ route('DELETE', '/v1/apps/{slug}/mirrors/{id}', ({ params }) => {
   list.splice(i, 1);
   return NO_CONTENT;
 });
-route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', ({ params, query }) => {
-  const rule = mirrorRule(params.slug, params.id);
-  const window = query.get('window') ?? '1h';
-  const seconds = MIRROR_WINDOW_SECONDS[window];
-  if (!seconds) throw new Problem(422, 'invalid_mirror_window', 'window must be 1h, 24h or 7d.');
-  // Deterministic drift proportional to the window and the mirrored share,
-  // so switching windows visibly changes the counts.
-  const total = rule.enabled ? Math.round((seconds / 3600) * rule.percent * 4.2) : 0;
-  return {
-    total_invocations: total,
-    status_diff_count: Math.round(total * 0.012),
-    schema_diff_count: Math.round(total * 0.004),
-    body_diff_count: rule.include_body ? Math.round(total * 0.03) : 0,
-    mean_latency_diff_ms: total === 0 ? 0 : 12,
-    p99_latency_diff_ms: total === 0 ? 0 : -8,
-    crash_count: Math.round(total * 0.0005),
-    window_seconds: seconds,
-  };
+route('GET', '/v1/apps/{slug}/mirrors/{id}/summary', ({ params, query }) =>
+  guarded(() => mirrorMock.summary(mirrorRule(params.slug, params.id), query.get('window') ?? '1h'))
+);
+route('POST', '/v1/apps/{slug}/mirrors/{id}/replay', ({ params, body }) => {
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      403,
+      'plan_mirror_not_allowed',
+      'traffic mirroring needs the Pro or Scale plan.'
+    );
+  return status(
+    202,
+    guarded(() => mirrorMock.replay(mirrorRule(params.slug, params.id), body))
+  );
 });
 
 // Tenant surfaces (ADR-100). MOCK_PLAN=free reproduces the 402 gate, which
@@ -4128,6 +4140,14 @@ function routeHealthFor(a: db.App, deploymentId: string): S_['RouteHealthReport'
     routes: [route('POST', '/v1/orders', 1, 8), route('GET', '/v1/orders/{id}', 0, -3)],
   };
 }
+route('GET', '/v1/apps/{slug}/route-health/gate', ({ params }) => {
+  const a = app(params.slug);
+  return routeGateMock.get(a.slug, a.id);
+});
+route('PUT', '/v1/apps/{slug}/route-health/gate', ({ params, body }) => {
+  const a = app(params.slug);
+  return guarded(() => routeGateMock.set(a.slug, a.id, body));
+});
 route('GET', '/v1/apps/{slug}/route-health/deployments/{deployment}', ({ params }) =>
   routeHealthFor(app(params.slug), params.deployment)
 );

@@ -266,30 +266,25 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 35,
     name: 'Traffic mirroring',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Mirrors'],
     capability: 'traffic-mirroring',
-    gap: 'Mirror detail and replay',
-    wave: 3,
   },
   // B36 · preview
   {
     row: 36,
     name: 'Critical route health during canaries',
-    status: 'partial',
-    surfaces: ['/dashboard/releases'],
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
     capability: 'route-health-canary-guard',
-    gap: 'Route-health gate',
-    wave: 3,
   },
   // B37 · preview
   {
     row: 37,
     name: 'Alert-triggered rollbacks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Alert-triggered rollbacks',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/alerts', '/dashboard/apps/$appSlug?tab=Alerts'],
+    capability: 'alert-rollbacks',
   },
   // C38 · GA
   {
