@@ -45,7 +45,7 @@ it('remembers the page last open in each group', async () => {
   render(<Navigation initial="Edge rules" />);
   await userEvent.click(within(pages('Connect')).getByRole('button', { name: 'Mirrors' }));
   await userEvent.click(screen.getByRole('tab', { name: 'Automate' }));
-  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(7);
+  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(8);
   await userEvent.click(screen.getByRole('tab', { name: 'Connect' }));
   expect(within(pages('Connect')).getByRole('button', { name: 'Mirrors' })).toHaveAttribute(
     'aria-pressed',
@@ -171,4 +171,16 @@ it('puts edge protection beside edge rules, gated on its capability', () => {
   expect(visibleAppTabs((id) => (id === 'edge-protection' ? 'off' : 'on'))).not.toContain(
     'Edge protection'
   );
+});
+
+it('puts realtime with the other messaging pages under Automate, gated on its capability', () => {
+  render(<Navigation initial="Realtime" />);
+  expect(screen.getByRole('tab', { name: 'Automate' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Automate'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Realtime')).toBe(names.indexOf('Queues') + 1);
+  expect(APP_TAB_CAPABILITY.Realtime).toBe('realtime');
+  expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
+  expect(resolveAppTab('Realtime')).toBe('Realtime');
 });

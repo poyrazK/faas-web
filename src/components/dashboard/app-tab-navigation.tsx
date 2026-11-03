@@ -55,6 +55,7 @@ export const APP_TAB_GROUPS = [
       'Workflow insights',
       'Recovery policy',
       'Queues',
+      'Realtime',
       'Webhooks',
     ],
   },
@@ -90,6 +91,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Recovery policy': 'workflow-recovery',
   'Workflow insights': 'workflow-insights',
   Queues: 'queues',
+  Realtime: 'realtime',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
 };
