@@ -10,6 +10,15 @@ import * as edgeRuleMock from './edge-rules';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import { mockCapabilities } from './capabilities';
+import {
+  PG_PLAN_LIMITS,
+  pgCapabilities,
+  pgConditions,
+  pgConnectionBudget,
+  pgPlan,
+  pgSeedCompute,
+  pgUsage,
+} from './postgres';
 import * as deploymentDetail from './deployment-detail';
 import { registerEventMocks } from './events';
 import { mockOpenAPIPreview } from './openapi-preview';
@@ -4452,10 +4461,50 @@ route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) => {
 
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.
+// A ready database's delete is scheduled for seven days, as apid's is
+// (ADR-20261029174950), and the seeded account has one in that window.
+// MOCK_PG_CAP=suspended|warning|overage seeds the month's compute so the
+// cap states can be seen; turning overage on lifts a suspension.
 type PgRow = { id: string; state: string; updated_at: string } & Record<string, unknown>;
 const pgDatabases: PgRow[] = [];
 const pgBindings: PgRow[] = [];
 const PG_QUOTA = 5;
+const PG_GRACE_MS = 7 * 24 * 3600 * 1000;
+const pgDaysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+const pgSeed = (over: Record<string, unknown>): PgRow => ({
+  id: db.id(),
+  name: 'db',
+  region: 'fra',
+  postgres_major: 17,
+  service_class: 'development',
+  availability: 'single_zone',
+  scale_to_zero: true,
+  storage_limit_bytes: 5 * 1024 ** 3,
+  restore_window_seconds: 7 * 24 * 3600,
+  restore_source_database_id: null,
+  restore_point_in_time: null,
+  state: 'ready',
+  last_error_code: null,
+  created_at: pgDaysAgo(40),
+  updated_at: pgDaysAgo(3),
+  ...over,
+});
+if (!db.EMPTY)
+  pgDatabases.push(
+    pgSeed({ name: 'orders' }),
+    pgSeed({
+      name: 'analytics-2025',
+      service_class: 'burstable',
+      state: 'deleting',
+      restorable_until: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+      created_at: pgDaysAgo(200),
+      updated_at: pgDaysAgo(2),
+    })
+  );
+let pgOverageOn = process.env.MOCK_PG_CAP === 'overage';
+const pgPersonalPlan = () => pgPlan(process.env.MOCK_PLAN ?? db.account.plan);
+const pgCompute = (plan: ReturnType<typeof pgPlan>) =>
+  pgSeedCompute(process.env.MOCK_PG_CAP, PG_PLAN_LIMITS[plan].compute);
 
 function pgGate() {
   if (process.env.MOCK_PLAN === 'free')
@@ -4471,8 +4520,15 @@ function pgSettle(row: PgRow): PgRow {
   if (row.state === 'provisioning' && Date.now() - Date.parse(row.updated_at) > 4000) {
     row.state = 'ready';
     row.updated_at = new Date().toISOString();
-  } else if (row.state === 'deleting' && Date.now() - Date.parse(row.updated_at) > 4000) {
+  } else if (
+    row.state === 'deleting' &&
+    (row.restorable_until
+      ? Date.parse(String(row.restorable_until)) <= Date.now()
+      : Date.now() - Date.parse(row.updated_at) > 4000)
+  ) {
+    // An immediate delete finishes in a tick; a scheduled one at its window's end.
     row.state = 'deleted';
+    delete row.restorable_until;
     row.updated_at = new Date().toISOString();
   } else if (row.rotation_pending === true && Date.now() - Date.parse(row.updated_at) > 4000) {
     // A rotation keeps the previous credential valid while the app refreshes,
@@ -4550,27 +4606,49 @@ const orgPg = new Map<string, Record<string, unknown>[]>([
         postgres_major: 16,
         service_class: 'production',
         availability: 'single_zone',
-        scale_to_zero: false,
-        storage_limit_bytes: 20 * 1024 ** 3,
+        scale_to_zero: true,
+        storage_limit_bytes: 5 * 1024 ** 3,
         restore_window_seconds: 7 * 24 * 3600,
         restore_source_database_id: null,
         restore_point_in_time: null,
-        state: 'available',
+        state: 'ready',
+        // A pro company does not include the production class (faas
+        // managed_postgres.go), so apid suspends it with its data kept.
+        plan_excess: 'service_class',
         last_error_code: null,
         created_at: '2026-10-05T10:00:00Z',
         updated_at: '2026-10-05T10:00:00Z',
       },
+      pgSeed({
+        id: 'pg-acme-archive',
+        name: 'acme-archive',
+        postgres_major: 16,
+        state: 'deleting',
+        restorable_until: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        created_at: '2026-09-12T10:00:00Z',
+        updated_at: pgDaysAgo(4),
+      }),
     ],
   ],
 ]);
 const orgDatabases = (org: string) => {
   requireOrgRole(org, ANY_MEMBER);
   if (!orgPg.has(org)) orgPg.set(org, []);
-  return orgPg.get(org)!;
+  return orgPg.get(org)! as PgRow[];
 };
+const orgDatabase = (org: string, id: string) => {
+  const row = orgDatabases(org).find((d) => d.id === id);
+  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
+  return pgSettle(row);
+};
+const orgPlan = (org: string) => pgPlan(db.orgs.find((o) => o.slug === org)?.plan);
 route('GET', '/v1/orgs/{organization}/postgres/databases', ({ params }) => {
   pgGate();
-  return { items: orgDatabases(params.organization) };
+  return {
+    items: orgDatabases(params.organization)
+      .map(pgSettle)
+      .filter((d) => d.state !== 'deleted'),
+  };
 });
 route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) => {
   pgGate();
@@ -4588,7 +4666,7 @@ route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) =
     restore_window_seconds: Number(body.restore_window_seconds ?? 7 * 24 * 3600),
     restore_source_database_id: null,
     restore_point_in_time: null,
-    state: 'available',
+    state: 'provisioning',
     last_error_code: null,
     created_at: now,
     updated_at: now,
@@ -4596,21 +4674,143 @@ route('POST', '/v1/orgs/{organization}/postgres/databases', ({ params, body }) =
   list.push(database);
   return status(201, database);
 });
-route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) => {
-  const row = orgDatabases(params.organization).find((d) => d.id === params.id);
-  if (!row) throw new Problem(404, 'managed_postgres_not_found', 'no such database');
-  return row;
-});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params }) =>
+  orgDatabase(params.organization, params.id)
+);
 route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/bindings', ({ params }) => {
   orgDatabases(params.organization);
   return { items: [] };
 });
-route('DELETE', '/v1/postgres/databases/{id}', ({ params }) => {
-  const database = pgDatabase(params.id);
+// faas ScheduleDelete: a ready database is kept for the grace period; any
+// other, or purge=true, is deleted at once. Bindings and restored copies
+// must go first, and scheduling twice is a no-op.
+function pgDelete(database: PgRow, purge: boolean, dependants: PgRow[]) {
+  const bound = pgBindings.some(
+    (b) => b.database_id === database.id && pgSettle(b).state !== 'deleted'
+  );
+  if (bound)
+    throw new Problem(409, 'managed_postgres_conflict', 'detach the apps bound to it first.');
+  if (dependants.some((d) => d.restore_source_database_id === database.id && d.state !== 'deleted'))
+    throw new Problem(409, 'managed_postgres_conflict', 'a database restored from it exists.');
+  if (!purge && database.restorable_until) return { ...database };
+  if (!purge && database.state === 'ready')
+    database.restorable_until = new Date(Date.now() + PG_GRACE_MS).toISOString();
+  else delete database.restorable_until;
   database.state = 'deleting';
   database.updated_at = new Date().toISOString();
-  for (const b of pgBindings.filter((x) => x.database_id === params.id)) b.state = 'deleting';
-  return database;
+  return { ...database };
+}
+// faas Undelete: only inside the window; past it, or never scheduled, is 404.
+// A repeated Idempotency-Key replays the first answer.
+const pgUndeleteReceipts = new Map<string, PgRow>();
+function pgUndelete(database: PgRow, key: string) {
+  const receipt = key ? pgUndeleteReceipts.get(`${database.id}:${key}`) : undefined;
+  if (receipt) return receipt;
+  if (database.state !== 'deleting' || !database.restorable_until)
+    throw new Problem(
+      404,
+      'managed_postgres_not_found',
+      'the database is not scheduled for deletion.'
+    );
+  delete database.restorable_until;
+  database.state = 'ready';
+  database.updated_at = new Date().toISOString();
+  const answer = { ...database };
+  if (key) pgUndeleteReceipts.set(`${database.id}:${key}`, answer);
+  return answer;
+}
+route('DELETE', '/v1/postgres/databases/{id}', ({ params, query }) =>
+  pgDelete(pgDatabase(params.id), query.get('purge') === 'true', pgDatabases)
+);
+route('POST', '/v1/postgres/databases/{id}/undelete', ({ params, req }) =>
+  pgUndelete(pgDatabase(params.id), String(req.headers['idempotency-key'] ?? ''))
+);
+route('DELETE', '/v1/orgs/{organization}/postgres/databases/{id}', ({ params, query }) => {
+  requireOrgRole(params.organization, ['owner', 'admin']);
+  return pgDelete(
+    orgDatabase(params.organization, params.id),
+    query.get('purge') === 'true',
+    orgDatabases(params.organization)
+  );
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases/{id}/undelete', ({ params, req }) => {
+  requireOrgRole(params.organization, ['owner', 'admin']);
+  return pgUndelete(
+    orgDatabase(params.organization, params.id),
+    String(req.headers['idempotency-key'] ?? '')
+  );
+});
+// Usage and the compute cap (faas managedPostgresUsageView). The month's
+// compute is seeded; the cap state follows it and the overage setting.
+route('GET', '/v1/account/managed-postgres-usage', ({ res }) => {
+  pgGate();
+  res.setHeader('Cache-Control', 'no-store');
+  const plan = pgPersonalPlan();
+  return pgUsage({
+    plan,
+    used: pgCompute(plan),
+    overage: pgOverageOn,
+    readyDatabases: pgDatabases.map(pgSettle).filter((d) => d.state === 'ready').length,
+  });
+});
+route('GET', '/v1/orgs/{organization}/postgres/usage', ({ params, res }) => {
+  const list = orgDatabases(params.organization).map(pgSettle);
+  res.setHeader('Cache-Control', 'no-store');
+  const plan = orgPlan(params.organization);
+  // Organizations have no overage route, so a company never runs past its allowance.
+  return pgUsage({
+    plan,
+    used: pgCompute(plan),
+    overage: false,
+    readyDatabases: list.filter((d) => d.state === 'ready').length,
+  });
+});
+route('GET', '/v1/postgres/capabilities', ({ query }) => {
+  pgGate();
+  return pgCapabilities(pgPersonalPlan(), query.get('region') || 'fra');
+});
+route('GET', '/v1/orgs/{organization}/postgres/capabilities', ({ params, query }) => {
+  orgDatabases(params.organization);
+  return pgCapabilities(orgPlan(params.organization), query.get('region') || 'fra');
+});
+// Overage ships `internal`: apid answers its route as missing for an account
+// it is not released to, which MOCK_HIDDEN_CAPABILITIES=postgres-overage shows.
+function pgOverageView() {
+  const allowance = PG_PLAN_LIMITS[pgPersonalPlan()].compute;
+  return {
+    enabled: pgOverageOn,
+    compute_allowance_unit_seconds: allowance,
+    compute_ceiling_unit_seconds: pgOverageOn ? allowance * 2 : allowance,
+  };
+}
+route('GET', '/v1/postgres/overage', () => {
+  if (hiddenCapabilities.has('postgres-overage')) throw new Problem(404, 'not_found');
+  return pgOverageView();
+});
+route('PUT', '/v1/postgres/overage', ({ body }) => {
+  if (hiddenCapabilities.has('postgres-overage')) throw new Problem(404, 'not_found');
+  if (typeof body.enabled !== 'boolean')
+    throw new Problem(400, 'managed_postgres_invalid', 'enabled must be true or false.');
+  if (pgPersonalPlan() === 'free')
+    throw new Problem(
+      403,
+      'managed_postgres_not_in_plan',
+      'plan "free": compute overage needs a paid plan; the monthly compute allowance is a hard limit on this plan'
+    );
+  pgOverageOn = body.enabled;
+  return pgOverageView();
+});
+route('GET', '/v1/postgres/databases/{id}/status', ({ params, res }) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return pgConditions(pgDatabase(params.id));
+});
+route('GET', '/v1/postgres/databases/{id}/connection-budget', ({ params, res }) => {
+  const database = pgDatabase(params.id);
+  res.setHeader('Cache-Control', 'no-store');
+  const bound = pgBindings.filter(
+    (b) => b.database_id === database.id && pgSettle(b).state !== 'deleted'
+  ).length;
+  return pgConnectionBudget(database, bound);
 });
 route('POST', '/v1/postgres/databases/{id}/restore', ({ params, body }) => {
   const source = pgDatabase(params.id);

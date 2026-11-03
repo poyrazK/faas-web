@@ -287,6 +287,73 @@ describe('PATCH /v1/crons/{id}', () => {
   });
 });
 
+describe('deleting a managed database through the mock', () => {
+  async function readyDatabase(name: string) {
+    const created = await json('/v1/postgres/databases', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        region: 'fra',
+        postgres_major: 17,
+        service_class: 'development',
+        availability: 'single_zone',
+        scale_to_zero: true,
+      }),
+    });
+    vi.setSystemTime(Date.now() + 5000);
+    return created.body as { id: string };
+  }
+
+  it('schedules a ready database, recovers it once per key, then purges it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { id } = await readyDatabase('grace-a');
+    const scheduled = await json(`/v1/postgres/databases/${id}`, { method: 'DELETE' });
+    expect(scheduled.body).toMatchObject({ state: 'deleting' });
+    expect(scheduled.body.restorable_until).toEqual(expect.any(String));
+    // Still listed days later: the window is seven days, not a tick.
+    vi.setSystemTime(Date.now() + 3 * 86_400_000);
+    const listed = (await json('/v1/postgres/databases')).body.items as { id: string }[];
+    expect(listed.some((d) => d.id === id)).toBe(true);
+
+    const undelete = (key: string) =>
+      json(`/v1/postgres/databases/${id}/undelete`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+      });
+    expect((await undelete('k1')).body).toMatchObject({ state: 'ready' });
+    expect((await undelete('k1')).status).toBe(200);
+    expect((await undelete('k2')).body.code).toBe('managed_postgres_not_found');
+
+    const purged = await json(`/v1/postgres/databases/${id}?purge=true`, { method: 'DELETE' });
+    expect(purged.body.restorable_until).toBeUndefined();
+    vi.setSystemTime(Date.now() + 5000);
+    expect((await json(`/v1/postgres/databases/${id}/undelete`, { method: 'POST' })).status).toBe(
+      404
+    );
+  });
+
+  it('refuses to delete a database an app is bound to', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const app = await json('/v1/apps', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'grace-bound', type: 'app', runtime: 'node24' }),
+    });
+    const { id } = await readyDatabase('grace-b');
+    await json(`/v1/postgres/databases/${id}/bindings`, {
+      method: 'POST',
+      body: JSON.stringify({
+        app_id: app.body.id,
+        scope: 'default',
+        environment_key: 'DATABASE_URL',
+        access: 'read_write',
+      }),
+    });
+    const res = await json(`/v1/postgres/databases/${id}`, { method: 'DELETE' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('managed_postgres_conflict');
+  });
+});
+
 describe('POST /v1/postgres/bindings/{id}/rotate', () => {
   async function boundBinding(slug: string) {
     const app = await json('/v1/apps', {

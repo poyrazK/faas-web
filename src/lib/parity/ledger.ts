@@ -751,7 +751,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/postgres'],
     capability: 'managed-postgres',
-    gap: 'Usage, compute cap and its suspended state, undelete, resize (beta), compute policy; cutovers stay preview',
+    gap: 'Resize (beta) and the scale-to-zero compute policy; cutovers stay preview',
     wave: 1,
   },
   // F110 · preview

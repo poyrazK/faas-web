@@ -382,6 +382,18 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'resource-conditions',
+    name: 'Resource conditions',
+    category: 'observability',
+    description:
+      'Read the conditions of an app, deployment, managed database, custom domain, cron or job run, and wait for one.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/app-health',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,

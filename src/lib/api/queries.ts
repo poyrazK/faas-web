@@ -15,6 +15,7 @@ import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
 import { useWorkspaceTarget } from './workspace-apps';
+import { postgresDatabasesSettling, postgresKey } from './postgres';
 import { uploadTarball, type DeployOptions } from './uploads';
 
 /**
@@ -3871,9 +3872,9 @@ export type PostgresBinding = components['schemas']['ManagedPostgresBinding'];
 /**
  * Databases belong to the active workspace: the account's own, or a company's
  * under `/v1/orgs/{organization}/postgres/…` (faas org_postgres_routes.go, the
- * same shapes). Nothing is read until the workspace is known.
+ * same shapes). Nothing is read until the workspace is known. Usage, overage,
+ * undelete and the rest live in postgres.ts, under the same key prefix.
  */
-const postgresKey = (org: string | null) => ['postgres', org ?? 'personal', 'databases'] as const;
 
 export function usePostgresDatabases() {
   const { org, ready } = useWorkspaceTarget();
@@ -3890,11 +3891,7 @@ export function usePostgresDatabases() {
     enabled: ready,
     // Provisioning finishes on the provider's clock, not the browser's.
     refetchInterval: (query) =>
-      (query.state.data?.items ?? []).some(
-        (d) => d.state === 'provisioning' || d.state === 'deleting'
-      )
-        ? 5_000
-        : false,
+      postgresDatabasesSettling(query.state.data?.items ?? []) ? 5_000 : false,
   });
 }
 
