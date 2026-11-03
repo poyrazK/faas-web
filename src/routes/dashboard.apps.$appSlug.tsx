@@ -79,7 +79,7 @@ import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/is
 import { AppConfiguration } from '@/components/dashboard/app-configuration';
 import { PrewarmPanel } from '@/components/dashboard/prewarm';
 import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
-import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
+import { InvokePanel } from '@/components/dashboard/app-core-panels';
 import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
@@ -506,61 +506,56 @@ function FunctionDetailPage() {
                         this window.
                       </p>
                     )}
-                    <Stats columns={4}>
-                      <StatTile
-                        label="Requests"
-                        value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Error rate"
-                        value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                        unit="%"
-                        deltaGood={false}
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Cold starts"
-                        value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                        unit="%"
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Wake p95 (fleet)"
-                        value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
-                        state={metricsTileState}
-                      />
-                    </Stats>
+                    {/* One set of figures for the window. Latency covers 2xx
+                        responses; the wake figure is fleet-wide, the same on
+                        every app. */}
+                    {metricsPhase === 'unreachable' ? (
+                      <UnreachableState onRetry={() => void metrics.refetch()} />
+                    ) : metricsPhase === 'error' ? (
+                      <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
+                    ) : (
+                      <Stats columns={6}>
+                        <StatTile
+                          label="Requests"
+                          value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                        />
+                        <StatTile
+                          label="Error rate"
+                          value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
+                          unit="%"
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                        />
+                        <StatTile
+                          label="p50"
+                          value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                        />
+                        <StatTile
+                          label="p95"
+                          value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                        />
+                        <StatTile
+                          label="p99"
+                          value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                        />
+                        <StatTile
+                          label="Cold starts"
+                          value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
+                          unit="%"
+                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
+                          note={
+                            metrics.data
+                              ? `Wake p95 ${formatMs(metrics.data.wake_p95_ms)}, fleet`
+                              : undefined
+                          }
+                        />
+                      </Stats>
+                    )}
 
-                    <Panel title="Response latency" help="2xx responses over the selected window.">
-                      {metricsPhase === 'unreachable' ? (
-                        <UnreachableState onRetry={() => void metrics.refetch()} />
-                      ) : metricsPhase === 'error' ? (
-                        <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-                      ) : metricsPhase === 'loading' ? (
-                        <LoadingState message="Querying metrics…" />
-                      ) : (
-                        <Stats columns={3}>
-                          <StatTile
-                            label="p50"
-                            value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                          <StatTile
-                            label="p95"
-                            value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                          <StatTile
-                            label="p99"
-                            value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                        </Stats>
-                      )}
-                    </Panel>
                     <AppHealthPanel slug={fn.id} />
-                    <SloPanel slug={fn.id} />
                     <AppAnalyticsPanel
                       slug={fn.id}
                       search={search}

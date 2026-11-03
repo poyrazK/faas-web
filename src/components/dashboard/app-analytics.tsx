@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { TimeChart } from './kit/chart';
 import { SegmentedControl } from './tabs';
 import { Select } from '@/components/ui/field';
-import { InlinePhase, Panel, Stats, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import {
@@ -119,8 +119,6 @@ export function AppAnalyticsBody({
     loading: enabled && analytics.isPending,
     isEmpty: (data?.groups.length ?? 0) === 0,
   });
-  const tileState =
-    analyticsPhase === 'loading' ? 'loading' : analyticsPhase === 'ready' ? 'ready' : 'unavailable';
 
   const changeGroup = (next: AnalyticsGroupBy) => {
     onGroupByChange(next);
@@ -183,26 +181,6 @@ export function AppAnalyticsBody({
           />
         ) : (
           <div className="flex flex-col gap-5">
-            <Stats columns={6}>
-              <StatTile label="Requests" value={data?.requests} state={tileState} />
-              <StatTile label="Errors" value={data?.error_requests} state={tileState} tone="red" />
-              <StatTile
-                label="Error rate"
-                value={data ? data.error_rate_pct.toFixed(2) : undefined}
-                unit="%"
-                state={tileState}
-                tone="orange"
-              />
-              <StatTile label="p50" value={data?.p50_ms} unit="ms" state={tileState} tone="grey" />
-              <StatTile label="p95" value={data?.p95_ms} unit="ms" state={tileState} tone="grey" />
-              <StatTile
-                label="Cold boots"
-                value={data?.cold_boots}
-                state={tileState}
-                tone="orange"
-              />
-            </Stats>
-
             {data?.window_clamped && (
               <p className="text-xs text-muted-foreground">
                 The window was clamped to the retention this plan keeps.
