@@ -54,6 +54,11 @@ vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: '', state: 'loading', refresh: vi.fn() }),
 }));
+// The PR previews panel reads the workspace's inventory (B27).
+vi.mock('@/lib/api/workspace-apps', () => ({
+  useWorkspaceTarget: () => ({ org: null, label: 'Personal', ready: true }),
+  useOrgApps: () => ({ data: undefined, isPending: false, error: null, refetch: vi.fn() }),
+}));
 
 const { DeploymentsPage } = await import('./dashboard.releases');
 

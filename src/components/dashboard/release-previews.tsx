@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -11,17 +11,20 @@ import {
   PREVIEW_SLUG_MAX,
   PREVIEW_TTL_DEFAULT_HOURS,
   PREVIEW_TTL_MAX_HOURS,
+  parsePreviewSlug,
   previewSlugFor,
   useCreatePreview,
   usePreview,
   validPreviewTtl,
   type PreviewAppResponse,
 } from '@/lib/api/pr-previews';
-import { useApps } from '@/lib/api/queries';
+import { useApp, useApps } from '@/lib/api/queries';
+import { useOrgApps, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { publicAppUrl } from '@/lib/app-url';
 import { useAuth } from '@/lib/auth';
 import { CapabilityNotice } from './capability-notice';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { ProblemHelp } from './problem-help';
 import { TearDownPreviewButton } from './preview-actions';
 import { ReleaseStatusLabel } from './release-status-label';
 
@@ -55,17 +58,88 @@ function Expiry({ iso }: { iso: string | null | undefined }) {
   );
 }
 
+/** A listed preview, from whichever inventory the workspace reads. */
+interface PreviewRow {
+  id: string;
+  slug: string;
+  parent: string;
+  /** 0 is a developer preview. */
+  prNumber: number;
+  /** PR state and expiry: absent from a company's inventory. */
+  state?: string;
+  expiresAt?: string | null;
+}
+interface ParentApp {
+  id: string;
+  slug: string;
+}
+
 /**
- * PR previews on Releases: the previews the account has, one preview read by
+ * The workspace's previews and production apps. `/v1/apps` is the signed-in
+ * account's own list, so a company reads its inventory instead
+ * (`/v1/orgs/{slug}/apps`), where a preview carries its parent's organization
+ * (faas handlers_preview_create.go:211). That inventory has no preview
+ * fields, so a preview is known there by its reserved `pr-{N}-{parent}` slug.
+ * Nothing is read until the workspace is known.
+ */
+function useWorkspacePreviews() {
+  const workspace = useWorkspaceTarget();
+  const { org, ready } = workspace;
+  const personal = useApps({ enabled: ready && !org });
+  const company = useOrgApps(ready ? org : null);
+  const query = org ? company : personal;
+  let previews: PreviewRow[] = [];
+  let parents: ParentApp[] = [];
+  if (org) {
+    for (const app of company.data?.apps ?? []) {
+      const preview = parsePreviewSlug(app.slug);
+      if (preview) previews.push({ id: app.id, slug: app.slug, ...preview });
+      else parents.push(app);
+    }
+  } else {
+    const apps = personal.data ?? [];
+    previews = apps.flatMap((app) =>
+      app.preview_of_slug
+        ? [
+            {
+              id: app.id,
+              slug: app.slug,
+              parent: app.preview_of_slug,
+              prNumber: app.preview_pr_number ?? 0,
+              state: app.preview_pr_state,
+              expiresAt: app.preview_expires_at,
+            },
+          ]
+        : []
+    );
+    parents = apps.filter((app) => !app.preview_of_slug);
+  }
+  return {
+    workspace,
+    previews,
+    parents,
+    error: query.error,
+    loading: !ready || query.isPending,
+    refetch: () => void query.refetch(),
+  };
+}
+
+function rowLabel(row: PreviewRow) {
+  const name = row.prNumber
+    ? `PR #${row.prNumber} of ${row.parent}`
+    : `Developer preview of ${row.parent}`;
+  return row.state ? `${name} · ${row.state}` : name;
+}
+
+/**
+ * PR previews on Releases: the workspace's previews, one preview read by
  * slug, and creating one for a production app (B27).
  */
 export function ReleasePreviews() {
   const availability = useCapability('pr-previews');
-  const apps = useApps();
+  const { workspace, previews, parents, error, loading, refetch } = useWorkspacePreviews();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState('');
-  const previews = (apps.data ?? []).filter((app) => app.preview_of_slug);
-  const parents = (apps.data ?? []).filter((app) => !app.preview_of_slug);
   const canCreate = availability.state === 'available' && parents.length > 0;
   return (
     <Panel
@@ -91,6 +165,8 @@ export function ReleasePreviews() {
         {canCreate && creating && (
           <NewPreviewForm
             parents={parents}
+            org={workspace.org}
+            label={workspace.label}
             onCancel={() => setCreating(false)}
             onCreated={(slug) => {
               setCreating(false);
@@ -99,33 +175,41 @@ export function ReleasePreviews() {
           />
         )}
         <InlinePhase
-          phase={queryPhase({
-            error: apps.error,
-            loading: apps.isPending,
-            isEmpty: previews.length === 0,
-          })}
-          error={apps.error}
+          phase={queryPhase({ error, loading, isEmpty: previews.length === 0 })}
+          error={error}
           loadingMessage="Loading previews…"
-          emptyMessage="No previews yet. Pull requests on a connected repository get one automatically."
-          onRetry={() => void apps.refetch()}
+          emptyMessage={
+            workspace.org
+              ? `No previews in ${workspace.label} yet. Pull requests on a connected repository get one automatically.`
+              : 'No previews yet. Pull requests on a connected repository get one automatically.'
+          }
+          onRetry={refetch}
         />
+        {previews.length > 0 && workspace.org && (
+          <p className="text-xs text-muted-foreground">
+            {workspace.label}’s app list names each preview but not its pull request state or
+            expiry; open one to read them.
+          </p>
+        )}
         {previews.length > 0 && (
           <ul className="divide-y divide-border rounded-md border border-border">
-            {previews.map((app) => (
-              <li key={app.id}>
+            {previews.map((row) => (
+              <li key={row.id}>
                 <button
                   type="button"
-                  aria-pressed={app.slug === selected}
-                  onClick={() => setSelected(app.slug === selected ? '' : app.slug)}
+                  aria-pressed={row.slug === selected}
+                  onClick={() => setSelected(row.slug === selected ? '' : row.slug)}
                   className="flex w-full min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50 aria-pressed:bg-muted/50"
                 >
-                  <span className="min-w-0 truncate font-mono font-medium">{app.slug}</span>
+                  <span className="min-w-0 truncate font-mono font-medium">{row.slug}</span>
                   <span className="text-xs text-muted-foreground">
-                    {app.preview_pr_number
-                      ? `PR #${app.preview_pr_number} of ${app.preview_of_slug}`
-                      : `Developer preview of ${app.preview_of_slug}`}
-                    {app.preview_pr_state ? ` · ${app.preview_pr_state}` : ''} · expires{' '}
-                    <Expiry iso={app.preview_expires_at} />
+                    {rowLabel(row)}
+                    {workspace.org ? null : (
+                      <>
+                        {' '}
+                        · expires <Expiry iso={row.expiresAt} />
+                      </>
+                    )}
                   </span>
                 </button>
               </li>
@@ -133,19 +217,39 @@ export function ReleasePreviews() {
           </ul>
         )}
         {selected && (
-          <PreviewDetail key={selected} slug={selected} onClose={() => setSelected('')} />
+          <PreviewDetail
+            key={selected}
+            slug={selected}
+            org={workspace.org}
+            label={workspace.label}
+            onClose={() => setSelected('')}
+          />
         )}
       </div>
     </Panel>
   );
 }
 
+/**
+ * Creating, reading and tearing down a preview are not reviewed organization
+ * routes, so for a company app apid lets only its creator through, while an
+ * owner or admin (faas appaccess/access.go:263-270; organization-app-access.md
+ * "preview-status … legacy operations still require the creator to be
+ * owner/admin"). Other members get 403 `org_role_forbidden`.
+ */
+const creatorOnly = (parent: string, organization: string) =>
+  `apid lets only the member who created ${parent} create its previews, while they are an owner or admin of ${organization}. Other members cannot create them yet.`;
+
 function NewPreviewForm({
   parents,
+  org,
+  label,
   onCancel,
   onCreated,
 }: {
-  parents: PreviewAppResponse[];
+  parents: ParentApp[];
+  org: string | null;
+  label: string;
   onCancel: () => void;
   onCreated: (slug: string) => void;
 }) {
@@ -173,7 +277,7 @@ function NewPreviewForm({
     if (!parent || !prValid || !ttlValid || slugTooLong) return;
     setFailure(null);
     try {
-      const { app, created } = await create.mutateAsync({ parent, prNumber, ttlHours });
+      const { app, created } = await create.mutateAsync({ parent, prNumber, ttlHours, org });
       toast(
         created
           ? { kind: 'success', title: `Preview ${app.slug} created` }
@@ -260,16 +364,29 @@ function NewPreviewForm({
           it; the default is {leaseLabel(PREVIEW_TTL_DEFAULT_HOURS)}. Creating it again for the same
           pull request renews it instead of adding another.
         </p>
-        {limit != null && (
+        {/* A company's previews draw on its plan, not the member's own
+            (organization-app-access.md "Application admission"). */}
+        {!org && limit != null && (
           <p>
             Your {planName} plan allows {limit} open PR preview environment
             {limit === 1 ? '' : 's'}; a closed pull request's preview stops counting.
           </p>
         )}
+        {org && (
+          <p>
+            In {label}, apid lets only the member who created an app create its previews, while they
+            are an owner or admin. Previews count against {label}’s plan.
+          </p>
+        )}
       </div>
       {failure != null && (
         <div role="alert" className="flex flex-col gap-1 text-sm">
-          <p style={{ color: 'var(--status-critical)' }}>{errorMessage(failure)}</p>
+          <p style={{ color: 'var(--status-critical)' }}>
+            {org && code === 'org_role_forbidden'
+              ? creatorOnly(parent, label)
+              : errorMessage(failure)}
+          </p>
+          {code === 'org_role_forbidden' && <ProblemHelp error={failure} />}
           {code === 'plan_limit_apps' && (
             <p className="text-muted-foreground">
               Open a preview below and tear it down, or close its pull request.{' '}
@@ -302,10 +419,82 @@ function NewPreviewForm({
   );
 }
 
-function PreviewDetail({ slug, onClose }: { slug: string; onClose: () => void }) {
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="truncate">{children}</dd>
+    </div>
+  );
+}
+
+/** The app-level facts every preview read has: URL, parent, pull request, expiry. */
+function AppFacts({
+  app,
+  url,
+  parentSlug,
+}: {
+  app: PreviewAppResponse;
+  url?: string;
+  parentSlug?: string;
+}) {
+  return (
+    <>
+      <Fact label="URL">
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand hover:underline"
+          >
+            {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+          </a>
+        ) : (
+          <span className="text-muted-foreground">Not assigned</span>
+        )}
+      </Fact>
+      <Fact label="Production app">
+        {parentSlug ? (
+          <Link
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: parentSlug }}
+            className="text-brand hover:underline"
+          >
+            {parentSlug}
+          </Link>
+        ) : (
+          '—'
+        )}
+      </Fact>
+      <Fact label="Pull request">
+        {app.preview_pr_number
+          ? `PR #${app.preview_pr_number} · ${app.preview_pr_state ?? 'unknown'}`
+          : 'Developer preview'}
+      </Fact>
+      <Fact label="Expires">
+        <Expiry iso={app.preview_expires_at} />
+      </Fact>
+    </>
+  );
+}
+
+function PreviewDetail({
+  slug,
+  org,
+  label,
+  onClose,
+}: {
+  slug: string;
+  org: string | null;
+  label: string;
+  onClose: () => void;
+}) {
   const query = usePreview(slug);
   const data = query.data;
   const notPreview = query.error instanceof ApiError && query.error.code === 'preview_not_found';
+  const refused =
+    Boolean(org) && query.error instanceof ApiError && query.error.code === 'org_role_forbidden';
   const url = data && publicAppUrl(data.links.url);
   const latest = data?.latest_deployment;
   const parentSlug = data?.parent?.slug ?? data?.app.preview_of_slug;
@@ -321,7 +510,9 @@ function PreviewDetail({ slug, onClose }: { slug: string; onClose: () => void })
           Close
         </Button>
       </div>
-      {notPreview ? (
+      {refused ? (
+        <CompanyPreviewFacts slug={slug} label={label} />
+      ) : notPreview ? (
         <p className="text-muted-foreground">
           {slug} is not a preview app. Open it from Apps instead.
         </p>
@@ -346,53 +537,7 @@ function PreviewDetail({ slug, onClose }: { slug: string; onClose: () => void })
                 )}
               </dd>
             </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">URL</dt>
-              <dd className="truncate">
-                {url ? (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-brand hover:underline"
-                  >
-                    {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">Not assigned</span>
-                )}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">Production app</dt>
-              <dd className="truncate">
-                {parentSlug ? (
-                  <Link
-                    to="/dashboard/apps/$appSlug"
-                    params={{ appSlug: parentSlug }}
-                    className="text-brand hover:underline"
-                  >
-                    {parentSlug}
-                  </Link>
-                ) : (
-                  '—'
-                )}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">Pull request</dt>
-              <dd>
-                {data.app.preview_pr_number
-                  ? `PR #${data.app.preview_pr_number} · ${data.app.preview_pr_state ?? 'unknown'}`
-                  : 'Developer preview'}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-muted-foreground">Expires</dt>
-              <dd>
-                <Expiry iso={data.app.preview_expires_at} />
-              </dd>
-            </div>
+            <AppFacts app={data.app} url={url} parentSlug={parentSlug} />
             {latest && (
               <div className="min-w-0">
                 <dt className="text-xs text-muted-foreground">Changes from production</dt>
@@ -427,5 +572,45 @@ function PreviewDetail({ slug, onClose }: { slug: string; onClose: () => void })
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * A company preview whose preview read apid refused: the reviewed app read
+ * (`GET /v1/apps/{slug}`, faas appaccess/routes.go:28) still gives every
+ * member its app-level facts. Its deployment, changes from production and
+ * teardown sit behind the same refusal, so they are named, not offered.
+ */
+function CompanyPreviewFacts({ slug, label }: { slug: string; label: string }) {
+  const app = useApp(slug);
+  const parent = app.data?.preview_of_slug ?? parsePreviewSlug(slug)?.parent ?? 'its app';
+  return (
+    <>
+      <InlinePhase
+        phase={queryPhase({ error: app.error, loading: app.isPending })}
+        error={app.error}
+        loadingMessage="Reading preview…"
+        onRetry={() => void app.refetch()}
+      />
+      {app.data && (
+        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          <AppFacts app={app.data} url={publicAppUrl(app.data.url)} parentSlug={parent} />
+        </dl>
+      )}
+      <p role="status" className="text-muted-foreground">
+        Only the member who created {parent}, while an owner or admin of {label}, can see this
+        preview’s latest deployment and changes from production, or tear it down: apid has not
+        opened those to other members yet.
+      </p>
+      {app.data && (
+        <Link
+          to="/dashboard/apps/$appSlug"
+          params={{ appSlug: slug }}
+          className="w-fit text-brand hover:underline"
+        >
+          Open {slug}
+        </Link>
+      )}
+    </>
   );
 }
