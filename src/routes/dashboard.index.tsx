@@ -412,6 +412,7 @@ function CompanyOverview({ workspace }: { workspace: WorkspaceTarget & { org: st
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Overview"
+        help="Requests, errors, wake time and memory are measured per app in a company workspace. Open an app's Metrics to read them."
         meta={<p className="text-xs text-muted-foreground">{workspace.label}</p>}
         actions={
           <RefreshButton label="Refresh overview" refreshing={refreshing} onRefresh={refreshAll} />
@@ -420,10 +421,6 @@ function CompanyOverview({ workspace }: { workspace: WorkspaceTarget & { org: st
       <Stats columns={2}>
         <UsageTiles usage={usage} />
       </Stats>
-      <p className="text-xs text-muted-foreground">
-        Requests, errors, wake time and memory are measured per app in a company workspace. Open an
-        app's Metrics to read them.
-      </p>
       <WorkspaceAppInventory workspace={workspace} ownSlugs={ownSlugs} />
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <ActivityList workspace={workspace} activity={activity} />
