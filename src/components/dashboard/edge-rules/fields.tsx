@@ -132,6 +132,8 @@ export function SelectField<T extends string>({
       <Select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
+        aria-label={label}
+        aria-description={error ?? hint}
         aria-invalid={error ? true : undefined}
         className={INPUT}
       >
@@ -558,6 +560,7 @@ export function JsonField({
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           onBlur={(e) => parse(e.target.value)}
+          data-invalid-json={parseError ? true : undefined}
           aria-invalid={parseError || error ? true : undefined}
           className={cn(INPUT, 'h-auto resize-y py-2 font-mono text-xs leading-relaxed')}
         />
@@ -630,6 +633,7 @@ export function JsonValueField({
         spellCheck={false}
         onChange={(e) => setText(e.target.value)}
         onBlur={(e) => parse(e.target.value)}
+        data-invalid-json={parseError ? true : undefined}
         aria-invalid={parseError || error ? true : undefined}
         className={cn(INPUT, 'h-auto resize-y py-2 font-mono text-xs leading-relaxed')}
       />

@@ -799,6 +799,10 @@ New app starts with seven compact source choices and keeps the existing wizard,
 source fields, OAuth handoffs and deployment recovery. Edge rules live under each
 app and describe each saved outcome, such as routing a path to a named app or
 blocking requests from a named country. Opening a row shows its technical settings.
+Add rule starts with searchable, plain-English outcomes and essential inputs, with
+country names and readable units. A live preview shows the effect, app scope and
+starting mode. Advanced settings exposes the full editor without losing the draft;
+hidden validation errors reopen it, and malformed JSON stays visible until corrected.
 Sidebar groups animate their expansion and respect reduced motion.
 
 Overview and app analytics cards retain add, remove and reorder controls. Select

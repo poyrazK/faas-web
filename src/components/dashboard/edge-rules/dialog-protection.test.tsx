@@ -92,7 +92,7 @@ describe('challenge kind', () => {
 
   it('creates a challenge rule once challenges are released to the account', async () => {
     mount();
-    await userEvent.click(screen.getByRole('button', { name: /Browser challenge/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Check that callers use a browser/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Create rule' }));
     await waitFor(() =>
       expect(state.create).toHaveBeenCalledWith(
@@ -107,7 +107,7 @@ describe('challenge kind', () => {
   it('is not offered before release: apid would refuse it', async () => {
     state.released.delete('edge-browser-challenge');
     mount();
-    const challenge = screen.getByRole('button', { name: /Browser challenge/ });
+    const challenge = screen.getByRole('button', { name: /Check that callers use a browser/ });
     expect(challenge).toHaveAttribute('aria-disabled', 'true');
     expect(challenge).toHaveTextContent('Not released to this account yet.');
   });
@@ -137,7 +137,8 @@ describe('the wire shape', () => {
 describe('penalty box', () => {
   it('adds a penalty to a new ip rule', async () => {
     mount();
-    await userEvent.click(screen.getByRole('button', { name: /IP allow or deny/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Allow or block IP addresses/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
     await userEvent.click(screen.getByRole('switch', { name: 'Penalty box' }));
     const seconds = screen.getByLabelText(/^Block for \(seconds\)/);
     await userEvent.clear(seconds);
@@ -183,14 +184,15 @@ describe('penalty box', () => {
 
   it('is not offered on kinds that never refuse a client', async () => {
     mount();
-    await userEvent.click(screen.getByRole('button', { name: /Rewrite the path/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Change a request’s path/ }));
     expect(screen.queryByRole('switch', { name: 'Penalty box' })).toBeNull();
   });
 
   it('is not offered before release, but an existing penalty can still be removed', async () => {
     state.released.delete('edge-penalty-box');
     mount();
-    await userEvent.click(screen.getByRole('button', { name: /IP allow or deny/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Allow or block IP addresses/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
     expect(screen.queryByRole('switch', { name: 'Penalty box' })).toBeNull();
   });
 

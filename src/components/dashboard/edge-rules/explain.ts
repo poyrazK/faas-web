@@ -251,7 +251,7 @@ export function explainRule(
       effect = `reuse eligible GET and HEAD responses for ${duration(num('max_age_seconds', 60) || 60)}`;
       break;
     case 'validate': {
-      const mode = str('validate_mode', rule.validate_mode ?? 'block');
+      const mode = rule.validate_mode ?? str('validate_mode', 'block');
       effect =
         mode === 'block'
           ? 'reject request bodies that fail this rule’s JSON schema'

@@ -129,6 +129,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   rule rows lead with their saved outcome and values, including paused and log-only
   states. Open the row for technical settings; keep generic kind descriptions inside
   the editor. Country names, destinations and limits belong in the row summary.
+  Add rule starts with plain-English outcomes and essential inputs. Keep full
+  technical fields under Advanced settings, sharing the same action draft. Do not
+  discard invalid JSON on collapse or silently save its last valid value. Creation
+  defaults to every path on the selected app; the preview must show custom scope,
+  paused/log-only behavior and the effective validation mode.
   Preserve the seven-source New app wizard and its deployment recovery. Overview
   and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
   URL-backed `MetricInspectorProvider` without changing the underlying route.

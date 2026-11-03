@@ -164,3 +164,16 @@ it('resolves a linked browser policy only for the matching account and app', () 
     explainRule(value, 'api', { corsPreset: { ...preset, app_id: 'another-app' } })
   ).not.toContain('app.example.test');
 });
+
+it('uses the top-level validation mode sent by the editor', () => {
+  expect(
+    explainRule(
+      rule(
+        'validate',
+        { schema: { type: 'object' }, validate_mode: 'block' },
+        { validate_mode: 'observe' }
+      ),
+      'api'
+    )
+  ).toBe('Records JSON schema failures without blocking.');
+});

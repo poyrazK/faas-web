@@ -74,7 +74,11 @@ function mount(
 
 const created = () => state.create.mock.calls[0][0] as Record<string, unknown>;
 const create = () => userEvent.click(screen.getByRole('button', { name: 'Create rule' }));
-const pick = (name: RegExp) => userEvent.click(screen.getByRole('button', { name }));
+// These regression cases exercise the complete technical configuration.
+const pick = async (name: RegExp) => {
+  await userEvent.click(screen.getByRole('button', { name }));
+  await userEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
+};
 
 beforeEach(() => {
   state.released = new Set([
@@ -94,7 +98,7 @@ beforeEach(() => {
 describe('waf', () => {
   it('creates a blocking WAF rule with an excluded CRS rule', async () => {
     mount();
-    await pick(/Web application firewall/);
+    await pick(/Detect suspicious requests/);
     await userEvent.click(screen.getByRole('button', { name: 'Block' }));
     await userEvent.type(screen.getByLabelText(/^Excluded CRS rules/), '942100{enter}');
     await create();
@@ -114,7 +118,7 @@ describe('waf', () => {
   it('offers observe alone while warn and block are not released', async () => {
     state.released.delete('edge-waf-blocking');
     mount();
-    await pick(/Web application firewall/);
+    await pick(/Detect suspicious requests/);
     expect(screen.queryByRole('button', { name: 'Block' })).toBeNull();
     expect(screen.getByText(/not released to this account yet/)).toBeInTheDocument();
   });
@@ -122,7 +126,7 @@ describe('waf', () => {
   it('is Pro and Scale only', () => {
     state.plan = 'hobby';
     mount();
-    const waf = screen.getByRole('button', { name: /Web application firewall/ });
+    const waf = screen.getByRole('button', { name: /Detect suspicious requests/ });
     expect(waf).toHaveAttribute('aria-disabled', 'true');
     expect(waf).toHaveTextContent('Needs the Pro plan or above.');
   });
@@ -133,7 +137,7 @@ describe('retry and circuit_breaker', () => {
     state.released.delete('request-retry');
     state.released.delete('circuit-breaking');
     mount();
-    for (const name of [/Retry on another instance/, /Circuit breaker/]) {
+    for (const name of [/Retry connection failures/, /Avoid failing instances/]) {
       const button = screen.getByRole('button', { name });
       expect(button).toHaveAttribute('aria-disabled', 'true');
       expect(button).toHaveTextContent('Not released to this account yet.');
@@ -142,7 +146,7 @@ describe('retry and circuit_breaker', () => {
 
   it('creates a retry rule that replays POST with an idempotency key', async () => {
     mount();
-    await pick(/Retry on another instance/);
+    await pick(/Retry connection failures/);
     await userEvent.click(screen.getByRole('switch', { name: 'Replay POST and PATCH' }));
     await create();
     await waitFor(() => expect(state.create).toHaveBeenCalled());
@@ -154,7 +158,7 @@ describe('retry and circuit_breaker', () => {
 
   it('refuses a breaker whose longest open is under its first open', async () => {
     mount();
-    await pick(/Circuit breaker/);
+    await pick(/Avoid failing instances/);
     const first = screen.getByLabelText(/^First open \(seconds\)/);
     await userEvent.clear(first);
     await userEvent.type(first, '120');
@@ -170,14 +174,14 @@ describe('async', () => {
   it('is not on the free plan', () => {
     state.plan = 'free';
     mount();
-    expect(screen.getByRole('button', { name: /Run asynchronously/ })).toHaveTextContent(
-      'Not on the free plan.'
-    );
+    expect(
+      screen.getByRole('button', { name: /Run requests in the background/ })
+    ).toHaveTextContent('Not on the free plan.');
   });
 
   it('sends terminal outcomes to an app webhook and caps attempts', async () => {
     mount();
-    await pick(/Run asynchronously/);
+    await pick(/Run requests in the background/);
     await userEvent.selectOptions(
       screen.getByLabelText(/^On success/),
       '6f1c2e9a-0000-4000-8000-000000000001'
@@ -198,7 +202,7 @@ describe('async', () => {
 describe('respond', () => {
   it('is offered on preview apps only', () => {
     mount();
-    expect(screen.getByRole('button', { name: /Fixed response/ })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /Return a fixed response/ })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
@@ -206,7 +210,7 @@ describe('respond', () => {
 
   it('answers with a fixed JSON body on a preview app', async () => {
     mount(null, [{ slug: 'api', preview_of_slug: 'shop' }]);
-    await pick(/Fixed response/);
+    await pick(/Return a fixed response/);
     const body = screen.getByLabelText(/^Body/);
     await userEvent.clear(body);
     await userEvent.type(body, '{{"id": "demo"}');
@@ -221,7 +225,7 @@ describe('respond', () => {
 
   it('refuses a body that does not parse', async () => {
     mount(null, [{ slug: 'api', preview_of_slug: 'shop' }]);
-    await pick(/Fixed response/);
+    await pick(/Return a fixed response/);
     const body = screen.getByLabelText(/^Body/);
     await userEvent.clear(body);
     await userEvent.type(body, '{{nope');
@@ -234,7 +238,7 @@ describe('respond', () => {
 describe('match conditions', () => {
   it('adds an all-of condition with a negated list leaf', async () => {
     mount();
-    await pick(/Rewrite the path/);
+    await pick(/Change a request’s path/);
     await userEvent.click(screen.getByRole('button', { name: 'Add condition' }));
     await userEvent.selectOptions(screen.getByLabelText('Condition 1 field'), 'country');
     await userEvent.selectOptions(screen.getByLabelText('Condition 1 operator'), 'in');
@@ -256,7 +260,7 @@ describe('match conditions', () => {
 
   it('offers only the lists whose kind fits the field', async () => {
     mount();
-    await pick(/Rewrite the path/);
+    await pick(/Change a request’s path/);
     await userEvent.click(screen.getByRole('button', { name: 'Add condition' }));
     await userEvent.selectOptions(screen.getByLabelText('Condition 1 field'), 'country');
     await userEvent.selectOptions(screen.getByLabelText('Condition 1 operator'), 'in_list');
@@ -268,7 +272,7 @@ describe('match conditions', () => {
 
   it('names the condition that needs a header name', async () => {
     mount();
-    await pick(/Rewrite the path/);
+    await pick(/Change a request’s path/);
     await userEvent.click(screen.getByRole('button', { name: 'Add condition' }));
     await userEvent.selectOptions(screen.getByLabelText('Condition 1 field'), 'header');
     await create();
@@ -325,7 +329,7 @@ describe('match conditions', () => {
 describe('match selectors', () => {
   it('takes @app, the host recipes use, and refuses an OpenAPI template path', async () => {
     mount();
-    await pick(/Rewrite the path/);
+    await pick(/Change a request’s path/);
     const host = screen.getByLabelText(/^Host/);
     await userEvent.clear(host);
     await userEvent.type(host, '@app');
@@ -346,7 +350,7 @@ describe('match selectors', () => {
 describe('rule details', () => {
   it('starts a named rule in log mode with header selectors', async () => {
     mount();
-    await pick(/Rewrite the path/);
+    await pick(/Change a request’s path/);
     await userEvent.type(screen.getByLabelText(/^Name/), 'legacy api');
     await userEvent.click(screen.getByRole('button', { name: 'Log only' }));
     await userEvent.type(screen.getByPlaceholderText('x-tenant'), 'x-beta');
@@ -401,4 +405,136 @@ describe('summaries', () => {
     expect(KINDS.async.summary({ max_age_seconds: 3600 })).toBe('202 accepted · max age 3600 s');
     expect(KINDS.respond.summary({ status_code: 404 })).toBe('404 · empty');
   });
+});
+
+describe('plain-English creation', () => {
+  const advanced = () => userEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
+
+  it('creates a route from its destination without exposing technical fields', async () => {
+    mount(null, [{ slug: 'api' }, { slug: 'billing' }]);
+    await userEvent.click(screen.getByRole('button', { name: /Send requests to another app/ }));
+    expect(screen.queryByLabelText(/^Host/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Priority/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /^Send requests to/ }),
+      'billing'
+    );
+    expect(screen.getByRole('region', { name: 'Rule preview' })).toHaveTextContent(
+      'Sends requests on api to billing.'
+    );
+    await create();
+    expect(created()).toMatchObject({
+      kind: 'route',
+      match_host: '@app',
+      match_path: '/**',
+      priority: 10,
+      action: { target_app_slug: 'billing' },
+    });
+  });
+
+  it('uses country names while saving codes and lets the rule start in log-only mode', async () => {
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: /Allow or block countries/ }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Add a country/ }), 'TR');
+    expect(screen.getByRole('button', { name: 'Remove Turkey' })).toBeInTheDocument();
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /^When this rule is created/ }),
+      'log'
+    );
+    expect(screen.getByRole('region', { name: 'Rule preview' })).toHaveTextContent(
+      'Log only. Would block requests from Turkey.'
+    );
+    await create();
+    expect(created()).toMatchObject({
+      kind: 'geo',
+      mode: 'log',
+      action: { deny: ['TR'], allow: [] },
+    });
+  });
+
+  it('keeps custom conditions and action options when moving between simple and advanced', async () => {
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: /Retry connection failures/ }));
+    await advanced();
+    const backoff = screen.getByLabelText(/^Backoff/);
+    await userEvent.clear(backoff);
+    await userEvent.type(backoff, '100');
+    const path = screen.getByLabelText(/^Path/);
+    await userEvent.clear(path);
+    await userEvent.type(path, '/orders/**');
+    await userEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    await userEvent.selectOptions(screen.getByLabelText('Condition 1 field'), 'country');
+    await userEvent.selectOptions(screen.getByLabelText('Condition 1 operator'), 'in');
+    await userEvent.type(screen.getByLabelText('Condition 1 values'), 'TR');
+    await advanced();
+    expect(screen.queryByLabelText(/^Backoff/)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Rule preview' })).toHaveTextContent('Turkey');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^How many tries/ }), '3');
+    await create();
+    expect(created()).toMatchObject({
+      match_path: '/orders/**',
+      match: { field: 'country', op: 'in', values: ['TR'] },
+      action: { max_attempts: 3, backoff_ms: 100 },
+    });
+  });
+
+  it('opens advanced settings to reveal an invalid hidden field without sending a request', async () => {
+    mount();
+    await userEvent.click(screen.getByRole('button', { name: /Avoid failing instances/ }));
+    await advanced();
+    const first = screen.getByLabelText(/^First open/);
+    await userEvent.clear(first);
+    await userEvent.type(first, '120');
+    await advanced();
+    await create();
+    expect(screen.getByRole('button', { name: /Advanced settings/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.getByText('From the first open interval up to 3600 seconds.')).toBeVisible();
+    expect(state.create).not.toHaveBeenCalled();
+  });
+
+  it('can search using technical vocabulary without changing the outcome labels', async () => {
+    mount();
+    await userEvent.type(screen.getByLabelText('Find an action'), 'cors');
+    expect(
+      screen.getByRole('button', { name: /Allow calls from another website/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Allow or block countries/ })
+    ).not.toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText('Find an action'));
+    await userEvent.type(screen.getByLabelText('Find an action'), 'no-such-action');
+    expect(screen.getByText(/No actions match/)).toHaveAttribute('role', 'status');
+  });
+});
+
+it('keeps incomplete country selection in the simple view', async () => {
+  mount();
+  await userEvent.click(screen.getByRole('button', { name: /Allow or block countries/ }));
+  await create();
+  expect(screen.getByRole('alert')).toHaveTextContent('Add at least one country.');
+  expect(screen.getByRole('button', { name: /Advanced settings/ })).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  );
+  expect(state.create).not.toHaveBeenCalled();
+});
+
+it('retains malformed JSON and refuses to collapse or save it', async () => {
+  mount();
+  await pick(/Check incoming JSON data/);
+  const schema = screen.getByLabelText(/^JSON Schema/);
+  await userEvent.clear(schema);
+  await userEvent.type(schema, '{{}broken');
+  await userEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
+  expect(schema).toHaveValue('{}broken');
+  expect(screen.getByRole('button', { name: /Advanced settings/ })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+  await create();
+  expect(state.create).not.toHaveBeenCalled();
+  expect(screen.getByText(/Correct the JSON before continuing/)).toBeVisible();
 });

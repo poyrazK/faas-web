@@ -366,7 +366,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
               <Button
                 size="sm"
                 className="gap-1.5"
-                disabled={!slug || rulesOff}
+                disabled={!slug || rulesOff || isPending || Boolean(error)}
                 onClick={() => {
                   setEditing(null);
                   setCreating(true);
