@@ -25,6 +25,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: state.accountId, state: state.capability, refresh: vi.fn() }),
+  useCapabilityAccess: () => ({ access: 'on', refresh: vi.fn() }),
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: state.toast }) }));
