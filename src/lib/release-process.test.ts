@@ -221,3 +221,126 @@ describe('releaseProcess without a stage record', () => {
     expect(phases[4]).toMatchObject({ state: 'failed', detail: 'boot_failed' });
   });
 });
+
+describe('releaseProcess with a release command', () => {
+  const PREP = ALL_STAGES.slice(0, 4);
+  it('adds no phase for a deployment that declares no release command', () => {
+    expect(releaseProcess(deployment()).map((p) => p.key)).not.toContain('release');
+  });
+
+  it('puts the release command after verify and before any serving VM is prepared', () => {
+    const phases = releaseProcess(
+      deployment({
+        status: 'live',
+        stage_state: stages({ history: ALL_STAGES }),
+        release: {
+          status: 'succeeded',
+          started_at: '2026-10-15T10:00:00Z',
+          finished_at: '2026-10-15T10:00:12Z',
+        },
+      })
+    );
+    expect(phases.map((p) => p.key)).toEqual([
+      'build',
+      'verify',
+      'release',
+      'prepare',
+      'rollout',
+      'serve',
+    ]);
+    expect(phases[2]).toMatchObject({ label: 'Release command', state: 'done', detail: '12 s' });
+  });
+
+  it('holds prepare while the command runs, though its stage has opened', () => {
+    const phases = releaseProcess(
+      deployment({
+        status: 'snapshotting',
+        stage_state: stages({ current: 'snapshot_prepare', history: PREP }),
+        release: { status: 'running', started_at: '2026-10-15T10:00:00Z' },
+      })
+    );
+    expect(phases.map((p) => `${p.key}:${p.state}`)).toEqual([
+      'build:done',
+      'verify:done',
+      'release:active',
+      'prepare:pending',
+      'rollout:pending',
+      'serve:pending',
+    ]);
+    expect(phases[2].detail).toBe('Running');
+  });
+
+  it('stops at a failed command: nothing after it ran and the previous release serves', () => {
+    const phases = releaseProcess(
+      deployment({
+        status: 'failed',
+        error_code: 'release_command_failed',
+        stage_state: stages({ current: 'snapshot_prepare', history: PREP }),
+        release: {
+          status: 'timed_out',
+          started_at: '2026-10-15T10:00:00Z',
+          finished_at: '2026-10-15T10:15:00Z',
+        },
+      })
+    );
+    expect(phases.map((p) => `${p.key}:${p.state}`)).toEqual([
+      'build:done',
+      'verify:done',
+      'release:failed',
+      'prepare:skipped',
+      'rollout:skipped',
+      'serve:skipped',
+    ]);
+    expect(phases[2].detail).toBe('Timed out');
+    expect(releaseProcessSummary(phases)).toBe('Release command failed: Timed out');
+  });
+
+  it('fails the phase when the installation cannot run release commands', () => {
+    const phases = releaseProcess(
+      deployment({
+        status: 'failed',
+        error_code: 'release_phase_unavailable',
+        stage_state: stages({ history: PREP }),
+        release: { status: 'pending' },
+      })
+    );
+    expect(phases.find((p) => p.key === 'release')).toMatchObject({
+      state: 'failed',
+      detail: 'Release commands cannot run here',
+    });
+    expect(phases.at(-1)?.state).toBe('skipped');
+  });
+
+  it('waits before the image is ready, and is skipped when an earlier phase failed', () => {
+    expect(
+      releaseProcess(
+        deployment({
+          status: 'building',
+          stage_state: stages({ current: 'image_build', history: PREP.slice(0, 2) }),
+          release: { status: 'pending' },
+        })
+      ).find((p) => p.key === 'release')
+    ).toMatchObject({ state: 'pending' });
+    expect(
+      releaseProcess(
+        deployment({
+          status: 'failed',
+          stage_state: stages({ history: [row('image_build', 'failed', 10, 'exit 1')] }),
+          release: { status: 'pending' },
+        })
+      ).find((p) => p.key === 'release')
+    ).toMatchObject({ state: 'skipped' });
+  });
+
+  it('shows a command cancelled with its deployment as skipped, not failed', () => {
+    expect(
+      releaseProcess(
+        deployment({
+          status: 'cancelled',
+          stage_state: stages({ history: PREP }),
+          release: { status: 'cancelled', started_at: '2026-10-15T10:00:00Z' },
+        })
+      ).find((p) => p.key === 'release')
+    ).toMatchObject({ state: 'skipped', detail: 'Cancelled' });
+  });
+});
