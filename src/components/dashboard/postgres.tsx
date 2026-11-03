@@ -46,6 +46,7 @@ import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
 import { ConnectionBudget, DatabaseConditions } from './postgres-health';
 import { StatusTag, TONE, explainPostgres } from './postgres-shared';
 import { PostgresUsage } from './postgres-usage';
+import { LiveQueries } from './postgres-live-queries';
 
 export { explainPostgres } from './postgres-shared';
 
@@ -431,6 +432,8 @@ function DatabaseDetail({
             <DatabaseCompute database={database} operation={operation} onOperation={onOperation} />
 
             <Bindings database={database} />
+
+            <LiveQueries database={database} />
 
             <form
               className="flex flex-col gap-2"

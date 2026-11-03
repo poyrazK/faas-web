@@ -40,6 +40,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'live-queries',
+    name: 'Live queries',
+    category: 'data',
+    description: 'Stream incremental SQL query results to clients.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/realtime',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'mcp-hosting',
     name: 'MCP hosting',
     category: 'runtime',
