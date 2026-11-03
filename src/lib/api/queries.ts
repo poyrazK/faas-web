@@ -1128,20 +1128,35 @@ export function useUpdateDeploymentMinInstances() {
   });
 }
 
+/**
+ * `expected_serving_deployment_id` pins the release shown serving all
+ * traffic, or `''` for "no other release holds any"; a stale pin answers
+ * `409 traffic_serving_changed` without changing traffic
+ * (handlers_ext.go:2302-2303, :2343-2344).
+ */
 export function useUpdateDeploymentTraffic() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, traffic_percent }: { id: string; traffic_percent: number }) =>
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      traffic_percent: number;
+      expected_serving_deployment_id?: string;
+    }) =>
       unwrap(
         api.PATCH('/v1/deployments/{id}/traffic', {
           params: { path: { id } },
-          body: { traffic_percent },
+          body,
         })
       ),
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: ['deployments', id] });
       void qc.invalidateQueries({ queryKey: keys.deployments });
     },
+    // A refused pin means traffic moved elsewhere: what serves must be re-read.
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.apps }),
   });
 }
 

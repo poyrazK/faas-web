@@ -190,6 +190,80 @@ describe('a deployment created through the mock', () => {
   });
 });
 
+describe('reviewed source and pinned promotion', () => {
+  it('stages a reviewed commit dark, refuses a stale review, and pins the promotion', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-17T14:00:00Z');
+    vi.setSystemTime(t0);
+    await connect({ csrf_token: 'mock-csrf' });
+    const slug = 'reviewed';
+    expect(
+      (
+        await json('/v1/apps', {
+          method: 'POST',
+          body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+        })
+      ).status
+    ).toBe(201);
+    const first = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify({ repo: 'acme-corp/storefront', ref: 'main' }),
+    });
+    vi.setSystemTime(t0 + 12_000);
+    expect((await json(`/v1/deployments/${first.body.id}`)).body.traffic_percent).toBe(100);
+
+    const reviewed = await json(`/v1/apps/${slug}/source-review`, {
+      method: 'POST',
+      body: JSON.stringify({ repo: 'acme-corp/storefront', ref: 'main' }),
+    });
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.commit_sha).toMatch(/^[a-f0-9]{40}$/);
+    expect(reviewed.body.release_review.serving_deployment_ids).toEqual([first.body.id]);
+    const body = {
+      repo: reviewed.body.repo,
+      ref: reviewed.body.commit_sha,
+      format: 'tarball',
+      no_triggers: true,
+      traffic_percent: 0,
+      expected_source: reviewed.body,
+    };
+    const tampered = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, ref: 'b'.repeat(40) }),
+    });
+    expect(tampered).toMatchObject({ status: 409, body: { code: 'source_ref_stale' } });
+    const staged = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    expect(staged.status).toBe(202);
+    // The same review again: a newer deployment exists now.
+    const again = await json(`/v1/apps/${slug}/deployments/source-ref`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    expect(again).toMatchObject({ status: 409, body: { code: 'release_review_changed' } });
+
+    vi.setSystemTime(t0 + 30_000);
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body).toMatchObject({
+      status: 'live',
+      traffic_percent: 0,
+    });
+    const promote = (expected: string) =>
+      json(`/v1/deployments/${staged.body.id}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ expected_serving_deployment_id: expected }),
+      });
+    expect(await promote('c'.repeat(32))).toMatchObject({
+      status: 409,
+      body: { code: 'traffic_serving_changed' },
+    });
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body.traffic_percent).toBe(0);
+    expect((await promote(first.body.id)).status).toBe(200);
+    expect((await json(`/v1/deployments/${staged.body.id}`)).body.traffic_percent).toBe(100);
+  });
+});
+
 describe('PATCH /v1/crons/{id}', () => {
   async function createCron(slug: string) {
     const app = await json('/v1/apps', {
