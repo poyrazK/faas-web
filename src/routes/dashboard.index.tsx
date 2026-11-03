@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { ClockRotateRight, RefreshDouble } from 'iconoir-react';
 import {
   ErrorState,
+  InlinePhase,
   LoadingState,
   PageHeader,
   Panel,
@@ -13,6 +14,10 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { FirstRun } from '@/components/dashboard/first-run';
+import { WorkspaceAppInventory } from '@/components/dashboard/workspace-app-inventory';
+import { useOrgApps, useWorkspaceTarget, type WorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useWorkspaceActivity } from '@/lib/api/resource-activity';
+import { ApiError } from '@/lib/api/errors';
 import { LiveDot } from '@/components/ui/live-dot';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
@@ -226,10 +231,213 @@ function RecentsList() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Shared pieces
+ * ------------------------------------------------------------------ */
+
+/** The workspace's compute allowance: the company's in a company workspace. */
+function UsageTiles({ usage }: { usage: ReturnType<typeof useWorkspaceUsageSummary> }) {
+  const usageData = usage.data;
+  // null: a company with no usage this month carries no allowance yet.
+  const includedKnown = usageData?.included_gb_hours ?? null;
+  const included = includedKnown ?? 0;
+  const usedGbh = usageData?.used_gb_hours ?? 0;
+  const remainingGbh = Math.max(0, included - usedGbh);
+  const overGbh = usageData?.overage_gb_hours ?? 0;
+  const usageState = usage.isPending ? 'loading' : usage.error ? 'unavailable' : 'ready';
+  return (
+    <>
+      <StatTile
+        label={
+          overGbh > 0
+            ? 'GB-hours over'
+            : includedKnown === null && usageData
+              ? 'GB-hours used'
+              : 'GB-hours left'
+        }
+        value={formatGbHours(
+          overGbh > 0 ? overGbh : includedKnown === null ? usedGbh : remainingGbh
+        )}
+        state={usageState}
+        note={
+          overGbh > 0
+            ? usageData?.overage_cents === undefined
+              ? 'Over the allowance'
+              : `${formatMoney(usageData.overage_cents)} overage`
+            : includedKnown === null
+              ? 'This period'
+              : `of ${formatGbHours(included)}`
+        }
+      />
+      <StatTile
+        label="CPU"
+        value={(usageData?.used_cpu_hours ?? 0).toLocaleString(undefined, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}
+        unit="h"
+        state={
+          usageData?.used_cpu_hours == null && usageState === 'ready' ? 'unavailable' : usageState
+        }
+        note="This period, not billed"
+      />
+    </>
+  );
+}
+
+function RefreshButton({
+  label,
+  refreshing,
+  onRefresh,
+}: {
+  label: string;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={refreshing}
+      aria-label={label}
+      className="pressable inline-flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-border-secondary hover:text-foreground disabled:opacity-50"
+    >
+      <RefreshDouble
+        className={cn('h-3.5 w-3.5', refreshing && 'animate-spin motion-reduce:animate-none')}
+      />
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Page
  * ------------------------------------------------------------------ */
 
 function OverviewPage() {
+  const workspace = useWorkspaceTarget();
+  // Until the switcher's choice is bound to the account, `org` reads null even
+  // when a company is chosen. Rendering the personal view then would show the
+  // signed-in account's figures under the company's name for a moment.
+  if (!workspace.ready) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Overview" />
+        <LoadingState message="Reading your workspace…" />
+      </div>
+    );
+  }
+  if (workspace.org) return <CompanyOverview workspace={{ ...workspace, org: workspace.org }} />;
+  return <PersonalOverview />;
+}
+
+/* ------------------------------------------------------------------ *
+ * Company workspace
+ * ------------------------------------------------------------------ */
+
+function ActivityList({
+  workspace,
+  activity,
+}: {
+  workspace: WorkspaceTarget;
+  activity: ReturnType<typeof useWorkspaceActivity>;
+}) {
+  const items = activity.data?.items ?? [];
+  const forbidden =
+    activity.error instanceof ApiError && activity.error.code === 'org_role_forbidden';
+  const phase = queryPhase({
+    loading: activity.isPending,
+    error: activity.error,
+    isEmpty: items.length === 0,
+  });
+  return (
+    <Panel title="Activity" padded={false}>
+      {forbidden ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground">
+          Your role in {workspace.label} cannot read its activity.
+        </p>
+      ) : phase !== 'ready' ? (
+        <div className="px-4 py-3">
+          <InlinePhase
+            phase={phase}
+            error={activity.error}
+            loadingMessage={`Loading ${workspace.label}'s activity…`}
+            emptyMessage="Nothing has happened here yet."
+            onRetry={() => void activity.refetch()}
+          />
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {items.map((event) => (
+            <li key={event.id} className="flex h-9 items-center gap-2.5 px-4 text-sm">
+              <span className="truncate">{event.summary}</span>
+              <time
+                className="ml-auto shrink-0 text-xs text-muted-foreground"
+                dateTime={event.occurred_at}
+              >
+                {formatRelative(Date.parse(event.occurred_at))}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * A company workspace at a glance.
+ *
+ * `/v1/apps`, `/v1/deployments`, `/v1/instances` and `/v1/apps/metrics` answer
+ * for the signed-in account whichever workspace is chosen, so none of them is
+ * read here: the apps come from the company's inventory, the allowance from its
+ * usage, and what happened from its activity feed. Traffic, errors, wake time
+ * and memory have no company-wide read, so they stay on each app's Metrics.
+ */
+function CompanyOverview({ workspace }: { workspace: WorkspaceTarget & { org: string } }) {
+  // Only to decide which inventory rows open: the app page still resolves an
+  // app from the signed-in account's own list. Nothing from it is shown.
+  const { workflows } = useData();
+  const ownSlugs = useMemo(() => new Set(workflows.map((w) => w.id)), [workflows]);
+  const usage = useWorkspaceUsageSummary();
+  const apps = useOrgApps(workspace.org);
+  const activity = useWorkspaceActivity(workspace.org);
+
+  const refreshing = usage.isRefetching || apps.isRefetching || activity.isRefetching;
+  const refreshAll = () => {
+    void usage.refetch();
+    void apps.refetch();
+    void activity.refetch();
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Overview"
+        meta={<p className="text-xs text-muted-foreground">{workspace.label}</p>}
+        actions={
+          <RefreshButton label="Refresh overview" refreshing={refreshing} onRefresh={refreshAll} />
+        }
+      />
+      <Stats columns={2}>
+        <UsageTiles usage={usage} />
+      </Stats>
+      <p className="text-xs text-muted-foreground">
+        Requests, errors, wake time and memory are measured per app in a company workspace. Open an
+        app's Metrics to read them.
+      </p>
+      <WorkspaceAppInventory workspace={workspace} ownSlugs={ownSlugs} />
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <ActivityList workspace={workspace} activity={activity} />
+        <RecentsList />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Personal workspace
+ * ------------------------------------------------------------------ */
+
+function PersonalOverview() {
   const { workflows, deployments, loading, error, refresh } = useData();
   const { account, user } = useAuth();
   const { range = '24h' } = Route.useSearch();
@@ -293,15 +501,6 @@ function OverviewPage() {
     });
   const rangeDescription = RANGE_DESCRIPTION[range];
 
-  const usageData = usage.data;
-  // null: a company with no usage this month carries no allowance yet.
-  const includedKnown = usageData?.included_gb_hours ?? null;
-  const included = includedKnown ?? 0;
-  const usedGbh = usageData?.used_gb_hours ?? 0;
-  const remainingGbh = Math.max(0, included - usedGbh);
-  const overGbh = usageData?.overage_gb_hours ?? 0;
-  const usageFailed = Boolean(usage.error);
-
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4),
     [deployments]
@@ -346,7 +545,6 @@ function OverviewPage() {
   }
 
   const metricsState = metrics.isPending && !metricsDegraded ? 'loading' : 'unavailable';
-  const usageState = usage.isPending ? 'loading' : usageFailed ? 'unavailable' : 'ready';
 
   return (
     <div className="flex flex-col gap-5">
@@ -371,20 +569,11 @@ function OverviewPage() {
               onChange={setRange}
               disabled={!paidAccess}
             />
-            <button
-              type="button"
-              onClick={refreshAll}
-              disabled={refreshing}
-              aria-label="Refresh analytics"
-              className="pressable inline-flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-border-secondary hover:text-foreground disabled:opacity-50"
-            >
-              <RefreshDouble
-                className={cn(
-                  'h-3.5 w-3.5',
-                  refreshing && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
-            </button>
+            <RefreshButton
+              label="Refresh analytics"
+              refreshing={refreshing}
+              onRefresh={refreshAll}
+            />
           </>
         }
       />
@@ -433,40 +622,7 @@ function OverviewPage() {
           state={residentKnown ? 'ready' : instances.isPending ? 'loading' : 'unavailable'}
           note={`${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`}
         />
-        <StatTile
-          label={
-            overGbh > 0
-              ? 'GB-hours over'
-              : includedKnown === null && usageData
-                ? 'GB-hours used'
-                : 'GB-hours left'
-          }
-          value={formatGbHours(
-            overGbh > 0 ? overGbh : includedKnown === null ? usedGbh : remainingGbh
-          )}
-          state={usageState}
-          note={
-            overGbh > 0
-              ? usageData?.overage_cents === undefined
-                ? 'Over the allowance'
-                : `${formatMoney(usageData.overage_cents)} overage`
-              : includedKnown === null
-                ? 'This period'
-                : `of ${formatGbHours(included)}`
-          }
-        />
-        <StatTile
-          label="CPU"
-          value={(usageData?.used_cpu_hours ?? 0).toLocaleString(undefined, {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          })}
-          unit="h"
-          state={
-            usageData?.used_cpu_hours == null && usageState === 'ready' ? 'unavailable' : usageState
-          }
-          note="This period, not billed"
-        />
+        <UsageTiles usage={usage} />
       </Stats>
 
       <div className="grid items-start gap-5 lg:grid-cols-3">

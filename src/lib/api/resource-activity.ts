@@ -84,6 +84,27 @@ export function useResourceActivity(
   });
 }
 
+/**
+ * The newest entries of a company workspace's whole activity feed, for the
+ * Overview. One page and no cursor: the app's Activity tab is where history is
+ * paged, filtered and reviewed.
+ */
+export function useWorkspaceActivity(orgSlug: string | null, limit = 6) {
+  return useQuery({
+    queryKey: ['orgs', orgSlug ?? '', 'activity', limit],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/orgs/{slug}/activity', {
+          params: { path: { slug: orgSlug! }, query: { limit } },
+          signal,
+        })
+      ),
+    enabled: Boolean(orgSlug),
+    retry: false,
+    refetchInterval: 30_000,
+  });
+}
+
 /** Do not infer success from an unknown kind or from the absence of an error. */
 export function activityOutcome(kind: string) {
   if (['deploy.requested', 'deploy.rollback_requested'].includes(kind)) return 'Requested';
