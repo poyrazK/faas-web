@@ -5,6 +5,7 @@ import { PageHeader, Panel, StatTile } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { DeadLetterPanel } from '@/components/dashboard/dead-letter-panel';
+import { DeadLetterLedger } from '@/components/dashboard/dead-letter-ledger';
 import { QueueConsumers } from '@/components/dashboard/queue-consumers';
 import { DelayedTasks } from '@/components/dashboard/delayed-tasks';
 import { useQueuePeek, useQueueSend, useQueueState } from '@/lib/api/queries';
@@ -166,6 +167,7 @@ export function QueuesBody({ slug }: { slug: string }) {
       </Panel>
 
       <DeadLetterPanel slug={slug} />
+      <DeadLetterLedger slug={slug} />
     </div>
   );
 }

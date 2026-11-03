@@ -676,11 +676,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 99,
     name: 'Queues: in-platform SQS-compatible HTTP queue, pull leases, queue bindings, queue workloads',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Queues'],
     capability: 'queues',
-    gap: 'Unified dead-letter ledger',
-    wave: 3,
   },
   // E100 · preview
   {
