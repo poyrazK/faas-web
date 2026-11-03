@@ -322,7 +322,11 @@ export function ReleaseDetailPanel({
                   <DeploymentReleaseSummary appSlug={slug} deploymentId={deployment.id} />
                 )}
                 {!deploymentUnavailable && deployment && (
-                  <DeploymentDiff deploymentId={deployment.id} />
+                  <DeploymentDiff
+                    deploymentId={deployment.id}
+                    slug={slug}
+                    deployment={deployment}
+                  />
                 )}
                 {!deploymentUnavailable && deployment && slug && (
                   <RollbackToRelease slug={slug} deployment={deployment} />

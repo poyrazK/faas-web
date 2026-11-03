@@ -10707,19 +10707,26 @@ route('POST', '/v1/apps/{slug}/diff', async ({ params, body }) => {
     before: String((a as Record<string, unknown> | undefined)?.[field] ?? '—'),
     after: String(Array.isArray(after) ? after.join(',') : after),
   }));
+  // DiffBreak rows, as the engine emits them (faas pkg/deploydiff); an
+  // error-severity break makes the preview blocking.
+  const breaks =
+    Number(cfg.max_concurrency) > 100
+      ? [
+          {
+            code: 'plan_limit_concurrency',
+            severity: 'error',
+            reason: 'max_concurrency exceeds plan cap',
+            field: 'concurrency',
+            observed: Number(cfg.max_concurrency),
+            limit: 100,
+          },
+        ]
+      : [];
   return {
     slug: params.slug,
     plan: db.account.plan,
-    blocking: false,
-    diff: {
-      slug: params.slug,
-      plan: db.account.plan,
-      changes,
-      breaks:
-        cfg.ram_mb && Number(cfg.ram_mb) < (a?.ram_mb ?? 0)
-          ? ['Shrinking memory invalidates the warm snapshot; the next wake cold-boots.']
-          : [],
-    },
+    blocking: breaks.length > 0,
+    diff: { slug: params.slug, plan: db.account.plan, changes, breaks },
   };
 });
 route('GET', '/v1/builds/{id}/provenance', ({ params }) => ({

@@ -18,6 +18,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'deploy-diff',
+    name: 'Deploy diff',
+    category: 'delivery',
+    description: 'Preview what a deploy will change before it runs.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/deploys',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'mcp-hosting',
     name: 'MCP hosting',
     category: 'runtime',
