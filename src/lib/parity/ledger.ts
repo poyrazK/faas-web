@@ -184,10 +184,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 23,
     name: 'Deploy queue controls: reorder, deploy immediately, cancel, clear obsolete',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
-    gap: 'Reorder, deploy immediately and cancel queued deploys',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Deployments', '/dashboard/releases'],
   },
   // B24 · GA
   {
@@ -529,10 +527,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 71,
     name: 'Static egress IP',
-    status: 'none',
-    surfaces: [],
-    gap: 'Static egress IP',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    capability: 'static-egress-ip',
   },
   // D72 · beta
   {
@@ -929,10 +926,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 137,
     name: 'App health assessment, read without waking the app',
-    status: 'none',
-    surfaces: [],
-    gap: 'App health assessment (open PR #125)',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Metrics', '/dashboard/analytics'],
   },
   // G138 · GA
   {
