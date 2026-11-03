@@ -1,10 +1,29 @@
 import { Button } from '@/components/ui/button';
-import { useCapability } from '@/lib/api/capabilities';
+import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import { useIssues, type IssueFilters } from '@/lib/api/issues';
+import { CapabilityGate } from './capability-gate';
 import { CapabilityNotice } from './capability-notice';
+import { IssueAlertPolicies } from './issue-alert-policies';
 import { IssueDetail } from './issue-detail';
 import { IssueReportingSetup } from './issue-reporting-setup';
-import type { IssueSearch } from './issues-search';
+import { IssueSavedViews } from './issue-saved-views';
+import { IssueSourceMaps } from './issue-source-maps';
+import { IssueTrackerLinks, LinearConnectionPanel } from './issue-trackers';
+import type { IssueSearch, IssueView } from './issues-search';
+
+/**
+ * The Issues tab's pages besides the inbox. Alert policies and Linear are
+ * catalog children of `issues` (issue-alert-policies, issue-trackers) and are
+ * offered only while the account has them; a deep link to one explains its
+ * gate. Source maps sit on `issues` itself.
+ */
+const PAGES: { view: IssueView; label: string; capability?: string }[] = [
+  { view: 'inbox', label: 'Inbox' },
+  { view: 'alerts', label: 'Alert policies', capability: 'issue-alert-policies' },
+  { view: 'sourcemaps', label: 'Source maps' },
+  { view: 'linear', label: 'Linear', capability: 'issue-trackers' },
+  { view: 'setup', label: 'Reporting setup' },
+];
 
 type Props = {
   accountId: string;
@@ -16,12 +35,20 @@ type Props = {
 export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
   const availability = useCapability('issues');
   const permitted = availability.accountId === accountId && availability.state === 'available';
+  const alertsAccess = useCapabilityAccess('issue-alert-policies').access;
+  const trackersAccess = useCapabilityAccess('issue-trackers').access;
+  const viewsAccess = useCapabilityAccess('issue-saved-views').access;
+  const offered = (capability?: string) =>
+    !capability || (capability === 'issue-alert-policies' ? alertsAccess : trackersAccess) === 'on';
+  const view = search.issueView ?? 'inbox';
   const filters: IssueFilters = {
     state: search.issueState,
     environment: search.issueEnvironment,
-    assignee: search.issueAssignee,
+    assignee: search.issueTeam ? undefined : search.issueAssignee,
     sort: search.issueSort,
     min_customers: search.issueMinCustomers,
+    ...(search.issueTag ? { tag: search.issueTag } : {}),
+    ...(search.issueTeam ? { team: search.issueTeam } : {}),
   };
   const result = useIssues(permitted ? accountId : '', permitted ? slug : '', filters);
   const items = result.data?.pages.flatMap((page) => page.items) ?? [];
@@ -39,35 +66,72 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
             establish complete coverage.
           </p>
         </div>
-        <Button
-          variant="outline"
-          disabled={!permitted}
-          onClick={() => onSearch({ issueView: 'setup', issue: undefined })}
-        >
-          Reporting setup
-        </Button>
+        <div role="group" aria-label="Issues pages" className="flex flex-wrap gap-2">
+          {PAGES.filter((p) => offered(p.capability) || p.view === view).map((p) => (
+            <Button
+              key={p.view}
+              variant={p.view === view ? 'secondary' : 'outline'}
+              size="sm"
+              aria-pressed={p.view === view}
+              disabled={!permitted}
+              onClick={() =>
+                onSearch({ issueView: p.view === 'inbox' ? undefined : p.view, issue: undefined })
+              }
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
       </div>
       <CapabilityNotice
         capability={availability.capability}
         state={availability.state}
         onRetry={availability.refresh}
       />
-      {!permitted ? null : search.issueView === 'setup' ? (
+      {!permitted ? null : view === 'setup' ? (
         <IssueReportingSetup
           accountId={accountId}
           slug={slug}
           onClose={() => onSearch({ issueView: 'inbox' })}
         />
+      ) : view === 'alerts' ? (
+        <CapabilityGate capability="issue-alert-policies" title="Alert policies">
+          <IssueAlertPolicies accountId={accountId} slug={slug} />
+        </CapabilityGate>
+      ) : view === 'sourcemaps' ? (
+        <IssueSourceMaps accountId={accountId} slug={slug} />
+      ) : view === 'linear' ? (
+        <CapabilityGate capability="issue-trackers" title="Linear">
+          <LinearConnectionPanel accountId={accountId} slug={slug} />
+        </CapabilityGate>
       ) : search.issue ? (
-        <IssueDetail
-          key={`${accountId}/${slug}/${search.issue}`}
-          accountId={accountId}
-          slug={slug}
-          issueId={search.issue}
-          onBack={() => onSearch({ issue: undefined })}
-        />
+        <div className="flex min-w-0 flex-col gap-5">
+          <IssueDetail
+            key={`${accountId}/${slug}/${search.issue}`}
+            accountId={accountId}
+            slug={slug}
+            issueId={search.issue}
+            onBack={() => onSearch({ issue: undefined })}
+          />
+          {trackersAccess === 'on' && (
+            <IssueTrackerLinks
+              key={`${accountId}/${slug}/${search.issue}/links`}
+              accountId={accountId}
+              slug={slug}
+              issueId={search.issue}
+            />
+          )}
+        </div>
       ) : (
         <>
+          {viewsAccess === 'on' && (
+            <IssueSavedViews
+              accountId={accountId}
+              slug={slug}
+              search={search}
+              onApply={(changes) => onSearch(changes)}
+            />
+          )}
           <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Issue state
@@ -92,17 +156,22 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               <select
                 aria-label="Assignee"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
-                value={search.issueAssignee ?? ''}
+                value={search.issueTeam ? '' : (search.issueAssignee ?? '')}
+                disabled={Boolean(search.issueTeam)}
                 onChange={(event) =>
-                  updateFilter({
-                    issueAssignee:
-                      (event.target.value as IssueSearch['issueAssignee']) || undefined,
-                  })
+                  updateFilter({ issueAssignee: event.target.value || undefined })
                 }
               >
                 <option value="">Everyone</option>
                 <option value="me">Mine</option>
                 <option value="unassigned">Unassigned</option>
+                {search.issueAssignee &&
+                  search.issueAssignee !== 'me' &&
+                  search.issueAssignee !== 'unassigned' && (
+                    <option value={search.issueAssignee}>
+                      Account {search.issueAssignee.slice(0, 8)}
+                    </option>
+                  )}
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -148,6 +217,34 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                 }
               />
             </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Tag (key=value, 24 hours)
+              <input
+                aria-label="Issue tag"
+                placeholder="route=/checkout"
+                maxLength={193}
+                className="rounded border border-border bg-background px-2 py-1 font-mono text-sm text-foreground"
+                defaultValue={search.issueTag ?? ''}
+                key={search.issueTag ?? ''}
+                onBlur={(event) => {
+                  const tag = event.target.value.trim();
+                  if (tag !== (search.issueTag ?? '') && (!tag || tag.includes('=')))
+                    updateFilter({ issueTag: tag || undefined });
+                }}
+              />
+            </label>
+            {search.issueTeam && (
+              <p className="flex items-center gap-2 self-end text-xs">
+                Team inbox <span className="font-mono">{search.issueTeam.slice(0, 8)}</span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => updateFilter({ issueTeam: undefined })}
+                >
+                  Clear
+                </Button>
+              </p>
+            )}
           </div>
           {result.isPending ? (
             <p role="status">Loading issues…</p>

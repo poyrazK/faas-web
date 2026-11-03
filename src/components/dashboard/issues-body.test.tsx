@@ -38,7 +38,14 @@ const list = {
   refetch: vi.fn(),
 };
 const useIssues = vi.fn(() => list);
-vi.mock('@/lib/api/capabilities', () => ({ useCapability: () => capability }));
+const off = new Set<string>();
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapability: () => capability,
+  useCapabilityAccess: (key: string) => ({
+    access: off.has(key) ? 'off' : 'on',
+    refresh: vi.fn(),
+  }),
+}));
 vi.mock('@/lib/api/issues', () => ({
   useIssues: (...args: Parameters<typeof useIssues>) => useIssues(...args),
 }));
@@ -51,9 +58,23 @@ vi.mock('@/components/dashboard/issue-detail', () => ({
 vi.mock('@/components/dashboard/issue-reporting-setup', () => ({
   IssueReportingSetup: () => <div>Reporting setup</div>,
 }));
+vi.mock('./issue-alert-policies', () => ({
+  IssueAlertPolicies: () => <div>Alert policies page</div>,
+}));
+vi.mock('./issue-source-maps', () => ({
+  IssueSourceMaps: () => <div>Source maps page</div>,
+}));
+vi.mock('./issue-trackers', () => ({
+  LinearConnectionPanel: () => <div>Linear page</div>,
+  IssueTrackerLinks: () => <div>Tracker links</div>,
+}));
+vi.mock('./issue-saved-views', () => ({
+  IssueSavedViews: () => <div>Saved views bar</div>,
+}));
 const { IssuesBody } = await import('./issues-body');
 
 beforeEach(() => {
+  off.clear();
   onSearch.mockReset();
   useIssues.mockClear();
   capability.state = 'available';
@@ -123,4 +144,57 @@ it('opens reporting setup through a URL-backed view', async () => {
   expect(onSearch).toHaveBeenCalledWith(
     expect.objectContaining({ issueView: 'setup', issue: undefined })
   );
+});
+
+it('offers alert policies, source maps and Linear beside the inbox, each behind its capability', async () => {
+  show();
+  expect(screen.getByText('Saved views bar')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Alert policies' }));
+  expect(onSearch).toHaveBeenCalledWith({ issueView: 'alerts', issue: undefined });
+  await userEvent.click(screen.getByRole('button', { name: 'Source maps' }));
+  expect(onSearch).toHaveBeenCalledWith({ issueView: 'sourcemaps', issue: undefined });
+  await userEvent.click(screen.getByRole('button', { name: 'Linear' }));
+  expect(onSearch).toHaveBeenCalledWith({ issueView: 'linear', issue: undefined });
+});
+
+it('hides the alert, Linear and saved-view previews while they are off, and explains a deep link', () => {
+  off.add('issue-alert-policies');
+  off.add('issue-trackers');
+  off.add('issue-saved-views');
+  const { unmount } = show();
+  expect(screen.queryByRole('button', { name: 'Alert policies' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Linear' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Source maps' })).toBeInTheDocument();
+  expect(screen.queryByText('Saved views bar')).toBeNull();
+  unmount();
+  show({ issueView: 'alerts' });
+  expect(screen.getByText('Not enabled for this account')).toBeInTheDocument();
+  expect(screen.queryByText('Alert policies page')).toBeNull();
+});
+
+it('shows tracker links under an issue only while issue-trackers is on', () => {
+  const { unmount } = show({ issue: 'issue-1' });
+  expect(screen.getByText('Tracker links')).toBeInTheDocument();
+  unmount();
+  off.add('issue-trackers');
+  show({ issue: 'issue-1' });
+  expect(screen.queryByText('Tracker links')).toBeNull();
+});
+
+it('passes a saved view’s team and tag to the list, never with an assignee', () => {
+  show({
+    issueTeam: '11111111-2222-4333-8444-555555555555',
+    issueAssignee: 'me',
+    issueTag: 'route=/checkout',
+  });
+  expect(useIssues).toHaveBeenCalledWith(
+    'account-1',
+    'app-a',
+    expect.objectContaining({
+      team: '11111111-2222-4333-8444-555555555555',
+      tag: 'route=/checkout',
+      assignee: undefined,
+    })
+  );
+  expect(screen.getByRole('combobox', { name: 'Assignee' })).toBeDisabled();
 });

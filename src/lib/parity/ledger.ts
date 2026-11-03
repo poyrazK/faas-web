@@ -867,7 +867,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Issues'],
     capability: 'issues',
-    gap: 'Alert policies, Linear, saved views, source maps',
+    gap: 'Teams and ownership rules, split rules, bulk triage, release comparison, native GitHub tickets, tracker status sync (push/pull, auto-sync, callbacks, Linear OAuth), Slack routing and native Slack alerts',
     wave: 3,
   },
   // G128 · preview
