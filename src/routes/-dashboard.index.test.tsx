@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
+const useInstances = vi.fn();
 let plan = 'hobby';
 let deployments: unknown[] = [];
 const metricsRefetch = vi.fn();
@@ -56,7 +57,10 @@ const workspace = vi.hoisted(() => ({
   label: 'Personal',
   ready: true,
 }));
-vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+vi.mock('@/lib/api/workspace-apps', async (original) => ({
+  ...(await original<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => workspace,
+}));
 const companyUsage = vi.hoisted(() => ({
   rows: [
     {
@@ -88,13 +92,7 @@ vi.mock('@/lib/api/queries', async (importOriginal) => {
       error: null,
       refetch: vi.fn(),
     }),
-    useInstances: () => ({
-      data: { instances: [] },
-      isPending: false,
-      isRefetching: false,
-      error: null,
-      refetch: vi.fn(),
-    }),
+    useInstances: (options: unknown) => useInstances(options),
     useDeployments: () => ({}),
     useApps: () => ({}),
   };
@@ -135,6 +133,16 @@ function metrics(range: string, requestCount: number) {
 beforeEach(() => {
   plan = 'hobby';
   deployments = [];
+  workspace.org = null;
+  workspace.label = 'Personal';
+  workspace.ready = true;
+  useInstances.mockReset().mockReturnValue({
+    data: { instances: [] },
+    isPending: false,
+    isRefetching: false,
+    error: null,
+    refetch: vi.fn(),
+  });
   metricsRefetch.mockReset();
   useAppsMetrics
     .mockReset()
@@ -219,23 +227,97 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
 });
 
-it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
-  workspace.org = 'acme';
-  workspace.label = 'Acme';
-  const get = spyApi('GET').mockImplementation(async (path: string) => ({
-    data: path === '/v1/orgs/{slug}/usage' ? companyUsage.rows : {},
-    response: new Response(null, { status: 200 }),
-  }));
-  try {
-    renderOverview();
-    // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
-    expect(await screen.findByText('of 1,000')).toBeInTheDocument();
-    expect(screen.queryByText('of 100')).not.toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
-  } finally {
-    workspace.org = null;
-    workspace.label = 'Personal';
+describe('overview in a company workspace', () => {
+  /** apid as a company member sees it: the org's usage, inventory and activity. */
+  function companyApi() {
+    return spyApi('GET').mockImplementation(async (path: string) => ({
+      data:
+        path === '/v1/orgs/{slug}/usage'
+          ? companyUsage.rows
+          : path === '/v1/orgs/{slug}/apps'
+            ? {
+                apps: [
+                  {
+                    id: '5f0c1c2e-0000-4000-8000-000000000001',
+                    slug: 'acme-billing',
+                    type: 'app',
+                    status: 'active',
+                    created_at: '2026-10-01T10:00:00Z',
+                  },
+                ],
+              }
+            : path === '/v1/orgs/{slug}/activity'
+              ? {
+                  items: [
+                    {
+                      id: '1',
+                      occurred_at: '2026-10-02T10:00:00Z',
+                      kind: 'app.deployed',
+                      summary: 'Grace deployed acme-billing',
+                      actor: {},
+                      resource: {},
+                      data: {},
+                    },
+                  ],
+                }
+              : {},
+      response: new Response(null, { status: 200 }),
+    }));
   }
+
+  beforeEach(() => {
+    workspace.org = 'acme';
+    workspace.label = 'Acme';
+  });
+
+  it("shows the company's compute allowance, not the signed-in account's", async () => {
+    const get = companyApi();
+    try {
+      renderOverview();
+      // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
+      expect(await screen.findByText('of 1,000')).toBeInTheDocument();
+      expect(screen.queryByText('of 100')).not.toBeInTheDocument();
+      expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it("lists the company's apps and activity and reads none of the personal routes", async () => {
+    const get = companyApi();
+    try {
+      renderOverview();
+      expect(await screen.findByText('acme-billing')).toBeInTheDocument();
+      expect(await screen.findByText('Grace deployed acme-billing')).toBeInTheDocument();
+      expect(screen.getByText('Acme')).toBeInTheDocument();
+      // `/v1/apps/metrics` and `/v1/instances` answer for the signed-in account
+      // whatever the workspace, so the company view never asks them.
+      expect(useAppsMetrics).not.toHaveBeenCalled();
+      expect(useInstances).not.toHaveBeenCalled();
+      for (const personal of ['Requests', 'Error rate', 'Wake p95', 'Memory now', 'Deployments'])
+        expect(screen.queryByText(personal)).not.toBeInTheDocument();
+      // The personal app `api` exists only to decide links; it is not listed.
+      expect(screen.queryByRole('link', { name: 'api' })).not.toBeInTheDocument();
+      expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/apps', expect.anything());
+      expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/activity', expect.anything());
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it('shows neither view until the workspace choice is known', async () => {
+    workspace.ready = false;
+    const get = companyApi();
+    try {
+      renderOverview();
+      expect(await screen.findByText('Reading your workspace…')).toBeInTheDocument();
+      expect(useAppsMetrics).not.toHaveBeenCalled();
+      expect(useInstances).not.toHaveBeenCalled();
+      expect(get).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+    }
+  });
 });
 
 describe('overview deployments column', () => {
