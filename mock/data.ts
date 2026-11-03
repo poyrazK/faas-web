@@ -362,6 +362,27 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
         }
       : { port: 8080 }),
     ...(a.slug === 'api-gateway' ? { startup_deadline_s: 20, max_retries: 4 } : {}),
+    // The pre-auth guard docs/security.md walks through: observe, with a
+    // stricter login route that also counts failed sign-ins. The other apps
+    // predate ADR-829 and have none, so the "off" state shows too.
+    ...(a.slug === 'api-gateway'
+      ? {
+          pre_auth_rate_limit: {
+            mode: 'observe' as const,
+            requests_per_second: 20,
+            burst: 40,
+            routes: [
+              {
+                method: 'POST' as const,
+                path: '/login',
+                requests_per_second: 2,
+                burst: 4,
+                failed_responses: { failures_per_minute: 5, burst: 3 },
+              },
+            ],
+          },
+        }
+      : {}),
     head_wakes: false,
     crawler_policy: 'wake',
     healthz: '/healthz',
