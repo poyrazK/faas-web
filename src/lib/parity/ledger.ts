@@ -352,11 +352,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 47,
     name: 'Health probes and auto-restart: startup, readiness, liveness; restart policy, stop signal, grace period, drain timeout',
-    status: 'cli',
-    surfaces: [],
-    cli: 'gregale deploy (gregale.yaml probes and restart_policy)',
-    gap: 'Probe and restart settings are not shown in the console',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
   },
   // C48 · beta
   {
@@ -459,10 +456,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 61,
     name: 'Secrets: sealed values, references, revocations, hot reload without restart, delivery status',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Environment'],
-    gap: 'Secret references and revocations',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Environment', '/dashboard/secrets'],
   },
   // C62 · beta
   {
@@ -936,10 +931,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 138,
     name: 'Audit log',
-    status: 'partial',
-    surfaces: ['/dashboard/audit'],
-    gap: 'Request audit (opt-in) and route-customer usage',
-    wave: 1,
+    status: 'full',
+    surfaces: ['/dashboard/audit', '/dashboard/apps/$appSlug?tab=Request audit'],
   },
   // G140 · GA
   {
