@@ -178,10 +178,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 23,
     name: 'Deploy queue controls: reorder, deploy immediately, cancel, clear obsolete',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Deployments'],
-    gap: 'Reorder, deploy immediately and cancel queued deploys',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Deployments'],
+    capability: 'deploy-queue-controls',
   },
   // B24 · GA
   {

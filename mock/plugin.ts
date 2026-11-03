@@ -5571,10 +5571,29 @@ route('POST', '/v1/apps/{slug}/webhooks/{id}/deliveries/{did}/retry', ({ params 
 route('POST', '/v1/apps/{slug}/deployments/{id}/cancel', ({ params }) => {
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
+  // faas handlers_queue_controls.go handleCancelDeployment: live has its own code.
+  if (d.status === 'live')
+    throw new Problem(
+      409,
+      'deployment_cancel_live_forbidden',
+      'A live deployment cannot be cancelled; roll back instead.'
+    );
   if (!['pending', 'building', 'imaging', 'snapshotting'].includes(d.status))
-    throw new Problem(409, 'conflict', `Deployment is ${d.status} and cannot be cancelled.`);
+    throw new Problem(
+      409,
+      'deployment_cancel_not_cancellable',
+      `Deployment is ${d.status} and cannot be cancelled.`
+    );
   d.status = 'cancelled';
-  return d;
+  const build = db.builds.find((b) => b.deployment_id === d.id && b.status === 'running');
+  if (build) build.status = 'cancelled';
+  return {
+    id: d.id,
+    status: d.status,
+    cancelled_at: new Date().toISOString(),
+    cancel_reason: 'user',
+    cancelled_builds: build ? [build.id] : [],
+  };
 });
 
 route('POST', '/v1/deployments/{id}/retry', ({ params, body }) => {
