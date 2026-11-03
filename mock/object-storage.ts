@@ -770,3 +770,320 @@ export function readOperation(bucket: BucketRef, id: string): S['ObjectVersionPr
     ? entry.op
     : { ...entry.op, state: age < STEP_MS / 2 ? 'waiting' : 'applying' };
 }
+
+/* ------------------------------------------------------------------ *
+ * Multipart uploads (faas pkg/apid/object/storage_multipart.go). The mock's
+ * single-upload limit is small so a few-MiB file shows the parts flow.
+ * ------------------------------------------------------------------ */
+
+export const MOCK_SINGLE_PUT_BYTES = 16 * 1024 ** 2;
+export const MOCK_PART_BYTES = 8 * 1024 ** 2;
+type Session = S['ObjectMultipartUpload'] & {
+  where: string;
+  parts: Map<number, S['ObjectMultipartPart']>;
+};
+const sessions = new Map<string, Session>();
+const view = ({ where: _w, parts: _p, ...session }: Session): S['ObjectMultipartUpload'] => session;
+
+function session(where: string, id: string) {
+  const s = sessions.get(id);
+  if (!s || s.where !== where)
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+  if (s.state === 'active' && Date.parse(s.expires_at) < Date.now()) s.state = 'aborted';
+  return s;
+}
+
+export function listSessions(where: string): S['ObjectMultipartUploadList'] {
+  return {
+    items: [...sessions.values()]
+      .filter((s) => s.where === where)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map(view),
+  };
+}
+
+export function startSession(where: string, body: Record<string, unknown>, maxBytes: number) {
+  const key = String(body.key ?? '');
+  const size = Number(body.size_bytes);
+  const contentType = String(body.content_type ?? 'application/octet-stream');
+  if (!key || !Number.isInteger(size) || size < 1)
+    throw invalid('key and size_bytes are required.');
+  if (size > maxBytes)
+    throw new StorageRefusal(
+      409,
+      'object_storage_capacity_reserved',
+      'The upload is larger than the object size limit.'
+    );
+  // The same live key, size and content type resumes the existing session.
+  const live = [...sessions.values()].find(
+    (s) =>
+      s.where === where &&
+      s.state === 'active' &&
+      s.key === key &&
+      s.size_bytes === size &&
+      s.content_type === contentType
+  );
+  if (live) return { status: 200, body: view(live) };
+  const created: Session = {
+    id: randomUUID(),
+    key,
+    size_bytes: size,
+    part_size_bytes: MOCK_PART_BYTES,
+    part_count: Math.ceil(size / MOCK_PART_BYTES),
+    content_type: contentType,
+    state: 'active',
+    expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+    created_at: now(),
+    where,
+    parts: new Map(),
+  };
+  sessions.set(created.id, created);
+  return { status: 201, body: view(created) };
+}
+
+export function readSession(where: string, id: string) {
+  return view(session(where, id));
+}
+
+export function sessionParts(where: string, id: string): S['ObjectMultipartPartList'] {
+  const s = session(where, id);
+  return { items: [...s.parts.values()].sort((a, b) => a.part_number - b.part_number) };
+}
+
+/** Bytes the signed URL for part `n` must carry. */
+export function partSize(where: string, id: string, part: number) {
+  const s = session(where, id);
+  if (s.state !== 'active') throw conflict('The upload is not taking parts.');
+  if (!Number.isInteger(part) || part < 1 || part > s.part_count) throw invalid('No such part.');
+  return part === s.part_count
+    ? s.size_bytes - (s.part_count - 1) * s.part_size_bytes
+    : s.part_size_bytes;
+}
+
+export function recordPart(where: string, id: string, part: number, bytes: number, etag: string) {
+  const s = session(where, id);
+  s.parts.set(part, { part_number: part, etag, size_bytes: bytes, last_modified: now() });
+}
+
+export function completeSession(where: string, id: string, body: Record<string, unknown>) {
+  const s = session(where, id);
+  if (s.state === 'aborted') throw conflict('The upload was aborted.');
+  const parts = body.parts as { part_number: number; etag: string }[] | undefined;
+  const ok =
+    Array.isArray(parts) &&
+    parts.length === s.part_count &&
+    parts.every((p, i) => p.part_number === i + 1 && s.parts.get(p.part_number)?.etag === p.etag);
+  if (!ok) throw invalid('Supply one confirmed ETag for every part, in order.');
+  s.state = 'completed';
+  s.etag = `"${randomUUID().replace(/-/g, '')}-${s.part_count}"`;
+  return {
+    session: view(s),
+    object: { key: s.key, size_bytes: s.size_bytes, last_modified: now() },
+  };
+}
+
+export function abortSession(where: string, id: string) {
+  const s = session(where, id);
+  if (s.state === 'completed') throw conflict('The upload already completed.');
+  s.state = 'aborted';
+}
+
+/* ------------------------------------------------------------------ *
+ * Upload routes (faas pkg/apid/object/storage.go): POST creates or updates
+ * by name; DELETE stops new uploads and keeps stored objects.
+ * ------------------------------------------------------------------ */
+
+const routes = new Map<string, S['ObjectUploadRoute'][]>();
+
+export function listRoutes(slug: string, seedBucket?: BucketRef): S['ObjectUploadRouteList'] {
+  if (!routes.has(slug))
+    routes.set(
+      slug,
+      seedBucket
+        ? [
+            {
+              id: randomUUID(),
+              name: 'avatar',
+              bucket_id: seedBucket.id,
+              key_prefix: 'avatars',
+              max_bytes: 5 * 1024 ** 2,
+              allowed_content_types: ['image/*'],
+              enabled: true,
+              created_at: seedBucket.created_at ?? now(),
+              updated_at: seedBucket.created_at ?? now(),
+            },
+          ]
+        : []
+    );
+  return { items: routes.get(slug)! };
+}
+
+export function saveRoute(slug: string, body: Record<string, unknown>) {
+  const name = String(body.name ?? '');
+  if (!/^[a-z][a-z0-9-]{0,62}$/.test(name)) throw invalid('Invalid object storage request.');
+  const list = listRoutes(slug).items;
+  const existing = list.find((r) => r.name === name);
+  const route: S['ObjectUploadRoute'] = {
+    id: existing?.id ?? randomUUID(),
+    name,
+    bucket_id: String(body.bucket_id ?? ''),
+    ...(body.key_prefix ? { key_prefix: String(body.key_prefix) } : {}),
+    max_bytes: Number(body.max_bytes ?? 100 * 1024 ** 2),
+    ...(Array.isArray(body.allowed_content_types)
+      ? { allowed_content_types: body.allowed_content_types as string[] }
+      : {}),
+    enabled: body.enabled !== false,
+    ...(body.encryption ? { encryption: body.encryption as S['ObjectEncryption'] } : {}),
+    created_at: existing?.created_at ?? now(),
+    updated_at: now(),
+  };
+  routes.set(slug, [...list.filter((r) => r.name !== name), route]);
+  return { status: existing ? 200 : 201, body: route };
+}
+
+export function deleteRoute(slug: string, name: string) {
+  const list = listRoutes(slug).items;
+  if (!list.some((r) => r.name === name))
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+  routes.set(
+    slug,
+    list.filter((r) => r.name !== name)
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Notifications (faas pkg/apid/object/notifications.go): a full replacement
+ * clears compute-trigger ownership; DELETE keeps the revision counting.
+ * ------------------------------------------------------------------ */
+
+type Notifications = S['ObjectBucketNotifications'];
+const notifications = new Map<string, Notifications>();
+const ARN =
+  /^arn:gregale:(lambda:[^:\s]+:[^:\s]+:function:[0-9a-f-]{36}|sqs:[^:\s]+:[^:\s]+:[0-9a-f-]{36}\/\S+)$/;
+
+/** apid's ARNs carry the app's UUID; the mock's seeded ids are bare hex. */
+const asUuid = (id: string) =>
+  /^[0-9a-f]{32}$/.test(id)
+    ? `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
+    : id;
+
+export function readNotifications(bucket: BucketRef, appId: string): Notifications {
+  if (!notifications.has(bucket.id)) {
+    const seeded = bucket.name === 'assets';
+    const managed = `gregale-compute-${randomUUID()}`;
+    notifications.set(bucket.id, {
+      bucket_id: bucket.id,
+      revision: seeded ? 1 : 0,
+      ...(seeded ? { managed_rule_ids: [managed] } : {}),
+      rules: seeded
+        ? [
+            {
+              id: managed,
+              destination: `arn:gregale:lambda:us-east-1:mock:function:${asUuid(appId)}`,
+              events: ['s3:ObjectCreated:*'],
+              prefix: 'images/',
+            },
+          ]
+        : [],
+    });
+  }
+  return notifications.get(bucket.id)!;
+}
+
+export function writeNotifications(
+  bucket: BucketRef,
+  appId: string,
+  rules: S['ObjectNotificationRule'][]
+) {
+  const before = readNotifications(bucket, appId);
+  const valid =
+    Array.isArray(rules) &&
+    rules.length <= 1000 &&
+    rules.every((r) => ARN.test(r.destination) && Array.isArray(r.events) && r.events.length > 0);
+  if (!valid)
+    throw new StorageRefusal(400, 'validation_failed', 'invalid notification rules or destination');
+  const next: Notifications = {
+    bucket_id: bucket.id,
+    revision: before.revision + 1,
+    rules: rules.map((r, i) => ({ ...r, id: r.id || `rule-${before.revision + 1}-${i + 1}` })),
+  };
+  notifications.set(bucket.id, next);
+  return next;
+}
+
+/* ------------------------------------------------------------------ *
+ * Write receipts (faas pkg/apid/object/write_receipts.go), seeded for the
+ * `assets` bucket: one of each status.
+ * ------------------------------------------------------------------ */
+
+const receipts = new Map<string, S['ObjectWriteReceipt'][]>();
+
+function receiptsFor(bucket: BucketRef) {
+  if (!receipts.has(bucket.id)) {
+    const at = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const base = { bucket_id: bucket.id, content_type: 'application/octet-stream' };
+    receipts.set(
+      bucket.id,
+      bucket.name === 'assets'
+        ? [
+            {
+              ...base,
+              id: randomUUID(),
+              key: 'avatars/42.png',
+              operation: 'upload',
+              bytes: 18_231,
+              content_type: 'image/png',
+              etag: '',
+              status: 'pending',
+              created_at: at(0.1),
+            },
+            {
+              ...base,
+              id: randomUUID(),
+              key: 'exports/2026-11.csv',
+              operation: 'put',
+              bytes: 902_114,
+              etag: '"9b2cf535f27731c974343645a3985328"',
+              status: 'completed',
+              created_at: at(5),
+            },
+            {
+              ...base,
+              id: randomUUID(),
+              key: 'images/hero-copy.webp',
+              operation: 'copy',
+              bytes: 284_331,
+              etag: '',
+              status: 'failed',
+              error_code: 'provider_write_rejected',
+              created_at: at(30),
+            },
+          ]
+        : []
+    );
+  }
+  return receipts.get(bucket.id)!;
+}
+
+export function listReceipts(
+  bucket: BucketRef,
+  query: URLSearchParams
+): S['ObjectWriteReceiptList'] {
+  const status = query.get('status') ?? 'pending';
+  if (!['pending', 'completed', 'failed', 'all'].includes(status))
+    throw invalid('Invalid object storage request.');
+  const limit = Math.max(1, Math.min(100, Number(query.get('limit') ?? 50) || 50));
+  const start = Number(query.get('cursor') ?? 0) || 0;
+  const all = receiptsFor(bucket).filter((r) => status === 'all' || r.status === status);
+  return {
+    items: all.slice(start, start + limit),
+    ...(start + limit < all.length ? { next_cursor: String(start + limit) } : {}),
+  };
+}
+
+export function readReceipt(bucket: BucketRef, id: string) {
+  const found = receiptsFor(bucket).find((r) => r.id === id);
+  if (!found)
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+  return found;
+}

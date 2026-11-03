@@ -17,7 +17,6 @@ import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
 import { FIELD } from '@/components/ui/field';
 import { BucketAccess } from './bucket-access';
-import { CliCommand } from './cli-command';
 import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import { CapabilityNotice } from './capability-notice';
 import { SegmentedControl, Tabs, tabId } from './tabs';
@@ -26,10 +25,14 @@ import { CodeAccess } from './storage/code-access';
 import { BucketSettings } from './storage/bucket-settings';
 import { ObjectVersions } from './storage/object-versions';
 import { ObjectTags } from './storage/object-tags';
+import { MultipartUploads } from './storage/multipart-uploads';
+import { UploadRoutes } from './storage/upload-routes';
+import { WriteReceipts } from './storage/write-receipts';
+import { lockEnabled } from './storage/object-lock-setting';
+import { CapabilityGate } from './capability-gate';
 import { accessModel, type AccessConnection } from '@/lib/storage-access';
 import { formatUsageBytes } from '@/lib/usage-format';
 import { cn } from '@/lib/utils';
-import { cliBucketUploadsCommand } from '@/lib/cli-commands';
 import {
   bucketKey,
   objectKey,
@@ -42,8 +45,13 @@ import {
   useBucketBindings,
   useBucketObjects,
   useBucketS3Credentials,
+  useBucketObjectLock,
   useBucketVersioning,
   useObjectBuckets,
+  multipartKey,
+  uploadMultipartObject,
+  type MultipartProgress,
+  type WriteProtection,
   type ObjectBucket,
 } from '@/lib/api/object-storage';
 import './storage/storage.css';
@@ -148,6 +156,7 @@ function BucketManager({
   onSelectionChange: SelectionChange;
 }) {
   const availability = useCapability('object-storage');
+  const multipartOn = useCapabilityAccess('multipart-uploads').access === 'on';
   const query = useObjectBuckets(slug);
   const cache = useQueryClient();
   const confirm = useConfirm();
@@ -171,7 +180,15 @@ function BucketManager({
   const bucket = selection.bucket
     ? data.items.find((b) => b.id === selection.bucket)
     : data.items.find((b) => b.state === 'ready');
-  const directUploadMaxBytes = Math.min(data.max_upload_bytes, MAX_SINGLE_PUT_BYTES);
+  // One signed PUT takes up to the single-upload limit; larger files go in
+  // parts, up to the object size limit, where multipart is released.
+  const directUploadMaxBytes = Math.min(
+    data.max_single_put_bytes ?? data.max_upload_bytes,
+    data.max_upload_bytes,
+    MAX_SINGLE_PUT_BYTES
+  );
+  const partsMaxBytes =
+    multipartOn && data.max_upload_bytes > directUploadMaxBytes ? data.max_upload_bytes : 0;
   const select = (id: string) => onSelectionChange({ bucket: id });
   const create = (name: string, scope: string, region: string) =>
     mutation.mutate(async () => {
@@ -181,8 +198,11 @@ function BucketManager({
     });
   const limits = (
     <p className="text-xs text-muted-foreground">
-      Preview. Up to {data.max_buckets_per_app} buckets per app. Direct uploads up to{' '}
-      {formatUploadLimit(directUploadMaxBytes)}. Storage billing is not integrated yet.
+      Preview. Up to {data.max_buckets_per_app} buckets per app.{' '}
+      {partsMaxBytes
+        ? `Single uploads up to ${formatUploadLimit(directUploadMaxBytes)}; larger files upload in parts, up to ${formatUploadLimit(partsMaxBytes)}.`
+        : `Direct uploads up to ${formatUploadLimit(directUploadMaxBytes)}.`}{' '}
+      Storage billing is not integrated yet.
     </p>
   );
 
@@ -307,6 +327,7 @@ function BucketManager({
             onChange={(next, options) => onSelectionChange({ bucket: bucket.id, ...next }, options)}
             enabled={data.enabled}
             maxBytes={directUploadMaxBytes}
+            partsMaxBytes={partsMaxBytes}
             onDelete={async () => {
               if (await confirmDelete(confirm, bucket))
                 mutation.mutate(async () => {
@@ -435,6 +456,7 @@ function BucketDetail({
   onChange,
   enabled,
   maxBytes,
+  partsMaxBytes,
   onDelete,
   deleting,
 }: {
@@ -445,6 +467,8 @@ function BucketDetail({
   onChange: (next: Omit<StorageSelection, 'bucket'>, options?: { replace?: boolean }) => void;
   enabled: boolean;
   maxBytes: number;
+  /** The largest upload in parts, or 0 when multipart is not available. */
+  partsMaxBytes: number;
   onDelete: () => void;
   deleting: boolean;
 }) {
@@ -493,6 +517,7 @@ function BucketDetail({
               onChange({ tab: 'objects', prefix: next || undefined }, options)
             }
             maxBytes={maxBytes}
+            partsMaxBytes={partsMaxBytes}
             signingEnabled={enabled}
           />
         )}
@@ -514,63 +539,22 @@ function BucketDetail({
                 hiddenCredentials={bindingCredentials}
               />
             </section>
+            <CapabilityGate capability="signed-urls" title="Uploads from your users">
+              <UploadRoutes slug={slug} bucket={bucket} enabled={enabled} />
+            </CapabilityGate>
           </div>
         )}
         {tab === 'settings' && (
-          <div className="flex flex-col gap-10">
-            <BucketSettings
-              slug={slug}
-              bucket={bucket}
-              enabled={enabled}
-              onDelete={onDelete}
-              deleting={deleting}
-            />
-            {enabled && (
-              <BucketCliPanel slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
-            )}
-          </div>
+          <BucketSettings
+            slug={slug}
+            bucket={bucket}
+            enabled={enabled}
+            onDelete={onDelete}
+            deleting={deleting}
+          />
         )}
       </div>
     </div>
-  );
-}
-
-/** Bucket features the console does not offer. Each command reads the current
- *  setting; the CLI changes it. */
-function BucketCliPanel({
-  slug,
-  bucketId,
-  bucketName,
-}: {
-  slug: string;
-  bucketId?: string;
-  bucketName?: string;
-}) {
-  // Copy buttons are named as nouns; the captions above them can be sentences.
-  const copyLabel = (what: string) =>
-    bucketName ? `${what} command for ${bucketName}` : `${what} command`;
-  return (
-    <section
-      aria-labelledby="bucket-cli-heading"
-      className="flex flex-col gap-3 rounded-md border border-border p-3"
-    >
-      <div>
-        <h3 id="bucket-cli-heading" className="text-sm font-medium">
-          More in the CLI
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          The console does not manage these bucket settings.{' '}
-          {bucketId
-            ? 'Each command shows the current setting for the selected bucket.'
-            : 'Select a bucket to fill in its ID.'}
-        </p>
-      </div>
-      <CliCommand
-        label="Multipart uploads in progress"
-        copyLabel={copyLabel('multipart uploads')}
-        command={cliBucketUploadsCommand(slug, bucketId)}
-      />
-    </section>
   );
 }
 
@@ -580,6 +564,7 @@ function ObjectBrowser({
   prefix,
   onPrefix,
   maxBytes,
+  partsMaxBytes,
   signingEnabled,
 }: {
   slug: string;
@@ -587,16 +572,29 @@ function ObjectBrowser({
   prefix: string;
   onPrefix: (prefix: string, options?: { replace?: boolean }) => void;
   maxBytes: number;
+  partsMaxBytes: number;
   signingEnabled: boolean;
 }) {
   const [cursor, setCursor] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState('');
   const [dragging, setDragging] = useState(false);
-  const [view, setView] = useState<'current' | 'versions'>('current');
+  const [view, setView] = useState<'current' | 'versions' | 'writes'>('current');
   const [tagged, setTagged] = useState('');
+  const [progress, setProgress] = useState<MultipartProgress | null>(null);
+  const [hold, setHold] = useState(false);
   const versionsOn = useCapabilityAccess('object-versioning').access === 'on';
+  // Write receipts, Object Lock and legal holds share the object-protection capability.
+  const protectionOn = useCapabilityAccess('object-protection').access === 'on';
+  const lock = useBucketObjectLock(slug, protectionOn ? bucket.id : '');
+  const lockable = protectionOn && lockEnabled(lock.data);
   const showVersions = versionsOn && view === 'versions';
+  const showWrites = protectionOn && view === 'writes';
+  const views = [
+    { key: 'current' as const, label: 'Current objects' },
+    ...(versionsOn ? [{ key: 'versions' as const, label: 'All versions' }] : []),
+    ...(protectionOn ? [{ key: 'writes' as const, label: 'Writes' }] : []),
+  ];
   // Read only behind the capability: apid answers its routes 404 when it is off.
   const versioning = useBucketVersioning(slug, versionsOn ? bucket.id : '');
   const deleteKeepsVersions = versioning.data?.observed_status === 'Enabled';
@@ -654,30 +652,51 @@ function ObjectBrowser({
   const upload = async (event: FormEvent) => {
     event.preventDefault();
     if (!file || !signingEnabled) return;
-    if (file.size > maxBytes) {
+    const inParts = file.size > maxBytes;
+    if (inParts && file.size > partsMaxBytes) {
       toast({
         kind: 'error',
-        title: `File exceeds the ${formatUploadLimit(maxBytes)} direct upload limit`,
+        title: partsMaxBytes
+          ? `File exceeds the ${formatUploadLimit(partsMaxBytes)} upload limit`
+          : `File exceeds the ${formatUploadLimit(maxBytes)} direct upload limit`,
       });
       return;
     }
     if (
       !(await confirm({
         title: `Upload ${key}?`,
-        description: 'An existing object with the same key will be overwritten.',
+        description: inParts
+          ? 'An existing object with the same key will be overwritten. The file uploads in parts; if that is interrupted, choose the same file and key to resume.'
+          : 'An existing object with the same key will be overwritten.',
         confirmLabel: 'Upload',
       }))
     )
       return;
     if (!writable.current) return;
+    const protection: WriteProtection | undefined =
+      lockable && hold ? { legal_hold: { status: 'ON' } } : undefined;
     mutation.mutate(async () => {
       if (!writable.current) return;
+      if (inParts) {
+        try {
+          await uploadMultipartObject(slug, bucket.id, file, key, {
+            protection,
+            onProgress: setProgress,
+          });
+        } finally {
+          setProgress(null);
+          void cache.invalidateQueries({ queryKey: multipartKey(slug, bucket.id) });
+        }
+        toast({ kind: 'success', title: 'Object uploaded' });
+        return;
+      }
       const signed = await signStoredObject(slug, bucket.id, {
         method: 'PUT',
         expires_in: 300,
         key,
         size_bytes: file.size,
         content_type: file.type || 'application/octet-stream',
+        ...(protection ? { protection } : {}),
       });
       if (!writable.current)
         throw new Error('Storage availability or selection changed. Upload was not sent.');
@@ -721,16 +740,8 @@ function ObjectBrowser({
             );
           })}
         </nav>
-        {versionsOn && (
-          <SegmentedControl
-            label="Show"
-            value={view}
-            options={[
-              { key: 'current', label: 'Current objects' },
-              { key: 'versions', label: 'All versions' },
-            ]}
-            onChange={setView}
-          />
+        {views.length > 1 && (
+          <SegmentedControl label="Show" value={view} options={views} onChange={setView} />
         )}
       </div>
 
@@ -781,8 +792,10 @@ function ObjectBrowser({
             </span>
             <span>
               {file
-                ? `${formatUsageBytes(file.size)}, up to ${formatUploadLimit(maxBytes)}`
-                : `Up to ${formatUploadLimit(maxBytes)} in one upload`}
+                ? `${formatUsageBytes(file.size)}${file.size > maxBytes && partsMaxBytes >= file.size ? ', in parts' : ''}, up to ${formatUploadLimit(partsMaxBytes || maxBytes)}`
+                : partsMaxBytes
+                  ? `Up to ${formatUploadLimit(partsMaxBytes)}; above ${formatUploadLimit(maxBytes)} in parts`
+                  : `Up to ${formatUploadLimit(maxBytes)} in one upload`}
             </span>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -795,13 +808,30 @@ function ObjectBrowser({
               onChange={(e) => setKey(e.target.value)}
             />
           </label>
+          {lockable && (
+            <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={hold}
+                disabled={!signingEnabled}
+                onChange={(e) => setHold(e.target.checked)}
+              />
+              Place a legal hold on this upload
+            </label>
+          )}
           <Button type="submit" disabled={!signingEnabled || !file || mutation.isPending}>
-            {mutation.isPending ? 'Working…' : 'Upload'}
+            {progress
+              ? `Part ${progress.part} of ${progress.parts}`
+              : mutation.isPending
+                ? 'Working…'
+                : 'Upload'}
           </Button>
         </form>
       </div>
 
-      {showVersions ? (
+      {showWrites ? (
+        <WriteReceipts slug={slug} bucket={bucket} />
+      ) : showVersions ? (
         <ObjectVersions
           slug={slug}
           bucket={bucket}
@@ -962,6 +992,7 @@ function ObjectBrowser({
           </div>
         </>
       )}
+      {view === 'current' && partsMaxBytes > 0 && <MultipartUploads slug={slug} bucket={bucket} />}
     </section>
   );
 }

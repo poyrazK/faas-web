@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   lifecycle: vi.fn(),
   versions: vi.fn(),
+  multipart: vi.fn(),
+  receipts: vi.fn(),
   selected: 'demo',
   appState: null as null | { slug: string; apps: { slug: string }[]; select: () => void },
 }));
@@ -70,6 +72,33 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
     error: null,
   }),
   useObjectTags: () => ({ data: { tags: { team: 'web' } }, isPending: false, error: null }),
+  uploadMultipartObject: mocks.multipart,
+  useMultipartUploads: () => ({ data: { items: [] }, isPending: false, error: null }),
+  useUploadRoutes: () => ({
+    data: {
+      items: [
+        {
+          id: 'route-1',
+          name: 'avatar',
+          bucket_id: 'bucket-one',
+          key_prefix: 'avatars',
+          max_bytes: 5242880,
+          enabled: true,
+          created_at: '2026-10-01T00:00:00Z',
+          updated_at: '2026-10-01T00:00:00Z',
+        },
+      ],
+    },
+    isPending: false,
+    error: null,
+  }),
+  useBucketNotifications: () => ({
+    data: { bucket_id: 'bucket-one', revision: 0, rules: [] },
+    isPending: false,
+    error: null,
+  }),
+  useWriteReceipts: mocks.receipts,
+  useWriteReceipt: () => ({ data: undefined, isPending: false, error: null }),
 }));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<typeof import('@/lib/api/queries')>()),
@@ -106,6 +135,26 @@ beforeEach(() => {
   mocks.confirm.mockResolvedValue(true);
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.access.mockReturnValue({ access: 'on', refresh: vi.fn() });
+  mocks.multipart.mockResolvedValue({});
+  mocks.receipts.mockReturnValue({
+    data: {
+      items: [
+        {
+          id: '3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77',
+          bucket_id: 'bucket-one',
+          key: 'avatars/42.png',
+          operation: 'upload',
+          bytes: 18231,
+          content_type: 'image/png',
+          etag: '',
+          status: 'pending',
+          created_at: '2026-10-01T00:00:00Z',
+        },
+      ],
+    },
+    isPending: false,
+    error: null,
+  });
   mocks.buckets.mockReturnValue({ data: capabilities, isPending: false, error: null });
   mocks.objects.mockReturnValue({
     data: { items: [{ key: 'file.txt', size_bytes: 3 }] },
@@ -276,6 +325,10 @@ it('opens a ready bucket and exposes object actions', async () => {
 });
 it('rejects files above the single-PUT limit before requesting a signed URL', async () => {
   const user = userEvent.setup();
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'multipart-uploads' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
   mocks.buckets.mockReturnValue({
     data: { ...capabilities, max_upload_bytes: 5 * 1024 ** 4 },
     isPending: false,
@@ -297,45 +350,6 @@ it('rejects files above the single-PUT limit before requesting a signed URL', as
     title: 'File exceeds the 5 GiB direct upload limit',
   });
   expect(mocks.sign).not.toHaveBeenCalled();
-});
-it('points to the CLI for bucket features the console lacks, with the chosen app and bucket filled in', async () => {
-  const user = userEvent.setup();
-  show();
-  await user.click(screen.getByRole('button', { name: 'assets' }));
-  await user.click(screen.getByRole('tab', { name: 'Settings' }));
-  const more = screen.getByRole('region', { name: 'More in the CLI' });
-  for (const command of ['gregale bucket uploads list demo bucket-one'])
-    expect(within(more).getByText(command)).toBeInTheDocument();
-});
-it('names each CLI copy button as a command for the chosen bucket', async () => {
-  const user = userEvent.setup();
-  show();
-  await user.click(screen.getByRole('button', { name: 'assets' }));
-  await user.click(screen.getByRole('tab', { name: 'Settings' }));
-  const more = screen.getByRole('region', { name: 'More in the CLI' });
-  expect(
-    within(more)
-      .getAllByRole('button')
-      .map((b) => b.getAttribute('aria-label'))
-  ).toEqual(['Copy: multipart uploads command for assets']);
-});
-it("keeps the CLI panel in a bucket's Settings, not on the everyday tabs", async () => {
-  const user = userEvent.setup();
-  show();
-  expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'assets' }));
-  expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('tab', { name: 'Settings' }));
-  expect(screen.getByRole('region', { name: 'More in the CLI' })).toBeInTheDocument();
-});
-it('keeps the CLI panel away when storage is disabled on this installation', () => {
-  mocks.buckets.mockReturnValue({
-    data: { ...capabilities, enabled: false },
-    isPending: false,
-    error: null,
-  });
-  show();
-  expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
 });
 it('shows each bucket ID with a copy button that carries the full ID', () => {
   const id = '3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77';
@@ -617,7 +631,7 @@ it("opens an object's tags under its row", async () => {
   expect(within(tags).getByText('team=web')).toBeInTheDocument();
 });
 
-it('moves encryption and Object Lock out of the CLI panel into Settings', async () => {
+it('manages every bucket setting here, with nothing left for a CLI panel', async () => {
   const user = userEvent.setup();
   show();
   await user.click(screen.getByRole('tab', { name: 'Settings' }));
@@ -627,8 +641,109 @@ it('moves encryption and Object Lock out of the CLI panel into Settings', async 
     'Encryption',
     'Object Lock',
     'Browser access (CORS)',
+    'Change notifications',
   ])
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
-  const more = screen.getByRole('region', { name: 'More in the CLI' });
-  expect(within(more).queryByText(/encryption status|object-lock status/)).toBeNull();
+  expect(screen.queryByRole('region', { name: 'More in the CLI' })).not.toBeInTheDocument();
+});
+
+it('uploads a file above the single-upload limit in parts', async () => {
+  mocks.buckets.mockReturnValue({
+    data: {
+      ...capabilities,
+      max_upload_bytes: 5 * 1024 ** 4,
+      max_single_put_bytes: 64 * 1024 ** 2,
+    },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(
+    screen.getByText(/Single uploads up to 64 MiB; larger files upload in parts, up to 5120 GiB\./)
+  ).toBeInTheDocument();
+  const file = new File(['x'], 'video.mp4', { type: 'video/mp4' });
+  Object.defineProperty(file, 'size', { value: 200 * 1024 ** 2 });
+  fireEvent.change(screen.getByLabelText('File'), { target: { files: [file] } });
+  // A file input cannot be filled by userEvent past `required`; submit the form itself.
+  fireEvent.submit(screen.getByRole('button', { name: 'Upload' }).closest('form')!);
+  await waitFor(() =>
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/uploads in parts/) })
+    )
+  );
+  await waitFor(() =>
+    expect(mocks.multipart).toHaveBeenCalledWith(
+      'demo',
+      'bucket-one',
+      file,
+      'video.mp4',
+      expect.objectContaining({ protection: undefined })
+    )
+  );
+  expect(mocks.sign).not.toHaveBeenCalled();
+});
+
+it('shows tracked writes, pending first, from the Objects tab', async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('button', { name: 'Writes' }));
+  const list = screen.getByRole('list', { name: 'Pending receipts' });
+  expect(within(list).getByText('avatars/42.png')).toBeInTheDocument();
+  expect(within(list).getByText('Pending')).toBeInTheDocument();
+  expect(mocks.receipts).toHaveBeenLastCalledWith('demo', 'bucket-one', 'pending', '');
+});
+
+it('offers no writes view when object protection is off', () => {
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'object-protection' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  show();
+  expect(screen.queryByRole('button', { name: 'Writes' })).not.toBeInTheDocument();
+  expect(mocks.receipts).not.toHaveBeenCalled();
+});
+
+it("lists the bucket's upload routes with the code access", async () => {
+  const user = userEvent.setup();
+  show();
+  await user.click(screen.getByRole('tab', { name: 'Use from code' }));
+  const routes = screen.getByRole('list', { name: 'Upload routes for assets' });
+  expect(within(routes).getByText('POST /uploads/avatar')).toBeInTheDocument();
+});
+
+it('explains upload routes, and reads none, when signed URLs are off', async () => {
+  const user = userEvent.setup();
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'signed-urls' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  show();
+  await user.click(screen.getByRole('tab', { name: 'Use from code' }));
+  const panel = screen
+    .getByRole('heading', { name: 'Uploads from your users' })
+    .closest('section')!;
+  expect(within(panel).getByText('Not enabled for this account')).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Upload routes for assets' })).toBeNull();
+});
+
+it('lists uploads in parts only where multipart is released', () => {
+  mocks.buckets.mockReturnValue({
+    data: {
+      ...capabilities,
+      max_upload_bytes: 5 * 1024 ** 4,
+      max_single_put_bytes: 64 * 1024 ** 2,
+    },
+    isPending: false,
+    error: null,
+  });
+  const view = show();
+  expect(screen.getByRole('heading', { name: 'Uploads in parts' })).toBeInTheDocument();
+  view.unmount();
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'multipart-uploads' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  show();
+  expect(screen.queryByRole('heading', { name: 'Uploads in parts' })).toBeNull();
+  expect(screen.getByText(/Direct uploads up to 64 MiB\./)).toBeInTheDocument();
 });
