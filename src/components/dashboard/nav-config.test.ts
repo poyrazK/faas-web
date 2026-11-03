@@ -14,6 +14,7 @@ describe('railGroupFor', () => {
     ['/dashboard/builds', 'Builds', 'Compute'],
     ['/dashboard/postgres', 'Postgres', 'Storage'],
     ['/dashboard/edge-rules', 'Edge rules', 'Networking'],
+    ['/dashboard/networks', 'Private networks', 'Networking'],
     ['/dashboard/integrations', 'Integrations', 'Messaging'],
     ['/dashboard/customers', 'Customers', 'Monetize'],
     ['/dashboard/debug', 'Debugger', 'Observe'],
@@ -65,6 +66,14 @@ describe('nav items gated on a capability', () => {
       (g) => g.title
     );
     expect(titles).not.toContain('Storage');
+  });
+  it('files Private networks under Networking and hides it with private-networks', () => {
+    const networking = (ids: string[]) =>
+      visibleNavGroups(NAV_GROUPS, off(...ids))
+        .find((g) => g.title === 'Networking')
+        ?.items.map((hub) => hub.label);
+    expect(networking([])).toEqual(['Domains', 'Edge rules', 'Private networks']);
+    expect(networking(['private-networks'])).toEqual(['Domains', 'Edge rules']);
   });
   it('leaves everything when nothing is off', () => {
     expect(hubLabels(visibleNavGroups(NAV_GROUPS, off()))).toEqual(hubLabels(NAV_GROUPS));

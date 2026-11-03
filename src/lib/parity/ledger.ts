@@ -499,10 +499,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 68,
     name: 'Private networks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Private networks and peerings',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/networks', '/dashboard/apps/$appSlug?tab=Private network'],
+    capability: 'private-networks',
   },
   // D69 · preview
   { row: 69, name: 'TCP listeners', status: 'none', surfaces: [], gap: 'TCP listeners', wave: 3 },

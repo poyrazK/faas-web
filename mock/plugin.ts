@@ -41,6 +41,7 @@ import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { registerDeadLetterMocks } from './dead-letters';
 import { registerEventConsumerMocks } from './event-consumers';
+import { registerNetworkMocks } from './networks';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -12377,6 +12378,7 @@ route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
 registerEventMocks(route, Problem, NO_CONTENT);
 registerDeadLetterMocks(route, Problem, NO_CONTENT);
 registerEventConsumerMocks(route, Problem);
+registerNetworkMocks(route, Problem, NO_CONTENT);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------
 

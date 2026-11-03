@@ -21,6 +21,7 @@ import {
   Journal,
   Key,
   Network,
+  NetworkRight,
   Package,
   PiggyBank,
   Play,
@@ -164,6 +165,15 @@ export const NAV_HUBS: NavHub[] = [
     sidebarIconClassName: 'text-cat-network/80',
   },
   {
+    // Account-owned ranges (`/v1/networks`); an app attaches to one on its
+    // Private network tab, which is the per-app view.
+    to: '/dashboard/networks',
+    label: 'Private networks',
+    icon: NetworkRight,
+    capability: 'private-networks',
+    sidebarIconClassName: 'text-cat-network/80',
+  },
+  {
     // Account-wide: the event router has no per-app read for its backlog,
     // storage, or receipts, so this is its own hub rather than an app tab.
     to: '/dashboard/events',
@@ -269,7 +279,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Compute', hubs: ['Projects', 'Releases', 'Jobs', 'Instances'] },
   { title: 'Storage', hubs: ['Object storage', 'Postgres'] },
-  { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
+  { title: 'Networking', hubs: ['Domains', 'Edge rules', 'Private networks'] },
   { title: 'Messaging', hubs: ['Events', 'Integrations'] },
   { title: 'Monetize', hubs: ['Customers'] },
   { title: 'Observe', hubs: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'] },

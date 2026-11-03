@@ -74,6 +74,7 @@ import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
+import { AppPrivateNetwork } from '@/components/dashboard/networks/app-private-network';
 import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
 import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
 import { QueueCanaries } from '@/components/dashboard/queue-canaries';
@@ -779,6 +780,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
+              {tab === 'Private network' && <AppPrivateNetwork slug={fn.id} />}
               {tab === 'Services' && (
                 <div className="space-y-5">
                   <ServiceBindings slug={fn.id} />

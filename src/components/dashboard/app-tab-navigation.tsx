@@ -25,6 +25,7 @@ export const APP_TAB_GROUPS = [
       'Upstreams',
       'Outbound',
       'Services',
+      'Private network',
       'MCP',
       'Edge rules',
       'Edge protection',
@@ -82,6 +83,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Realtime: 'realtime',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
+  'Private network': 'private-networks',
 };
 
 /** Hide a tab only once the registry has said its capability is off. */

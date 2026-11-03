@@ -260,6 +260,7 @@ const RAIL = [
   'Postgres',
   'Domains',
   'Edge rules',
+  'Private networks',
   'Events',
   'Integrations',
   'Customers',
@@ -288,7 +289,7 @@ const RAIL_PARENTS = ['Billing'];
 const RAIL_GROUP_ROWS: Record<string, string[]> = {
   Compute: ['Projects', 'Releases', 'Jobs', 'Instances'],
   Storage: ['Object storage', 'Postgres'],
-  Networking: ['Domains', 'Edge rules'],
+  Networking: ['Domains', 'Edge rules', 'Private networks'],
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
   Observe: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'],

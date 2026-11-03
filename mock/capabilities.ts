@@ -416,6 +416,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'private-networks',
+    name: 'Private networks',
+    category: 'edge',
+    description: 'Attach apps to private networks with peering.',
+    maturity: 'preview',
+    plans: ['pro', 'scale'],
+    docs_url: '/docs/networking',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'internal-services',
     name: 'Internal services',
     category: 'networking',

@@ -44,6 +44,7 @@ import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics'
 import { Route as DashboardMirrorsRouteImport } from './routes/dashboard.mirrors'
+import { Route as DashboardNetworksRouteImport } from './routes/dashboard.networks'
 import { Route as DashboardOpenapiRouteImport } from './routes/dashboard.openapi'
 import { Route as DashboardPlansRouteImport } from './routes/dashboard.plans'
 import { Route as DashboardPostgresRouteImport } from './routes/dashboard.postgres'
@@ -255,6 +256,11 @@ const DashboardMetricsRoute = DashboardMetricsRouteImport.update({
 const DashboardMirrorsRoute = DashboardMirrorsRouteImport.update({
   id: '/mirrors',
   path: '/mirrors',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardNetworksRoute = DashboardNetworksRouteImport.update({
+  id: '/networks',
+  path: '/networks',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardOpenapiRoute = DashboardOpenapiRouteImport.update({
@@ -480,6 +486,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
+  '/dashboard/networks': typeof DashboardNetworksRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
@@ -551,6 +558,7 @@ export interface FileRoutesByTo {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
+  '/dashboard/networks': typeof DashboardNetworksRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
@@ -625,6 +633,7 @@ export interface FileRoutesById {
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
+  '/dashboard/networks': typeof DashboardNetworksRoute
   '/dashboard/openapi': typeof DashboardOpenapiRoute
   '/dashboard/plans': typeof DashboardPlansRoute
   '/dashboard/postgres': typeof DashboardPostgresRoute
@@ -701,6 +710,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
+    | '/dashboard/networks'
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
@@ -772,6 +782,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
+    | '/dashboard/networks'
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
@@ -845,6 +856,7 @@ export interface FileRouteTypes {
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
+    | '/dashboard/networks'
     | '/dashboard/openapi'
     | '/dashboard/plans'
     | '/dashboard/postgres'
@@ -1142,6 +1154,13 @@ declare module '@tanstack/react-router' {
       path: '/mirrors'
       fullPath: '/dashboard/mirrors'
       preLoaderRoute: typeof DashboardMirrorsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/networks': {
+      id: '/dashboard/networks'
+      path: '/networks'
+      fullPath: '/dashboard/networks'
+      preLoaderRoute: typeof DashboardNetworksRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/openapi': {
@@ -1459,6 +1478,7 @@ interface DashboardRouteChildren {
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardMetricsRoute: typeof DashboardMetricsRoute
   DashboardMirrorsRoute: typeof DashboardMirrorsRoute
+  DashboardNetworksRoute: typeof DashboardNetworksRoute
   DashboardOpenapiRoute: typeof DashboardOpenapiRoute
   DashboardPlansRoute: typeof DashboardPlansRoute
   DashboardPostgresRoute: typeof DashboardPostgresRoute
@@ -1514,6 +1534,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardMetricsRoute: DashboardMetricsRoute,
   DashboardMirrorsRoute: DashboardMirrorsRoute,
+  DashboardNetworksRoute: DashboardNetworksRoute,
   DashboardOpenapiRoute: DashboardOpenapiRoute,
   DashboardPlansRoute: DashboardPlansRoute,
   DashboardPostgresRoute: DashboardPostgresRoute,
