@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   cors: vi.fn(),
   setCors: vi.fn(),
   clearCors: vi.fn(),
+  notifications: vi.fn(),
 }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapabilityAccess: mocks.access }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
@@ -45,6 +46,7 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   useBucketCors: mocks.cors,
   setBucketCors: mocks.setCors,
   clearBucketCors: mocks.clearCors,
+  useBucketNotifications: mocks.notifications,
 }));
 const read = <T,>(data: T) => ({ data, isPending: false, error: null, refetch: vi.fn() });
 const section = (name: string) => screen.getByRole('heading', { name }).closest('section')!;
@@ -122,6 +124,7 @@ beforeEach(() => {
     })
   );
   mocks.cors.mockReturnValue(read({ bucket_id: 'bucket-one', revision: 0, rules: [] }));
+  mocks.notifications.mockReturnValue(read({ bucket_id: 'bucket-one', revision: 0, rules: [] }));
 });
 
 describe('versioning', () => {
@@ -586,5 +589,19 @@ describe('CORS', () => {
       within(section('Browser access (CORS)')).getByText('Not enabled for this account')
     ).toBeInTheDocument();
     expect(mocks.cors).not.toHaveBeenCalled();
+  });
+});
+
+describe('change notifications', () => {
+  it('explains itself and reads nothing when the capability is off', () => {
+    mocks.access.mockImplementation((id: string) => ({
+      access: id === 'object-storage-compute' ? 'off' : 'on',
+      refresh: vi.fn(),
+    }));
+    show();
+    expect(
+      within(section('Change notifications')).getByText('Not enabled for this account')
+    ).toBeInTheDocument();
+    expect(mocks.notifications).not.toHaveBeenCalled();
   });
 });

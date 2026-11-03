@@ -705,3 +705,246 @@ export function useProtectionOperation(slug: string, bucket: string, operation: 
       query.state.data?.state === 'ready' || query.state.data?.state === 'failed' ? false : 3_000,
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Multipart uploads: files above the single-request limit
+ * ------------------------------------------------------------------ */
+
+export type MultipartUpload = components['schemas']['ObjectMultipartUpload'];
+export type WriteProtection = components['schemas']['ObjectWriteProtection'];
+export const multipartKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 'multipart-uploads'] as const;
+
+/** Sessions still open or recently settled; apid keeps a session for 24 hours. */
+export function useMultipartUploads(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: multipartKey(slug, bucket),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', {
+          params: { path: { slug, bucket }, query: { limit: 100 } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    retry: false,
+  });
+}
+
+/** Parts the storage provider has confirmed, one page. */
+export function listMultipartParts(slug: string, bucket: string, upload: string, marker = 0) {
+  return unwrap(
+    api.GET('/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts', {
+      params: {
+        path: { slug, bucket, upload },
+        query: { part_number_marker: marker, limit: 1000 },
+      },
+    })
+  );
+}
+
+export function useMultipartParts(slug: string, bucket: string, upload: string) {
+  return useQuery({
+    queryKey: [...multipartKey(slug, bucket), upload, 'parts'],
+    queryFn: () => listMultipartParts(slug, bucket, upload),
+    enabled: Boolean(slug && bucket && upload),
+    retry: false,
+  });
+}
+
+/** Every confirmed part, across pages, so completion sends the provider's own ETags. */
+async function confirmedParts(slug: string, bucket: string, upload: string) {
+  const out: components['schemas']['ObjectMultipartPart'][] = [];
+  let marker = 0;
+  for (;;) {
+    const page = await listMultipartParts(slug, bucket, upload, marker);
+    out.push(...page.items);
+    if (!page.next_part_number_marker) return out;
+    marker = page.next_part_number_marker;
+  }
+}
+
+export function abortMultipartUpload(slug: string, bucket: string, upload: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}', {
+      params: { path: { slug, bucket, upload } },
+    })
+  );
+}
+
+/** Where a multipart upload has got to, for a progress line. */
+export interface MultipartProgress {
+  upload: string;
+  part: number;
+  parts: number;
+}
+
+/**
+ * Upload a large file in parts, straight to the storage host. apid reserves
+ * the whole size up front and returns the existing session when the same key,
+ * size and content type are started again, so choosing the same file after an
+ * interruption resumes it: parts the provider already confirmed are skipped.
+ */
+export async function uploadMultipartObject(
+  slug: string,
+  bucket: string,
+  file: Blob,
+  key: string,
+  options: { protection?: WriteProtection; onProgress?: (p: MultipartProgress) => void } = {}
+) {
+  const session = await unwrap(
+    api.POST('/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', {
+      params: { path: { slug, bucket } },
+      body: {
+        key,
+        size_bytes: file.size,
+        content_type: file.type || 'application/octet-stream',
+        ...(options.protection ? { protection: options.protection } : {}),
+      },
+    })
+  );
+  const done = new Set((await confirmedParts(slug, bucket, session.id)).map((p) => p.part_number));
+  for (let part = 1; part <= session.part_count; part++) {
+    options.onProgress?.({ upload: session.id, part, parts: session.part_count });
+    if (done.has(part)) continue;
+    const start = (part - 1) * session.part_size_bytes;
+    const signed = await unwrap(
+      api.POST(
+        '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts/{part}/signed-url',
+        {
+          params: { path: { slug, bucket, upload: session.id, part } },
+          body: { expires_in: 300 },
+        }
+      )
+    );
+    await uploadSignedObject(signed, file.slice(start, start + session.part_size_bytes));
+  }
+  const parts = (await confirmedParts(slug, bucket, session.id))
+    .sort((a, b) => a.part_number - b.part_number)
+    .map(({ part_number, etag }) => ({ part_number, etag }));
+  if (parts.length !== session.part_count)
+    throw new Error(
+      `Storage confirmed ${parts.length} of ${session.part_count} parts. Choose the same file and key to resume.`
+    );
+  return unwrap(
+    api.POST('/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/complete', {
+      params: { path: { slug, bucket, upload: session.id } },
+      body: { parts },
+    })
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Upload routes: POST /uploads/{name} on the app's own hostname
+ * ------------------------------------------------------------------ */
+
+export type UploadRoute = components['schemas']['ObjectUploadRoute'];
+export type UploadRouteRequest = components['schemas']['CreateObjectUploadRouteRequest'];
+export const uploadRoutesKey = (slug: string) => ['apps', slug, 'upload-routes'] as const;
+
+export function useUploadRoutes(slug: string) {
+  return useQuery({
+    queryKey: uploadRoutesKey(slug),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/upload-routes', { params: { path: { slug } } })),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+/** Create a route, or update the one with this name. */
+export function saveUploadRoute(slug: string, body: UploadRouteRequest) {
+  return unwrap(api.POST('/v1/apps/{slug}/upload-routes', { params: { path: { slug } }, body }));
+}
+
+export function deleteUploadRoute(slug: string, route: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/upload-routes/{route}', { params: { path: { slug, route } } })
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Change notifications
+ * ------------------------------------------------------------------ */
+
+export type NotificationRule = components['schemas']['ObjectNotificationRule'];
+export const notificationsKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 'notifications'] as const;
+
+export function useBucketNotifications(slug: string, bucket: string) {
+  return useQuery({
+    queryKey: notificationsKey(slug, bucket),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/notifications', {
+          params: { path: { slug, bucket } },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    retry: false,
+  });
+}
+
+/** Replace every rule, including any an app's compute triggers manage. */
+export function setBucketNotifications(slug: string, bucket: string, rules: NotificationRule[]) {
+  return unwrap(
+    api.PUT('/v1/apps/{slug}/buckets/{bucket}/notifications', {
+      params: { path: { slug, bucket } },
+      body: { rules },
+    })
+  );
+}
+
+export function clearBucketNotifications(slug: string, bucket: string) {
+  return unwrap(
+    api.DELETE('/v1/apps/{slug}/buckets/{bucket}/notifications', {
+      params: { path: { slug, bucket } },
+    })
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Write receipts: tracked S3 writes, copies and upload-route uploads
+ * ------------------------------------------------------------------ */
+
+export type WriteReceipt = components['schemas']['ObjectWriteReceipt'];
+export type ReceiptStatus = 'pending' | 'completed' | 'failed' | 'all';
+export const receiptsKey = (slug: string, bucket: string) =>
+  ['apps', slug, 'buckets', bucket, 'write-receipts'] as const;
+
+export function useWriteReceipts(
+  slug: string,
+  bucket: string,
+  status: ReceiptStatus,
+  cursor: string
+) {
+  return useQuery({
+    queryKey: [...receiptsKey(slug, bucket), status, cursor],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/write-receipts', {
+          params: {
+            path: { slug, bucket },
+            query: { status, limit: 50, ...(cursor ? { cursor } : {}) },
+          },
+        })
+      ),
+    enabled: Boolean(slug && bucket),
+    retry: false,
+  });
+}
+
+/** One receipt by the ID an upload returned as X-Gregale-Upload-ID. */
+export function useWriteReceipt(slug: string, bucket: string, receipt: string) {
+  return useQuery({
+    queryKey: [...receiptsKey(slug, bucket), 'one', receipt],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/buckets/{bucket}/write-receipts/{receipt}', {
+          params: { path: { slug, bucket, receipt } },
+        })
+      ),
+    enabled: Boolean(slug && bucket && receipt),
+    retry: false,
+    // Pending has no confirmed outcome yet; read it again until it settles.
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 5_000 : false),
+  });
+}

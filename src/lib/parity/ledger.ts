@@ -719,18 +719,20 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Operations and work policies',
     wave: 3,
   },
-  // F108 · preview. The versioning toggle, every version with download,
-  // restore, undelete and permanent delete, lifecycle rule editing, CORS,
-  // object tags, default encryption, Object Lock with its default retention,
-  // and per-version legal holds, retention and event holds are on the Storage
-  // page, each behind its own sub-capability.
+  // F108 · preview. Everything on the Storage page, each part behind its own
+  // sub-capability: the versioning toggle and every version (download,
+  // restore, undelete, permanent delete); lifecycle rules; CORS; object tags;
+  // default encryption; Object Lock with default retention, per-version legal
+  // holds, retention and event holds, and a legal hold on new uploads;
+  // uploads in parts with resume and abort; upload routes; change
+  // notifications; and write receipts. Compute-trigger rules come from the
+  // app's manifest on deploy; the page shows them and keeps them on save.
   {
     row: 108,
     name: 'Object storage: buckets, signed URLs, upload routes, S3 gateway, versioning, lifecycle rules, object lock, write protection, encryption keys, change notifications, multipart uploads',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
-    gap: 'Multipart uploads, upload routes, change notifications, write receipts',
     wave: 3,
   },
   // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview).

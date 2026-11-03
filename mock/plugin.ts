@@ -4343,6 +4343,8 @@ const storageSignatures = new Map<
     expiresAt: number;
     contentType: string;
     versionId?: string;
+    /** A multipart part URL: which session and part, and its exact length. */
+    part?: { upload: string; number: number; bytes: number };
   }
 >();
 const storageBytes = new Map<string, { bytes: Buffer; contentType: string }>();
@@ -4507,6 +4509,9 @@ route('GET', '/v1/apps/{slug}/buckets', ({ params }) => ({
   regions: [MOCK_S3_REGION],
   default_region: MOCK_S3_REGION,
   max_upload_bytes: 5 * 1024 ** 3,
+  max_single_put_bytes: storageMock.MOCK_SINGLE_PUT_BYTES,
+  max_part_bytes: storageMock.MOCK_PART_BYTES,
+  upload_profile: 'direct',
   max_buckets_per_app: 10,
 }));
 route('POST', '/v1/apps/{slug}/buckets', ({ params, body }) => {
@@ -4623,6 +4628,15 @@ route('PUT', '/mock-s3/object', async ({ query, req, res }) => {
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const bytes = Buffer.concat(chunks);
   const where = `${signed.slug}/${signed.bucketId}`;
+  if (signed.part) {
+    // A part URL binds its exact length; the object appears only on completion.
+    if (bytes.length !== signed.part.bytes) return s3Refusal(res, 400, 'IncompleteBody');
+    const etag = `"${createHash('md5').update(bytes).digest('hex')}"`;
+    storageMock.recordPart(where, signed.part.upload, signed.part.number, bytes.length, etag);
+    res.statusCode = 200;
+    res.setHeader('ETag', etag);
+    return res.end();
+  }
   const list = storageObjects.get(where) ?? [];
   const bucket = ownedBucket(signed.slug, signed.bucketId);
   storageMock.ensureVersions(where, bucket, list);
@@ -4859,6 +4873,116 @@ route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/legal-hold', p
 route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', getRetention);
 route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', putRetention);
 route('GET', '/v1/apps/{slug}/buckets/{bucket}/protection-operations/{operation}', readOp);
+
+// Uploads in parts, upload routes, notifications and write receipts.
+const listUploads = (c: StorageCtx) => storageMock.listSessions(storageBucket(c.params).where);
+const startUpload = (c: StorageCtx) =>
+  storageCall(() => {
+    const { status: code, body } = storageMock.startSession(
+      storageBucket(c.params).where,
+      c.body,
+      5 * 1024 ** 3
+    );
+    return status(code, body);
+  });
+const readUpload = (c: StorageCtx) =>
+  storageCall(() => storageMock.readSession(storageBucket(c.params).where, c.params.upload));
+const abortUpload = (c: StorageCtx) =>
+  storageCall(() => {
+    storageMock.abortSession(storageBucket(c.params).where, c.params.upload);
+    return NO_CONTENT;
+  });
+const listParts = (c: StorageCtx) =>
+  storageCall(() => storageMock.sessionParts(storageBucket(c.params).where, c.params.upload));
+const signPart = (c: StorageCtx) =>
+  storageCall(() => {
+    const { slug, bucket, where } = storageBucket(c.params);
+    const number = Number(c.params.part);
+    const bytes = storageMock.partSize(where, c.params.upload, number);
+    const session = storageMock.readSession(where, c.params.upload);
+    const signature = hex(32);
+    const expiresAt = Date.now() + Math.min(900, Number(c.body.expires_in ?? 300)) * 1000;
+    storageSignatures.set(signature, {
+      slug,
+      bucketId: bucket.id,
+      key: session.key,
+      method: 'PUT',
+      expiresAt,
+      contentType: session.content_type,
+      part: { upload: session.id, number, bytes },
+    });
+    const url = new URL(MOCK_S3_OBJECT_PATH, `http://${c.req.headers.host ?? 'localhost'}`);
+    url.searchParams.set('partNumber', String(number));
+    url.searchParams.set('X-Amz-Signature', signature);
+    return {
+      url: url.toString(),
+      method: 'PUT',
+      headers: {},
+      expires_at: new Date(expiresAt).toISOString(),
+    };
+  });
+const complete = (c: StorageCtx) =>
+  storageCall(() => {
+    const { bucket, where } = storageBucket(c.params);
+    const done = storageMock.completeSession(where, c.params.upload, c.body);
+    storageObjects.set(where, [
+      ...(storageObjects.get(where) ?? []).filter((o) => o.key !== done.object.key),
+      done.object,
+    ]);
+    storageMock.recordWrite(where, bucket, done.object);
+    return done.session;
+  });
+const listRoutes = (c: StorageCtx) => {
+  const slug = app(c.params.slug).slug;
+  return storageMock.listRoutes(
+    slug,
+    bucketsFor(slug).find((b) => b.name === 'user-uploads')
+  );
+};
+const saveRoute = (c: StorageCtx) =>
+  storageCall(() => {
+    const slug = app(c.params.slug).slug;
+    ownedBucket(slug, String(c.body.bucket_id ?? ''));
+    const { status: code, body } = storageMock.saveRoute(slug, c.body);
+    return status(code, body);
+  });
+const deleteRoute = (c: StorageCtx) =>
+  storageCall(() => {
+    storageMock.deleteRoute(app(c.params.slug).slug, c.params.route);
+    return NO_CONTENT;
+  });
+const getNotifications = (c: StorageCtx) =>
+  storageMock.readNotifications(storageBucket(c.params).bucket, app(c.params.slug).id);
+const putNotifications = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.writeNotifications(
+      storageBucket(c.params).bucket,
+      app(c.params.slug).id,
+      c.body.rules as S_['ObjectNotificationRule'][]
+    )
+  );
+const deleteNotifications = (c: StorageCtx) =>
+  storageMock.writeNotifications(storageBucket(c.params).bucket, app(c.params.slug).id, []);
+const listReceipts = (c: StorageCtx) =>
+  storageCall(() => storageMock.listReceipts(storageBucket(c.params).bucket, c.query));
+const readReceipt = (c: StorageCtx) =>
+  storageCall(() => storageMock.readReceipt(storageBucket(c.params).bucket, c.params.receipt));
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', listUploads);
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', startUpload);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}', readUpload);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}', abortUpload);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts', listParts);
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts/{part}/signed-url', signPart);
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/complete', complete);
+route('GET', '/v1/apps/{slug}/upload-routes', listRoutes);
+route('POST', '/v1/apps/{slug}/upload-routes', saveRoute);
+route('DELETE', '/v1/apps/{slug}/upload-routes/{route}', deleteRoute);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/notifications', getNotifications);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/notifications', putNotifications);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/notifications', deleteNotifications);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/write-receipts', listReceipts);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/write-receipts/{receipt}', readReceipt);
 
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.

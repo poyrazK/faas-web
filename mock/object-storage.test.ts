@@ -188,3 +188,71 @@ describe('encryption, Object Lock and protection in the mock', () => {
     expect(storage.readCors(b).rules).toEqual([]);
   });
 });
+
+describe('uploads in parts, routes, notifications and receipts in the mock', () => {
+  it('resumes the same upload and completes only with every confirmed part', () => {
+    const where = `app/${Math.random()}`;
+    const size = storage.MOCK_PART_BYTES + 10;
+    const body = { key: 'big.bin', size_bytes: size, content_type: 'application/octet-stream' };
+    const first = storage.startSession(where, body, 5 * 1024 ** 3);
+    expect(first.status).toBe(201);
+    expect(first.body.part_count).toBe(2);
+    expect(storage.startSession(where, body, 5 * 1024 ** 3)).toMatchObject({
+      status: 200,
+      body: { id: first.body.id },
+    });
+    expect(storage.partSize(where, first.body.id, 2)).toBe(10);
+    storage.recordPart(where, first.body.id, 1, storage.MOCK_PART_BYTES, '"a"');
+    expect(() =>
+      storage.completeSession(where, first.body.id, { parts: [{ part_number: 1, etag: '"a"' }] })
+    ).toThrow(expect.objectContaining({ code: 'object_storage_invalid' }));
+    storage.recordPart(where, first.body.id, 2, 10, '"b"');
+    const done = storage.completeSession(where, first.body.id, {
+      parts: [
+        { part_number: 1, etag: '"a"' },
+        { part_number: 2, etag: '"b"' },
+      ],
+    });
+    expect(done.session.state).toBe('completed');
+    expect(done.object).toMatchObject({ key: 'big.bin', size_bytes: size });
+    expect(() => storage.abortSession(where, first.body.id)).toThrow(
+      expect.objectContaining({ code: 'object_storage_conflict' })
+    );
+  });
+
+  it('upserts upload routes by name', () => {
+    const slug = `app-${Math.random()}`;
+    expect(storage.listRoutes(slug).items).toEqual([]);
+    expect(storage.saveRoute(slug, { name: 'avatar', bucket_id: 'b', max_bytes: 10 }).status).toBe(
+      201
+    );
+    expect(
+      storage.saveRoute(slug, { name: 'avatar', bucket_id: 'b', max_bytes: 10, enabled: false })
+    ).toMatchObject({ status: 200, body: { enabled: false } });
+    storage.deleteRoute(slug, 'avatar');
+    expect(storage.listRoutes(slug).items).toEqual([]);
+  });
+
+  it('refuses a destination outside Gregale, and a manual save clears managed ownership', () => {
+    const b = bucket('assets');
+    const appId = '0b5c3a52-27a4-4b8e-9e3f-0f6c6c2c2a01';
+    const seeded = storage.readNotifications(b, appId);
+    expect(seeded.managed_rule_ids).toHaveLength(1);
+    expect(() =>
+      storage.writeNotifications(b, appId, [
+        { destination: 'arn:aws:lambda:x', events: ['s3:ObjectCreated:*'] },
+      ])
+    ).toThrow(expect.objectContaining({ code: 'validation_failed' }));
+    const saved = storage.writeNotifications(b, appId, seeded.rules);
+    expect(saved.managed_rule_ids).toBeUndefined();
+    expect(saved.revision).toBe(seeded.revision + 1);
+  });
+
+  it('filters receipts by status', () => {
+    const b = bucket('assets');
+    expect(storage.listReceipts(b, new URLSearchParams()).items.map((r) => r.status)).toEqual([
+      'pending',
+    ]);
+    expect(storage.listReceipts(b, new URLSearchParams({ status: 'all' })).items).toHaveLength(3);
+  });
+});
