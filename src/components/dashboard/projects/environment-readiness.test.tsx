@@ -20,6 +20,7 @@ const rollback = vi.fn();
 const confirm = vi.fn();
 const toast = vi.fn();
 vi.mock('@/lib/api/environments', () => ({
+  StalePromotionPreview: class StalePromotionPreview extends Error {},
   usePromoteEnvironment: () => ({ mutateAsync: promote, isPending: false }),
   useRollbackPromotion: () => ({ mutateAsync: rollback, isPending: false }),
 }));
@@ -38,7 +39,6 @@ const preview = {
   qualification_required: true,
   release_graph_mode: true,
   promotion_hash: hash,
-  promotion_token: 'opaque-promotion-token',
   blocking_reasons: [],
   config: { fromVersion: 3, toVersion: 4, sourceHash: hash, targetHash: hash },
   changes: [
@@ -110,8 +110,7 @@ it('promotes the reviewed preview after saying what changes, approving a protect
   await waitFor(() =>
     expect(promote).toHaveBeenCalledWith({
       source: 'staging',
-      promotionToken: 'opaque-promotion-token',
-      approve: true,
+      promotionHash: hash,
       key: expect.any(String),
     })
   );

@@ -12,7 +12,11 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
-import { usePromoteEnvironment, useRollbackPromotion } from '@/lib/api/environments';
+import {
+  StalePromotionPreview,
+  usePromoteEnvironment,
+  useRollbackPromotion,
+} from '@/lib/api/environments';
 import { cliEnvironmentGitopsExplainCommand } from '@/lib/cli-commands';
 import { CliCommand } from '../cli-command';
 import { Panel } from '../primitives';
@@ -33,7 +37,12 @@ type Toast = { kind: 'info' | 'error'; title: string; description?: string; erro
  * release_freezes.go, project_promotion_admission.go).
  */
 export function promotionFailure(error: unknown): Toast {
-  const code = error instanceof ApiError ? error.code : '';
+  const code =
+    error instanceof StalePromotionPreview
+      ? 'project_environment_approval_invalid'
+      : error instanceof ApiError
+        ? error.code
+        : '';
   switch (code) {
     case 'project_environment_approval_invalid':
       return {
@@ -138,8 +147,7 @@ export function EnvironmentReadiness({
     try {
       const result = await promote.mutateAsync({
         source: plan.from_environment,
-        promotionToken: plan.promotion_token,
-        approve: plan.approval_required,
+        promotionHash: plan.promotion_hash,
         key,
       });
       toast(
@@ -161,7 +169,10 @@ export function EnvironmentReadiness({
       onSearch({ promotion: result.promotion_id });
     } catch (err) {
       toast(promotionFailure(err));
-      if (err instanceof ApiError && err.code === 'project_environment_approval_invalid')
+      if (
+        err instanceof StalePromotionPreview ||
+        (err instanceof ApiError && err.code === 'project_environment_approval_invalid')
+      )
         void preview.refetch();
     }
   };

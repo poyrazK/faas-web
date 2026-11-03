@@ -219,11 +219,25 @@ export function useDeleteEnvironmentSecret(scope: ProjectScope, environment: str
 }
 
 /**
- * Promote the exact preview the person reviewed. A protected target needs an
- * approval of that same promotion token first (handlers_project_environment_
- * approvals.go:21); the short-lived approval credential is used once, here,
- * and never stored in a cache. A retry with the same Idempotency-Key resumes
- * the same operation rather than starting another (promotion.go:636-700).
+ * The preview changed between review and Promote: its promotion hash is not
+ * the one the person confirmed, so nothing was sent.
+ */
+export class StalePromotionPreview extends Error {
+  constructor() {
+    super('The live releases or configuration changed since this preview. Review it again.');
+    this.name = 'StalePromotionPreview';
+  }
+}
+
+/**
+ * Promote the exact preview the person reviewed. The promotion token is read
+ * fresh here and only here: the cached preview deliberately holds no token
+ * (environment-readiness.ts), and a preview whose hash moved since review is
+ * refused before anything is sent. A protected target needs an approval of
+ * that same token first (handlers_project_environment_approvals.go:21); the
+ * short-lived approval credential is used once and never cached. A retry with
+ * the same Idempotency-Key resumes the same operation rather than starting
+ * another (handlers_project_environment_promotion.go:636-700).
  */
 export function usePromoteEnvironment(scope: ProjectScope, target: string) {
   const qc = useQueryClient();
@@ -231,20 +245,28 @@ export function usePromoteEnvironment(scope: ProjectScope, target: string) {
     gcTime: 0,
     mutationFn: async ({
       source,
-      promotionToken,
-      approve,
+      promotionHash,
       key,
     }: {
       source: string;
-      promotionToken: string;
-      approve: boolean;
+      promotionHash: string;
       key: string;
     }) => {
-      const approval = approve
+      const preview = await unwrap(
+        api.GET('/v1/projects/{slug}/environments/{environment}/promotion-preview', {
+          params: {
+            path: { slug: scope.slug, environment: target },
+            query: { from: source, sync_config: false },
+          },
+        })
+      );
+      if (preview.promotion_hash !== promotionHash || preview.from_environment !== source)
+        throw new StalePromotionPreview();
+      const approval = preview.approval_required
         ? await unwrap(
             api.POST('/v1/projects/{slug}/environments/{environment}/approvals', {
               params: { path: { slug: scope.slug, environment: target } },
-              body: { promotion_token: promotionToken },
+              body: { promotion_token: preview.promotion_token },
             })
           )
         : undefined;
@@ -256,7 +278,7 @@ export function usePromoteEnvironment(scope: ProjectScope, target: string) {
           },
           body: {
             from_environment: source,
-            promotion_token: promotionToken,
+            promotion_token: preview.promotion_token,
             ...(approval ? { approval_token: approval.approval_token } : {}),
           },
         })

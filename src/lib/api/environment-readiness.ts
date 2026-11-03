@@ -189,9 +189,6 @@ export async function readPromotionPreview(
     from_environment: source,
     to_environment: identity.target,
     promotion_hash: raw.promotion_hash,
-    // Opaque and bound to these exact identities: Promote sends it back, and
-    // apid refuses it once the releases or configuration it names change.
-    promotion_token: text(raw.promotion_token),
     can_promote: bool(raw.can_promote),
     approval_required: bool(raw.approval_required),
     to_environment_protected: bool(raw.to_environment_protected),
