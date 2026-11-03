@@ -36,7 +36,7 @@ function PlanColumn({ plan, index }: { plan: CatalogPlan; index: number }) {
       <dl className="mt-5 flex flex-col gap-3 text-sm">
         {Object.entries({
           'Deployed apps': plan.deployedApps,
-          'PR preview apps': plan.previewApps,
+          'PR preview environments': plan.previewEnvironments,
           'Developer apps': plan.developerApps,
           'Concurrent instances / app': plan.concurrentInstances,
           'RAM / app': `${plan.ramMb} MB`,

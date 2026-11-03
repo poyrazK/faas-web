@@ -14,7 +14,7 @@ describe('generated API plan catalog', () => {
           name: 'Free',
           monthly: 0,
           deployedApps: 1,
-          previewApps: 1,
+          previewEnvironments: 1,
           developerApps: 1,
           concurrentInstances: 1,
           ramMb: 256,
@@ -27,7 +27,7 @@ describe('generated API plan catalog', () => {
           name: 'Hobby',
           monthly: 10,
           deployedApps: 5,
-          previewApps: 2,
+          previewEnvironments: 2,
           developerApps: 2,
           concurrentInstances: 2,
           ramMb: 512,
@@ -40,7 +40,7 @@ describe('generated API plan catalog', () => {
           name: 'Pro',
           monthly: 30,
           deployedApps: 25,
-          previewApps: 5,
+          previewEnvironments: 5,
           developerApps: 5,
           concurrentInstances: 5,
           ramMb: 1024,
@@ -53,7 +53,7 @@ describe('generated API plan catalog', () => {
           name: 'Scale',
           monthly: 99,
           deployedApps: 100,
-          previewApps: 20,
+          previewEnvironments: 20,
           developerApps: 10,
           concurrentInstances: 20,
           ramMb: 2048,
@@ -65,7 +65,7 @@ describe('generated API plan catalog', () => {
       ],
     });
   });
-  it('ignores the developer-environment and realtime tables that follow the plan table', () => {
+  it('ignores the developer-environment, realtime and object-storage tables that follow the plan table', () => {
     // Those tables also use bold plan-name rows; only the "At a glance" rows are quotas.
     expect(parsePlanCatalog(source).plans).toHaveLength(4);
     expect(source.match(/^\| \*\*/gm)?.length).toBeGreaterThan(4);
