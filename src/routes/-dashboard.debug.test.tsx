@@ -103,6 +103,7 @@ vi.mock('@/lib/api/debug', () => {
     },
     useDebugRegressionAction: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useDebugReplay: () => ({ mutate: vi.fn(), isPending: false }),
+    useReplayTargets: () => ({ data: undefined, isPending: false, error: null }),
     exportDebugRequests: vi.fn(),
   };
 });
@@ -185,6 +186,12 @@ vi.mock('@/lib/api/queries', async (original) => {
               request: fixtures.requests.find((r) => r.id === id) ?? fixtures.requests[0],
               spans: [],
               spans_truncated: false,
+              timeline: [],
+              correlation: { stages: [], complete: false },
+              dependency_latency: [],
+              dependency_latency_truncated: false,
+              logs: [],
+              logs_truncated: false,
               explanation: { status: 'unobserved', headline: 'No comparison evidence.' },
               generated_at: '2026-09-11T09:01:00Z',
             }

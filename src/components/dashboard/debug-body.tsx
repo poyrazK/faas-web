@@ -153,6 +153,9 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
             onRegression={(regression) =>
               onSelect({ debugView: 'regressions', regression, request: undefined })
             }
+            onCompare={(debugSource, debugMirror) =>
+              onSelect({ debugView: 'compare', debugSource, debugMirror, request: undefined })
+            }
           />
         )}
       </div>

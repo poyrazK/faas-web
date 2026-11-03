@@ -906,7 +906,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Debugger'],
     capability: 'production-debugger',
-    gap: 'Evidence capture and safe replay depth',
+    gap: 'No view yet for historical critical paths (/debug/critical-paths) or the rollout explanation (/debug/rollout)',
     wave: 3,
   },
   // G136 · GA
