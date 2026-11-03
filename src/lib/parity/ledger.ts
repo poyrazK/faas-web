@@ -366,10 +366,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 50,
     name: 'Warm pool and warm snapshots',
-    status: 'none',
-    surfaces: [],
-    gap: 'Warm pool size and warm snapshots',
-    wave: 2,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    capability: 'warm-pool',
   },
   // C51 · preview
   {

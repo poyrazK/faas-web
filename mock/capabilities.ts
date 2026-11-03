@@ -106,6 +106,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'warm-pool',
+    name: 'Warm pool',
+    category: 'runtime',
+    description: 'Keep paused warm instances ready for faster wakes.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/scale-to-zero',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'object-storage',
     name: 'Private object storage',
     category: 'data',
