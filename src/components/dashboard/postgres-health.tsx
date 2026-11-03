@@ -9,7 +9,7 @@ import {
   type PostgresConnectionBudget,
 } from '@/lib/api/postgres';
 import type { PostgresDatabase } from '@/lib/api/queries';
-import { StatusTag, type Tone } from './postgres-shared';
+import { StageTag, StatusTag, type Tone } from './postgres-shared';
 
 /**
  * Two read-only views of one database, both personal-only (the organization
@@ -34,15 +34,6 @@ function conditionLook(c: PostgresCondition): { tone: Tone; icon: typeof CheckCi
   if (good) return { tone: 'good', icon: CheckCircle };
   if (c.type === 'Progressing') return { tone: 'warning', icon: RefreshDouble };
   return { tone: 'critical', icon: WarningTriangle };
-}
-
-function StageTag({ stage }: { stage: string }) {
-  if (!stage) return null;
-  return (
-    <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
-      {stage}
-    </span>
-  );
 }
 
 export function DatabaseConditions({ database }: { database: PostgresDatabase }) {

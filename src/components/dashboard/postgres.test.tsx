@@ -48,6 +48,22 @@ vi.mock('./postgres-health', () => ({
   DatabaseConditions: () => <p>conditions section</p>,
   ConnectionBudget: () => <p>connection planning section</p>,
 }));
+vi.mock('./postgres-compute', () => ({
+  DatabaseCompute: ({
+    operation,
+    onOperation,
+  }: {
+    operation?: { id: string };
+    onOperation: (op: { kind: 'resize'; id: string }) => void;
+  }) => (
+    <div>
+      <p>compute section following {operation?.id ?? 'nothing'}</p>
+      <button type="button" onClick={() => onOperation({ kind: 'resize', id: 'r-1' })}>
+        start a change
+      </button>
+    </div>
+  ),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
 
@@ -447,6 +463,31 @@ describe('PostgresDatabases', () => {
       render(<PostgresDatabases />);
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
       expect(await screen.findByText(/past your plan's database limit/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('resize and compute policy', () => {
+    it('keeps following a change while the database is closed and reopened', async () => {
+      render(<PostgresDatabases />);
+      const row = screen.getByRole('button', { name: /orders/i });
+      await userEvent.click(row);
+      expect(await screen.findByText('compute section following nothing')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'start a change' }));
+      expect(screen.getByText('compute section following r-1')).toBeInTheDocument();
+      await userEvent.click(row);
+      expect(screen.queryByText(/compute section/)).toBeNull();
+      await userEvent.click(row);
+      expect(await screen.findByText('compute section following r-1')).toBeInTheDocument();
+    });
+
+    it('offers no change to a database whose delete is scheduled', async () => {
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ state: 'deleting', restorable_until: inDays(6) })] })
+      );
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await screen.findByText(/deletion scheduled/i);
+      expect(screen.queryByText(/compute section/)).toBeNull();
     });
   });
 

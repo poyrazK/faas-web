@@ -23,6 +23,10 @@ export type PostgresOverage = components['schemas']['ManagedPostgresOverage'];
 export type PostgresStatus = components['schemas']['ResourceStatus'];
 export type PostgresCondition = components['schemas']['Condition'];
 export type PostgresConnectionBudget = components['schemas']['ManagedPostgresConnectionBudget'];
+export type PostgresResize = components['schemas']['ManagedPostgresResize'];
+export type PostgresComputePolicyChange =
+  components['schemas']['ManagedPostgresComputePolicyChange'];
+export type PostgresServiceClass = PostgresResize['target_class'];
 type Database = components['schemas']['ManagedPostgresDatabase'];
 
 /** Everything Postgres for one workspace sits under this prefix. */
@@ -206,5 +210,122 @@ export function usePurgePostgresDatabase() {
       void qc.invalidateQueries({ queryKey: postgresKey(org) });
       void qc.invalidateQueries({ queryKey: usageKey(org) });
     },
+  });
+}
+
+/*
+ * Resize and the scale-to-zero compute policy (capability
+ * postgres-compute-policy, beta). Both reserve a durable change keyed by a
+ * caller-chosen UUID, `request_id`: repeating the same UUID and target
+ * returns the same change's progress, and the same UUID with another target
+ * is a conflict (managedpostgres/resize.go reserveComputeChange). There is no
+ * list of a database's changes, so the page follows the one it started by
+ * that id. A change is `pending` until the provider confirms it, then
+ * `succeeded`; an uncertain provider outcome stays pending with a
+ * `last_error_code` while apid retries, and there is no failed state.
+ */
+
+const followWhilePending = (state: string | undefined) => (state === 'pending' ? 3_000 : false);
+
+export function useResizePostgresDatabase() {
+  const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      request_id: string;
+      service_class: PostgresServiceClass;
+    }) =>
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/resize', {
+              params: { path: { organization: org, id } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/resize', { params: { path: { id } }, body })
+          ),
+    onSuccess: (change) => {
+      qc.setQueryData([...postgresKey(org), change.database_id, 'resizes', change.id], change);
+      void qc.invalidateQueries({ queryKey: postgresKey(org) });
+    },
+  });
+}
+
+export function usePostgresResize(databaseId: string, resizeId: string) {
+  const { org, ready } = useWorkspaceTarget();
+  return useQuery({
+    queryKey: [...postgresKey(org), databaseId, 'resizes', resizeId],
+    queryFn: ({ signal }) =>
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/postgres/databases/{id}/resizes/{resize_id}', {
+              params: { path: { organization: org, id: databaseId, resize_id: resizeId } },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/postgres/databases/{id}/resizes/{resize_id}', {
+              params: { path: { id: databaseId, resize_id: resizeId } },
+              signal,
+            })
+          ),
+    enabled: ready && Boolean(databaseId && resizeId),
+    refetchInterval: (query) => followWhilePending(query.state.data?.state),
+  });
+}
+
+export function useChangePostgresComputePolicy() {
+  const qc = useQueryClient();
+  const { org } = useWorkspaceTarget();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; request_id: string; scale_to_zero: boolean }) =>
+      org
+        ? unwrap(
+            api.POST('/v1/orgs/{organization}/postgres/databases/{id}/compute-policy', {
+              params: { path: { organization: org, id } },
+              body,
+            })
+          )
+        : unwrap(
+            api.POST('/v1/postgres/databases/{id}/compute-policy', {
+              params: { path: { id } },
+              body,
+            })
+          ),
+    onSuccess: (change) => {
+      qc.setQueryData([...postgresKey(org), change.database_id, 'policy', change.id], change);
+      void qc.invalidateQueries({ queryKey: postgresKey(org) });
+    },
+  });
+}
+
+export function usePostgresComputePolicyChange(databaseId: string, changeId: string) {
+  const { org, ready } = useWorkspaceTarget();
+  return useQuery({
+    queryKey: [...postgresKey(org), databaseId, 'policy', changeId],
+    queryFn: ({ signal }) =>
+      org
+        ? unwrap(
+            api.GET(
+              '/v1/orgs/{organization}/postgres/databases/{id}/compute-policy-changes/{change_id}',
+              {
+                params: { path: { organization: org, id: databaseId, change_id: changeId } },
+                signal,
+              }
+            )
+          )
+        : unwrap(
+            api.GET('/v1/postgres/databases/{id}/compute-policy-changes/{change_id}', {
+              params: { path: { id: databaseId, change_id: changeId } },
+              signal,
+            })
+          ),
+    enabled: ready && Boolean(databaseId && changeId),
+    refetchInterval: (query) => followWhilePending(query.state.data?.state),
   });
 }

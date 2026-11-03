@@ -744,15 +744,16 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Versioning toggle and version restore, lifecycle editing (both read-only today), CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts',
     wave: 3,
   },
-  // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview)
+  // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview).
+  // Usage, the compute cap and overage, undelete and purge, conditions,
+  // connection planning, resize and the compute policy are on the page.
+  // Cutovers (postgres-cutovers) stay preview and out of the console.
   {
     row: 109,
     name: 'Managed Postgres (account and org databases): point-in-time restore, scale-to-zero, availability classes, resize, connection pool',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/postgres'],
     capability: 'managed-postgres',
-    gap: 'Resize (beta) and the scale-to-zero compute policy; cutovers stay preview',
-    wave: 1,
   },
   // F110 · preview
   {

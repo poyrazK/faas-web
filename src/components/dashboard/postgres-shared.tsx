@@ -38,6 +38,16 @@ export function StatusTag({
   );
 }
 
+/** "Beta" or "Preview", from the capability registry; nothing once it is GA. */
+export function StageTag({ stage }: { stage: string }) {
+  if (!stage) return null;
+  return (
+    <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+      {stage}
+    </span>
+  );
+}
+
 /** Compute-unit seconds as compute-unit hours, the unit the plans are sold in. */
 export function cuHours(seconds: number): string {
   const hours = seconds / 3600;

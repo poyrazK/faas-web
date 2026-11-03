@@ -383,6 +383,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'postgres-compute-policy',
+    name: 'Postgres compute policy and resize',
+    category: 'data',
+    description: 'Resize a database and set its scale-to-zero compute policy.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/postgres',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'resource-conditions',
     name: 'Resource conditions',
     category: 'observability',

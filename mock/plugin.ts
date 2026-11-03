@@ -4515,7 +4515,115 @@ function pgGate() {
     );
 }
 
+// Resize and the scale-to-zero policy (faas managedpostgres/resize.go): a
+// durable change keyed by the caller's request_id, pending for six seconds
+// and then succeeded, with the database `updating` meanwhile. The same id
+// with another target, or a second change while one is pending, conflicts.
+type PgChange = { database: PgRow; kind: 'resize' | 'policy'; view: Record<string, unknown> };
+const pgChanges = new Map<string, PgChange>();
+const pgGenerations = new Map<string, number>();
+const PG_CHANGE_MS = 6000;
+const PG_REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function pgAdvanceChanges() {
+  for (const { database, kind, view } of pgChanges.values()) {
+    if (view.state !== 'pending' || Date.now() - Date.parse(String(view.created_at)) < PG_CHANGE_MS)
+      continue;
+    const now = new Date().toISOString();
+    view.state = 'succeeded';
+    view.completed_at = now;
+    if (kind === 'resize') {
+      database.service_class = view.target_class;
+      // A class the plan includes resumes a database suspended for its class.
+      if (database.plan_excess === 'service_class') delete database.plan_excess;
+    } else database.scale_to_zero = view.target_scale_to_zero;
+    database.state = 'ready';
+    database.updated_at = now;
+  }
+}
+
+function pgReserveChange(
+  database: PgRow,
+  plan: ReturnType<typeof pgPlan>,
+  kind: 'resize' | 'policy',
+  body: Record<string, unknown>
+) {
+  const requestId = String(body.request_id ?? '');
+  if (!PG_REQUEST_ID.test(requestId))
+    throw new Problem(400, 'managed_postgres_invalid', 'request_id must be a lowercase UUID.');
+  const target = kind === 'resize' ? body.service_class : body.scale_to_zero;
+  const existing = pgChanges.get(requestId);
+  if (existing) {
+    const same =
+      existing.database.id === database.id &&
+      existing.kind === kind &&
+      (kind === 'resize' ? existing.view.target_class : existing.view.target_scale_to_zero) ===
+        target;
+    if (!same)
+      throw new Problem(409, 'managed_postgres_conflict', 'that request_id names another change.');
+    return status(202, existing.view);
+  }
+  if (kind === 'resize') {
+    if (!['development', 'burstable', 'production'].includes(String(target)))
+      throw new Problem(400, 'managed_postgres_invalid', 'service_class is not a class.');
+    if (!PG_PLAN_LIMITS[plan].classes.includes(target as never))
+      throw new Problem(
+        403,
+        'managed_postgres_not_in_plan',
+        `plan "${plan}" does not include the ${String(target)} class.`
+      );
+  } else {
+    if (typeof target !== 'boolean')
+      throw new Problem(400, 'managed_postgres_invalid', 'scale_to_zero must be true or false.');
+    if (!target)
+      throw new Problem(
+        403,
+        'managed_postgres_not_in_plan',
+        `plan "${plan}": always-on compute is not part of this plan.`
+      );
+  }
+  if (database.state !== 'ready')
+    throw new Problem(
+      409,
+      'managed_postgres_conflict',
+      `the database is ${database.state}; change it once it is ready.`
+    );
+  const now = new Date().toISOString();
+  const generation = (pgGenerations.get(database.id) ?? 1) + 1;
+  pgGenerations.set(database.id, generation);
+  const common = {
+    id: requestId,
+    database_id: database.id,
+    generation,
+    state: 'pending',
+    connection_interruption_expected: true,
+    created_at: now,
+  };
+  const view =
+    kind === 'resize'
+      ? { ...common, from_class: database.service_class, target_class: target }
+      : { ...common, from_scale_to_zero: database.scale_to_zero, target_scale_to_zero: target };
+  database.state = 'updating';
+  database.updated_at = now;
+  pgChanges.set(requestId, { database, kind, view });
+  return status(202, view);
+}
+
+function pgChange(database: PgRow, kind: 'resize' | 'policy', id: string) {
+  pgAdvanceChanges();
+  const change = pgChanges.get(id);
+  if (!change || change.database.id !== database.id || change.kind !== kind)
+    throw new Problem(404, 'managed_postgres_not_found', 'no such change for this database.');
+  return change.view;
+}
+
+/** apid answers a hidden capability's route as missing (capgate). */
+function pgComputeGate() {
+  if (hiddenCapabilities.has('postgres-compute-policy')) throw new Problem(404, 'not_found');
+}
+
 function pgSettle(row: PgRow): PgRow {
+  pgAdvanceChanges();
   // A row provisions for 4 seconds, then reports itself ready.
   if (row.state === 'provisioning' && Date.now() - Date.parse(row.updated_at) > 4000) {
     row.state = 'ready';
@@ -4812,6 +4920,52 @@ route('GET', '/v1/postgres/databases/{id}/connection-budget', ({ params, res }) 
   ).length;
   return pgConnectionBudget(database, bound);
 });
+route('POST', '/v1/postgres/databases/{id}/resize', ({ params, body }) => {
+  pgComputeGate();
+  return pgReserveChange(pgDatabase(params.id), pgPersonalPlan(), 'resize', body);
+});
+route('GET', '/v1/postgres/databases/{id}/resizes/{resize_id}', ({ params }) => {
+  pgComputeGate();
+  return pgChange(pgDatabase(params.id), 'resize', params.resize_id);
+});
+route('POST', '/v1/postgres/databases/{id}/compute-policy', ({ params, body }) => {
+  pgComputeGate();
+  return pgReserveChange(pgDatabase(params.id), pgPersonalPlan(), 'policy', body);
+});
+route('GET', '/v1/postgres/databases/{id}/compute-policy-changes/{change_id}', ({ params }) => {
+  pgComputeGate();
+  return pgChange(pgDatabase(params.id), 'policy', params.change_id);
+});
+route('POST', '/v1/orgs/{organization}/postgres/databases/{id}/resize', ({ params, body }) => {
+  requireOrgRole(params.organization, ['owner', 'admin']);
+  return pgReserveChange(
+    orgDatabase(params.organization, params.id),
+    orgPlan(params.organization),
+    'resize',
+    body
+  );
+});
+route('GET', '/v1/orgs/{organization}/postgres/databases/{id}/resizes/{resize_id}', ({ params }) =>
+  pgChange(orgDatabase(params.organization, params.id), 'resize', params.resize_id)
+);
+route(
+  'POST',
+  '/v1/orgs/{organization}/postgres/databases/{id}/compute-policy',
+  ({ params, body }) => {
+    requireOrgRole(params.organization, ['owner', 'admin']);
+    return pgReserveChange(
+      orgDatabase(params.organization, params.id),
+      orgPlan(params.organization),
+      'policy',
+      body
+    );
+  }
+);
+route(
+  'GET',
+  '/v1/orgs/{organization}/postgres/databases/{id}/compute-policy-changes/{change_id}',
+  ({ params }) => pgChange(orgDatabase(params.organization, params.id), 'policy', params.change_id)
+);
 route('POST', '/v1/postgres/databases/{id}/restore', ({ params, body }) => {
   const source = pgDatabase(params.id);
   const name = String(body.name ?? '').trim();
