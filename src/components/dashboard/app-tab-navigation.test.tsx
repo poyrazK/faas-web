@@ -166,3 +166,15 @@ it('puts realtime with the other messaging pages under Automate, gated on its ca
   expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
   expect(resolveAppTab('Realtime')).toBe('Realtime');
 });
+
+it('puts the private network attachment under Connect, gated on private-networks', () => {
+  render(<Navigation initial="Private network" />);
+  const names = within(pages('Connect'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Private network')).toBe(names.indexOf('Services') + 1);
+  expect(APP_TAB_CAPABILITY['Private network']).toBe('private-networks');
+  expect(visibleAppTabs((id) => (id === 'private-networks' ? 'off' : 'on'))).not.toContain(
+    'Private network'
+  );
+});

@@ -52,6 +52,7 @@
 /dashboard/logs    /index.html   200
 /dashboard/metrics    /index.html   200
 /dashboard/mirrors    /index.html   200
+/dashboard/networks    /index.html   200
 /dashboard/openapi    /index.html   200
 /dashboard/plans    /index.html   200
 /dashboard/postgres    /index.html   200
