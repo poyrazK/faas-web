@@ -21,6 +21,7 @@ const STATES: Record<string, { label: string; color: string; icon: typeof CheckC
   awaiting_event: { label: 'Waiting', color: 'var(--status-warning)', icon: Clock },
   retrying: { label: 'Retrying', color: 'var(--status-warning)', icon: RefreshDouble },
   succeeded: { label: 'Succeeded', color: 'var(--status-good)', icon: CheckCircle },
+  started: { label: 'Started', color: 'var(--status-good)', icon: CheckCircle },
   failed: { label: 'Failed', color: 'var(--status-critical)', icon: WarningTriangle },
   dead: { label: 'Dead', color: 'var(--status-critical)', icon: WarningHexagon },
   cancelled: { label: 'Cancelled', color: 'var(--chart-muted)', icon: XmarkCircle },

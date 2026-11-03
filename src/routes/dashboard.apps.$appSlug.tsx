@@ -11,6 +11,8 @@ import { useCapabilityRegistry } from '@/lib/api/capabilities';
 import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
 import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
+import { WorkflowSchedulesBody } from '@/components/dashboard/workflows/workflow-schedules';
+import { RecoveryPolicyBody } from '@/components/dashboard/workflows/recovery-policy';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, useParams } from '@tanstack/react-router';
@@ -436,6 +438,18 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Workflow schedules' && (
+                <WorkflowSchedulesBody
+                  slug={fn.id}
+                  onOpenRun={(workflowRun) =>
+                    void navigate({
+                      search: (current) => ({ ...current, tab: 'Workflows', workflowRun }),
+                      hash: true,
+                    })
+                  }
+                />
+              )}
+              {tab === 'Recovery policy' && <RecoveryPolicyBody slug={fn.id} />}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
               {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Overview' && (
