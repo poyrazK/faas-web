@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import {
+  APP_TAB_ANY_CAPABILITY,
   APP_TAB_CAPABILITY,
   AppTabNavigation,
   resolveAppTab,
@@ -141,6 +142,24 @@ describe('AppTabNavigation with hidden tabs', () => {
     expect(within(connect).queryByRole('button', { name: 'Mirrors' })).toBeNull();
     expect(within(connect).getByRole('button', { name: 'Routes' })).toBeInTheDocument();
   });
+});
+
+it('puts Release safety in Delivery and hides it only when all of its capabilities are off', () => {
+  render(<Navigation initial="Release safety" />);
+  expect(screen.getByRole('tab', { name: 'Delivery' })).toHaveAttribute('aria-selected', 'true');
+  expect(
+    within(pages('Delivery'))
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+  ).toEqual(['Deployments', 'Release safety', 'Activity']);
+  const gated = APP_TAB_ANY_CAPABILITY['Release safety'] ?? [];
+  expect(gated).toEqual(expect.arrayContaining(['deploy-freezes', 'scheduled-releases']));
+  expect(visibleAppTabs((id) => (id === 'deploy-freezes' ? 'off' : 'on'))).toContain(
+    'Release safety'
+  );
+  expect(visibleAppTabs((id) => (gated.includes(id) ? 'off' : 'on'))).not.toContain(
+    'Release safety'
+  );
 });
 
 it('puts edge protection beside edge rules, gated on its capability', () => {

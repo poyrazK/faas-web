@@ -24,6 +24,7 @@ import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label'
 import { ReleaseProcess } from '@/components/dashboard/release-process';
 import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { DeployQueue } from '@/components/dashboard/deploy-queue';
+import { WorkspaceReleaseGuards } from '@/components/dashboard/release-safety';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 
 export const Route = createFileRoute('/dashboard/releases')({
@@ -263,6 +264,13 @@ export function DeploymentsPage() {
       )}
       {view === 'releases' && (
         <DeployQueue
+          onOpen={(deployment) =>
+            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
+          }
+        />
+      )}
+      {view === 'releases' && (
+        <WorkspaceReleaseGuards
           onOpen={(deployment) =>
             select({ deployment, build: undefined, releaseSection: 'lifecycle' })
           }

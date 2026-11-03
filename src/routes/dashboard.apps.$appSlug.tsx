@@ -106,6 +106,7 @@ import {
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
+import { ReleaseSafety } from '@/components/dashboard/release-safety';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
@@ -699,6 +700,23 @@ function FunctionDetailPage() {
                 </>
               )}
 
+              {tab === 'Release safety' && (
+                <ReleaseSafety
+                  slug={fn.id}
+                  onOpenDeployment={(id) =>
+                    void navigate({
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: 'lifecycle',
+                      }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
               {tab === 'Logs' && (
                 <DeploymentCapability

@@ -3,6 +3,7 @@ import { WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { Modal } from '@/components/ui/modal';
+import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { SegmentedControl } from '@/components/dashboard/tabs';
@@ -23,7 +24,11 @@ import {
   type SourceReview,
 } from '@/lib/api/source-review';
 import { useAuth } from '@/lib/auth';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { releaseAtProblem } from '@/lib/api/scheduled-releases';
 import { InlinePhase, queryPhase } from './primitives';
+import { FrozenRefusal, localInputToIso, localZone, zonedTime } from './release-freezes';
+import { ReleaseChannelPicker } from './release-channel-picker';
 
 export interface AcceptedDeploy {
   id: string;
@@ -100,6 +105,7 @@ export function DeployFromGitModal({
 }) {
   const { account } = useAuth();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const deployFromRef = useDeployFromRef(appSlug);
   const bindRepo = useBindRepo(appSlug);
   const binding = useAppRepoBinding(appSlug, { enabled: open });
@@ -112,6 +118,19 @@ export function DeployFromGitModal({
   // The repository the last deploy was refused for as ambiguous.
   const [ambiguous, setAmbiguous] = useState<string | null>(null);
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
+  // A production release refused by a deploy freeze (release_frozen), and the
+  // deploy to resend with an audited override_freeze reason.
+  const [frozen, setFrozen] = useState<{
+    error: ApiError;
+    resend: (reason: string) => void;
+  } | null>(null);
+  // Build now and start the rollout later (release_at, scheduled-releases).
+  const schedules = useCapabilityAccess('scheduled-releases');
+  const [later, setLater] = useState(false);
+  const [releaseAt, setReleaseAt] = useState('');
+  const [notify, setNotify] = useState<string[]>([]);
+  const releaseAtIso = later ? localInputToIso(releaseAt) : null;
+  const releaseAtError = later ? releaseAtProblem(releaseAtIso) : undefined;
 
   const reviewSource = useReviewSource(appSlug);
   // The workload mode decides how a reviewed commit reaches traffic.
@@ -155,10 +174,21 @@ export function DeployFromGitModal({
   const rollout = app.data ? reviewedRollout(executionMode) : null;
   const blocker = review && rollout ? reviewBlocker(review, rollout) : null;
 
-  const submit = ({ justBound = false }: { justBound?: boolean } = {}) => {
+  const submit = ({
+    justBound = false,
+    override,
+  }: { justBound?: boolean; override?: string } = {}) => {
     const source = { repo: repo.trim(), ref: ref.trim() };
+    if (releaseAtError) {
+      setError(releaseAtError);
+      return;
+    }
+    const schedule = releaseAtIso
+      ? { release_at: releaseAtIso, ...(notify.length ? { release_notify: notify } : {}) }
+      : {};
     setError(null);
     setAmbiguous(null);
+    setFrozen(null);
     onSubmissionError(null);
     // Read before the build is accepted: a failed or pending binding read
     // means the current binding is unknown, and unknown is never overwritten.
@@ -168,14 +198,21 @@ export function DeployFromGitModal({
       binding.data.state !== 'bound' &&
       installationId > 0;
     void deployFromRef
-      .mutateAsync({ ...source, format: 'tarball' })
+      .mutateAsync({
+        ...source,
+        format: 'tarball',
+        ...schedule,
+        ...(override ? { override_freeze: override } : {}),
+      })
       .then((deployment) => {
         onAccepted({ id: deployment.id, ...source });
         onClose();
         toast({
           kind: 'success',
           title: 'Build accepted',
-          description: `${source.repo}@${source.ref} is queued.`,
+          description: releaseAtIso
+            ? `${source.repo}@${source.ref} is queued; it waits without traffic until ${scheduledAt(releaseAtIso)}.`
+            : `${source.repo}@${source.ref} is queued.`,
         });
         if (!connectPushes) return;
         void bindRepo
@@ -199,6 +236,10 @@ export function DeployFromGitModal({
         // The ambiguous-installation answer has its own explanation in the
         // modal; the raw API sentence would only repeat it, here and on the
         // deployment panel behind it.
+        if (err instanceof ApiError && err.code === 'release_frozen') {
+          setFrozen({ error: err, resend: (reason) => submit({ justBound, override: reason }) });
+          return;
+        }
         if (err instanceof ApiError && err.code === 'github_install_ambiguous') {
           setAmbiguous(source.repo);
           toast({
@@ -230,14 +271,18 @@ export function DeployFromGitModal({
       });
   };
 
-  const deployReviewed = () => {
+  const deployReviewed = (override?: string) => {
     if (!review || !rollout || blocker) return;
     const pinned = review;
     setError(null);
     setConflict(null);
+    setFrozen(null);
     onSubmissionError(null);
     void deployFromRef
-      .mutateAsync(reviewedDeployBody(pinned, rollout))
+      .mutateAsync({
+        ...reviewedDeployBody(pinned, rollout),
+        ...(override ? { override_freeze: override } : {}),
+      })
       .then((deployment) => {
         onAccepted({ id: deployment.id, repo: pinned.repo, ref: pinned.commit_sha });
         onClose();
@@ -256,11 +301,38 @@ export function DeployFromGitModal({
           setConflict(err.code);
           return;
         }
+        if (err instanceof ApiError && err.code === 'release_frozen') {
+          setFrozen({ error: err, resend: (reason) => deployReviewed(reason) });
+          return;
+        }
         const message = errorMessage(err);
         setError(message);
         onSubmissionError(message);
         toast({ kind: 'error', title: 'Could not start the deploy', description: message });
       });
+  };
+
+  // A scheduled deploy decides when production changes; it asks first.
+  const deployNowOrLater = async () => {
+    if (!releaseAtIso || releaseAtError) return submit();
+    const ok = await confirm({
+      title: `Build now and release ${appName} later?`,
+      description: `The build starts now and the release waits live without traffic. At ${scheduledAt(releaseAtIso)} its production rollout starts with the app’s release policy, and production moves off the release serving now. A freeze active then stops it; any other pending schedule of ${appName} is cancelled.`,
+      confirmLabel: 'Schedule release',
+    });
+    if (ok) submit();
+  };
+
+  // Releasing into a freeze is audited and changes what ships; it asks first.
+  const deployAnyway = async (reason: string) => {
+    if (!frozen) return;
+    const ok = await confirm({
+      title: `Deploy ${appName} into the freeze?`,
+      description: `${appName}’s production releases are frozen. This release goes out anyway, and the override is recorded in the audit log with the freezes it overrides and your reason, “${reason}”.`,
+      confirmLabel: 'Deploy anyway',
+      destructive: true,
+    });
+    if (ok) frozen.resend(reason);
   };
 
   // A binding for this exact repository decides the installation, so bind
@@ -293,7 +365,7 @@ export function DeployFromGitModal({
         size="sm"
         disabled={!validSource}
         busy={deployFromRef.isPending}
-        onClick={() => submit()}
+        onClick={() => void deployNowOrLater()}
       >
         Deploy
       </Button>
@@ -302,7 +374,7 @@ export function DeployFromGitModal({
         size="sm"
         disabled={Boolean(blocker)}
         busy={deployFromRef.isPending}
-        onClick={deployReviewed}
+        onClick={() => deployReviewed()}
       >
         {ROLLOUT_COPY[rollout].action}
       </Button>
@@ -346,8 +418,17 @@ export function DeployFromGitModal({
           onChange={(next) => {
             setMode(next);
             setError(null);
+            setFrozen(null);
           }}
         />
+        {frozen && (
+          <FrozenRefusal
+            error={frozen.error}
+            busy={deployFromRef.isPending}
+            action="Deploy anyway"
+            onOverride={(reason) => void deployAnyway(reason)}
+          />
+        )}
         {mode === 'deploy' && ambiguous && (
           <div role="alert" className="flex flex-col gap-2 text-xs">
             <p className="text-[color:var(--status-critical)]">
@@ -446,6 +527,44 @@ export function DeployFromGitModal({
             </span>
           )}
         </div>
+        {mode === 'deploy' && schedules.access === 'on' && (
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} />
+              Build now, start the production rollout later
+            </label>
+            {later && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="deploy-git-release-at"
+                    className="label-mono text-muted-foreground"
+                  >
+                    Start the rollout
+                  </label>
+                  <input
+                    id="deploy-git-release-at"
+                    type="datetime-local"
+                    value={releaseAt}
+                    onChange={(e) => setReleaseAt(e.target.value)}
+                    aria-invalid={Boolean(releaseAt && releaseAtError) || undefined}
+                    className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-brand/50"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    In your time zone, {localZone()}; at most 7 days ahead. Until then the release
+                    waits live without traffic, and freezes are checked at that time.
+                  </span>
+                </div>
+                <ReleaseChannelPicker
+                  value={notify}
+                  onChange={setNotify}
+                  idPrefix="deploy-git-notify"
+                  legend="Tell when it starts or cannot"
+                />
+              </>
+            )}
+          </div>
+        )}
         {mode === 'review' && (
           <ReviewedSourceBody
             appPhase={appPhase}
@@ -461,6 +580,8 @@ export function DeployFromGitModal({
     </Modal>
   );
 }
+
+const scheduledAt = zonedTime;
 
 /** What a review pins and how the deploy will use it, before anything is sent. */
 function ReviewedSourceBody({
