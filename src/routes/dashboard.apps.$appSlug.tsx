@@ -10,6 +10,7 @@ import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { useCapabilityRegistry } from '@/lib/api/capabilities';
 import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, useParams } from '@tanstack/react-router';
@@ -184,6 +185,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
+      workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
@@ -194,6 +196,8 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
     webhookDirection: search.webhookDirection === 'inbound' ? 'inbound' : undefined,
+    workflowRun:
+      typeof search.workflowRun === 'string' && search.workflowRun ? search.workflowRun : undefined,
   }),
   component: FunctionDetailPage,
 });
@@ -420,6 +424,18 @@ function FunctionDetailPage() {
                       hash: true,
                     });
                   }}
+                />
+              )}
+              {tab === 'Workflows' && (
+                <WorkflowsBody
+                  slug={fn.id}
+                  run={search.workflowRun}
+                  onRun={(workflowRun) =>
+                    void navigate({
+                      search: (current) => ({ ...current, workflowRun }),
+                      hash: true,
+                    })
+                  }
                 />
               )}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
