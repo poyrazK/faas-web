@@ -637,21 +637,17 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 95,
     name: 'Delayed tasks',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/apps/$appSlug?tab=Queues', '/dashboard/queues'],
     capability: 'delayed-execution',
-    gap: 'Schedule form lacks headers, retry policy, retention, webhook destinations, relative delay and work policy',
-    wave: 2,
   },
   // E96 · beta
   {
     row: 96,
     name: 'Async invocations and results',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?tab=Invoke'],
     capability: 'async-invocations',
-    gap: 'Retry settings: the app default (max_retries, retry_policy) and per-invocation retry_policy and retention_seconds',
-    wave: 2,
   },
   // E97 · preview
   {

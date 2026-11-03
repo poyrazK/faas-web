@@ -14,6 +14,7 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import type { InvocationEnvelope } from './async-invocations';
 import { useWorkspaceTarget } from './workspace-apps';
 import { postgresDatabasesSettling, postgresKey } from './postgres';
 import { uploadTarball, type DeployOptions } from './uploads';
@@ -544,28 +545,51 @@ export type DelayedTask = components['schemas']['DelayedTaskResponse'];
  * write can refresh them all without knowing which ones are mounted. */
 const delayedTasksKey = ['delayed-tasks'] as const;
 
-/** Schedule a one-shot task to fire at a future time. */
+/**
+ * Schedule a one-shot task, at a time or after a delay — apid takes exactly
+ * one of `scheduled_at` and `delay_seconds` (handlers_invocations.go:787).
+ */
 export function useScheduleDelayedTask(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      scheduledAt: string;
-      payload: Record<string, unknown>;
-      /** The request the task makes; apid defaults to POST /. */
-      method?: string;
-      path?: string;
-    }) =>
-      unwrap(
+    mutationFn: (
+      input: (
+        | { scheduledAt: string; delaySeconds?: undefined }
+        | { delaySeconds: number; scheduledAt?: undefined }
+      ) & {
+        payload: Record<string, unknown>;
+        /** The request the task makes; apid defaults to POST /. */
+        method?: string;
+        path?: string;
+        headers?: Record<string, unknown>;
+        /** Work identity, destinations, retry curve and retention. */
+        envelope?: InvocationEnvelope;
+        /** apid answers a repeat within 24 h with the first task instead of a second. */
+        idempotencyKey?: string;
+      }
+    ) => {
+      const request = {
+        ...(input.method ? { method: input.method } : {}),
+        ...(input.path ? { path: input.path } : {}),
+        ...(input.headers ? { headers: input.headers } : {}),
+        payload: input.payload,
+        ...input.envelope,
+      };
+      return unwrap(
         api.POST('/v1/apps/{slug}/delayed-tasks', {
-          params: { path: { slug } },
-          body: {
-            scheduled_at: input.scheduledAt,
-            ...(input.method ? { method: input.method } : {}),
-            ...(input.path ? { path: input.path } : {}),
-            payload: input.payload,
+          params: {
+            path: { slug },
+            ...(input.idempotencyKey
+              ? { header: { 'Idempotency-Key': input.idempotencyKey } }
+              : {}),
           },
+          body:
+            input.delaySeconds !== undefined
+              ? { delay_seconds: input.delaySeconds, ...request }
+              : { scheduled_at: input.scheduledAt, ...request },
         })
-      ),
+      );
+    },
     onSuccess: () => void qc.invalidateQueries({ queryKey: delayedTasksKey }),
   });
 }
