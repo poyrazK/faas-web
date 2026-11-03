@@ -68,9 +68,15 @@ export function StatusHeader() {
 export function StatusOverview({
   snapshot,
   updatesDelayed,
+  lastKnown = false,
 }: {
   snapshot: PublicStatusOverview;
   updatesDelayed: boolean;
+  /**
+   * The status API could not be reached and this is the last snapshot this
+   * browser stored. It is labelled as the past, never as current.
+   */
+  lastKnown?: boolean;
 }) {
   const active = [...snapshot.active_events].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'incident' ? -1 : 1;
@@ -84,24 +90,36 @@ export function StatusOverview({
       </a>
       <StatusHeader />
       <main id="status-main" className="status-main">
-        {updatesDelayed && (
-          <div className="status-delay" role="status">
+        {lastKnown ? (
+          <div className="status-delay" role="alert">
             <WarningTriangle aria-hidden="true" />
             <span>
-              <strong>Updates delayed.</strong> Showing the last available snapshot.
+              <strong>The status service is unreachable.</strong> This is the last status this
+              browser received, from{' '}
+              <time dateTime={snapshot.updated_at}>{formatDateTime(snapshot.updated_at)}</time>. It
+              may not reflect what is happening now.
             </span>
           </div>
+        ) : (
+          updatesDelayed && (
+            <div className="status-delay" role="status">
+              <WarningTriangle aria-hidden="true" />
+              <span>
+                <strong>Updates delayed.</strong> Showing the last available snapshot.
+              </span>
+            </div>
+          )
         )}
 
         <section
           className={`status-overall status-overall--${snapshot.overall_status}`}
-          aria-label="Current platform status"
+          aria-label={lastKnown ? 'Last known platform status' : 'Current platform status'}
         >
           <div className="status-overall-icon" aria-hidden="true">
             <StateIcon state={snapshot.overall_status} />
           </div>
           <div className="status-overall-copy">
-            <p>Current platform status</p>
+            <p>{lastKnown ? 'Last known platform status' : 'Current platform status'}</p>
             <h1>{overallLabels[snapshot.overall_status]}</h1>
           </div>
           <div className="status-freshness">
@@ -371,7 +389,12 @@ export function IncidentDetail({ event }: { event: PublicStatusEvent }) {
   );
 }
 
-export function StatusUnavailable() {
+/**
+ * The status API did not answer and this browser has no recent snapshot. The
+ * status service runs on the platform it reports on, so its silence is itself
+ * a signal: say that plainly rather than "try again shortly".
+ */
+export function StatusUnavailable({ onRetry }: { onRetry?: () => void } = {}) {
   return (
     <div className="status-shell">
       <StatusHeader />
@@ -379,8 +402,17 @@ export function StatusUnavailable() {
         <div className="status-unavailable-icon" aria-hidden="true">
           <WarningTriangle />
         </div>
-        <h1>Status temporarily unavailable</h1>
-        <p>We could not load the current snapshot. Please try again shortly.</p>
+        <h1>The status service is unreachable</h1>
+        <p>
+          It runs on the platform it reports on, so when it cannot answer, an incident is often
+          affecting Gregale itself. This page will show the current status as soon as the service
+          responds.
+        </p>
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
       </main>
       <StatusFooter />
     </div>

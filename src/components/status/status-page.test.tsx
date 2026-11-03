@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { IncidentDetail, StatusNotFound, StatusOverview, StatusUnavailable } from './status-page';
 import type { PublicStatusEvent, PublicStatusOverview } from '@/lib/api/status';
 
@@ -192,7 +193,7 @@ describe('StatusOverview', () => {
 it('renders the initial failure and incident timeline accessibly', () => {
   const { rerender } = render(<StatusUnavailable />);
   expect(
-    screen.getByRole('heading', { name: 'Status temporarily unavailable' })
+    screen.getByRole('heading', { name: 'The status service is unreachable' })
   ).toBeInTheDocument();
   rerender(<IncidentDetail event={event()} />);
   expect(screen.getByRole('heading', { name: 'API errors' })).toBeInTheDocument();
@@ -202,5 +203,25 @@ it('renders the initial failure and incident timeline accessibly', () => {
 it('distinguishes a missing status event from a platform outage', () => {
   render(<StatusNotFound />);
   expect(screen.getByRole('heading', { name: 'This event is unavailable' })).toBeInTheDocument();
-  expect(screen.queryByText('Status temporarily unavailable')).not.toBeInTheDocument();
+  expect(screen.queryByText('The status service is unreachable')).not.toBeInTheDocument();
+});
+
+describe('when the status service is unreachable', () => {
+  it('shows the last snapshot this browser received as the past, never as current', () => {
+    render(<StatusOverview snapshot={snapshot()} updatesDelayed lastKnown />);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /The status service is unreachable\. This is the last status this browser received/
+    );
+    expect(screen.getByRole('region', { name: 'Last known platform status' })).toBeInTheDocument();
+    expect(screen.queryByText('Current platform status')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Updates delayed/)).not.toBeInTheDocument();
+  });
+
+  it('offers a retry when there is no snapshot to show', async () => {
+    const onRetry = vi.fn();
+    render(<StatusUnavailable onRetry={onRetry} />);
+    expect(screen.getByText(/an incident is often affecting Gregale itself/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
 });
