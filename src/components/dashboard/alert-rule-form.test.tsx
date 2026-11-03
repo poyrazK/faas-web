@@ -139,6 +139,25 @@ describe('AlertRuleForm', () => {
     expect(created[0]).toMatchObject({ metric: 'slo_budget_burn', slo_id: SLO.id });
   });
 
+  it('starts from a draft naming one SLO or check, as the SLO and check pages open it', async () => {
+    const other = { ...SLO, id: '7b2c6d3e-1d2e-4f3a-8b4c-1d2e3f4a5b6c', name: 'latency' };
+    api({ 'GET /v1/apps/{slug}/slos': () => [SLO, other] });
+    renderWithProviders(
+      <AlertRuleForm
+        slug="api"
+        initial={{
+          metric: 'slo_budget_burn',
+          comparison: 'gt',
+          threshold: '14.4',
+          sloId: other.id,
+        }}
+      />
+    );
+    expect(metricSelect()).toHaveValue('slo_budget_burn');
+    expect(await screen.findByRole('combobox', { name: 'SLO' })).toHaveValue(other.id);
+    expect(screen.getByRole('spinbutton', { name: 'Threshold' })).toHaveValue(14.4);
+  });
+
   it('names a synthetic check and hands out the CLI when the app has none', async () => {
     api({ 'GET /v1/apps/{slug}/synthetics': () => [] });
     renderWithProviders(<AlertRuleForm slug="api" />);
