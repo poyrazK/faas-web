@@ -57,6 +57,7 @@ import { QueuesBody } from './dashboard.queues';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { DebugBody } from '@/components/dashboard/debug-body';
+import { ForksBody } from '@/components/dashboard/app-forks';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
@@ -813,6 +814,7 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Forks' && <ForksBody slug={fn.id} />}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
