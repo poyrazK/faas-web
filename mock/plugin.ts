@@ -40,7 +40,13 @@ import {
   mockApprovalId,
 } from './environment-readiness';
 import { getStageQueueRecord, putStageQueueRecord } from './stage-queues';
-import { mockDomainDetail, mockSetDefaultDomain } from './domain-detail';
+import {
+  mockDomainCreateRefusal,
+  mockDomainDetail,
+  mockHostNames,
+  mockHostsNotWildcard,
+  mockSetDefaultDomain,
+} from './domain-detail';
 import {
   advanceDeployments,
   buildLogAt,
@@ -6311,25 +6317,42 @@ function challengeExpiry(domain: string): number {
   }
   return at;
 }
-const txtRecordFor = (domain: string) => `_gregale-challenge.${domain} TXT "${db.id()}"`;
+// A wildcard proves ownership at its zone, never at a literal `*` label.
+const txtRecordFor = (domain: string) =>
+  `_gregale-challenge.${domain.replace(/^\*\./, '')} TXT "${db.id()}"`;
 
 route('GET', '/v1/domains', () => db.domains);
 // Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
 // that is pending with an expired challenge re-arms it: a new token and a new
-// seven-day window. A verified domain or a live challenge is a 409.
+// seven-day window. A verified domain or a live challenge is a 409. A wildcard
+// (`*.zone`) needs Pro or Scale (MOCK_PLAN) and the wildcard-domains capability
+// (MOCK_HIDDEN_CAPABILITIES); an environment must be one of the app's project's
+// (mock/domain-detail.ts mockDomainCreateRefusal).
 route('POST', '/v1/domains', ({ body }) => {
   const domain = String(body.domain ?? '')
     .toLowerCase()
     .trim();
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
+  if (!/^(\*\.)?[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) throw new Problem(400, 'invalid_domain');
   const ref = String(body.app_id ?? '');
   const a = db.apps.find((x) => x.id === ref) ?? db.appBySlug(ref);
   if (!a) throw new Problem(404, 'not_found', 'no such app');
+  const environment = String(body.environment ?? '');
+  const project = projects.find((p) => p.workloads.some((w) => w.slug === a.slug));
+  const refusal = mockDomainCreateRefusal({
+    domain,
+    environment,
+    plan: process.env.MOCK_PLAN ?? db.account.plan,
+    wildcardHidden: hiddenCapabilities.has('wildcard-domains'),
+    environments: project && environmentInventory(project.slug)?.map((e) => e.slug),
+  });
+  if (refusal) throw new Problem(refusal.status, refusal.code, refusal.detail);
   const existing = db.domains.find((d) => d.domain === domain);
   if (existing) {
     if (existing.verified || challengeExpiry(domain) > Date.now())
       throw new Problem(409, 'validation_failed', 'Domain taken');
     existing.app_id = a.id;
+    if (environment) existing.environment = environment;
+    else delete existing.environment;
     existing.challenge_token = db.id().slice(0, 24);
     existing.txt_record = txtRecordFor(domain);
     domainExpiry.set(domain, Date.now() + CHALLENGE_MS);
@@ -6339,6 +6362,7 @@ route('POST', '/v1/domains', ({ body }) => {
   const created = {
     domain,
     app_id: a.id,
+    ...(environment ? { environment } : {}),
     verified: false,
     challenge_token: db.id().slice(0, 24),
     txt_record: txtRecordFor(domain),
@@ -6362,6 +6386,7 @@ route('DELETE', '/v1/domains/{domain}', ({ params }) => {
   const i = db.domains.findIndex((d) => d.domain === params.domain);
   if (i < 0) throw new Problem(404, 'domain_not_found');
   db.domains.splice(i, 1);
+  domainHosts.delete(params.domain);
   return NO_CONTENT;
 });
 
@@ -6439,6 +6464,36 @@ route('POST', '/v1/domains/{domain}/default', ({ params }) => {
       default_domain: result.domain,
     });
   return result;
+});
+
+// A wildcard's host allowlist (faas pkg/apid/domainhosts). Empty means every
+// name below the wildcard may hold a certificate; the list lives beside the
+// rows, which are schema-typed.
+const domainHosts = new Map<string, string[]>();
+function wildcardRow(domain: string) {
+  const d = db.domains.find((x) => x.domain === domain);
+  if (!d) throw new Problem(404, 'not_found', 'no such domain');
+  const refusal = mockHostsNotWildcard(d.domain);
+  if (refusal) throw new Problem(refusal.status, refusal.code, refusal.detail);
+  return d;
+}
+const hostsOf = (domain: string) => {
+  const names = domainHosts.get(domain) ?? [];
+  return { domain, names, restricted: names.length > 0 };
+};
+route('GET', '/v1/domains/{domain}/hosts', ({ params }) =>
+  hostsOf(wildcardRow(params.domain).domain)
+);
+route('PUT', '/v1/domains/{domain}/hosts', ({ params, body }) => {
+  const d = wildcardRow(params.domain);
+  const names = mockHostNames(d.domain, body.names);
+  if (!Array.isArray(names)) throw new Problem(names.status, names.code, names.detail, names.extra);
+  domainHosts.set(d.domain, names);
+  return hostsOf(d.domain);
+});
+route('DELETE', '/v1/domains/{domain}/hosts', ({ params }) => {
+  domainHosts.delete(wildcardRow(params.domain).domain);
+  return NO_CONTENT;
 });
 
 // --- Debugger (ADR-127) -----------------------------------------------------

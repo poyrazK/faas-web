@@ -9,6 +9,8 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { defaultBlocker, useDomainDetail, useSetDefaultDomain } from '@/lib/api/domain-detail';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useApps } from '@/lib/api/queries';
+import { isWildcardDomain } from '@/lib/api/domain-hosts';
+import { DomainHosts } from './domain-hosts';
 import { InlinePhase, queryPhase } from './primitives';
 
 /**
@@ -209,6 +211,8 @@ export function DomainDetail({ domain }: { domain: string }) {
           </ul>
         </section>
       )}
+
+      {isWildcardDomain(data.domain) && <DomainHosts domain={data.domain} />}
     </div>
   );
 }

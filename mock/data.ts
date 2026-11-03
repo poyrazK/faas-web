@@ -1080,6 +1080,16 @@ export const domains: S['CustomDomainResponse'][] = [
     default: true,
   },
   { domain: 'img.acme.dev', app_id: apps[1].id, verified: true, verified_at: iso(19 * D) },
+  // A Pro wildcard with no host allowlist yet, and a domain bound to one
+  // environment of apps[0]'s project (mock/projects.ts acme-shop).
+  { domain: '*.tenants.acme.dev', app_id: apps[0].id, verified: true, verified_at: iso(12 * D) },
+  {
+    domain: 'staging.acme.dev',
+    app_id: apps[0].id,
+    environment: 'staging',
+    verified: true,
+    verified_at: iso(6 * D),
+  },
   {
     domain: 'hooks.acme.dev',
     app_id: apps[2].id,
