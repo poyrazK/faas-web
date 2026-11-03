@@ -136,10 +136,13 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 17,
     name: 'Affected-workload preview: what a deploy will touch',
-    status: 'partial',
-    surfaces: ['/dashboard/projects'],
-    gap: 'Single-app deploy diff (gregale diff)',
-    wave: 2,
+    status: 'full',
+    surfaces: [
+      '/dashboard/projects',
+      '/dashboard/releases',
+      '/dashboard/apps/$appSlug?tab=Configuration',
+    ],
+    capability: 'deploy-diff',
   },
   // A18 · beta
   {
