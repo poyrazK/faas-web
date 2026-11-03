@@ -466,9 +466,8 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 63,
     name: 'Custom domains with managed TLS, wildcard domains (Pro+), domain doctor',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/domains'],
-    gap: 'Wildcard and environment-bound domains cannot be added from the form',
     wave: 1,
   },
   // D64 · GA

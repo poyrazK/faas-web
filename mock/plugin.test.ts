@@ -723,6 +723,69 @@ describe('custom domain verification retry and re-add', () => {
   });
 });
 
+describe('wildcard and environment-bound custom domains', () => {
+  const app = async (slug: string) =>
+    (
+      await json('/v1/apps', {
+        method: 'POST',
+        body: JSON.stringify({ slug, type: 'app', runtime: 'node24' }),
+      })
+    ).body.id as string;
+  const add = (body: Record<string, unknown>) =>
+    json('/v1/domains', { method: 'POST', body: JSON.stringify(body) });
+  const hosts = (domain: string, init?: RequestInit) =>
+    fetch(`${base}/v1/domains/${domain}/hosts`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  it('adds a wildcard on Pro, proved at its zone, and refuses one below Pro with 402', async () => {
+    const id = await app('wild-app-a');
+    const created = await add({ domain: '*.wild-a.example.com', app_id: id });
+    expect(created.status).toBe(201);
+    expect(created.body.txt_record).toContain('_gregale-challenge.wild-a.example.com ');
+    vi.stubEnv('MOCK_PLAN', 'hobby');
+    const refused = await add({ domain: '*.wild-b.example.com', app_id: id });
+    expect(refused.status).toBe(402);
+    expect(refused.body.code).toBe('wildcard_domains_not_allowed');
+  });
+
+  it('refuses an environment for an app outside every project with 400', async () => {
+    const id = await app('wild-app-b');
+    const refused = await add({ domain: 'env.example.com', app_id: id, environment: 'staging' });
+    expect(refused.status).toBe(400);
+    expect(refused.body.code).toBe('validation_failed');
+  });
+
+  it('reads, replaces and removes a wildcard host allowlist', async () => {
+    const id = await app('wild-app-c');
+    await add({ domain: '*.wild-c.example.com', app_id: id });
+    const domain = '*.wild-c.example.com';
+    expect(await (await hosts(domain)).json()).toEqual({ domain, names: [], restricted: false });
+    const saved = await hosts(domain, {
+      method: 'PUT',
+      body: JSON.stringify({ names: ['API', 'eu.shop.wild-c.example.com', 'api'] }),
+    });
+    expect(await saved.json()).toEqual({ domain, names: ['api', 'eu.shop'], restricted: true });
+    expect((await (await hosts(domain)).json()).names).toEqual(['api', 'eu.shop']);
+    const many = await hosts(domain, {
+      method: 'PUT',
+      body: JSON.stringify({ names: Array.from({ length: 101 }, (_, i) => `n${i}`) }),
+    });
+    expect(many.status).toBe(422);
+    expect(await many.json()).toMatchObject({ limit: 100, observed: 101 });
+    expect((await hosts(domain, { method: 'DELETE' })).status).toBe(204);
+    expect((await (await hosts(domain)).json()).restricted).toBe(false);
+  });
+
+  it('answers 422 for a domain that is not a wildcard, and 404 for an unknown one', async () => {
+    const id = await app('wild-app-d');
+    await add({ domain: 'plain-d.example.com', app_id: id });
+    expect((await hosts('plain-d.example.com')).status).toBe(422);
+    expect((await hosts('*.nobody.example.com')).status).toBe(404);
+  });
+});
+
 describe('object storage buckets in the mock', () => {
   it('binds a bucket to its app under the default prefix, and counts the credential once', async () => {
     expect(

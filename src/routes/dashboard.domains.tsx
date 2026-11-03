@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Activity, Plus, Trash } from 'iconoir-react';
+import { Activity, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
-import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
@@ -17,15 +17,11 @@ import {
   useDomains,
   useRetryDomain,
 } from '@/lib/api/queries';
+import { DomainAddForm, isDomainName } from '@/components/dashboard/domain-add-form';
 import { DomainDetailButton } from '@/components/dashboard/domain-detail';
 import { DomainDoctor } from '@/components/dashboard/domain-doctor';
 import { slugIndex } from '@/lib/api/adapters';
 import { ApiError } from '@/lib/api/errors';
-import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
-import { cn } from '@/lib/utils';
-
-/** A registrable hostname: labels of letters/digits/hyphens, at least one dot. */
-const HOST_RULE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 import { consoleHead } from '@/lib/seo';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 
@@ -41,7 +37,8 @@ export const Route = createFileRoute('/dashboard/domains')({
     ...raw,
     q: typeof raw.q === 'string' && raw.q.trim() ? raw.q : undefined,
     status: raw.status === 'pending' || raw.status === 'verified' ? raw.status : undefined,
-    doctor: typeof raw.doctor === 'string' && HOST_RULE.test(raw.doctor) ? raw.doctor : undefined,
+    // A wildcard has a doctor too: it probes the wildcard's check host.
+    doctor: typeof raw.doctor === 'string' && isDomainName(raw.doctor) ? raw.doctor : undefined,
   }),
   head: () => consoleHead('domains'),
 });
@@ -100,13 +97,6 @@ function DomainsPage() {
     });
   const setDoctorFor = (doctor?: string) => select({ doctor });
   const hostInput = useRef<HTMLInputElement>(null);
-
-  const [host, setHost] = useState('');
-  const [appSlug, setAppSlug] = useState('');
-  const validation = useFormValidation<'host'>();
-  const hostOk = HOST_RULE.test(host.trim());
-  const hostError = hostOk ? undefined : 'Enter a full hostname, like api.example.com.';
-  const showHostError = validation.submitAttempted ? hostError : undefined;
 
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
@@ -254,8 +244,12 @@ function DomainsPage() {
       key: 'app',
       label: 'Routes to',
       priority: 'secondary',
+      // An environment-bound domain names its environment under the app.
       render: (d) => (
-        <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+        <span className="flex flex-col items-start gap-1">
+          <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">{d.app}</span>
+          {d.environment && <Pill label={d.environment} />}
+        </span>
       ),
     },
     {
@@ -365,31 +359,6 @@ function DomainsPage() {
     },
   ];
 
-  const submit = () => {
-    // The create endpoint binds by app id, while everything the user sees is a
-    // slug — so the selection is resolved back to an id here.
-    const target = (apps ?? []).find((a) => a.slug === (appSlug || apps?.[0]?.slug));
-    if (!target) {
-      toast({ kind: 'error', title: 'Pick an app to route the domain to' });
-      return;
-    }
-
-    void addDomain
-      .mutateAsync({ domain: host.trim(), app_id: target.id })
-      .then((created) => {
-        setHost('');
-        validation.resetValidation();
-        toast({
-          kind: 'success',
-          title: 'Domain added',
-          description: created.txt_record
-            ? 'Publish the TXT record shown in the table to verify it.'
-            : undefined,
-        });
-      })
-      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not add domain', error: err }));
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -398,67 +367,7 @@ function DomainsPage() {
       />
 
       <Panel lit title="Add a domain">
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!validation.validate({ host: hostError }, e.currentTarget) || addDomain.isPending)
-              return;
-            submit();
-          }}
-        >
-          <label className="flex min-w-56 flex-1 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Hostname</span>
-            <input
-              ref={hostInput}
-              name="host"
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              {...fieldErrorProps(showHostError, 'domain-host-error')}
-              placeholder="api.example.com"
-              className={cn(
-                'h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:border-brand',
-                showHostError ? 'border-[color:var(--status-critical)]' : 'border-border'
-              )}
-            />
-            {showHostError && <FieldError id="domain-host-error">{showHostError}</FieldError>}
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Routes to</span>
-            <select
-              value={appSlug}
-              onChange={(e) => setAppSlug(e.target.value)}
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-brand"
-            >
-              {(apps ?? []).map((a) => (
-                <option key={a.slug} value={a.slug}>
-                  {a.slug}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            busy={addDomain.isPending}
-            disabled={!apps?.length || Boolean(appQuery.error)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add domain
-          </Button>
-        </form>
-        {appQuery.error && (
-          <div className="mt-3">
-            <InlinePhase
-              phase={queryPhase({ error: appQuery.error })}
-              error={appQuery.error}
-              onRetry={() => void appQuery.refetch()}
-            />
-          </div>
-        )}
+        <DomainAddForm hostRef={hostInput} />
       </Panel>
 
       <ResourceTable
