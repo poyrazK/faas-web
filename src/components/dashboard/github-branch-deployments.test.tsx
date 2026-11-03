@@ -69,6 +69,13 @@ it('offers no editor for a standalone app, and says mappings need a project', ()
   expect(screen.getByText(/belong to a project, and this app is not in one/)).toBeInTheDocument();
 });
 
+it('offers no editor without a known production branch, since saving would move production', () => {
+  show({ production_branch: undefined });
+  expect(screen.queryByRole('button', { name: 'Edit mappings' })).not.toBeInTheDocument();
+  show({ production_branch: '' });
+  expect(screen.queryByRole('button', { name: 'Edit mappings' })).not.toBeInTheDocument();
+});
+
 it('offers no editor until it knows whether the app is in a project', () => {
   state.app = { data: undefined, isPending: true, error: null };
   render(<GitHubBranchDeployments slug="storefront" status={status} />);

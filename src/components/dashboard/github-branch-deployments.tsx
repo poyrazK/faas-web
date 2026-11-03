@@ -96,6 +96,12 @@ export function GitHubBranchDeployments({
   );
   // Unknown until the app read answers; a failed read is not "standalone".
   const projectId = app.data ? (app.data.project_id ?? null) : undefined;
+  // Saving rebinds with this branch, and apid falls back to the repository's
+  // default branch when it is empty (handlers_install_github.go), which would
+  // move production. Without a known production branch there is no editor.
+  const canEdit = Boolean(
+    projectId && status.installation_id && production && status.repo_full_name
+  );
   const headingId = useId();
 
   return (
@@ -104,13 +110,13 @@ export function GitHubBranchDeployments({
         <h3 id={headingId} className="label-mono text-muted-foreground">
           Branch deployments
         </h3>
-        {projectId && !editing && status.installation_id ? (
+        {canEdit && !editing ? (
           <Button size="xs" variant="outline" onClick={() => setEditing(true)}>
             Edit mappings
           </Button>
         ) : null}
       </div>
-      {editing && status.installation_id ? (
+      {editing && canEdit && status.installation_id ? (
         <BranchMappingsForm
           slug={slug}
           installationId={status.installation_id}
