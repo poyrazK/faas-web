@@ -10,6 +10,7 @@ import {
   startDeclaredRun,
   workflowHandlers,
 } from './workflows';
+import { workflowAutomationHandlers } from './workflow-automation';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
@@ -11912,6 +11913,19 @@ route('POST', '/v1/workflows/runs/{id}/resume', workflowMock.resume);
 route('POST', '/v1/workflows/runs/{id}/steps/{step}/retry', workflowMock.retryStep);
 route('POST', '/v1/apps/{slug}/workflows/runs:cancel-preview', workflowMock.cancelPreview);
 route('POST', '/v1/apps/{slug}/workflows/runs:cancel-queued', workflowMock.cancelQueued);
+
+// Workflow schedules and the recovery policy (mock/workflow-automation.ts).
+const wa = workflowAutomationHandlers(Problem);
+route('GET', '/v1/apps/{slug}/workflows/schedules', wa.schedules);
+route('GET', '/v1/apps/{slug}/workflows/schedules/{name}/preview', wa.schedulePreview);
+route('GET', '/v1/apps/{slug}/workflows/schedules/occurrences', wa.occurrences);
+route('POST', '/v1/apps/{slug}/workflows/schedules/occurrences:replay-preview', wa.replayPreview);
+route('POST', '/v1/apps/{slug}/workflows/schedules/occurrences:replay', wa.replay);
+route('GET', '/v1/apps/{slug}/recovery-policy', wa.policy);
+route('PUT', '/v1/apps/{slug}/recovery-policy', wa.setPolicy);
+route('GET', '/v1/apps/{slug}/recovery-policy/health', wa.health);
+route('POST', '/v1/apps/{slug}/recovery-policy/change-preview', wa.changePreview);
+route('POST', '/v1/apps/{slug}/recovery-policy/control', wa.control);
 
 registerEventMocks(route, Problem, NO_CONTENT);
 

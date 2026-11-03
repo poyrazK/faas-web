@@ -628,9 +628,13 @@ export const LEDGER: LedgerEntry[] = [
     row: 94,
     name: 'Workflows: code workflows SDK, attention/outcomes/performance, recovery policy',
     status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Workflows'],
+    surfaces: [
+      '/dashboard/apps/$appSlug?tab=Workflows',
+      '/dashboard/apps/$appSlug?tab=Workflow schedules',
+      '/dashboard/apps/$appSlug?tab=Recovery policy',
+    ],
     capability: 'workflows',
-    gap: 'Schedules, insights (attention, outcomes, performance), recovery policy, callback webhook bindings',
+    gap: 'Insights (attention, outcomes, performance); recovery reviews, initial-failure recovery, automatic queue, history, report and evaluation (CLI meanwhile); callback webhook bindings',
     wave: 2,
   },
   // E95 · beta
