@@ -42,6 +42,7 @@ const invalid = (detail: string) => new StorageRefusal(400, 'object_storage_inva
  * ------------------------------------------------------------------ */
 
 const STEP_MS = 3_000;
+const SEEDED_VERSIONED = new Set(['assets', 'user-uploads']);
 interface VersioningRecord {
   desired: Status;
   observed: Status;
@@ -56,8 +57,9 @@ const versioning = new Map<string, VersioningRecord>();
 function versioningRecord(bucket: BucketRef): VersioningRecord {
   let record = versioning.get(bucket.id);
   if (!record) {
-    // The seeded `assets` bucket keeps versions; every other bucket starts off.
-    const on = bucket.name === 'assets';
+    // The seeded buckets keep versions (`user-uploads` is under Object Lock,
+    // which needs them); every bucket made in the console starts off.
+    const on = SEEDED_VERSIONED.has(bucket.name);
     record = {
       desired: on ? 'Enabled' : '',
       observed: on ? 'Enabled' : '',
@@ -175,6 +177,16 @@ export function ensureVersions(where: string, bucket: BucketRef, current: Stored
     );
   }
   versions.set(where, list);
+  // The signed contract under Object Lock carries a legal hold and governance retention.
+  const contract = list.find((v) => v.key === SEEDED_HOLD_KEY && bucket.name === 'user-uploads');
+  if (contract)
+    protections.set(`${where}/${contract.key}/${contract.version_id}`, {
+      legal_hold: 'ON',
+      retention: {
+        mode: 'GOVERNANCE',
+        retain_until_date: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      },
+    });
 }
 
 const byKeyThenNewest = (a: Version, b: Version) =>
@@ -278,6 +290,8 @@ export function deleteVersion(where: string, key: string, versionId: string) {
       result: { version_id: versionId, delete_marker: false },
       current: currentOf(where, key),
     };
+  if (versionProtected(where, key, versionId))
+    throw conflict('This version is protected by retention or a legal hold.');
   const next = list.filter((v) => v !== found);
   promoteNewest(next, key);
   versions.set(where, next);
@@ -360,4 +374,399 @@ export function clearLifecycle(bucket: BucketRef): Lifecycle {
   const next = { ...before, rules: [], revision: before.revision + 1, updated_at: now() };
   lifecycles.set(bucket.id, next);
   return next;
+}
+
+/* ------------------------------------------------------------------ *
+ * CORS (faas pkg/apid/object/bucket_cors.go): the rule set is replaced as a
+ * unit; DELETE leaves only the console's own origins allowed.
+ * ------------------------------------------------------------------ */
+
+type Cors = S['ObjectBucketCORS'];
+const corsRules = new Map<string, Cors>();
+
+export function readCors(bucket: BucketRef): Cors {
+  return (
+    corsRules.get(bucket.id) ?? {
+      bucket_id: bucket.id,
+      rules: [],
+      revision: 0,
+      updated_at: bucket.created_at ?? now(),
+    }
+  );
+}
+
+export function writeCors(bucket: BucketRef, body: Record<string, unknown>): Cors {
+  const rules = body.rules as S['ObjectBucketCORSRule'][] | undefined;
+  const valid =
+    Array.isArray(rules) &&
+    rules.length >= 1 &&
+    rules.length <= 100 &&
+    rules.every(
+      (r) =>
+        Array.isArray(r.allowed_origins) &&
+        r.allowed_origins.length > 0 &&
+        r.allowed_origins.every((o) => o === '*' || /^https?:\/\/[^/?#\s]+$/.test(o)) &&
+        Array.isArray(r.allowed_methods) &&
+        r.allowed_methods.length > 0
+    );
+  if (!valid) throw invalid('Invalid object storage request.');
+  const next = { ...readCors(bucket), rules: rules!, updated_at: now() };
+  next.revision += 1;
+  corsRules.set(bucket.id, next);
+  return next;
+}
+
+export function clearCors(bucket: BucketRef) {
+  const before = readCors(bucket);
+  corsRules.set(bucket.id, { ...before, rules: [], updated_at: now() });
+}
+
+/* ------------------------------------------------------------------ *
+ * Object tags (faas pkg/apid/object/tagging.go): the whole set is replaced
+ * in place, and no version is written.
+ * ------------------------------------------------------------------ */
+
+const tags = new Map<string, Record<string, string>>();
+
+function taggable(where: string, key: string) {
+  if (!currentOf(where, key))
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+}
+
+export function readTags(where: string, key: string): S['ObjectTaggingResult'] {
+  taggable(where, key);
+  return { tags: tags.get(`${where}/${key}`) ?? (key === 'robots.txt' ? { team: 'web' } : {}) };
+}
+
+export function writeTags(
+  where: string,
+  key: string,
+  body: Record<string, unknown>
+): S['ObjectTaggingResult'] {
+  taggable(where, key);
+  const next = body.tags as Record<string, string> | undefined;
+  if (!next || typeof next !== 'object' || Object.keys(next).length > 10)
+    throw invalid('tags must be an object of at most ten entries.');
+  tags.set(`${where}/${key}`, { ...next });
+  return { tags: { ...next } };
+}
+
+export function clearTags(where: string, key: string): S['ObjectTaggingResult'] {
+  taggable(where, key);
+  tags.set(`${where}/${key}`, {});
+  return { tags: {} };
+}
+
+/* ------------------------------------------------------------------ *
+ * Default encryption (faas pkg/apid/object/bucket_encryption.go). A new
+ * default is verified before it applies; the mock verifies it in ~6 s.
+ * ------------------------------------------------------------------ */
+
+type Encryption = S['ObjectEncryption'];
+interface EncryptionRecord {
+  active?: Encryption;
+  desired?: Encryption;
+  revision: number;
+  requestedAt?: number;
+  updatedAt: string;
+}
+const encryption = new Map<string, EncryptionRecord>();
+export const MOCK_KMS_KEY = 'arn:gregale:kms:us-east-1:mock:key/app-data';
+
+export function encryptionCapabilities(): S['ObjectEncryptionCapabilities'] {
+  return { algorithms: ['AES256', 'aws:kms'], key_ids: [MOCK_KMS_KEY], bucket_defaults: true };
+}
+
+function encryptionRecord(bucket: BucketRef) {
+  let r = encryption.get(bucket.id);
+  if (!r) {
+    r = {
+      revision: bucket.name === 'user-uploads' ? 1 : 0,
+      active: bucket.name === 'user-uploads' ? { algorithm: 'AES256' } : undefined,
+      updatedAt: bucket.created_at ?? now(),
+    };
+    encryption.set(bucket.id, r);
+  }
+  if (r.requestedAt !== undefined && Date.now() - r.requestedAt >= 2 * STEP_MS) {
+    r.active = r.desired;
+    r.desired = undefined;
+    r.requestedAt = undefined;
+  }
+  return r;
+}
+
+export function readEncryption(bucket: BucketRef): S['ObjectBucketEncryption'] {
+  const r = encryptionRecord(bucket);
+  const age = r.requestedAt === undefined ? Infinity : Date.now() - r.requestedAt;
+  return {
+    bucket_id: bucket.id,
+    state: age < STEP_MS ? 'waiting' : age < 2 * STEP_MS ? 'applying' : 'ready',
+    revision: r.revision,
+    ...(r.active ? { encryption: r.active } : {}),
+    ...(r.requestedAt !== undefined && r.desired ? { desired_encryption: r.desired } : {}),
+    updated_at: r.updatedAt,
+  };
+}
+
+export function requestEncryption(bucket: BucketRef, next: Encryption | undefined) {
+  const r = encryptionRecord(bucket);
+  if (r.requestedAt !== undefined)
+    throw conflict('Another encryption change is still being applied.');
+  if (next) {
+    const caps = encryptionCapabilities();
+    const kms = next.algorithm !== 'AES256';
+    if (
+      !caps.algorithms.includes(next.algorithm) ||
+      (kms ? !caps.key_ids.includes(next.key_id ?? '') : next.key_id)
+    )
+      throw invalid('Choose an enrolled algorithm, and an enrolled key for KMS.');
+    if (next.bucket_key_enabled && next.algorithm !== 'aws:kms')
+      throw invalid('Bucket keys apply only to aws:kms.');
+  }
+  r.desired = next;
+  r.revision += 1;
+  r.requestedAt = Date.now();
+  r.updatedAt = now();
+  return readEncryption(bucket);
+}
+
+/* ------------------------------------------------------------------ *
+ * Object Lock (faas pkg/apid/object/bucket_object_lock.go). Enabling is
+ * permanent and needs versioning, which the request turns on.
+ * ------------------------------------------------------------------ */
+
+type LockConfiguration = S['ObjectBucketObjectLockConfiguration'];
+interface LockRecord {
+  observed?: LockConfiguration;
+  desired?: LockConfiguration;
+  required: boolean;
+  revision: number;
+  requestedAt?: number;
+  updatedAt: string;
+}
+const locks = new Map<string, LockRecord>();
+const SEEDED_HOLD_KEY = 'contracts/msa-2026.pdf';
+
+export function lockCapabilities(): S['ObjectLockCapabilities'] {
+  return {
+    bucket_configuration: true,
+    default_event_hold: true,
+    version_event_hold: true,
+    write_event_hold: false,
+    version_retention: true,
+    version_legal_hold: true,
+  };
+}
+
+function lockRecord(bucket: BucketRef) {
+  let r = locks.get(bucket.id);
+  if (!r) {
+    const on = bucket.name === 'user-uploads';
+    const seeded: LockConfiguration = {
+      enabled: true,
+      default_retention: { mode: 'GOVERNANCE', days: 30 },
+    };
+    r = {
+      required: on,
+      revision: on ? 1 : 0,
+      ...(on ? { observed: seeded, desired: seeded } : {}),
+      updatedAt: bucket.created_at ?? now(),
+    };
+    locks.set(bucket.id, r);
+  }
+  if (r.requestedAt !== undefined && Date.now() - r.requestedAt >= 3 * STEP_MS) {
+    r.observed = r.desired;
+    r.requestedAt = undefined;
+  }
+  return r;
+}
+
+export function lockOn(bucket: BucketRef) {
+  return lockRecord(bucket).required;
+}
+
+export function readLock(bucket: BucketRef): S['ObjectBucketObjectLock'] {
+  const r = lockRecord(bucket);
+  const age = r.requestedAt === undefined ? Infinity : Date.now() - r.requestedAt;
+  return {
+    bucket_id: bucket.id,
+    state: age < STEP_MS ? 'waiting' : age < 3 * STEP_MS ? 'applying' : 'ready',
+    revision: r.revision,
+    enabled_required: r.required,
+    observed_known: true,
+    observed_configuration: r.observed ?? { enabled: false },
+    ...(r.desired ? { desired_configuration: r.desired } : {}),
+    ...(age < STEP_MS && versioningStatus(bucket) !== 'Enabled'
+      ? { last_error_code: 'versioning_pending' as const }
+      : {}),
+    updated_at: r.updatedAt,
+  };
+}
+
+export function requestLock(bucket: BucketRef, body: Record<string, unknown>) {
+  const configuration = body.configuration as LockConfiguration | undefined;
+  if (!configuration || configuration.enabled !== true)
+    throw invalid('configuration.enabled must be true; Object Lock cannot be turned off.');
+  const r = lockRecord(bucket);
+  const same = JSON.stringify(r.desired) === JSON.stringify(configuration);
+  if (r.requestedAt !== undefined) {
+    if (same) return readLock(bucket);
+    throw conflict('Another Object Lock change is still running.');
+  }
+  if (versioningStatus(bucket) !== 'Enabled') requestVersioning(bucket, 'Enabled', false);
+  r.required = true;
+  r.desired = configuration;
+  r.revision += 1;
+  r.requestedAt = Date.now();
+  r.updatedAt = now();
+  return readLock(bucket);
+}
+
+/* ------------------------------------------------------------------ *
+ * Version protection (faas pkg/apid/object/version_protection.go). Each
+ * change is an operation a worker applies; here it applies after ~3 s.
+ * ------------------------------------------------------------------ */
+
+interface Protection {
+  legal_hold: 'ON' | 'OFF';
+  retention: S['ObjectVersionRetention'];
+}
+const protections = new Map<string, Protection>();
+const operations = new Map<
+  string,
+  { op: S['ObjectVersionProtection']; at: number; where: string }
+>();
+
+function settleOperations() {
+  for (const entry of operations.values()) {
+    const { op, at, where } = entry;
+    if (op.state === 'ready' || Date.now() - at < STEP_MS) continue;
+    const id = `${where}/${op.key}/${op.version_id}`;
+    const p = protections.get(id) ?? { legal_hold: 'OFF', retention: {} };
+    if (op.legal_hold) p.legal_hold = op.legal_hold.status;
+    if (op.retention) p.retention = { ...p.retention, ...op.retention };
+    if (op.retention && Object.keys(op.retention).length === 0) p.retention = {};
+    protections.set(id, p);
+    op.state = 'ready';
+    op.updated_at = now();
+  }
+}
+
+function protection(where: string, key: string, version: string): Protection {
+  settleOperations();
+  return protections.get(`${where}/${key}/${version}`) ?? { legal_hold: 'OFF', retention: {} };
+}
+
+export function versionProtected(where: string, key: string, version: string) {
+  const p = protection(where, key, version);
+  const until = p.retention.retain_until_date ? Date.parse(p.retention.retain_until_date) : 0;
+  return p.legal_hold === 'ON' || p.retention.event_hold === 'ON' || until > Date.now();
+}
+
+function owned(where: string, key: string, version: string) {
+  if (!findVersion(where, key, version))
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+}
+
+export function readLegalHold(
+  where: string,
+  key: string,
+  version: string
+): S['ObjectVersionLegalHoldResult'] {
+  owned(where, key, version);
+  return {
+    version_id: version,
+    legal_hold: { status: protection(where, key, version).legal_hold },
+  };
+}
+
+export function readRetention(
+  where: string,
+  key: string,
+  version: string
+): S['ObjectVersionRetentionResult'] {
+  owned(where, key, version);
+  return { version_id: version, retention: protection(where, key, version).retention };
+}
+
+function accept(
+  where: string,
+  bucket: BucketRef,
+  op: Omit<S['ObjectVersionProtection'], 'bucket_id' | 'state' | 'created_at' | 'updated_at'>
+) {
+  const existing = operations.get(op.id);
+  if (existing) return existing.op;
+  const full: S['ObjectVersionProtection'] = {
+    ...op,
+    bucket_id: bucket.id,
+    state: 'waiting',
+    created_at: now(),
+    updated_at: now(),
+  };
+  operations.set(op.id, { op: full, at: Date.now(), where });
+  return full;
+}
+
+export function requestLegalHold(
+  where: string,
+  bucket: BucketRef,
+  key: string,
+  version: string,
+  body: Record<string, unknown>
+) {
+  owned(where, key, version);
+  if (!lockOn(bucket)) throw conflict('Turn on Object Lock for this bucket first.');
+  const hold = body.legal_hold as { status?: string } | undefined;
+  if (typeof body.id !== 'string' || (hold?.status !== 'ON' && hold?.status !== 'OFF'))
+    throw invalid('id and legal_hold.status (ON or OFF) are required.');
+  return accept(where, bucket, {
+    id: body.id,
+    key,
+    version_id: version,
+    kind: 'legal_hold',
+    legal_hold: { status: hold.status },
+  });
+}
+
+export function requestRetention(
+  where: string,
+  bucket: BucketRef,
+  key: string,
+  version: string,
+  body: Record<string, unknown>
+) {
+  owned(where, key, version);
+  if (!lockOn(bucket)) throw conflict('Turn on Object Lock for this bucket first.');
+  const next = body.retention as S['ObjectVersionRetention'] | undefined;
+  if (typeof body.id !== 'string' || !next || typeof next !== 'object')
+    throw invalid('id and retention are required.');
+  const current = protection(where, key, version).retention;
+  const until = current.retain_until_date ? Date.parse(current.retain_until_date) : 0;
+  const active = current.event_hold === 'ON' || until > Date.now();
+  if (active && next.event_hold === undefined) {
+    if (!next.retain_until_date || Date.parse(next.retain_until_date) < until)
+      throw conflict('Active retention cannot be shortened or cleared.');
+    if (current.mode === 'COMPLIANCE' && next.mode === 'GOVERNANCE')
+      throw conflict('Compliance retention cannot be changed to governance.');
+  }
+  if (next.event_hold === 'ON' && !next.event_hold_duration)
+    throw invalid('An event hold needs a days or years duration.');
+  return accept(where, bucket, {
+    id: body.id,
+    key,
+    version_id: version,
+    kind: 'retention',
+    retention: next,
+  });
+}
+
+export function readOperation(bucket: BucketRef, id: string): S['ObjectVersionProtection'] {
+  settleOperations();
+  const entry = operations.get(id);
+  if (!entry || entry.op.bucket_id !== bucket.id)
+    throw new StorageRefusal(404, 'object_storage_not_found', 'Bucket or object not found.');
+  const age = Date.now() - entry.at;
+  return entry.op.state === 'ready'
+    ? entry.op
+    : { ...entry.op, state: age < STEP_MS / 2 ? 'waiting' : 'applying' };
 }

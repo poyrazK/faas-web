@@ -25,14 +25,11 @@ import { AccessMap } from './storage/access-map';
 import { CodeAccess } from './storage/code-access';
 import { BucketSettings } from './storage/bucket-settings';
 import { ObjectVersions } from './storage/object-versions';
+import { ObjectTags } from './storage/object-tags';
 import { accessModel, type AccessConnection } from '@/lib/storage-access';
 import { formatUsageBytes } from '@/lib/usage-format';
 import { cn } from '@/lib/utils';
-import {
-  cliBucketEncryptionCommand,
-  cliBucketObjectLockCommand,
-  cliBucketUploadsCommand,
-} from '@/lib/cli-commands';
+import { cliBucketUploadsCommand } from '@/lib/cli-commands';
 import {
   bucketKey,
   objectKey,
@@ -569,16 +566,6 @@ function BucketCliPanel({
         </p>
       </div>
       <CliCommand
-        label="Default encryption"
-        copyLabel={copyLabel('encryption')}
-        command={cliBucketEncryptionCommand(slug, bucketId)}
-      />
-      <CliCommand
-        label="Object Lock"
-        copyLabel={copyLabel('Object Lock')}
-        command={cliBucketObjectLockCommand(slug, bucketId)}
-      />
-      <CliCommand
         label="Multipart uploads in progress"
         copyLabel={copyLabel('multipart uploads')}
         command={cliBucketUploadsCommand(slug, bucketId)}
@@ -607,6 +594,7 @@ function ObjectBrowser({
   const [key, setKey] = useState('');
   const [dragging, setDragging] = useState(false);
   const [view, setView] = useState<'current' | 'versions'>('current');
+  const [tagged, setTagged] = useState('');
   const versionsOn = useCapabilityAccess('object-versioning').access === 'on';
   const showVersions = versionsOn && view === 'versions';
   // Read only behind the capability: apid answers its routes 404 when it is off.
@@ -896,6 +884,15 @@ function ObjectBrowser({
                     <Button
                       size="sm"
                       variant="ghost"
+                      aria-expanded={tagged === o.key}
+                      aria-label={`Tags on ${o.key}`}
+                      onClick={() => setTagged(tagged === o.key ? '' : o.key)}
+                    >
+                      Tags
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       disabled={!signingEnabled || mutation.isPending}
                       onClick={() =>
                         mutation.mutate(async () => {
@@ -935,6 +932,14 @@ function ObjectBrowser({
                       Delete
                     </Button>
                   </span>
+                  {tagged === o.key && (
+                    <ObjectTags
+                      slug={slug}
+                      bucket={bucket}
+                      objectKey={o.key}
+                      writable={signingEnabled}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

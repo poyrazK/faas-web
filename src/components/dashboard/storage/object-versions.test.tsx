@@ -12,7 +12,13 @@ const mocks = vi.hoisted(() => ({
   sign: vi.fn(),
   confirm: vi.fn(),
   toast: vi.fn(),
+  access: vi.fn(),
+  lock: vi.fn(),
+  lockCaps: vi.fn(),
+  hold: vi.fn(),
+  retention: vi.fn(),
 }));
+vi.mock('@/lib/api/capabilities', () => ({ useCapabilityAccess: mocks.access }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
 vi.mock('@/lib/api/object-storage', async (original) => ({
@@ -22,6 +28,10 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   deleteObjectVersion: mocks.remove,
   restoreObjectVersion: mocks.restore,
   signStoredObject: mocks.sign,
+  useBucketObjectLock: mocks.lock,
+  useObjectLockCapabilities: mocks.lockCaps,
+  useVersionLegalHold: mocks.hold,
+  useVersionRetention: mocks.retention,
 }));
 
 const CURRENT = '0b5c3a52-27a4-4b8e-9e3f-0f6c6c2c2a01';
@@ -110,6 +120,9 @@ beforeEach(() => {
   });
   mocks.remove.mockResolvedValue({ version_id: MARKER, delete_marker: true });
   mocks.restore.mockResolvedValue(undefined);
+  mocks.access.mockReturnValue({ access: 'on', refresh: vi.fn() });
+  mocks.lock.mockReturnValue({ data: undefined, isPending: false, error: null });
+  mocks.lockCaps.mockReturnValue({ data: undefined, isPending: false, error: null });
 });
 
 it('groups versions by key with state as colour, icon and word', () => {
@@ -256,4 +269,48 @@ it('says why there is nothing older when versioning was never on', () => {
   });
   show();
   expect(screen.getByText(/Versioning is off for this bucket/)).toBeInTheDocument();
+});
+
+it('offers protection only on an Object Lock bucket, and only behind its capability', async () => {
+  const user = userEvent.setup();
+  mocks.lock.mockReturnValue({
+    data: {
+      bucket_id: 'bucket-one',
+      state: 'ready',
+      revision: 1,
+      enabled_required: true,
+      observed_known: true,
+    },
+    isPending: false,
+    error: null,
+  });
+  mocks.lockCaps.mockReturnValue({
+    data: { version_legal_hold: true, version_retention: false },
+    isPending: false,
+    error: null,
+  });
+  mocks.hold.mockReturnValue({
+    data: { version_id: OLDER, legal_hold: { status: 'OFF' } },
+    isPending: false,
+    error: null,
+  });
+  mocks.retention.mockReturnValue({ data: undefined, isPending: false, error: null });
+  show();
+  await user.click(
+    screen.getByRole('button', { name: `Protection for version ${OLDER} of manifest.json` })
+  );
+  expect(
+    screen.getByRole('group', { name: `Protection for version ${OLDER}` })
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Place legal hold' })).toBeInTheDocument();
+});
+
+it('reads no lock state and offers no protection when the capability is off', () => {
+  mocks.access.mockImplementation((id: string) => ({
+    access: id === 'object-protection' ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  show();
+  expect(screen.queryByRole('button', { name: /^Protection for version/ })).toBeNull();
+  expect(mocks.lock).toHaveBeenCalledWith('demo', '');
 });

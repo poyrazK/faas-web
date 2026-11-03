@@ -29,6 +29,9 @@ import {
   type RuleDraft,
 } from './lifecycle-draft';
 import { LifecycleEditor } from './lifecycle-editor';
+import { CorsSetting } from './cors-setting';
+import { EncryptionSetting } from './encryption-setting';
+import { ObjectLockSetting } from './object-lock-setting';
 import { storageRefusal } from './refusals';
 import { StatusChip } from './status-chip';
 
@@ -85,6 +88,7 @@ export function BucketSettings({
   deleting: boolean;
 }) {
   const [editingRules, setEditingRules] = useState(false);
+  const [editingCors, setEditingCors] = useState(false);
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       {/* Each setting is its own preview capability: off, its panel explains
@@ -108,6 +112,29 @@ export function BucketSettings({
             enabled={enabled}
             onEditing={setEditingRules}
           />
+        </section>
+      </CapabilityGate>
+
+      <CapabilityGate capability="bucket-encryption" title="Encryption">
+        <section className="storage-setting flex min-w-0 flex-col gap-3 rounded-2xl border border-border p-5">
+          <EncryptionSetting slug={slug} bucket={bucket} enabled={enabled} />
+        </section>
+      </CapabilityGate>
+
+      <CapabilityGate capability="object-protection" title="Object Lock">
+        <section className="storage-setting flex min-w-0 flex-col gap-3 rounded-2xl border border-border p-5">
+          <ObjectLockSetting slug={slug} bucket={bucket} enabled={enabled} />
+        </section>
+      </CapabilityGate>
+
+      <CapabilityGate capability="bucket-cors" title="Browser access (CORS)">
+        <section
+          className={cn(
+            'storage-setting flex min-w-0 flex-col gap-3 rounded-2xl border border-border p-5',
+            editingCors && 'lg:col-span-2'
+          )}
+        >
+          <CorsSetting slug={slug} bucket={bucket} onEditing={setEditingCors} />
         </section>
       </CapabilityGate>
 

@@ -15,6 +15,8 @@ export function storageRefusal(error: unknown, conflict?: string): string | unde
       return conflict ?? 'The bucket is busy with another change. Try again in a moment.';
     case 'object_storage_unsupported':
       return "This bucket's storage does not support this setting.";
+    case 'object_storage_not_taggable':
+      return 'This object version does not support tags.';
     case 'object_storage_invalid':
       return 'apid did not accept these values. Check them and try again.';
     case 'object_storage_unavailable':
