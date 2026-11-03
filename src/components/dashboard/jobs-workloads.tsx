@@ -8,6 +8,7 @@ import { JobActions } from '@/components/dashboard/job-actions';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
 import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
+import { JobOccurrences } from '@/components/dashboard/job-occurrences';
 import { JobRegistryCredentialsPanel } from '@/components/dashboard/registry-credentials';
 import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { Button } from '@/components/ui/button';
@@ -269,17 +270,30 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration and schedule. Changing the image, command, environment or resources still takes gregale job update."
+            description="What each task runs, its limits, failure rules and schedule. Edits apply to runs started afterwards."
             actions={
               <JobActions
                 name={job}
                 status={selectedJob.status}
+                job={selectedJob}
                 onStarted={(run) => onSelection({ run, task: undefined })}
                 onDeleted={() => onSelection({ job: undefined, run: undefined, task: undefined })}
               />
             }
           >
             <JobDefinition name={job} />
+          </Panel>
+        )}
+
+        {job && selectedJob && (selectedJob.schedule || selectedJob.kind === 'recurring') && (
+          <Panel
+            title={`Schedule occurrences — ${job}`}
+            description="Each time the schedule came due, and what the scheduler decided."
+          >
+            <JobOccurrences
+              job={selectedJob}
+              onOpenRun={(run) => onSelection({ run, task: undefined })}
+            />
           </Panel>
         )}
 
@@ -304,7 +318,7 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
                   </Panel>
                   <Panel
                     title="Tasks"
-                    description="One row per task. Open a task for the tail of its log; retry a failed one, or download what a successful one published."
+                    description="One row per task. Open a task to follow its output live, read its stored tail and every attempt; retry a failed one, or download what a successful one published."
                   >
                     <JobTasks
                       name={job}

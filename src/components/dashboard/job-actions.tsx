@@ -1,34 +1,34 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { Pause, Play, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { FIELD, FieldError, fieldErrorProps } from '@/components/ui/field';
-import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { useDeleteJob, useSetJobStatus, useStartJobRun } from '@/lib/api/queries';
-
-/** `CreateJobRunRequest.tasks` is 1–5000; a plan cap below that is refused with 403 `job_quota_exceeded`, not clamped. */
-const MAX_TASKS = 5000;
-
-const plural = (n: number) => `${n} ${n === 1 ? 'task' : 'tasks'}`;
+import { useDeleteJob, useSetJobStatus, type Job } from '@/lib/api/queries';
+import { JobRunDialog, type RunAttempt } from './job-run-dialog';
 
 /**
  * Start a run of a workload, pause or resume it, or delete it.
  *
- * Starting a run launches real, billable tasks, so it goes in two steps: pick
- * how many tasks, then a confirm that says what is about to happen. The
- * response is a run in `queued`; every message says queued, because nothing has
- * run yet. Delete asks for the workload's name.
+ * Starting a run launches real, billable tasks, so it goes in two steps: say
+ * what to run and how (job-run-dialog.tsx), then a confirm that says what is
+ * about to happen. The response is a run in `queued`; every message says
+ * queued, because nothing has run yet. Delete asks for the workload's name.
  */
 export function JobActions({
   name,
   status,
+  job,
   onStarted,
   onDeleted,
 }: {
   name: string;
   status: string;
+  /** The definition a run inherits, for the run dialog's hints. */
+  job?: Pick<
+    Job,
+    'command' | 'max_parallelism' | 'retry_max' | 'task_timeout_sec' | 'failure_rules'
+  >;
   onStarted: (runId: string) => void;
   onDeleted: () => void;
 }) {
@@ -138,6 +138,7 @@ export function JobActions({
       {starting && (
         <JobRunDialog
           name={name}
+          job={job}
           attempts={attempts}
           onClose={() => setStarting(false)}
           onStarted={(runId) => {
@@ -147,144 +148,5 @@ export function JobActions({
         />
       )}
     </div>
-  );
-}
-
-type RunAttempt = { tasks: number; key: string };
-
-function JobRunDialog({
-  name,
-  attempts,
-  onClose,
-  onStarted,
-}: {
-  name: string;
-  attempts: RefObject<Map<string, RunAttempt>>;
-  onClose: () => void;
-  onStarted: (runId: string) => void;
-}) {
-  const start = useStartJobRun();
-  const confirm = useConfirm();
-  const { toast } = useToast();
-  const [tasks, setTasks] = useState('1');
-  const [attempted, setAttempted] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  // A retry of the same task count after an unknown outcome replays the first
-  // run rather than creating and billing another.
-
-  const count = Number(tasks);
-  const invalid = !tasks.trim() || !Number.isSafeInteger(count) || count < 1 || count > MAX_TASKS;
-  const error = attempted && invalid ? `Enter a whole number from 1 to ${MAX_TASKS}.` : undefined;
-  const close = () => {
-    if (!start.isPending) onClose();
-  };
-
-  const submit = async () => {
-    setAttempted(true);
-    setFailure(null);
-    if (invalid || start.isPending) return;
-    if (
-      !(await confirm({
-        title: `Start ${plural(count)} of ${name}?`,
-        description:
-          'This starts real tasks on your account now, and tasks that run are billable. The run is queued first. Cancelling later stops tasks still in flight; work already done is not rolled back.',
-        confirmLabel: 'Start run',
-        destructive: true,
-      }))
-    )
-      return;
-    let attempt = attempts.current.get(name);
-    if (attempt?.tasks !== count) {
-      attempt = { tasks: count, key: crypto.randomUUID() };
-      attempts.current.set(name, attempt);
-    }
-    try {
-      const run = await start.mutateAsync({
-        name,
-        tasks: count,
-        idempotencyKey: attempt.key,
-      });
-      attempts.current.delete(name);
-      toast({
-        kind: 'success',
-        title: 'Run queued',
-        description: `${plural(run.tasks)} of ${name} queued. They have not run yet; follow progress in the run list.`,
-      });
-      onStarted(run.id);
-    } catch (err) {
-      // apid stores almost every answer under the key for 24 h, refusals
-      // included, so reusing it after an ApiError would replay that refusal.
-      // Keep it only when the outcome is unknown (network failure).
-      if (err instanceof ApiError) attempts.current.delete(name);
-      // The plan cap refuses the count rather than clamping it. `limit` is the
-      // cap, so say it in the user's terms; the server prose also cites the
-      // count they sent and a "cancel a task or delete a job" hint that does
-      // not apply to a run's size.
-      const cap = err instanceof ApiError ? err.problem.limit : undefined;
-      setFailure(
-        err instanceof ApiError && err.code === 'job_quota_exceeded' && typeof cap === 'number'
-          ? `Your plan allows up to ${cap.toLocaleString('en-US')} tasks per run.`
-          : errorMessage(err)
-      );
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={close}
-      title={`Start a run of ${name}`}
-      description="Each task runs your container once. Parallelism, retries and timeout come from the workload."
-      footer={
-        <>
-          <Button type="button" variant="ghost" disabled={start.isPending} onClick={close}>
-            Cancel
-          </Button>
-          <Button type="submit" form="start-run-form" busy={start.isPending}>
-            Continue
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="start-run-form"
-        noValidate
-        className="space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        <div className="space-y-1.5">
-          <label htmlFor="run-tasks" className="text-xs font-medium">
-            Number of tasks
-          </label>
-          <input
-            id="run-tasks"
-            name="tasks"
-            type="number"
-            min="1"
-            max={MAX_TASKS}
-            step="1"
-            autoFocus
-            className={`${FIELD} w-full`}
-            value={tasks}
-            onChange={(e) => setTasks(e.target.value)}
-            disabled={start.isPending}
-            {...fieldErrorProps(error, 'run-tasks-error')}
-          />
-          {error && <FieldError id="run-tasks-error">{error}</FieldError>}
-          <p className="text-xs text-muted-foreground">
-            Plans cap a run at 100 (Hobby), 1,000 (Pro) or 5,000 (Scale) tasks. It runs on standard
-            capacity and carries on if a task fails.
-          </p>
-        </div>
-        {failure && (
-          <p role="alert" className="text-sm text-[color:var(--status-critical)]">
-            {failure}
-          </p>
-        )}
-      </form>
-    </Modal>
   );
 }

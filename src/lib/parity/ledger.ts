@@ -615,11 +615,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 93,
     name: 'Jobs, including output artifacts',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/jobs'],
     capability: 'workflows-and-jobs',
-    gap: 'Run options (inputs and manifests, flexible window, fail-fast, arguments, per-run overrides), editing image, command, env, resources and failure rules, task attempt history, schedule occurrences, live task logs',
-    wave: 2,
   },
   // E94 · beta
   {

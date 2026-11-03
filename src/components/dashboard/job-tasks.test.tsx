@@ -14,6 +14,12 @@ vi.mock('@/lib/api/jobs', () => ({
   isManagedArtifact: (uri: string) => uri.startsWith('obj://'),
   useRetryJobTask: () => ({ mutateAsync: retry, isPending: false }),
   useDownloadJobArtifact: () => ({ mutateAsync: download, isPending: false }),
+  useJobTaskAttempts: () => ({
+    data: { pages: [{ attempts: [] }] },
+    isPending: false,
+    error: null,
+    hasNextPage: false,
+  }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));

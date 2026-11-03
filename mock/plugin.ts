@@ -28,6 +28,7 @@ import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
 import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
+import * as jobsMock from './jobs';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -7930,6 +7931,10 @@ interface MockJob {
   timezone?: string;
   schedule_policy?: MockSchedulePolicy;
   last_scheduled_at?: string;
+  image_materialization_status: string;
+  image_materialization_error?: string;
+  env_overrides?: Record<string, string>;
+  failure_rules?: components['schemas']['FailureRules'];
 }
 const jobs: MockJob[] = jobSeed.map((j) => ({
   id: db.id(),
@@ -7937,6 +7942,7 @@ const jobs: MockJob[] = jobSeed.map((j) => ({
   name: j.name,
   kind: j.kind,
   image_ref: `registry.gregale.dev/acme/${j.name}:v3`,
+  image_materialization_status: 'ready',
   command: ['node', 'scripts/run.js'],
   ram_mb: 2048,
   task_timeout_sec: 1800,
@@ -8102,6 +8108,7 @@ route('POST', '/v1/jobs', ({ body }) => {
     name,
     kind: schedule ? 'recurring' : String(kind),
     image_ref: image,
+    image_materialization_status: 'ready',
     command: command as string[],
     ...resources,
     status: 'active',
@@ -8421,6 +8428,42 @@ route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs', ({ params }) => {
   };
 });
 
+// Attempt history, schedule occurrences and live task output (mock/jobs.ts).
+function jobTaskFor(params: Record<string, string>) {
+  gateJobs();
+  const { run } = jobRunFor(params.name!, params.id!);
+  const task = tasksOf(run).find((t) => t.task_index === Number(params.idx));
+  if (!task) throw new Problem(404, 'job_task_not_found', 'no such task');
+  return task;
+}
+const jobTaskAttempts: Handler = ({ params, query }) => {
+  const attempts = jobsMock.attemptsFor(jobTaskFor(params));
+  const limit = Number(query.get('limit') ?? 50);
+  const offset = Number(query.get('offset') ?? 0);
+  const page = attempts.slice(offset, offset + limit);
+  return {
+    attempts: page,
+    limit,
+    offset,
+    next_offset: page.length === limit ? offset + limit : -1,
+  };
+};
+const jobTaskLogStream: Handler = ({ params, query, req, res }) => {
+  jobsMock.streamTaskLog(jobTaskFor(params), query, req, res);
+  return undefined;
+};
+const jobOccurrences: Handler = ({ params, query }) => {
+  gateJobs();
+  const job = jobNamed(params.name!);
+  const scheduled = runsOf(job.name)
+    .filter((r) => r.trigger_kind === 'scheduled')
+    .map((r) => r.id);
+  return jobsMock.occurrencePage(jobsMock.occurrencesFor(job, scheduled), query);
+};
+route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/attempts', jobTaskAttempts);
+route('GET', '/v1/jobs/{name}/runs/{id}/tasks/{idx}/logs/stream', jobTaskLogStream);
+route('GET', '/v1/jobs/{name}/occurrences', jobOccurrences);
+
 route('POST', '/v1/jobs/{name}/runs/{id}/cancel', ({ params }) => {
   gateJobs();
   const run = runsOf(params.name).find((r) => r.id === params.id);
@@ -8442,29 +8485,59 @@ route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
   const job = jobs.find((j) => j.name === params.name);
   if (!job) throw new Problem(404, 'job_not_found', 'no such job');
   if (job.status === 'paused') throw new Problem(409, 'job_paused', 'This job is paused.');
-  const requested = body.tasks;
-  if (typeof requested !== 'number' || !Number.isSafeInteger(requested) || requested < 1)
-    throw new Problem(400, 'validation_failed', 'tasks must be a positive whole number.');
-  const tier = process.env.MOCK_PLAN === 'hobby' ? 0 : process.env.MOCK_PLAN === 'scale' ? 2 : 1;
-  const cap = [100, 1000, 5000][tier];
-  if (requested > cap)
+  if (job.image_materialization_status === 'failed')
     throw new Problem(
-      403,
-      'job_quota_exceeded',
-      `This plan caps jobs at ${cap} for tasks_per_run; you have ${requested}.`,
-      { limit: cap, observed: requested }
+      409,
+      'validation_failed',
+      'update image_ref to retry materialization before creating a run'
     );
+  // Inputs, manifests, the flexible window, fail-fast, arguments and the
+  // per-run overrides are checked as createJobRun checks them (mock/jobs.ts).
+  const checked = jobsMock.runRequestRefusal(body, job, jobsMock.jobCaps(process.env.MOCK_PLAN));
+  if ('refusal' in checked)
+    throw new Problem(
+      checked.refusal.status,
+      checked.refusal.code,
+      checked.refusal.detail,
+      checked.refusal.extra
+    );
+  const flexible = body.execution_class === 'flexible';
   const run: MockJobRun = {
     id: db.id(),
     job_id: job.id,
     account_id: 'acct-1',
     trigger_kind: 'manual' as const,
-    tasks: requested,
-    parallelism: job.max_parallelism,
-    retry_max: job.retry_max,
-    task_timeout_sec: job.task_timeout_sec,
-    execution_class: 'standard',
-    failure_policy: 'continue',
+    tasks: checked.tasks,
+    parallelism: typeof body.parallelism === 'number' ? body.parallelism : job.max_parallelism,
+    retry_max: typeof body.retry_max === 'number' ? body.retry_max : job.retry_max,
+    task_timeout_sec:
+      typeof body.task_timeout_sec === 'number' ? body.task_timeout_sec : job.task_timeout_sec,
+    execution_class: flexible ? 'flexible' : 'standard',
+    failure_policy: body.failure_policy === 'fail_fast' ? 'fail_fast' : 'continue',
+    ...(flexible
+      ? {
+          eligible_at: typeof body.eligible_at === 'string' ? body.eligible_at : db.iso(0),
+          latest_start_at: String(body.latest_start_at),
+        }
+      : {}),
+    command: Array.isArray(body.arguments)
+      ? [job.command[0]!, ...(body.arguments as string[])]
+      : job.command,
+    ...(body.env_overrides ? { env_overrides: body.env_overrides as Record<string, string> } : {}),
+    ...(body.failure_rules
+      ? { failure_rules: body.failure_rules as components['schemas']['FailureRules'] }
+      : job.failure_rules
+        ? { failure_rules: job.failure_rules }
+        : {}),
+    ...(typeof body.input_manifest_uri === 'string'
+      ? {
+          input_manifest_version: 1,
+          input_manifest_uri: body.input_manifest_uri,
+          input_manifest_sha256: String(body.input_manifest_sha256),
+        }
+      : Array.isArray(body.inputs)
+        ? { input_manifest_version: 1 }
+        : { input_manifest_version: 0 }),
     aggregate_status: 'queued',
     tasks_succeeded: 0,
     tasks_failed: 0,
@@ -8475,11 +8548,25 @@ route('POST', '/v1/jobs/{name}/runs', ({ params, body }) => {
     updated_at: db.iso(0),
   };
   runsOf(job.name).unshift(run);
+  const inputs = Array.isArray(body.inputs)
+    ? (body.inputs as components['schemas']['JobRunInput'][])
+    : [];
+  taskCache.set(
+    run.id,
+    Array.from({ length: Math.min(run.tasks, 12) }, (_, i) => ({
+      run_id: run.id,
+      task_index: i,
+      status: 'queued' as const,
+      attempt: 1,
+      created_at: db.iso(0),
+      ...(inputs[i] ? { input_id: inputs[i].input_id, input_ref: inputs[i].input_ref } : {}),
+    }))
+  );
   return status(201, run);
 });
 
-// Pause or resume. The real API (updateJob) accepts only active or paused here;
-// the other fields are a partial update the console does not send.
+// Pause or resume, edit the definition (mock/jobs.ts), or change the schedule:
+// a partial update, as apid's updateJob is.
 route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
   gateJobs();
   const job = jobs.find((j) => j.name === params.name);
@@ -8500,6 +8587,37 @@ route('PATCH', '/v1/jobs/{name}', ({ params, body }) => {
     )
       throw new Problem(409, 'validation_failed', 'Job has active runs');
     job.status = body.status;
+    job.updated_at = db.iso(0);
+  }
+  if (jobsMock.DEFINITION_FIELDS.some((field) => field in body)) {
+    const refusal = jobsMock.definitionRefusal(body, jobsMock.jobCaps(process.env.MOCK_PLAN));
+    if (refusal) throw new Problem(refusal.status, refusal.code, refusal.detail, refusal.extra);
+    if (
+      runsOf(job.name).some(
+        (r) => r.aggregate_status === 'running' || r.aggregate_status === 'queued'
+      )
+    )
+      throw new Problem(409, 'validation_failed', 'Job has active runs');
+    const image = typeof body.image_ref === 'string' ? body.image_ref.trim() : '';
+    if (image && image !== job.image_ref) {
+      // A new reference is pulled again (pgstore_jobs.go:361-372). One with
+      // ":missing" fails to pull, so the failed state can be seen.
+      job.image_ref = image;
+      job.image_materialization_status = 'pending';
+      delete job.image_materialization_error;
+      setTimeout(() => {
+        if (job.image_ref !== image) return;
+        job.image_materialization_status = image.includes(':missing') ? 'failed' : 'ready';
+        if (image.includes(':missing'))
+          job.image_materialization_error = `pull ${image}: manifest unknown`;
+      }, 5_000);
+    }
+    if (Array.isArray(body.command)) job.command = body.command as string[];
+    if (body.env_overrides) job.env_overrides = body.env_overrides as Record<string, string>;
+    for (const key of ['ram_mb', 'task_timeout_sec', 'max_parallelism', 'retry_max'] as const)
+      if (typeof body[key] === 'number') job[key] = body[key];
+    if (body.failure_rules)
+      job.failure_rules = body.failure_rules as components['schemas']['FailureRules'];
     job.updated_at = db.iso(0);
   }
   if ('schedule' in body || 'timezone' in body || 'schedule_policy' in body) {

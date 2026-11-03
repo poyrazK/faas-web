@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import { keys } from './queries';
+import { keys, retryPolicy } from './queries';
 import type { components } from './schema';
 
 /**
@@ -157,5 +157,108 @@ export function useUpdateJobSchedule() {
       schedule_policy?: SchedulePolicy;
     }) => unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.jobs }),
+  });
+}
+
+export type FailureRules = components['schemas']['FailureRules'];
+export type JobTaskAttempt = components['schemas']['JobTaskAttemptResponse'];
+export type JobOccurrence = components['schemas']['ScheduleOccurrenceResponse'];
+export type UpdateJobDefinition = Pick<
+  components['schemas']['UpdateJobRequest'],
+  | 'image_ref'
+  | 'command'
+  | 'env_overrides'
+  | 'ram_mb'
+  | 'task_timeout_sec'
+  | 'max_parallelism'
+  | 'retry_max'
+  | 'failure_rules'
+>;
+
+/**
+ * Change what a job runs (`PATCH /v1/jobs/{name}`): only the fields sent
+ * change. A new `image_ref` is pulled and prepared again before any task
+ * starts; `env_overrides` replaces the whole map; `failure_rules` replaces
+ * the stored policy and cannot remove it. Each value is checked against the
+ * plan's ceilings (403 `job_quota_exceeded`), and apid refuses any update
+ * while a task is queued or claimed (409 "Job has active runs")
+ * (handlers_jobs.go:976-1150; pgstore_jobs.go:335-399).
+ */
+export function useUpdateJobDefinition() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, ...body }: UpdateJobDefinition & { name: string }) =>
+      unwrap(api.PATCH('/v1/jobs/{name}', { params: { path: { name } }, body })),
+    onSuccess: (job) => {
+      qc.setQueryData([...keys.jobs, job.name], job);
+      return qc.invalidateQueries({ queryKey: keys.jobs });
+    },
+  });
+}
+
+const ATTEMPT_PAGE = 50;
+
+/**
+ * The immutable outcome of each finished attempt of one task, in attempt
+ * order, each with its own log tail and classifier decision
+ * (handlers_jobs.go:625-686). An attempt still running is not a row yet.
+ */
+export function useJobTaskAttempts(name: string, runId: string, index: number | null) {
+  return useInfiniteQuery({
+    queryKey: [...keys.jobs, name, 'runs', runId, 'tasks', index, 'attempts'],
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET('/v1/jobs/{name}/runs/{id}/tasks/{idx}/attempts', {
+          params: {
+            path: { name, id: runId, idx: index! },
+            query: { limit: ATTEMPT_PAGE, offset: pageParam },
+          },
+          signal,
+        })
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.next_offset > last.offset ? last.next_offset : undefined),
+    enabled: index !== null,
+    retry: retryPolicy,
+  });
+}
+
+/** Occurrence statuses the scheduler has not settled yet. */
+export const ACTIVE_JOB_OCCURRENCE: ReadonlySet<JobOccurrence['status']> = new Set([
+  'pending',
+  'queued',
+  'running',
+  'waiting_replacement',
+]);
+
+/**
+ * The scheduler's durable decision for each nominal time of a recurring
+ * job: started, skipped while a run was active, missed its start deadline,
+ * coalesced, or waiting to replace one. Newest first, paged by occurrence id
+ * (handlers_schedule_occurrences.go:53-80). Manual runs are not occurrences.
+ */
+export function useJobOccurrences(name: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...keys.jobs, name, 'occurrences'],
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET('/v1/jobs/{name}/occurrences', {
+          params: {
+            path: { name },
+            // A page of 20 keeps the panel short; older decisions load on request.
+            query: { limit: 20, ...(pageParam ? { before: pageParam } : {}) },
+          },
+          signal,
+        })
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_before ?? undefined,
+    enabled: Boolean(name) && enabled,
+    retry: retryPolicy,
+    refetchInterval: (query) =>
+      !query.state.error &&
+      query.state.data?.pages[0]?.occurrences.some((o) => ACTIVE_JOB_OCCURRENCE.has(o.status))
+        ? 5_000
+        : false,
   });
 }

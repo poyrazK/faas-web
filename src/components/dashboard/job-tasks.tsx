@@ -14,9 +14,11 @@ import {
   type JobArtifact,
 } from '@/lib/api/jobs';
 import { useJobTaskLog, useJobTasks, type JobTask } from '@/lib/api/queries';
+import { TaskOutput } from './job-task-output';
 
 /**
- * The tasks of one run, and the tail of a task's log.
+ * The tasks of one run, and what an opened task wrote: its live output while
+ * it runs, its stored tail, and its attempt history (job-task-output.tsx).
  *
  * `timeout` and `oom` are their own statuses rather than kinds of "failed",
  * because they are the two a customer most needs to tell apart: one wants a
@@ -208,28 +210,16 @@ export function JobTasks({
             )}
 
             {open === t.task_index && (
-              <div className="mt-1">
-                {logQuery.isPending || logQuery.error ? (
-                  <InlinePhase
-                    phase={queryPhase({ loading: logQuery.isPending, error: logQuery.error })}
-                    error={logQuery.error}
-                    loadingMessage="Loading log…"
-                    onRetry={() => void logQuery.refetch()}
-                  />
-                ) : (
-                  <>
-                    {logQuery.data?.truncated && (
-                      <p className="mb-1 text-xs text-[color:var(--status-warning)]">
-                        Log truncated at {logQuery.data.max_bytes} bytes — this is the tail, not the
-                        whole run.
-                      </p>
-                    )}
-                    <pre className="max-h-56 overflow-auto rounded-md border border-border bg-muted/40 p-2 font-mono text-[11px] leading-relaxed">
-                      {logQuery.data?.log_content}
-                    </pre>
-                  </>
-                )}
-              </div>
+              <TaskOutput
+                name={name}
+                runId={runId}
+                task={t}
+                stored={logQuery}
+                onEnded={() => {
+                  void refetch();
+                  void logQuery.refetch();
+                }}
+              />
             )}
           </li>
         ))}

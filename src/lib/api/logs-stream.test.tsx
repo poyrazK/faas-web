@@ -159,6 +159,46 @@ describe('log stream recovery', () => {
     expect(result.current.canRetry).toBe(false);
   });
 
+  it('follows a job task, resuming after the last line and reading the JSON end reason', () => {
+    const { result } = renderHook(() =>
+      useLogStream({ kind: 'task', job: 'nightly', runId: 'run-1', index: 2 })
+    );
+    expect(latest().url).toBe('/v1/jobs/nightly/runs/run-1/tasks/2/logs/stream');
+    expect(latest().options).toEqual({ withCredentials: true });
+    emit('open');
+    emit(
+      'log',
+      JSON.stringify({
+        seq: 7,
+        instance: 'vm-1',
+        stream: 'stdout',
+        line: 'step 1',
+        written_at: '2026-11-03T10:00:00Z',
+      })
+    );
+    expect(result.current.lines[0]).toMatchObject({
+      text: 'step 1',
+      instanceId: 'vm-1',
+      ts: Date.parse('2026-11-03T10:00:00Z'),
+    });
+    emit('error');
+    advance(1000);
+    // since_seq is an inclusive lower bound (vmmdgrpc/logs.go), so resume one past.
+    expect(latest().url).toBe('/v1/jobs/nightly/runs/run-1/tasks/2/logs/stream?since_seq=8');
+    emit('gap', JSON.stringify({ reason: 'seq_below_retained', replay_advised: true }));
+    expect(result.current.gaps).toBe(1);
+    emit('end', JSON.stringify({ reason: 'task_finished' }));
+    expect(result.current.status).toBe('ended');
+    expect(result.current.reason).toBe('task_finished');
+  });
+
+  it('reads an empty JSON end frame as no reason', () => {
+    const { result } = renderHook(() => useLogStream({ kind: 'live', slug: 'api' }));
+    emit('end', '{}');
+    expect(result.current.status).toBe('ended');
+    expect(result.current.reason).toBeUndefined();
+  });
+
   it('retains the bounded ring buffer through reconnection', () => {
     const { result } = renderHook(() => useLogStream({ kind: 'live', slug: 'api' }));
     act(() => {
