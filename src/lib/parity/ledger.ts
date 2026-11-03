@@ -239,19 +239,20 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 30,
     name: 'Deploy freezes and release windows',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deploy freezes and release windows',
+    status: 'partial',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'deploy-freezes',
+    cli: 'gregale deploy --image IMAGE --override-freeze REASON',
+    gap: 'Override a freeze from the image deploy form (Git and archive deploys, and schedules, can)',
     wave: 3,
   },
   // B31 · preview
   {
     row: 31,
     name: 'Scheduled releases',
-    status: 'none',
-    surfaces: [],
-    gap: 'Scheduled releases',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'scheduled-releases',
   },
   // B34 · beta
   {

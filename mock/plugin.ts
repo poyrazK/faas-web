@@ -26,6 +26,8 @@ import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
+import * as freezeMock from './release-freezes';
+import * as scheduleMock from './scheduled-releases';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -194,6 +196,108 @@ route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
     updated_at: '2026-10-20T09:00:00Z',
   };
 });
+// Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
+// scheduled releases (scheduled_releases.go); the logic is in
+// mock/release-freezes.ts and mock/scheduled-releases.ts.
+function guarded<T>(answer: () => T): T {
+  try {
+    return answer();
+  } catch (err) {
+    if (err instanceof freezeMock.GuardProblem)
+      throw new Problem(err.status, err.code, err.message, err.extra);
+    throw err;
+  }
+}
+const freezeApp = (slug: string) => {
+  if (!db.appBySlug(slug)) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
+  return slug;
+};
+/** A company organization; a personal one's apps use the account's freezes (409). */
+const freezeOrg = (slug: string) => {
+  const org = db.orgs.find((o) => o.slug === slug);
+  if (!org) throw new Problem(404, 'not_found', `No organization "${slug}".`);
+  if (org.personal)
+    throw new Problem(
+      409,
+      'conflict',
+      'A personal organization’s apps are frozen by your account’s freezes.'
+    );
+  return { org: slug };
+};
+route('GET', '/v1/freezes', ({ query }) => {
+  const slug = query.get('app');
+  return {
+    freezes: slug ? freezeMock.forApp(freezeApp(slug)) : freezeMock.list({ account: true }),
+  };
+});
+route('POST', '/v1/freezes', ({ body }) => {
+  const slug =
+    typeof body.app === 'string' && body.app.trim() ? freezeApp(body.app.trim()) : undefined;
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id))
+);
+route('GET', '/v1/apps/{slug}/freeze-status', ({ params }) =>
+  freezeMock.status(freezeApp(params.slug))
+);
+route('GET', '/v1/apps/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.forApp(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/freezes', ({ params, body }) => {
+  const slug = freezeApp(params.slug);
+  if (typeof body.app === 'string' && body.app.trim() && body.app.trim() !== slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      `app must be empty or ${slug}: this route freezes ${slug}`
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/apps/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id, freezeApp(params.slug)))
+);
+route('GET', '/v1/orgs/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.list(freezeOrg(params.slug)),
+}));
+route('POST', '/v1/orgs/{slug}/freezes', ({ params, body }) => {
+  const owner = freezeOrg(params.slug);
+  if (typeof body.app === 'string' && body.app.trim())
+    throw new Problem(
+      400,
+      'validation_failed',
+      'app must be empty: this route freezes all of the organization’s apps; freeze one app with POST /v1/apps/{slug}/freezes'
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create(owner, undefined, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/orgs/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift(freezeOrg(params.slug), params.id))
+);
+route('GET', '/v1/scheduled-releases', ({ query }) => {
+  scheduleMock.advance();
+  const slug = query.get('app');
+  return { items: scheduleMock.list(slug ? freezeApp(slug) : undefined) };
+});
+route('GET', '/v1/deployments/{id}/schedule', ({ params }) => {
+  scheduleMock.advance();
+  return guarded(() => scheduleMock.latest(params.id));
+});
+route('PUT', '/v1/deployments/{id}/schedule', ({ params, body }) =>
+  guarded(() => scheduleMock.schedule(params.id, body, db.account.email))
+);
+route('DELETE', '/v1/deployments/{id}/schedule', ({ params }) =>
+  guarded(() => scheduleMock.cancel(params.id, db.account.email))
+);
+
 const HIDDEN_AT_BOOT = new Set(
   (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
 );
@@ -1511,19 +1615,33 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   if (body.native_rollout !== undefined && body.expected_source === undefined)
     throw new Problem(400, 'validation_failed', 'native_rollout requires expected_source');
   if (body.expected_source !== undefined) checkReviewedSource(a, body);
-  return status(
-    202,
-    startSourceDeployment(
-      a,
-      'github',
-      `${String(body.repo)}@${String(body.ref)}`,
-      {},
-      {
-        // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
-        staged: body.traffic_percent === 0,
-      }
+  // Deploy freezes are checked now, or at release_at for a scheduled release
+  // (scheduled_releases.go:52-88); an override reason lets it through.
+  const releaseAt =
+    typeof body.release_at === 'string' && body.release_at
+      ? guarded(() => scheduleMock.parseReleaseAt(body.release_at))
+      : undefined;
+  guarded(() =>
+    freezeMock.checkRelease(
+      a.slug,
+      releaseAt ?? Date.now(),
+      body.override_freeze,
+      releaseAt !== undefined
     )
   );
+  const started = startSourceDeployment(
+    a,
+    'github',
+    `${String(body.repo)}@${String(body.ref)}`,
+    {},
+    {
+      // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
+      staged: body.traffic_percent === 0 || releaseAt !== undefined,
+    }
+  );
+  if (releaseAt !== undefined)
+    scheduleMock.record(started, a.slug, releaseAt, body.release_notify, db.account.email);
+  return status(202, started);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   // Plain rollback (handlers_ext.go:2376): restore the named release, or the
@@ -7247,6 +7365,7 @@ route('GET', '/v1/deployments/latest-by-app', () => {
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
+  scheduleMock.advance();
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
   const workerApp = db.apps.find(
