@@ -7,6 +7,7 @@ import {
   cliBucketVersioningCommand,
   cliDeployCommand,
   cliDomainSetDefaultCommand,
+  cliEdgeRuleTraceCommand,
   cliInitCommand,
   cliInitDeployCommand,
   cliJobRemoveCommand,
@@ -151,6 +152,28 @@ describe('alert target commands', () => {
   it('defines a synthetic check on a path', () => {
     expect(cliSyntheticCheckCreateCommand('shop')).toBe(
       'gregale alert check create --app shop --name <name> --path /healthz'
+    );
+  });
+});
+
+describe('cliEdgeRuleTraceCommand', () => {
+  // cmd/gregale/commands_edge_rules_trace.go:30-40: --app, --url, --method
+  // (default GET), --client-ip, --country.
+  it('leaves a placeholder for the URL the page does not know', () => {
+    expect(cliEdgeRuleTraceCommand('api', {})).toBe(
+      'gregale edge rule trace --app api --url https://<host>/<path>'
+    );
+  });
+  it('adds the method, client IP and country a person typed', () => {
+    expect(
+      cliEdgeRuleTraceCommand('api', {
+        url: 'https://api.example.com/login?next=/a b',
+        method: 'post',
+        clientIp: '203.0.113.7',
+        country: 'de',
+      })
+    ).toBe(
+      "gregale edge rule trace --app api --url 'https://api.example.com/login?next=/a b' --method POST --client-ip 203.0.113.7 --country DE"
     );
   });
 });

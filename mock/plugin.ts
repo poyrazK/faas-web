@@ -8,6 +8,7 @@ import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
 import * as preAuthMock from './pre-auth';
+import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
@@ -8593,6 +8594,31 @@ route('GET', '/v1/apps/{slug}/edge-rules/suggestions', ({ params }) => {
       "the free plan doesn't include request analytics; upgrade to Hobby or higher for historical observability."
     );
   return edgeRuleMock.suggestions(app(params.slug).id);
+});
+
+// Per-rule match counts and sampled events (edgerules/stats.go, events.go).
+route('GET', '/v1/apps/{slug}/edge-rules/stats', ({ params, query }) => {
+  const a = app(params.slug);
+  const out = edgeRuleActivity.stats(
+    db.edgeRules.filter((r) => r.app_id === a.id),
+    query.get('window') ?? '24h',
+    query.get('series') === 'true'
+  );
+  if (typeof out === 'string') throw new Problem(400, 'validation_failed', out);
+  return out;
+});
+route('GET', '/v1/apps/{slug}/edge-rules/events', ({ params, query }) => {
+  const a = app(params.slug);
+  // The route belongs to edge-rule-history; apid answers 404 while it is hidden.
+  if (hiddenCapabilities.has('edge-rule-history')) throw new Problem(404, 'not_found');
+  const out = edgeRuleActivity.events(
+    db.edgeRules.filter((r) => r.app_id === a.id),
+    a.url ? new URL(a.url).host : `${a.slug}.gregale.app`,
+    process.env.MOCK_PLAN ?? db.account.plan,
+    query
+  );
+  if (typeof out === 'string') throw new Problem(400, 'validation_failed', out);
+  return out;
 });
 
 // The WAF false-positive review and one-step exclusions (waf_review.go).

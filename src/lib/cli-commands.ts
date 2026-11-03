@@ -94,3 +94,25 @@ export function cliSloCreateCommand(appSlug: string): string {
 export function cliSyntheticCheckCreateCommand(appSlug: string): string {
   return `gregale alert check create --app ${appSlug} --name <name> --path /healthz`;
 }
+
+/**
+ * Trace which edge rules a request would match. apid has no trace endpoint:
+ * the CLI simulates the gateway locally over the rules it reads (faas
+ * cmd/gregale/commands_edge_rules_trace.go:28, pkg/edgeruletrace), so the
+ * console builds the command. GET is the CLI's default and is left out.
+ */
+export function cliEdgeRuleTraceCommand(
+  appSlug: string,
+  request: { url?: string; method?: string; clientIp?: string; country?: string }
+): string {
+  const parts = [`gregale edge rule trace --app ${appSlug}`];
+  const url = request.url?.trim();
+  parts.push(`--url ${url ? shellArg(url) : 'https://<host>/<path>'}`);
+  const method = request.method?.trim().toUpperCase();
+  if (method && method !== 'GET') parts.push(`--method ${shellArg(method)}`);
+  const ip = request.clientIp?.trim();
+  if (ip) parts.push(`--client-ip ${shellArg(ip)}`);
+  const country = request.country?.trim().toUpperCase();
+  if (country) parts.push(`--country ${shellArg(country)}`);
+  return parts.join(' ');
+}
