@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ONBOARDED_KEY, accountIdentity, claimAccountLocalState } from './account-local-state';
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
 import { endServerSessionBestEffort } from './api/logout';
@@ -36,7 +37,6 @@ import { safeInternalPath } from './redirect';
  */
 
 const SESSION_KEY = 'gregale.session';
-const ONBOARDED_KEY = 'gregale.onboarded';
 const WORKSPACE_KEY = 'gregale.workspace';
 const OAUTH_PENDING_KEY = 'gregale.oauth-pending';
 const OAUTH_RETURN_KEY = 'gregale.oauth-return';
@@ -270,6 +270,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const account = user ? (accountQuery.data ?? null) : null;
 
+  // Whose data this tab's query cache was filled for. See `adoptSession`.
+  const cacheOwner = useRef<string | null>(null);
+
+  /**
+   * Called whenever a session is established or confirmed for `email`.
+   *
+   * Sign-out and an expired session both leave the query cache in place, and
+   * its lists stay fresh for 30 s. So when a *different* account then signs in
+   * on the same tab, every cached read is dropped before the console can render
+   * one, or the next person would be shown the previous account's apps, keys
+   * and deployments without a refetch. The same account signing back in keeps
+   * its cache. `confirmed`, when given, is the account read that established
+   * the session, re-seeded so the shell does not fetch it twice.
+   */
+  const adoptSession = useCallback(
+    (email: string, confirmed?: Account) => {
+      const id = accountIdentity(email);
+      claimAccountLocalState(id);
+      const previous = cacheOwner.current;
+      cacheOwner.current = id;
+      if (previous === null || previous === id) return;
+      void queryClient.cancelQueries();
+      queryClient.removeQueries();
+      queryClient.getMutationCache().clear();
+      if (confirmed) queryClient.setQueryData(['account'], confirmed);
+    },
+    [queryClient]
+  );
+
   const setSession = useCallback(
     (next: User | null) => {
       writeSession(next);
@@ -295,8 +324,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReachable(true);
     // The server is authoritative on the address; a hint written from a typo'd
     // or since-changed email gets corrected here.
-    if (next.email) setSession(userFor(next.email));
-  }, [queryClient, setSession]);
+    if (next.email) {
+      adoptSession(next.email, next);
+      setSession(userFor(next.email));
+    }
+  }, [adoptSession, queryClient, setSession]);
 
   /**
    * Any 401 from anywhere means the cookie is gone or expired. Drop the hint so
@@ -345,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       await unwrap(api.POST('/login', { body: { email: email.trim(), password } }));
+      adoptSession(email);
       const next = userFor(email);
       setSession(next);
       // Fire and forget: the plan and quota banner can arrive a beat later
@@ -352,18 +385,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void refreshAccount().catch(() => {});
       return next;
     },
-    [refreshAccount, setSession]
+    [adoptSession, refreshAccount, setSession]
   );
 
   const signUp = useCallback(
     async (email: string, password: string) => {
       await unwrap(api.POST('/signup', { body: { email: email.trim(), password } }));
+      adoptSession(email);
       const next = userFor(email);
       setSession(next);
       void refreshAccount().catch(() => {});
       return next;
     },
-    [refreshAccount, setSession]
+    [adoptSession, refreshAccount, setSession]
   );
 
   /**
