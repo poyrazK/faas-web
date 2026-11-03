@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Plus, Trash, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/dashboard/kit/sheet';
@@ -47,7 +47,20 @@ function formatWhen(value: string | undefined): string {
  * the two can never drift into two different implementations of the
  * same resource.
  */
-export function EnvBody({ slug }: { slug: string }) {
+/** Where a body's actions go when the page gives it no heading of its own. */
+const ownRow = (actions: ReactNode) => <div className="flex justify-end gap-2">{actions}</div>;
+
+/**
+ * `header` lets the page put this body's actions in its own heading row
+ * rather than on a row of their own.
+ */
+export function EnvBody({
+  slug,
+  header,
+}: {
+  slug: string;
+  header?: (actions: ReactNode) => ReactNode;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useAppEnv(slug);
@@ -129,17 +142,19 @@ export function EnvBody({ slug }: { slug: string }) {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-          <Upload className="h-3.5 w-3.5" />
-          Import .env
-        </Button>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Set variable
-        </Button>
-      </div>
+    <div className="flex flex-col gap-3">
+      {(header ?? ownRow)(
+        <>
+          <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+            <Upload className="h-3.5 w-3.5" />
+            Import .env
+          </Button>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Set variable
+          </Button>
+        </>
+      )}
       <Sheet open={creating} onClose={() => setCreating(false)} title="Set variable">
         <form
           className="flex flex-col gap-4"

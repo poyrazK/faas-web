@@ -132,21 +132,30 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
 type Tab = AppTab;
 
 /** One half of the Environment page — env vars and secrets share it. */
-function EnvironmentSection({
+/** A section heading with its help tip, and the section's actions on the right. */
+function SectionHeading({
   title,
   help,
-  children,
+  actions,
 }: {
   title: string;
   help: string;
-  children: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
-    <section aria-label={title} className="flex flex-col gap-3">
+    <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1">
         <h2 className="text-base font-semibold">{title}</h2>
         <HelpTip label={`About ${title}`}>{help}</HelpTip>
       </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+function EnvironmentSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-3">
       {children}
     </section>
   );
@@ -740,22 +749,35 @@ function FunctionDetailPage() {
               )}
               {tab === 'Environment' && (
                 <>
-                  <EnvironmentSection
-                    title="Variables"
-                    help="Read at start. Values are visible to anyone with access to this app."
-                  >
-                    <EnvBody slug={fn.id} />
+                  <EnvironmentSection title="Variables">
+                    <EnvBody
+                      slug={fn.id}
+                      header={(actions) => (
+                        <SectionHeading
+                          title="Variables"
+                          help="Read at start. Values are visible to anyone with access to this app."
+                          actions={actions}
+                        />
+                      )}
+                    />
                   </EnvironmentSection>
-                  <EnvironmentSection
-                    title="Secrets"
-                    help="Sealed and write-only: a value can be replaced or rotated, never read back."
-                  >
-                    <SecretsBody slug={fn.id} />
+                  <EnvironmentSection title="Secrets">
+                    <SecretsBody
+                      slug={fn.id}
+                      header={(actions) => (
+                        <SectionHeading
+                          title="Secrets"
+                          help="Sealed and write-only: a value can be replaced or rotated, never read back."
+                          actions={actions}
+                        />
+                      )}
+                    />
                   </EnvironmentSection>
-                  <EnvironmentSection
-                    title="History"
-                    help="Every change is a revision you can roll back to. The config guard undoes a change that breaks the app."
-                  >
+                  <EnvironmentSection title="History">
+                    <SectionHeading
+                      title="History"
+                      help="Every change is a revision you can roll back to. The config guard undoes a change that breaks the app."
+                    />
                     <ConfigHistory slug={fn.id} />
                   </EnvironmentSection>
                 </>

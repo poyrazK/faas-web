@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/dashboard/kit/sheet';
@@ -44,7 +44,20 @@ interface SecretRow {
  * the two can never drift into two different implementations of the
  * same resource.
  */
-export function SecretsBody({ slug }: { slug: string }) {
+/** Where a body's actions go when the page gives it no heading of its own. */
+const ownRow = (actions: ReactNode) => <div className="flex justify-end gap-2">{actions}</div>;
+
+/**
+ * `header` lets the page put this body's actions in its own heading row
+ * rather than on a row of their own.
+ */
+export function SecretsBody({
+  slug,
+  header,
+}: {
+  slug: string;
+  header?: (actions: ReactNode) => ReactNode;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useAppSecrets(slug);
@@ -187,19 +200,21 @@ export function SecretsBody({ slug }: { slug: string }) {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       {/* Migrations arrive as .env files; the importer takes them whole. */}
-      <div className="flex justify-end gap-2">
-        <EnvImportButton
-          slug={slug}
-          existingKeys={rows.map((r) => r.key)}
-          onChanged={() => setUnappliedFor(slug)}
-        />
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Set secret
-        </Button>
-      </div>
+      {(header ?? ownRow)(
+        <>
+          <EnvImportButton
+            slug={slug}
+            existingKeys={rows.map((r) => r.key)}
+            onChanged={() => setUnappliedFor(slug)}
+          />
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Set secret
+          </Button>
+        </>
+      )}
 
       {unapplied && (
         <div
