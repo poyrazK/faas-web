@@ -247,7 +247,7 @@ describe('AccountAnalytics', () => {
     expect(navigate).toHaveBeenCalledWith({
       to: '/dashboard/apps/$appSlug',
       params: { appSlug: 'alpha' },
-      search: { tab: 'Metrics' },
+      search: { tab: 'Metrics', analyticsSince: '24h' },
     });
   });
 

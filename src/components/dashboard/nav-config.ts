@@ -39,6 +39,7 @@ export interface NavItem {
   to: string;
   label: string;
   icon: NavIcon;
+  sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
   /** Catalog id (faas pkg/productcap/catalog.json); the item hides when apid hides it. */
@@ -69,6 +70,7 @@ export interface NavHub extends NavItem {
 export const NAV_HUBS: NavHub[] = [
   {
     to: '/dashboard',
+    sidebarIconClassName: 'text-brand/80',
     label: 'Overview',
     icon: ViewGrid,
     exact: true,
@@ -80,6 +82,7 @@ export const NAV_HUBS: NavHub[] = [
     // and Import used to nest here; both redirect into the New app wizard, so
     // they live in PALETTE_ONLY rather than as rows that are never current.
     to: '/dashboard/projects',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Projects',
     icon: Folder,
   },
@@ -87,11 +90,13 @@ export const NAV_HUBS: NavHub[] = [
     // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
     // breadcrumb and ⌘K entry.
     to: '/dashboard/apps',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Apps',
     icon: WorkflowIcon,
   },
   {
     to: '/dashboard/releases',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Releases',
     icon: Rocket,
     pageOwnsNavigation: true,
@@ -102,6 +107,7 @@ export const NAV_HUBS: NavHub[] = [
   },
   {
     to: '/dashboard/jobs',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Jobs',
     icon: Play,
     pageOwnsNavigation: true,
@@ -120,24 +126,28 @@ export const NAV_HUBS: NavHub[] = [
   {
     // The microVMs that run apps: compute you can see, not a way of watching it.
     to: '/dashboard/instances',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Instances',
     icon: Server,
   },
   {
     // Not "Storage": the heading above already says that word.
     to: '/dashboard/storage',
+    sidebarIconClassName: 'text-cat-storage/80',
     label: 'Object storage',
     icon: HardDrive,
     capability: 'object-storage',
   },
   {
     to: '/dashboard/postgres',
+    sidebarIconClassName: 'text-cat-storage/80',
     label: 'Postgres',
     icon: Database,
     capability: 'managed-postgres',
   },
   {
     to: '/dashboard/domains',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Domains',
     icon: Globe,
   },
@@ -146,6 +156,7 @@ export const NAV_HUBS: NavHub[] = [
     // is the app page's Connect tab. The label matches APP_TABS, so ⌘K and the
     // breadcrumb list the page once.
     to: '/dashboard/edge-rules',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Edge rules',
     icon: FilterList,
   },
@@ -153,6 +164,7 @@ export const NAV_HUBS: NavHub[] = [
     // Account-wide: the event router has no per-app read for its backlog,
     // storage, or receipts, so this is its own hub rather than an app tab.
     to: '/dashboard/events',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Events',
     icon: DataTransferBoth,
     capability: 'events',
@@ -161,6 +173,7 @@ export const NAV_HUBS: NavHub[] = [
     // Outbound integrations are account-owned; apps bind to them, but the
     // integration, its credential, and its budget exist once per account.
     to: '/dashboard/integrations',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Integrations',
     icon: Network,
     capability: 'outbound-integrations',
@@ -171,27 +184,32 @@ export const NAV_HUBS: NavHub[] = [
     // not settings of your own Gregale account, and Billing there is what
     // Gregale charges you, not what you charge them.
     to: '/dashboard/customers',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Customers',
     icon: Community,
     capability: 'platform-tenants',
   },
   {
     to: '/dashboard/analytics',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Analytics',
     icon: GraphUp,
   },
   {
     to: '/dashboard/debug',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Debugger',
     icon: Search,
   },
   {
     to: '/dashboard/invocations',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Invocations',
     icon: Activity,
   },
   {
     to: '/dashboard/audit',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Audit log',
     icon: Journal,
   },

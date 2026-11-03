@@ -1,23 +1,24 @@
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ClockRotateRight, RefreshDouble } from 'iconoir-react';
+import { ArrowRight, ClockRotateRight, NavArrowRight, Plus } from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
   PageHeader,
-  Panel,
-  RangeSelector,
-  Stats,
-  StatTile,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { FirstRun } from '@/components/dashboard/first-run';
+import { OverviewSearch } from '@/components/dashboard/overview-search';
+import { Magnetic } from '@/components/amicro/magnetic';
+import { PointerGlow } from '@/components/amicro/pointer-glow';
+import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
+import { AnalyticsSection } from '@/components/dashboard/analytics-section';
+import { WindFlow } from '@/components/dashboard/wind-flow';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { PlanGate } from '@/components/dashboard/plan-gate';
 import {
   useApps,
   useAppsMetrics,
@@ -25,8 +26,9 @@ import {
   useInstances,
   type MetricsRange,
 } from '@/lib/api/queries';
-import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
+import { formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
+import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
@@ -44,12 +46,16 @@ export const Route = createFileRoute('/dashboard/')({
 });
 
 /**
- * The account at a glance: the system's verdict, one strip of figures, and
- * the apps, deployments and pages you are most likely to open next.
+ * The overview as a launchpad.
  *
- * Figures, not charts: `/v1/apps/metrics` returns scalars, and this console
- * does not draw series it does not have. A degraded Prometheus rollup reads
- * as unknown, never as zero.
+ * Wireframe borrowed deliberately from the best-tested console layout in
+ * the business: a centred greeting with the system's verdict as a pill
+ * above it, one big search field (the command palette's front door — the
+ * top bar no longer carries one), three resource columns (Apps,
+ * Deployments, Recents), and an analytics grid below.
+ *
+ * One customizable analytics board switches between account totals and an
+ * app's real hourly history. A degraded read is unknown, never a measured zero.
  */
 
 const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -68,16 +74,6 @@ const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
   { key: '7d', label: '7d' },
   { key: '15d', label: '15d' },
 ];
-
-const RANGE_DESCRIPTION: Record<MetricsRange, string> = {
-  '5m': 'last 5 minutes',
-  '15m': 'last 15 minutes',
-  '1h': 'last hour',
-  '6h': 'last 6 hours',
-  '24h': 'last 24 hours',
-  '7d': 'last 7 days',
-  '15d': 'last 15 days',
-};
 
 /* ------------------------------------------------------------------ *
  * Verdict pill
@@ -103,11 +99,23 @@ function verdictOf(accountStatus: string | undefined, failing: number, degraded:
 }
 
 /* ------------------------------------------------------------------ *
- * Lists
+ * Columns
  * ------------------------------------------------------------------ */
 
-const ROW =
-  'pressable flex h-9 items-center gap-2.5 px-4 text-sm hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand';
+function ColumnHeader({ label, to }: { label: string; to?: string }) {
+  if (!to) return <h2 className="label-mono text-muted-foreground">{label}</h2>;
+  return (
+    <h2>
+      <Link
+        to={to}
+        className="pressable label-mono inline-flex items-center gap-1 rounded text-muted-foreground hover:text-foreground"
+      >
+        {label}
+        <NavArrowRight className="h-3 w-3" />
+      </Link>
+    </h2>
+  );
+}
 
 const APP_DOT: Record<string, string> = {
   running: 'var(--status-good)',
@@ -115,98 +123,118 @@ const APP_DOT: Record<string, string> = {
   error: 'var(--status-critical)',
 };
 
-function ViewAll({ to }: { to: string }) {
+function AppsColumn({ workflows }: { workflows: Workflow[] }) {
+  const shown = workflows.slice(0, 4);
   return (
-    <Link to={to} className="text-xs text-muted-foreground hover:text-foreground">
-      View all
-    </Link>
-  );
-}
-
-function AppsList({ workflows }: { workflows: Workflow[] }) {
-  return (
-    <Panel title="Apps" actions={<ViewAll to="/dashboard/apps" />} padded={false}>
-      <ul className="divide-y divide-border">
-        {workflows.slice(0, 6).map((w) => (
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Apps" to="/dashboard/apps" />
+      <Link
+        to="/dashboard/apps/new"
+        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+      >
+        <PointerGlow />
+        <Plus className="h-3.5 w-3.5" />
+        New app
+      </Link>
+      <ul className="flex list-none flex-col divide-y divide-border">
+        {shown.map((w) => (
           <li key={w.id}>
-            <Link to="/dashboard/apps/$appSlug" params={{ appSlug: w.id }} className={ROW}>
+            <Link
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: w.id }}
+              className="pressable group flex items-center gap-2.5 rounded py-2.5"
+            >
               <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                className={cn(
+                  'h-1.5 w-1.5 shrink-0 rounded-full',
+                  w.state === 'running' && 'animate-breathe'
+                )}
                 style={{ background: APP_DOT[w.state] ?? 'var(--chart-muted)' }}
               />
-              <span className="truncate font-mono">{w.name}</span>
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground capitalize">
-                {w.state}
-              </span>
+              <span className="truncate font-mono text-xs">{w.name}</span>
+              <NavArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
             </Link>
           </li>
         ))}
       </ul>
-    </Panel>
+      {workflows.length > 4 && (
+        <p className="text-xs text-muted-foreground">+{workflows.length - 4} more</p>
+      )}
+    </section>
   );
 }
 
-const DEPLOY_STATE: Record<string, { label: string; color: string }> = {
+const DEPLOY_STATE: Record<string, { label: string; color: string; live?: boolean }> = {
   succeeded: { label: 'Live', color: 'var(--status-good)' },
   failed: { label: 'Failed', color: 'var(--status-critical)' },
 };
 
-function DeploymentsList({ recent }: { recent: Deployment[] }) {
+function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
   return (
-    <Panel title="Deployments" actions={<ViewAll to="/dashboard/releases" />} padded={false}>
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Deployments" to="/dashboard/releases" />
       {recent.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">Nothing deployed yet.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Nothing deployed yet.</p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="mt-2 flex list-none flex-col divide-y divide-border">
           {recent.map((d) => {
             const state = DEPLOY_STATE[d.state] ?? {
               label: 'Deploying',
               color: 'var(--status-warning)',
+              live: true,
             };
             return (
               <li key={d.id}>
-                <Link to="/dashboard/releases" search={{ deployment: d.id }} className={ROW}>
+                <Link
+                  to="/dashboard/releases"
+                  search={{ deployment: d.id }}
+                  className="pressable group flex items-center gap-2.5 rounded py-2.5"
+                >
+                  {/* Colour plus text, never hue alone; in-flight breathes. */}
                   <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      state.live && 'animate-breathe'
+                    )}
                     style={{ background: state.color }}
                   />
-                  <span className="truncate font-mono">{d.workflowId}</span>
+                  <span className="truncate font-mono text-xs">{d.workflowId}</span>
                   <span className="sr-only">{state.label}</span>
                   <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                     {formatRelative(d.createdAt)}
                   </span>
+                  <NavArrowRight className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
               </li>
             );
           })}
         </ul>
       )}
-    </Panel>
+    </section>
   );
 }
 
-function RecentsList() {
-  // Read once on mount: a snapshot of where you have been, and this very
-  // visit is already being recorded for the next one.
-  const [recents] = useState(() => readRecents().slice(0, 6));
+function RecentsColumn() {
+  // Read once on mount: the column is a snapshot of where you have been,
+  // and this very visit is already being recorded for the next one.
+  const [recents] = useState(() => readRecents().slice(0, 4));
   return (
-    <Panel title="Recently visited" padded={false}>
+    <section className="flex min-w-0 flex-col gap-1">
+      <ColumnHeader label="Recents" />
       {recents.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">Nothing yet.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Pages you visit will appear here.</p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="mt-2 flex list-none flex-col divide-y divide-border">
           {recents.map((r) => {
             const { section, detail } = recentLabel(r.path);
             return (
               <li key={r.path}>
-                <Link to={r.path} className={ROW}>
-                  <ClockRotateRight
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                  />
-                  <span className="truncate">
+                <Link
+                  to={r.path}
+                  className="pressable group flex items-center gap-2.5 rounded py-2.5"
+                >
+                  <ClockRotateRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-xs">
                     <span className="text-muted-foreground">{section}</span>
                     {detail && (
                       <>
@@ -215,13 +243,14 @@ function RecentsList() {
                       </>
                     )}
                   </span>
+                  <NavArrowRight className="ml-auto h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
               </li>
             );
           })}
         </ul>
       )}
-    </Panel>
+    </section>
   );
 }
 
@@ -252,7 +281,6 @@ function OverviewPage() {
   const metricsDegraded = Boolean(
     paidAccess && metrics.data && metrics.data.source !== 'prometheus'
   );
-  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
   // Resident RAM right now: non-parked instances only — a parked instance's
@@ -260,6 +288,7 @@ function OverviewPage() {
   // `/v1/instances` is cursor-paginated. Never present a partial page as an
   // exact fleet total; the Workers view can load the remaining pages.
   const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
+  const residentPartial = Boolean(instances.data?.next_before);
   const { residentMb, residentCount } = useMemo(() => {
     const resident = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
@@ -270,28 +299,12 @@ function OverviewPage() {
     };
   }, [instances.data]);
 
-  const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const rows = Object.values(metrics.data?.apps ?? {});
-    const total = rows.reduce((sum, row) => sum + row.request_count, 0);
-    // Weighted by traffic, not a mean of percentages: one idle app at 100%
-    // must not outweigh a busy one at 0.01%.
-    const errored = rows.reduce(
-      (sum, row) => sum + row.request_count * (row.error_rate_pct / 100),
-      0
-    );
-    // The wake histogram is unlabelled upstream — every row carries the same
-    // fleet figure, so the first non-zero one is the figure.
-    const wake = rows.find((row) => row.wake_p95_ms > 0)?.wake_p95_ms ?? 0;
-    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [metrics.data]);
-
   const setRange = (next: MetricsRange) =>
     void navigate({
       search: next === '24h' ? {} : { range: next },
       replace: true,
       resetScroll: false,
     });
-  const rangeDescription = RANGE_DESCRIPTION[range];
 
   const usageData = usage.data;
   // null: a company with no usage this month carries no allowance yet.
@@ -307,7 +320,6 @@ function OverviewPage() {
     [deployments]
   );
 
-  const refreshing = usage.isRefetching || metrics.isRefetching || instances.isRefetching;
   const refreshAll = () => {
     refresh();
     void usage.refetch();
@@ -324,7 +336,10 @@ function OverviewPage() {
   if (firstRun) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title={firstName ? `Welcome, ${firstName}` : 'Overview'} />
+        <PageHeader
+          title={firstName ? `Welcome, ${firstName}` : 'Overview'}
+          help="Choose a source and we’ll guide you through your first deployment."
+        />
         <FirstRun />
       </div>
     );
@@ -345,134 +360,151 @@ function OverviewPage() {
     );
   }
 
-  const metricsState = metrics.isPending && !metricsDegraded ? 'loading' : 'unavailable';
-  const usageState = usage.isPending ? 'loading' : usageFailed ? 'unavailable' : 'ready';
-
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Overview"
-        meta={
-          <p role={verdict.trouble ? 'alert' : 'status'}>
-            <Link
-              to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
-              className="pressable inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <LiveDot color={verdict.color} />
-              {verdict.text}
-            </Link>
+    <div className="flex flex-col gap-10">
+      {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0">
+        <WindFlow intensity={0.06} />
+      </div>
+
+      {/* The ground under the wind: the flow-dot field rises from the
+          bottom of the viewport and is gone before mid-page — background,
+          not furniture. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 bottom-0 h-[36vh] [mask-image:linear-gradient(to_top,black_25%,transparent)]"
+      >
+        <FlowDotsField />
+      </div>
+
+      {/* --- Greeting + search ------------------------------------- */}
+      <div className="relative">
+        <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
+          {/* The verdict rides above the greeting as a pill; when something
+              is wrong it is the page's alert and links to the trouble. */}
+          <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
+            <Magnetic range={60} strength={0.2}>
+              <Link
+                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
+                className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+              >
+                <LiveDot color={verdict.color} />
+                {verdict.text}
+              </Link>
+            </Magnetic>
           </p>
-        }
-        actions={
-          <>
-            <RangeSelector
-              value={range}
-              options={OVERVIEW_RANGES}
-              onChange={setRange}
-              disabled={!paidAccess}
-            />
-            <button
-              type="button"
-              onClick={refreshAll}
-              disabled={refreshing}
-              aria-label="Refresh analytics"
-              className="pressable inline-flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-border-secondary hover:text-foreground disabled:opacity-50"
-            >
-              <RefreshDouble
-                className={cn(
-                  'h-3.5 w-3.5',
-                  refreshing && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
-            </button>
-          </>
-        }
-      />
 
-      {account && !paidAccess && (
-        <PlanGate
-          feature="Metrics"
-          description="Request counts, error rates, and wake metrics require a paid plan."
-        />
-      )}
+          <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
+            <WordReveal
+              text={firstName ? `Let's get to work, ${firstName}` : "Let's get to work"}
+              suffix={
+                <span aria-hidden className="text-brand">
+                  .
+                </span>
+              }
+            />
+          </h1>
 
-      {metricsDegraded && (
-        <p role="status" className="text-xs" style={{ color: 'var(--status-warning)' }}>
-          Metrics degraded. Figures that could not be read show as —.
-        </p>
-      )}
-      <Stats columns={paidAccess ? 6 : 3}>
-        {paidAccess && (
-          <>
-            <StatTile
-              label="Requests"
-              value={formatCompact(requests)}
-              state={metricsUnavailable ? metricsState : 'ready'}
-              note={`${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`}
-            />
-            <StatTile
-              label="Error rate"
-              value={errorPct.toFixed(2)}
-              unit="%"
-              state={metricsUnavailable ? metricsState : 'ready'}
-              note={`${formatCompact(Math.round((requests * errorPct) / 100))} errored`}
-            />
-            <StatTile
-              label="Wake p95"
-              value={Math.round(wakeP95)}
-              unit="ms"
-              state={metricsUnavailable ? metricsState : wakeP95 ? 'ready' : 'unavailable'}
-              note="Cold start, fleet-wide"
-            />
-          </>
-        )}
-        <StatTile
-          label="Memory now"
-          value={residentMb.toLocaleString()}
-          unit="MB"
-          state={residentKnown ? 'ready' : instances.isPending ? 'loading' : 'unavailable'}
-          note={`${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`}
-        />
-        <StatTile
-          label={
-            overGbh > 0
-              ? 'GB-hours over'
-              : includedKnown === null && usageData
-                ? 'GB-hours used'
-                : 'GB-hours left'
-          }
-          value={formatGbHours(
-            overGbh > 0 ? overGbh : includedKnown === null ? usedGbh : remainingGbh
+          {/* Search, answered in place: a real combobox whose results drop
+              down from the field itself — no detour through the ⌘K modal,
+              which still exists everywhere for the keyboard. */}
+          <OverviewSearch workflows={workflows} />
+
+          {failing.length > 0 && (
+            <p className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5">
+              {failing.slice(0, 4).map((app) => (
+                <Link
+                  key={app.id}
+                  to="/dashboard/apps/$appSlug"
+                  params={{ appSlug: app.id }}
+                  search={{ tab: 'Logs' }}
+                  className="pressable inline-flex items-center gap-1.5 rounded font-mono text-xs hover:text-foreground"
+                >
+                  {app.name}
+                  {paidAccess && (
+                    <span style={{ color: 'var(--status-critical)' }}>
+                      {app.errorRatePct.toFixed(2)}%
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </p>
           )}
-          state={usageState}
-          note={
-            overGbh > 0
-              ? usageData?.overage_cents === undefined
-                ? 'Over the allowance'
-                : `${formatMoney(usageData.overage_cents)} overage`
-              : includedKnown === null
-                ? 'This period'
-                : `of ${formatGbHours(included)}`
-          }
-        />
-        <StatTile
-          label="CPU"
-          value={(usageData?.used_cpu_hours ?? 0).toLocaleString(undefined, {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          })}
-          unit="h"
-          state={
-            usageData?.used_cpu_hours == null && usageState === 'ready' ? 'unavailable' : usageState
-          }
-          note="This period, not billed"
-        />
-      </Stats>
+        </div>
+      </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-3">
-        <AppsList workflows={workflows} />
-        <DeploymentsList recent={recent} />
-        <RecentsList />
+      {/* --- Resource columns -------------------------------------- */}
+      <div className="animate-item-enter relative grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 [animation-delay:60ms]">
+        <AppsColumn workflows={workflows} />
+        <DeploymentsColumn recent={recent} />
+        <RecentsColumn />
+      </div>
+
+      <AnalyticsSection
+        apps={workflows.map((app) => ({ slug: app.id }))}
+        initialRange={range}
+        onRangeChange={setRange}
+        onRefresh={refreshAll}
+        extras={[
+          {
+            id: 'memory',
+            label: 'Memory now',
+            span: 1,
+            value: residentKnown ? `${residentMb.toLocaleString()} MB` : '—',
+            delta: null,
+            deltaGood: false,
+            caption: residentKnown
+              ? `${residentCount} resident instances · right now`
+              : residentPartial
+                ? 'More instances available in Instances'
+                : 'Instance usage unavailable',
+          },
+          {
+            id: 'allowance',
+            label:
+              overGbh > 0
+                ? 'GB-hours over'
+                : includedKnown === null && usageData
+                  ? 'GB-hours used'
+                  : 'GB-hours left',
+            span: 1,
+            value:
+              usage.isPending || usageFailed
+                ? '—'
+                : formatGbHours(
+                    overGbh > 0 ? overGbh : includedKnown === null ? usedGbh : remainingGbh
+                  ),
+            delta: null,
+            deltaGood: true,
+            caption:
+              overGbh > 0 && usageData?.overage_cents !== undefined
+                ? `${formatMoney(usageData.overage_cents)} overage this period`
+                : includedKnown === null
+                  ? 'This billing period'
+                  : `of ${formatGbHours(included)} · this billing period`,
+          },
+          {
+            id: 'cpu',
+            label: 'CPU hours',
+            span: 1,
+            value:
+              usage.isPending || usageFailed || usageData?.used_cpu_hours == null
+                ? '—'
+                : usageData.used_cpu_hours.toLocaleString(undefined, { maximumFractionDigits: 1 }),
+            delta: null,
+            deltaGood: false,
+            caption: 'This billing period · measured, not billed',
+          },
+        ]}
+      />
+      <div className="relative flex justify-end">
+        <Link
+          to="/dashboard/usage"
+          className="pressable inline-flex items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-brand"
+        >
+          Usage and billing
+          <ArrowRight className="size-3.5" />
+        </Link>
       </div>
     </div>
   );

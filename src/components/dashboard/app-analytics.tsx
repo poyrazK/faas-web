@@ -1,3 +1,5 @@
+import { AnalyticsGrid, chosenCards, scalarCards, type AnalyticsPoint } from './analytics-grid';
+import { rangeHalfLabel } from './range-picker';
 import { useState, type KeyboardEvent } from 'react';
 import { TimeChart } from './kit/chart';
 import { SegmentedControl } from './tabs';
@@ -90,6 +92,7 @@ export function AppAnalyticsBody({
   const enabled = Boolean(slug);
   const planGateError = [analytics.error, series.error].find(isPlanGate);
   const [metric, setMetric] = useState<ChartMetric>('traffic');
+  const [picking, setPicking] = useState(false);
   const points = (series.data?.points ?? [])
     .filter((point) => metric !== 'latency' || point.requests > 0)
     .map((point) => ({
@@ -140,9 +143,17 @@ export function AppAnalyticsBody({
   return (
     <PlanGated error={planGateError} feature="Request analytics">
       <Panel
-        title="Request analytics"
+        title="Analytics"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-label="Add a metric"
+              onClick={() => setPicking(!picking)}
+              className="pressable rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+            >
+              Add metric
+            </button>
             {showWindowSelector && (
               <Select
                 value={since}
@@ -181,6 +192,66 @@ export function AppAnalyticsBody({
           />
         ) : (
           <div className="flex flex-col gap-5">
+            <AnalyticsGrid
+              points={
+                (seriesPhase === 'ready' ? (series.data?.points ?? []) : []) as AnalyticsPoint[]
+              }
+              picking={picking}
+              onPicking={setPicking}
+              loading={seriesPhase === 'loading'}
+              build={(chosen) => {
+                const raw = (
+                  seriesPhase === 'ready' ? (series.data?.points ?? []) : []
+                ) as AnalyticsPoint[];
+                const cards = chosenCards(
+                  chosen,
+                  raw,
+                  rangeHalfLabel({ kind: 'preset', value: since })
+                );
+                if (hasRouteFilter)
+                  return cards.map((card) =>
+                    seriesPhase === 'ready' ? card : { ...card, value: '—', delta: null }
+                  );
+                // Aggregated percentiles come from the aggregate, never averaged hourly percentiles.
+                const totals = data
+                  ? scalarCards(chosen, {
+                      request_count: data.requests,
+                      error_rate_pct: data.error_rate_pct,
+                      latency_p50_ms: data.p50_ms,
+                      latency_p95_ms: data.p95_ms,
+                      latency_p99_ms: data.p99_ms,
+                      cold_start_pct: 0,
+                    })
+                  : [];
+                return cards.map((card) => {
+                  if (!data) return { ...card, value: '—', delta: null };
+                  if (card.id === 'errors')
+                    return {
+                      ...card,
+                      value: String(data.error_requests),
+                      caption: 'Errored responses in this window',
+                    };
+                  if (card.id === 'cold_boots')
+                    return {
+                      ...card,
+                      value: String(data.cold_boots),
+                      caption: 'Cold boots in this window',
+                    };
+                  const total = totals.find((item) => item.id === card.id);
+                  return total
+                    ? {
+                        ...card,
+                        value: total.value,
+                        caption: card.id.startsWith('p')
+                          ? 'Successful responses in this window'
+                          : card.delta !== null
+                            ? card.caption
+                            : total.caption,
+                      }
+                    : card;
+                });
+              }}
+            />
             {data?.window_clamped && (
               <p className="text-xs text-muted-foreground">
                 The window was clamped to the retention this plan keeps.

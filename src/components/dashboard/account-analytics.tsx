@@ -201,7 +201,7 @@ export function AccountAnalytics({ search }: { search: AccountAnalyticsSearch })
                   void navigate({
                     to: '/dashboard/apps/$appSlug',
                     params: { appSlug: row.slug },
-                    search: { tab: 'Metrics' },
+                    search: { tab: 'Metrics', analyticsSince: window },
                   })
                 }
               />

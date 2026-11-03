@@ -478,14 +478,32 @@ Labels are sentence case in the sans face; mono is for identifiers and code.
 
 ### Motion
 
-Content does not animate. A page of figures that drifts in cannot be read for
-its first few hundred milliseconds, so pages, panels, tables and numbers
-arrive in place. Motion is kept where it explains a change of layer: dialogs,
-sheets, the mobile drawer, toasts and menus moving in and out.
+Pages, panels, tables and numbers arrive in place. Overview retains its greeting
+and subtle background from the main console; the foil New app button and profile
+rim respond to interaction. Metric cards animate their position when rearranged.
+Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
+All of these respect reduced motion.
 
 `components/dashboard/motion.tsx` exports the one curve (`EASE`, mirrored in
 CSS as `--motion-ease` / `ease-console`) and `Swap`, a keyed block for content
 that is replaced. Everything honours `prefers-reduced-motion`.
+
+### Analytics customization
+
+Overview has one Analytics board: All apps shows account totals, and selecting
+an app shows its real hourly history. Account totals never pretend to have a
+series. Resource cards explicitly say whether they describe now or the billing
+period. The range picker offers only windows the current source supports.
+
+`AnalyticsGrid` owns metric selection and ordering. Drag a handle, use its arrow
+keys, or choose Move earlier/later in the card menu. Add, remove, and Reset layout
+persist in browser storage; a deliberately empty layout stays empty. The app
+layout keeps the original `gregale.analytics.order` preference. Overview's account
+layout is separate. Browser storage failures affect persistence, not editing.
+
+App Metrics uses one URL-backed analytics window for summaries, charts and grouped
+requests. Window percentiles come from the API aggregate; hourly percentiles are
+never averaged. A route-filtered card explicitly reflects the selected series.
 
 ### Component kit
 

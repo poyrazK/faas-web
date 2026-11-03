@@ -133,6 +133,7 @@ function metrics(range: string, requestCount: number) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   plan = 'hobby';
   deployments = [];
   metricsRefetch.mockReset();
@@ -161,7 +162,8 @@ describe('overview analytics window', () => {
     );
     expect(await screen.findByText('100')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: '7d' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Time range: Last 24 hours' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }));
 
     expect(await screen.findByText('700')).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
@@ -196,7 +198,7 @@ it('gates Free metrics and range controls while preserving usage and instance re
     'href',
     '/dashboard/plans'
   );
-  expect(screen.getByRole('button', { name: '7d' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /Time range:/ })).not.toBeInTheDocument();
   expect(screen.getByText('Memory now')).toBeInTheDocument();
   expect(screen.getByText('GB-hours left')).toBeInTheDocument();
   expect(screen.queryByText('metrics unavailable')).not.toBeInTheDocument();
@@ -216,7 +218,7 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   renderOverview();
   expect(await screen.findByText(/^Metrics degraded\./)).toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Time range: Last 24 hours' })).toBeEnabled();
 });
 
 it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
@@ -229,8 +231,8 @@ it("shows the company's compute allowance in a company workspace, not the signed
   try {
     renderOverview();
     // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
-    expect(await screen.findByText('of 1,000')).toBeInTheDocument();
-    expect(screen.queryByText('of 100')).not.toBeInTheDocument();
+    expect(await screen.findByText(/of 1,000/)).toBeInTheDocument();
+    expect(screen.queryByText(/of 100 /)).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
   } finally {
     workspace.org = null;

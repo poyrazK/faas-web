@@ -16,9 +16,9 @@ vi.mock('@/lib/api/queries', () => ({
 }));
 vi.mock('@/components/dashboard/kit/chart', () => ({
   TimeChart: ({ series }: { series: Record<string, unknown> }) => (
-    <div data-testid="chart">
+    <div data-testid={'value' in series ? 'metric-chart' : 'chart'}>
       {Object.keys(series).map((key) => (
-        <span key={key} data-testid="series">
+        <span key={key} data-testid={'value' in series ? 'metric-series' : 'series'}>
           {key}
         </span>
       ))}
@@ -78,6 +78,7 @@ const analytics = (over: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(() => {
+  localStorage.clear();
   useAppAnalytics.mockReset().mockReturnValue(ready(analytics()));
   useAppAnalyticsTimeseries.mockReset().mockReturnValue(
     ready({
@@ -327,4 +328,14 @@ describe('AppAnalyticsBody', () => {
 
     expect(await screen.findByText(/does not include per-app metrics/i)).toBeInTheDocument();
   });
+});
+
+it('uses one selected window for the summaries, grouped requests and charts', async () => {
+  render(<Panel slug="api" />);
+  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Analytics window' }), '7d');
+  expect(useAppAnalytics).toHaveBeenLastCalledWith('api', '7d', 'route');
+  expect(useAppAnalyticsTimeseries).toHaveBeenLastCalledWith('api', '7d', expect.anything());
+  expect(screen.getAllByRole('combobox', { name: 'Analytics window' })).toHaveLength(1);
+  // The window percentile is the aggregate's 180 ms, not an average of hourly p95s.
+  expect(document.querySelector('[data-metric-id="p95"]')).toHaveTextContent('180 ms');
 });

@@ -23,19 +23,10 @@ import {
   LoadingState,
   PageHeader,
   Panel,
-  RangeSelector,
-  Stats,
-  StatTile,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { formatCompact, formatMs } from '@/lib/mock-data';
-import {
-  useAppDeployments,
-  useAppMetrics,
-  useBuildRecords,
-  type MetricsRange,
-} from '@/lib/api/queries';
+import { useAppDeployments, useAppMetrics, useBuildRecords } from '@/lib/api/queries';
 import { toDeployment } from '@/lib/api/adapters';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
@@ -117,8 +108,6 @@ import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
 import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
-
-const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -245,7 +234,6 @@ function FunctionDetailPage() {
       });
     }
   }, [search, navigate]);
-  const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const membership = useProjectMembership(account?.id ?? '');
@@ -266,16 +254,9 @@ function FunctionDetailPage() {
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `appSlug` is.
   const paidAccess = account !== null && isPaidPlan(account.plan);
-  const metrics = useAppMetrics(appSlug, tab === 'Overview' ? '24h' : range, {
-    enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
+  const metrics = useAppMetrics(appSlug, '24h', {
+    enabled: paidAccess && tab === 'Overview',
   });
-  const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
-  const metricsTileState = metrics.isPending
-    ? ('loading' as const)
-    : metrics.error || metricsDegraded
-      ? ('unavailable' as const)
-      : ('ready' as const);
-  const metricsPhase = queryPhase({ error: metrics.error, loading: metrics.isPending });
   // The deployment history is app-scoped and paged, so resolve build records
   // for the rows that are actually visible instead of joining against the
   // account-wide first build page. This keeps older app releases from losing
@@ -499,73 +480,6 @@ function FunctionDetailPage() {
                   />
                 ) : (
                   <div className="flex flex-col gap-6">
-                    <div className="flex justify-end">
-                      <RangeSelector
-                        value={range}
-                        onChange={setRange}
-                        options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
-                      />
-                    </div>
-
-                    {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
-                aggregate per window. The sparkline charts that used to sit here
-                were drawn from a seeded PRNG and are gone with it. */}
-                    {metricsDegraded && (
-                      <p className="text-xs text-muted-foreground" role="status">
-                        Metrics are degraded ({metrics.data?.source}), so no figures can be read for
-                        this window.
-                      </p>
-                    )}
-                    {/* One set of figures for the window. Latency covers 2xx
-                        responses; the wake figure is fleet-wide, the same on
-                        every app. */}
-                    {metricsPhase === 'unreachable' ? (
-                      <UnreachableState onRetry={() => void metrics.refetch()} />
-                    ) : metricsPhase === 'error' ? (
-                      <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-                    ) : (
-                      <Stats columns={6}>
-                        <StatTile
-                          label="Requests"
-                          value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                        />
-                        <StatTile
-                          label="Error rate"
-                          value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                          unit="%"
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                        />
-                        <StatTile
-                          label="p50"
-                          value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                        />
-                        <StatTile
-                          label="p95"
-                          value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                        />
-                        <StatTile
-                          label="p99"
-                          value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                        />
-                        <StatTile
-                          label="Cold starts"
-                          value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                          unit="%"
-                          state={metricsPhase === 'loading' ? 'loading' : metricsTileState}
-                          note={
-                            metrics.data
-                              ? `Wake p95 ${formatMs(metrics.data.wake_p95_ms)}, fleet`
-                              : undefined
-                          }
-                        />
-                      </Stats>
-                    )}
-
-                    <AppHealthPanel slug={fn.id} />
                     <AppAnalyticsPanel
                       slug={fn.id}
                       search={search}
@@ -578,8 +492,9 @@ function FunctionDetailPage() {
                         })
                       }
                     />
+                    <AppHealthPanel slug={fn.id} />
                     <CustomMetricsPanel slug={fn.id} />
-                    <DependencyLatencyPanel slug={fn.id} since="24h" />
+                    <DependencyLatencyPanel slug={fn.id} since={search.analyticsSince ?? '24h'} />
                     <AppUsagePanel slug={fn.id} />
                   </div>
                 ))}

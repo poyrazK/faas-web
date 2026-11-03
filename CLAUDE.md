@@ -123,8 +123,12 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
 - **The console says little.** No page subtitles, no panel descriptions:
   explanations go in `help` (a "?" popover). Create and edit flows open in a
-  `Sheet`; figures go in a `Stats` strip; content does not animate. Check
-  `/dashboard/kit` (dev only) after changing a primitive.
+  `Sheet`; ordinary figures use `Stats`, while Overview and app Metrics use the
+  customizable `AnalyticsGrid`. Content stays still outside the Overview greeting;
+  the foil New app control and profile rim retain their main-branch interactions.
+  Check `/dashboard/kit` (dev only) after changing a primitive. Analytics controls
+  must share one time window for every figure they govern; never chart account
+  scalars or average hourly percentiles into a window percentile.
 - **Do not add `dark:` variants or literal hex to components.** The two
   polarities are token-driven in `index.css`; a component that needs a new
   colour needs a new token defined in _both_ `:root` and `.console`.

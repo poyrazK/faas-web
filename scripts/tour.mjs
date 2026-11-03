@@ -37,6 +37,8 @@ try {
 const PAGES = [
   '',
   'apps',
+  'projects',
+  'analytics',
   'releases',
   'builds',
   'crons',
@@ -74,7 +76,11 @@ const APP_TABS = [
   'Upstreams',
   'Alerts',
   'Webhooks',
-  'Configuration',
+  'General',
+  'Runtime',
+  'Health and releases',
+  'Source and access',
+  'Wakes',
 ];
 
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -141,7 +147,13 @@ async function visit(url, name) {
  * in the layout the customer actually receives.
  */
 async function exerciseOverviewControls() {
-  const section = page.getByRole('region', { name: 'Request analytics' });
+  const section = page.getByRole('region', { name: 'Analytics', exact: true });
+  const scope = section.getByRole('combobox', { name: 'Analytics scope' });
+  const app = await scope
+    .locator('option')
+    .evaluateAll((options) => options.map((option) => option.value).find(Boolean));
+  if (!app) return;
+  await scope.selectOption(app);
   await section.scrollIntoViewIfNeeded();
 
   const range = section.getByRole('button', { name: /Time range: Last 24 hours/i });
@@ -200,10 +212,9 @@ async function exerciseOverviewControls() {
 const tourPages = OVERVIEW_ONLY ? [''] : PAGES;
 for (const p of tourPages) {
   const ready = await visit(`${BASE}/dashboard/${p}`, p || 'index');
-  const hasRequestAnalytics =
-    p === '' &&
-    (await page.getByRole('region', { name: 'Request analytics' }).count()) > 0;
-  if (p === '' && ready && (OVERVIEW_ONLY || hasRequestAnalytics)) {
+  const hasAnalytics =
+    p === '' && (await page.getByRole('region', { name: 'Analytics', exact: true }).count()) > 0;
+  if (p === '' && ready && (OVERVIEW_ONLY || hasAnalytics)) {
     try {
       await exerciseOverviewControls();
     } catch (error) {

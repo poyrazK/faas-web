@@ -832,3 +832,11 @@ describe('dashboard navigation foundation', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(path));
   });
 });
+
+it('marks only the selected app section current on a deep link', async () => {
+  await renderShell('/dashboard/apps/api?tab=Runtime');
+  const rail = screen.getByRole('navigation', { name: 'App' });
+  const current = within(rail).getAllByRole('link', { current: 'page' });
+  expect(current).toHaveLength(1);
+  expect(current[0]).toHaveTextContent('Runtime');
+});

@@ -8,7 +8,7 @@ import type { AnalyticsGroupBy, AppAnalyticsTimeseriesOptions } from '@/lib/api/
 
 export type AnalyticsMethod = NonNullable<AppAnalyticsTimeseriesOptions['method']>;
 
-export const WINDOWS = ['24h', '3d', '7d'] as const;
+export const WINDOWS = ['1h', '6h', '12h', '24h', '3d', '7d', '14d'] as const;
 /** Every grouping the selector offers; the routes' search validation reads it too. */
 export const ANALYTICS_GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
   { value: 'route', label: 'Route' },

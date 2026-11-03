@@ -1,4 +1,4 @@
-import type { ComponentType, SVGProps } from 'react';
+import { useEffect, useRef, type ComponentType, type SVGProps } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import {
   Antenna,
@@ -82,6 +82,16 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   'Source and access': Lock,
 };
 
+const GROUP_COLOR: Record<string, string> = {
+  Overview: 'text-brand/80',
+  Delivery: 'text-cat-compute/80',
+  Observe: 'text-cat-security/80',
+  Connect: 'text-cat-network/80',
+  Monetize: 'text-cat-network/80',
+  Automate: 'text-cat-compute/80',
+  Configure: 'text-cat-storage/80',
+};
+
 /** The app a pathname is inside, or undefined off an app page. */
 export function appOfPath(pathname: string): string | undefined {
   const match = /^\/dashboard\/apps\/([^/]+)\/?$/.exec(pathname);
@@ -107,6 +117,7 @@ export function AppRail({
   onNavigate?: () => void;
 }) {
   const search = useRouterState({ select: (s) => s.location.search as { tab?: unknown } });
+  const navRef = useRef<HTMLElement>(null);
   const current = resolveAppTab(search.tab) ?? 'Overview';
   const isOff = useCapabilityOff();
   const { workflows } = useData();
@@ -121,8 +132,32 @@ export function AppRail({
     tabs: (group.tabs as readonly AppTab[]).filter(shown),
   })).filter((group) => group.tabs.length > 0);
 
+  const sections = groups.flatMap((group) => group.tabs).join('|');
+  useEffect(() => {
+    // The router restores scrolling after navigation. Reveal the destination
+    // after that restoration and the rail's layout, without scrolling the page.
+    let layoutFrame = 0;
+    const frame = requestAnimationFrame(() => {
+      layoutFrame = requestAnimationFrame(() => {
+        const nav = navRef.current;
+        const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+        if (!nav || !active) return;
+        const bounds = nav.getBoundingClientRect();
+        const row = active.getBoundingClientRect();
+        if (row.top < bounds.top || row.bottom > bounds.bottom) {
+          nav.scrollTop += row.top - bounds.top - nav.clientHeight / 2 + row.height / 2;
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(layoutFrame);
+    };
+  }, [current, slug, collapsed, sections]);
+
   return (
     <nav
+      ref={navRef}
       aria-label="App"
       className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
     >
@@ -181,6 +216,7 @@ export function AppRail({
                       ...prev,
                       tab: tab === 'Overview' ? undefined : tab,
                     })}
+                    activeOptions={{ exact: true, includeSearch: true }}
                     onClick={onNavigate}
                     aria-current={active ? 'page' : undefined}
                     aria-label={collapsed ? tab : undefined}
@@ -194,7 +230,10 @@ export function AppRail({
                   >
                     <Icon
                       aria-hidden="true"
-                      className={cn('h-4 w-4 shrink-0', active && 'text-brand')}
+                      className={cn(
+                        'h-4 w-4 shrink-0',
+                        active ? 'text-brand' : GROUP_COLOR[group.label]
+                      )}
                     />
                     <span className={labelCls}>{tab}</span>
                   </Link>
