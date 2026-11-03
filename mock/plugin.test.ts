@@ -406,6 +406,46 @@ describe('deleting a managed database through the mock', () => {
     );
   });
 
+  it('resizes by request id: replayed, conflicting, then settled', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { id } = await readyDatabase('resize-a');
+    const resize = (requestId: string, serviceClass: string) =>
+      json(`/v1/postgres/databases/${id}/resize`, {
+        method: 'POST',
+        body: JSON.stringify({ request_id: requestId, service_class: serviceClass }),
+      });
+    const first = await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'burstable');
+    expect(first.status).toBe(202);
+    expect(first.body).toMatchObject({ state: 'pending', from_class: 'development' });
+    expect((await json(`/v1/postgres/databases/${id}`)).body.state).toBe('updating');
+    // The same id and target recovers the change; another target with it conflicts.
+    expect((await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'burstable')).body.id).toBe(
+      first.body.id
+    );
+    expect((await resize('6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'development')).body.code).toBe(
+      'managed_postgres_conflict'
+    );
+    // Pro does not include production; a second change waits for the first.
+    expect((await resize('7a1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', 'production')).body.code).toBe(
+      'managed_postgres_not_in_plan'
+    );
+    vi.setSystemTime(Date.now() + 7000);
+    const settled = await json(`/v1/postgres/databases/${id}/resizes/${first.body.id}`);
+    expect(settled.body).toMatchObject({ state: 'succeeded', target_class: 'burstable' });
+    expect((await json(`/v1/postgres/databases/${id}`)).body).toMatchObject({
+      state: 'ready',
+      service_class: 'burstable',
+    });
+    const alwaysOn = await json(`/v1/postgres/databases/${id}/compute-policy`, {
+      method: 'POST',
+      body: JSON.stringify({
+        request_id: '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+        scale_to_zero: false,
+      }),
+    });
+    expect(alwaysOn.body.code).toBe('managed_postgres_not_in_plan');
+  });
+
   it('refuses to delete a database an app is bound to', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const app = await json('/v1/apps', {

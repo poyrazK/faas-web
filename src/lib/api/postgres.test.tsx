@@ -13,12 +13,16 @@ vi.mock('./workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 
 const {
   postgresDatabasesSettling,
+  useChangePostgresComputePolicy,
   usePostgresCapabilities,
+  usePostgresComputePolicyChange,
   usePostgresConnectionBudget,
   usePostgresOverage,
+  usePostgresResize,
   usePostgresStatus,
   usePostgresUsage,
   usePurgePostgresDatabase,
+  useResizePostgresDatabase,
   useSetPostgresOverage,
   useUndeletePostgresDatabase,
 } = await import('./postgres');
@@ -185,5 +189,82 @@ describe('postgresDatabasesSettling', () => {
   it('does not poll a scheduled delete, which waits seven days, or a settled list', () => {
     expect(postgresDatabasesSettling([row('deleting', '2026-11-10T00:00:00Z')])).toBe(false);
     expect(postgresDatabasesSettling([row('ready'), row('failed')])).toBe(false);
+  });
+});
+
+describe('resize and the compute policy (beta)', () => {
+  const REQUEST = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+  it('resizes a personal database with the request id as the durable key', async () => {
+    const { result } = renderHook(() => useResizePostgresDatabase(), { wrapper });
+    await result.current.mutateAsync({
+      id: 'db-1',
+      request_id: REQUEST,
+      service_class: 'burstable',
+    });
+    expect(calls[0]).toEqual({
+      method: 'POST',
+      path: '/v1/postgres/databases/{id}/resize',
+      init: {
+        params: { path: { id: 'db-1' } },
+        body: { request_id: REQUEST, service_class: 'burstable' },
+      },
+    });
+  });
+
+  it('resizes and changes policy under the organization in a company workspace', async () => {
+    workspace.org = 'acme';
+    const resize = renderHook(() => useResizePostgresDatabase(), { wrapper });
+    await resize.result.current.mutateAsync({
+      id: 'db-1',
+      request_id: REQUEST,
+      service_class: 'burstable',
+    });
+    const policy = renderHook(() => useChangePostgresComputePolicy(), { wrapper });
+    await policy.result.current.mutateAsync({
+      id: 'db-1',
+      request_id: REQUEST,
+      scale_to_zero: true,
+    });
+    expect(calls.map((c) => [c.path, c.init?.params?.path])).toEqual([
+      [
+        '/v1/orgs/{organization}/postgres/databases/{id}/resize',
+        { organization: 'acme', id: 'db-1' },
+      ],
+      [
+        '/v1/orgs/{organization}/postgres/databases/{id}/compute-policy',
+        { organization: 'acme', id: 'db-1' },
+      ],
+    ]);
+    expect(calls[1]?.init?.body).toEqual({ request_id: REQUEST, scale_to_zero: true });
+  });
+
+  it('follows a resize and a policy change by their ids, and only once there is one', async () => {
+    const none = renderHook(() => usePostgresResize('db-1', ''), { wrapper });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(none.result.current.fetchStatus).toBe('idle');
+    const resize = renderHook(() => usePostgresResize('db-1', REQUEST), { wrapper });
+    const policy = renderHook(() => usePostgresComputePolicyChange('db-1', REQUEST), { wrapper });
+    await waitFor(() => expect(resize.result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(policy.result.current.isSuccess).toBe(true));
+    expect(calls.map((c) => [c.path, c.init?.params?.path]).sort()).toEqual([
+      [
+        '/v1/postgres/databases/{id}/compute-policy-changes/{change_id}',
+        { id: 'db-1', change_id: REQUEST },
+      ],
+      ['/v1/postgres/databases/{id}/resizes/{resize_id}', { id: 'db-1', resize_id: REQUEST }],
+    ]);
+  });
+
+  it('follows them under the organization in a company workspace', async () => {
+    workspace.org = 'acme';
+    const resize = renderHook(() => usePostgresResize('db-1', REQUEST), { wrapper });
+    const policy = renderHook(() => usePostgresComputePolicyChange('db-1', REQUEST), { wrapper });
+    await waitFor(() => expect(resize.result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(policy.result.current.isSuccess).toBe(true));
+    expect(calls.map((c) => c.path).sort()).toEqual([
+      '/v1/orgs/{organization}/postgres/databases/{id}/compute-policy-changes/{change_id}',
+      '/v1/orgs/{organization}/postgres/databases/{id}/resizes/{resize_id}',
+    ]);
   });
 });

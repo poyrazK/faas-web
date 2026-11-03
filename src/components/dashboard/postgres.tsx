@@ -42,6 +42,7 @@ import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { absoluteTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
 import { ConnectionBudget, DatabaseConditions } from './postgres-health';
 import { StatusTag, TONE, explainPostgres } from './postgres-shared';
 import { PostgresUsage } from './postgres-usage';
@@ -138,6 +139,10 @@ export function PostgresDatabases() {
   // The same read as the usage panel's: the cap holds every database at once.
   const capSuspended = usePostgresUsage().data?.compute_cap_state === 'suspended';
   const [selected, setSelected] = useState<string | null>(null);
+  // The resize or policy change started for each database, kept here so it is
+  // still followed after its detail is closed and opened again: the API has no
+  // list of a database's changes to find it by.
+  const [operations, setOperations] = useState<Record<string, ComputeOperation>>({});
   const phase = queryPhase({ error: databases.error, loading: databases.isPending });
   const items = databases.data?.items ?? [];
   const open = items.find((d) => d.id === selected);
@@ -181,7 +186,15 @@ export function PostgresDatabases() {
 
         {/* Keyed on the database: the restore and binding forms belong to the
             one that is open, and must not carry over to the next. */}
-        {open && <DatabaseDetail key={open.id} database={open} capSuspended={capSuspended} />}
+        {open && (
+          <DatabaseDetail
+            key={open.id}
+            database={open}
+            capSuspended={capSuspended}
+            operation={operations[open.id]}
+            onOperation={(operation) => setOperations((all) => ({ ...all, [open.id]: operation }))}
+          />
+        )}
       </div>
     </PlanGated>
   );
@@ -244,9 +257,13 @@ function DatabaseRow({
 function DatabaseDetail({
   database,
   capSuspended,
+  operation,
+  onOperation,
 }: {
   database: PostgresDatabase;
   capSuspended: boolean;
+  operation?: ComputeOperation;
+  onOperation: (operation: ComputeOperation) => void;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -411,6 +428,8 @@ function DatabaseDetail({
           </p>
         ) : (
           <>
+            <DatabaseCompute database={database} operation={operation} onOperation={onOperation} />
+
             <Bindings database={database} />
 
             <form
