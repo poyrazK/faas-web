@@ -15,6 +15,7 @@ describe('pages gated like their nav items', () => {
     ['./dashboard.integrations', 'Integrations'],
     ['./dashboard.storage', 'Storage'],
     ['./dashboard.postgres', 'Postgres'],
+    ['./dashboard.budgets', 'Budgets'],
   ])('%s explains instead of mounting when the capability is off', async (path) => {
     const { Route } = (await import(/* @vite-ignore */ path)) as {
       Route: { options: { component: React.ComponentType } };

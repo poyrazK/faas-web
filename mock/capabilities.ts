@@ -693,6 +693,17 @@ const entries: Capability[] = [
     acceptance: 'mock-only',
     enabled: true,
   },
+  {
+    key: 'budgets',
+    name: 'Budgets',
+    category: 'billing',
+    description: 'Set budgets with projections, alerts and automatic stops.',
+    maturity: 'beta',
+    plans: ALL,
+    docs_url: '/docs/billing',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
 ];
 export function mockCapabilities(
   plan: Plan,

@@ -985,10 +985,14 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 152,
     name: 'Budgets: policies, projections, alerts and channels, automatic stops (strict budgets)',
-    status: 'none',
-    surfaces: [],
-    gap: 'Budgets: policies, projections, alerts and automatic stops',
-    wave: 2,
+    // Alert, Stop previews and Strict cap over every scope, with preview,
+    // revisions, channels and recorded stops. Strict caps show apid's "not
+    // released" refusal and fall back to a draft; API-only responses
+    // (reject_traffic, suspend_background) can only ever be drafts upstream,
+    // so they are shown, not authored.
+    status: 'full',
+    surfaces: ['/dashboard/budgets'],
+    capability: 'budgets',
   },
   // H153 · GA
   {

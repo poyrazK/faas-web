@@ -24,6 +24,7 @@ import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
 import * as realtimeMock from './realtime';
+import * as budgetMock from './budgets';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -9411,6 +9412,52 @@ route('GET', '/v1/account/usage', ({ query }) => {
 route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
+
+// Budgets (faas handlers_financial_budgets.go; see mock/budgets.ts). Personal
+// only: apid mounts these without loadOrg, so X-Active-Org changes nothing.
+// MOCK_STRICT_BUDGETS=1 releases strict caps to the mock account.
+const budgetWorld: budgetMock.World = {
+  apps: db.apps,
+  jobs,
+  projects,
+  environments: () => projects.flatMap((p) => environmentInventory(p.slug) ?? []),
+};
+budgetMock.seed(budgetWorld);
+function budgetCall<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof budgetMock.BudgetProblem)
+      throw new Problem(err.status, err.code, err.message);
+    throw err;
+  }
+}
+const budgetKey = (req: IncomingMessage) => String(req.headers['idempotency-key'] ?? '');
+route('GET', '/v1/billing/budgets', () => budgetCall(() => budgetMock.list(budgetWorld)));
+route('POST', '/v1/billing/budgets', ({ body, req }) =>
+  budgetCall(() => status(201, budgetMock.create(budgetWorld, body, budgetKey(req))))
+);
+route('POST', '/v1/billing/budgets/preview', ({ body }) =>
+  budgetCall(() => budgetMock.preview(budgetWorld, body.spec))
+);
+route('GET', '/v1/billing/budgets/{id}', ({ params }) =>
+  budgetCall(() => budgetMock.get(budgetWorld, params.id))
+);
+route('PUT', '/v1/billing/budgets/{id}', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.update(budgetWorld, params.id, body, budgetKey(req)))
+);
+route('DELETE', '/v1/billing/budgets/{id}', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.remove(budgetWorld, params.id, body, budgetKey(req)))
+);
+route('GET', '/v1/billing/budgets/{id}/revisions', ({ params, query }) =>
+  budgetCall(() => budgetMock.revisions(params.id, query))
+);
+route('GET', '/v1/billing/budgets/{id}/channels', ({ params }) =>
+  budgetCall(() => budgetMock.channels(params.id))
+);
+route('PUT', '/v1/billing/budgets/{id}/channels', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.setChannels(params.id, body, budgetKey(req)))
+);
 
 const orgMembers = new Map(
   db.orgs.map((org) => [
