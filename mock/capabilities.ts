@@ -207,6 +207,17 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'workflow-insights',
+    name: 'Workflow insights',
+    category: 'async',
+    description: 'See workflow readiness, attention, failures, outcomes and performance.',
+    maturity: 'beta',
+    plans: PAID,
+    docs_url: '/docs/faas_openapi_spec',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'workflow-recovery',
     name: 'Workflow recovery policy',
     category: 'async',

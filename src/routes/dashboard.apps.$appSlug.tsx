@@ -13,6 +13,7 @@ import { AutomationsBody } from '@/components/dashboard/automations-body';
 import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
 import { WorkflowSchedulesBody } from '@/components/dashboard/workflows/workflow-schedules';
 import { RecoveryPolicyBody } from '@/components/dashboard/workflows/recovery-policy';
+import { WorkflowInsightsBody } from '@/components/dashboard/workflows/workflow-insights';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createFileRoute, useParams } from '@tanstack/react-router';
@@ -449,6 +450,7 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Workflow insights' && <WorkflowInsightsBody slug={fn.id} />}
               {tab === 'Recovery policy' && <RecoveryPolicyBody slug={fn.id} />}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
               {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}

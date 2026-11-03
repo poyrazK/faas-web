@@ -11,6 +11,7 @@ import {
   workflowHandlers,
 } from './workflows';
 import { workflowAutomationHandlers } from './workflow-automation';
+import { workflowInsightHandlers } from './workflow-insights';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
@@ -11926,6 +11927,15 @@ route('PUT', '/v1/apps/{slug}/recovery-policy', wa.setPolicy);
 route('GET', '/v1/apps/{slug}/recovery-policy/health', wa.health);
 route('POST', '/v1/apps/{slug}/recovery-policy/change-preview', wa.changePreview);
 route('POST', '/v1/apps/{slug}/recovery-policy/control', wa.control);
+
+// Business workflow insights (mock/workflow-insights.ts).
+const wi = workflowInsightHandlers(Problem);
+route('GET', '/v1/apps/{slug}/workflow-attention', wi.attention);
+route('GET', '/v1/apps/{slug}/workflow-attention/summary', wi.attentionSummary);
+route('GET', '/v1/apps/{slug}/workflow-outcomes', wi.outcomes);
+route('GET', '/v1/apps/{slug}/workflow-outcomes/summary', wi.outcomeSummary);
+route('GET', '/v1/apps/{slug}/workflow-performance/summary', wi.performance);
+route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
 
 registerEventMocks(route, Problem, NO_CONTENT);
 
