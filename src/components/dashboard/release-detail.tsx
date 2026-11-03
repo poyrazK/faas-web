@@ -364,7 +364,7 @@ export function ReleaseDetailPanel({
             )}
             {!deploymentUnavailable && deployment && activeSection === 'lifecycle' && (
               <>
-                <AdvanceCanaryButton deployment={deployment} />
+                <AdvanceCanaryButton deployment={deployment} slug={slug} />
                 <ReorderDeploymentControl deployment={deployment} />
                 <DeploymentLifecycle key={deployment.id} deployment={deployment} />
                 {slug && <RolloutRecovery slug={slug} deployment={deployment} />}

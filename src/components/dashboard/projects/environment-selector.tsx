@@ -11,6 +11,7 @@ import { EnvironmentStateView } from './environment-state';
 import { EnvironmentDiffView } from './environment-diff';
 import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
+import { ProjectVerificationRuns } from './project-verification-runs';
 import type { components } from '@/lib/api/schema';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 const selectClass =
@@ -122,6 +123,12 @@ function SelectedEnvironment({
           onSearch={onReadinessSearch}
         />
       )}
+      <ProjectVerificationRuns
+        key={`graph-runs:${accountId}:${slug}:${environment}`}
+        accountId={accountId}
+        project={slug}
+        environment={environment}
+      />
     </>
   );
 }

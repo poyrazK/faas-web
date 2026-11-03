@@ -484,10 +484,12 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 66,
     name: 'Service bindings, verification and probes',
-    status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Services'],
-    gap: 'bindings_check_failed in the promote UI, runs status filter, project-wide graph runs, editing service targets',
-    wave: 1,
+    status: 'full',
+    surfaces: [
+      '/dashboard/apps/$appSlug?tab=Services',
+      '/dashboard/releases',
+      '/dashboard/projects/$projectSlug',
+    ],
   },
   // D67 · beta
   {

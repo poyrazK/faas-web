@@ -9,10 +9,10 @@ import {
   servingPin,
   usePromoteDeployment,
   useServingRows,
-  type BindingFinding,
 } from '@/lib/api/deployment-detail';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import type { Deployment } from '@/lib/api/queries';
+import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 import { CapabilityNotice } from './capability-notice';
 import { InlinePhase, queryPhase } from './primitives';
 import { isRolloutInFlight } from './rollout-recovery';
@@ -164,7 +164,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
   const confirm = useConfirm();
   const { toast } = useToast();
   const [strict, setStrict] = useState(false);
-  const [blockers, setBlockers] = useState<BindingFinding[] | null>(null);
+  const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
   // The release a refused promotion was pinned to.
   const [takenOver, setTakenOver] = useState<string | null>(null);
   const serving = useServingPin(
@@ -196,7 +196,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
       confirmLabel: 'Promote',
     });
     if (!ok) return;
-    setBlockers(null);
+    setRefusal(null);
     setTakenOver(null);
     try {
       const result = await promote.mutateAsync({
@@ -220,8 +220,11 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
         setTakenOver(pinned ? deploymentLabel(pinned) : 'The release that was serving');
         return;
       }
-      if (code === 'bindings_check_failed' || code === 'bindings_check_changed') {
-        setBlockers((err as ApiError).problem.bindings_check?.blockers ?? []);
+      // A failed or changed check, or a write the release policy fenced
+      // (handlers_binding_promotion.go:191, :278-288).
+      const gate = bindingsGateRefusal(err);
+      if (gate) {
+        setRefusal(gate);
         return;
       }
       // A server without the strict route answers Go's plain-text 404, which
@@ -311,24 +314,13 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
               onRefresh={() => void serving.read.refetch().then(() => setTakenOver(null))}
             />
           )}
-          {blockers && (
-            <div
-              role="alert"
-              className="rounded-md border border-border px-3 py-2 text-xs"
-              style={{ color: 'var(--status-critical)' }}
-            >
-              <p>The bindings check did not pass, so traffic is unchanged.</p>
-              {blockers.length > 0 && (
-                <ul className="mt-1 list-disc pl-4 text-foreground">
-                  {blockers.map((blocker, index) => (
-                    <li key={`${blocker.code}-${index}`}>
-                      {blocker.binding && <span className="font-mono">{blocker.binding}: </span>}
-                      {blocker.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {refusal && (
+            <BindingsGateNotice
+              refusal={refusal}
+              slug={slug}
+              deploymentId={deployment.id}
+              action="promotion"
+            />
           )}
         </>
       )}

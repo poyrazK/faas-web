@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
@@ -20,6 +21,9 @@ vi.mock('@/lib/api/deployment-detail', async (importOriginal) => ({
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
 
 const { DeploymentControls } = await import('./release-controls');
 
@@ -127,6 +131,48 @@ describe('traffic weight', () => {
     await userEvent.click(screen.getByRole('button', { name: /refresh/i }));
     expect(refetchServing).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('lists the bindings blockers when an enforced release policy refuses the weight', async () => {
+    updateTraffic.mockRejectedValue(
+      new ApiError({
+        status: 409,
+        code: 'bindings_check_failed',
+        title: 'Bindings check failed',
+        bindings_check: {
+          app: 'alpha',
+          scope: 'default',
+          deployment_id: CANDIDATE,
+          checked_at: '2026-11-03T10:00:00Z',
+          inventory_generated_at: '2026-11-03T10:00:00Z',
+          max_verification_age: '10m0s',
+          allow_unsupported: false,
+          passed: false,
+          coverage: 'partial',
+          bindings: [],
+          runtime: [],
+          issues: [],
+          blockers: [
+            {
+              code: 'queue_completion_unverified',
+              binding: 'orders',
+              message: 'Handler completion has not been verified.',
+            },
+          ],
+          warnings: [],
+        },
+      })
+    );
+    render(<DeploymentControls slug="alpha" deployment={deployment()} version="v44" />);
+    setWeight('25');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/bindings check failed\. traffic is unchanged/i);
+    expect(alert).toHaveTextContent(/before the traffic change/i);
+    const item = within(alert).getByRole('listitem');
+    expect(item).toHaveTextContent('orders');
+    expect(item).toHaveTextContent(/queue canary/i);
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('does not read what serves for a release that cannot take traffic', () => {
