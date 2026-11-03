@@ -8,12 +8,19 @@ import type { App } from '@/lib/api/queries';
 
 const create = vi.fn();
 const toast = vi.fn();
+const capability = vi.hoisted(() => ({ realtime: 'on' as string }));
 
 vi.mock('@/lib/api/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/queries')>()),
   useCreateTrigger: () => ({ mutateAsync: create, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: (id: string) => ({
+    access: id === 'realtime' ? capability.realtime : 'on',
+    refresh: vi.fn(),
+  }),
+}));
 
 const { CreateTrigger } = await import('./trigger-create');
 
@@ -37,7 +44,17 @@ const apps = [{ id: 'app1', slug: 'api-gateway' }] as App[];
 beforeEach(() => {
   create.mockReset().mockResolvedValue({ id: 't1', slug: 'orders-inbound' });
   toast.mockReset();
+  capability.realtime = 'on';
 });
+
+const kindOptions = async () =>
+  [...(await screen.findByLabelText('Trigger kind')).querySelectorAll('option')].map(
+    (option) => (option as HTMLOptionElement).value
+  );
+const realtimeAccount = {
+  ...account,
+  limits: { ...account.limits, trigger_kinds: ['kafka', 'queue', 'realtime'] },
+} as Account;
 
 describe('CreateTrigger', () => {
   it('shows an upgrade route on Free and never submits', async () => {
@@ -91,6 +108,91 @@ describe('CreateTrigger', () => {
     ].map((option) => (option as HTMLOptionElement).value);
     // sqs_compat is refused by apid (faas d69c41b965), even when a plan lists it.
     expect(options).toEqual(['queue']);
+  });
+
+  it('offers realtime only while the realtime capability is on', async () => {
+    const { unmount } = render(withRouter(<CreateTrigger account={realtimeAccount} apps={apps} />));
+    expect(await kindOptions()).toEqual(['kafka', 'queue', 'realtime']);
+    unmount();
+    for (const access of ['off', 'loading', 'runtime-unavailable', 'registry-error']) {
+      capability.realtime = access;
+      const view = render(withRouter(<CreateTrigger account={realtimeAccount} apps={apps} />));
+      expect(await kindOptions()).toEqual(['kafka', 'queue']);
+      view.unmount();
+    }
+  });
+
+  it('creates a realtime trigger with only the fields the consumer group does not own', async () => {
+    render(withRouter(<CreateTrigger account={realtimeAccount} apps={apps} />));
+    await userEvent.selectOptions(await screen.findByLabelText('Trigger kind'), 'realtime');
+    await userEvent.type(screen.getByLabelText('Trigger slug'), 'chat-fanout');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.queryByLabelText('Batch window (ms)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Filter criteria')).not.toBeInTheDocument();
+    await userEvent.type(
+      screen.getByLabelText('Realtime endpoint ID'),
+      '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f'
+    );
+    await userEvent.type(screen.getByLabelText('Channel'), 'orders');
+    await userEvent.type(screen.getByLabelText('Consumer group'), 'billing');
+    await userEvent.selectOptions(screen.getByLabelText('Delivery'), 'batch');
+    expect(screen.getByLabelText('Messages per invocation')).toHaveValue(10);
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getByText('Owned by the consumer group')).toBeInTheDocument();
+    expect(screen.getByText(/"records"/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        app_id: 'app1',
+        kind: 'realtime',
+        slug: 'chat-fanout',
+        config: {
+          endpoint_id: '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f',
+          channel: 'orders',
+          group: 'billing',
+        },
+        delivery: 'batch',
+        batch_size_max: 10,
+        enabled: true,
+      })
+    );
+  });
+
+  it('sends batch delivery for a broker trigger and shows the batch envelope', async () => {
+    render(withRouter(<CreateTrigger account={account} apps={apps} />));
+    await userEvent.type(await screen.findByLabelText('Trigger slug'), 'orders');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.type(screen.getByLabelText('Brokers'), 'b:9092');
+    await userEvent.type(screen.getByLabelText('Topic'), 'orders');
+    await userEvent.type(screen.getByLabelText('Consumer group'), 'g');
+    await userEvent.selectOptions(screen.getByLabelText('Delivery'), 'batch');
+    expect(screen.getByText(/preview the API refuses/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getByText(/"records"/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ delivery: 'batch' }))
+    );
+  });
+
+  it.each([
+    ['realtime_group_lease_too_short', /lease is under 120 seconds/i],
+    ['realtime_group_bound_to_trigger', /already consumes this consumer group/i],
+  ])('explains %s for a realtime trigger', async (code, recovery) => {
+    create.mockRejectedValue(new ApiError({ status: 422, code, title: 'Rejected' }));
+    render(withRouter(<CreateTrigger account={realtimeAccount} apps={apps} />));
+    await userEvent.selectOptions(await screen.findByLabelText('Trigger kind'), 'realtime');
+    await userEvent.type(screen.getByLabelText('Trigger slug'), 'chat');
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.type(
+      screen.getByLabelText('Realtime endpoint ID'),
+      '7b0c1f9e2d4a4c8e9f315a6b7c8d9e0f'
+    );
+    await userEvent.type(screen.getByLabelText('Channel'), 'orders');
+    await userEvent.type(screen.getByLabelText('Consumer group'), 'billing');
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await userEvent.click(screen.getByRole('button', { name: /create trigger/i }));
+    expect(await screen.findByText(recovery)).toBeInTheDocument();
   });
 
   it('does not advance until destination fields are valid', async () => {

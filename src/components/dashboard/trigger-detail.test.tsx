@@ -124,6 +124,51 @@ describe('TriggerDetail', () => {
     expect(await screen.findByText(/no longer exists/i)).toBeInTheDocument();
   });
 
+  it('shows a realtime binding, keeps it immutable, and patches only what the trigger owns', async () => {
+    const realtime = {
+      ...trigger,
+      kind: 'realtime',
+      slug: 'chat-fanout',
+      enabled: true,
+      delivery: 'batch',
+      config: {
+        endpoint_id: '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f',
+        channel: 'orders',
+        group: 'billing',
+        max_concurrency: 4,
+      },
+      batch_size_max: 10,
+      max_attempts: 1,
+      filter_criteria: null,
+    };
+    useTrigger.mockReturnValue({ data: realtime, isPending: false, error: null });
+    render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
+    expect(await screen.findByText('billing')).toBeInTheDocument();
+    expect(screen.getByText('Batch')).toBeInTheDocument();
+    expect(screen.getByText('Owned by the consumer group')).toBeInTheDocument();
+    expect(screen.queryByText('Batch window')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Realtime endpoint ID')).toBeDisabled();
+    expect(screen.getByLabelText('Channel')).toBeDisabled();
+    expect(screen.getByLabelText('Consumer group')).toBeDisabled();
+    await userEvent.selectOptions(screen.getByLabelText('Delivery'), 'record');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(update).toHaveBeenCalledWith({
+      id: trigger.id,
+      body: {
+        config: {
+          endpoint_id: '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f',
+          channel: 'orders',
+          group: 'billing',
+          max_concurrency: 4,
+        },
+        delivery: 'record',
+        batch_size_max: 1,
+        enabled: true,
+      },
+    });
+  });
+
   it('edits delivery with locked identity and plan caps', async () => {
     render(withRouter(<TriggerDetail triggerId={trigger.id} account={account} apps={apps} />));
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));

@@ -658,11 +658,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 97,
     name: 'Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/triggers'],
     capability: 'event-triggers',
-    gap: 'Realtime kind and delivery mode',
-    wave: 3,
   },
   // E98 · preview
   {
