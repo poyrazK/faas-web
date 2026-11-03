@@ -532,7 +532,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Edge rules', '/dashboard/edge-rules'],
     capability: 'edge-rules',
-    gap: 'Match conditions (incl. in_list) and the respond, retry, circuit_breaker, async and waf kinds are not editable in the rule dialog; per-rule stats and sampled events; the full recipe catalog; rule trace stays CLI (gregale edge rule trace)',
+    gap: 'Per-rule stats and sampled events; the full recipe catalog (block-countries and control-ai-crawlers, and recipes outside suggestions); rule trace stays CLI (gregale edge rule trace)',
     wave: 2,
   },
   // D75 · beta

@@ -7966,10 +7966,31 @@ route('GET', '/v1/apps/{slug}/edge-rules', ({ params }) => {
   return db.edgeRules.filter((r) => r.app_id === a.id).map(edgeRuleMock.wireRule);
 });
 
-/** jwt and ip are paid; geo is allowed on free with a tighter quota. */
-const PAID_KINDS = new Set(['jwt', 'ip', 'cache']);
+/**
+ * jwt and ip are paid; geo is allowed on free with a tighter quota. retry,
+ * circuit_breaker, async and challenge have no Free quota; waf none below Pro
+ * (docs/edge-rules.md §Limits).
+ */
+const PAID_KINDS = new Set([
+  'jwt',
+  'ip',
+  'cache',
+  'retry',
+  'circuit_breaker',
+  'async',
+  'challenge',
+]);
+const PRO_KINDS = new Set(['waf']);
 const QUOTA_PER_APP = 12;
 const FREE_GEO_QUOTA = 2;
+/** The capability that owns edge_rule.<kind> (faas productcap/catalog.json). */
+const KIND_CAPABILITY: Record<string, string> = {
+  retry: 'request-retry',
+  circuit_breaker: 'circuit-breaking',
+  async: 'async-routes',
+  waf: 'edge-protection',
+  challenge: 'edge-protection',
+};
 
 route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
   const a = app(params.slug);
@@ -7978,6 +7999,26 @@ route('POST', '/v1/apps/{slug}/edge-rules', ({ params, body }) => {
 
   if (PAID_KINDS.has(kind) && db.account.plan === 'free')
     throw new Problem(402, 'plan_edge_rule_kind_not_allowed', `${kind} rules need a paid plan.`);
+  if (PRO_KINDS.has(kind) && !['pro', 'scale'].includes(db.account.plan))
+    throw new Problem(
+      403,
+      'plan_edge_rule_kind_quota_reached',
+      `${kind} rules need the Pro plan or above.`
+    );
+  const owner = KIND_CAPABILITY[kind];
+  if (owner && hiddenCapabilities.has(owner))
+    throw new Problem(
+      403,
+      'capability_not_released',
+      `edge_rule.${kind} needs a capability that is not available to this account; contact support for access.`
+    );
+  // edgerules/rules_core.go:147: fixed responses serve preview apps only.
+  if (kind === 'respond' && !a.preview_of_slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      'respond edge rules are only allowed on preview applications'
+    );
 
   const onApp = db.edgeRules.filter((r) => r.app_id === a.id);
   if (onApp.length >= QUOTA_PER_APP)
@@ -8052,6 +8093,16 @@ function edgeRuleExtras(body: Record<string, unknown>) {
   if (body.mode === 'log' || body.mode === 'enforce') out.mode = body.mode;
   if (body.match && typeof body.match === 'object')
     out.match = body.match as (typeof db.edgeRules)[number]['match'];
+  if (body.match_headers && typeof body.match_headers === 'object') {
+    if (Object.keys(body.match_headers).length > 10)
+      throw new Problem(422, 'validation_failed', 'match_headers allows at most 10 headers');
+    out.match_headers = body.match_headers as Record<string, string>;
+  }
+  if (typeof body.expires_at === 'string') {
+    if (!(Date.parse(body.expires_at) > Date.now()))
+      throw new Problem(422, 'validation_failed', 'expires_at must be in the future');
+    out.expires_at = body.expires_at;
+  }
   if (body.penalty && typeof body.penalty === 'object') {
     const p = body.penalty as { seconds?: number; after?: number; within_seconds?: number };
     if (!p.seconds || p.seconds < 60 || p.seconds > 86400)
@@ -8100,6 +8151,8 @@ route('PATCH', '/v1/edge-rules/{id}', ({ params, body }) => {
     throw new Problem(422, 'validation_failed', 'set penalty or clear_penalty, not both');
   Object.assign(rule, edgeRuleExtras({ ...body, kind: rule.kind }));
   if (body.clear_penalty) delete rule.penalty;
+  if (body.clear_match) delete rule.match;
+  if (body.clear_expires_at) delete rule.expires_at;
   rule.updated_at = db.iso(0);
   edgeRuleMock.record(rule.app_id);
   return edgeRuleMock.wireRule(rule);
