@@ -12,37 +12,37 @@ export const SOURCES: readonly SourceOption[] = [
   {
     id: 'git',
     name: 'Git repository',
-    desc: 'Build and deploy a function or an app from a branch, tag, or commit.',
+    desc: 'Choose a GitHub repository and branch. Gregale builds and deploys your code.',
   },
   {
     id: 'function',
     name: 'Function',
-    desc: 'Write a handler here. No repository needed.',
+    desc: 'Write a JavaScript or Python handler here and deploy it. No repository needed.',
   },
   {
     id: 'template',
     name: 'Template',
-    desc: 'Start from a ready-made starter.',
+    desc: 'Choose starter code. Create the app here, then deploy with the CLI.',
   },
   {
     id: 'empty',
     name: 'Empty app',
-    desc: 'Create it now, deploy code later.',
+    desc: 'Create an app without code. Deploy later with the CLI.',
   },
   {
     id: 'container',
     name: 'Container image',
-    desc: 'Run an HTTP image you already built.',
+    desc: 'Deploy a container image that serves a website or API.',
   },
   {
     id: 'worker',
     name: 'Long-lived worker',
-    desc: 'Run a background process with no HTTP port.',
+    desc: 'Run a container continuously in the background, without a public URL.',
   },
   {
     id: 'import',
     name: 'Import',
-    desc: 'Turn a repository with several services into a project.',
+    desc: 'Upload a repository archive. Preview and create its apps together.',
   },
 ];
 

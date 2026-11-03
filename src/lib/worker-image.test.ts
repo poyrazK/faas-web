@@ -38,3 +38,17 @@ it('rejects Free and lifecycle values beyond the plan limit', () => {
   );
   expect(() => workerCreateRequest({ ...settings, plan: 'hobby', maxRetries: 6 })).toThrow(/5/);
 });
+
+it.each(['pro', 'scale'] as const)('enforces the backend cold-boot startup cap on %s', (plan) => {
+  expect(() =>
+    workerCreateRequest({
+      slug: 'worker',
+      memory: 128,
+      maxMemory: 512,
+      plan,
+      restartPolicy: 'always',
+      startupDeadline: 31,
+      maxRetries: 0,
+    })
+  ).toThrow('Startup deadline must be 0 to 30 seconds for this plan.');
+});

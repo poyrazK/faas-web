@@ -66,9 +66,11 @@ describe('summaryRows', () => {
       'visibility',
     ]);
     expect(keys({ step: 1, appType: 'app' })).not.toContain('runtime');
-    expect(value({ step: 1, scaleToZero: false }, 'scale')).toBe('One instance kept resident');
+    expect(value({ step: 1, scaleToZero: false }, 'scale')).toBe('Keeps one instance running');
     expect(value({ step: 1, memoryMb: 256 }, 'memory')).toBe('256 MB');
-    expect(value({ step: 1, visibility: 'internal' }, 'visibility')).toBe('Internal service only');
+    expect(value({ step: 1, visibility: 'internal' }, 'visibility')).toBe(
+      'Internal only. No public URL.'
+    );
   });
 
   it('says how the first deploy happens and what the URL is, on review', () => {

@@ -94,9 +94,9 @@ export function NewAppChooser({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:p-6">
       <div className="mb-3">
-        <h2 className="text-base font-semibold">Make something new</h2>
+        <h2 className="text-base font-semibold">What are you starting with?</h2>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-          Bring your code, write a function, or choose a starter.
+          Choose the option that matches your code. You’ll review everything before creating an app.
         </p>
       </div>
       {row('git')}

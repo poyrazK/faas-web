@@ -48,9 +48,9 @@ it('renders null empty lists and ports from older scan responses without crashin
     container.querySelector('input[type=file]') as HTMLInputElement,
     new File(['archive'], 'repo.tar.gz', { type: 'application/gzip' })
   );
-  await user.click(screen.getByRole('button', { name: 'Scan' }));
+  await user.click(screen.getByRole('button', { name: 'Preview apps' }));
   expect(await screen.findByText('gateway')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Apply plan' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Create project' })).toBeEnabled();
   expect(apply).not.toHaveBeenCalled();
 });
 it('links the applied project using the reviewed server plan identity', async () => {
@@ -68,8 +68,8 @@ it('links the applied project using the reviewed server plan identity', async ()
   const { container } = render(<ProjectImport />);
   const input = container.querySelector('input[type=file]') as HTMLInputElement;
   await userEvent.upload(input, new File(['archive'], 'repo.tar.gz', { type: 'application/gzip' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Scan' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Apply plan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Preview apps' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Create project' }));
   expect(await screen.findByRole('link', { name: 'View project shop' })).toHaveAttribute(
     'href',
     '/dashboard/projects/shop'
