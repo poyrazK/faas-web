@@ -719,14 +719,16 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Operations and work policies',
     wave: 3,
   },
-  // F108 · preview
+  // F108 · preview. The versioning toggle, every version with download,
+  // restore, undelete and permanent delete, and lifecycle rule editing are on
+  // the Storage page, each behind its own sub-capability.
   {
     row: 108,
     name: 'Object storage: buckets, signed URLs, upload routes, S3 gateway, versioning, lifecycle rules, object lock, write protection, encryption keys, change notifications, multipart uploads',
     status: 'partial',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
-    gap: 'Versioning toggle and version restore, lifecycle editing (both read-only today), CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts',
+    gap: 'CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts',
     wave: 3,
   },
   // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview).
