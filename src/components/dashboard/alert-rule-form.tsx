@@ -54,6 +54,19 @@ export function useCapabilityCheck() {
 type Field = 'name' | 'threshold' | 'target' | 'webhookUrl' | 'secret' | 'cooldown';
 
 /**
+ * Starting values, for a form opened from one SLO or synthetic check: the
+ * metric that watches it, already pointed at it, with the documented starting
+ * threshold. Every field stays editable.
+ */
+export type AlertRuleDraft = {
+  metric?: AlertMetric;
+  comparison?: AlertComparison;
+  threshold?: string;
+  sloId?: string;
+  checkId?: string;
+};
+
+/**
  * Create an alert rule on one app (POST /v1/apps/{slug}/alerts).
  *
  * The form follows apid's create order (handlers_alerts.go:144-325): a metric,
@@ -65,9 +78,11 @@ type Field = 'name' | 'threshold' | 'target' | 'webhookUrl' | 'secret' | 'cooldo
 export function AlertRuleForm({
   slug,
   onCreated,
+  initial,
 }: {
   slug: string;
   onCreated?: (rule: AlertRule) => void;
+  initial?: AlertRuleDraft;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -76,13 +91,13 @@ export function AlertRuleForm({
   const baselines = isOn('anomaly-alerts');
 
   const [name, setName] = useState('');
-  const [chosenMetric, setMetric] = useState<AlertMetric>('error_rate_pct');
-  const [chosenComparison, setComparison] = useState<AlertComparison>('gt');
-  const [threshold, setThreshold] = useState('5');
+  const [chosenMetric, setMetric] = useState<AlertMetric>(initial?.metric ?? 'error_rate_pct');
+  const [chosenComparison, setComparison] = useState<AlertComparison>(initial?.comparison ?? 'gt');
+  const [threshold, setThreshold] = useState(initial?.threshold ?? '5');
   const [chosenWindow, setWindow] = useState<AlertWindow>('15m');
   const [failureSource, setFailureSource] = useState<FailureSource>('any');
-  const [sloId, setSloId] = useState('');
-  const [checkId, setCheckId] = useState('');
+  const [sloId, setSloId] = useState(initial?.sloId ?? '');
+  const [checkId, setCheckId] = useState(initial?.checkId ?? '');
   const [logQuery, setLogQuery] = useState('');
   const [customName, setCustomName] = useState('');
   const [channelIds, setChannelIds] = useState<string[]>([]);

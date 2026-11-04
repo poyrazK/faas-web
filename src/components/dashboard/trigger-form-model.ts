@@ -27,9 +27,20 @@ export type TriggerSourceDraft =
   | { kind: 'nats'; url: string; stream: string; subject: string; durable: string }
   | { kind: 'redis_streams'; addr: string; stream: string; group: string }
   | { kind: 'sqs_compat'; queueUrl: string; longPollSecs: string }
-  | { kind: 'queue'; mode: 'queue' | 'delayed_task' };
+  | { kind: 'queue'; mode: 'queue' | 'delayed_task' }
+  | {
+      kind: 'realtime';
+      endpointId: string;
+      channel: string;
+      group: string;
+      maxConcurrency: number;
+    };
+
+/** `record` invokes once per record; `batch` once per dispatch batch (faas ADR-1321). */
+export type TriggerDeliveryMode = 'record' | 'batch';
 
 export interface TriggerDeliveryDraft {
+  mode: TriggerDeliveryMode;
   batchSizeMax: number;
   batchWindowMs: number;
   maxAttempts: number;
@@ -47,14 +58,36 @@ export interface TriggerDraft {
   limits: TriggerLimits;
 }
 
-/** Kinds the console creates. sqs_compat is refused (faas d69c41b965); realtime is Wave 3. */
-export type CreatableBrokerKind = Extract<BrokerKind, 'kafka' | 'nats' | 'redis_streams' | 'queue'>;
-const CREATABLE: CreatableBrokerKind[] = ['kafka', 'nats', 'redis_streams', 'queue'];
+/**
+ * Kinds the console creates. sqs_compat is refused (faas d69c41b965).
+ * realtime exists only inside the realtime preview: outside it apid answers
+ * the kind as unknown (managedrealtime/triggers.go PrepareRealtimeTrigger),
+ * so the form offers it only while capability `realtime` is on.
+ */
+export type CreatableBrokerKind = Extract<
+  BrokerKind,
+  'kafka' | 'nats' | 'redis_streams' | 'queue' | 'realtime'
+>;
+const CREATABLE: CreatableBrokerKind[] = ['kafka', 'nats', 'redis_streams', 'queue', 'realtime'];
 
-export function allowedBrokerKinds(limits: TriggerLimits): CreatableBrokerKind[] {
+/** The most messages one batch-delivery realtime invocation receives (RealtimeConsumerGroupBatchMax). */
+export const REALTIME_BATCH_MAX = 16;
+/** apid's batch size for a batch-delivery realtime trigger (RealtimeTriggerDefaultBatchSize). */
+export const REALTIME_BATCH_DEFAULT = 10;
+/** Parallel invocations a realtime trigger may ask for (QueuePushDispatchSlotsPerNode). */
+export const REALTIME_CONCURRENCY_MAX = 32;
+
+/** Batch delivery is refused for cron and queue triggers (faas api.ValidateTriggerDelivery). */
+export const supportsBatchDelivery = (kind: BrokerKind) => kind !== 'queue';
+
+export function allowedBrokerKinds(
+  limits: TriggerLimits,
+  { realtime }: { realtime: boolean } = { realtime: false }
+): CreatableBrokerKind[] {
   if (!limits.triggers_allowed) return [];
-  return limits.trigger_kinds.filter((kind): kind is CreatableBrokerKind =>
-    CREATABLE.includes(kind as CreatableBrokerKind)
+  return limits.trigger_kinds.filter(
+    (kind): kind is CreatableBrokerKind =>
+      CREATABLE.includes(kind as CreatableBrokerKind) && (kind !== 'realtime' || realtime)
   );
 }
 
@@ -84,7 +117,34 @@ export function sourceDraft(kind: CreatableBrokerKind): TriggerSourceDraft {
       return { kind, addr: '', stream: '', group: '' };
     case 'queue':
       return { kind, mode: 'queue' };
+    case 'realtime':
+      return { kind, endpointId: '', channel: '', group: '', maxConcurrency: 0 };
   }
+}
+
+function defaultBatchSize(kind: BrokerKind, limits: TriggerLimits) {
+  return kind === 'realtime' ? REALTIME_BATCH_DEFAULT : Math.min(64, limits.trigger_batch_size_max);
+}
+
+/**
+ * Switches the draft's source kind. A realtime trigger's batch size means
+ * messages per invocation (at most 16), and a queue trigger cannot batch, so
+ * the delivery settings follow the kind rather than carrying a value the API
+ * would refuse.
+ */
+export function withSourceKind(draft: TriggerDraft, kind: CreatableBrokerKind): TriggerDraft {
+  const crossesRealtime = (draft.source.kind === 'realtime') !== (kind === 'realtime');
+  return {
+    ...draft,
+    source: sourceDraft(kind),
+    delivery: {
+      ...draft.delivery,
+      mode: supportsBatchDelivery(kind) ? draft.delivery.mode : 'record',
+      batchSizeMax: crossesRealtime
+        ? defaultBatchSize(kind, draft.limits)
+        : draft.delivery.batchSizeMax,
+    },
+  };
 }
 
 export function newTriggerDraft(limits: TriggerLimits, appId: string): TriggerDraft {
@@ -94,7 +154,8 @@ export function newTriggerDraft(limits: TriggerLimits, appId: string): TriggerDr
     slug: '',
     source: sourceDraft(kind),
     delivery: {
-      batchSizeMax: Math.min(64, limits.trigger_batch_size_max),
+      mode: 'record',
+      batchSizeMax: defaultBatchSize(kind, limits),
       batchWindowMs: Math.min(1000, limits.trigger_batch_window_max_ms),
       maxAttempts: Math.min(5, limits.trigger_max_attempts_max),
       payloadMaxBytes: Math.min(6_291_456, limits.trigger_payload_max_bytes),
@@ -107,6 +168,8 @@ export function newTriggerDraft(limits: TriggerLimits, appId: string): TriggerDr
 }
 
 const required = (value: string, message: string) => (value.trim() ? undefined : message);
+// apid parses endpoint_id with uuid.Parse, which takes the dashed and the 32-hex forms.
+const UUID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 function parseFilter(text: string): S['FilterCriteria'] | undefined {
   if (!text.trim()) return undefined;
@@ -127,7 +190,9 @@ export function validateTriggerDraft(draft: TriggerDraft): Record<string, string
   if (!/^[a-z0-9][a-z0-9-]*$/.test(draft.slug.trim())) {
     errors.slug = 'Use lower-case letters, digits, and dashes.';
   }
-  if (!(allowedBrokerKinds(draft.limits) as string[]).includes(draft.source.kind)) {
+  // The plan decides here; the realtime capability decides which kinds the form offers.
+  const planKinds: string[] = allowedBrokerKinds(draft.limits, { realtime: true });
+  if (!planKinds.includes(draft.source.kind)) {
     errors.kind = 'This source kind is not included in the current plan.';
   }
 
@@ -178,6 +243,33 @@ export function validateTriggerDraft(draft: TriggerDraft): Record<string, string
     ) {
       errors.longPollSecs = 'Use a whole number from 1 to 20 seconds.';
     }
+  } else if (source.kind === 'realtime') {
+    if (!UUID.test(source.endpointId.trim())) {
+      errors.endpointId = 'Enter the realtime endpoint ID (a UUID).';
+    }
+    if (!source.channel.trim() || source.channel.trim().length > 256) {
+      errors.channel = 'Enter a channel of 1 to 256 characters.';
+    }
+    if (!source.group.trim() || source.group.trim().length > 128) {
+      errors.group = 'Enter a consumer group of 1 to 128 characters.';
+    }
+    if (
+      !Number.isInteger(source.maxConcurrency) ||
+      source.maxConcurrency < 0 ||
+      source.maxConcurrency > REALTIME_CONCURRENCY_MAX
+    ) {
+      errors.maxConcurrency = `Use a whole number from 0 to ${REALTIME_CONCURRENCY_MAX}.`;
+    }
+    // The bound consumer group owns ordering, filters, attempts and dead
+    // letters; only messages per invocation is the trigger's, and only in batch.
+    const size = draft.delivery.batchSizeMax;
+    if (
+      draft.delivery.mode === 'batch' &&
+      (!Number.isInteger(size) || size < 1 || size > REALTIME_BATCH_MAX)
+    ) {
+      errors.batchSizeMax = `Messages per invocation must be a whole number from 1 to ${REALTIME_BATCH_MAX}.`;
+    }
+    return errors;
   }
 
   const numeric: Array<[keyof TriggerDeliveryDraft, number, number, string]> = [
@@ -248,10 +340,40 @@ function buildSourceConfig(source: TriggerSourceDraft): Record<string, unknown> 
       };
     case 'queue':
       return { mode: source.mode };
+    case 'realtime':
+      return {
+        endpoint_id: source.endpointId.trim(),
+        channel: source.channel.trim(),
+        group: source.group.trim(),
+        ...(source.maxConcurrency > 0 ? { max_concurrency: source.maxConcurrency } : {}),
+      };
   }
 }
 
+/**
+ * A realtime trigger sends only what the trigger owns: apid rejects
+ * batch_window_ms, max_attempts, retry_policy, broker_poison_strategy and
+ * filter_criteria because the consumer group owns them, and allows a batch
+ * size above 1 only with batch delivery (managedrealtime/triggers.go).
+ */
+function realtimeDelivery(delivery: TriggerDeliveryDraft) {
+  return {
+    delivery: delivery.mode,
+    batch_size_max: delivery.mode === 'batch' ? delivery.batchSizeMax : 1,
+    enabled: delivery.enabled,
+  };
+}
+
 export function buildCreateTriggerRequest(draft: TriggerDraft): S['CreateTriggerRequest'] {
+  if (draft.source.kind === 'realtime') {
+    return {
+      app_id: draft.appId,
+      kind: 'realtime',
+      slug: draft.slug.trim(),
+      config: buildSourceConfig(draft.source),
+      ...realtimeDelivery(draft.delivery),
+    };
+  }
   return {
     app_id: draft.appId,
     kind: draft.source.kind,
@@ -264,6 +386,7 @@ export function buildCreateTriggerRequest(draft: TriggerDraft): S['CreateTrigger
     broker_poison_strategy:
       draft.source.kind === 'kafka' ? draft.delivery.poisonStrategy : undefined,
     filter_criteria: parseFilter(draft.filterCriteriaText),
+    ...(supportsBatchDelivery(draft.source.kind) ? { delivery: draft.delivery.mode } : {}),
     enabled: draft.delivery.enabled,
   };
 }
@@ -272,6 +395,9 @@ export function buildUpdateTriggerRequest(
   draft: TriggerDraft,
   _original: S['Trigger']
 ): S['UpdateTriggerRequest'] {
+  if (draft.source.kind === 'realtime') {
+    return { config: buildSourceConfig(draft.source), ...realtimeDelivery(draft.delivery) };
+  }
   return {
     config: buildSourceConfig(draft.source),
     batch_size_max: draft.delivery.batchSizeMax,
@@ -283,6 +409,7 @@ export function buildUpdateTriggerRequest(
     filter_criteria: draft.filterCriteriaText.trim()
       ? parseFilter(draft.filterCriteriaText)
       : ({} as S['FilterCriteria']),
+    ...(supportsBatchDelivery(draft.source.kind) ? { delivery: draft.delivery.mode } : {}),
     enabled: draft.delivery.enabled,
   };
 }
@@ -355,6 +482,15 @@ export function draftFromTrigger(trigger: S['Trigger'], limits: TriggerLimits): 
         mode: config.mode === 'delayed_task' ? 'delayed_task' : 'queue',
       };
       break;
+    case 'realtime':
+      source = {
+        kind: 'realtime',
+        endpointId: text(config.endpoint_id),
+        channel: text(config.channel),
+        group: text(config.group),
+        maxConcurrency: typeof config.max_concurrency === 'number' ? config.max_concurrency : 0,
+      };
+      break;
     default:
       source = sourceDraft(allowedBrokerKinds(limits)[0] ?? 'queue');
   }
@@ -364,6 +500,7 @@ export function draftFromTrigger(trigger: S['Trigger'], limits: TriggerLimits): 
     slug: trigger.slug ?? '',
     source,
     delivery: {
+      mode: trigger.delivery === 'batch' ? 'batch' : 'record',
       batchSizeMax: trigger.batch_size_max,
       batchWindowMs: trigger.batch_window_ms,
       maxAttempts: trigger.max_attempts,

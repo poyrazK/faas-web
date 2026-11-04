@@ -56,6 +56,9 @@ vi.mock('./app-release-settings', () => ({
     <section aria-label="Releases">release settings for {app.slug}</section>
   ),
 }));
+vi.mock('./warm-starts', () => ({
+  WarmStarts: ({ app }: { app: { slug: string } }) => <p>Warm starts for {app.slug}</p>,
+}));
 vi.mock('@/lib/api/queries', () => ({
   retryPolicy: () => false,
   useApp: () => ({

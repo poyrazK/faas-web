@@ -52,6 +52,7 @@ vi.mock('@/components/dashboard/resource-table', () => ({
 }));
 vi.mock('@/components/ui/modal', () => ({ Modal: () => null }));
 vi.mock('@/components/dashboard/deploy-queue', () => ({ DeployQueue: () => null }));
+vi.mock('@/components/dashboard/release-safety', () => ({ WorkspaceReleaseGuards: () => null }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: '', state: 'loading', refresh: vi.fn() }),
 }));

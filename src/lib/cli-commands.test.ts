@@ -5,6 +5,7 @@ import {
   cliBucketObjectLockCommand,
   cliBucketUploadsCommand,
   cliBucketVersioningCommand,
+  cliDataApiLiveCommand,
   cliDeployCommand,
   cliDomainSetDefaultCommand,
   cliEdgeRuleTraceCommand,
@@ -12,7 +13,9 @@ import {
   cliInitDeployCommand,
   cliJobRemoveCommand,
   cliJobRunCommand,
+  cliPostgresLiveCommand,
   cliPostgresRestoreCommand,
+  cliRealtimeDrainCommand,
   cliSloCreateCommand,
   cliSyntheticCheckCreateCommand,
 } from './cli-commands';
@@ -156,6 +159,23 @@ describe('alert target commands', () => {
   });
 });
 
+describe('live query commands', () => {
+  // commands_postgres_live_queries.go:21: "usage: gregale postgres live <status|enable|rotate|disable> DATABASE"
+  it('reads and enables live queries on a database by ID', () => {
+    expect(cliPostgresLiveCommand('status', 'db-1')).toBe('gregale postgres live status db-1');
+    expect(cliPostgresLiveCommand('enable', 'db-1')).toBe('gregale postgres live enable db-1');
+  });
+  // commands_data_api_live.go:62-65: data-api live <enable|status> NAME, flag --scope (default "default")
+  it('sets up a Data API for live reads, naming a scope only when it is not the default', () => {
+    expect(cliDataApiLiveCommand('status', 'shop-data')).toBe(
+      'gregale data-api live status shop-data'
+    );
+    expect(cliDataApiLiveCommand('enable', 'shop-data', 'staging')).toBe(
+      'gregale data-api live enable shop-data --scope staging'
+    );
+  });
+});
+
 describe('cliEdgeRuleTraceCommand', () => {
   // cmd/gregale/commands_edge_rules_trace.go:30-40: --app, --url, --method
   // (default GET), --client-ip, --country.
@@ -174,6 +194,16 @@ describe('cliEdgeRuleTraceCommand', () => {
       })
     ).toBe(
       "gregale edge rule trace --app api --url 'https://api.example.com/login?next=/a b' --method POST --client-ip 203.0.113.7 --country DE"
+    );
+  });
+});
+
+describe('realtime commands', () => {
+  // commands_realtime_drain.go:37: "usage: gregale realtime drain APP_SLUG ENDPOINT_ID --reason TEXT
+  //   [--channel CHANNEL] [--principal PRINCIPAL] [--connection-id ID ... | --all] [--limit N] [--dry-run] ..."
+  it('drains with the reason the CLI requires, as a dry run first', () => {
+    expect(cliRealtimeDrainCommand('chat', 'ep-1')).toBe(
+      'gregale realtime drain chat ep-1 --reason <reason> --channel <channel> --dry-run'
     );
   });
 });

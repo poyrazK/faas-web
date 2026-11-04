@@ -48,6 +48,9 @@ vi.mock('./postgres-health', () => ({
   DatabaseConditions: () => <p>conditions section</p>,
   ConnectionBudget: () => <p>connection planning section</p>,
 }));
+vi.mock('./postgres-live-queries', () => ({
+  LiveQueries: () => <p>live queries section</p>,
+}));
 vi.mock('./postgres-compute', () => ({
   DatabaseCompute: ({
     operation,

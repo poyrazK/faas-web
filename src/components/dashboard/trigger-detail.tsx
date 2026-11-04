@@ -84,8 +84,19 @@ function sourceRows(draft: TriggerDraft): Array<[string, string]> {
         : []),
     ];
   }
+  if (source.kind === 'realtime') {
+    return [
+      ['Realtime endpoint', source.endpointId],
+      ['Channel', source.channel],
+      ['Consumer group', source.group],
+      ['Maximum concurrency', String(Math.max(source.maxConcurrency, 1))],
+    ];
+  }
   return [['Mode', source.mode]];
 }
+
+const deliveryLabel = (delivery: string | undefined) =>
+  delivery === 'batch' ? 'Batch' : 'Per record';
 
 function labelled(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
@@ -111,6 +122,7 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
   const rows: [string, string][] = [
     ['Delivery slug', labelled(data.slug)],
     ['Source', labelled(data.source)],
+    ['Delivery', data.kind === 'cron' ? null : deliveryLabel(data.delivery)],
     ['Schedule', labelled(data.schedule)],
     ['Path', labelled(data.path)],
     ['Batch size (max)', labelled(data.batch_size_max)],
@@ -219,7 +231,9 @@ export function TriggerDetail({
 
   const save = async () => {
     if (!edit) return;
-    const nextErrors = validateTriggerDraft(edit);
+    // Kind is immutable on PATCH, so whether the plan still offers it for a
+    // new trigger (a realtime one outside its preview, say) is not this form's question.
+    const { kind: _kind, ...nextErrors } = validateTriggerDraft(edit);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     setMutationError(null);
@@ -322,10 +336,18 @@ export function TriggerDetail({
           <dl className="grid gap-4 sm:grid-cols-2">
             {[
               ...sourceRows(draft),
-              ['Maximum batch', String(trigger.batch_size_max)],
-              ['Batch window', `${trigger.batch_window_ms} ms`],
-              ['Maximum attempts', String(trigger.max_attempts)],
-              ['Payload cap', `${trigger.payload_max_bytes} bytes`],
+              ['Delivery', deliveryLabel(trigger.delivery)],
+              ...((trigger.kind === 'realtime'
+                ? [
+                    ['Messages per invocation', String(trigger.batch_size_max)],
+                    ['Retries and filters', 'Owned by the consumer group'],
+                  ]
+                : [
+                    ['Maximum batch', String(trigger.batch_size_max)],
+                    ['Batch window', `${trigger.batch_window_ms} ms`],
+                    ['Maximum attempts', String(trigger.max_attempts)],
+                    ['Payload cap', `${trigger.payload_max_bytes} bytes`],
+                  ]) as Array<[string, string]>),
               ...(trigger.kind === 'kafka'
                 ? ([['Poison strategy', trigger.broker_poison_strategy]] as Array<[string, string]>)
                 : []),
@@ -343,7 +365,9 @@ export function TriggerDetail({
             <pre className="mt-2 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
               {trigger.filter_criteria
                 ? JSON.stringify(trigger.filter_criteria, null, 2)
-                : 'Every record is dispatched.'}
+                : trigger.kind === 'realtime'
+                  ? "The consumer group's filters apply."
+                  : 'Every record is dispatched.'}
             </pre>
           </div>
         </Panel>
@@ -359,7 +383,9 @@ export function TriggerDetail({
             {'{\n  "batchItemFailures": [\n    { "itemIdentifier": "record-id" }\n  ]\n}'}
           </pre>
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            Missing or empty failures mean full success. Failed items retry, then enter dead letter.
+            {trigger.delivery === 'batch'
+              ? 'Batch delivery: every record of a batch arrives in one invocation as {"records": […]}. List the records to retry; an error or non-2xx response retries the whole batch.'
+              : 'Missing or empty failures mean full success. Failed items retry, then enter dead letter.'}
           </p>
         </Panel>
       </div>
@@ -396,6 +422,7 @@ export function TriggerDetail({
               source={edit.source}
               errors={errors}
               limits={account.limits}
+              editing
               onChange={(source) => setEdit((value) => value && { ...value, source })}
             />
             <TriggerDeliveryFields

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import {
+  APP_TAB_ANY_CAPABILITY,
   APP_TAB_CAPABILITY,
   AppTabNavigation,
   resolveAppTab,
@@ -45,7 +46,7 @@ it('remembers the page last open in each group', async () => {
   render(<Navigation initial="Edge rules" />);
   await userEvent.click(within(pages('Connect')).getByRole('button', { name: 'Mirrors' }));
   await userEvent.click(screen.getByRole('tab', { name: 'Automate' }));
-  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(4);
+  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(8);
   await userEvent.click(screen.getByRole('tab', { name: 'Connect' }));
   expect(within(pages('Connect')).getByRole('button', { name: 'Mirrors' })).toHaveAttribute(
     'aria-pressed',
@@ -97,7 +98,19 @@ it('puts the request audit with the other Observe pages', () => {
     within(pages('Observe'))
       .getAllByRole('button')
       .map((b) => b.textContent)
-  ).toEqual(['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit']);
+  ).toEqual([
+    'Logs',
+    'Log drains',
+    'Errors',
+    'Issues',
+    'Alerts',
+    'SLOs',
+    'Synthetic checks',
+    'Debugger',
+    'Forks',
+    'Profile captures',
+    'Request audit',
+  ]);
   expect(resolveAppTab('Request audit')).toBe('Request audit');
 });
 
@@ -119,8 +132,26 @@ describe('visibleAppTabs', () => {
     expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('Issues');
   });
   it('maps every gated tab to a catalog id', () => {
-    expect(APP_TAB_CAPABILITY.Debugger).toBe('production-debugger');
+    expect(APP_TAB_CAPABILITY.Debugger).toBe('debug');
     expect(APP_TAB_CAPABILITY.Automations).toBe('automations');
+  });
+  it('hides Forks when apid gates production forks off, and keeps it for the plan notice', () => {
+    expect(APP_TAB_CAPABILITY.Forks).toBe('production-forks');
+    expect(visibleAppTabs((id) => (id === 'production-forks' ? 'off' : 'on'))).not.toContain(
+      'Forks'
+    );
+    expect(
+      visibleAppTabs((id) => (id === 'production-forks' ? 'plan-not-entitled' : 'on'))
+    ).toContain('Forks');
+  });
+  it('hides Profile captures when apid gates the preview off, and keeps it for the plan notice', () => {
+    expect(APP_TAB_CAPABILITY['Profile captures']).toBe('profile-captures');
+    expect(visibleAppTabs((id) => (id === 'profile-captures' ? 'off' : 'on'))).not.toContain(
+      'Profile captures'
+    );
+    expect(
+      visibleAppTabs((id) => (id === 'profile-captures' ? 'plan-not-entitled' : 'on'))
+    ).toContain('Profile captures');
   });
   it('hides Log drains when apid gates the log-drains capability off', () => {
     expect(APP_TAB_CAPABILITY['Log drains']).toBe('log-drains');
@@ -143,6 +174,24 @@ describe('AppTabNavigation with hidden tabs', () => {
   });
 });
 
+it('puts Release safety in Delivery and hides it only when all of its capabilities are off', () => {
+  render(<Navigation initial="Release safety" />);
+  expect(screen.getByRole('tab', { name: 'Delivery' })).toHaveAttribute('aria-selected', 'true');
+  expect(
+    within(pages('Delivery'))
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+  ).toEqual(['Deployments', 'Release safety', 'Activity']);
+  const gated = APP_TAB_ANY_CAPABILITY['Release safety'] ?? [];
+  expect(gated).toEqual(expect.arrayContaining(['deploy-freezes', 'scheduled-releases']));
+  expect(visibleAppTabs((id) => (id === 'deploy-freezes' ? 'off' : 'on'))).toContain(
+    'Release safety'
+  );
+  expect(visibleAppTabs((id) => (gated.includes(id) ? 'off' : 'on'))).not.toContain(
+    'Release safety'
+  );
+});
+
 it('puts edge protection beside edge rules, gated on its capability', () => {
   render(<Navigation initial="Edge rules" />);
   const names = within(pages('Connect'))
@@ -153,4 +202,57 @@ it('puts edge protection beside edge rules, gated on its capability', () => {
   expect(visibleAppTabs((id) => (id === 'edge-protection' ? 'off' : 'on'))).not.toContain(
     'Edge protection'
   );
+});
+
+it('puts realtime with the other messaging pages under Automate, gated on its capability', () => {
+  render(<Navigation initial="Realtime" />);
+  expect(screen.getByRole('tab', { name: 'Automate' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Automate'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Realtime')).toBe(names.indexOf('Queues') + 1);
+  expect(APP_TAB_CAPABILITY.Realtime).toBe('realtime');
+  expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
+  expect(resolveAppTab('Realtime')).toBe('Realtime');
+});
+
+it('puts SLOs beside alerts under Observe, gated on custom-slos', () => {
+  render(<Navigation initial="SLOs" />);
+  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Observe'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('SLOs')).toBe(names.indexOf('Alerts') + 1);
+  expect(APP_TAB_CAPABILITY.SLOs).toBe('custom-slos');
+  expect(visibleAppTabs((id) => (id === 'custom-slos' ? 'off' : 'on'))).not.toContain('SLOs');
+  expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('SLOs');
+  expect(resolveAppTab('SLOs')).toBe('SLOs');
+});
+
+it('puts synthetic checks after SLOs under Observe, gated on their capability', () => {
+  render(<Navigation initial="Synthetic checks" />);
+  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
+  const names = within(pages('Observe'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('Synthetic checks')).toBe(names.indexOf('SLOs') + 1);
+  expect(APP_TAB_CAPABILITY['Synthetic checks']).toBe('synthetic-checks');
+  expect(visibleAppTabs((id) => (id === 'synthetic-checks' ? 'off' : 'on'))).not.toContain(
+    'Synthetic checks'
+  );
+  expect(visibleAppTabs(() => 'plan-not-entitled')).toContain('Synthetic checks');
+  expect(resolveAppTab('Synthetic checks')).toBe('Synthetic checks');
+});
+
+it('puts the TCP and UDP listeners under Connect, each gated on its own capability', () => {
+  render(<Navigation initial="TCP listeners" />);
+  const names = within(pages('Connect'))
+    .getAllByRole('button')
+    .map((b) => b.textContent);
+  expect(names.indexOf('UDP listeners')).toBe(names.indexOf('TCP listeners') + 1);
+  expect(APP_TAB_CAPABILITY['TCP listeners']).toBe('tcp-listeners');
+  expect(APP_TAB_CAPABILITY['UDP listeners']).toBe('udp-listeners');
+  const tabs = visibleAppTabs((id) => (id === 'udp-listeners' ? 'off' : 'on'));
+  expect(tabs).toContain('TCP listeners');
+  expect(tabs).not.toContain('UDP listeners');
 });

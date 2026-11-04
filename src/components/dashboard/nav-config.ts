@@ -22,6 +22,7 @@ import {
   Key,
   Network,
   Package,
+  PiggyBank,
   Play,
   Rocket,
   Search,
@@ -201,6 +202,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/debug',
     label: 'Debugger',
     icon: Search,
+    capability: 'debug',
     sidebarIconClassName: 'text-cat-security/80',
   },
   {
@@ -221,6 +223,7 @@ export const NAV_HUBS: NavHub[] = [
     icon: GraphUp,
     sections: [
       { to: '/dashboard/usage', label: 'Usage', icon: GraphUp },
+      { to: '/dashboard/budgets', label: 'Budgets', icon: PiggyBank, capability: 'budgets' },
       { to: '/dashboard/invoices', label: 'Invoices', icon: Coins },
       { to: '/dashboard/plans', label: 'Plans', icon: CreditCard },
     ],

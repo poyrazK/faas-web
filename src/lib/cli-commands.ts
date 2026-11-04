@@ -95,6 +95,24 @@ export function cliSyntheticCheckCreateCommand(appSlug: string): string {
   return `gregale alert check create --app ${appSlug} --name <name> --path /healthz`;
 }
 
+/** Read or turn on live queries for one managed database, named by ID. */
+export function cliPostgresLiveCommand(action: 'status' | 'enable', databaseId: string): string {
+  return `gregale postgres live ${action} ${databaseId}`;
+}
+
+/**
+ * Read or set up a Data API's live reads: live queries on its database, usage
+ * reporting, and a live-only realtime endpoint. `--scope` only when it is not
+ * the default scope, which the CLI assumes.
+ */
+export function cliDataApiLiveCommand(
+  action: 'status' | 'enable',
+  appSlug: string,
+  scope = 'default'
+): string {
+  return `gregale data-api live ${action} ${appSlug}${scope === 'default' ? '' : ` --scope ${scope}`}`;
+}
+
 /**
  * Trace which edge rules a request would match. apid has no trace endpoint:
  * the CLI simulates the gateway locally over the rules it reads (faas
@@ -115,4 +133,9 @@ export function cliEdgeRuleTraceCommand(
   const country = request.country?.trim().toUpperCase();
   if (country) parts.push(`--country ${shellArg(country)}`);
   return parts.join(' ');
+}
+
+/** Close a selection of realtime connections; `--dry-run` lists what it would close. */
+export function cliRealtimeDrainCommand(appSlug: string, endpointId: string): string {
+  return `gregale realtime drain ${appSlug} ${endpointId} --reason <reason> --channel <channel> --dry-run`;
 }
