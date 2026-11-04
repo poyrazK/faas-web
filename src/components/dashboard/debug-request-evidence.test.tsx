@@ -64,6 +64,12 @@ beforeEach(() => {
       },
       spans: [span(), span({ span_id: 's2', name: 'redis.get', duration_nanos: 3_400_000 })],
       spans_truncated: false,
+      timeline: [],
+      correlation: { stages: [], complete: false },
+      dependency_latency: [],
+      dependency_latency_truncated: false,
+      logs: [],
+      logs_truncated: false,
       explanation: {
         status: 'regression_detected',
         headline: 'A database query on this route takes 7× longer than before.',
@@ -77,6 +83,149 @@ beforeEach(() => {
 });
 
 describe('DebugRequestEvidence', () => {
+  it('places spans by their recorded start and end times when the API kept them', () => {
+    const result = useDebugRequestEvidence();
+    result.data.spans = [
+      span({ start_time: '2026-09-08T09:00:00.000Z', end_time: '2026-09-08T09:00:02.000Z' }),
+      span({
+        span_id: 's2',
+        name: 'redis.get',
+        duration_nanos: 500_000_000,
+        start_time: '2026-09-08T09:00:01.000Z',
+        end_time: '2026-09-08T09:00:01.500Z',
+      }),
+    ];
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(
+      screen.getByRole('img', { name: 'redis.get: starts at 1000 ms, lasts 500 ms' })
+    ).toHaveStyle({ left: '50%', width: '25%' });
+    expect(screen.getByText(/recorded start and end time/)).toBeInTheDocument();
+  });
+
+  it('shows the timeline, correlation, critical path, dependencies, logs and findings as returned', () => {
+    const result = useDebugRequestEvidence();
+    Object.assign(result.data, {
+      request: {
+        ...request,
+        request_id: 'pub-req-1',
+        instance_id: 'inst-1',
+        guest: {
+          runtime: 'node22',
+          duration_ms: 2300,
+          outcome: 'handler_error',
+          error_class: 'handler_exec',
+        },
+      },
+      timeline: [
+        {
+          at: '2026-09-08T09:00:00Z',
+          phase: 'wake',
+          kind: 'restore',
+          summary: 'Restored from snapshot',
+          duration_ms: 180,
+        },
+        {
+          at: '2026-09-08T09:00:02Z',
+          phase: 'error',
+          kind: 'http_5xx',
+          summary: 'Answered 500',
+          status: 500,
+          approximate: true,
+        },
+      ],
+      correlation: {
+        complete: false,
+        stages: [
+          { phase: 'edge', status: 'observed', duration_ms: 3 },
+          { phase: 'billing', status: 'missing', reason: 'usage not yet rolled up' },
+        ],
+      },
+      critical_path: {
+        duration_ms: 2400,
+        complete: true,
+        span_count: 1,
+        slowest_span_id: 's1',
+        slowest_span_name: 'postgres.query',
+        slowest_exclusive_ms: 2180,
+        spans: [
+          {
+            span_id: 's1',
+            name: 'postgres.query',
+            kind: 'client',
+            start_time: '2026-09-08T09:00:00Z',
+            end_time: '2026-09-08T09:00:02.180Z',
+            duration_ms: 2180,
+            exclusive_ms: 2180,
+          },
+        ],
+      },
+      dependency_latency: [
+        {
+          type: 'managed_binding',
+          kind: 'postgres',
+          name: 'orders-db',
+          calls: 3,
+          errors: 1,
+          total_duration_ms: 2190,
+          max_duration_ms: 2180,
+        },
+      ],
+      logs: [
+        {
+          occurred_at: '2026-09-08T09:00:01Z',
+          source: 'runtime',
+          level: 'error',
+          message: 'query timed out',
+        },
+      ],
+      logs_truncated: true,
+      explanation: {
+        ...result.data.explanation,
+        diagnosis: 'dependency_regression',
+        confidence: 'high',
+        findings: [
+          {
+            code: 'db_slow',
+            title: 'orders-db is 40× slower',
+            detail: 'p95 rose from 40 ms to 1610 ms.',
+            confidence: 'high',
+          },
+        ],
+        recommendations: [{ action: 'inspect_query', detail: 'Check the orders query plan.' }],
+      },
+    });
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByText('pub-req-1')).toBeInTheDocument();
+    expect(screen.getByText(/node22 · Handler error \(handler_exec\)/)).toBeInTheDocument();
+    expect(screen.getByText('Dependency regression')).toBeInTheDocument();
+    expect(screen.getByText(/orders-db is 40× slower/)).toBeInTheDocument();
+    expect(screen.getByText('Check the orders query plan.')).toBeInTheDocument();
+    const timeline = screen.getByRole('region', { name: 'Timeline' });
+    expect(timeline).toHaveTextContent(/Restored from snapshot/);
+    expect(timeline).toHaveTextContent(/approximate/);
+    const correlation = screen.getByRole('region', { name: 'Edge to billing' });
+    expect(correlation).toHaveTextContent(/unknown, not zero/);
+    expect(correlation).toHaveTextContent('Missing');
+    expect(correlation).toHaveTextContent('usage not yet rolled up');
+    expect(screen.getByRole('region', { name: 'Critical path' })).toHaveTextContent(
+      /2400 ms across 1 span/
+    );
+    expect(screen.getByRole('region', { name: 'Dependencies on this request' })).toHaveTextContent(
+      'orders-db'
+    );
+    const logs = screen.getByRole('region', { name: 'Logs from this request' });
+    expect(logs).toHaveTextContent('query timed out');
+    expect(logs).toHaveTextContent(/last 20/);
+    expect(screen.queryByText(/Wake and instance IDs were not returned/)).not.toBeInTheDocument();
+  });
+
+  it('says when only the request ID was kept', () => {
+    const result = useDebugRequestEvidence();
+    result.data.request = { ...request, evidence_status: 'request_id_only' } as typeof request;
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByText(/Only the request ID was kept/)).toBeInTheDocument();
+  });
+
   it('links the stack snapshot taken while a slow request was in flight', () => {
     const evidence = useDebugRequestEvidence() as { data: { request: object } };
     useDebugRequestEvidence.mockReturnValue({
@@ -185,7 +334,7 @@ describe('DebugRequestEvidence', () => {
     expect(screen.getByRole('img', { name: 'child: 1090 ms relative duration' })).toHaveStyle({
       width: '50%',
     });
-    expect(screen.getByText(/Start offsets and overlap are not returned/)).toBeInTheDocument();
+    expect(screen.getByText(/do not show chronology/)).toBeInTheDocument();
     expect(screen.getByText('Parent span: s1')).toBeInTheDocument();
     expect(screen.queryByText('blamed')).not.toBeInTheDocument();
   });

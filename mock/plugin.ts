@@ -25,6 +25,7 @@ import * as syntheticMock from './synthetics';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
+import * as debugEvidence from './debug-evidence';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
 import * as sloMock from './slos';
@@ -3677,7 +3678,7 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) => {
   gateDebug();
-  app(params.slug);
+  const a = app(params.slug);
   if (!/^[0-9a-f]{8,}$/.test(params.req_id))
     throw new Problem(404, 'not_found', 'no telemetry for that request id');
   const traceId = db.id() + db.id();
@@ -3708,22 +3709,25 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       status: 'OK',
     },
   ];
+  const receivedAt = db.iso(120_000);
+  const woke = parseInt(params.req_id[0], 16) % 2 === 0;
+  const timed = debugEvidence.timeSpans(spans, receivedAt);
+  const extras = debugEvidence.evidenceExtras(a, params.req_id, timed, receivedAt, woke);
   return {
     request: {
+      ...extras.request,
       id: params.req_id,
-      deployment_id: db.deployments[0].id,
+      deployment_id: debugEvidence.evidenceDeployment(a),
       route: '/orders/{id}',
       method: 'GET',
       status: 500,
       latency_ms: 2400,
       count: 1,
       // Even-led request ids woke the app, so the debugger can open a wake.
-      cold_boot: parseInt(params.req_id[0], 16) % 2 === 0,
-      ...(parseInt(params.req_id[0], 16) % 2 === 0
-        ? { wake_id: `wk-${params.req_id.slice(0, 12)}` }
-        : {}),
+      cold_boot: woke,
+      ...(woke ? { wake_id: `wk-${params.req_id.slice(0, 12)}` } : {}),
       trace_id: traceId,
-      received_at: db.iso(120_000),
+      received_at: receivedAt,
     },
     regression: {
       deployment_id: db.deployments[0].id,
@@ -3735,13 +3739,22 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       first_detected_at: db.iso(5_400_000),
       last_detected_at: db.iso(120_000),
     },
-    spans,
+    spans: timed,
     spans_truncated: false,
+    timeline: extras.timeline,
+    correlation: extras.correlation,
+    critical_path: extras.critical_path,
+    dependency_latency: extras.dependency_latency,
+    dependency_latency_truncated: extras.dependency_latency_truncated,
+    dependency_comparison: extras.dependency_comparison,
+    logs: extras.logs,
+    logs_truncated: extras.logs_truncated,
     explanation: {
+      ...extras.explanation,
       status: 'regression_detected',
       headline:
         'A database query on this route takes 7× longer than it did before the current deployment.',
-      primary_span: spans[1],
+      primary_span: timed[1],
     },
     generated_at: db.iso(0),
   };
@@ -7894,16 +7907,30 @@ route('GET', '/v1/apps/{slug}/debug/running', ({ params, query }) => {
   return debugMock.runningFor(app(params.slug), query.get('since') || '24h');
 });
 
-route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params }) => {
+route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params, body }) => {
   gateDebug('production-debugger');
-  const replay = debugMock.replayFor(app(params.slug));
-  if (!replay)
-    throw new Problem(
-      409,
-      'debug_replay_unsupported',
-      "the request's serving deployment has no enabled mirror rule; enable a mirror rule for that deployment before replaying"
-    );
-  return status(202, replay);
+  const a = app(params.slug);
+  const target = debugEvidence.replayTarget(a, String(body.mirror_deployment_id ?? ''));
+  if ('problem' in target) throw new Problem(409, 'debug_replay_unsupported', target.problem);
+  // A real invocation the console can follow until it settles, as apid enqueues one.
+  const inv: S_['Invocation'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    source: 'replay',
+    state: 'pending',
+    method: 'GET',
+    path: '/orders/4211',
+    created_at: new Date().toISOString(),
+  };
+  db.invocations.unshift(inv);
+  asyncInvocations.settleAt.set(inv.id, Date.now() + 4_000);
+  return status(202, {
+    mirror_invocation_id: inv.id,
+    status: 'queued',
+    source_deployment_id: target.rule.source_deployment_id,
+    mirror_deployment_id: target.rule.mirror_deployment_id,
+  });
 });
 
 route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
