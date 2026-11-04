@@ -276,7 +276,7 @@ describe('the selected shared workspace', () => {
     setActiveOrg('acme-corp');
   });
 
-  it('lists its apps even when the account has nothing, linking only apps the account created', async () => {
+  it('lists its apps even when the account has nothing; with the role unknown only own apps link', async () => {
     store.workflows = [{ id: 'mine', name: 'mine', runtime: 'node22', state: 'idle' }];
     extraGet['/v1/orgs/{slug}/apps'] = {
       apps: [
@@ -305,13 +305,47 @@ describe('the selected shared workspace', () => {
       'href',
       '/dashboard/apps/mine'
     );
-    expect(screen.getByText(/stay with each app's creator/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/a billing member opens only the apps they created/)
+    ).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
       '/v1/orgs/{slug}/apps',
       expect.objectContaining({
         params: { path: { slug: 'acme-corp' } },
       })
     );
+  });
+
+  it.each([
+    ['viewer', true],
+    ['developer', true],
+    ['billing', false],
+  ] as const)("links a teammate's app when the account's role is %s: %s", async (role, linked) => {
+    store.workflows = [];
+    extraGet['/v1/orgs/{slug}/apps'] = {
+      apps: [
+        {
+          id: 'a2',
+          slug: 'theirs',
+          type: 'app',
+          status: 'active',
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    };
+    extraGet['/v1/orgs/{slug}/members'] = {
+      members: [
+        { account_id: 'a', email: 'test@example.com', role, joined_at: '2026-01-01T00:00:00Z' },
+      ],
+    };
+    await mount('/dashboard/projects', []);
+    expect(await screen.findByText('theirs')).toBeInTheDocument();
+    if (linked)
+      expect(await screen.findByRole('link', { name: 'theirs' })).toHaveAttribute(
+        'href',
+        '/dashboard/apps/theirs'
+      );
+    else expect(screen.queryByRole('link', { name: 'theirs' })).not.toBeInTheDocument();
   });
 
   it('says when the account may not view the workspace apps', async () => {

@@ -32,12 +32,14 @@ import {
 } from '@/components/dashboard/primitives';
 import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
+  useApp,
   useAppDeployments,
   useAppMetrics,
   useBuildRecords,
   type MetricsRange,
 } from '@/lib/api/queries';
-import { toDeployment } from '@/lib/api/adapters';
+import { toDeployment, toWorkflow } from '@/lib/api/adapters';
+import { ApiError } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
@@ -253,7 +255,16 @@ function FunctionDetailPage() {
   } | null>(null);
   const [deploySubmissionError, setDeploySubmissionError] = useState<string | null>(null);
 
-  const fn = getWorkflow(appSlug);
+  const listed = getWorkflow(appSlug);
+  // `/v1/apps` lists only the signed-in account's own apps, but company members
+  // reach a teammate's app through its org_id (faas ADR-202610171901,
+  // pkg/apid/appaccess/routes.go). So an app the list does not have is read on
+  // its own before the page calls it missing.
+  const direct = useApp(appSlug, { enabled: !loading && !error && !listed, retry: false });
+  const fn = useMemo(
+    () => listed ?? (direct.data ? toWorkflow(direct.data) : undefined),
+    [listed, direct.data]
+  );
   // The route's `head` can only name the id, so the real name is applied here
   // once the store resolves it. Above the early return — it is a hook.
   useDocumentTitle(fn?.name ?? 'App not found');
@@ -350,6 +361,27 @@ function FunctionDetailPage() {
       <div className="flex flex-col gap-6">
         <PageHeader title={appSlug} />
         <LoadingState />
+      </div>
+    );
+  }
+
+  // Not in the account's list: wait for the direct read before saying 404.
+  if (!fn && direct.isFetching) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title={appSlug} />
+        <LoadingState />
+      </div>
+    );
+  }
+
+  // apid answers a missing app and one the caller may not read with the same
+  // 404, so only other failures are errors rather than "not found".
+  if (!fn && direct.error && !(direct.error instanceof ApiError && direct.error.isNotFound)) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title={appSlug} />
+        <ErrorState error={direct.error} onRetry={() => void direct.refetch()} />
       </div>
     );
   }
