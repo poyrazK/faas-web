@@ -60,6 +60,7 @@ export function DeploymentProgress({
   onTerminal,
   hideRetryOptions = false,
   appSlug,
+  accountId,
 }: {
   appCreated: boolean;
   appName: string;
@@ -74,15 +75,20 @@ export function DeploymentProgress({
   hideRetryOptions?: boolean;
   /** Once live, shows how to call the app and tail its logs. */
   appSlug?: string;
+  accountId?: string;
 }) {
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
-  const statusQuery = useDeployment(deploymentId ?? '', {
-    refetchInterval: (query) => {
-      if (!deploymentId || isDeploymentTerminal(query.state.data?.status)) return false;
-      return 2_500;
+  const statusQuery = useDeployment(
+    deploymentId ?? '',
+    {
+      refetchInterval: (query) => {
+        if (!deploymentId || isDeploymentTerminal(query.state.data?.status)) return false;
+        return 2_500;
+      },
     },
-  });
+    accountId
+  );
   const origin = source ?? { kind: 'git' as const, repo: repo ?? '', ref: sourceRef ?? 'main' };
   const image = origin.kind === 'image';
   const hasBuildOutput = Boolean(deploymentId && (!image || statusQuery.data?.build_id));

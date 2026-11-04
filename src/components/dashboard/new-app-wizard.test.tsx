@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { FUNCTION_STARTERS } from '@/lib/function-starters';
 import userEvent from '@testing-library/user-event';
 import { NewAppWizard } from './new-app-wizard';
@@ -9,7 +9,8 @@ import { ApiError } from '@/lib/api/errors';
 import type { ProjectPlan } from '@/lib/api/queries';
 
 const mocks = vi.hoisted(() => ({
-  workspace: { org: null as string | null, label: 'Personal' },
+  navigate: vi.fn(),
+  workspace: { org: null as string | null, label: 'Personal', ready: true },
   addWorkflow: vi.fn(),
   bindRepo: vi.fn(),
   deployFromRef: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   defaultStringifySearch: (await importOriginal<typeof import('@tanstack/react-router')>())
     .defaultStringifySearch,
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mocks.navigate,
 }));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
 vi.mock('./image-deploy-form', () => ({
@@ -166,7 +167,7 @@ async function submitGitApp(onDeploymentAccepted = vi.fn()) {
 }
 
 beforeEach(() => {
-  mocks.workspace = { org: null, label: 'Personal' };
+  mocks.workspace = { org: null, label: 'Personal', ready: true };
   vi.clearAllMocks();
   mocks.account.id = 'account-1';
   mocks.account.plan = 'hobby';
@@ -1268,4 +1269,186 @@ describe('NewAppWizard repository from a compatibility check', () => {
     expect(repository).toHaveAccessibleDescription(/installation cannot see this repository/);
     expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
+});
+
+describe('first-signup quickstart', () => {
+  function sample(progress = vi.fn()) {
+    mocks.account.plan = 'free';
+    mocks.account.github_install_id = '';
+    mocks.account.limits = { ram_mb: 128, deployed_apps: 3 };
+    return {
+      progress,
+      ...render(
+        <NewAppWizard
+          onboarding
+          quickstart
+          suggestedName="hello-sample"
+          search={{ source: 'function', step: 'configure' }}
+          onProgress={progress}
+        />
+      ),
+    };
+  }
+  it('deploys the read-only sample from one form without GitHub or a paid invocation', async () => {
+    mocks.deployFunction.mockResolvedValue({ id: 'a'.repeat(32), app_id: 'app-1' });
+    const { progress } = sample();
+    expect(screen.getByLabelText('App name')).toHaveValue('hello-sample');
+    expect(screen.queryByRole('textbox', { name: /code|handler/i })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Deploy sample' }));
+    await waitFor(() =>
+      expect(progress).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          phase: 'accepted',
+          app: 'demo-app',
+          deployment: 'a'.repeat(32),
+          kind: 'sample',
+        })
+      )
+    );
+    expect(progress.mock.calls.map(([draft]) => draft.phase)).toEqual([
+      'creating',
+      'submitting',
+      'accepted',
+    ]);
+    expect(mocks.addWorkflow).toHaveBeenCalledOnce();
+    expect(mocks.addWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'function',
+        runtime: FUNCTION_STARTERS.node.runtime,
+        visibility: 'public',
+        memoryMb: 128,
+      })
+    );
+    expect(mocks.deployFunction).toHaveBeenCalledOnce();
+    expect(mocks.bindRepo).not.toHaveBeenCalled();
+    expect(mocks.deployFromRef).not.toHaveBeenCalled();
+    expect(screen.queryByText('Your app is live')).not.toBeInTheDocument();
+  });
+  it('locks same-tick repeated submissions and saves the app before submitting its source', async () => {
+    let created!: (value: { id: string }) => void;
+    mocks.addWorkflow.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          created = resolve;
+        })
+    );
+    mocks.deployFunction.mockResolvedValue({ id: 'a'.repeat(32) });
+    const { progress } = sample();
+    const deploy = screen.getByRole('button', { name: 'Deploy sample' });
+    act(() => {
+      fireEvent.click(deploy);
+      fireEvent.click(deploy);
+    });
+    expect(mocks.addWorkflow).toHaveBeenCalledOnce();
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+    await act(async () => {
+      created({ id: 'demo-app' });
+    });
+    await waitFor(() => expect(mocks.deployFunction).toHaveBeenCalledOnce());
+    expect(progress.mock.calls[1][0]).toMatchObject({ phase: 'submitting', app: 'demo-app' });
+  });
+  it('does not continue source submission after its account-bound owner unmounts', async () => {
+    let created!: (value: { id: string }) => void;
+    mocks.addWorkflow.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          created = resolve;
+        })
+    );
+    const view = sample();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy sample' }));
+    view.unmount();
+    await act(async () => {
+      created({ id: 'demo-app' });
+    });
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+    expect(view.progress).toHaveBeenCalledOnce();
+  });
+  it.each([
+    [new TypeError('response lost'), 'unknown'],
+    [new ApiError({ status: 422, code: 'runtime_invalid', title: 'Invalid runtime' }), 'rejected'],
+  ])(
+    'retains the saved app and distinguishes a lost response from a refusal',
+    async (error, phase) => {
+      mocks.deployFunction.mockRejectedValue(error);
+      const { progress } = sample();
+      fireEvent.click(screen.getByRole('button', { name: 'Deploy sample' }));
+      await waitFor(() =>
+        expect(progress).toHaveBeenLastCalledWith(
+          expect.objectContaining({ phase, app: 'demo-app', kind: 'sample' })
+        )
+      );
+      expect(mocks.addWorkflow).toHaveBeenCalledOnce();
+      expect(mocks.deployFunction).toHaveBeenCalledOnce();
+    }
+  );
+  it('saves a lost creation outcome for inspection without attempting a deployment', async () => {
+    mocks.addWorkflow.mockRejectedValue(new TypeError('response lost'));
+    const { progress } = sample();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy sample' }));
+    await waitFor(() =>
+      expect(progress).toHaveBeenLastCalledWith(
+        expect.objectContaining({ phase: 'unknown', name: 'hello-sample' })
+      )
+    );
+    expect(progress.mock.calls.at(-1)![0].app).toBeUndefined();
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+  });
+  it('treats a malformed deployment receipt as unknown and retains the app pointer', async () => {
+    mocks.deployFunction.mockResolvedValue({ id: 'not-a-deployment' });
+    const { progress } = sample();
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy sample' }));
+    await waitFor(() =>
+      expect(progress).toHaveBeenLastCalledWith(
+        expect.objectContaining({ phase: 'unknown', app: 'demo-app' })
+      )
+    );
+    expect(progress.mock.calls.at(-1)![0].deployment).toBeUndefined();
+  });
+});
+
+it('restores the saved editable Git name in quickstart', () => {
+  render(
+    <NewAppWizard
+      onboarding
+      quickstart
+      suggestedName="my-custom-api"
+      search={{ source: 'git', repo: 'acme/api', ref: 'main', step: 'configure' }}
+    />
+  );
+  expect(screen.getByLabelText('App name')).toHaveValue('my-custom-api');
+});
+it('blocks deployment until the onboarding workspace lookup has succeeded', () => {
+  render(
+    <NewAppWizard
+      onboarding
+      quickstart
+      deploymentDisabled
+      suggestedName="hello-sample"
+      search={{ source: 'function', step: 'configure' }}
+    />
+  );
+  expect(screen.getByRole('button', { name: 'Deploy sample' })).toBeDisabled();
+});
+
+it('hands an onboarding monorepo to the existing project importer with the selected slug/ref', async () => {
+  mocks.scan.mockReturnValue({
+    plan: scanPlan([{ name: 'api' }, { name: 'worker' }]),
+    error: null,
+    scanning: false,
+  });
+  render(
+    <NewAppWizard
+      onboarding
+      quickstart
+      search={{ source: 'git', repo: 'acme/shop', ref: 'develop', step: 'setup' }}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Import as a project' }));
+  expect(mocks.navigate).toHaveBeenCalledWith({
+    to: '/dashboard/apps/new',
+    search: { source: 'import', slug: 'shop', branch: 'develop' },
+  });
+  expect(mocks.addWorkflow).not.toHaveBeenCalled();
 });
