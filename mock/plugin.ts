@@ -10765,16 +10765,28 @@ route('GET', '/v1/auth/csrf', ({ query, res }) => {
 // mock keeps just enough state to show each branch on demand.
 const mockAuth = {
   password: process.env.MOCK_HAS_PASSWORD === '1' ? 'mock-current-password' : null,
-  mfaEnrolled: process.env.MOCK_MFA === '1',
+  mfaEnrolled: process.env.MOCK_MFA === '1' || process.env.MOCK_MFA === 'pending',
   mfaRequired: process.env.MOCK_MFA === 'required',
+  // MOCK_MFA=pending: an MFA user's fresh dashboard sign-in. apid's requireMFA
+  // refuses every request but the account view and the MFA and auth routes
+  // with 403 mfa_required until /verify or /recover clears the session.
+  sessionPending: process.env.MOCK_MFA === 'pending',
   steppedUpAt: 0,
 };
 const STEP_UP_TTL_MS = 5 * 60_000;
+
+/** Whether apid's session MFA gate refuses this request while pending. */
+function refusedWhileMfaPending(method: string, path: string): boolean {
+  if (!mockAuth.sessionPending || !path.startsWith('/v1/')) return false;
+  if (method === 'GET' && path === '/v1/account') return false;
+  return !path.startsWith('/v1/account/mfa/') && !path.startsWith('/v1/auth/');
+}
 
 route('POST', '/v1/account/mfa/verify', ({ body }) => {
   if (!/^\d{6}$/.test(String(body.totp ?? '')))
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.steppedUpAt = Date.now();
+  mockAuth.sessionPending = false;
   return { account_id: db.ACCOUNT_ID, mfa_pending: false };
 });
 route('POST', '/v1/account/mfa/enroll', () => ({
@@ -10800,6 +10812,7 @@ route('POST', '/v1/account/mfa/confirm', ({ body }) => {
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.mfaEnrolled = true;
   mockAuth.mfaRequired = false;
+  mockAuth.sessionPending = false;
   mockAuth.steppedUpAt = Date.now();
   return {};
 });
@@ -12731,6 +12744,14 @@ export function mockApi(): Plugin {
         (method !== 'GET' &&
           MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
       if (!isApi) return next();
+
+      if (refusedWhileMfaPending(method, url.pathname)) {
+        setTimeout(
+          () => problem(res, new Problem(403, 'mfa_required', 'complete MFA to use the dashboard')),
+          latency()
+        );
+        return;
+      }
 
       const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
       if (!match) {

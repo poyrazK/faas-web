@@ -76,7 +76,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   `MOCK_HAS_PASSWORD=1` boots with a password already set
   (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password
   demands a step-up (any six digits verify); `MOCK_MFA=required` boots with the
-  policy on and nothing enrolled, so it demands enrolment first.
+  policy on and nothing enrolled, so it demands enrolment first;
+  `MOCK_MFA=pending` boots an MFA user's fresh sign-in, where every request but
+  the account view and the MFA routes is refused `mfa_required` until a code
+  verifies — the state in which polls and focus refetches keep hitting the
+  session gate behind the MFA modal.
   `MOCK_EMPTY=1` also starts with GitHub disconnected; the "Connect GitHub" form
   post marks it connected and 303s back to the form's `return_to` with
   `?github=connected`, after which the repo picker lists seeded repos.
