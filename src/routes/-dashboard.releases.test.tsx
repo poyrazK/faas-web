@@ -96,6 +96,7 @@ vi.mock('@/components/dashboard/resource-activity', () => ({
 vi.mock('@/components/dashboard/tarball-deploy', () => ({ TarballDeploy: () => null }));
 vi.mock('@/lib/api/queries', async (original) => {
   const actual = await original<object>();
+  const { ApiError } = await import('@/lib/api/errors');
   const ok = (data: unknown) => ({ data, isPending: false, error: null, refetch: vi.fn() });
   const mutation = (mutateAsync = vi.fn()) => ({ mutateAsync, isPending: false });
   const pages = (items: unknown[]) => ({
@@ -107,7 +108,18 @@ vi.mock('@/lib/api/queries', async (original) => {
   return {
     ...actual,
     useApps: () => ok([{ id: 'app-1', slug: 'alpha' }]),
-    useApp: () => ok({ id: 'app-1', slug: 'alpha' }),
+    // A missing app is one apid answers 404 for: the app page reads an app the
+    // account's list lacks before calling it missing (company members' apps).
+    useApp: () =>
+      fixtures.appMissing
+        ? {
+            data: undefined,
+            isPending: false,
+            isFetching: false,
+            error: new ApiError({ status: 404, code: 'app_not_found', title: 'Not found' }),
+            refetch: vi.fn(),
+          }
+        : ok({ id: 'app-1', slug: 'alpha' }),
     useInfiniteDeployments: () =>
       pages(
         Array.from({ length: fixtures.rowCount }, (_, i) => ({
