@@ -21,12 +21,17 @@ import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
+import * as syntheticMock from './synthetics';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
 import * as sloMock from './slos';
+import * as freezeMock from './release-freezes';
+import * as scheduleMock from './scheduled-releases';
+import * as approvalMock from './release-approvals';
+import * as gateMock from './release-gates';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -41,7 +46,10 @@ import * as deploymentDetail from './deployment-detail';
 import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { registerDeadLetterMocks } from './dead-letters';
+import { registerForkMocks } from './forks';
 import { registerEventConsumerMocks } from './event-consumers';
+import { registerProfileCaptureMocks } from './profile-captures';
+import { registerListenerMocks } from './listeners';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -173,28 +181,149 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
-// Release approval policies (faas release_approvals.go). webhook-router requires
-// approvals, so switching it to the immediate release policy is warned about.
-route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
-  if (params.slug !== 'webhook-router')
+// Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
+// scheduled releases (scheduled_releases.go); the logic is in
+// mock/release-freezes.ts and mock/scheduled-releases.ts.
+function guarded<T>(answer: () => T): T {
+  try {
+    return answer();
+  } catch (err) {
+    if (err instanceof freezeMock.GuardProblem)
+      throw new Problem(err.status, err.code, err.message, err.extra);
+    throw err;
+  }
+}
+const freezeApp = (slug: string) => {
+  if (!db.appBySlug(slug)) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
+  return slug;
+};
+/** A company organization; a personal one's apps use the account's freezes (409). */
+const freezeOrg = (slug: string) => {
+  const org = db.orgs.find((o) => o.slug === slug);
+  if (!org) throw new Problem(404, 'not_found', `No organization "${slug}".`);
+  if (org.personal)
     throw new Problem(
-      404,
-      'release_approval_policy_not_found',
-      'This app does not require approvals.'
+      409,
+      'conflict',
+      'A personal organization’s apps are frozen by your account’s freezes.'
     );
+  return { org: slug };
+};
+route('GET', '/v1/freezes', ({ query }) => {
+  const slug = query.get('app');
   return {
-    app: params.slug,
-    required_approvals: 1,
-    after_stage: 1,
-    timeout_minutes: 60,
-    approvers: ['design@gregale.dev'],
-    allow_self_approval: false,
-    notify_channels: [],
-    updated_by: 'design@gregale.dev',
-    created_at: '2026-10-20T09:00:00Z',
-    updated_at: '2026-10-20T09:00:00Z',
+    freezes: slug ? freezeMock.forApp(freezeApp(slug)) : freezeMock.list({ account: true }),
   };
 });
+route('POST', '/v1/freezes', ({ body }) => {
+  const slug =
+    typeof body.app === 'string' && body.app.trim() ? freezeApp(body.app.trim()) : undefined;
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id))
+);
+route('GET', '/v1/apps/{slug}/freeze-status', ({ params }) =>
+  freezeMock.status(freezeApp(params.slug))
+);
+route('GET', '/v1/apps/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.forApp(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/freezes', ({ params, body }) => {
+  const slug = freezeApp(params.slug);
+  if (typeof body.app === 'string' && body.app.trim() && body.app.trim() !== slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      `app must be empty or ${slug}: this route freezes ${slug}`
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/apps/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id, freezeApp(params.slug)))
+);
+route('GET', '/v1/orgs/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.list(freezeOrg(params.slug)),
+}));
+route('POST', '/v1/orgs/{slug}/freezes', ({ params, body }) => {
+  const owner = freezeOrg(params.slug);
+  if (typeof body.app === 'string' && body.app.trim())
+    throw new Problem(
+      400,
+      'validation_failed',
+      'app must be empty: this route freezes all of the organization’s apps; freeze one app with POST /v1/apps/{slug}/freezes'
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create(owner, undefined, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/orgs/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift(freezeOrg(params.slug), params.id))
+);
+route('GET', '/v1/scheduled-releases', ({ query }) => {
+  scheduleMock.advance();
+  const slug = query.get('app');
+  return { items: scheduleMock.list(slug ? freezeApp(slug) : undefined) };
+});
+route('GET', '/v1/deployments/{id}/schedule', ({ params }) => {
+  scheduleMock.advance();
+  return guarded(() => scheduleMock.latest(params.id));
+});
+route('PUT', '/v1/deployments/{id}/schedule', ({ params, body }) =>
+  guarded(() => scheduleMock.schedule(params.id, body, db.account.email))
+);
+route('DELETE', '/v1/deployments/{id}/schedule', ({ params }) =>
+  guarded(() => scheduleMock.cancel(params.id, db.account.email))
+);
+
+// Release approvals (release_approvals.go) and release gates
+// (release_gates.go); the logic is in mock/release-approvals.ts and
+// mock/release-gates.ts. webhook-router requires approvals, so switching it to
+// the immediate release policy is warned about.
+const approvalDeployment = (id: string) => {
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  return d;
+};
+route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) =>
+  guarded(() => approvalMock.getPolicy(freezeApp(params.slug)))
+);
+route('PUT', '/v1/apps/{slug}/release-approval-policy', ({ params, body }) =>
+  guarded(() => approvalMock.setPolicy(freezeApp(params.slug), body))
+);
+route('DELETE', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
+  guarded(() => approvalMock.removePolicy(freezeApp(params.slug)));
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/release-approvals', ({ params }) => ({
+  items: approvalMock.waiting(freezeApp(params.slug)),
+}));
+route('GET', '/v1/deployments/{id}/approvals', ({ params }) =>
+  approvalMock.statusOf(approvalDeployment(params.id))
+);
+route('POST', '/v1/deployments/{id}/approvals', ({ params, body }) =>
+  guarded(() => approvalMock.decide(approvalDeployment(params.id), body))
+);
+route('GET', '/v1/apps/{slug}/release-gates', ({ params }) => ({
+  gates: gateMock.list(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/release-gates', ({ params, body }) =>
+  status(
+    201,
+    guarded(() => gateMock.create(freezeApp(params.slug), body, db.account.email))
+  )
+);
+route('DELETE', '/v1/apps/{slug}/release-gates/{name}', ({ params }) =>
+  guarded(() => gateMock.remove(freezeApp(params.slug), params.name))
+);
+
 const HIDDEN_AT_BOOT = new Set(
   (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
 );
@@ -1512,19 +1641,33 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   if (body.native_rollout !== undefined && body.expected_source === undefined)
     throw new Problem(400, 'validation_failed', 'native_rollout requires expected_source');
   if (body.expected_source !== undefined) checkReviewedSource(a, body);
-  return status(
-    202,
-    startSourceDeployment(
-      a,
-      'github',
-      `${String(body.repo)}@${String(body.ref)}`,
-      {},
-      {
-        // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
-        staged: body.traffic_percent === 0,
-      }
+  // Deploy freezes are checked now, or at release_at for a scheduled release
+  // (scheduled_releases.go:52-88); an override reason lets it through.
+  const releaseAt =
+    typeof body.release_at === 'string' && body.release_at
+      ? guarded(() => scheduleMock.parseReleaseAt(body.release_at))
+      : undefined;
+  guarded(() =>
+    freezeMock.checkRelease(
+      a.slug,
+      releaseAt ?? Date.now(),
+      body.override_freeze,
+      releaseAt !== undefined
     )
   );
+  const started = startSourceDeployment(
+    a,
+    'github',
+    `${String(body.repo)}@${String(body.ref)}`,
+    {},
+    {
+      // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
+      staged: body.traffic_percent === 0 || releaseAt !== undefined,
+    }
+  );
+  if (releaseAt !== undefined)
+    scheduleMock.record(started, a.slug, releaseAt, body.release_notify, db.account.email);
+  return status(202, started);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   // Plain rollback (handlers_ext.go:2376): restore the named release, or the
@@ -2241,10 +2384,34 @@ route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
   return channelMock.slos.get(app(params.slug).slug) ?? [];
 });
 route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
-  if (hiddenCapabilities.has('synthetic-checks'))
-    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  checkGate();
   return channelMock.checks.get(app(params.slug).slug) ?? [];
 });
+// Synthetic checks (mock/synthetics.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function checkGate() {
+  if (hiddenCapabilities.has('synthetic-checks'))
+    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function synthetic(answer: syntheticMock.Answer) {
+  checkGate();
+  if (syntheticMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/synthetics', ({ params, body }) => synthetic(syntheticMock.createCheck(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.getCheck(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/synthetics/{id}', ({ params, body }) => synthetic(syntheticMock.setEnabled(app(params.slug).slug, params.id, body.enabled)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.deleteCheck(app(params.slug).slug, params.id)));
 // Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
 // create-time plan gate; the list is never gated, as in apid.
 // Pro allows one mirror rule per app, Scale three.
@@ -7270,6 +7437,7 @@ route('GET', '/v1/deployments/latest-by-app', () => {
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
+  scheduleMock.advance();
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
   const workerApp = db.apps.find(
@@ -12399,7 +12567,12 @@ route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
 
 registerEventMocks(route, Problem, NO_CONTENT);
 registerDeadLetterMocks(route, Problem, NO_CONTENT);
+registerForkMocks(route, Problem, NO_CONTENT, {
+  hidden: (capability) => hiddenCapabilities.has(capability),
+  plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
 registerEventConsumerMocks(route, Problem);
+registerListenerMocks(route, Problem, NO_CONTENT);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------
 
@@ -12451,6 +12624,10 @@ route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/acc
 route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/access', ({ params, body }) => realtime(realtimeMock.changeAccess(params.slug, params.id, params.principal, body)));
 // prettier-ignore
 route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/push/providers', ({ params }) => realtime(realtimeMock.pushProviders(params.slug, params.id)));
+registerProfileCaptureMocks(route, Problem, NO_CONTENT, {
+  hidden: (capability) => hiddenCapabilities.has(capability),
+  plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
 
 // --- Plumbing ------------------------------------------------------------------
 

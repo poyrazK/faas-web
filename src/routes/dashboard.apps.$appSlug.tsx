@@ -54,16 +54,24 @@ import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
 import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
+import { SyntheticsBody } from '@/components/dashboard/synthetics-body';
 import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
 import { SlosBody } from '@/components/dashboard/slos-body';
 import { DebugBody } from '@/components/dashboard/debug-body';
+import { ForksBody } from '@/components/dashboard/app-forks';
+import { ProfileCapturesBody } from '@/components/dashboard/profile-captures';
+import {
+  validateProfileCaptureSearch,
+  type ProfileCaptureSearch,
+} from '@/components/dashboard/profile-captures-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { MirrorsBody } from './dashboard.mirrors';
 import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
+import { TcpListeners, UdpListeners } from '@/components/dashboard/listeners';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { OpenAPIBody } from './dashboard.openapi';
@@ -107,6 +115,7 @@ import {
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
+import { ReleaseSafety } from '@/components/dashboard/release-safety';
 import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
 import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
 import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
@@ -181,6 +190,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
   validateSearch: (
     search: Record<string, unknown>
   ): DebugSearch &
+    ProfileCaptureSearch &
     LogsSearch &
     IssueSearch &
     ReturnType<typeof automationSearchPatch> & {
@@ -191,6 +201,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
+    ...validateProfileCaptureSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
@@ -700,6 +711,23 @@ function FunctionDetailPage() {
                 </>
               )}
 
+              {tab === 'Release safety' && (
+                <ReleaseSafety
+                  slug={fn.id}
+                  onOpenDeployment={(id) =>
+                    void navigate({
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: 'lifecycle',
+                      }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
               {tab === 'Logs' && (
                 <DeploymentCapability
@@ -822,9 +850,26 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Forks' && <ForksBody slug={fn.id} />}
+              {tab === 'Profile captures' && (
+                <ProfileCapturesBody
+                  slug={fn.id}
+                  search={search}
+                  onSelect={(patch) =>
+                    void navigate({
+                      search: (current) => ({ ...current, ...patch }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
+              {tab === 'Synthetic checks' && <SyntheticsBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
+              {tab === 'TCP listeners' && <TcpListeners slug={fn.id} />}
+              {tab === 'UDP listeners' && <UdpListeners slug={fn.id} />}
               {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
               {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
               {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}

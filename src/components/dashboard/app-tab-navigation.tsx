@@ -13,10 +13,22 @@ import { SegmentedControl, Tabs, tabId } from './tabs';
  */
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
-  { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
+  { label: 'Delivery', tabs: ['Deployments', 'Release safety', 'Activity'] },
   {
     label: 'Observe',
-    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'SLOs', 'Debugger', 'Request audit'],
+    tabs: [
+      'Logs',
+      'Log drains',
+      'Errors',
+      'Issues',
+      'Alerts',
+      'SLOs',
+      'Synthetic checks',
+      'Debugger',
+      'Forks',
+      'Profile captures',
+      'Request audit',
+    ],
   },
   {
     label: 'Connect',
@@ -30,6 +42,8 @@ export const APP_TAB_GROUPS = [
       'Edge protection',
       'Mirrors',
       'Tenant surfaces',
+      'TCP listeners',
+      'UDP listeners',
       'OpenAPI',
     ],
   },
@@ -64,9 +78,14 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
   'Tenant surfaces': 'tenant-surfaces',
+  'TCP listeners': 'tcp-listeners',
+  'UDP listeners': 'udp-listeners',
   // The beta `debug` family owns the tab; the production-debugger preview
   // inside it is gated view by view (debug-body.tsx).
   Debugger: 'debug',
+  // Production forks; crash snapshots open as forks, so they live inside it
+  // behind their own `crash-snapshots` gate (app-forks.tsx).
+  Forks: 'production-forks',
   Issues: 'issues',
   Errors: 'issues',
   SLOs: 'custom-slos',
@@ -81,14 +100,26 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Workflow insights': 'workflow-insights',
   Queues: 'queues',
   Realtime: 'realtime',
+  'Synthetic checks': 'synthetic-checks',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
+  'Profile captures': 'profile-captures',
+};
+
+/**
+ * Tabs that gather several capabilities, each section gated on its own: the
+ * tab hides only when every one of them is off.
+ */
+export const APP_TAB_ANY_CAPABILITY: Partial<Record<AppTab, readonly string[]>> = {
+  'Release safety': ['deploy-freezes', 'release-approvals', 'release-gates', 'scheduled-releases'],
 };
 
 /** Hide a tab only once the registry has said its capability is off. */
 export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab[] {
   return APP_DETAIL_TABS.filter((tab) => {
     const id = APP_TAB_CAPABILITY[tab];
+    const any = APP_TAB_ANY_CAPABILITY[tab];
+    if (any) return any.some((each) => access(each) !== 'off');
     return !id || access(id) !== 'off';
   });
 }

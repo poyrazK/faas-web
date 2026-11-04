@@ -2,10 +2,12 @@ import { useRef, useState } from 'react';
 import { Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
+import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useDeployTarball } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { FrozenRefusal } from './release-freezes';
 
 /**
  * Deploy a source tarball the customer already has — the console's half of
@@ -36,15 +38,19 @@ export function TarballDeploy({
   onDeployed?: (deploymentId: string) => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const deploy = useDeployTarball(slug);
+  // A production release refused by a deploy freeze, resent with an audited reason.
+  const [frozen, setFrozen] = useState<ApiError | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [reason, setReason] = useState('');
   const [tag, setTag] = useState<Tag>('');
   const [sent, setSent] = useState<number | null>(null);
 
-  const submit = async () => {
+  const submit = async (override?: string) => {
     if (!file) return;
+    setFrozen(null);
     try {
       const deployment = await deploy.mutateAsync({
         file,
@@ -52,6 +58,7 @@ export function TarballDeploy({
         options: {
           ...(reason.trim() ? { reason: reason.trim() } : {}),
           ...(tag ? { tag } : {}),
+          ...(override ? { override_freeze: override } : {}),
         },
       });
       setSent(null);
@@ -67,6 +74,10 @@ export function TarballDeploy({
       onDeployed?.(deployment.id);
     } catch (err) {
       setSent(null);
+      if (err instanceof ApiError && err.code === 'release_frozen') {
+        setFrozen(err);
+        return;
+      }
       if (err instanceof ApiError && err.code === 'source_too_large') {
         toast({
           kind: 'error',
@@ -146,6 +157,23 @@ export function TarballDeploy({
           Deploy archive
         </Button>
       </div>
+      {frozen && (
+        <FrozenRefusal
+          error={frozen}
+          busy={deploy.isPending}
+          action="Deploy anyway"
+          onOverride={(reason) =>
+            void confirm({
+              title: `Deploy ${slug} into the freeze?`,
+              description: `${slug}’s production releases are frozen. This archive is uploaded again and released anyway; the override is recorded in the audit log with the freezes it overrides and your reason, “${reason}”.`,
+              confirmLabel: 'Deploy anyway',
+              destructive: true,
+            }).then((ok) => {
+              if (ok) void submit(reason);
+            })
+          }
+        />
+      )}
       {sent !== null && (
         <p role="status" className="text-xs text-muted-foreground">
           Uploading… {sent}%

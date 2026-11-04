@@ -221,37 +221,39 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 28,
     name: 'Release gates on customer signals',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release gates on customer signals',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'release-gates',
   },
   // B29 · preview
   {
     row: 29,
     name: 'Release approvals and approval policy',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release approvals and approval policy',
-    wave: 3,
+    status: 'full',
+    surfaces: [
+      '/dashboard/apps/$appSlug?tab=Release safety',
+      '/dashboard/releases/$deploymentId/approval',
+    ],
+    capability: 'release-approvals',
   },
   // B30 · preview
   {
     row: 30,
     name: 'Deploy freezes and release windows',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deploy freezes and release windows',
+    status: 'partial',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'deploy-freezes',
+    cli: 'gregale deploy --image IMAGE --override-freeze REASON',
+    gap: 'Override a freeze from the image deploy form (Git and archive deploys, and schedules, can)',
     wave: 3,
   },
   // B31 · preview
   {
     row: 31,
     name: 'Scheduled releases',
-    status: 'none',
-    surfaces: [],
-    gap: 'Scheduled releases',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'scheduled-releases',
   },
   // B34 · beta
   {
@@ -411,19 +413,17 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 55,
     name: 'Production forks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Production forks',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'production-forks',
   },
   // C56 · preview
   {
     row: 56,
     name: 'Crash snapshots',
-    status: 'none',
-    surfaces: [],
-    gap: 'Crash snapshots',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'crash-snapshots',
   },
   // C58 · preview
   {
@@ -505,9 +505,21 @@ export const LEDGER: LedgerEntry[] = [
     wave: 3,
   },
   // D69 · preview
-  { row: 69, name: 'TCP listeners', status: 'none', surfaces: [], gap: 'TCP listeners', wave: 3 },
+  {
+    row: 69,
+    name: 'TCP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=TCP listeners'],
+    capability: 'tcp-listeners',
+  },
   // D70 · preview
-  { row: 70, name: 'UDP listeners', status: 'none', surfaces: [], gap: 'UDP listeners', wave: 3 },
+  {
+    row: 70,
+    name: 'UDP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=UDP listeners'],
+    capability: 'udp-listeners',
+  },
   // D71 · preview
   {
     row: 71,
@@ -883,19 +895,18 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 129,
     name: 'Synthetic checks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Synthetic checks',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Synthetic checks'],
+    capability: 'synthetic-checks',
     wave: 3,
   },
   // G168 · preview
   {
     row: 168,
     name: 'On-demand profile captures: CPU, heap, stacks, Go locks; automatic captures; capture diff',
-    status: 'none',
-    surfaces: [],
-    gap: 'On-demand profile captures',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Profile captures'],
+    capability: 'profile-captures',
   },
   // G134 · beta
   {
