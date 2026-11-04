@@ -54,6 +54,7 @@ import { SecretsBody } from './dashboard.secrets';
 import { EnvBody } from './dashboard.env';
 import { ConfigHistory } from '@/components/dashboard/config-history';
 import { QueuesBody } from './dashboard.queues';
+import { SyntheticsBody } from '@/components/dashboard/synthetics-body';
 import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
@@ -862,6 +863,7 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
+              {tab === 'Synthetic checks' && <SyntheticsBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
               {tab === 'TCP listeners' && <TcpListeners slug={fn.id} />}

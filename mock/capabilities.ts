@@ -197,6 +197,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'synthetic-checks',
+    name: 'Synthetic checks',
+    category: 'observability',
+    description:
+      'Request a path on your app every 5, 15 or 60 minutes through the public edge and track uptime, latency and failures, even when no users are calling it.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/synthetic-checks',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'tcp-listeners',
     name: 'TCP listeners',
     category: 'edge',

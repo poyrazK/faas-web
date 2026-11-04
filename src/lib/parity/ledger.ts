@@ -895,9 +895,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 129,
     name: 'Synthetic checks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Synthetic checks',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Synthetic checks'],
+    capability: 'synthetic-checks',
     wave: 3,
   },
   // G168 · preview

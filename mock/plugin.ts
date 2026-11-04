@@ -21,6 +21,7 @@ import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
+import * as syntheticMock from './synthetics';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
@@ -2360,10 +2361,34 @@ route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
   return channelMock.slos.get(app(params.slug).slug) ?? [];
 });
 route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
-  if (hiddenCapabilities.has('synthetic-checks'))
-    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  checkGate();
   return channelMock.checks.get(app(params.slug).slug) ?? [];
 });
+// Synthetic checks (mock/synthetics.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function checkGate() {
+  if (hiddenCapabilities.has('synthetic-checks'))
+    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function synthetic(answer: syntheticMock.Answer) {
+  checkGate();
+  if (syntheticMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/synthetics', ({ params, body }) => synthetic(syntheticMock.createCheck(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.getCheck(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/synthetics/{id}', ({ params, body }) => synthetic(syntheticMock.setEnabled(app(params.slug).slug, params.id, body.enabled)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.deleteCheck(app(params.slug).slug, params.id)));
 // Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
 // create-time plan gate; the list is never gated, as in apid.
 // Pro allows one mirror rule per app, Scale three.
