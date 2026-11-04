@@ -4,11 +4,8 @@ import type { BeforeSendEvent } from '@vercel/analytics';
 export function onboardingAnalyticsPrivacy(event: BeforeSendEvent): BeforeSendEvent | null {
   try {
     const url = new URL(event.url);
-    if (
-      !['/onboarding', '/login', '/signup', '/will-it-run', '/dashboard/apps/new'].includes(
-        url.pathname
-      )
-    )
+    const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+    if (!['/onboarding', '/login', '/signup', '/will-it-run', '/dashboard/apps/new'].includes(path))
       return event;
     url.search = '';
     url.hash = '';

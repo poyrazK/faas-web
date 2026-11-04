@@ -88,7 +88,55 @@ inlines the value into the compiled client.
 | Environment variable           | Default | Effect                                                                                                                  |
 | ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `VITE_FEATURE_EXAMPLE`         | off     | Reference flag. Gates nothing; proves wiring.                                                                           |
+| `VITE_FEATURE_ONBOARDING_V2`   | off     | Sample/repository quickstart with account-scoped resume and API-confirmed live completion.                              |
 | `VITE_FEATURE_ERROR_REPORTING` | off     | Browser error capture and redaction (`lib/error-reporting.ts`). The transport is a no-op until a destination is chosen. |
+
+### First-signup onboarding preview
+
+`VITE_FEATURE_ONBOARDING_V2=1` enables the sample/repository quickstart. It is
+**off by default**. Existing app/deployment receipts remain readable when the
+flag is disabled, and their app pages remain accessible after authentication.
+
+The sample uses the packaged Node.js starter and needs no GitHub installation.
+The repository path preserves the selected repository/ref through the existing
+Settings installation return. Both paths reuse New app creation and deployment.
+Only a fresh, matching API deployment read reporting `live` opens the success
+screen. Free customers can open the assigned public URL or copy curl without a
+paid console invocation. Opening a URL is not recorded as a verified response.
+
+Dismissal and versioned drafts belong to the confirmed account and workspace.
+Saved descriptors include source/name and app/deployment pointers, never code or
+credentials. Interrupted submissions become unknown outcomes on reload. The
+customer must inspect actual history before explicitly preparing another
+submission; the browser never automatically replays a creation or source upload.
+Unsubmitted drafts remain local to the device; existing resources can be found
+from another device through the authenticated inventory.
+
+Run the focused browser acceptance against a **fresh** mock server:
+
+```bash
+VITE_FEATURE_ONBOARDING_V2=1 MOCK_EMPTY=1 npm run dev:mock
+BASE_URL=http://localhost:3000 node scripts/onboarding-tour.mjs
+```
+
+Playwright is installed separately as for `tour.mjs`. Optional `SHOTS` saves
+1440 px and 390 px screenshots; `CHROMIUM_EXECUTABLE_PATH` selects a system
+browser and `PLAYWRIGHT_MODULE` an external Playwright installation. Set
+`FAILURE_URL` to a second fresh mock server started with the same flag and
+`MOCK_BUILD_FAIL=1` to include build-failure and retained-source retry checks.
+
+Coarse funnel events use the existing Vercel Analytics SDK, only in production
+builds with the flag enabled. They send source kind and plan, never account IDs,
+app names, repository names, endpoints or code. Source/recovery/return queries
+are also removed from SDK URLs on onboarding, authentication, compatibility and
+New app pages. Live/failed receipts are
+locally deduplicated by account/workspace/app/deployment. Confirm custom-event
+availability in the hosting account before relying on rollout reporting.
+
+Keep production disabled until a real Free deployment and GitHub installation
+smoke pass. The reported Cloudflare challenge on the deployed same-origin auth/API
+path also needs an operator fix; frontend session recovery cannot remove that
+upstream challenge.
 
 ### Adding a flag
 

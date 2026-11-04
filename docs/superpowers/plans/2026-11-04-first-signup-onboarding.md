@@ -4,7 +4,7 @@ Date: 2026-11-04
 
 Baseline: `faas-web` main at `3ad16ff2`
 
-Status: Proposed; this document does not enable the new experience.
+Status: Implemented on `feat/first-signup-onboarding`, behind a default-off flag. Production release remains blocked on the deployment prerequisites and real-account smoke tests below.
 
 ## Outcome and scope
 
@@ -44,10 +44,10 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Files:** `src/lib/auth.tsx`, `src/routes/index.tsx`, `src/routes/login.tsx`, and focused auth/route tests.
 
-- [ ] Turn the reproduced fresh-OAuth StrictMode cancellation into a regression test that expects successful recovery.
-- [ ] Ensure a cancelled boot verification can be replaced even when there is no user hint yet. Do not finish authentication while verification has no result.
-- [ ] Consume an OAuth handoff after verified success or an explicit terminal authentication refusal. Keep recoverable failures visible with Retry and preserve the safe destination.
-- [ ] Preserve CLI authorization, invitation and other validated `next` destinations. Do not send every authenticated journey through onboarding.
+- [x] Turn the reproduced fresh-OAuth StrictMode cancellation into a regression test that expects successful recovery.
+- [x] Ensure a cancelled boot verification can be replaced even when there is no user hint yet. Do not finish authentication while verification has no result.
+- [x] Consume an OAuth handoff after verified success or an explicit terminal authentication refusal. Keep recoverable failures visible with Retry and preserve the safe destination.
+- [x] Preserve CLI authorization, invitation and other validated `next` destinations. Do not send every authenticated journey through onboarding.
 - [ ] Verify production's Vercel-to-API requests receive API responses instead of interactive Cloudflare challenges. This is a deployment prerequisite; a frontend change cannot solve an upstream challenge.
 
 **Acceptance:** Fresh email signup, Google/GitHub signup, reload and expired-session recovery have deterministic destinations. A blocked or failed account read shows recovery rather than silently landing on the marketing page.
@@ -58,14 +58,14 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Integrate:** `src/routes/onboarding.tsx`, `src/routes/dashboard.tsx`, signup/login routing, and the existing GitHub handoff helpers.
 
-- [ ] Add `VITE_FEATURE_ONBOARDING_V2` to the existing flag registry, disabled by default, before integrating new entry or routing behavior.
-- [ ] Separate API-derived deployment progress from presentation preferences such as dismissal and the current draft. Use states covering choosing, preparing, creating, deploying, live, failed and unknown outcomes.
-- [ ] Use authenticated app/deployment reads as the source of truth. Reuse cached dashboard queries; do not add app-list requests to anonymous landing visits.
-- [ ] Keep the dashboard's authentication guard synchronous. Resolve onboarding progress after authenticated data is available, and allow customers to explore the console without a mandatory setup redirect loop.
-- [ ] Key saved drafts and dismissal by confirmed account ID and intended workspace. Clear mounted state immediately when the actor changes; verify ownership again before restoring or mutating resources.
-- [ ] Save a versioned, validated descriptor: source kind, app slug, deployment ID, Git repo/ref or sample identifier/version, and submission phase. Keep raw code, secrets and credentials out of URLs and storage.
-- [ ] Preserve the existing Git recovery format. Add a separate sample descriptor instead of filling its required Git fields with dummy values.
-- [ ] Do not infer activation from the legacy `gregale.onboarded` flag. A legacy value may influence dismissal only when its account ownership is established.
+- [x] Add `VITE_FEATURE_ONBOARDING_V2` to the existing flag registry, disabled by default, before integrating new entry or routing behavior.
+- [x] Separate API-derived deployment progress from presentation preferences such as dismissal and the current draft. Use states covering choosing, preparing, creating, deploying, live, failed and unknown outcomes.
+- [x] Use authenticated app/deployment reads as the source of truth. Reuse cached dashboard queries; do not add app-list requests to anonymous landing visits.
+- [x] Keep the dashboard's authentication guard synchronous. Resolve onboarding progress after authenticated data is available, and allow customers to explore the console without a mandatory setup redirect loop.
+- [x] Key saved drafts and dismissal by confirmed account ID and intended workspace. Clear mounted state immediately when the actor changes; verify ownership again before restoring or mutating resources.
+- [x] Save a versioned, validated descriptor: source kind, app slug, deployment ID, Git repo/ref or sample identifier/version, and submission phase. Keep raw code, secrets and credentials out of URLs and storage.
+- [x] Preserve the existing Git recovery format. Add a separate sample descriptor instead of filling its required Git fields with dummy values.
+- [x] Do not infer activation from the legacy `gregale.onboarded` flag. A legacy value may influence dismissal only when its account ownership is established.
 
 **Acceptance:** A reload or GitHub return resumes the same known app/attempt. Account changes cannot restore another customer's draft. Server resources allow progress to be rediscovered on another device; an unsubmitted draft remains device-local in the MVP.
 
@@ -75,11 +75,11 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Modify:** `src/routes/onboarding.tsx`, `src/components/dashboard/new-app-wizard.tsx`, and onboarding search validation.
 
-- [ ] Replace the forced Git source with the explicit sample/repository choice. Respect existing repository/ref and recovery links.
-- [ ] Add an optional onboarding presentation to the existing wizard while retaining its creation and submission owner. Avoid a second implementation of app creation or a wholesale wizard refactor.
-- [ ] Collapse onboarding configuration and review into one short form with an inline deployment summary. Keep type/runtime/visibility overrides under Advanced and retain existing folded resource settings.
-- [ ] Generate an editable, valid name; explain collisions and quota failures inline. Wait for confirmed account limits before enabling deployment.
-- [ ] Default to a public app and scale-to-zero using the existing supported starter and plan helpers. No resource is created until Deploy is explicitly clicked.
+- [x] Replace the forced Git source with the explicit sample/repository choice. Respect existing repository/ref and recovery links.
+- [x] Add an optional onboarding presentation to the existing wizard while retaining its creation and submission owner. Avoid a second implementation of app creation or a wholesale wizard refactor.
+- [x] Collapse onboarding configuration and review into one short form with an inline deployment summary. Keep type/runtime/visibility overrides under Advanced and retain existing folded resource settings.
+- [x] Generate an editable, valid name; explain collisions and quota failures inline. Wait for confirmed account limits before enabling deployment.
+- [x] Default to a public app and scale-to-zero using the existing supported starter and plan helpers. No resource is created until Deploy is explicitly clicked.
 
 **Acceptance:** The first screen has two meaningful deployment choices and a working explore action. A new customer can reach deployment without making infrastructure decisions. The ordinary New app flow retains its existing behavior.
 
@@ -89,12 +89,12 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Extend minimally:** Wizard progress callbacks and the source-aware onboarding draft.
 
-- [ ] Start with the existing Node.js function sample and its declared runtime. Show the sample code on demand; defer editable code and additional languages until after the MVP.
-- [ ] Reuse the existing packaging and multipart deployment contract, including the starter's required companion files.
-- [ ] Expose optional validated app/deployment receipts from the wizard so the onboarding wrapper can save progress for samples as well as Git. Keep existing callbacks compatible.
-- [ ] Save the app pointer as soon as its creation is confirmed. Restore samples by reading that app and deployment, not by creating them again.
-- [ ] Reuse existing retained-source retry controls for failed attempts. Do not present Git-only repair controls for a sample or silently substitute a newer starter version.
-- [ ] Treat a lost creation/submission response as unknown. Disable automatic mutation retries, reconcile against actual resources and endpoint contracts, and require an explicit action before another attempt. A disabled button alone is not an idempotency guarantee.
+- [x] Start with the existing Node.js function sample and its declared runtime. Show the sample code on demand; defer editable code and additional languages until after the MVP.
+- [x] Reuse the existing packaging and multipart deployment contract, including the starter's required companion files.
+- [x] Expose optional validated app/deployment receipts from the wizard so the onboarding wrapper can save progress for samples as well as Git. Keep existing callbacks compatible.
+- [x] Save the app pointer as soon as its creation is confirmed. Restore samples by reading that app and deployment, not by creating them again.
+- [x] Reuse existing retained-source retry controls for failed attempts. Do not present Git-only repair controls for a sample or silently substitute a newer starter version.
+- [x] Treat a lost creation/submission response as unknown. Disable automatic mutation retries, reconcile against actual resources and endpoint contracts, and require an explicit action before another attempt. A disabled button alone is not an idempotency guarantee.
 
 **Acceptance:** An empty Free account with no GitHub installation can deploy a real sample and open its assigned URL. Refresh, repeated clicks and recovery do not automatically create another app or deployment. Source-retention failures remain explicit.
 
@@ -102,12 +102,12 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Reuse:** `RepoPicker`, `GitHubConnectForm`, `useSourceRefScan`, `DeploymentProgress`, `FirstDeploymentRecovery` and `RecoverySourceForm`.
 
-- [ ] Request a GitHub installation only after the repository path is chosen. Explain why GitHub sign-in and repository access are different permissions.
-- [ ] Retain repo/ref and the onboarding destination through the existing Settings installation return; do not replace its reviewed return URL contract.
-- [ ] Use the repository's reported default branch and existing scan results for supported defaults. Preserve an explicitly supplied commit SHA and distinguish it from the branch watched for auto-deploy.
-- [ ] Show the resulting configuration together with the deploy action. Keep manual corrections available when detection is unavailable.
-- [ ] Route multi-service repositories through the existing project-import handoff with the selected context intact.
-- [ ] Keep failed builds, logs, immutable retry and deploying a fixed ref in the same saved app. Preserve the existing unknown-outcome protections.
+- [x] Request a GitHub installation only after the repository path is chosen. Explain why GitHub sign-in and repository access are different permissions.
+- [x] Retain repo/ref and the onboarding destination through the existing Settings installation return; do not replace its reviewed return URL contract.
+- [x] Use the repository's reported default branch and existing scan results for supported defaults. Preserve an explicitly supplied commit SHA and distinguish it from the branch watched for auto-deploy.
+- [x] Show the resulting configuration together with the deploy action. Keep manual corrections available when detection is unavailable.
+- [x] Route multi-service repositories through the existing project-import handoff with the selected context intact.
+- [x] Keep failed builds, logs, immutable retry and deploying a fixed ref in the same saved app. Preserve the existing unknown-outcome protections.
 
 **Acceptance:** Connected and disconnected GitHub accounts complete the flow. Denied/partial installation access, monorepos, build failures and browser Back/Forward all have an actionable next step without losing the selected app.
 
@@ -117,11 +117,11 @@ Use a quiet layout with one primary action per stage, a short progress indicator
 
 **Modify:** Onboarding wrapper, wizard callback interface, `DeploymentProgress`/`FirstDeploymentRecovery` forwarding, dashboard placement and `FirstResponse` only where needed.
 
-- [ ] Remove onboarding-completion writes from app-created and deployment-accepted handlers in the new flow. Forward confirmed `onLive` notifications through initial and restored deployment views.
-- [ ] Make completion idempotent for an account/app/deployment tuple. A cached live result followed by a failed refetch must not announce new success.
-- [ ] Lead the success view with the API-assigned public URL, Open app, Copy URL/curl and View logs. Keep the URL inactive until the API confirms a live release.
-- [ ] Preserve Free-plan access through the public URL/curl. Keep the paid invoke tester optional and never label a link click as a verified successful response.
-- [ ] Let Explore dismiss the presentation without claiming activation. Show a resumable dashboard checklist only when useful, with one contextual next step.
+- [x] Remove onboarding-completion writes from app-created and deployment-accepted handlers in the new flow. Forward confirmed `onLive` notifications through initial and restored deployment views.
+- [x] Make completion idempotent for an account/app/deployment tuple. A cached live result followed by a failed refetch must not announce new success.
+- [x] Lead the success view with the API-assigned public URL, Open app, Copy URL/curl and View logs. Keep the URL inactive until the API confirms a live release.
+- [x] Preserve Free-plan access through the public URL/curl. Keep the paid invoke tester optional and never label a link click as a verified successful response.
+- [x] Let Explore dismiss the presentation without claiming activation. Show a resumable dashboard checklist only when useful, with one contextual next step.
 
 **Acceptance:** Creating an app or receiving an accepted build never completes onboarding. A confirmed live app does. Free customers reach the success view without an upgrade; failures and unavailable status remain recoverable.
 
@@ -157,3 +157,55 @@ Compare signup-to-live conversion, median time to live, GitHub-connection drop-o
 7. Browser acceptance, release configuration and approved funnel instrumentation.
 
 The first customer release includes both paths, reliable resume and honest live-state completion. Richer sample choices, editable onboarding code, durable cross-device drafts and extra education can follow after observing the initial funnel.
+
+## Implementation and release evidence
+
+- Auth regression tests cover fresh OAuth under StrictMode, an upstream challenge,
+  explicit retry, and retaining a validated CLI destination.
+- Scoped progress/descriptor tests cover ownership, workspace changes, malformed
+  storage, interrupted mutations, cached-live/refetch failures and mismatched
+  app/deployment IDs. Source creation/upload/ref mutations explicitly disable
+  automatic retries even if the query client defaults allow them.
+- The existing New app tests remain in place. Focused quickstart tests cover
+  Free sample packaging without GitHub, same-tick clicks, a lost response,
+  invalid receipts, saved names and an actor-bound owner unmounting mid-create.
+- Chromium acceptance passed at 1440 px and 390 px, including reduced motion and
+  keyboard navigation: fresh OAuth handoff, explore/dashboard resume, Free sample
+  to live, refresh during build, Settings/GitHub installation return, immutable
+  SHA, Back/Forward, repository to live, a committed upload with a dropped
+  response, explicit history reconciliation, visible inventory failure, failed
+  builds and explicit retained-source retry in the same app.
+- With the flag disabled, a saved receipt still reads real live status and opens
+  its app page without resubmitting a request. Explicit legacy Git recovery links
+  keep their existing format and take precedence over device-local resume state.
+- Repository status was checked before implementation: #287 and #278 remained
+  open; #283 was closed and unmerged. This change does not merge those works or
+  move the root data provider.
+
+The browser checks above use the mock API. Real Google/GitHub/email signup,
+real Free-account deployment and a real GitHub installation still need preview
+credentials and operator validation. The production same-origin API/auth route
+was returning a Cloudflare interactive challenge during the investigation;
+fixing that requires infrastructure access. Keep the production flag off until
+these checks pass. Confirm custom-event availability in the Vercel account before
+using the coarse SDK events for rollout reporting. No production configuration
+was enabled by this implementation.
+
+The broader existing console tour was also run. Two mock endpoints return 404:
+`/v1/apps/{slug}/dlq` and `/v1/apps/{slug}/config/guard`. Both reproduce with the
+onboarding flag disabled; no mock handler changed here. A shorter settle window
+also produced transient loading reports; those disappeared when allowing the
+existing views to settle. These gaps do not block the focused onboarding tour,
+whose complete sample, Git, monorepo, failed-build and lost-response checks pass.
+
+Backend contracts were rechecked against faas main `6d1c6ee8`: account/creation
+in `pkg/apid/apidserver/handlers.go`, multipart deployment in `deploy_inputs.go`,
+and retained-source retry/ownership in `handlers_retry.go`. No backend change or
+new API is required. Parity remains GA 100%, beta 94%, preview 34%; ledger and
+capability catalog are unchanged.
+
+Validation completed so far: `npm run check` passed with 563 test files and
+5,689 tests, typecheck/format clean and three existing lint warnings. The new
+analytics URL-filter suite separately passed all nine cases. Both the default-off
+production build (122 prerendered routes) and the flag-enabled client build passed;
+the final parallel test/build results are recorded in PR #348.
