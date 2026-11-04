@@ -14,6 +14,16 @@ vi.mock('@/lib/api/queries', () => ({
   }),
 }));
 
+const captures = vi.hoisted(() => ({ access: 'on' }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: captures.access, refresh: vi.fn() }),
+}));
+
+// The replay control has its own tests (debug-replay.test.tsx); here it only has to be offered.
+vi.mock('./debug-replay', () => ({
+  DebugReplayAction: ({ reqId }: { reqId: string }) => <p>Replay offered for {reqId}</p>,
+}));
+
 const { DebugRequestEvidence } = await import('./debug-request-evidence');
 
 const request = {
@@ -67,6 +77,31 @@ beforeEach(() => {
 });
 
 describe('DebugRequestEvidence', () => {
+  it('links the stack snapshot taken while a slow request was in flight', () => {
+    const evidence = useDebugRequestEvidence() as { data: { request: object } };
+    useDebugRequestEvidence.mockReturnValue({
+      ...evidence,
+      data: {
+        ...evidence.data,
+        request: { ...request, profile_capture_id: '33333333-3333-4333-8333-333333333333' },
+      },
+    });
+    const { unmount } = render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(
+      screen.getByRole('link', { name: /stack snapshot taken while this request was in flight/i })
+    ).toHaveAttribute(
+      'href',
+      '/dashboard/apps/api?tab=Profile+captures&capture=33333333-3333-4333-8333-333333333333'
+    );
+    unmount();
+    // Without the preview the link would open a page that explains nothing; the id is kept.
+    captures.access = 'off';
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.queryByRole('link', { name: /stack snapshot/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/33333333-3333-4333-8333-333333333333/)).toBeInTheDocument();
+    captures.access = 'on';
+  });
+
   it('leads with the platform’s own explanation and marks the span it blames', () => {
     render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
     expect(screen.getByText(/takes 7× longer than before/)).toBeInTheDocument();
@@ -133,6 +168,7 @@ describe('DebugRequestEvidence', () => {
       '/dashboard/logs?app=api'
     );
     expect(screen.getByText(/Wake and instance IDs were not returned/)).toBeInTheDocument();
+    expect(screen.getByText('Replay offered for req1')).toBeInTheDocument();
   });
 
   it('renders relative span durations without inventing start offsets or blame', () => {

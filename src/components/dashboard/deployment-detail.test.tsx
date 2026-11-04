@@ -45,6 +45,12 @@ vi.mock('./rollback-status', () => ({ RollbackToRelease: marker('rollback to rel
 vi.mock('./rollout-observation', () => ({ RolloutObservation: marker('worker rollout') }));
 vi.mock('./deployment-lifecycle', () => ({ DeploymentLifecycle: () => null }));
 vi.mock('./release-controls', () => ({ DeploymentControls: () => null }));
+// The schedule panel reads the capability registry, which needs auth; this suite covers wiring only.
+vi.mock('./release-schedule', () => ({ ReleaseSchedule: () => null }));
+vi.mock('./capability-gate', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./capability-gate')>()),
+  WhenCapable: () => null,
+}));
 
 const { DeploymentDetailPanel } = await import('./deployment-detail');
 

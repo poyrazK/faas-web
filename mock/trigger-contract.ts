@@ -20,7 +20,14 @@ type TriggerCapabilities = Pick<
   | 'trigger_tls_skip_verify_allowed'
 >;
 
-const ALL_KINDS: BrokerKind[] = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'];
+const ALL_KINDS: BrokerKind[] = [
+  'kafka',
+  'nats',
+  'redis_streams',
+  'sqs_compat',
+  'queue',
+  'realtime',
+];
 
 export const TRIGGER_CAPABILITIES_BY_PLAN: Record<Plan, TriggerCapabilities> = {
   free: {
@@ -36,7 +43,7 @@ export const TRIGGER_CAPABILITIES_BY_PLAN: Record<Plan, TriggerCapabilities> = {
   },
   hobby: {
     triggers_allowed: true,
-    trigger_kinds: ['sqs_compat', 'queue'],
+    trigger_kinds: ['sqs_compat', 'queue', 'realtime'],
     trigger_limit_per_app: 2,
     trigger_limit_per_account: 10,
     trigger_batch_size_max: 50,

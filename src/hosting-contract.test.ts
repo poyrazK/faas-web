@@ -90,7 +90,9 @@ it('preserves every registered app route as a deep link', () => {
   ].map((match) => match[1]);
   expect(paths.length).toBeGreaterThan(40);
   for (const path of paths) {
-    const concrete = path.replace(/\$[^/]+/g, 'example-id');
+    // A route id's trailing `_` un-nests it from its parent's layout
+    // (`releases_/$id/approval`); the URL has no underscore.
+    const concrete = path.replace(/\$[^/]+/g, 'example-id').replace(/_(?=\/|$)/g, '');
     expect(fallbackFor(concrete), concrete).toMatchObject({ dest: '/index.html' });
     expect(fallbackFor(concrete)?.status, concrete).not.toBe(404);
   }

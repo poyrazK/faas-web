@@ -24,6 +24,7 @@ import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
 import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analytics'
 import { Route as DashboardApisRouteImport } from './routes/dashboard.apis'
 import { Route as DashboardAuditRouteImport } from './routes/dashboard.audit'
+import { Route as DashboardBudgetsRouteImport } from './routes/dashboard.budgets'
 import { Route as DashboardBuildsRouteImport } from './routes/dashboard.builds'
 import { Route as DashboardCronsRouteImport } from './routes/dashboard.crons'
 import { Route as DashboardCustomersRouteImport } from './routes/dashboard.customers'
@@ -81,6 +82,7 @@ import { Route as DashboardWorkflowsSplatRouteImport } from './routes/dashboard.
 import { Route as DocsApiIndexRouteImport } from './routes/docs.api.index'
 import { Route as DocsApiGroupRouteImport } from './routes/docs.api.$group'
 import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
+import { Route as DashboardReleasesDeploymentIdApprovalRouteImport } from './routes/dashboard.releases_.$deploymentId.approval'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -155,6 +157,11 @@ const DashboardApisRoute = DashboardApisRouteImport.update({
 const DashboardAuditRoute = DashboardAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardBudgetsRoute = DashboardBudgetsRouteImport.update({
+  id: '/budgets',
+  path: '/budgets',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardBuildsRoute = DashboardBuildsRouteImport.update({
@@ -444,6 +451,12 @@ const StatusIncidentsIdRoute = StatusIncidentsIdRouteImport.update({
   path: '/incidents/$id',
   getParentRoute: () => StatusRoute,
 } as any)
+const DashboardReleasesDeploymentIdApprovalRoute =
+  DashboardReleasesDeploymentIdApprovalRouteImport.update({
+    id: '/releases_/$deploymentId/approval',
+    path: '/releases/$deploymentId/approval',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -460,6 +473,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -518,6 +532,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
+  '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -531,6 +546,7 @@ export interface FileRoutesByTo {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -588,6 +604,7 @@ export interface FileRoutesByTo {
   '/dashboard/projects': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
   '/docs/api': typeof DocsApiIndexRoute
+  '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -605,6 +622,7 @@ export interface FileRoutesById {
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/apis': typeof DashboardApisRoute
   '/dashboard/audit': typeof DashboardAuditRoute
+  '/dashboard/budgets': typeof DashboardBudgetsRoute
   '/dashboard/builds': typeof DashboardBuildsRoute
   '/dashboard/crons': typeof DashboardCronsRoute
   '/dashboard/customers': typeof DashboardCustomersRoute
@@ -663,6 +681,7 @@ export interface FileRoutesById {
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
+  '/dashboard/releases_/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -681,6 +700,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -739,6 +759,7 @@ export interface FileRouteTypes {
     | '/dashboard/projects/'
     | '/dashboard/workflows/'
     | '/docs/api/'
+    | '/dashboard/releases/$deploymentId/approval'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -752,6 +773,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -809,6 +831,7 @@ export interface FileRouteTypes {
     | '/dashboard/projects'
     | '/dashboard/workflows'
     | '/docs/api'
+    | '/dashboard/releases/$deploymentId/approval'
   id:
     | '__root__'
     | '/'
@@ -825,6 +848,7 @@ export interface FileRouteTypes {
     | '/dashboard/analytics'
     | '/dashboard/apis'
     | '/dashboard/audit'
+    | '/dashboard/budgets'
     | '/dashboard/builds'
     | '/dashboard/crons'
     | '/dashboard/customers'
@@ -883,6 +907,7 @@ export interface FileRouteTypes {
     | '/dashboard/projects/'
     | '/dashboard/workflows/'
     | '/docs/api/'
+    | '/dashboard/releases_/$deploymentId/approval'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1003,6 +1028,13 @@ declare module '@tanstack/react-router' {
       path: '/audit'
       fullPath: '/dashboard/audit'
       preLoaderRoute: typeof DashboardAuditRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/budgets': {
+      id: '/dashboard/budgets'
+      path: '/budgets'
+      fullPath: '/dashboard/budgets'
+      preLoaderRoute: typeof DashboardBudgetsRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/builds': {
@@ -1404,6 +1436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusIncidentsIdRouteImport
       parentRoute: typeof StatusRoute
     }
+    '/dashboard/releases_/$deploymentId/approval': {
+      id: '/dashboard/releases_/$deploymentId/approval'
+      path: '/releases/$deploymentId/approval'
+      fullPath: '/dashboard/releases/$deploymentId/approval'
+      preLoaderRoute: typeof DashboardReleasesDeploymentIdApprovalRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
 
@@ -1439,6 +1478,7 @@ interface DashboardRouteChildren {
   DashboardAnalyticsRoute: typeof DashboardAnalyticsRoute
   DashboardApisRoute: typeof DashboardApisRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
+  DashboardBudgetsRoute: typeof DashboardBudgetsRoute
   DashboardBuildsRoute: typeof DashboardBuildsRoute
   DashboardCronsRoute: typeof DashboardCronsRoute
   DashboardCustomersRoute: typeof DashboardCustomersRoute
@@ -1485,6 +1525,7 @@ interface DashboardRouteChildren {
   DashboardWorkflowsSplatRoute: typeof DashboardWorkflowsSplatRoute
   DashboardAppsIndexRoute: typeof DashboardAppsIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
+  DashboardReleasesDeploymentIdApprovalRoute: typeof DashboardReleasesDeploymentIdApprovalRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
@@ -1493,6 +1534,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAnalyticsRoute: DashboardAnalyticsRoute,
   DashboardApisRoute: DashboardApisRoute,
   DashboardAuditRoute: DashboardAuditRoute,
+  DashboardBudgetsRoute: DashboardBudgetsRoute,
   DashboardBuildsRoute: DashboardBuildsRoute,
   DashboardCronsRoute: DashboardCronsRoute,
   DashboardCustomersRoute: DashboardCustomersRoute,
@@ -1539,6 +1581,8 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardWorkflowsSplatRoute: DashboardWorkflowsSplatRoute,
   DashboardAppsIndexRoute: DashboardAppsIndexRoute,
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,
+  DashboardReleasesDeploymentIdApprovalRoute:
+    DashboardReleasesDeploymentIdApprovalRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(

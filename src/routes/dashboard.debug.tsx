@@ -4,10 +4,11 @@ import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch } from '@/components/dashboard/debug-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
+import { withCapability } from '@/components/dashboard/capability-gate';
 import { consoleHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/dashboard/debug')({
-  component: DebugPage,
+  component: withCapability('debug', 'Debugger', DebugPage),
   validateSearch: validateDebugSearch,
   head: () => consoleHead('debug'),
 });

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isCancelledError, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setUnauthorizedHandler, unwrap } from './api/client';
 import { ApiError } from './api/errors';
 import { endServerSessionBestEffort } from './api/logout';
@@ -333,6 +333,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     void refreshAccount()
       .catch((err: unknown) => {
+        // A cancelled read is not an outage: something refetched the account
+        // while this one was in flight (an invalidation cancels and replaces
+        // it), and that newer read reports for itself. Counting it as
+        // unreachable showed "Cannot reach the API" on a healthy box until
+        // "Check again".
+        if (isCancelledError(err)) return;
         // A 401 has already cleared the session via the handler above. Anything
         // else — the box is down, the network dropped — should not sign the
         // user out, but the shell needs to know so it can say so once.

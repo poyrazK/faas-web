@@ -48,6 +48,7 @@ const KIND_COLOR: Record<string, string> = {
   redis_streams: 'var(--cat-storage)',
   sqs_compat: 'var(--cat-storage)',
   queue: 'var(--cat-security)',
+  realtime: 'var(--cat-network)',
 };
 
 function TriggerDetail({

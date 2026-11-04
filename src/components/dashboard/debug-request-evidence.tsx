@@ -9,6 +9,8 @@ import { useDebugRequestEvidence, useDeployment } from '@/lib/api/queries';
 import { safeDebugBundle, suggestedDebugChecks } from './debug-support';
 import { regressionKey } from './debug-search';
 import { DebugGate } from './debug-gate';
+import { DebugReplayAction } from './debug-replay';
+import { RequestCaptureLink } from './request-capture-link';
 
 /**
  * One request, in full: the telemetry row, the spans the gateway recorded
@@ -159,6 +161,7 @@ export function DebugRequestEvidence({
                 <p className="text-xs text-muted-foreground">
                   Wake and instance IDs were not returned for this request.
                 </p>
+                <RequestCaptureLink slug={slug} captureId={data.request.profile_capture_id} />
               </section>
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">Why</h3>
@@ -338,6 +341,14 @@ export function DebugRequestEvidence({
                       ? 'Support bundle copied'
                       : ''}
                 </p>
+                {(data.request.request_id ?? data.request.id) && (
+                  <DebugReplayAction
+                    slug={slug}
+                    reqId={(data.request.request_id ?? data.request.id)!}
+                    method={data.request.method}
+                    route={data.request.route}
+                  />
+                )}
               </section>
               <p className="text-xs text-muted-foreground">
                 Evidence generated: {data.generated_at || 'Not reported'}

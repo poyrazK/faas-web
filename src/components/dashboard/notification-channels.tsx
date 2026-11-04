@@ -69,7 +69,7 @@ export function channelHealth(
   return 'unused';
 }
 
-function ChannelStatus({ channel }: { channel: NotificationChannel }) {
+export function ChannelStatus({ channel }: { channel: NotificationChannel }) {
   const health = channelHealth(channel);
   if (health === 'failing')
     return (
@@ -518,16 +518,19 @@ function AddChannel({ existing, onDone }: { existing: NotificationChannel[]; onD
 
 /**
  * Which channels a rule delivers to: up to five of the account's channels
- * (validateRuleChannels, handlers_alerts_channels.go:15-37).
+ * (validateRuleChannels, handlers_alerts_channels.go:15-37). Budgets share the
+ * same cap (MaxChannelsPerFinancialBudget) and pass their own `limitNote`.
  */
 export function ChannelPicker({
   value,
   onChange,
   idPrefix = 'channel',
+  limitNote = `A rule delivers to at most ${MAX_CHANNELS_PER_RULE} channels.`,
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
   idPrefix?: string;
+  limitNote?: string;
 }) {
   const channels = useNotificationChannels();
   const list = channels.data ?? [];
@@ -587,11 +590,7 @@ export function ChannelPicker({
           })}
         </div>
       )}
-      {full && (
-        <span className="text-xs text-muted-foreground">
-          A rule delivers to at most {MAX_CHANNELS_PER_RULE} channels.
-        </span>
-      )}
+      {full && <span className="text-xs text-muted-foreground">{limitNote}</span>}
     </fieldset>
   );
 }

@@ -31,6 +31,7 @@
 /dashboard/apis    /index.html   200
 /dashboard/apps    /index.html   200
 /dashboard/audit    /index.html   200
+/dashboard/budgets    /index.html   200
 /dashboard/builds    /index.html   200
 /dashboard/crons    /index.html   200
 /dashboard/customers    /index.html   200
@@ -56,6 +57,7 @@
 /dashboard/postgres    /index.html   200
 /dashboard/queues    /index.html   200
 /dashboard/releases    /index.html   200
+/dashboard/releases/:deploymentId/approval    /index.html   200
 /dashboard/routes    /index.html   200
 /dashboard/secrets    /index.html   200
 /dashboard/security    /index.html   200

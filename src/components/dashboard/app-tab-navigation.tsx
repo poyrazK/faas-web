@@ -13,10 +13,20 @@ import { SegmentedControl, Tabs, tabId } from './tabs';
  */
 export const APP_TAB_GROUPS = [
   { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
-  { label: 'Delivery', tabs: ['Deployments', 'Activity'] },
+  { label: 'Delivery', tabs: ['Deployments', 'Release safety', 'Activity'] },
   {
     label: 'Observe',
-    tabs: ['Logs', 'Log drains', 'Errors', 'Issues', 'Alerts', 'Debugger', 'Request audit'],
+    tabs: [
+      'Logs',
+      'Log drains',
+      'Errors',
+      'Issues',
+      'Alerts',
+      'Debugger',
+      'Forks',
+      'Profile captures',
+      'Request audit',
+    ],
   },
   {
     label: 'Connect',
@@ -30,6 +40,8 @@ export const APP_TAB_GROUPS = [
       'Edge protection',
       'Mirrors',
       'Tenant surfaces',
+      'TCP listeners',
+      'UDP listeners',
       'OpenAPI',
     ],
   },
@@ -37,7 +49,19 @@ export const APP_TAB_GROUPS = [
   // statements. Not under Connect — that group is how traffic reaches the app,
   // this one is the commercial relationship with whoever sends it.
   { label: 'Monetize', tabs: ['Consumers', 'Consumer plans'] },
-  { label: 'Automate', tabs: ['Automations', 'Workflows', 'Queues', 'Webhooks'] },
+  {
+    label: 'Automate',
+    tabs: [
+      'Automations',
+      'Workflows',
+      'Workflow schedules',
+      'Workflow insights',
+      'Recovery policy',
+      'Queues',
+      'Realtime',
+      'Webhooks',
+    ],
+  },
   { label: 'Configure', tabs: ['Environment', 'Configuration'] },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
@@ -52,7 +76,14 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Upstreams: 'data-upstreams',
   Mirrors: 'traffic-mirroring',
   'Tenant surfaces': 'tenant-surfaces',
-  Debugger: 'production-debugger',
+  'TCP listeners': 'tcp-listeners',
+  'UDP listeners': 'udp-listeners',
+  // The beta `debug` family owns the tab; the production-debugger preview
+  // inside it is gated view by view (debug-body.tsx).
+  Debugger: 'debug',
+  // Production forks; crash snapshots open as forks, so they live inside it
+  // behind their own `crash-snapshots` gate (app-forks.tsx).
+  Forks: 'production-forks',
   Issues: 'issues',
   Errors: 'issues',
   MCP: 'mcp-hosting',
@@ -61,15 +92,30 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Consumer plans': 'api-monetization',
   Automations: 'automations',
   Workflows: 'workflows',
+  'Workflow schedules': 'workflow-schedules',
+  'Recovery policy': 'workflow-recovery',
+  'Workflow insights': 'workflow-insights',
   Queues: 'queues',
+  Realtime: 'realtime',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
+  'Profile captures': 'profile-captures',
+};
+
+/**
+ * Tabs that gather several capabilities, each section gated on its own: the
+ * tab hides only when every one of them is off.
+ */
+export const APP_TAB_ANY_CAPABILITY: Partial<Record<AppTab, readonly string[]>> = {
+  'Release safety': ['deploy-freezes', 'release-approvals', 'release-gates', 'scheduled-releases'],
 };
 
 /** Hide a tab only once the registry has said its capability is off. */
 export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab[] {
   return APP_DETAIL_TABS.filter((tab) => {
     const id = APP_TAB_CAPABILITY[tab];
+    const any = APP_TAB_ANY_CAPABILITY[tab];
+    if (any) return any.some((each) => access(each) !== 'off');
     return !id || access(id) !== 'off';
   });
 }
