@@ -886,9 +886,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 128,
     name: 'SLOs and error budgets',
-    status: 'none',
-    surfaces: [],
-    gap: 'SLOs and error budgets',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=SLOs'],
+    capability: 'custom-slos',
     wave: 3,
   },
   // G129 · preview

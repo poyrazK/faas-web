@@ -27,6 +27,7 @@ import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
+import * as sloMock from './slos';
 import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
 import * as approvalMock from './release-approvals';
@@ -2355,9 +2356,31 @@ route('DELETE', '/v1/notification-channels/{id}', ({ params }) => {
 route('POST', '/v1/notification-channels/{id}/test', ({ params }) =>
   channelMock.testChannel(channelById(params.id))
 );
-route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+// Customer-defined SLOs (mock/slos.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function sloGate() {
   if (hiddenCapabilities.has('custom-slos'))
     throw new Problem(404, 'not_found', 'SLOs are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function slo(answer: sloMock.Answer) {
+  sloGate();
+  if (sloMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/slos', ({ params, body }) => slo(sloMock.createSLO(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.getSLO(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.deleteSLO(app(params.slug).slug, params.id)));
+route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+  sloGate();
   return channelMock.slos.get(app(params.slug).slug) ?? [];
 });
 route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {

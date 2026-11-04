@@ -58,6 +58,7 @@ import { SyntheticsBody } from '@/components/dashboard/synthetics-body';
 import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
 import { UpstreamsBody } from './dashboard.upstreams';
 import { AlertsBody } from './dashboard.alerts';
+import { SlosBody } from '@/components/dashboard/slos-body';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { ForksBody } from '@/components/dashboard/app-forks';
 import { ProfileCapturesBody } from '@/components/dashboard/profile-captures';
@@ -817,6 +818,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+              {tab === 'SLOs' && <SlosBody slug={fn.id} />}
               {tab === 'Webhooks' && (
                 <WebhooksHub
                   accountId={account?.id ?? ''}
