@@ -11243,10 +11243,19 @@ route('GET', '/v1/billing/focus', ({ query }) => {
     invoices_excluded_draft_or_void: 0,
   };
 });
-route('POST', '/v1/billing/cancel', () => ({
-  cancel_scheduled: true,
-  effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
-}));
+route('POST', '/v1/billing/cancel', () => {
+  // Free has no provider subscription (faas handlers_billing_cancel.go).
+  if (db.account.plan === 'free')
+    throw new Problem(
+      409,
+      'billing_already_cancelled',
+      'this account has no active subscription to cancel'
+    );
+  return {
+    cancel_scheduled: true,
+    effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
+  };
+});
 route('POST', '/v1/billing/retry', () => ({
   attempt_id: `att_${hex(8)}`,
   provider_ref_id: `txn_${hex(8)}`,
