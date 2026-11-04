@@ -161,6 +161,23 @@
   --status-warning: #9a6700;
   --status-serious: #b4521f;
   --status-critical: #c02626;
+
+  /* Syntax highlighting for code blocks (`lib/syntax-highlight.ts`). Hue roles
+     follow the familiar editor convention — keywords red, strings navy,
+     numbers blue, commands purple, variables amber — with keys and flags in
+     the brand's deep mint. Measured on the code block's --muted (#eff3f1),
+     every step clears AA body text: keyword 5.3, string 11.4, number 6.8,
+     command 5.7, key/flag 5.6, variable 6.8, comment 5.7:1. */
+  --syntax-keyword: #c0233a;
+  --syntax-string: #0a3069;
+  --syntax-number: #0550ae;
+  --syntax-function: #7340c9;
+  --syntax-attr: #006f40;
+  --syntax-variable: #8f3a00;
+  --syntax-comment: #56606a;
+  --syntax-meta: #55625c;
+  --syntax-addition: #116329;
+  --syntax-deletion: #a40e26;
 }
 
 /* --- Dark surface (the console) -------------------------------------------
@@ -225,6 +242,20 @@
   --status-warning: #fabf47;
   --status-serious: #f3a17e;
   --status-critical: #ff9393;
+
+  /* Syntax steps for the console's surfaces, same roles as on paper. On its
+     --muted (#2e2e2e): keyword 5.4, string 8.8, number 7.0, command 7.0,
+     key/flag 8.0, variable 7.0, comment 5.6:1. */
+  --syntax-keyword: #ff7b72;
+  --syntax-string: #a5d6ff;
+  --syntax-number: #79c0ff;
+  --syntax-function: #d2a8ff;
+  --syntax-attr: #51deaa;
+  --syntax-variable: #ffa657;
+  --syntax-comment: #9ea7b0;
+  --syntax-meta: #b8b8b8;
+  --syntax-addition: #7ee787;
+  --syntax-deletion: #ffa198;
 }
 
 /* Foil is a silver material in either polarity. Its colour vocabulary stays
@@ -792,6 +823,61 @@
       transition: none;
       animation: none;
     }
+  }
+
+  /* highlight.js scopes → syntax tokens. The grammars emit these class names
+     (`lib/syntax-highlight.ts`); nothing here carries a colour of its own, so
+     a block follows whichever polarity it sits in. Unlisted scopes keep the
+     block's foreground — punctuation and plain words stay quiet. */
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-doctag,
+  .hljs-template-tag {
+    color: var(--syntax-keyword);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-char.escape_ {
+    color: var(--syntax-string);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-symbol,
+  .hljs-bullet {
+    color: var(--syntax-number);
+  }
+  .hljs-title,
+  .hljs-built_in,
+  .hljs-type,
+  .hljs-section {
+    color: var(--syntax-function);
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-property,
+  .hljs-name,
+  .hljs-selector-attr {
+    color: var(--syntax-attr);
+  }
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-params {
+    color: var(--syntax-variable);
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--syntax-comment);
+    font-style: italic;
+  }
+  .hljs-meta,
+  .hljs-subst {
+    color: var(--syntax-meta);
+  }
+  .hljs-addition {
+    color: var(--syntax-addition);
+  }
+  .hljs-deletion {
+    color: var(--syntax-deletion);
   }
 }
 
