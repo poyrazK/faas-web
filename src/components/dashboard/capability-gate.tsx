@@ -74,3 +74,14 @@ export function withCapability<P extends object>(
   Gated.displayName = `withCapability(${capability})`;
   return Gated;
 }
+
+/**
+ * Renders `children` when the account has the capability and nothing
+ * otherwise: for a section inside a page that is about something else, where
+ * a "not enabled" panel for every preview would bury the page. Its queries
+ * run only past the gate, as with `CapabilityGate`.
+ */
+export function WhenCapable({ capability, children }: { capability: string; children: ReactNode }) {
+  const { access } = useCapabilityAccess(capability);
+  return access === 'on' ? <>{children}</> : null;
+}

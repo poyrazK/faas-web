@@ -221,37 +221,39 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 28,
     name: 'Release gates on customer signals',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release gates on customer signals',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'release-gates',
   },
   // B29 · preview
   {
     row: 29,
     name: 'Release approvals and approval policy',
-    status: 'none',
-    surfaces: [],
-    gap: 'Release approvals and approval policy',
-    wave: 3,
+    status: 'full',
+    surfaces: [
+      '/dashboard/apps/$appSlug?tab=Release safety',
+      '/dashboard/releases/$deploymentId/approval',
+    ],
+    capability: 'release-approvals',
   },
   // B30 · preview
   {
     row: 30,
     name: 'Deploy freezes and release windows',
-    status: 'none',
-    surfaces: [],
-    gap: 'Deploy freezes and release windows',
+    status: 'partial',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'deploy-freezes',
+    cli: 'gregale deploy --image IMAGE --override-freeze REASON',
+    gap: 'Override a freeze from the image deploy form (Git and archive deploys, and schedules, can)',
     wave: 3,
   },
   // B31 · preview
   {
     row: 31,
     name: 'Scheduled releases',
-    status: 'none',
-    surfaces: [],
-    gap: 'Scheduled releases',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/releases', '/dashboard/apps/$appSlug?tab=Release safety'],
+    capability: 'scheduled-releases',
   },
   // B34 · beta
   {
@@ -411,19 +413,17 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 55,
     name: 'Production forks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Production forks',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'production-forks',
   },
   // C56 · preview
   {
     row: 56,
     name: 'Crash snapshots',
-    status: 'none',
-    surfaces: [],
-    gap: 'Crash snapshots',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Forks'],
+    capability: 'crash-snapshots',
   },
   // C58 · preview
   {
@@ -505,9 +505,21 @@ export const LEDGER: LedgerEntry[] = [
     wave: 3,
   },
   // D69 · preview
-  { row: 69, name: 'TCP listeners', status: 'none', surfaces: [], gap: 'TCP listeners', wave: 3 },
+  {
+    row: 69,
+    name: 'TCP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=TCP listeners'],
+    capability: 'tcp-listeners',
+  },
   // D70 · preview
-  { row: 70, name: 'UDP listeners', status: 'none', surfaces: [], gap: 'UDP listeners', wave: 3 },
+  {
+    row: 70,
+    name: 'UDP listeners',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=UDP listeners'],
+    capability: 'udp-listeners',
+  },
   // D71 · preview
   {
     row: 71,
@@ -719,14 +731,20 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Operations and work policies',
     wave: 3,
   },
-  // F108 · preview
+  // F108 · preview. Everything on the Storage page, each part behind its own
+  // sub-capability: the versioning toggle and every version (download,
+  // restore, undelete, permanent delete); lifecycle rules; CORS; object tags;
+  // default encryption; Object Lock with default retention, per-version legal
+  // holds, retention and event holds, and a legal hold on new uploads;
+  // uploads in parts with resume and abort; upload routes; change
+  // notifications; and write receipts. Compute-trigger rules come from the
+  // app's manifest on deploy; the page shows them and keeps them on save.
   {
     row: 108,
     name: 'Object storage: buckets, signed URLs, upload routes, S3 gateway, versioning, lifecycle rules, object lock, write protection, encryption keys, change notifications, multipart uploads',
-    status: 'partial',
+    status: 'full',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
-    gap: 'Versioning toggle and version restore, lifecycle editing (both read-only today), CORS, tags, encryption, object lock, multipart, upload routes, notifications, write receipts',
     wave: 3,
   },
   // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview).
@@ -868,28 +886,27 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 128,
     name: 'SLOs and error budgets',
-    status: 'none',
-    surfaces: [],
-    gap: 'SLOs and error budgets',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=SLOs'],
+    capability: 'custom-slos',
     wave: 3,
   },
   // G129 · preview
   {
     row: 129,
     name: 'Synthetic checks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Synthetic checks',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Synthetic checks'],
+    capability: 'synthetic-checks',
     wave: 3,
   },
   // G168 · preview
   {
     row: 168,
     name: 'On-demand profile captures: CPU, heap, stacks, Go locks; automatic captures; capture diff',
-    status: 'none',
-    surfaces: [],
-    gap: 'On-demand profile captures',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Profile captures'],
+    capability: 'profile-captures',
   },
   // G134 · beta
   {
@@ -985,10 +1002,14 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 152,
     name: 'Budgets: policies, projections, alerts and channels, automatic stops (strict budgets)',
-    status: 'none',
-    surfaces: [],
-    gap: 'Budgets: policies, projections, alerts and automatic stops',
-    wave: 2,
+    // Alert, Stop previews and Strict cap over every scope, with preview,
+    // revisions, channels and recorded stops. Strict caps show apid's "not
+    // released" refusal and fall back to a draft; API-only responses
+    // (reject_traffic, suspend_background) can only ever be drafts upstream,
+    // so they are shown, not authored.
+    status: 'full',
+    surfaces: ['/dashboard/budgets'],
+    capability: 'budgets',
   },
   // H153 · GA
   {

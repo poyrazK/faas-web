@@ -19,6 +19,7 @@ import {
   EvidenceLogs,
   EvidenceTimeline,
 } from './debug-evidence-detail';
+import { RequestCaptureLink } from './request-capture-link';
 
 /**
  * One request, in full: the telemetry row, the spans the gateway recorded
@@ -185,6 +186,7 @@ export function DebugRequestEvidence({
                     Wake and instance IDs were not returned for this request.
                   </p>
                 )}
+                <RequestCaptureLink slug={slug} captureId={data.request.profile_capture_id} />
               </section>
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">Why</h3>
