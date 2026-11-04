@@ -40,41 +40,86 @@ export function useProjects(accountId: string) {
     staleTime: 30_000,
   });
 }
-export function useProjectEnvironments(accountId: string, slug: string) {
+/**
+ * Environment reads take the company organization when the project is a
+ * company's: `/v1/projects/{slug}/environments…` resolves the slug under the
+ * signed-in account (faas ProjectBySlug(acct.ID, slug)), so a company project
+ * reads `/v1/orgs/{organization}/projects/{slug}/environments…` (same shapes,
+ * org_project_routes.go:14-27). Omitted, the personal route is read.
+ */
+const environmentsKey = (accountId: string, slug: string, org?: string | null) => [
+  ...projectKeys.detail(accountId, slug),
+  'environments',
+  ...(org ? ['org', org] : []),
+];
+export function useProjectEnvironments(accountId: string, slug: string, org?: string | null) {
   return useQuery({
-    queryKey: [...projectKeys.detail(accountId, slug), 'environments'],
+    queryKey: environmentsKey(accountId, slug, org),
     queryFn: ({ signal }) =>
-      unwrap(api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } }, signal })),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects/{slug}/environments', {
+              params: { path: { organization: org, slug } },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } }, signal })
+          ),
     enabled: Boolean(accountId && slug),
     retry: retryPolicy,
     staleTime: 30_000,
   });
 }
-export function useProjectEnvironment(accountId: string, slug: string, environment: string) {
+export function useProjectEnvironment(
+  accountId: string,
+  slug: string,
+  environment: string,
+  org?: string | null
+) {
   return useQuery({
-    queryKey: [...projectKeys.detail(accountId, slug), 'environments', environment],
+    queryKey: [...environmentsKey(accountId, slug, org), environment],
     queryFn: ({ signal }) =>
-      unwrap(
-        api.GET('/v1/projects/{slug}/environments/{environment}', {
-          params: { path: { slug, environment } },
-          signal,
-        })
-      ),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects/{slug}/environments/{environment}', {
+              params: { path: { organization: org, slug, environment } },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/projects/{slug}/environments/{environment}', {
+              params: { path: { slug, environment } },
+              signal,
+            })
+          ),
     enabled: Boolean(accountId && slug && validEnvironment(environment)),
     retry: retryPolicy,
     staleTime: 30_000,
   });
 }
-export function useEnvironmentState(accountId: string, slug: string, environment: string) {
+export function useEnvironmentState(
+  accountId: string,
+  slug: string,
+  environment: string,
+  org?: string | null
+) {
   return useQuery({
-    queryKey: [...projectKeys.detail(accountId, slug), 'environments', environment, 'state'],
+    queryKey: [...environmentsKey(accountId, slug, org), environment, 'state'],
     queryFn: ({ signal }) =>
-      unwrap(
-        api.GET('/v1/projects/{slug}/environments/{environment}/state', {
-          params: { path: { slug, environment } },
-          signal,
-        })
-      ),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects/{slug}/environments/{environment}/state', {
+              params: { path: { organization: org, slug, environment } },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/projects/{slug}/environments/{environment}/state', {
+              params: { path: { slug, environment } },
+              signal,
+            })
+          ),
     enabled: Boolean(accountId && slug && validEnvironment(environment)),
     retry: retryPolicy,
     staleTime: 30_000,
@@ -84,17 +129,28 @@ export function useEnvironmentDiff(
   accountId: string,
   slug: string,
   environment: string,
-  source: string
+  source: string,
+  org?: string | null
 ) {
   return useQuery({
-    queryKey: [...projectKeys.detail(accountId, slug), 'environments', environment, 'diff', source],
+    queryKey: [...environmentsKey(accountId, slug, org), environment, 'diff', source],
     queryFn: ({ signal }) =>
-      unwrap(
-        api.GET('/v1/projects/{slug}/environments/{environment}/diff', {
-          params: { path: { slug, environment }, query: { from: source } },
-          signal,
-        })
-      ),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects/{slug}/environments/{environment}/diff', {
+              params: {
+                path: { organization: org, slug, environment },
+                query: { from: source },
+              },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/projects/{slug}/environments/{environment}/diff', {
+              params: { path: { slug, environment }, query: { from: source } },
+              signal,
+            })
+          ),
     enabled: Boolean(
       accountId &&
       slug &&

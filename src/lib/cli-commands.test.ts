@@ -9,6 +9,7 @@ import {
   cliDeployCommand,
   cliDomainSetDefaultCommand,
   cliEdgeRuleTraceCommand,
+  cliEnvironmentGitopsExplainCommand,
   cliInitCommand,
   cliInitDeployCommand,
   cliJobRemoveCommand,
@@ -38,6 +39,15 @@ describe('cli commands handed out by the console', () => {
   it('scaffolds a template with the required --path and deploys it to the created app', () => {
     expect(cliInitDeployCommand('hello-python', 'my-api')).toBe(
       'gregale init --template hello-python --path my-api --deploy --name my-api'
+    );
+  });
+});
+
+// docs/cli-reference.md: "gregale environment gitops explain [--json] <project> <environment>"
+describe('environment commands', () => {
+  it('explains a project environment by project then environment', () => {
+    expect(cliEnvironmentGitopsExplainCommand('shop', 'production')).toBe(
+      'gregale environment gitops explain shop production'
     );
   });
 });

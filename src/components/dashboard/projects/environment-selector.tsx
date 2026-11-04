@@ -14,6 +14,12 @@ import { EnvironmentReadiness, type ReadinessSearch } from './environment-readin
 import { ProjectVerificationRuns } from './project-verification-runs';
 import type { components } from '@/lib/api/schema';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { CapabilityGate } from '../capability-gate';
+import {
+  EnvironmentConfigEditor,
+  EnvironmentManager,
+  EnvironmentSecrets,
+} from './environment-manager';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props = {
@@ -29,6 +35,8 @@ type Props = {
   readinessSearch?: ReadinessSearch;
   onReadinessSearch?: (patch: ReadinessSearch) => void;
 };
+/** The company organization a company project's environments are read under; null when personal. */
+type Scoped = Props & { org: string | null; label: string };
 function SelectedEnvironment({
   accountId,
   plan,
@@ -40,10 +48,13 @@ function SelectedEnvironment({
   onSelectQueueWorkload,
   readinessSearch,
   onReadinessSearch,
-}: Props & { environment: string }) {
-  const detail = useProjectEnvironment(accountId, slug, environment);
-  const state = useEnvironmentState(accountId, slug, environment);
-  const diff = useEnvironmentDiff(accountId, slug, environment, compare ?? '');
+  org,
+  label,
+}: Scoped & { environment: string }) {
+  const detail = useProjectEnvironment(accountId, slug, environment, org);
+  const state = useEnvironmentState(accountId, slug, environment, org);
+  const diff = useEnvironmentDiff(accountId, slug, environment, compare ?? '', org);
+  const scope = { accountId, slug, org };
   const error = detail.error || state.error || (compare ? diff.error : null);
   if (error)
     return (
@@ -95,7 +106,27 @@ function SelectedEnvironment({
         </Button>
       </div>
       <EnvironmentStateView data={state.data} />
-      {environment !== 'production' && (
+      <EnvironmentConfigEditor
+        key={`config:${environment}`}
+        scope={scope}
+        environment={environment}
+      />
+      {org ? (
+        <Panel title="Not in the console for company projects yet">
+          <p role="status" className="text-sm text-muted-foreground">
+            The API this console is built from has no shared secrets, promotions, stage queue
+            settings or verification runs under {label}&apos;s projects. Manage those with the CLI
+            while signed in to {label}.
+          </p>
+        </Panel>
+      ) : (
+        <EnvironmentSecrets
+          key={`secrets:${environment}`}
+          scope={scope}
+          environment={environment}
+        />
+      )}
+      {!org && environment !== 'production' && (
         <StageQueueOverview
           key={`${accountId}:${slug}:${environment}`}
           accountId={accountId}
@@ -111,7 +142,7 @@ function SelectedEnvironment({
         />
       )}
       {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
-      {onReadinessSearch && (
+      {!org && onReadinessSearch && (
         <EnvironmentReadiness
           key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
           identity={{ accountId, projectId, project: slug, target: environment }}
@@ -123,37 +154,39 @@ function SelectedEnvironment({
           onSearch={onReadinessSearch}
         />
       )}
-      <ProjectVerificationRuns
-        key={`graph-runs:${accountId}:${slug}:${environment}`}
-        accountId={accountId}
-        project={slug}
-        environment={environment}
-      />
+      {!org && (
+        <ProjectVerificationRuns
+          key={`graph-runs:${accountId}:${slug}:${environment}`}
+          accountId={accountId}
+          project={slug}
+          environment={environment}
+        />
+      )}
     </>
   );
 }
 /**
- * Environment routes resolve the project under the signed-in account
- * (faas ProjectBySlug(acct.ID, slug)), so in a company workspace they would
- * read a same-named personal project. Company environments are preview (A20,
- * Wave 3); until then the panel says so and reads nothing.
+ * Environments are a preview capability (`environments`); nothing is read
+ * until the account has it. Environment routes resolve the project under the
+ * signed-in account (faas ProjectBySlug(acct.ID, slug)), so a company
+ * workspace reads the `/v1/orgs/{organization}/projects…` family instead.
  */
 export function ProjectEnvironments(props: Props) {
-  const { org, label } = useWorkspaceTarget();
-  if (org)
-    return (
-      <Panel title="Environments">
-        <p role="status" className="text-sm text-muted-foreground">
-          Environments for {label}'s projects are not available in the console yet.
-        </p>
-      </Panel>
-    );
-  return <PersonalProjectEnvironments {...props} />;
+  return (
+    <CapabilityGate capability="environments" title="Environments">
+      <ScopedEnvironments {...props} />
+    </CapabilityGate>
+  );
 }
 
-function PersonalProjectEnvironments(props: Props) {
-  const { accountId, projectId, slug, environment, compare, onChange } = props;
-  const query = useProjectEnvironments(accountId, slug);
+function ScopedEnvironments(props: Props) {
+  const { org, label } = useWorkspaceTarget();
+  return <ProjectEnvironmentList {...props} org={org} label={label} />;
+}
+
+function ProjectEnvironmentList(props: Scoped) {
+  const { accountId, projectId, slug, environment, compare, onChange, org, label } = props;
+  const query = useProjectEnvironments(accountId, slug, org);
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (query.isPending) return <LoadingState message="Loading environments…" />;
   const items = (query.data ?? []).filter(
@@ -234,6 +267,12 @@ function PersonalProjectEnvironments(props: Props) {
           </p>
         )}
       </Panel>
+      <EnvironmentManager
+        scope={{ accountId, slug, org }}
+        items={items}
+        label={label}
+        onCreated={(created) => onChange({ environment: created, compare: undefined })}
+      />
       {selected && !invalid && !invalidComparison && (
         <SelectedEnvironment
           key={`${accountId}:${slug}:${selected}:${compare ?? ''}`}

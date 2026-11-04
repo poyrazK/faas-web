@@ -4,6 +4,11 @@ import { projects } from './projects';
 import { environmentInventory } from './environments';
 type S = components['schemas'];
 export const mockApprovalId = '00000000-0000-4000-8000-000000000010';
+/** Promotions the console ran against the mock (mock/environment-admin.ts), newest first. */
+export const recordedPromotions: S['ProjectEnvironmentPromotionStatusResponse'][] = [];
+/** The opaque token a preview hands out, bound to its project and environments. */
+export const mockPromotionToken = (project: string, source: string, target: string) =>
+  `mock-promotion:${project}:${source}:${target}`;
 export function mockPromotionPreview(
   project: string,
   target: string,
@@ -25,12 +30,16 @@ export function mockPromotionPreview(
     to_environment: target,
     to_environment_protected: target === 'production',
     approval_required: target === 'production',
-    can_promote: false,
-    blocking_reasons: [
-      'The fixture qualification has expired. Review current source and target before any operation.',
-    ],
+    // MOCK_PROMOTION_BLOCKED=1 shows a preview the server refuses to promote.
+    can_promote: process.env.MOCK_PROMOTION_BLOCKED !== '1',
+    blocking_reasons:
+      process.env.MOCK_PROMOTION_BLOCKED === '1'
+        ? [
+            'The fixture qualification has expired. Review current source and target before any operation.',
+          ]
+        : [],
     promotion_hash: 'c'.repeat(64),
-    promotion_token: 'mock-preview-identity-not-used-by-console',
+    promotion_token: mockPromotionToken(project, source, target),
     release_graph_mode: false,
     qualification_required: true,
     config_diff: {
@@ -78,7 +87,10 @@ export function mockPromotionHistory(
   target: string
 ): S['ProjectEnvironmentPromotionSummaryResponse'][] | undefined {
   if (!environmentInventory(project)?.some((e) => e.slug === target)) return;
-  return [1, 2].map((n) => ({
+  const recorded = recordedPromotions
+    .filter((p) => p.project_slug === project && p.to_environment === target)
+    .map(({ workloads: _, ...row }) => row);
+  const fixtures: S['ProjectEnvironmentPromotionSummaryResponse'][] = [1, 2].map((n) => ({
     promotion_id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
     project_slug: project,
     from_environment: target === 'production' ? 'staging' : 'production',
@@ -90,12 +102,17 @@ export function mockPromotionHistory(
     created_at: db.iso(n * 60 * 60 * 1000),
     updated_at: db.iso(30 * 60 * 1000),
   }));
+  return [...recorded, ...fixtures];
 }
 export function mockPromotionReceipt(
   project: string,
   target: string,
   id: string
 ): S['ProjectEnvironmentPromotionStatusResponse'] | undefined {
+  const recorded = recordedPromotions.find(
+    (p) => p.project_slug === project && p.to_environment === target && p.promotion_id === id
+  );
+  if (recorded) return recorded;
   const row = mockPromotionHistory(project, target)?.find((p) => p.promotion_id === id);
   if (!row) return;
   return {

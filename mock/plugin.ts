@@ -45,6 +45,7 @@ import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
 import { registerDeadLetterMocks } from './dead-letters';
 import { registerForkMocks } from './forks';
+import { registerEnvironmentAdminMocks } from './environment-admin';
 import { registerEventConsumerMocks } from './event-consumers';
 import { registerProfileCaptureMocks } from './profile-captures';
 import { registerListenerMocks } from './listeners';
@@ -12522,6 +12523,11 @@ registerDeadLetterMocks(route, Problem, NO_CONTENT);
 registerForkMocks(route, Problem, NO_CONTENT, {
   hidden: (capability) => hiddenCapabilities.has(capability),
   plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
+registerEnvironmentAdminMocks(route, Problem, NO_CONTENT, (organization, slug, admin) => {
+  if (admin) return companyProject(organization, slug);
+  requireOrgRole(organization, ANY_MEMBER);
+  return findCompanyProject(organization, slug);
 });
 registerEventConsumerMocks(route, Problem);
 registerListenerMocks(route, Problem, NO_CONTENT);

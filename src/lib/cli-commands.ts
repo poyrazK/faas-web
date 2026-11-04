@@ -85,6 +85,11 @@ export function cliDomainSetDefaultCommand(domain: string): string {
   return `gregale domains set-default ${domain}`;
 }
 
+/** Explain a project environment's GitOps source, approvals and serving progress. */
+export function cliEnvironmentGitopsExplainCommand(project: string, environment: string): string {
+  return `gregale environment gitops explain ${project} ${environment}`;
+}
+
 /** Define an SLO an slo_budget_* alert can name (one objective; 7- or 30-day window). */
 export function cliSloCreateCommand(appSlug: string): string {
   return `gregale alert slo create --app ${appSlug} --name <name> --objective 99.9`;
