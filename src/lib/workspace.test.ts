@@ -43,3 +43,13 @@ describe('workspace readiness', () => {
     window.localStorage.removeItem('gregale.active-org.acct-ready');
   });
 });
+
+it('requires the exact confirmed actor before enabling account-scoped onboarding', async () => {
+  const { workspaceBound } = await import('./workspace');
+  bindWorkspaceAccount('actor-a');
+  expect(workspaceBound('actor-a')).toBe(true);
+  expect(workspaceBound('actor-b')).toBe(false);
+  bindWorkspaceAccount('actor-b');
+  expect(workspaceBound('actor-a')).toBe(false);
+  expect(workspaceBound('actor-b')).toBe(true);
+});

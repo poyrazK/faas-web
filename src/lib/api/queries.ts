@@ -1119,9 +1119,10 @@ export function useLatestAppDeployments() {
   });
 }
 
-export function useDeployment(id: string, options?: Options<Deployment>) {
+export function useDeployment(id: string, options?: Options<Deployment>, accountId?: string) {
   return useQuery({
-    queryKey: ['deployments', id],
+    queryKey:
+      accountId === undefined ? ['deployments', id] : ['deployments', 'account', accountId, id],
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     ...options,
@@ -3422,6 +3423,7 @@ export function useRevokeInvitation(org: string) {
 export function useDeployFromRefFor() {
   const qc = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: ({
       slug,
       ...body
@@ -3446,6 +3448,7 @@ export function useDeployFromRefFor() {
 export function useDeployFunctionSourceFor() {
   const qc = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/deployments', {
