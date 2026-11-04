@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Link, Outlet } from '@tanstack/react-router';
 import { Analytics } from '@vercel/analytics/react';
+import { onboardingAnalyticsPrivacy } from '@/lib/onboarding-analytics';
 import { hexToRgb, type Palette } from 'glimm';
 import { GlimmProvider } from 'glimm/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -107,7 +108,7 @@ function RootLayout() {
                   debug script from va.vercel-scripts.com, which the CSP the
                   dev server sends (src/lib/security-headers.ts) rightly
                   blocks, so it is not mounted outside production builds. */}
-                {import.meta.env.PROD && <Analytics />}
+                {import.meta.env.PROD && <Analytics beforeSend={onboardingAnalyticsPrivacy} />}
               </ToastProvider>
             </GlimmProvider>
           </DataProvider>
