@@ -42,6 +42,10 @@ import { GitHubConnectionPanel } from '@/components/dashboard/github-connection'
 import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
 import { IssuesBody } from '@/components/dashboard/issues-body';
 import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
+import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
+import { WorkflowSchedulesBody } from '@/components/dashboard/workflows/workflow-schedules';
+import { RecoveryPolicyBody } from '@/components/dashboard/workflows/recovery-policy';
+import { WorkflowInsightsBody } from '@/components/dashboard/workflows/workflow-insights';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
 import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import { Sheet } from '@/components/dashboard/kit/sheet';
@@ -53,9 +57,23 @@ import {
   validateLogsSearch,
   type LogsSearch,
 } from '@/components/dashboard/logs-search';
+import { SyntheticsBody } from '@/components/dashboard/synthetics-body';
+import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
+import { SlosBody } from '@/components/dashboard/slos-body';
+import { ForksBody } from '@/components/dashboard/app-forks';
+import { ProfileCapturesBody } from '@/components/dashboard/profile-captures';
+import {
+  validateProfileCaptureSearch,
+  type ProfileCaptureSearch,
+} from '@/components/dashboard/profile-captures-search';
+import { WakeDrawer } from '@/components/dashboard/wake-drawer';
+import { RequestAuditBody } from '@/components/dashboard/request-audit';
+import { TcpListeners, UdpListeners } from '@/components/dashboard/listeners';
+import { ServiceBindings } from '@/components/dashboard/service-bindings';
+import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
+import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { Swap } from '@/components/dashboard/motion';
-import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
 import { AlertsBody } from '@/components/dashboard/pages/alerts';
 import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
 import { EnvBody } from '@/components/dashboard/pages/env';
@@ -80,19 +98,14 @@ import {
   UnreachableState,
 } from '@/components/dashboard/primitives';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
 import {
   validateReleasesSearch,
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
-import { RequestAuditBody } from '@/components/dashboard/request-audit';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
-import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { StatelessContract } from '@/components/dashboard/stateless-contract';
 import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
-import { WakeDrawer } from '@/components/dashboard/wake-drawer';
-import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/field';
 import { toDeployment } from '@/lib/api/adapters';
@@ -101,9 +114,10 @@ import { useProjectMembership } from '@/lib/api/projects';
 import { useAppDeployments, useAppMetrics, useBuildRecords } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { capabilityAccess } from '@/lib/capability-state';
+import { ReleaseSafety } from '@/components/dashboard/release-safety';
+import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
 import { isPaidPlan } from '@/lib/plan';
-import { pageHead, useDocumentTitle } from '@/lib/seo';
 import { useData } from '@/lib/store';
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { Play, Rocket } from 'iconoir-react';
@@ -182,6 +196,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
   validateSearch: (
     search: Record<string, unknown>
   ): DebugSearch &
+    ProfileCaptureSearch &
     LogsSearch &
     IssueSearch &
     AppAnalyticsSearch &
@@ -195,6 +210,7 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
       workflowRun?: string;
     } => ({
     ...validateDebugSearch(search),
+    ...validateProfileCaptureSearch(search),
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
@@ -458,6 +474,19 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Workflow schedules' && (
+                <WorkflowSchedulesBody
+                  slug={fn.id}
+                  onOpenRun={(workflowRun) =>
+                    void navigate({
+                      search: (current) => ({ ...current, tab: 'Workflows', workflowRun }),
+                      hash: true,
+                    })
+                  }
+                />
+              )}
+              {tab === 'Workflow insights' && <WorkflowInsightsBody slug={fn.id} />}
+              {tab === 'Recovery policy' && <RecoveryPolicyBody slug={fn.id} />}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
               {tab === 'Overview' && (
                 <AppOverview
@@ -652,6 +681,23 @@ function FunctionDetailPage() {
                 </>
               )}
 
+              {tab === 'Release safety' && (
+                <ReleaseSafety
+                  slug={fn.id}
+                  onOpenDeployment={(id) =>
+                    void navigate({
+                      search: (current) => ({
+                        ...current,
+                        tab: 'Deployments',
+                        deployment: id,
+                        releaseSection: 'lifecycle',
+                      }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Activity' && <AppActivityTimeline slug={fn.id} />}
               {tab === 'Logs' && (
                 <DeploymentCapability
@@ -737,6 +783,12 @@ function FunctionDetailPage() {
                 </>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
+              {tab === 'Realtime' && (
+                <RealtimeBody
+                  slug={fn.id}
+                  appUrl={fn.visibility === 'internal' ? undefined : fn.url}
+                />
+              )}
               {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
               {tab === 'Services' && (
@@ -749,6 +801,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+              {tab === 'SLOs' && <SlosBody slug={fn.id} />}
               {tab === 'Webhooks' && (
                 <WebhooksHub
                   accountId={account?.id ?? ''}
@@ -780,9 +833,26 @@ function FunctionDetailPage() {
                   }
                 />
               )}
+              {tab === 'Forks' && <ForksBody slug={fn.id} />}
+              {tab === 'Profile captures' && (
+                <ProfileCapturesBody
+                  slug={fn.id}
+                  search={search}
+                  onSelect={(patch) =>
+                    void navigate({
+                      search: (current) => ({ ...current, ...patch }),
+                      hash: true,
+                      resetScroll: false,
+                    })
+                  }
+                />
+              )}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
+              {tab === 'Synthetic checks' && <SyntheticsBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
+              {tab === 'TCP listeners' && <TcpListeners slug={fn.id} />}
+              {tab === 'UDP listeners' && <UdpListeners slug={fn.id} />}
               {tab === 'OpenAPI' && <OpenAPIBody slug={fn.id} />}
               {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
               {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}

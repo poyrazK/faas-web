@@ -1,10 +1,11 @@
-import { isValidElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from '@tanstack/react-router';
 import { CopyButton } from '@/components/docs/copy-button';
 import { resolveDocHref } from '@/lib/docs-links';
 import { slugifyHeading } from '@/lib/docs-content';
+import { rehypeHighlightCode } from '@/lib/syntax-highlight';
 
 /**
  * Renders vendored markdown with the site's own type and colour.
@@ -15,7 +16,8 @@ import { slugifyHeading } from '@/lib/docs-content';
  * need real styling to stay readable at these widths.
  *
  * `remark-gfm` is what turns those tables — plus strikethrough and task
- * lists — into anything other than literal pipe characters.
+ * lists — into anything other than literal pipe characters, and
+ * `rehypeHighlightCode` colours fenced blocks (`lib/syntax-highlight.ts`).
  */
 
 /** Heading text can arrive as nested nodes; the anchor id needs the plain string. */
@@ -128,15 +130,22 @@ const COMPONENTS: Components = {
   pre: ({ children }) => {
     // The single child is the <code> element: its className carries the fence
     // language for the header, and its text is what the copy button puts on
-    // the clipboard — extracted as plain text so the button keeps working if
-    // the children ever grow highlight spans.
-    const child = Array.isArray(children) ? children[0] : children;
+    // the clipboard — extracted as plain text, so the highlight spans inside
+    // never reach the clipboard.
+    let child = Array.isArray(children) ? children[0] : children;
     let language = 'text';
     if (isValidElement(child)) {
-      const match = /language-([\w+-]+)/.exec(
-        (child.props as { className?: string }).className ?? ''
-      );
+      const className = (child.props as { className?: string }).className;
+      const match = /language-([\w+-]+)/.exec(className ?? '');
       if (match) language = match[1];
+      // An unlabelled fence reaches `code` with no className, which is how
+      // inline code is told apart — so it would be drawn as an inline pill
+      // inside the block. Label it plain text instead.
+      if (!className) {
+        child = cloneElement(child as ReactElement<{ className?: string }>, {
+          className: 'language-text',
+        });
+      }
     }
     return (
       <figure className="mt-4 overflow-hidden rounded-xl border border-border bg-muted">
@@ -145,7 +154,7 @@ const COMPONENTS: Components = {
           <CopyButton text={textOf(children).replace(/\n$/, '')} className="py-1 text-xs" />
         </figcaption>
         {/* Scrolls inside its own box: a long command must not widen the page. */}
-        <pre className="overflow-x-auto p-4 text-foreground">{children}</pre>
+        <pre className="overflow-x-auto p-4 text-foreground">{child}</pre>
       </figure>
     );
   },
@@ -195,6 +204,7 @@ export function Markdown({ source, sourcePath }: { source: string; sourcePath?: 
     <div className="docs-prose">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlightCode]}
         components={{
           ...COMPONENTS,
           a: ({ href, children }) => (

@@ -1,3 +1,6 @@
+import { sampleVersion, type OnboardingDraft } from '@/lib/onboarding-draft';
+import { resourceId } from '@/lib/resource-id';
+import type { Deployment } from '@/lib/api/queries';
 import { MemorySelect } from './memory-select';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
@@ -122,6 +125,14 @@ interface NewAppWizardProps {
   templateSlug?: string;
   /** Removes dashboard chrome and keeps onboarding focused on a real Git deployment. */
   onboarding?: boolean;
+  /** Compact first-signup presentation; uses the same mutation owner. */
+  quickstart?: boolean;
+  /** Confirm the onboarding workspace inventory before allowing a mutation. */
+  deploymentDisabled?: boolean;
+  suggestedName?: string;
+  onDraftChange?: (draft: OnboardingDraft) => void;
+  onProgress?: (draft: OnboardingDraft) => void;
+  onDeploymentLive?: (deployment: Deployment) => void;
   /** Called after the first source-ref deployment has been accepted. */
   onDeploymentAccepted?: () => void;
   /** A saved app can be managed even when the first source submission fails. */
@@ -138,6 +149,7 @@ export function NewAppWizard(props: NewAppWizardProps) {
     return (
       <FirstDeploymentRecovery
         recovery={props.onSearchChange ? (props.search?.recovery ?? restored) : restored}
+        onLive={props.onDeploymentLive}
         onChange={(recovery) => {
           setRestored(recovery);
           props.onSearchChange?.({ ...props.search, recovery }, { replace: true });
@@ -153,6 +165,12 @@ function CreateAppWizard({
   search: urlSearch,
   onSearchChange,
   onboarding = false,
+  quickstart = false,
+  deploymentDisabled = false,
+  suggestedName,
+  onDraftChange,
+  onProgress,
+  onDeploymentLive,
   onDeploymentAccepted,
   onAppCreated,
   onConnectGitHub,
@@ -214,7 +232,7 @@ function CreateAppWizard({
   const catalog = useTemplates();
   const catalogTemplate = (catalog.data ?? []).find((t) => t.name === templateSlug);
   const picked = Boolean(template || catalogTemplate);
-  const initialName = template?.slug ?? catalogTemplate?.name ?? '';
+  const initialName = template?.slug ?? catalogTemplate?.name ?? suggestedName ?? '';
   const catalogRuntime: Runtime | null = /-node$/.test(templateSlug ?? '')
     ? 'node24'
     : /-python$/.test(templateSlug ?? '')
@@ -234,7 +252,7 @@ function CreateAppWizard({
   // Whether the installation can see the chosen repository: one carried in
   // from elsewhere may not be.
   const [repoAccessible, setRepoAccessible] = useState(true);
-  const [nameDraft, setName] = useState<string | null>(null);
+  const [nameDraft, setName] = useState<string | null>(quickstart ? (suggestedName ?? null) : null);
   const [nameTouched, setNameTouched] = useState(false);
   // A chosen repository names the app until the customer types a name of
   // their own; their typing (even clearing the field) always wins.
@@ -305,6 +323,7 @@ function CreateAppWizard({
     privateCapability.accountId === account?.id && privateCapability.state === 'available';
   const [recovery, setRecovery] = useState<DeploymentRecoveryContext>();
   const sourceRequested = useRef(false);
+  const creationLock = useRef(false);
   function saveRecovery(next: DeploymentRecoveryContext) {
     setRecovery(next);
     onSearchChange?.({ ...search, recovery: next }, { replace: true });
@@ -314,7 +333,8 @@ function CreateAppWizard({
   // (or nothing was typed) leaving is free. A template's prefilled name is
   // not the user's typing — only their own edits arm the guard.
   useUnsavedGuard(
-    !createdId &&
+    !quickstart &&
+      !createdId &&
       (Boolean(repo.trim() || (name.trim() && name !== initialName)) ||
         (source === 'function' && fnEdited)),
     undefined,
@@ -323,7 +343,10 @@ function CreateAppWizard({
 
   // A name prefilled from a repository can easily match an app the account
   // already has; say so on Configure rather than as a 409 after Deploy.
-  const knownApps = useApps();
+  const knownApps = useApps(
+    quickstart ? { retry: false } : undefined,
+    quickstart ? account?.id : undefined
+  );
   const nameError =
     appNameError(name) ??
     ((knownApps.data ?? []).some((app) => app.slug === name)
@@ -331,6 +354,21 @@ function CreateAppWizard({
       : undefined);
   const nameValid = !nameError;
   const normalizedRef = ref.trim() || 'main';
+  function onboardingDraft(
+    phase: OnboardingDraft['phase'],
+    app?: string,
+    deployment?: string
+  ): OnboardingDraft {
+    const common = { phase, name, ...(app ? { app } : {}), ...(deployment ? { deployment } : {}) };
+    return source === 'git'
+      ? { ...common, kind: 'git', repo: repo.trim(), ref: normalizedRef }
+      : { ...common, kind: 'sample', starter: sampleVersion() };
+  }
+  useEffect(() => {
+    if (quickstart && !createdId && !deploying) onDraftChange?.(onboardingDraft('preparing'));
+    // The fields, rather than a new object each render, own draft persistence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickstart, name, repo, normalizedRef, source, createdId, deploying, onDraftChange]);
   const repoValid = isValidGitHubRepo(repo);
   const refValid = isValidGitRef(normalizedRef);
   const gitSourceValid = source !== 'git' || (repoValid && refValid);
@@ -363,6 +401,13 @@ function CreateAppWizard({
     branch: string;
   } | null>(null);
   const switchToImport = () => {
+    if (quickstart) {
+      void navigate({
+        to: '/dashboard/apps/new',
+        search: { source: 'import', slug: scanProjectSlug, branch: normalizedRef },
+      });
+      return;
+    }
     setImportHandoff((prev) => ({
       seed: (prev?.seed ?? 0) + 1,
       slug: scanProjectSlug,
@@ -460,6 +505,12 @@ function CreateAppWizard({
   const quotaExceeded = appQuotaExceeded(account);
   const limitsLoading = authLoading && !account;
   const deployBlocked =
+    (quickstart &&
+      (deploymentDisabled ||
+        !account?.id ||
+        !workspace.ready ||
+        knownApps.isPending ||
+        Boolean(knownApps.error))) ||
     limitsLoading ||
     quotaExceeded ||
     !memoryAllowed(account, selectedMemoryMb) ||
@@ -471,15 +522,18 @@ function CreateAppWizard({
 
   // A disabled Deploy always says why. The plan-limit case already has its
   // own alert in the review panel, so it is not repeated here.
-  const blockedReason = limitsLoading
-    ? 'Checking your plan limits before creating the app…'
-    : quotaExceeded
-      ? undefined
-      : !memoryAllowed(account, selectedMemoryMb)
-        ? `${selectedMemoryMb} MB is above your plan's per-app memory. Lower it in Advanced settings.`
-        : visibility === 'internal' && !privateAvailable
-          ? 'Internal-only apps are not confirmed for this account yet. Choose public visibility, or try again shortly.'
-          : undefined;
+  const blockedReason =
+    quickstart && (deploymentDisabled || knownApps.isPending || knownApps.error)
+      ? 'Confirm your app inventory before deploying. Retry the app lookup if it failed.'
+      : limitsLoading
+        ? 'Checking your plan limits before creating the app…'
+        : quotaExceeded
+          ? undefined
+          : !memoryAllowed(account, selectedMemoryMb)
+            ? `${selectedMemoryMb} MB is above your plan's per-app memory. Lower it in Advanced settings.`
+            : visibility === 'internal' && !privateAvailable
+              ? 'Internal-only apps are not confirmed for this account yet. Choose public visibility, or try again shortly.'
+              : undefined;
 
   // What the app will be, as far as the person has said: the rail shows it as
   // it fills in, Review shows it whole, from one list.
@@ -516,6 +570,8 @@ function CreateAppWizard({
       // Empty lets the binding select the repository's default branch.
       branch: FULL_SHA.test(normalizedRef) ? '' : normalizedRef,
     });
+    if (quickstart && !mounted.current)
+      throw new Error('The account changed before source submission.');
     sourceRequested.current = true;
     return deployFromRef.mutateAsync({
       slug,
@@ -529,13 +585,19 @@ function CreateAppWizard({
     const archive = await gzip(
       tarball([{ name: fnStarter.filename, content: fnCode }, ...fnStarter.extra])
     );
+    if (quickstart && !mounted.current)
+      throw new Error('The account changed before source submission.');
+    sourceRequested.current = true;
     return deployFunctionSource.mutateAsync({ slug, archive, runtime });
   }
 
   async function createFunction() {
+    if (quickstart && creationLock.current) return;
     if (deployBlocked || !nameValid || !sourceValid) {
       return;
     }
+    if (quickstart) creationLock.current = true;
+    if (quickstart) onProgress?.(onboardingDraft('creating'));
     setDeploying(true);
     setSubmittedSearch(search);
     setSubmissionError(null);
@@ -560,6 +622,10 @@ function CreateAppWizard({
         visibility,
         org: workspace.org,
       });
+      if (quickstart && !mounted.current) return;
+      if (quickstart && appNameError(created.id))
+        throw new Error('The API did not identify the created app. Check your app inventory.');
+      if (quickstart) onProgress?.(onboardingDraft('submitting', created.id));
       setCreatedId(created.id);
       setCreatedUrl(visibility === 'internal' ? null : created.url);
       onAppCreated?.();
@@ -595,6 +661,13 @@ function CreateAppWizard({
       }
 
       if (deploymentResult.status === 'fulfilled' && deploymentResult.value) {
+        if (quickstart && !mounted.current) return;
+        if (quickstart && !resourceId(deploymentResult.value.id)) {
+          onProgress?.(onboardingDraft('unknown', created.id));
+          return;
+        }
+        if (quickstart)
+          onProgress?.(onboardingDraft('accepted', created.id, deploymentResult.value.id));
         setDeploymentId(deploymentResult.value.id);
         if (source === 'git')
           saveRecovery({ ...pointer, deployment: deploymentResult.value.id, phase: undefined });
@@ -608,6 +681,18 @@ function CreateAppWizard({
               : `${repo.trim()}@${normalizedRef} is queued for build.`,
         });
       } else if (deploymentResult.status === 'rejected') {
+        if (quickstart && !mounted.current) return;
+        if (quickstart)
+          onProgress?.(
+            onboardingDraft(
+              sourceRequested.current &&
+                (!(deploymentResult.reason instanceof ApiError) ||
+                  deploymentResult.reason.status >= 500)
+                ? 'unknown'
+                : 'rejected',
+              created.id
+            )
+          );
         setSubmissionError(errorMessage(deploymentResult.reason));
         const err: unknown = deploymentResult.reason;
         // Recovery retries a Git ref; a handler written here is still on the page.
@@ -634,6 +719,14 @@ function CreateAppWizard({
     } catch (err) {
       createController.current = null;
       if (!mounted.current) return;
+      if (quickstart && (!(err instanceof ApiError) || err.status >= 500)) {
+        onProgress?.(onboardingDraft('unknown'));
+        return;
+      }
+      if (quickstart) {
+        creationLock.current = false;
+        onProgress?.(onboardingDraft('preparing'));
+      }
       setDeploying(false);
       setSubmittedSearch(null);
       toast({
@@ -649,6 +742,7 @@ function CreateAppWizard({
       return (
         <FirstDeploymentRecovery
           recovery={recovery}
+          onLive={onDeploymentLive}
           submitting={recovery.phase === 'submitting'}
           submissionError={submissionError}
           onChange={(next) => {
@@ -685,6 +779,7 @@ function CreateAppWizard({
                 ? { kind: 'upload', label: `${fnStarter.filename}, written here` }
                 : undefined
             }
+            onLive={onDeploymentLive}
             appCreated={Boolean(createdId)}
             appName={name}
             deploymentId={deploymentId}
@@ -937,20 +1032,29 @@ function CreateAppWizard({
               if (sourceValidation.validate(sourceErrors, event.currentTarget)) setStep(1);
             }}
           />
-          <FunctionSource
-            formId={`${uid}-source-form`}
-            language={fnLanguage}
-            code={fnCode}
-            edited={fnEdited}
-            error={sourceShown ? handlerError : undefined}
-            errorId={`${uid}-handler-error`}
-            onLanguage={chooseFnLanguage}
-            onCode={setFnCode}
-            onReset={() => setFnCode(fnStarter.code)}
-            onBrowseStarters={() =>
-              changeSearch({ ...search, source: 'template', template: undefined, step: 'setup' })
-            }
-          />
+          {quickstart ? (
+            <details className="rounded-lg border border-border p-4">
+              <summary className="cursor-pointer text-sm">View sample code</summary>
+              <pre className="mt-3 overflow-x-auto text-xs">
+                <code>{FUNCTION_STARTERS.node.code}</code>
+              </pre>
+            </details>
+          ) : (
+            <FunctionSource
+              formId={`${uid}-source-form`}
+              language={fnLanguage}
+              code={fnCode}
+              edited={fnEdited}
+              error={sourceShown ? handlerError : undefined}
+              errorId={`${uid}-handler-error`}
+              onLanguage={chooseFnLanguage}
+              onCode={setFnCode}
+              onReset={() => setFnCode(fnStarter.code)}
+              onBrowseStarters={() =>
+                changeSearch({ ...search, source: 'template', template: undefined, step: 'setup' })
+              }
+            />
+          )}
           <div className="flex justify-end">{continueButton}</div>
         </div>
       );
@@ -980,6 +1084,7 @@ function CreateAppWizard({
               <p className="text-sm font-medium">Connect GitHub first</p>
               <p className="mt-1 max-w-md text-xs text-muted-foreground">
                 Connect your GitHub account to choose a repository and the version to deploy.
+                {quickstart && ' Signing in with GitHub does not grant repository access.'}
               </p>
             </div>
             {/* Connecting from New app comes straight back to the Git source,
@@ -1101,7 +1206,10 @@ function CreateAppWizard({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (configureValidation.validate({ name: nameError }, event.currentTarget)) setStep(2);
+          if (configureValidation.validate({ name: nameError }, event.currentTarget)) {
+            if (quickstart) void createFunction();
+            else setStep(2);
+          }
         }}
         noValidate
         className="flex flex-col gap-8"
@@ -1134,6 +1242,14 @@ function CreateAppWizard({
             )}
           </SettingRow>
 
+          {quickstart && source === 'function' && (
+            <details className="rounded-lg border border-border p-4">
+              <summary className="cursor-pointer text-sm">View sample code</summary>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap font-mono text-xs">
+                {fnStarter.code}
+              </pre>
+            </details>
+          )}
           {source !== 'function' && (
             <SettingRow
               label="How does your code run?"
@@ -1177,7 +1293,14 @@ function CreateAppWizard({
             </SettingRow>
           )}
           {source === 'function' && (
-            <SettingRow label="Your function" hint="The handler you wrote in the previous step.">
+            <SettingRow
+              label="Your function"
+              hint={
+                quickstart
+                  ? 'The sample handler Gregale will deploy.'
+                  : 'The handler you wrote in the previous step.'
+              }
+            >
               <p className="text-sm">
                 {fnStarter.label} · <code className="font-mono">{fnStarter.filename}</code>
               </p>
@@ -1277,18 +1400,40 @@ function CreateAppWizard({
         </AdvancedSettings>
 
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {source === 'git'
-            ? `Next, review your choices. Gregale will create the app and build ${repo.trim()} at ${normalizedRef}.`
-            : source === 'function'
-              ? 'Next, review your choices. Gregale will create the app and deploy your handler.'
-              : source === 'template'
-                ? 'Next, create the app. You’ll get CLI commands to download the starter and deploy its code.'
-                : 'Next, create the app. It will be ready for you to deploy code with the CLI.'}
+          {quickstart
+            ? 'Gregale will create the app and deploy this code using the choices above.'
+            : source === 'git'
+              ? `Next, review your choices. Gregale will create the app and build ${repo.trim()} at ${normalizedRef}.`
+              : source === 'function'
+                ? 'Next, review your choices. Gregale will create the app and deploy your handler.'
+                : source === 'template'
+                  ? 'Next, create the app. You’ll get CLI commands to download the starter and deploy its code.'
+                  : 'Next, create the app. It will be ready for you to deploy code with the CLI.'}
         </p>
+        {quickstart && (
+          <p className="text-sm text-muted-foreground">
+            {account?.plan} plan · {selectedMemoryMb} MB ·{' '}
+            {effectiveScaleToZero ? 'Sleeps when idle' : 'Keeps an instance running'}.{' '}
+            {visibility === 'public'
+              ? 'Your app will have a public URL.'
+              : 'Your app is internal only.'}{' '}
+            Requests use your compute allowance.
+          </p>
+        )}
+        {quickstart && blockedReason && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {blockedReason}
+          </p>
+        )}
         {/* The way back is in the header; this row holds only the way on. */}
         <div className="flex justify-end">
-          <Button variant="cta" type="submit" className="h-10 gap-2 rounded-lg">
-            Review
+          <Button
+            variant="cta"
+            type="submit"
+            disabled={quickstart && deployBlocked}
+            className="h-10 gap-2 rounded-lg"
+          >
+            {quickstart ? (source === 'function' ? 'Deploy sample' : 'Deploy app') : 'Review'}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -1392,7 +1537,10 @@ function CreateAppWizard({
         return {
           step: of(1),
           title: 'Deploy your first app',
-          description: 'Choose a repository and the branch, tag or commit to deploy.',
+          description:
+            source === 'function'
+              ? 'Deploy a working function with no repository.'
+              : 'Choose a repository and the branch, tag or commit to deploy.',
         };
       const page: Record<AppSource, { title: string; description: string }> = {
         git: {
@@ -1429,15 +1577,22 @@ function CreateAppWizard({
     }
     if (station === 'configure')
       return {
-        step: of(2),
-        title: 'Set up your app',
+        step: quickstart ? undefined : of(2),
+        title: quickstart
+          ? source === 'function'
+            ? 'Deploy a sample'
+            : 'Deploy your repository'
+          : 'Set up your app',
         description:
           'Choose how your code runs and who can reach it. Fine-tune the defaults in Advanced settings.',
-        back: hasSetup(source)
-          ? { label: 'Setup', onBack: () => setStep(0) }
-          : onboarding
+        back:
+          quickstart && source === 'function'
             ? undefined
-            : { label: 'Sources', onBack: toSources },
+            : hasSetup(source)
+              ? { label: 'Setup', onBack: () => setStep(0) }
+              : onboarding
+                ? undefined
+                : { label: 'Sources', onBack: toSources },
       };
     return {
       step: of(3),

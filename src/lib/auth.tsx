@@ -245,6 +245,8 @@ interface AuthValue {
    * deliberate sign-out never sets.
    */
   sessionExpired: boolean;
+  /** The boot verification failed; an OAuth handoff can offer recovery. */
+  sessionError: unknown;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -255,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionGeneration = useRef(0);
   const [apiReachable, setReachable] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [sessionError, setSessionError] = useState<unknown>(null);
   // Only the boot check blocks; later refreshes happen behind the current UI.
   const [loading, setLoading] = useState<boolean>(
     () => readSession() !== null || hasOAuthPending()
@@ -300,6 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (generation !== sessionGeneration.current) return;
     setReachable(true);
+    setSessionError(null);
     // The server is authoritative on the address; a hint written from a typo'd
     // or since-changed email gets corrected here.
     if (next.email) setSession(userFor(next.email));
@@ -326,27 +330,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [queryClient]);
 
-  // Verify the hint once on mount. StrictMode double-invokes effects in dev, and
-  // this one is a network call, so it is guarded.
-  const checked = useRef(false);
+  // Each effect lifetime owns its verification. StrictMode detaches the query
+  // observer and cancels the first read: the remount must start a replacement,
+  // including a fresh OAuth return that has no client-side user hint yet.
   useEffect(() => {
-    if (checked.current) return;
-    checked.current = true;
-    const sessionHint = readSession();
-    const oauthPending = hasOAuthPending();
-    if (!sessionHint && !oauthPending) {
-      setLoading(false);
+    let active = true;
+    if (!readSession() && !hasOAuthPending()) {
       return;
     }
-    void refreshAccount()
-      .catch((err: unknown) => {
-        // A 401 has already cleared the session via the handler above. Anything
-        // else — the box is down, the network dropped — should not sign the
-        // user out, but the shell needs to know so it can say so once.
-        if (!(err instanceof ApiError && err.isAuth)) setReachable(false);
-        if (oauthPending && err instanceof ApiError && err.isAuth) clearOAuthPending();
-      })
-      .finally(() => setLoading(false));
+    async function verify() {
+      while (active) {
+        try {
+          await refreshAccount();
+          break;
+        } catch (err: unknown) {
+          if (!active) return;
+          if (isCancelledError(err)) continue;
+          setSessionError(err);
+          if (!(err instanceof ApiError && err.isAuth)) setReachable(false);
+          if (hasOAuthPending() && err instanceof ApiError && err.isAuth) clearOAuthPending();
+          break;
+        }
+      }
+      if (active) setLoading(false);
+    }
+    void verify();
+    return () => {
+      active = false;
+    };
   }, [refreshAccount]);
 
   const signIn = useCallback(
@@ -407,6 +418,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshAccount,
       apiReachable,
       sessionExpired,
+      sessionError,
     }),
     [
       user,
@@ -419,6 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshAccount,
       apiReachable,
       sessionExpired,
+      sessionError,
     ]
   );
 

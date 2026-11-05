@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
+import { DeadLetterLedger } from '@/components/dashboard/dead-letter-ledger';
 import { DeadLetterPanel } from '@/components/dashboard/dead-letter-panel';
 import { QueueConsumers } from '@/components/dashboard/queue-consumers';
 import { DelayedTasks } from '@/components/dashboard/delayed-tasks';
@@ -156,6 +157,7 @@ export function QueuesBody({ slug }: { slug: string }) {
       </Panel>
 
       <DeadLetterPanel slug={slug} />
+      <DeadLetterLedger slug={slug} />
     </div>
   );
 }

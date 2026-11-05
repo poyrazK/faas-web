@@ -1,3 +1,4 @@
+import { WorkspaceReleaseGuards } from '@/components/dashboard/release-safety';
 import { DeployQueue } from '@/components/dashboard/deploy-queue';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
@@ -250,6 +251,13 @@ export function DeploymentsPage() {
       </TabNav>
       {view === 'releases' && (
         <DeployQueue
+          onOpen={(deployment) =>
+            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
+          }
+        />
+      )}
+      {view === 'releases' && (
+        <WorkspaceReleaseGuards
           onOpen={(deployment) =>
             select({ deployment, build: undefined, releaseSection: 'lifecycle' })
           }

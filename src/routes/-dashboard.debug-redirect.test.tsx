@@ -11,6 +11,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Route } from './dashboard.debug';
 
 const inventory = vi.hoisted(() => ({ apps: [{ slug: 'alpha' }, { slug: 'beta' }] }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({
+    access: 'on',
+    capability: { id: 'debug', stage: 'beta' },
+    refresh: vi.fn(),
+  }),
+}));
 vi.mock('@/lib/api/queries', async (original) => ({
   ...(await original<object>()),
   useApps: () => ({ data: inventory.apps, isPending: false, error: null, refetch: vi.fn() }),

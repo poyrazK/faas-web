@@ -16,6 +16,8 @@ import {
 } from './debug-search';
 import { InlinePhase, queryPhase } from './primitives';
 import { Select } from '@/components/ui/field';
+import { RegressionState } from './debug-regression-state';
+import { RegressionTriage } from './debug-triage';
 
 /**
  * Routes the platform has decided are slower than their own baseline.
@@ -31,6 +33,8 @@ import { Select } from '@/components/ui/field';
 interface Row {
   id: string;
   route: string;
+  state: Regression['state'];
+  kind: string;
   p95: number;
   base: number;
   factor: string;
@@ -39,7 +43,12 @@ interface Row {
   lastSeen: string;
 }
 
-export function DebugRegressions({ slug, search, onSelect }: { slug: string } & DebugSelection) {
+export function DebugRegressions({
+  slug,
+  search,
+  onSelect,
+  preview,
+}: { slug: string; preview: boolean } & DebugSelection) {
   const since = search.debugWindow ?? '24h';
   const { data, isPending, error, refetch } = useDebugRegressions(slug, since);
   const selected = data?.regressions.find((item) => regressionKey(item) === search.regression);
@@ -48,6 +57,13 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
     // The API keys a regression by (deployment, route), not by an id.
     id: regressionKey(r),
     route: r.route,
+    state: r.state,
+    kind:
+      r.kind === 'errors'
+        ? 'Errors'
+        : r.kind === 'latency_and_errors'
+          ? 'Latency, errors'
+          : 'Latency',
     p95: r.p95_ms,
     base: r.p95_base_ms,
     factor: r.regression_factor,
@@ -61,6 +77,18 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
       key: 'route',
       label: 'Route template',
       render: (r) => <span className="font-mono text-xs">{r.route}</span>,
+    },
+    {
+      key: 'state',
+      label: 'State',
+      width: 'w-32',
+      render: (r) => <RegressionState state={r.state} />,
+    },
+    {
+      key: 'kind',
+      label: 'Signal',
+      width: 'w-28',
+      render: (r) => <span className="text-xs text-muted-foreground">{r.kind}</span>,
     },
     {
       key: 'factor',
@@ -149,7 +177,7 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
               : 'No regression observations were returned for this window.'
           }
           filteredEmptyMessage="No returned regressions match this text filter."
-          minWidth="min-w-[820px]"
+          minWidth="min-w-[980px]"
           loading={isPending}
           error={error}
           onRetry={() => void refetch()}
@@ -169,10 +197,13 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
                 regression={selected}
                 since={since}
                 onSelect={onSelect}
+                preview={preview}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                The selected regression is not in this window.
+                The selected regression is not in this window. Widen the window or select another
+                observation. A dismissed regression leaves the list until the dismissal ends, a
+                resolved one until it is detected again.
               </p>
             )}
           </section>
@@ -183,6 +214,95 @@ export function DebugRegressions({ slug, search, onSelect }: { slug: string } & 
 }
 
 function RegressionDetail({
+  slug,
+  regression,
+  since,
+  onSelect,
+  preview,
+}: {
+  slug: string;
+  regression: Regression;
+  since: string;
+  onSelect: DebugSelection['onSelect'];
+  preview: boolean;
+}) {
+  const suspect = regression.suspected_dependency;
+  return (
+    <div className="flex flex-col gap-4">
+      <dl className="grid gap-3 text-xs sm:grid-cols-2">
+        {[
+          ['Affected route', regression.route],
+          ['Current deployment', regression.deployment_id],
+          ['Current p95', `${regression.p95_ms} ms`],
+          ['Baseline p95', `${regression.p95_base_ms} ms`],
+          ['Change', `${regression.regression_factor}×`],
+          ...(regression.error_rate_pct !== undefined
+            ? [
+                [
+                  'Server errors',
+                  `${regression.error_rate_pct.toFixed(1)}% (was ${regression.error_rate_base_pct?.toFixed(1) ?? '—'}%), ${regression.error_count ?? 0} failed`,
+                ],
+              ]
+            : []),
+          ['Affected requests', regression.affected_count],
+          ['First occurrence', regression.first_detected_at],
+          ['Last occurrence', regression.last_detected_at],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="mt-1 break-words font-mono">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {suspect && (
+        <p className="text-xs">
+          <span className="text-muted-foreground">Suspected dependency: </span>
+          <span className="[overflow-wrap:anywhere]">{suspect.name}</span>{' '}
+          <span className="text-muted-foreground">
+            ({suspect.type.replace(/_/g, ' ')}
+            {suspect.reason === 'failures'
+              ? `, errors ${suspect.baseline_error_rate_pct?.toFixed(1) ?? '—'}% → ${suspect.error_rate_pct?.toFixed(1) ?? '—'}%`
+              : `, p95 ${suspect.p95_base_ms} → ${suspect.p95_ms} ms`}
+            )
+          </span>
+          {suspect.query && (
+            <code
+              className="mt-1 block truncate font-mono text-muted-foreground"
+              title={suspect.query}
+            >
+              {suspect.query}
+            </code>
+          )}
+        </p>
+      )}
+      <RegressionTriage
+        slug={slug}
+        deploymentId={regression.deployment_id}
+        route={regression.route}
+      />
+      {!preview ? (
+        <>
+          <a
+            className="text-sm underline"
+            href={`/dashboard/releases?${new URLSearchParams({ deployment: regression.deployment_id })}`}
+          >
+            Open affected release
+          </a>
+          <p className="text-xs text-muted-foreground">
+            The requests behind this regression and a deployment compare are part of the Production
+            debugger preview.
+          </p>
+        </>
+      ) : (
+        // The request sample is the production-debugger preview's route, so it
+        // mounts, and reads, only while that preview is on.
+        <PreviewDetail slug={slug} regression={regression} since={since} onSelect={onSelect} />
+      )}
+    </div>
+  );
+}
+
+function PreviewDetail({
   slug,
   regression,
   since,
@@ -199,23 +319,10 @@ function RegressionDetail({
   );
   return (
     <div className="flex flex-col gap-4">
-      <dl className="grid gap-3 text-xs sm:grid-cols-2">
-        {[
-          ['Affected route', regression.route],
-          ['Current deployment', regression.deployment_id],
-          ['Current p95', `${regression.p95_ms} ms`],
-          ['Baseline p95', `${regression.p95_base_ms} ms`],
-          ['Change', `${regression.regression_factor}×`],
-          ['Affected requests', regression.affected_count],
-          ['First occurrence', regression.first_detected_at],
-          ['Last occurrence', regression.last_detected_at],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="mt-1 break-words font-mono">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <p className="text-xs text-muted-foreground">
+        The baseline deployment ID is not returned. Choose deployment A to compare with this current
+        deployment (B).
+      </p>
       <Button
         className="self-start"
         size="sm"

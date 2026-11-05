@@ -1,3 +1,4 @@
+import { featureFlags } from '@/lib/feature-flags';
 import { FREE_ALLOWANCE } from '@/lib/plan-catalog';
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -161,7 +162,9 @@ export function PasswordFlow({
         window.location.assign(redirectTo);
         return;
       }
-      sweepNavigate(hasOnboarded() ? '/dashboard' : '/onboarding');
+      sweepNavigate(
+        featureFlags.onboardingV2 ? '/onboarding' : hasOnboarded() ? '/dashboard' : '/onboarding'
+      );
     } catch (err) {
       // A weak password on signup is the one case the server does distinguish,
       // and the only one worth restating as a rule rather than a rejection.

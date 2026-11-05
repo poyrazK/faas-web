@@ -19,6 +19,22 @@ const mocks = vi.hoisted(() => ({
   review: vi.fn(),
   reviewPending: false,
   executionMode: undefined as string | undefined,
+  confirm: vi.fn(),
+  scheduleAccess: 'off' as string,
+}));
+
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: mocks.scheduleAccess, refresh: vi.fn() }),
+  useCapabilityStage: () => 'Preview',
+}));
+vi.mock('@/lib/api/notification-channels', () => ({
+  useNotificationChannels: () => ({
+    data: [{ id: 'c1', name: 'releases', kind: 'slack', target: 'T1', created_at: '' }],
+    error: null,
+    isPending: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock('@tanstack/react-router', () => ({
@@ -136,6 +152,8 @@ beforeEach(() => {
   mocks.review.mockReset().mockResolvedValue(REVIEW());
   mocks.reviewPending = false;
   mocks.executionMode = undefined;
+  mocks.confirm.mockReset().mockResolvedValue(true);
+  mocks.scheduleAccess = 'off';
 });
 
 describe('Deploy from Git', () => {
@@ -406,6 +424,82 @@ describe('Deploy from Git', () => {
       await review(user, 'acme/api', 'v1.2.0');
       expect(await screen.findByRole('alert')).toHaveTextContent(/full lowercase commit SHA/);
       expect(mocks.deploy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deploy freezes and scheduled releases', () => {
+    const frozen = () =>
+      new ApiError({
+        status: 409,
+        code: 'release_frozen',
+        title: 'Production releases are frozen',
+        detail:
+          'Production releases of alpha are frozen: "incident 4711" by ops@acme.dev, until lifted.',
+        freezes: [
+          {
+            id: 'f1',
+            app: 'alpha',
+            kind: 'window',
+            starts_at: '2026-11-03T10:00:00Z',
+            reason: 'incident 4711',
+            source: 'manual',
+            created_by: 'ops@acme.dev',
+            created_at: '2026-11-03T10:00:00Z',
+            active: true,
+          },
+        ],
+      });
+
+    it('shows a frozen refusal and resends with an audited override after confirming', async () => {
+      const user = userEvent.setup();
+      mocks.deploy.mockRejectedValueOnce(frozen());
+      const onAccepted = open();
+      await deploy(user, 'acme/api', 'main');
+      const refusal = await screen.findByRole('alert', { name: 'Release frozen' });
+      expect(refusal).toHaveTextContent('incident 4711');
+      await user.type(within(refusal).getByLabelText('Override reason'), 'hotfix');
+      mocks.confirm.mockResolvedValueOnce(false);
+      await user.click(within(refusal).getByRole('button', { name: 'Deploy anyway' }));
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Deploy Alpha into the freeze?', destructive: true })
+      );
+      expect(mocks.deploy).toHaveBeenCalledTimes(1);
+      await user.click(within(refusal).getByRole('button', { name: 'Deploy anyway' }));
+      await waitFor(() => expect(onAccepted).toHaveBeenCalled());
+      expect(mocks.deploy).toHaveBeenLastCalledWith({
+        repo: 'acme/api',
+        ref: 'main',
+        format: 'tarball',
+        override_freeze: 'hotfix',
+      });
+    });
+
+    it('offers no start time while scheduled releases are off for the account', () => {
+      open();
+      expect(screen.queryByText(/start the production rollout later/)).toBeNull();
+    });
+
+    it('builds now and schedules the rollout, after confirming when it starts', async () => {
+      const user = userEvent.setup();
+      mocks.scheduleAccess = 'on';
+      open();
+      await user.click(screen.getByLabelText(/start the production rollout later/));
+      const start = new Date(Date.now() + 2 * 3_600_000);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const local = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}`;
+      await user.type(screen.getByLabelText('Start the rollout'), local);
+      await user.click(screen.getByLabelText(/releases/));
+      await deploy(user, 'acme/api', 'main');
+      await waitFor(() => expect(mocks.deploy).toHaveBeenCalled());
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Build now and release Alpha later?' })
+      );
+      expect(mocks.deploy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          release_at: new Date(Date.parse(local)).toISOString(),
+          release_notify: ['releases'],
+        })
+      );
     });
   });
 });

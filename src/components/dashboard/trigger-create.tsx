@@ -5,6 +5,7 @@ import type { Account } from '@/lib/auth';
 import type { App } from '@/lib/api/queries';
 import { useCreateTrigger } from '@/lib/api/queries';
 import { ApiError } from '@/lib/api/errors';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { Button } from '@/components/ui/button';
 import { FieldError, Select } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -18,9 +19,10 @@ import {
   buildCreateTriggerRequest,
   clearTriggerSecrets,
   newTriggerDraft,
-  sourceDraft,
   validateTriggerDraft,
+  withSourceKind,
   type CreatableBrokerKind,
+  type TriggerDraft,
 } from './trigger-form-model';
 
 const STEPS = ['Destination', 'Event source', 'Delivery & review'] as const;
@@ -29,6 +31,7 @@ const KIND_LABELS: Record<CreatableBrokerKind, string> = {
   nats: 'NATS JetStream',
   redis_streams: 'Redis Streams',
   queue: 'Platform queue',
+  realtime: 'Realtime consumer group',
 };
 
 const RECOVERY: Record<string, string> = {
@@ -46,7 +49,52 @@ const RECOVERY: Record<string, string> = {
     'The broker rejected this configuration shape. Review the server detail below.',
   secret_store_unavailable:
     'The credential store is unavailable. Your values are still here; retry after the platform is repaired.',
+  realtime_group_lease_too_short:
+    'The consumer group lease is under 120 seconds. Create the group with a longer lease, then retry.',
+  realtime_group_bound_to_trigger:
+    'Another trigger already consumes this consumer group. A group binds to one trigger.',
+  not_found: 'The realtime endpoint or consumer group was not found in this account.',
 };
+
+/**
+ * What the destination receives, by delivery shape (faas ADR-1321 and
+ * docs/realtime.md § Function triggers).
+ */
+function HandlerContract({ draft }: { draft: TriggerDraft }) {
+  const batch = draft.delivery.mode === 'batch';
+  if (draft.source.kind === 'realtime' && !batch) {
+    return (
+      <>
+        <pre className="overflow-auto font-mono text-xs text-muted-foreground">
+          {
+            '{\n  "channel": "…", "group": "…", "sequence": "…",\n  "event": "…", "data_base64": "…", "attempt": 1\n}'
+          }
+        </pre>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          One message per invocation. A 2xx response completes it; a failure or timeout retries
+          under the consumer group's retry policy.
+        </p>
+      </>
+    );
+  }
+  return (
+    <>
+      {batch && (
+        <pre className="overflow-auto font-mono text-xs text-muted-foreground">
+          {'{\n  "records": [\n    { "item_identifier": "…", "data": { … } }\n  ]\n}'}
+        </pre>
+      )}
+      <pre className="overflow-auto font-mono text-xs text-muted-foreground">
+        {'{\n  "batchItemFailures": [\n    { "itemIdentifier": "record-id" }\n  ]\n}'}
+      </pre>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {batch
+          ? 'Every record of a batch arrives in one invocation. List the records to retry; an error or non-2xx response retries the whole batch.'
+          : 'Omit failures for full success. Failed records retry up to the configured limit, then move to dead letter.'}
+      </p>
+    </>
+  );
+}
 
 function StepRail({ step }: { step: number }) {
   return (
@@ -81,7 +129,9 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
   const navigate = useNavigate();
   const { toast } = useToast();
   const create = useCreateTrigger();
-  const kinds = allowedBrokerKinds(account.limits);
+  // Outside the realtime preview apid answers kind=realtime as unknown.
+  const realtime = useCapabilityAccess('realtime').access === 'on';
+  const kinds = allowedBrokerKinds(account.limits, { realtime });
   const [draft, setDraft] = useState(() => newTriggerDraft(account.limits, apps[0]?.id ?? ''));
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -192,10 +242,9 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                   aria-label="Trigger kind"
                   value={draft.source.kind}
                   onChange={(event) =>
-                    setDraft((value) => ({
-                      ...value,
-                      source: sourceDraft(event.target.value as CreatableBrokerKind),
-                    }))
+                    setDraft((value) =>
+                      withSourceKind(value, event.target.value as CreatableBrokerKind)
+                    )
                   }
                 >
                   {kinds.map((kind) => (
@@ -260,14 +309,27 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                     (KIND_LABELS as Record<string, string>)[draft.source.kind] ?? draft.source.kind,
                   ],
                   ['Slug', draft.slug],
-                  [
-                    'Batch / window',
-                    `${draft.delivery.batchSizeMax} / ${draft.delivery.batchWindowMs} ms`,
-                  ],
-                  ['Attempts', String(draft.delivery.maxAttempts)],
-                  ['Payload cap', `${draft.delivery.payloadMaxBytes} bytes`],
+                  ['Delivery', draft.delivery.mode === 'batch' ? 'Batch' : 'Per record'],
+                  ...(draft.source.kind === 'realtime'
+                    ? [
+                        [
+                          'Messages per invocation',
+                          draft.delivery.mode === 'batch'
+                            ? String(draft.delivery.batchSizeMax)
+                            : '1',
+                        ],
+                        ['Retries and filters', 'Owned by the consumer group'],
+                      ]
+                    : [
+                        [
+                          'Batch / window',
+                          `${draft.delivery.batchSizeMax} / ${draft.delivery.batchWindowMs} ms`,
+                        ],
+                        ['Attempts', String(draft.delivery.maxAttempts)],
+                        ['Payload cap', `${draft.delivery.payloadMaxBytes} bytes`],
+                        ['Filter', draft.filterCriteriaText.trim() ? 'Configured' : 'Every record'],
+                      ]),
                   ['Initial state', draft.delivery.enabled ? 'Enabled' : 'Paused'],
-                  ['Filter', draft.filterCriteriaText.trim() ? 'Configured' : 'Every record'],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="label-mono text-muted-foreground">{label}</dt>
@@ -280,13 +342,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                 <code className="font-mono text-xs text-brand">
                   POST /_triggers/{draft.source.kind}/{draft.slug}
                 </code>
-                <pre className="overflow-auto font-mono text-xs text-muted-foreground">
-                  {'{\n  "batchItemFailures": [\n    { "itemIdentifier": "record-id" }\n  ]\n}'}
-                </pre>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Omit failures for full success. Failed records retry up to the configured limit,
-                  then move to dead letter.
-                </p>
+                <HandlerContract draft={draft} />
               </div>
             </div>
           )}
@@ -326,7 +382,11 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                 Next <ArrowRight />
               </Button>
             ) : step === 1 ? (
+              // Distinct keys: reusing one <button> and retyping it to submit
+              // inside its own click made the browser submit the form, so
+              // Review created the trigger without showing the review step.
               <Button
+                key="review"
                 type="button"
                 size="sm"
                 onClick={() => {
@@ -336,7 +396,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                 Review <ArrowRight />
               </Button>
             ) : (
-              <Button type="submit" size="sm" busy={create.isPending}>
+              <Button key="create" type="submit" size="sm" busy={create.isPending}>
                 <Plus /> Create trigger
               </Button>
             )}

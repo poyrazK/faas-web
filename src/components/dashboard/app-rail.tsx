@@ -40,6 +40,7 @@ import { useProjectMembership } from '@/lib/api/projects';
 import { useData } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
+  APP_TAB_ANY_CAPABILITY,
   APP_TAB_CAPABILITY,
   APP_TAB_GROUPS,
   resolveAppTab,
@@ -50,6 +51,7 @@ import { useCapabilityOff } from './nav-access';
 const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Overview: ViewGrid,
   Deployments: Rocket,
+  'Release safety': ShieldCheck,
   Activity: ClockRotateRight,
   Metrics: GraphUp,
   Wakes: Flash,
@@ -59,6 +61,10 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Issues: Bug,
   Alerts: Bell,
   Debugger: Search,
+  SLOs: Heart,
+  'Synthetic checks': Heart,
+  Forks: GitFork,
+  'Profile captures': Cpu,
   'Request audit': Journal,
   Routes: LinkIcon,
   Upstreams: Database,
@@ -69,12 +75,18 @@ const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   'Edge protection': ShieldCheck,
   Mirrors: Copy,
   'Tenant surfaces': Globe,
+  'TCP listeners': Antenna,
+  'UDP listeners': Antenna,
   OpenAPI: Code,
   Consumers: Community,
   'Consumer plans': CreditCard,
   Automations: GitFork,
   Workflows: GitFork,
+  'Workflow schedules': ClockRotateRight,
+  'Workflow insights': GraphUp,
+  'Recovery policy': ShieldCheck,
   Queues: List,
+  Realtime: Antenna,
   Webhooks: Antenna,
   Environment: Key,
   General: Settings,
@@ -126,6 +138,8 @@ export function AppRail({
   const project = useProjectMembership(account?.id ?? '').projectOfApp.get(slug);
   const shown = (tab: AppTab) => {
     const id = APP_TAB_CAPABILITY[tab];
+    const any = APP_TAB_ANY_CAPABILITY[tab];
+    if (any) return tab === current || any.some((each) => !isOff(each));
     return tab === current || !id || !isOff(id);
   };
   const groups = APP_TAB_GROUPS.map((group) => ({

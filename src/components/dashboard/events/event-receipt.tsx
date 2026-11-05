@@ -24,6 +24,7 @@ import {
   consumerName,
   type ReceiptLookup,
 } from './event-format';
+import { RecoveryActions } from './event-recovery';
 export type Lookup =
   ({ kind: 'event' } & ReceiptLookup) | { kind: 'producer'; slug: string; key: string };
 
@@ -33,7 +34,8 @@ const lookupKey = (l: Lookup | null) =>
 /**
  * Paste an event's identity, read back what the router did with it:
  * acceptance, the recipients captured at that moment, and each one's routing
- * and execution evidence. Read-only; recovery is not offered from here.
+ * and execution evidence. The recoveries a recipient lists can be submitted,
+ * each behind a confirmation; reading the receipt never performs one.
  */
 export function EventReceiptPanel({
   accountId,
@@ -234,13 +236,6 @@ function executionLabel(r: EventReceiptRecipient) {
   return '—';
 }
 
-const RECOVERY_LABELS: Record<string, string> = {
-  routing_replay: 'routing replay',
-  handler_replay: 'handler replay',
-  keyed_handler_replay: 'keyed handler replay',
-  dead_letter_replay: 'dead-letter replay',
-};
-
 export function ReceiptEvidence({
   accountId,
   receipt,
@@ -319,17 +314,14 @@ export function ReceiptEvidence({
       render: (r) => {
         const error = r.execution?.last_error ?? r.routing.last_error;
         return (
-          <div className="max-w-xs text-xs text-muted-foreground">
+          <div className="flex max-w-xs flex-col gap-1.5 text-xs text-muted-foreground">
             {error && (
               <p className="truncate" title={error}>
                 {error}
               </p>
             )}
             {r.recovery_actions.length > 0 && (
-              <p>
-                Eligible:{' '}
-                {r.recovery_actions.map((a) => RECOVERY_LABELS[a.kind] ?? a.kind).join(', ')}
-              </p>
+              <RecoveryActions accountId={accountId} actions={r.recovery_actions} />
             )}
           </div>
         );

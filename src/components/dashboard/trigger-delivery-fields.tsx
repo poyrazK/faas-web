@@ -2,7 +2,14 @@ import type { ReactNode } from 'react';
 import { FieldError, Select, Textarea } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import type { BrokerKind, TriggerDeliveryDraft, TriggerLimits } from './trigger-form-model';
+import {
+  REALTIME_BATCH_MAX,
+  supportsBatchDelivery,
+  type BrokerKind,
+  type TriggerDeliveryDraft,
+  type TriggerDeliveryMode,
+  type TriggerLimits,
+} from './trigger-form-model';
 
 function Field({
   label,
@@ -52,8 +59,80 @@ export function TriggerDeliveryFields({
     patch({ [key]: value === '' ? 0 : Number(value) });
   const invalid = (key: string) => Boolean(errors[key]) || undefined;
 
+  const mode = supportsBatchDelivery(sourceKind) && (
+    <Field
+      label="Delivery"
+      hint={
+        delivery.mode === 'batch'
+          ? 'One invocation per batch with every record; report partial failures by item. Batch delivery is a preview the API refuses until it is enabled for your account.'
+          : 'One invocation per record.'
+      }
+    >
+      <Select
+        aria-label="Delivery"
+        className="w-full sm:w-64"
+        value={delivery.mode}
+        onChange={(event) => patch({ mode: event.target.value as TriggerDeliveryMode })}
+      >
+        <option value="record">Per record</option>
+        <option value="batch">Batch</option>
+      </Select>
+    </Field>
+  );
+
+  const start = (
+    <label className="flex items-center justify-between gap-4 rounded-md border border-border bg-background px-3 py-3 text-sm">
+      <span>
+        <span className="block font-medium">Start consuming immediately</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">
+          Turn this off to create the trigger paused.
+        </span>
+      </span>
+      <Switch
+        checked={delivery.enabled}
+        onCheckedChange={(checked) => patch({ enabled: checked })}
+        aria-label="Start consuming immediately"
+      />
+    </label>
+  );
+
+  // The bound consumer group owns ordering, filters, retries and dead letters
+  // (faas managedrealtime/triggers.go), so a realtime trigger has only its
+  // delivery shape, its batch size in batch mode, and whether it starts.
+  if (sourceKind === 'realtime') {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {mode}
+          {delivery.mode === 'batch' && (
+            <Field
+              label="Messages per invocation"
+              error={errors.batchSizeMax}
+              hint={`At most ${REALTIME_BATCH_MAX}.`}
+            >
+              <Input
+                type="number"
+                min={1}
+                max={REALTIME_BATCH_MAX}
+                aria-label="Messages per invocation"
+                aria-invalid={invalid('batchSizeMax')}
+                value={delivery.batchSizeMax}
+                onChange={(event) => number('batchSizeMax', event.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Ordering, filters, attempts, retry policy and dead letters stay on the consumer group.
+        </p>
+        {start}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      {mode}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Field
           label="Maximum batch size"
@@ -153,19 +232,7 @@ export function TriggerDeliveryFields({
               </Select>
             </Field>
           )}
-          <label className="flex items-center justify-between gap-4 rounded-md border border-border bg-background px-3 py-3 text-sm">
-            <span>
-              <span className="block font-medium">Start consuming immediately</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Turn this off to create the trigger paused.
-              </span>
-            </span>
-            <Switch
-              checked={delivery.enabled}
-              onCheckedChange={(checked) => patch({ enabled: checked })}
-              aria-label="Start consuming immediately"
-            />
-          </label>
+          {start}
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
   draftFromTrigger,
   newTriggerDraft,
   validateTriggerDraft,
+  withSourceKind,
   type TriggerLimits,
 } from './trigger-form-model';
 
@@ -231,13 +232,162 @@ describe('trigger form model', () => {
 });
 
 describe('creatable trigger kinds', () => {
-  it('never offers sqs_compat or realtime, even if a plan lists them', () => {
-    // apid refuses sqs_compat with 422 trigger_kind_unavailable since faas
-    // d69c41b965; realtime triggers are created from the Realtime surface (Wave 3).
-    const kinds = allowedBrokerKinds({
-      triggers_allowed: true,
-      trigger_kinds: ['kafka', 'sqs_compat', 'realtime', 'queue'],
-    } as unknown as TriggerLimits);
-    expect(kinds).toEqual(['kafka', 'queue']);
+  const limits = {
+    ...proLimits,
+    trigger_kinds: ['kafka', 'sqs_compat', 'realtime', 'queue'],
+  } as unknown as TriggerLimits;
+
+  it('never offers sqs_compat, even if a plan lists it', () => {
+    // apid refuses sqs_compat with 422 trigger_kind_unavailable since faas d69c41b965.
+    expect(allowedBrokerKinds(limits, { realtime: true })).not.toContain('sqs_compat');
+  });
+
+  it('offers realtime only while the realtime capability is on', () => {
+    // Outside the realtime preview apid answers kind=realtime as unknown.
+    expect(allowedBrokerKinds(limits)).toEqual(['kafka', 'queue']);
+    expect(allowedBrokerKinds(limits, { realtime: false })).toEqual(['kafka', 'queue']);
+    expect(allowedBrokerKinds(limits, { realtime: true })).toEqual(['kafka', 'realtime', 'queue']);
+  });
+});
+
+describe('delivery mode', () => {
+  it('defaults to per-record delivery and sends the chosen mode', () => {
+    const draft = newTriggerDraft(proLimits, 'app-1');
+    expect(draft.delivery.mode).toBe('record');
+    draft.slug = 'orders';
+    draft.source = { ...draft.source, brokers: 'b:9092', topic: 't', group: 'g' } as never;
+    expect(buildCreateTriggerRequest(draft).delivery).toBe('record');
+    draft.delivery.mode = 'batch';
+    expect(buildCreateTriggerRequest(draft).delivery).toBe('batch');
+  });
+
+  it('never sends batch delivery for a queue trigger', () => {
+    // api.ValidateTriggerDelivery refuses batch for cron and queue.
+    let draft = newTriggerDraft(proLimits, 'app-1');
+    draft.delivery.mode = 'batch';
+    draft = withSourceKind(draft, 'queue');
+    expect(draft.delivery.mode).toBe('record');
+    expect(buildCreateTriggerRequest(draft)).not.toHaveProperty('delivery');
+  });
+
+  it('reads the delivery mode back from a trigger', () => {
+    const trigger = {
+      app_id: 'app-1',
+      kind: 'nats',
+      slug: 'n',
+      enabled: true,
+      delivery: 'batch',
+      config: { url: 'nats://n:4222', stream: 's', subject: 'x', durable: 'd' },
+      batch_size_max: 64,
+      batch_window_ms: 1000,
+      max_attempts: 5,
+      payload_max_bytes: 6_291_456,
+      broker_poison_strategy: 'commit',
+    } as unknown as components['schemas']['Trigger'];
+    const draft = draftFromTrigger(trigger, proLimits);
+    expect(draft.delivery.mode).toBe('batch');
+    expect(buildUpdateTriggerRequest(draft, trigger).delivery).toBe('batch');
+  });
+});
+
+describe('realtime triggers', () => {
+  const endpoint = '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f';
+  const realtimeLimits = { ...proLimits, trigger_kinds: ['realtime', 'queue'] } as TriggerLimits;
+
+  function realtimeDraft() {
+    const draft = withSourceKind(newTriggerDraft(realtimeLimits, 'app-1'), 'realtime');
+    draft.slug = 'chat';
+    draft.source = {
+      kind: 'realtime',
+      endpointId: endpoint,
+      channel: 'orders',
+      group: 'billing',
+      maxConcurrency: 4,
+    };
+    return draft;
+  }
+
+  it('sends only the fields the trigger owns, one message per record invocation', () => {
+    // managedrealtime/triggers.go rejects batch_window_ms, max_attempts,
+    // retry_policy, broker_poison_strategy and filter_criteria.
+    const body = buildCreateTriggerRequest(realtimeDraft());
+    expect(body).toEqual({
+      app_id: 'app-1',
+      kind: 'realtime',
+      slug: 'chat',
+      config: { endpoint_id: endpoint, channel: 'orders', group: 'billing', max_concurrency: 4 },
+      delivery: 'record',
+      batch_size_max: 1,
+      enabled: true,
+    });
+  });
+
+  it('carries messages per invocation only with batch delivery, at most 16', () => {
+    const draft = realtimeDraft();
+    expect(draft.delivery.batchSizeMax).toBe(10);
+    draft.delivery.mode = 'batch';
+    expect(validateTriggerDraft(draft)).toEqual({});
+    expect(buildCreateTriggerRequest(draft)).toMatchObject({
+      delivery: 'batch',
+      batch_size_max: 10,
+    });
+    draft.delivery.batchSizeMax = 17;
+    expect(validateTriggerDraft(draft).batchSizeMax).toMatch(/1 to 16/);
+  });
+
+  it('validates the binding and omits a zero concurrency', () => {
+    const draft = realtimeDraft();
+    draft.source = {
+      kind: 'realtime',
+      endpointId: 'nope',
+      channel: '',
+      group: '',
+      maxConcurrency: 40,
+    };
+    expect(Object.keys(validateTriggerDraft(draft)).sort()).toEqual([
+      'channel',
+      'endpointId',
+      'group',
+      'maxConcurrency',
+    ]);
+    draft.source = { ...realtimeDraft().source, maxConcurrency: 0 } as never;
+    expect(buildCreateTriggerRequest(draft).config).not.toHaveProperty('max_concurrency');
+  });
+
+  it('round-trips a saved trigger and patches without group-owned fields', () => {
+    const trigger = {
+      app_id: 'app-1',
+      kind: 'realtime',
+      slug: 'chat',
+      enabled: true,
+      delivery: 'batch',
+      config: { endpoint_id: endpoint, channel: 'orders', group: 'billing', max_concurrency: 4 },
+      batch_size_max: 12,
+      batch_window_ms: 1000,
+      max_attempts: 1,
+      payload_max_bytes: 6_291_456,
+      broker_poison_strategy: 'commit',
+    } as unknown as components['schemas']['Trigger'];
+    const draft = draftFromTrigger(trigger, realtimeLimits);
+    expect(draft.source).toEqual({
+      kind: 'realtime',
+      endpointId: endpoint,
+      channel: 'orders',
+      group: 'billing',
+      maxConcurrency: 4,
+    });
+    const patch = buildUpdateTriggerRequest(draft, trigger);
+    expect(patch).toEqual({
+      config: { endpoint_id: endpoint, channel: 'orders', group: 'billing', max_concurrency: 4 },
+      delivery: 'batch',
+      batch_size_max: 12,
+      enabled: true,
+    });
+    // Switching to per-record must also bring the batch size back to 1.
+    draft.delivery.mode = 'record';
+    expect(buildUpdateTriggerRequest(draft, trigger)).toMatchObject({
+      delivery: 'record',
+      batch_size_max: 1,
+    });
   });
 });

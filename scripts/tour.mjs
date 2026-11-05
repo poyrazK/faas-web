@@ -49,6 +49,7 @@ const PAGES = [
   'invocations',
   'audit',
   'usage',
+  'budgets',
   'invoices',
   'plans',
   'keys',

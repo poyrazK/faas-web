@@ -206,7 +206,7 @@ export const account: S['AccountResponse'] = {
     app_layer_max_mb: 2048,
     ephemeral_disk_max_mb: 2048,
     triggers_allowed: true,
-    trigger_kinds: ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'],
+    trigger_kinds: ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue', 'realtime'],
     trigger_limit_per_app: 10,
     trigger_limit_per_account: 50,
     trigger_batch_size_max: 500,
@@ -400,6 +400,10 @@ export const apps: App[] = APP_SEEDS.map((a, i) => ({
   route_metrics_enabled: true,
   require_authn: false,
   warm_snapshot_enabled: true,
+  warm_snapshot_min_ms: 2000,
+  warm_snapshot_min_requests: 5,
+  // One app keeps a paused pool, so the Ready now count has something to show.
+  warm_pool_size: a.slug === 'api-gateway' ? 1 : 0,
   eviction_priority: a.min > 0 ? 'reserved' : 'best_effort',
   // apid reports the effective policy, so an app that never set one reads safe.
   release_policy: a.slug === 'api-gateway' ? 'fast' : 'safe',

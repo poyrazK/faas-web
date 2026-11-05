@@ -37,6 +37,7 @@ import { PolicyStatus } from './policy-status';
 import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
 import { SnapshotHooks } from './snapshot-hooks';
 import { GatedSupplyChainPanel } from './supply-chain-gate';
+import { WarmStarts } from './warm-starts';
 
 /**
  * The app's own settings, editable.
@@ -68,9 +69,6 @@ type Draft = {
   eviction_priority: 'best_effort' | 'reserved';
   overflow_node: string;
   autoscale_target_cpu_pct: number;
-  warm_snapshot_enabled: boolean;
-  warm_snapshot_min_ms: number;
-  warm_snapshot_min_requests: number;
   public_auth_mode: 'open' | 'bearer' | 'basic';
   public_auth_user: string;
   public_auth_pass: string;
@@ -94,9 +92,6 @@ function draftFrom(app: App): Draft {
     eviction_priority: (app.eviction_priority ?? 'best_effort') as 'best_effort' | 'reserved',
     overflow_node: app.overflow_node ?? '',
     autoscale_target_cpu_pct: app.autoscale_target_cpu_pct ?? 0,
-    warm_snapshot_enabled: app.warm_snapshot_enabled ?? false,
-    warm_snapshot_min_ms: app.warm_snapshot_min_ms ?? 1000,
-    warm_snapshot_min_requests: app.warm_snapshot_min_requests ?? 1,
     // Write-only: the mode reads back, credentials never do.
     public_auth_mode: (app.public_auth?.mode ?? 'open') as 'open' | 'bearer' | 'basic',
     public_auth_user: '',
@@ -476,32 +471,6 @@ function ConfigForm({ app }: { app: App }) {
             onChange={(on) => set('require_authn', on)}
           />
           <Toggle
-            label="Warm snapshots"
-            help="Keep a second, post-traffic snapshot tier so a wake restores an already-warm process. Pro and Scale."
-            checked={draft.warm_snapshot_enabled}
-            onChange={(on) => set('warm_snapshot_enabled', on)}
-          />
-          {draft.warm_snapshot_enabled && (
-            <li className="grid gap-5 py-4 sm:grid-cols-2">
-              <NumberField
-                label="Warm capture after (ms)"
-                help="Time since first-ready before the warm tier is captured."
-                range="100–60,000 ms"
-                value={draft.warm_snapshot_min_ms}
-                min={100}
-                onChange={(n) => set('warm_snapshot_min_ms', Math.min(60000, n))}
-              />
-              <NumberField
-                label="Warm capture after (requests)"
-                help="Requests served before the warm tier is captured."
-                range="1–100"
-                value={draft.warm_snapshot_min_requests}
-                min={1}
-                onChange={(n) => set('warm_snapshot_min_requests', Math.min(100, n))}
-              />
-            </li>
-          )}
-          <Toggle
             label="Default CORS headers"
             help="Answer preflights at the edge with the origins below, before the app wakes."
             checked={draft.cors_default_enabled}
@@ -738,7 +707,16 @@ export function AppConfiguration({ slug, section }: { slug: string; section: Con
 
   if (section === 'runtime')
     // Keyed on the id so a rename or a fresh read reseeds the draft.
-    return <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />;
+    return (
+      <div className="flex flex-col gap-5">
+        <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
+        <WarmStarts
+          key={`warm:${account?.id}:${data.id}:${data.slug}`}
+          app={data}
+          plan={account?.plan}
+        />
+      </div>
+    );
   if (section === 'health')
     return (
       <div className="flex flex-col gap-5">

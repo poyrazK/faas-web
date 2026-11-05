@@ -14,21 +14,29 @@ import { resourceId } from '@/lib/resource-id';
 export function FirstDeploymentRecovery({
   recovery,
   onChange,
+  onLive,
+  accountId,
   submitting = false,
   submissionError,
 }: {
   recovery: DeploymentRecoveryContext;
   onChange: (next: DeploymentRecoveryContext) => void;
+  accountId?: string;
+  onLive?: (deployment: import('@/lib/api/queries').Deployment) => void;
   submitting?: boolean;
   submissionError?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [retryBusy, setRetryBusy] = useState(false);
   const [sourceBusy, setSourceBusy] = useState(false);
-  const app = useApp(recovery.app);
-  const attempt = useDeployment(recovery.deployment ?? '', {
-    refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2500),
-  });
+  const app = useApp(recovery.app, undefined, accountId);
+  const attempt = useDeployment(
+    recovery.deployment ?? '',
+    {
+      refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2500),
+    },
+    accountId
+  );
   if (app.isPending || (recovery.deployment && attempt.isPending))
     return <p role="status">Restoring your deployment…</p>;
   if (app.isError || !app.data || (recovery.deployment && (attempt.isError || !attempt.data)))
@@ -84,6 +92,8 @@ export function FirstDeploymentRecovery({
       </p>
       {recovery.deployment || submitting ? (
         <DeploymentProgress
+          accountId={accountId}
+          onLive={onLive}
           appCreated
           appName={app.data.slug}
           deploymentId={recovery.deployment ?? null}

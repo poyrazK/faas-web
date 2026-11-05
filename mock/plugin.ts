@@ -10,16 +10,29 @@ import {
   startDeclaredRun,
   workflowHandlers,
 } from './workflows';
+import { workflowAutomationHandlers } from './workflow-automation';
+import { workflowInsightHandlers } from './workflow-insights';
 import { registerMonetizationMock } from './monetization';
 import * as logDrainMock from './log-drains';
 import * as edgeRuleMock from './edge-rules';
+import * as storageMock from './object-storage';
 import * as preAuthMock from './pre-auth';
 import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
+import * as syntheticMock from './synthetics';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
+import * as debugMock from './debug';
+import * as debugEvidence from './debug-evidence';
+import * as realtimeMock from './realtime';
+import * as budgetMock from './budgets';
+import * as sloMock from './slos';
+import * as freezeMock from './release-freezes';
+import * as scheduleMock from './scheduled-releases';
+import * as approvalMock from './release-approvals';
+import * as gateMock from './release-gates';
 import { mockCapabilities } from './capabilities';
 import {
   PG_PLAN_LIMITS,
@@ -33,6 +46,11 @@ import {
 import * as deploymentDetail from './deployment-detail';
 import * as releaseCommand from './release-command';
 import { registerEventMocks } from './events';
+import { registerDeadLetterMocks } from './dead-letters';
+import { registerForkMocks } from './forks';
+import { registerEventConsumerMocks } from './event-consumers';
+import { registerProfileCaptureMocks } from './profile-captures';
+import { registerListenerMocks } from './listeners';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -77,6 +95,7 @@ import {
 } from './deploy-lifecycle';
 import { CONNECT_FORBIDDEN, MOCK_INSTALL_ID, connectReturnTarget } from './github-connect';
 import { applyLifecycle } from './lifecycle';
+import { applyWarmStarts, warmPoolRows, warmStartsRefusal } from './warm-starts';
 import * as configHistory from './config-history';
 import {
   environmentInventory,
@@ -163,28 +182,149 @@ const status = (code: number, body: unknown) => ({ __status: code, body });
 
 const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
 
-// Release approval policies (faas release_approvals.go). webhook-router requires
-// approvals, so switching it to the immediate release policy is warned about.
-route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
-  if (params.slug !== 'webhook-router')
+// Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
+// scheduled releases (scheduled_releases.go); the logic is in
+// mock/release-freezes.ts and mock/scheduled-releases.ts.
+function guarded<T>(answer: () => T): T {
+  try {
+    return answer();
+  } catch (err) {
+    if (err instanceof freezeMock.GuardProblem)
+      throw new Problem(err.status, err.code, err.message, err.extra);
+    throw err;
+  }
+}
+const freezeApp = (slug: string) => {
+  if (!db.appBySlug(slug)) throw new Problem(404, 'app_not_found', `No app named "${slug}".`);
+  return slug;
+};
+/** A company organization; a personal one's apps use the account's freezes (409). */
+const freezeOrg = (slug: string) => {
+  const org = db.orgs.find((o) => o.slug === slug);
+  if (!org) throw new Problem(404, 'not_found', `No organization "${slug}".`);
+  if (org.personal)
     throw new Problem(
-      404,
-      'release_approval_policy_not_found',
-      'This app does not require approvals.'
+      409,
+      'conflict',
+      'A personal organization’s apps are frozen by your account’s freezes.'
     );
+  return { org: slug };
+};
+route('GET', '/v1/freezes', ({ query }) => {
+  const slug = query.get('app');
   return {
-    app: params.slug,
-    required_approvals: 1,
-    after_stage: 1,
-    timeout_minutes: 60,
-    approvers: ['design@gregale.dev'],
-    allow_self_approval: false,
-    notify_channels: [],
-    updated_by: 'design@gregale.dev',
-    created_at: '2026-10-20T09:00:00Z',
-    updated_at: '2026-10-20T09:00:00Z',
+    freezes: slug ? freezeMock.forApp(freezeApp(slug)) : freezeMock.list({ account: true }),
   };
 });
+route('POST', '/v1/freezes', ({ body }) => {
+  const slug =
+    typeof body.app === 'string' && body.app.trim() ? freezeApp(body.app.trim()) : undefined;
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id))
+);
+route('GET', '/v1/apps/{slug}/freeze-status', ({ params }) =>
+  freezeMock.status(freezeApp(params.slug))
+);
+route('GET', '/v1/apps/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.forApp(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/freezes', ({ params, body }) => {
+  const slug = freezeApp(params.slug);
+  if (typeof body.app === 'string' && body.app.trim() && body.app.trim() !== slug)
+    throw new Problem(
+      400,
+      'validation_failed',
+      `app must be empty or ${slug}: this route freezes ${slug}`
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create({ account: true }, slug, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/apps/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift({ account: true }, params.id, freezeApp(params.slug)))
+);
+route('GET', '/v1/orgs/{slug}/freezes', ({ params }) => ({
+  freezes: freezeMock.list(freezeOrg(params.slug)),
+}));
+route('POST', '/v1/orgs/{slug}/freezes', ({ params, body }) => {
+  const owner = freezeOrg(params.slug);
+  if (typeof body.app === 'string' && body.app.trim())
+    throw new Problem(
+      400,
+      'validation_failed',
+      'app must be empty: this route freezes all of the organization’s apps; freeze one app with POST /v1/apps/{slug}/freezes'
+    );
+  return status(
+    201,
+    guarded(() => freezeMock.create(owner, undefined, body, db.account.email))
+  );
+});
+route('DELETE', '/v1/orgs/{slug}/freezes/{id}', ({ params }) =>
+  guarded(() => freezeMock.lift(freezeOrg(params.slug), params.id))
+);
+route('GET', '/v1/scheduled-releases', ({ query }) => {
+  scheduleMock.advance();
+  const slug = query.get('app');
+  return { items: scheduleMock.list(slug ? freezeApp(slug) : undefined) };
+});
+route('GET', '/v1/deployments/{id}/schedule', ({ params }) => {
+  scheduleMock.advance();
+  return guarded(() => scheduleMock.latest(params.id));
+});
+route('PUT', '/v1/deployments/{id}/schedule', ({ params, body }) =>
+  guarded(() => scheduleMock.schedule(params.id, body, db.account.email))
+);
+route('DELETE', '/v1/deployments/{id}/schedule', ({ params }) =>
+  guarded(() => scheduleMock.cancel(params.id, db.account.email))
+);
+
+// Release approvals (release_approvals.go) and release gates
+// (release_gates.go); the logic is in mock/release-approvals.ts and
+// mock/release-gates.ts. webhook-router requires approvals, so switching it to
+// the immediate release policy is warned about.
+const approvalDeployment = (id: string) => {
+  const d = db.deployments.find((x) => x.id === id);
+  if (!d) throw new Problem(404, 'deployment_not_found');
+  return d;
+};
+route('GET', '/v1/apps/{slug}/release-approval-policy', ({ params }) =>
+  guarded(() => approvalMock.getPolicy(freezeApp(params.slug)))
+);
+route('PUT', '/v1/apps/{slug}/release-approval-policy', ({ params, body }) =>
+  guarded(() => approvalMock.setPolicy(freezeApp(params.slug), body))
+);
+route('DELETE', '/v1/apps/{slug}/release-approval-policy', ({ params }) => {
+  guarded(() => approvalMock.removePolicy(freezeApp(params.slug)));
+  return NO_CONTENT;
+});
+route('GET', '/v1/apps/{slug}/release-approvals', ({ params }) => ({
+  items: approvalMock.waiting(freezeApp(params.slug)),
+}));
+route('GET', '/v1/deployments/{id}/approvals', ({ params }) =>
+  approvalMock.statusOf(approvalDeployment(params.id))
+);
+route('POST', '/v1/deployments/{id}/approvals', ({ params, body }) =>
+  guarded(() => approvalMock.decide(approvalDeployment(params.id), body))
+);
+route('GET', '/v1/apps/{slug}/release-gates', ({ params }) => ({
+  gates: gateMock.list(freezeApp(params.slug)),
+}));
+route('POST', '/v1/apps/{slug}/release-gates', ({ params, body }) =>
+  status(
+    201,
+    guarded(() => gateMock.create(freezeApp(params.slug), body, db.account.email))
+  )
+);
+route('DELETE', '/v1/apps/{slug}/release-gates/{name}', ({ params }) =>
+  guarded(() => gateMock.remove(freezeApp(params.slug), params.name))
+);
+
 const HIDDEN_AT_BOOT = new Set(
   (process.env.MOCK_HIDDEN_CAPABILITIES ?? '').split(',').filter(Boolean)
 );
@@ -1379,7 +1519,6 @@ const PATCHABLE = [
   'websocket_enabled',
   'route_metrics_enabled',
   'maintenance_mode',
-  'warm_snapshot_enabled',
   'eviction_priority',
 ] as const;
 /**
@@ -1427,6 +1566,13 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       'service_policy_source_managed',
       'Edit this service policy in the project source.'
     );
+  const warmRefusal = warmStartsRefusal(
+    a,
+    body,
+    process.env.MOCK_PLAN ?? db.account.plan,
+    hiddenCapabilities
+  );
+  if (warmRefusal) throw new Problem(warmRefusal.status, warmRefusal.code, warmRefusal.detail);
   // pre_auth_rate_limit belongs to the edge-protection capability (faas
   // catalog.json), and apid validates it before storing (lifecycle.go:54).
   const preAuth = body.pre_auth_rate_limit;
@@ -1461,6 +1607,7 @@ route('PATCH', '/v1/apps/{slug}', ({ params, body }) => {
       pre_auth_rate_limit: preAuth as NonNullable<db.App['manifest']>['pre_auth_rate_limit'],
     };
   applyReleaseSettings(a, body);
+  applyWarmStarts(a, body);
   for (const k of PATCHABLE)
     if (k in body && body[k] !== null) (a as Record<string, unknown>)[k] = body[k];
   if (body.visibility === 'internal' || body.visibility === 'public') {
@@ -1512,19 +1659,33 @@ route('POST', '/v1/apps/{slug}/deployments/source-ref', ({ params, body }) => {
   if (body.native_rollout !== undefined && body.expected_source === undefined)
     throw new Problem(400, 'validation_failed', 'native_rollout requires expected_source');
   if (body.expected_source !== undefined) checkReviewedSource(a, body);
-  return status(
-    202,
-    startSourceDeployment(
-      a,
-      'github',
-      `${String(body.repo)}@${String(body.ref)}`,
-      {},
-      {
-        // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
-        staged: body.traffic_percent === 0,
-      }
+  // Deploy freezes are checked now, or at release_at for a scheduled release
+  // (scheduled_releases.go:52-88); an override reason lets it through.
+  const releaseAt =
+    typeof body.release_at === 'string' && body.release_at
+      ? guarded(() => scheduleMock.parseReleaseAt(body.release_at))
+      : undefined;
+  guarded(() =>
+    freezeMock.checkRelease(
+      a.slug,
+      releaseAt ?? Date.now(),
+      body.override_freeze,
+      releaseAt !== undefined
     )
   );
+  const started = startSourceDeployment(
+    a,
+    'github',
+    `${String(body.repo)}@${String(body.ref)}`,
+    {},
+    {
+      // `traffic_percent: 0` stages a dark live revision (openapi SourceRefDeployRequest).
+      staged: body.traffic_percent === 0 || releaseAt !== undefined,
+    }
+  );
+  if (releaseAt !== undefined)
+    scheduleMock.record(started, a.slug, releaseAt, body.release_notify, db.account.email);
+  return status(202, started);
 });
 route('POST', '/v1/apps/{slug}/rollback', ({ params, body }) => {
   // Plain rollback (handlers_ext.go:2376): restore the named release, or the
@@ -2213,16 +2374,62 @@ route('DELETE', '/v1/notification-channels/{id}', ({ params }) => {
 route('POST', '/v1/notification-channels/{id}/test', ({ params }) =>
   channelMock.testChannel(channelById(params.id))
 );
-route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+// Customer-defined SLOs (mock/slos.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function sloGate() {
   if (hiddenCapabilities.has('custom-slos'))
     throw new Problem(404, 'not_found', 'SLOs are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function slo(answer: sloMock.Answer) {
+  sloGate();
+  if (sloMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/slos', ({ params, body }) => slo(sloMock.createSLO(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.getSLO(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.deleteSLO(app(params.slug).slug, params.id)));
+route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+  sloGate();
   return channelMock.slos.get(app(params.slug).slug) ?? [];
 });
 route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
-  if (hiddenCapabilities.has('synthetic-checks'))
-    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  checkGate();
   return channelMock.checks.get(app(params.slug).slug) ?? [];
 });
+// Synthetic checks (mock/synthetics.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function checkGate() {
+  if (hiddenCapabilities.has('synthetic-checks'))
+    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function synthetic(answer: syntheticMock.Answer) {
+  checkGate();
+  if (syntheticMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/synthetics', ({ params, body }) => synthetic(syntheticMock.createCheck(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.getCheck(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/synthetics/{id}', ({ params, body }) => synthetic(syntheticMock.setEnabled(app(params.slug).slug, params.id, body.enabled)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.deleteCheck(app(params.slug).slug, params.id)));
 // Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
 // create-time plan gate; the list is never gated, as in apid.
 // Pro allows one mirror rule per app, Scale three.
@@ -3470,6 +3677,27 @@ route('GET', '/v1/apps/{slug}/analytics/route-customers', ({ params, query }) =>
   )
 );
 
+// Before /debug/requests/{req_id}, which would otherwise take "export" as an id.
+route('GET', '/v1/apps/{slug}/debug/requests/export', ({ params, query, res }) => {
+  gateDebug('production-debugger');
+  const a = app(params.slug);
+  const format = query.get('format') || 'ndjson';
+  if (format !== 'ndjson' && format !== 'csv')
+    throw new Problem(400, 'validation_failed', 'format must be one of: ndjson, csv');
+  const asked = query.get('since') || '24h';
+  // Retention is 7 days on the mock's plan; 72h fits, so only longer asks clamp.
+  res.statusCode = 200;
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader(
+    'Content-Type',
+    format === 'csv' ? 'text/csv; charset=utf-8' : 'application/x-ndjson; charset=utf-8'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${a.slug}-requests.${format}"`);
+  res.setHeader('X-Faas-Request-Log-Window', asked.endsWith('h') ? `${asked}0m0s` : asked);
+  res.setHeader('X-Faas-Request-Log-Retention-Clamped', 'false');
+  res.end(debugMock.exportFor(a, format));
+});
+
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
   gateDebug();
   app(params.slug);
@@ -3491,7 +3719,7 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) => {
   gateDebug();
-  app(params.slug);
+  const a = app(params.slug);
   if (!/^[0-9a-f]{8,}$/.test(params.req_id))
     throw new Problem(404, 'not_found', 'no telemetry for that request id');
   const traceId = db.id() + db.id();
@@ -3522,22 +3750,25 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       status: 'OK',
     },
   ];
+  const receivedAt = db.iso(120_000);
+  const woke = parseInt(params.req_id[0], 16) % 2 === 0;
+  const timed = debugEvidence.timeSpans(spans, receivedAt);
+  const extras = debugEvidence.evidenceExtras(a, params.req_id, timed, receivedAt, woke);
   return {
     request: {
+      ...extras.request,
       id: params.req_id,
-      deployment_id: db.deployments[0].id,
+      deployment_id: debugEvidence.evidenceDeployment(a),
       route: '/orders/{id}',
       method: 'GET',
       status: 500,
       latency_ms: 2400,
       count: 1,
       // Even-led request ids woke the app, so the debugger can open a wake.
-      cold_boot: parseInt(params.req_id[0], 16) % 2 === 0,
-      ...(parseInt(params.req_id[0], 16) % 2 === 0
-        ? { wake_id: `wk-${params.req_id.slice(0, 12)}` }
-        : {}),
+      cold_boot: woke,
+      ...(woke ? { wake_id: `wk-${params.req_id.slice(0, 12)}` } : {}),
       trace_id: traceId,
-      received_at: db.iso(120_000),
+      received_at: receivedAt,
     },
     regression: {
       deployment_id: db.deployments[0].id,
@@ -3549,13 +3780,22 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       first_detected_at: db.iso(5_400_000),
       last_detected_at: db.iso(120_000),
     },
-    spans,
+    spans: timed,
     spans_truncated: false,
+    timeline: extras.timeline,
+    correlation: extras.correlation,
+    critical_path: extras.critical_path,
+    dependency_latency: extras.dependency_latency,
+    dependency_latency_truncated: extras.dependency_latency_truncated,
+    dependency_comparison: extras.dependency_comparison,
+    logs: extras.logs,
+    logs_truncated: extras.logs_truncated,
     explanation: {
+      ...extras.explanation,
       status: 'regression_detected',
       headline:
         'A database query on this route takes 7× longer than it did before the current deployment.',
-      primary_span: spans[1],
+      primary_span: timed[1],
     },
     generated_at: db.iso(0),
   };
@@ -3699,6 +3939,7 @@ route('GET', '/v1/apps/{slug}/routes/awake', ({ params, query }) => {
   };
 });
 route('GET', '/v1/apps/{slug}/debug/dependencies', ({ params, query }) => {
+  gateDebug('debug-dependencies');
   const a = app(params.slug);
   const dep = (
     type: string,
@@ -4382,6 +4623,9 @@ const storageSignatures = new Map<
     method: 'GET' | 'HEAD' | 'PUT';
     expiresAt: number;
     contentType: string;
+    versionId?: string;
+    /** A multipart part URL: which session and part, and its exact length. */
+    part?: { upload: string; number: number; bytes: number };
   }
 >();
 const storageBytes = new Map<string, { bytes: Buffer; contentType: string }>();
@@ -4419,6 +4663,7 @@ function bucketsFor(slug: string) {
         };
         seeded.push(bucket);
         if (name === 'assets') seedAssets(slug, bucket.id);
+        if (name === 'user-uploads') seedUploads(slug, bucket.id);
       }
     }
     storageBuckets.set(slug, seeded);
@@ -4484,6 +4729,18 @@ function seedAssets(slug: string, bucket: string) {
   });
 }
 
+/** `user-uploads` sits under Object Lock, with a contract on legal hold. */
+function seedUploads(slug: string, bucket: string) {
+  storageObjects.set(`${slug}/${bucket}`, [
+    { key: 'avatars/42.png', size_bytes: 18_231, last_modified: db.iso(4 * 24 * 3_600_000) },
+    {
+      key: 'contracts/msa-2026.pdf',
+      size_bytes: 412_908,
+      last_modified: db.iso(9 * 24 * 3_600_000),
+    },
+  ]);
+}
+
 function bindingSecretKeys(prefix: string): S_['ObjectStorageComputeBindingSecretKeys'] {
   return {
     endpoint: `${prefix}_ENDPOINT`,
@@ -4501,12 +4758,41 @@ function ownedBucket(slug: string, id: string) {
   return bucket;
 }
 
+/** Answers a refusal from mock/object-storage.ts as this plugin's own Problem. */
+function storageCall<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (err) {
+    if (err instanceof storageMock.StorageRefusal)
+      throw new Problem(err.status, err.code, err.message);
+    throw err;
+  }
+}
+
+/** The bucket a route names, with its version history seeded before anything changes it. */
+function storageBucket(params: Record<string, string>) {
+  const slug = app(params.slug).slug;
+  const bucket = ownedBucket(slug, params.bucket);
+  const where = `${slug}/${bucket.id}`;
+  storageMock.ensureVersions(where, bucket, storageObjects.get(where) ?? []);
+  return { slug, bucket, where };
+}
+
+/** Keep the current listing in step with the newest version of a key. */
+function syncCurrent(where: string, key: string, current: storageMock.StoredObject | null) {
+  const list = (storageObjects.get(where) ?? []).filter((o) => o.key !== key);
+  storageObjects.set(where, current ? [...list, current] : list);
+}
+
 route('GET', '/v1/apps/{slug}/buckets', ({ params }) => ({
   items: bucketsFor(app(params.slug).slug),
   enabled: true,
   regions: [MOCK_S3_REGION],
   default_region: MOCK_S3_REGION,
   max_upload_bytes: 5 * 1024 ** 3,
+  max_single_put_bytes: storageMock.MOCK_SINGLE_PUT_BYTES,
+  max_part_bytes: storageMock.MOCK_PART_BYTES,
+  upload_profile: 'direct',
   max_buckets_per_app: 10,
 }));
 route('POST', '/v1/apps/{slug}/buckets', ({ params, body }) => {
@@ -4534,6 +4820,12 @@ route('DELETE', '/v1/apps/{slug}/buckets/{bucket}', ({ params }) => {
   const bucket = ownedBucket(slug, params.bucket);
   if ((storageObjects.get(`${slug}/${bucket.id}`) ?? []).length)
     throw new Problem(409, 'conflict', 'Only an empty bucket can be deleted.');
+  if (storageMock.holdsVersions(`${slug}/${bucket.id}`))
+    throw new Problem(
+      409,
+      'bucket_not_empty',
+      'Empty the bucket, including any versions, before deleting it.'
+    );
   storageBuckets.set(
     slug,
     bucketsFor(slug).filter((b) => b.id !== bucket.id)
@@ -4556,9 +4848,9 @@ route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => 
   };
 });
 route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects', ({ params, query }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
+  const { slug, bucket, where } = storageBucket(params);
   const key = query.get('key') ?? '';
+  storageMock.recordDelete(where, bucket, key);
   const list = storageObjects.get(`${slug}/${bucket.id}`) ?? [];
   storageObjects.set(
     `${slug}/${bucket.id}`,
@@ -4585,6 +4877,7 @@ route('POST', '/v1/apps/{slug}/buckets/{bucket}/signed-url', ({ params, body, re
     method,
     expiresAt,
     contentType: String(body.content_type ?? 'application/octet-stream'),
+    ...(body.version_id ? { versionId: String(body.version_id) } : {}),
   });
   const url = new URL(MOCK_S3_OBJECT_PATH, `http://${req.headers.host ?? 'localhost'}`);
   url.searchParams.set('bucket', bucket.name);
@@ -4616,11 +4909,21 @@ route('PUT', '/mock-s3/object', async ({ query, req, res }) => {
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const bytes = Buffer.concat(chunks);
   const where = `${signed.slug}/${signed.bucketId}`;
+  if (signed.part) {
+    // A part URL binds its exact length; the object appears only on completion.
+    if (bytes.length !== signed.part.bytes) return s3Refusal(res, 400, 'IncompleteBody');
+    const etag = `"${createHash('md5').update(bytes).digest('hex')}"`;
+    storageMock.recordPart(where, signed.part.upload, signed.part.number, bytes.length, etag);
+    res.statusCode = 200;
+    res.setHeader('ETag', etag);
+    return res.end();
+  }
   const list = storageObjects.get(where) ?? [];
-  storageObjects.set(where, [
-    ...list.filter((o) => o.key !== signed.key),
-    { key: signed.key, size_bytes: bytes.length, last_modified: db.iso(0) },
-  ]);
+  const bucket = ownedBucket(signed.slug, signed.bucketId);
+  storageMock.ensureVersions(where, bucket, list);
+  const written = { key: signed.key, size_bytes: bytes.length, last_modified: db.iso(0) };
+  storageObjects.set(where, [...list.filter((o) => o.key !== signed.key), written]);
+  storageMock.recordWrite(where, bucket, written);
   const contentType = String(req.headers['content-type'] ?? signed.contentType);
   if (bytes.length <= MOCK_S3_KEEP_BYTES)
     storageBytes.set(`${where}/${signed.key}`, { bytes, contentType });
@@ -4633,10 +4936,19 @@ route('GET', '/mock-s3/object', ({ query, res }) => {
   const signed = signedFor(query, 'GET');
   if (!signed) return s3Refusal(res, 403, 'AccessDenied');
   const where = `${signed.slug}/${signed.bucketId}`;
-  const object = (storageObjects.get(where) ?? []).find((o) => o.key === signed.key);
+  const version = signed.versionId
+    ? storageMock.findVersion(where, signed.key, signed.versionId)
+    : undefined;
+  if (signed.versionId && (!version || version.delete_marker))
+    return s3Refusal(res, 404, 'NoSuchVersion');
+  const object =
+    version && !version.is_latest
+      ? version
+      : (storageObjects.get(where) ?? []).find((o) => o.key === signed.key);
   if (!object) return s3Refusal(res, 404, 'NoSuchKey');
   // Seeded objects, and uploads too large to keep, have no bytes here.
-  const kept = storageBytes.get(`${where}/${signed.key}`);
+  const kept =
+    version && !version.is_latest ? undefined : storageBytes.get(`${where}/${signed.key}`);
   res.statusCode = 200;
   res.setHeader('Content-Type', kept?.contentType ?? 'text/plain; charset=utf-8');
   const name = signed.key.split('/').pop() || 'object';
@@ -4722,41 +5034,236 @@ route(
     return binding;
   }
 );
-route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
-  const on = bucket.name === 'assets';
-  return {
-    bucket_id: bucket.id,
-    desired_status: on ? 'Enabled' : '',
-    observed_status: on ? 'Enabled' : '',
-    state: 'ready',
-    revision: on ? 2 : 0,
-    versions_required: on,
-    updated_at: bucket.created_at,
-  };
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params }) =>
+  storageMock.readVersioning(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/versioning', ({ params, body }) =>
+  storageCall(() =>
+    status(
+      202,
+      storageMock.requestVersioning(
+        storageBucket(params).bucket,
+        body.status,
+        storageMock.lockOn(storageBucket(params).bucket)
+      )
+    )
+  )
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/versions', ({ params, query }) =>
+  storageCall(() => storageMock.listVersions(storageBucket(params).where, query))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects/versions', ({ params, query }) => {
+  const { where } = storageBucket(params);
+  const key = query.get('key') ?? '';
+  const { result, current } = storageCall(() =>
+    storageMock.deleteVersion(where, key, query.get('version_id') ?? '')
+  );
+  syncCurrent(where, key, current);
+  return result;
 });
-route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) => {
-  const slug = app(params.slug).slug;
-  const bucket = ownedBucket(slug, params.bucket);
-  return {
-    bucket_id: bucket.id,
-    revision: bucket.name === 'assets' ? 1 : 0,
-    rules:
-      bucket.name === 'assets'
-        ? [
-            {
-              id: 'expire-tmp',
-              status: 'Enabled',
-              filter: { prefix: 'tmp/' },
-              expiration: { days: 7 },
-            },
-            { id: 'abort-uploads', status: 'Enabled', abort_incomplete_multipart_days: 3 },
-          ]
-        : [],
-    updated_at: bucket.created_at,
-  };
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) =>
+  storageMock.readLifecycle(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params, body }) =>
+  storageCall(() => storageMock.writeLifecycle(storageBucket(params).bucket, body))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/lifecycle', ({ params }) =>
+  storageMock.clearLifecycle(storageBucket(params).bucket)
+);
+
+// Browser access, tags, encryption and Object Lock (mock/object-storage.ts).
+type StorageCtx = Parameters<Handler>[0];
+const objectKeyOf = ({ query }: StorageCtx) => query.get('key') ?? '';
+const versionOf = ({ query }: StorageCtx) => query.get('version_id') ?? '';
+const getTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.readTags(storageBucket(c.params).where, objectKeyOf(c)));
+const putTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.writeTags(storageBucket(c.params).where, objectKeyOf(c), c.body));
+const deleteTags = (c: StorageCtx) =>
+  storageCall(() => storageMock.clearTags(storageBucket(c.params).where, objectKeyOf(c)));
+const getHold = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.readLegalHold(storageBucket(c.params).where, objectKeyOf(c), versionOf(c))
+  );
+const putHold = (c: StorageCtx) => {
+  const { where, bucket } = storageBucket(c.params);
+  return storageCall(() =>
+    status(202, storageMock.requestLegalHold(where, bucket, objectKeyOf(c), versionOf(c), c.body))
+  );
+};
+const getRetention = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.readRetention(storageBucket(c.params).where, objectKeyOf(c), versionOf(c))
+  );
+const putRetention = (c: StorageCtx) => {
+  const { where, bucket } = storageBucket(c.params);
+  return storageCall(() =>
+    status(202, storageMock.requestRetention(where, bucket, objectKeyOf(c), versionOf(c), c.body))
+  );
+};
+const readOp = (c: StorageCtx) =>
+  storageCall(() => storageMock.readOperation(storageBucket(c.params).bucket, c.params.operation));
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params }) =>
+  storageMock.readCors(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params, body }) =>
+  storageCall(() => storageMock.writeCors(storageBucket(params).bucket, body))
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/cors', ({ params }) => {
+  storageMock.clearCors(storageBucket(params).bucket);
+  return NO_CONTENT;
 });
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', getTags);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', putTags);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/objects/tags', deleteTags);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/encryption-capabilities', ({ params }) => {
+  storageBucket(params);
+  return storageMock.encryptionCapabilities();
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params }) =>
+  storageMock.readEncryption(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params, body }) =>
+  storageCall(() =>
+    status(
+      202,
+      storageMock.requestEncryption(
+        storageBucket(params).bucket,
+        body.encryption as S_['ObjectEncryption'] | undefined
+      )
+    )
+  )
+);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/encryption', ({ params }) =>
+  storageCall(() =>
+    status(202, storageMock.requestEncryption(storageBucket(params).bucket, undefined))
+  )
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/object-lock-capabilities', ({ params }) => {
+  storageBucket(params);
+  return storageMock.lockCapabilities();
+});
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/object-lock', ({ params }) =>
+  storageMock.readLock(storageBucket(params).bucket)
+);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/object-lock', ({ params, body }) =>
+  storageCall(() => status(202, storageMock.requestLock(storageBucket(params).bucket, body)))
+);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/legal-hold', getHold);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/legal-hold', putHold);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', getRetention);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/objects/protection/retention', putRetention);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/protection-operations/{operation}', readOp);
+
+// Uploads in parts, upload routes, notifications and write receipts.
+const listUploads = (c: StorageCtx) => storageMock.listSessions(storageBucket(c.params).where);
+const startUpload = (c: StorageCtx) =>
+  storageCall(() => {
+    const { status: code, body } = storageMock.startSession(
+      storageBucket(c.params).where,
+      c.body,
+      5 * 1024 ** 3
+    );
+    return status(code, body);
+  });
+const readUpload = (c: StorageCtx) =>
+  storageCall(() => storageMock.readSession(storageBucket(c.params).where, c.params.upload));
+const abortUpload = (c: StorageCtx) =>
+  storageCall(() => {
+    storageMock.abortSession(storageBucket(c.params).where, c.params.upload);
+    return NO_CONTENT;
+  });
+const listParts = (c: StorageCtx) =>
+  storageCall(() => storageMock.sessionParts(storageBucket(c.params).where, c.params.upload));
+const signPart = (c: StorageCtx) =>
+  storageCall(() => {
+    const { slug, bucket, where } = storageBucket(c.params);
+    const number = Number(c.params.part);
+    const bytes = storageMock.partSize(where, c.params.upload, number);
+    const session = storageMock.readSession(where, c.params.upload);
+    const signature = hex(32);
+    const expiresAt = Date.now() + Math.min(900, Number(c.body.expires_in ?? 300)) * 1000;
+    storageSignatures.set(signature, {
+      slug,
+      bucketId: bucket.id,
+      key: session.key,
+      method: 'PUT',
+      expiresAt,
+      contentType: session.content_type,
+      part: { upload: session.id, number, bytes },
+    });
+    const url = new URL(MOCK_S3_OBJECT_PATH, `http://${c.req.headers.host ?? 'localhost'}`);
+    url.searchParams.set('partNumber', String(number));
+    url.searchParams.set('X-Amz-Signature', signature);
+    return {
+      url: url.toString(),
+      method: 'PUT',
+      headers: {},
+      expires_at: new Date(expiresAt).toISOString(),
+    };
+  });
+const complete = (c: StorageCtx) =>
+  storageCall(() => {
+    const { bucket, where } = storageBucket(c.params);
+    const done = storageMock.completeSession(where, c.params.upload, c.body);
+    storageObjects.set(where, [
+      ...(storageObjects.get(where) ?? []).filter((o) => o.key !== done.object.key),
+      done.object,
+    ]);
+    storageMock.recordWrite(where, bucket, done.object);
+    return done.session;
+  });
+const listRoutes = (c: StorageCtx) => {
+  const slug = app(c.params.slug).slug;
+  return storageMock.listRoutes(
+    slug,
+    bucketsFor(slug).find((b) => b.name === 'user-uploads')
+  );
+};
+const saveRoute = (c: StorageCtx) =>
+  storageCall(() => {
+    const slug = app(c.params.slug).slug;
+    ownedBucket(slug, String(c.body.bucket_id ?? ''));
+    const { status: code, body } = storageMock.saveRoute(slug, c.body);
+    return status(code, body);
+  });
+const deleteRoute = (c: StorageCtx) =>
+  storageCall(() => {
+    storageMock.deleteRoute(app(c.params.slug).slug, c.params.route);
+    return NO_CONTENT;
+  });
+const getNotifications = (c: StorageCtx) =>
+  storageMock.readNotifications(storageBucket(c.params).bucket, app(c.params.slug).id);
+const putNotifications = (c: StorageCtx) =>
+  storageCall(() =>
+    storageMock.writeNotifications(
+      storageBucket(c.params).bucket,
+      app(c.params.slug).id,
+      c.body.rules as S_['ObjectNotificationRule'][]
+    )
+  );
+const deleteNotifications = (c: StorageCtx) =>
+  storageMock.writeNotifications(storageBucket(c.params).bucket, app(c.params.slug).id, []);
+const listReceipts = (c: StorageCtx) =>
+  storageCall(() => storageMock.listReceipts(storageBucket(c.params).bucket, c.query));
+const readReceipt = (c: StorageCtx) =>
+  storageCall(() => storageMock.readReceipt(storageBucket(c.params).bucket, c.params.receipt));
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', listUploads);
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads', startUpload);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}', readUpload);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}', abortUpload);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts', listParts);
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/parts/{part}/signed-url', signPart);
+route('POST', '/v1/apps/{slug}/buckets/{bucket}/multipart-uploads/{upload}/complete', complete);
+route('GET', '/v1/apps/{slug}/upload-routes', listRoutes);
+route('POST', '/v1/apps/{slug}/upload-routes', saveRoute);
+route('DELETE', '/v1/apps/{slug}/upload-routes/{route}', deleteRoute);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/notifications', getNotifications);
+route('PUT', '/v1/apps/{slug}/buckets/{bucket}/notifications', putNotifications);
+route('DELETE', '/v1/apps/{slug}/buckets/{bucket}/notifications', deleteNotifications);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/write-receipts', listReceipts);
+route('GET', '/v1/apps/{slug}/buckets/{bucket}/write-receipts/{receipt}', readReceipt);
 
 // Managed PostgreSQL. Provisioning settles after a tick so the console's
 // polling path is exercised; MOCK_PLAN=free reproduces the plan gate.
@@ -6766,7 +7273,9 @@ route('POST', '/v1/apps/{slug}/queues/dead_letter/{id}/replay', ({ params }) => 
 
 route('GET', '/v1/apps/{slug}/instances', ({ params }) => {
   const a = app(params.slug);
-  return db.instances.filter((i) => i.app_id === a.id);
+  // The warm pool's paused rows; a $0 cap counts as reached at once.
+  const pool = warmPoolRows(a, process.env.MOCK_PLAN ?? db.account.plan, overageCapCents === 0);
+  return [...db.instances.filter((i) => i.app_id === a.id), ...pool];
 });
 
 route('GET', '/v1/apps/{slug}/logs', ({ params, query, req, res }) => {
@@ -6982,6 +7491,7 @@ route('GET', '/v1/deployments/latest-by-app', () => {
   return { items } satisfies components['schemas']['LatestDeploymentsByAppResponse'];
 });
 route('GET', '/v1/deployments/{id}', ({ params }) => {
+  scheduleMock.advance();
   const d = db.deployments.find((x) => x.id === params.id);
   if (!d) throw new Problem(404, 'deployment_not_found');
   const workerApp = db.apps.find(
@@ -7360,7 +7870,13 @@ route('DELETE', '/v1/domains/{domain}/hosts', ({ params }) => {
 // whether the page reads as broken or as "not on your plan".
 const debugGated = process.env.MOCK_PLAN === 'free';
 
-function gateDebug() {
+/**
+ * apid's capgate answers a hidden capability as a route that does not exist,
+ * and hiding `debug` hides its children too (faas capgate, catalog parents).
+ */
+function gateDebug(capability = 'production-debugger') {
+  if (hiddenCapabilities.has('debug') || hiddenCapabilities.has(capability))
+    throw new Problem(404, 'not_found', 'no such API route');
   if (debugGated) {
     throw new Problem(
       402,
@@ -7392,33 +7908,70 @@ route('GET', '/v1/apps/{slug}/debug/requests', ({ query }) => {
   return { since, requests };
 });
 
-route('GET', '/v1/apps/{slug}/debug/regressions', ({ query }) => {
-  gateDebug();
-  return {
-    since: query.get('since') || '24h',
-    regressions: [
-      {
-        deployment_id: db.deployments[0].id,
-        route: '/orders/{id}',
-        p95_ms: 1840,
-        p95_base_ms: 260,
-        affected_count: 412,
-        regression_factor: '7.08',
-        first_detected_at: db.iso(5_400_000),
-        last_detected_at: db.iso(120_000),
-      },
-      {
-        deployment_id: db.deployments[0].id,
-        route: '/search',
-        p95_ms: 390,
-        p95_base_ms: 300,
-        affected_count: 27,
-        regression_factor: '1.30',
-        first_detected_at: db.iso(9_000_000),
-        last_detected_at: db.iso(600_000),
-      },
-    ],
+route('GET', '/v1/apps/{slug}/debug/regressions', ({ params, query }) => {
+  gateDebug('debug-regressions');
+  return debugMock.regressionsFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/regressions/review', ({ params, query }) => {
+  gateDebug('debug-regressions');
+  const review = debugMock.reviewFor(
+    app(params.slug),
+    query.get('deployment_id') ?? '',
+    query.get('route') ?? ''
+  );
+  if (!review)
+    throw new Problem(404, 'not_found', 'no debugger regression matches the deployment and route');
+  return review;
+});
+
+route('POST', '/v1/apps/{slug}/debug/regressions/actions', ({ params, body }) => {
+  gateDebug('debug-regressions');
+  const result = debugMock.applyAction(app(params.slug), body);
+  if (!result.ok) throw new Problem(result.status, result.code, result.detail);
+  return result.body;
+});
+
+route('GET', '/v1/apps/{slug}/debug/status', ({ params, query, res }) => {
+  gateDebug('production-debugger');
+  res.setHeader('Cache-Control', 'no-store');
+  return debugMock.statusFor(app(params.slug), query.get('since') || '1h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/coverage', ({ params, query }) => {
+  gateDebug('debug');
+  return debugMock.coverageFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('GET', '/v1/apps/{slug}/debug/running', ({ params, query }) => {
+  gateDebug('debug');
+  return debugMock.runningFor(app(params.slug), query.get('since') || '24h');
+});
+
+route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params, body }) => {
+  gateDebug('production-debugger');
+  const a = app(params.slug);
+  const target = debugEvidence.replayTarget(a, String(body.mirror_deployment_id ?? ''));
+  if ('problem' in target) throw new Problem(409, 'debug_replay_unsupported', target.problem);
+  // A real invocation the console can follow until it settles, as apid enqueues one.
+  const inv: S_['Invocation'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    source: 'replay',
+    state: 'pending',
+    method: 'GET',
+    path: '/orders/4211',
+    created_at: new Date().toISOString(),
   };
+  db.invocations.unshift(inv);
+  asyncInvocations.settleAt.set(inv.id, Date.now() + 4_000);
+  return status(202, {
+    mirror_invocation_id: inv.id,
+    status: 'queued',
+    source_deployment_id: target.rule.source_deployment_id,
+    mirror_deployment_id: target.rule.mirror_deployment_id,
+  });
 });
 
 route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
@@ -8144,9 +8697,16 @@ route('DELETE', '/v1/jobs/{name}', ({ params }) => {
 });
 
 // --- Triggers ---------------------------------------------------------------
-// Six kinds so every pill renders, one paused, and a spread of record states
-// and dead-letter reasons so each filter has something to find.
-const triggerSeed = [
+// Seven kinds so every pill renders, one paused, one batch-delivery realtime
+// trigger, and a spread of record states and dead-letter reasons so each
+// filter has something to find.
+const triggerSeed: Array<{
+  kind: string;
+  slug: string;
+  enabled: boolean;
+  delivery?: string;
+  config: Record<string, unknown>;
+}> = [
   { kind: 'cron', slug: 'nightly-report', enabled: true, config: { schedule: '0 3 * * *' } },
   {
     kind: 'kafka',
@@ -8173,6 +8733,18 @@ const triggerSeed = [
     config: { queue_url: 'http://sqs.local/q/mail', long_poll_secs: 20 },
   },
   { kind: 'queue', slug: 'delayed-tasks', enabled: true, config: { mode: 'delayed_task' } },
+  {
+    kind: 'realtime',
+    slug: 'chat-fanout',
+    enabled: true,
+    delivery: 'batch',
+    config: {
+      endpoint_id: '7b0c1f9e-2d4a-4c8e-9f31-5a6b7c8d9e0f',
+      channel: 'orders',
+      group: 'billing',
+      max_concurrency: 4,
+    },
+  },
 ];
 
 // Typed as the API's read shape so a created trigger can join the seeded ones
@@ -8186,11 +8758,12 @@ const triggers: Record<string, unknown>[] = (db.EMPTY ? [] : triggerSeed).map((t
   slug: t.slug,
   enabled: t.enabled,
   config: t.config,
-  batch_size_max: t.kind === 'cron' ? 1 : 64,
+  batch_size_max: t.kind === 'cron' ? 1 : t.kind === 'realtime' ? 10 : 64,
   batch_window_ms: t.kind === 'cron' ? 0 : 1000,
-  max_attempts: t.kind === 'cron' ? 1 : 5,
+  max_attempts: t.kind === 'cron' || t.kind === 'realtime' ? 1 : 5,
   payload_max_bytes: t.kind === 'cron' ? 1024 : 6 * 1024 * 1024,
   broker_poison_strategy: 'commit',
+  ...(t.kind === 'cron' ? {} : { delivery: t.delivery ?? 'record' }),
   created_at: db.iso(0),
   updated_at: db.iso(0),
 }));
@@ -8213,7 +8786,52 @@ route('GET', '/v1/triggers/{id}', ({ params }) => {
 // refused outright (POST /v1/crons owns those), every broker kind needs a slug
 // and a config, and the config is checked field by field the way
 // pkg/gregalemanifest does it.
-const TRIGGER_KINDS = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue'];
+const TRIGGER_KINDS = ['kafka', 'nats', 'redis_streams', 'sqs_compat', 'queue', 'realtime'];
+
+// A realtime trigger: the bound consumer group owns ordering, filters,
+// attempts and dead letters, and a batch above one message needs batch
+// delivery, up to 16 (faas managedrealtime/triggers.go).
+const REALTIME_GROUP_OWNED = [
+  'batch_window_ms',
+  'max_attempts',
+  'retry_policy',
+  'broker_poison_strategy',
+  'filter_criteria',
+];
+function checkRealtimeTrigger(body: Record<string, unknown>, delivery: string, batch: number) {
+  for (const field of REALTIME_GROUP_OWNED) {
+    if (body[field] !== undefined && body[field] !== null)
+      throw new Problem(
+        422,
+        'trigger_invalid_config',
+        `${field} is not supported for kind=realtime; configure it on the consumer group`
+      );
+  }
+  if (batch > 1 && delivery !== 'batch')
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'kind=realtime delivers one message per invocation unless delivery is batch; set delivery: batch or batch_size_max: 1'
+    );
+  if (batch > 16)
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'kind=realtime with delivery: batch receives at most 16 messages per invocation'
+    );
+}
+
+function checkTriggerDelivery(kind: string, delivery: unknown) {
+  if (delivery === undefined) return;
+  if (delivery !== 'record' && delivery !== 'batch')
+    throw new Problem(422, 'trigger_invalid_config', 'delivery must be "record" or "batch"');
+  if (delivery === 'batch' && kind === 'queue')
+    throw new Problem(
+      422,
+      'trigger_invalid_config',
+      'delivery "batch" is not available for queue triggers; use "record"'
+    );
+}
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -8337,6 +8955,24 @@ function validateTriggerConfig(kind: string, c: Record<string, unknown>) {
   }
   if (kind === 'queue' && !['queue', 'delayed_task'].includes(str('mode')))
     fail(`queue config mode "${str('mode')}" not in {queue, delayed_task}`);
+  if (kind === 'realtime') {
+    if (
+      !/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(
+        str('endpoint_id')
+      )
+    )
+      fail('realtime config requires endpoint_id to be a UUID');
+    if (!str('channel') || str('channel').length > 256)
+      fail('realtime config requires a channel of 1-256 bytes');
+    if (!str('group') || str('group').length > 128)
+      fail('realtime config requires a group of 1-128 bytes');
+    const concurrency = c.max_concurrency;
+    if (
+      concurrency !== undefined &&
+      (typeof concurrency !== 'number' || concurrency < 0 || concurrency > 32)
+    )
+      fail('realtime config max_concurrency must be 0-32');
+  }
 }
 
 route('POST', '/v1/triggers', ({ body }) => {
@@ -8347,11 +8983,12 @@ route('POST', '/v1/triggers', ({ body }) => {
       'trigger_immutable',
       'kind=cron not supported on POST /v1/triggers — use POST /v1/crons'
     );
-  if (!TRIGGER_KINDS.includes(kind))
+  // Outside the realtime preview the kind does not exist (PrepareRealtimeTrigger).
+  if (!TRIGGER_KINDS.includes(kind) || (kind === 'realtime' && hiddenCapabilities.has('realtime')))
     throw new Problem(
       400,
       'validation_failed',
-      'unknown kind: must be one of cron|kafka|nats|redis_streams|sqs_compat|queue'
+      'unknown kind: must be one of cron|kafka|nats|redis_streams|queue'
     );
   const slug = String(body.slug ?? '').trim();
   if (!slug) throw new Problem(400, 'validation_failed', 'slug is required for non-cron triggers');
@@ -8364,6 +9001,10 @@ route('POST', '/v1/triggers', ({ body }) => {
     throw new Problem(409, 'conflict', `a trigger named "${slug}" exists on this app`);
   enforceTriggerCaps(body, kind, appId);
   validateTriggerConfig(kind, config);
+  checkTriggerDelivery(kind, body.delivery);
+  const delivery = String(body.delivery ?? 'record');
+  const realtime = kind === 'realtime';
+  if (realtime) checkRealtimeTrigger(body, delivery, Number(body.batch_size_max ?? 1));
   const defaults = triggerDefaultsFor(db.account.plan);
   const trigger = {
     id: db.id(),
@@ -8373,11 +9014,16 @@ route('POST', '/v1/triggers', ({ body }) => {
     slug,
     enabled: body.enabled !== false,
     config: redactTriggerConfig(kind, config),
-    batch_size_max: Number(body.batch_size_max ?? defaults.batch_size_max),
+    batch_size_max: realtime
+      ? delivery === 'batch'
+        ? Number(body.batch_size_max ?? 10)
+        : 1
+      : Number(body.batch_size_max ?? defaults.batch_size_max),
     batch_window_ms: Number(body.batch_window_ms ?? defaults.batch_window_ms),
-    max_attempts: Number(body.max_attempts ?? defaults.max_attempts),
+    max_attempts: realtime ? 1 : Number(body.max_attempts ?? defaults.max_attempts),
     payload_max_bytes: Number(body.payload_max_bytes ?? defaults.payload_max_bytes),
     broker_poison_strategy: String(body.broker_poison_strategy ?? 'commit'),
+    delivery,
     created_at: db.iso(0),
     updated_at: db.iso(0),
   };
@@ -8412,6 +9058,22 @@ route('PATCH', '/v1/triggers/{id}', ({ params, body }) => {
     throw new Problem(403, 'trigger_tls_skip_verify_not_allowed');
   }
   validateTriggerConfig(kind, config);
+  checkTriggerDelivery(kind, body.delivery);
+  if (kind === 'realtime') {
+    const delivery = String(body.delivery ?? trigger.delivery ?? 'record');
+    checkRealtimeTrigger(body, delivery, Number(body.batch_size_max ?? trigger.batch_size_max));
+    const before = object(trigger.config);
+    if (
+      config.endpoint_id !== before.endpoint_id ||
+      config.channel !== before.channel ||
+      config.group !== before.group
+    )
+      throw new Problem(
+        422,
+        'trigger_immutable',
+        'endpoint_id, channel and group cannot change; delete the trigger and create a new one'
+      );
+  }
   if (body.config !== undefined) {
     trigger.config = redactTriggerConfig(kind, object(body.config), object(trigger.config));
   }
@@ -8423,6 +9085,7 @@ route('PATCH', '/v1/triggers/{id}', ({ params, body }) => {
     'payload_max_bytes',
     'broker_poison_strategy',
     'filter_criteria',
+    'delivery',
   ]) {
     if (body[field] !== undefined) trigger[field] = body[field];
   }
@@ -9276,6 +9939,52 @@ route('GET', '/v1/usage/storage', () => ({ items: db.storage }));
 route('GET', '/v1/invoices', () => ({ items: db.invoices, next_before: null }));
 route('GET', '/v1/billing/portal', () => db.billingPortal);
 
+// Budgets (faas handlers_financial_budgets.go; see mock/budgets.ts). Personal
+// only: apid mounts these without loadOrg, so X-Active-Org changes nothing.
+// MOCK_STRICT_BUDGETS=1 releases strict caps to the mock account.
+const budgetWorld: budgetMock.World = {
+  apps: db.apps,
+  jobs,
+  projects,
+  environments: () => projects.flatMap((p) => environmentInventory(p.slug) ?? []),
+};
+budgetMock.seed(budgetWorld);
+function budgetCall<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof budgetMock.BudgetProblem)
+      throw new Problem(err.status, err.code, err.message);
+    throw err;
+  }
+}
+const budgetKey = (req: IncomingMessage) => String(req.headers['idempotency-key'] ?? '');
+route('GET', '/v1/billing/budgets', () => budgetCall(() => budgetMock.list(budgetWorld)));
+route('POST', '/v1/billing/budgets', ({ body, req }) =>
+  budgetCall(() => status(201, budgetMock.create(budgetWorld, body, budgetKey(req))))
+);
+route('POST', '/v1/billing/budgets/preview', ({ body }) =>
+  budgetCall(() => budgetMock.preview(budgetWorld, body.spec))
+);
+route('GET', '/v1/billing/budgets/{id}', ({ params }) =>
+  budgetCall(() => budgetMock.get(budgetWorld, params.id))
+);
+route('PUT', '/v1/billing/budgets/{id}', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.update(budgetWorld, params.id, body, budgetKey(req)))
+);
+route('DELETE', '/v1/billing/budgets/{id}', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.remove(budgetWorld, params.id, body, budgetKey(req)))
+);
+route('GET', '/v1/billing/budgets/{id}/revisions', ({ params, query }) =>
+  budgetCall(() => budgetMock.revisions(params.id, query))
+);
+route('GET', '/v1/billing/budgets/{id}/channels', ({ params }) =>
+  budgetCall(() => budgetMock.channels(params.id))
+);
+route('PUT', '/v1/billing/budgets/{id}/channels', ({ params, body, req }) =>
+  budgetCall(() => budgetMock.setChannels(params.id, body, budgetKey(req)))
+);
+
 const orgMembers = new Map(
   db.orgs.map((org) => [
     org.slug,
@@ -10097,16 +10806,28 @@ route('GET', '/v1/auth/csrf', ({ query, res }) => {
 // mock keeps just enough state to show each branch on demand.
 const mockAuth = {
   password: process.env.MOCK_HAS_PASSWORD === '1' ? 'mock-current-password' : null,
-  mfaEnrolled: process.env.MOCK_MFA === '1',
+  mfaEnrolled: process.env.MOCK_MFA === '1' || process.env.MOCK_MFA === 'pending',
   mfaRequired: process.env.MOCK_MFA === 'required',
+  // MOCK_MFA=pending: an MFA user's fresh dashboard sign-in. apid's requireMFA
+  // refuses every request but the account view and the MFA and auth routes
+  // with 403 mfa_required until /verify or /recover clears the session.
+  sessionPending: process.env.MOCK_MFA === 'pending',
   steppedUpAt: 0,
 };
 const STEP_UP_TTL_MS = 5 * 60_000;
+
+/** Whether apid's session MFA gate refuses this request while pending. */
+function refusedWhileMfaPending(method: string, path: string): boolean {
+  if (!mockAuth.sessionPending || !path.startsWith('/v1/')) return false;
+  if (method === 'GET' && path === '/v1/account') return false;
+  return !path.startsWith('/v1/account/mfa/') && !path.startsWith('/v1/auth/');
+}
 
 route('POST', '/v1/account/mfa/verify', ({ body }) => {
   if (!/^\d{6}$/.test(String(body.totp ?? '')))
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.steppedUpAt = Date.now();
+  mockAuth.sessionPending = false;
   return { account_id: db.ACCOUNT_ID, mfa_pending: false };
 });
 route('POST', '/v1/account/mfa/enroll', () => ({
@@ -10132,6 +10853,7 @@ route('POST', '/v1/account/mfa/confirm', ({ body }) => {
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.mfaEnrolled = true;
   mockAuth.mfaRequired = false;
+  mockAuth.sessionPending = false;
   mockAuth.steppedUpAt = Date.now();
   return {};
 });
@@ -10575,10 +11297,19 @@ route('GET', '/v1/billing/focus', ({ query }) => {
     invoices_excluded_draft_or_void: 0,
   };
 });
-route('POST', '/v1/billing/cancel', () => ({
-  cancel_scheduled: true,
-  effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
-}));
+route('POST', '/v1/billing/cancel', () => {
+  // Free has no provider subscription (faas handlers_billing_cancel.go).
+  if (db.account.plan === 'free')
+    throw new Problem(
+      409,
+      'billing_already_cancelled',
+      'this account has no active subscription to cancel'
+    );
+  return {
+    cancel_scheduled: true,
+    effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
+  };
+});
 route('POST', '/v1/billing/retry', () => ({
   attempt_id: `att_${hex(8)}`,
   provider_ref_id: `txn_${hex(8)}`,
@@ -11902,7 +12633,91 @@ route('POST', '/v1/workflows/runs/{id}/steps/{step}/retry', workflowMock.retrySt
 route('POST', '/v1/apps/{slug}/workflows/runs:cancel-preview', workflowMock.cancelPreview);
 route('POST', '/v1/apps/{slug}/workflows/runs:cancel-queued', workflowMock.cancelQueued);
 
+// Workflow schedules and the recovery policy (mock/workflow-automation.ts).
+const wa = workflowAutomationHandlers(Problem);
+route('GET', '/v1/apps/{slug}/workflows/schedules', wa.schedules);
+route('GET', '/v1/apps/{slug}/workflows/schedules/{name}/preview', wa.schedulePreview);
+route('GET', '/v1/apps/{slug}/workflows/schedules/occurrences', wa.occurrences);
+route('POST', '/v1/apps/{slug}/workflows/schedules/occurrences:replay-preview', wa.replayPreview);
+route('POST', '/v1/apps/{slug}/workflows/schedules/occurrences:replay', wa.replay);
+route('GET', '/v1/apps/{slug}/recovery-policy', wa.policy);
+route('PUT', '/v1/apps/{slug}/recovery-policy', wa.setPolicy);
+route('GET', '/v1/apps/{slug}/recovery-policy/health', wa.health);
+route('POST', '/v1/apps/{slug}/recovery-policy/change-preview', wa.changePreview);
+route('POST', '/v1/apps/{slug}/recovery-policy/control', wa.control);
+
+// Business workflow insights (mock/workflow-insights.ts).
+const wi = workflowInsightHandlers(Problem);
+route('GET', '/v1/apps/{slug}/workflow-attention', wi.attention);
+route('GET', '/v1/apps/{slug}/workflow-attention/summary', wi.attentionSummary);
+route('GET', '/v1/apps/{slug}/workflow-outcomes', wi.outcomes);
+route('GET', '/v1/apps/{slug}/workflow-outcomes/summary', wi.outcomeSummary);
+route('GET', '/v1/apps/{slug}/workflow-performance/summary', wi.performance);
+route('GET', '/v1/apps/{slug}/workflow-performance/instances', wi.instances);
+
 registerEventMocks(route, Problem, NO_CONTENT);
+registerDeadLetterMocks(route, Problem, NO_CONTENT);
+registerForkMocks(route, Problem, NO_CONTENT, {
+  hidden: (capability) => hiddenCapabilities.has(capability),
+  plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
+registerEventConsumerMocks(route, Problem);
+registerListenerMocks(route, Problem, NO_CONTENT);
+
+// --- Managed realtime (mock/realtime.ts) ---------------------------------------
+
+function realtime(answer: realtimeMock.Answer) {
+  if (realtimeMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+const idempotencyKey = (req: IncomingMessage) => {
+  const value = req.headers['idempotency-key'];
+  return Array.isArray(value) ? value[0] : value;
+};
+// One line per route, so each path stays where the spec-drift test reads it.
+route('GET', '/v1/usage/realtime', () => realtime(realtimeMock.usage()));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints', ({ params }) => realtime(realtimeMock.listEndpoints(params.slug)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints', ({ params, body }) => realtime(realtimeMock.createEndpoint(params.slug, body)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/realtime/endpoints/{id}', ({ params, body }) => realtime(realtimeMock.updateEndpoint(params.slug, params.id, body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}', ({ params }) => realtime(realtimeMock.deleteEndpoint(params.slug, params.id)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/auth/rotate', ({ params, body }) => realtime(realtimeMock.rotateAuth(params.slug, params.id, body)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/auth/rotate/finalize', ({ params }) => realtime(realtimeMock.finalizeAuth(params.slug, params.id)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/connections', ({ params, query }) => realtime(realtimeMock.listConnections(params.slug, params.id, query)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/connections/{connection_id}/close', ({ params }) => realtime(realtimeMock.closeConnection(params.slug, params.id, params.connection_id)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/connections/{connection_id}/send', ({ params }) => realtime(realtimeMock.sendConnection(params.slug, params.id, params.connection_id)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/occupancy', ({ params, query }) => realtime(realtimeMock.occupancy(params.slug, params.id, query)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/publish', ({ params, query, body, req }) => realtime(realtimeMock.publish(params.slug, params.id, params.channel, query, body, idempotencyKey(req))));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/retained-messages', ({ params, query }) => realtime(realtimeMock.retained(params.slug, params.id, params.channel, query)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/channels/{channel}/groups', ({ params }) => realtime(realtimeMock.consumerGroups(params.slug, params.id, params.channel)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets', ({ params, body }) => realtime(realtimeMock.issueTicket(params.slug, params.id, body)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets', ({ params, query }) => realtime(realtimeMock.revokePrincipalTickets(params.slug, params.id, query)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/realtime/endpoints/{id}/tickets/{ticket}', ({ params }) => realtime(realtimeMock.revokeTicket(params.slug, params.id, params.ticket)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/access', ({ params }) => realtime(realtimeMock.readAccess(params.slug, params.id, params.principal)));
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/realtime/endpoints/{id}/principals/{principal}/access', ({ params, body }) => realtime(realtimeMock.changeAccess(params.slug, params.id, params.principal, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/realtime/endpoints/{id}/push/providers', ({ params }) => realtime(realtimeMock.pushProviders(params.slug, params.id)));
+registerProfileCaptureMocks(route, Problem, NO_CONTENT, {
+  hidden: (capability) => hiddenCapabilities.has(capability),
+  plan: () => process.env.MOCK_PLAN ?? db.account.plan,
+});
 
 // --- Plumbing ------------------------------------------------------------------
 
@@ -11979,6 +12794,14 @@ export function mockApi(): Plugin {
         (method !== 'GET' &&
           MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
       if (!isApi) return next();
+
+      if (refusedWhileMfaPending(method, url.pathname)) {
+        setTimeout(
+          () => problem(res, new Problem(403, 'mfa_required', 'complete MFA to use the dashboard')),
+          latency()
+        );
+        return;
+      }
 
       const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
       if (!match) {

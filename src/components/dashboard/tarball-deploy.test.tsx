@@ -5,11 +5,14 @@ import { ApiError } from '@/lib/api/errors';
 
 const deploy = vi.fn();
 const toast = vi.fn();
+const confirm = vi.fn();
 
 vi.mock('@/lib/api/queries', () => ({
   useDeployTarball: () => ({ mutateAsync: deploy, isPending: false }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@/lib/api/capabilities', () => ({ useCapabilityStage: () => 'Preview' }));
 
 const { TarballDeploy } = await import('./tarball-deploy');
 
@@ -18,6 +21,7 @@ const archive = () => new File(['source'], 'app.tar.gz', { type: 'application/gz
 beforeEach(() => {
   deploy.mockReset().mockResolvedValue({ id: 'dep12345678' });
   toast.mockReset();
+  confirm.mockReset().mockResolvedValue(true);
 });
 
 describe('TarballDeploy', () => {
@@ -63,5 +67,33 @@ describe('TarballDeploy', () => {
     await userEvent.click(screen.getByRole('button', { name: /deploy archive/i }));
     await waitFor(() => expect(toast).toHaveBeenCalled());
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Archive too large' }));
+  });
+
+  it('turns a deploy freeze into an audited override, confirmed first', async () => {
+    deploy.mockRejectedValueOnce(
+      new ApiError({
+        status: 409,
+        code: 'release_frozen',
+        title: 'Production releases are frozen',
+        detail: 'Production releases of api are frozen: "incident 4711" by ops, until lifted.',
+        freezes: [],
+      })
+    );
+    render(<TarballDeploy slug="api" />);
+    await userEvent.upload(screen.getByLabelText('Source tarball'), archive());
+    await userEvent.click(screen.getByRole('button', { name: /deploy archive/i }));
+    const refusal = await screen.findByRole('alert', { name: 'Release frozen' });
+    expect(toast).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByLabelText('Override reason'), 'hotfix');
+    await userEvent.click(screen.getByRole('button', { name: 'Deploy anyway' }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Deploy api into the freeze?', destructive: true })
+    );
+    await waitFor(() =>
+      expect(deploy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ options: { override_freeze: 'hotfix' } })
+      )
+    );
+    expect(refusal).not.toBeInTheDocument();
   });
 });
