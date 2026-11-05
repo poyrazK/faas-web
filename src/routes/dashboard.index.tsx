@@ -1,3 +1,5 @@
+import { featureFlags } from '@/lib/feature-flags';
+import { OnboardingChecklist } from '@/components/onboarding/onboarding-checklist';
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, RefreshDouble } from 'iconoir-react';
@@ -425,6 +427,7 @@ function OverviewPage() {
   if (firstRun) {
     return (
       <div className="flex flex-col gap-6">
+        {featureFlags.onboardingV2 && <OnboardingChecklist />}
         <PageHeader
           title={firstName ? `Welcome, ${firstName}` : 'Overview'}
           description="Your first app starts here. Choose a source and we’ll guide you through deployment."
@@ -451,6 +454,7 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
+      {featureFlags.onboardingV2 && <OnboardingChecklist />}
       {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
       <div aria-hidden className="pointer-events-none fixed inset-0">
         <WindFlow intensity={0.06} />

@@ -1,15 +1,10 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { featureFlags } from '@/lib/feature-flags';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { useState } from 'react';
+import { OAuthHandoff } from '@/components/auth/oauth-handoff';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
-import {
-  clearOAuthPending,
-  hasOAuthPending,
-  hasOnboarded,
-  readOAuthReturnTo,
-  readSession,
-  useAuth,
-} from '@/lib/auth';
+import { hasOAuthPending, hasOnboarded, readSession, useAuth } from '@/lib/auth';
 import { safeInternalPath } from '@/lib/redirect';
 import { pageHead } from '@/lib/seo';
 
@@ -24,40 +19,28 @@ export const Route = createFileRoute('/login')({
     // AuthProvider verifies the cookie, even if an older hint is present.
     if (hasOAuthPending()) return;
     if (readSession() && search.next) throw redirect({ href: search.next, reloadDocument: true });
-    if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
+    if (readSession())
+      throw redirect({
+        to: featureFlags.onboardingV2
+          ? '/onboarding'
+          : hasOnboarded()
+            ? '/dashboard'
+            : '/onboarding',
+      });
   },
   component: LoginPage,
 });
 
 function LoginPage() {
-  const navigate = useNavigate();
   const { next } = Route.useSearch();
-  const { user, loading } = useAuth();
-  const oauthPending = hasOAuthPending();
-
-  // WEBSITE_URL may point at `/login` on an existing deployment. Complete the
-  // same cookie-to-client handoff as the landing route in that case too.
-  useEffect(() => {
-    if (loading || !hasOAuthPending()) return;
-    const returnTo = readOAuthReturnTo();
-    clearOAuthPending();
-    if (!user) return;
-    if (returnTo) {
-      window.location.assign(returnTo);
-      return;
-    }
-    void navigate({ to: hasOnboarded() ? '/dashboard' : '/onboarding', replace: true });
-  }, [loading, navigate, user]);
-
-  if (oauthPending && loading) {
+  const [returning] = useState(hasOAuthPending);
+  const { sessionError } = useAuth();
+  if (returning && (hasOAuthPending() || sessionError))
     return (
       <AuthLayout>
-        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-          Finishing sign-in…
-        </p>
+        <OAuthHandoff />
       </AuthLayout>
     );
-  }
 
   return (
     <AuthLayout>

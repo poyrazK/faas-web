@@ -49,6 +49,8 @@ export function enabled(value: string | undefined): boolean {
 export const featureFlags = {
   /** Reference flag. Gates nothing; proves the wiring and shows the shape. */
   example: enabled(import.meta.env.VITE_FEATURE_EXAMPLE),
+  /** First signup: sample/repository quickstart. Existing recovery remains reachable. */
+  onboardingV2: enabled(import.meta.env.VITE_FEATURE_ONBOARDING_V2),
   /**
    * Browser error capture (`lib/error-reporting.ts`). Its transport is a no-op
    * until the owner chooses where reports go, so turning this on today only

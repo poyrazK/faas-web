@@ -1,3 +1,4 @@
+import { featureFlags } from '@/lib/feature-flags';
 import { useEffect } from 'react';
 import {
   createFileRoute,
@@ -25,7 +26,17 @@ export const Route = createFileRoute('/dashboard')({
         (location.pathname === '/dashboard/settings' &&
           validateSettingsSearch(location.search).section === 'integrations')) &&
       hasOnboardingGitHubReturn();
-    if (!hasOnboarded() && !returningFromOnboardingGitHub) {
+    // A saved receipt must still open its app when the new entry flag is rolled back.
+    // The API continues to authorize the slug; this exception only skips setup presentation.
+    const inspectingApp = /^\/dashboard\/apps\/(?!new(?:\/|$))[^/]+(?:\/.*)?$/.test(
+      location.pathname
+    );
+    if (
+      !featureFlags.onboardingV2 &&
+      !hasOnboarded() &&
+      !returningFromOnboardingGitHub &&
+      !inspectingApp
+    ) {
       throw redirect({
         to: '/onboarding',
         search:

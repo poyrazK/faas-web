@@ -69,10 +69,14 @@ export function useActiveOrg(): string | null {
  * the personal account's numbers must wait for this rather than read null as
  * "personal".
  */
-export function workspaceBound(): boolean {
-  return bound.accountId !== '';
+export function workspaceBound(accountId?: string): boolean {
+  return bound.accountId !== '' && (accountId === undefined || bound.accountId === accountId);
 }
 
-export function useWorkspaceBound(): boolean {
-  return useSyncExternalStore(subscribe, workspaceBound, () => false);
+export function useWorkspaceBound(accountId?: string): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => workspaceBound(accountId),
+    () => false
+  );
 }

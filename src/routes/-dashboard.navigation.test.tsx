@@ -99,3 +99,17 @@ describe('legacy dashboard bookmarks', () => {
     });
   });
 });
+
+it('keeps an explicit app receipt accessible when onboarding entry is rolled back', async () => {
+  window.localStorage.setItem('gregale.session', JSON.stringify({ email: 'operator@example.com' }));
+  window.localStorage.removeItem('gregale.onboarded');
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({
+      initialEntries: ['/dashboard/apps/hello-sample?tab=Deployments'],
+    }),
+  });
+  await router.load();
+  expect(router.state.location.pathname).toBe('/dashboard/apps/hello-sample');
+  expect(router.state.matches.at(-1)?.status).toBe('success');
+});
