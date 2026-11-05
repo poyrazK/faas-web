@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type DragEvent } from 'react';
 import { MoreHoriz, Plus, Xmark, Drag } from 'iconoir-react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -342,6 +342,26 @@ export function AnalyticsGrid({
   });
   const [announcement, announce] = useState('');
   const dragging = useRef<string | null>(null);
+  const [dragged, setDragged] = useState<string | null>(null);
+  const startDrag = (event: DragEvent<HTMLButtonElement>, id: string) => {
+    dragging.current = id;
+    setDragged(id);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', id);
+    const card = event.currentTarget.closest<HTMLElement>('[data-metric-id]');
+    if (card) {
+      const bounds = card.getBoundingClientRect();
+      event.dataTransfer.setDragImage(
+        card,
+        event.clientX - bounds.left,
+        event.clientY - bounds.top
+      );
+    }
+  };
+  const endDrag = () => {
+    dragging.current = null;
+    setDragged(null);
+  };
   const cards = build(chosen);
   const available = catalog.filter((item) => !chosen.includes(item.id));
   const commit = (next: string[]) => {
@@ -394,20 +414,24 @@ export function AnalyticsGrid({
             onDrop={(event) => {
               event.preventDefault();
               if (dragging.current) move(dragging.current, index);
-              dragging.current = null;
+              endDrag();
             }}
             className={cn(
               'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand',
               onInspect && 'hover:border-border-secondary',
+              dragged === card.id && 'opacity-50',
               card.span === 2 && 'xl:col-span-2'
             )}
           >
             {onInspect && (
               <button
                 type="button"
+                draggable
+                onDragStart={(event) => startDrag(event, card.id)}
+                onDragEnd={endDrag}
                 onClick={() => onInspect(card.id)}
                 aria-label={`View ${card.label} details`}
-                className="absolute inset-0 z-10 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                className="absolute inset-0 z-10 cursor-grab rounded-lg active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               />
             )}
             <div className="flex items-center justify-between gap-2">
@@ -418,14 +442,8 @@ export function AnalyticsGrid({
                   draggable
                   aria-label={`Move ${card.label}`}
                   aria-describedby={moveHelpId}
-                  onDragStart={(event) => {
-                    dragging.current = card.id;
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', card.id);
-                  }}
-                  onDragEnd={() => {
-                    dragging.current = null;
-                  }}
+                  onDragStart={(event) => startDrag(event, card.id)}
+                  onDragEnd={endDrag}
                   onPointerDown={(event) => {
                     if (event.pointerType !== 'mouse') {
                       dragging.current = card.id;
@@ -441,8 +459,10 @@ export function AnalyticsGrid({
                       move(card.id, chosen.indexOf(target.dataset.metricId));
                     dragging.current = null;
                   }}
-                  onPointerCancel={() => {
-                    dragging.current = null;
+                  onPointerCancel={(event) => {
+                    // Native mouse dragging cancels the pointer stream at drag start.
+                    // Its lifecycle ends at dragend, not pointercancel.
+                    if (event.pointerType !== 'mouse') dragging.current = null;
                   }}
                   onKeyDown={(event) => {
                     if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
@@ -600,7 +620,8 @@ export function AnalyticsGrid({
       </ul>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <p id={moveHelpId}>
-          Drag a handle to arrange, or use its arrow keys. Select a card to explore.
+          Drag a card or its handle to arrange. Click a card to explore, or use the handle’s arrow
+          keys to move it.
         </p>
         <button
           type="button"

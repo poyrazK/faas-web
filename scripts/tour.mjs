@@ -208,6 +208,27 @@ async function exerciseOverviewControls() {
     ),
     page.keyboard.press('Enter'),
   ]);
+
+  // Use real mouse movement: dispatching drag events alone misses a chart
+  // surface that intercepts clicks but cannot actually start a browser drag.
+  const cards = section.locator('[data-metric-id]');
+  const before = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
+  if (before.length >= 2) {
+    const source = cards.first().getByRole('button', { name: /^View .* details$/ });
+    const target = cards.nth(1);
+    await source.scrollIntoViewIfNeeded();
+    const from = await source.boundingBox();
+    const to = await target.boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
+    await page.mouse.up();
+    const after = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
+    if (after[0] !== before[1] || after[1] !== before[0])
+      throw new Error('dragging a chart with the mouse did not reorder it');
+    if (new URL(page.url()).searchParams.has('inspect'))
+      throw new Error('dragging a chart opened its detail panel');
+  }
 }
 
 const tourPages = OVERVIEW_ONLY ? [''] : PAGES;
