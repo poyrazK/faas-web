@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   PageHeader,
   Panel,
+  Stats,
   StatTile,
   InlinePhase,
   queryPhase,
@@ -63,20 +64,17 @@ function TriggerDetail({
   const phase = queryPhase({ error: metrics.error, loading: metrics.isPending, isEmpty: !m });
 
   return (
-    <Panel
-      title={label}
-      description="What this trigger has taken off its source, and where it went."
-    >
+    <Panel title={label}>
       {phase !== 'ready' || !m ? (
         <InlinePhase phase={phase} error={metrics.error} loadingMessage="Reading counts…" />
       ) : (
-        <div className="mb-5 grid gap-4 sm:grid-cols-3 xl:grid-cols-5">
+        <Stats columns={5} className="mb-5">
           <StatTile label="Pending" value={String(m.pending_count)} />
           <StatTile label="Claimed" value={String(m.claimed_count)} />
           <StatTile label="Succeeded" value={String(m.succeeded_count)} />
           <StatTile label="Retry" value={String(m.retry_count)} />
           <StatTile label="Dead letter" value={String(m.dead_letter_count)} />
-        </div>
+        </Stats>
       )}
 
       <div className="mb-3 flex gap-2">
@@ -215,11 +213,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Triggers"
-        description="Event sources that invoke an app — cron, Kafka, NATS, Redis Streams, an SQS-compatible queue, or the in-platform queue. Defined in gregale.yaml and the CLI; paused, inspected and recovered here."
-        actions={action}
-      />
+      <PageHeader title="Triggers" actions={action} />
 
       {search.trigger && data && !selected && <p role="status">Trigger not found</p>}
       <ResourceTable
@@ -228,7 +222,7 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
         initialSort={{ key: 'slug', dir: 'asc' }}
         searchKeys={['slug', 'app', 'kind']}
         searchPlaceholder="Filter by trigger, app, or kind…"
-        emptyMessage="No triggers yet. Declare them in gregale.yaml and deploy."
+        emptyMessage="No triggers yet."
         emptyAction={
           <Link
             to="/docs/$slug"

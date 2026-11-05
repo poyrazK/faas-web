@@ -1,6 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
 import {
-  ArrowRight,
   Box3dPoint,
   Check,
   Code,
@@ -28,8 +27,7 @@ const ICON: Record<AppSource, ComponentType<SVGProps<SVGSVGElement>>> = {
 const OTHERS: AppSource[] = ['function', 'template', 'empty', 'container', 'worker', 'import'];
 
 /**
- * How a new app starts. Git leads as the one primary card, since most people
- * arrive with code in a repository; the other five follow as a compact list.
+ * How a new app starts. Git leads a compact list of seven equally legible choices.
  * Each choice is a button in the source form (`name="source-<id>"`), so
  * validation can focus it, and choosing one moves the wizard on.
  */
@@ -61,92 +59,53 @@ export function NewAppChooser({
     'aria-describedby': cn(`${uid}-${id}-desc`, errorId),
   });
   const copy = (id: AppSource) => SOURCES.find((option) => option.id === id)!;
-  const Git = ICON.git;
-
-  return (
-    <div className="flex flex-col gap-8">
+  const row = (id: AppSource) => {
+    const Icon = ICON[id];
+    return (
       <button
-        {...choice('git')}
+        key={id}
+        {...choice(id)}
         className={cn(
-          'group flex w-full items-center gap-4 rounded-xl border bg-card p-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-          selected === 'git'
-            ? 'border-brand'
-            : 'border-border hover:border-border-secondary hover:bg-accent/30'
+          'group flex min-h-16 w-full items-center gap-3 rounded-lg border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+          selected === id
+            ? 'border-brand/50 bg-brand/5'
+            : 'border-border hover:border-border-secondary hover:bg-muted/40'
         )}
       >
-        <span
-          className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',
-            selected === 'git' ? 'bg-brand/15 text-brand' : 'bg-muted text-foreground'
-          )}
-        >
-          <Git aria-hidden className="h-5 w-5" />
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground group-hover:text-brand">
+          <Icon aria-hidden className="size-4" />
         </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span id={`${uid}-git-name`} className="text-base font-medium">
-            {copy('git').name}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span id={`${uid}-${id}-name`} className="text-sm font-medium">
+            {copy(id).name}
           </span>
-          <span id={`${uid}-git-desc`} className="text-sm text-muted-foreground">
-            {copy('git').desc}
+          <span id={`${uid}-${id}-desc`} className="text-xs leading-relaxed text-muted-foreground">
+            {copy(id).desc}
           </span>
         </span>
-        {/* What pressing the card does; the card itself is the button. */}
-        <span
-          aria-hidden="true"
-          className="hidden h-9 shrink-0 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-medium text-primary-foreground transition-colors group-hover:bg-brand-hover sm:inline-flex"
-        >
-          Continue
-          <ArrowRight className="h-4 w-4" />
-        </span>
+        {selected === id ? (
+          <Check aria-hidden className="size-4 shrink-0 text-brand" />
+        ) : (
+          <NavArrowRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        )}
       </button>
-
+    );
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:p-6">
+      <div className="mb-3">
+        <h2 className="text-base font-semibold">What are you starting with?</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          Choose the option that matches your code. You’ll review everything before creating an app.
+        </p>
+      </div>
+      {row('git')}
       {!single && (
-        <section role="group" aria-labelledby={`${uid}-others`} className="flex flex-col gap-3">
-          <h2 id={`${uid}-others`} className="text-sm font-medium text-muted-foreground">
+        <section role="group" aria-labelledby={`${uid}-others`} className="flex flex-col gap-2">
+          <h3 id={`${uid}-others`} className="sr-only">
             Other ways to start
-          </h2>
-          <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
-            {OTHERS.map((id) => {
-              const Icon = ICON[id];
-              return (
-                <button
-                  key={id}
-                  {...choice(id)}
-                  className={cn(
-                    // Rows round with the list, so a hover, a selection or a
-                    // focus ring follows its corners instead of being clipped.
-                    'group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors first:rounded-t-[11px] last:rounded-b-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-                    selected === id ? 'bg-accent/50' : 'hover:bg-accent/40'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors',
-                      selected === id ? 'bg-brand/15 text-brand' : 'bg-muted text-foreground'
-                    )}
-                  >
-                    <Icon aria-hidden className="h-[18px] w-[18px]" />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span id={`${uid}-${id}-name`} className="text-sm font-medium">
-                      {copy(id).name}
-                    </span>
-                    <span id={`${uid}-${id}-desc`} className="text-[13px] text-muted-foreground">
-                      {copy(id).desc}
-                    </span>
-                  </span>
-                  {selected === id ? (
-                    <Check aria-hidden className="h-4 w-4 shrink-0 text-brand" />
-                  ) : (
-                    <NavArrowRight
-                      aria-hidden
-                      className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transform-none"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          </h3>
+          {OTHERS.map(row)}
         </section>
       )}
     </div>

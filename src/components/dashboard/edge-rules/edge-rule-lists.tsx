@@ -91,13 +91,18 @@ export function EdgeRuleLists() {
   return (
     <Panel
       title="Rule lists"
-      description={`${stage ? `${stage} · ` : ''}IPs, countries, hosts, values or networks that many rules can share. Account-wide: an edit applies to every rule that uses the list within seconds.`}
+      help="Account-wide: an edit applies to every rule that uses the list within seconds."
       actions={
-        canCreate ? (
-          <Button size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            New list
-          </Button>
+        stage || canCreate ? (
+          <>
+            {stage && <span className="label-mono text-muted-foreground">{stage}</span>}
+            {canCreate && (
+              <Button size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                New list
+              </Button>
+            )}
+          </>
         ) : undefined
       }
       padded={false}
@@ -105,7 +110,7 @@ export function EdgeRuleLists() {
       {!personal ? (
         <p className="p-5 text-sm text-muted-foreground">
           {workspace.ready
-            ? `Rule lists belong to your personal account, so ${workspace.label} has none to show. Switch to Personal to manage them.`
+            ? 'Rule lists belong to your personal account. Switch to Personal to manage them.'
             : 'Checking the workspace…'}
         </p>
       ) : phase !== 'ready' ? (
@@ -114,11 +119,7 @@ export function EdgeRuleLists() {
             phase={phase}
             error={lists.error}
             loadingMessage="Reading lists…"
-            emptyMessage={
-              canCreate
-                ? 'No lists yet.'
-                : 'No lists yet. Rule lists are on Hobby and above; the Free plan has none.'
-            }
+            emptyMessage={canCreate ? 'No lists yet.' : 'Rule lists are on Hobby and above.'}
             onRetry={() => void lists.refetch()}
           />
         </div>
@@ -270,7 +271,8 @@ function ListDialog({
           ? `${KINDS.find((k) => k.value === list?.kind)?.label ?? ''}. Items are stored deduplicated and sorted.`
           : 'Items are checked for the kind and stored deduplicated and sorted.'
       }
-      width="max-w-xl"
+      placement="right"
+      width="sm:max-w-[560px]"
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onClose}>

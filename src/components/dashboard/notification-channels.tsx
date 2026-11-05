@@ -184,7 +184,7 @@ export function NotificationChannels() {
   return (
     <Panel
       title="Notification channels"
-      description="Slack, PagerDuty and email destinations any alert rule can deliver to, without a webhook receiver of your own. They receive fires and resolves."
+      help="Slack, PagerDuty and email destinations any alert rule can deliver to, without a webhook receiver of your own. They receive fires and resolves."
       actions={
         <div className="flex items-center gap-2">
           <MaturityLabel capability={capability} />

@@ -71,10 +71,9 @@ function Insights({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <Panel
-        title="Workflow insights"
-        description={`${stage ? `${stage} · ` : ''}What your app reports about its business workflows through Operations: which need attention, how they ended and how long they take. Separate from the durable runs on the Workflows page.`}
-      >
+      <Panel title="Workflow insights">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}What your app reports about its business workflows through Operations: which need attention, how they ended and how long they take. Separate from the durable runs on the Workflows page.`}</p>
+
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
@@ -187,10 +186,9 @@ function Attention({ slug, scope, workflow }: { slug: string; scope: string; wor
   const items = useMemo(() => queue.data?.pages.flatMap((p) => p.items) ?? [], [queue.data]);
   const t = summary.data?.totals;
   return (
-    <Panel
-      title="Needs attention"
-      description={`Workflows in ${scope} with blockers, stale or overdue states, or broken SLAs, as last reported. A live queue: entries move as reports arrive.`}
-    >
+    <Panel title="Needs attention">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`Workflows in ${scope} with blockers, stale or overdue states, or broken SLAs, as last reported. A live queue: entries move as reports arrive.`}</p>
+
       <div className="flex flex-col gap-5">
         {!t ? (
           <InlinePhase
@@ -357,10 +355,13 @@ function Outcomes({ slug, scope, workflow }: { slug: string; scope: string; work
     { key: 'count', label: 'Workflows', numeric: true },
   ];
   return (
-    <Panel
-      title="Outcomes"
-      description="Finished workflows that reported a business result, each counted once by its latest report. Finishing alone is not an outcome."
-    >
+    <Panel title="Outcomes">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Finished workflows that reported a business result, each counted once by its latest report. Finishing alone is not an outcome.'
+        }
+      </p>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SegmentedControl
@@ -458,10 +459,13 @@ const pct = (d: Duration | undefined) =>
 function Performance({ slug, scope, workflow }: { slug: string; scope: string; workflow: string }) {
   const q = usePerformanceSummary(slug, scope, workflow);
   return (
-    <Panel
-      title="Performance"
-      description="How long the latest 100 finished and 100 ongoing instances spend in each state and blocked, as p50 · p95. Instances with gaps in their history are left out and counted."
-    >
+    <Panel title="Performance">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'How long the latest 100 finished and 100 ongoing instances spend in each state and blocked, as p50 · p95. Instances with gaps in their history are left out and counted.'
+        }
+      </p>
+
       {!workflow ? (
         <p className="text-sm text-muted-foreground">
           Name a workflow above to compare its instances.

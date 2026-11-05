@@ -1,43 +1,15 @@
-import { useCallback, useState } from 'react';
-import { MoreHoriz, Plus, Xmark } from 'iconoir-react';
-import { Reorder, useReducedMotion } from 'motion/react';
-import { Area, AreaChart } from '@/components/dither-kit';
+import { useId, useRef, useState } from 'react';
+import { MoreHoriz, Plus, Xmark, Drag } from 'iconoir-react';
+import { motion, useReducedMotion } from 'motion/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TimeChart } from './kit/chart';
 import { cn } from '@/lib/utils';
-
-/**
- * The analytics grid: a set of cards the reader can put in their own order.
- *
- * Every figure here comes from one call to `/analytics/timeseries`, which
- * returns zero-filled hourly buckets — a real series, drawn as one. Nothing on
- * this grid is derived from a scalar and dressed up as a trend.
- *
- * The order is the reader's, not ours. Which number matters most differs by
- * who is looking and what broke this morning, and a fixed order makes everyone
- * but its author scroll past two cards to reach the one they came for.
- */
-
-const ORDER_KEY = 'gregale.analytics.order';
-
-/** A spring, not a curve.
- *
- * Reflow during a drag is not an entrance: it answers a hand that is still
- * moving, and it has to stay answerable while the hand changes direction. A
- * duration curve commits to an endpoint and plays to it, so a reversal reads
- * as the grid finishing its old idea before starting the new one. A spring is
- * interruptible by construction — retarget it mid-flight and it carries its
- * velocity into the new destination, which is the whole difference between
- * "smooth" and "smooth while you are watching it".
- *
- * Stiff and well-damped: 400/35 settles in ~250ms with no visible overshoot.
- * Cards are large objects and a bouncy grid reads as a toy.
- */
-const REFLOW = { type: 'spring' as const, stiffness: 400, damping: 35, mass: 0.8 };
+import { compareRequestHalves, utcLabel } from './analytics-data';
 
 export interface AnalyticsPoint {
   start: string;
@@ -81,8 +53,8 @@ function halfOverHalf(points: AnalyticsPoint[], key: keyof AnalyticsPoint): numb
   if (points.length < 4) return null;
   const mid = Math.floor(points.length / 2);
   const earlier = sum(points.slice(0, mid), key);
-  const later = sum(points.slice(mid), key);
-  if (earlier === 0) return later === 0 ? null : 100;
+  const later = sum(points.slice(-mid), key);
+  if (earlier === 0) return null;
   return ((later - earlier) / earlier) * 100;
 }
 
@@ -138,11 +110,11 @@ export interface MetricDef {
 
 function latencyCard(key: 'p50_ms' | 'p95_ms' | 'p99_ms') {
   return (points: AnalyticsPoint[]) => {
-    const latest = points[points.length - 1];
+    const latest = [...points].reverse().find((point) => point.requests > 0);
     return {
       value: latest ? `${Math.round(latest[key])} ms` : '—',
       delta: null,
-      caption: 'Most recent hour, weighted',
+      caption: 'Latest hour with requests',
     };
   };
 }
@@ -151,13 +123,13 @@ export const CATALOG: MetricDef[] = [
   {
     id: 'requests',
     label: 'Requests',
-    span: 2,
+    span: 1,
     series: 'requests',
     deltaGood: true,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'requests')),
       delta: halfOverHalf(points, 'requests'),
-      caption: `Served this window, against ${halfLabel}`,
+      caption: 'Total requests in this window',
     }),
     scalar: (row) => ({
       value: compact(row.request_count),
@@ -167,13 +139,13 @@ export const CATALOG: MetricDef[] = [
   {
     id: 'errors',
     label: 'Errors',
-    span: 2,
+    span: 1,
     series: 'error_requests',
     deltaGood: false,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'error_requests')),
       delta: halfOverHalf(points, 'error_requests'),
-      caption: `Errored responses, against ${halfLabel}`,
+      caption: 'Errored responses in this window',
     }),
     scalar: (row) => ({
       value: compact(Math.round((row.request_count * row.error_rate_pct) / 100)),
@@ -184,6 +156,7 @@ export const CATALOG: MetricDef[] = [
   },
   {
     id: 'error_rate',
+    series: 'error_rate_pct',
     label: 'Error rate',
     span: 1,
     deltaGood: false,
@@ -191,7 +164,7 @@ export const CATALOG: MetricDef[] = [
       const requests = sum(points, 'requests');
       const errors = sum(points, 'error_requests');
       return {
-        value: `${requests === 0 ? '0.00' : ((errors / requests) * 100).toFixed(2)}%`,
+        value: requests === 0 ? '—' : `${((errors / requests) * 100).toFixed(2)}%`,
         delta: null,
         caption: 'Errored share of the window',
       };
@@ -203,6 +176,7 @@ export const CATALOG: MetricDef[] = [
   },
   {
     id: 'p50',
+    series: 'p50_ms',
     label: 'Latency p50',
     span: 1,
     deltaGood: false,
@@ -211,6 +185,7 @@ export const CATALOG: MetricDef[] = [
   },
   {
     id: 'p95',
+    series: 'p95_ms',
     label: 'Latency p95',
     span: 1,
     deltaGood: false,
@@ -219,6 +194,7 @@ export const CATALOG: MetricDef[] = [
   },
   {
     id: 'p99',
+    series: 'p99_ms',
     label: 'Latency p99',
     span: 1,
     deltaGood: false,
@@ -231,10 +207,10 @@ export const CATALOG: MetricDef[] = [
     span: 1,
     series: 'cold_boots',
     deltaGood: false,
-    build: (points, halfLabel) => ({
+    build: (points) => ({
       value: compact(sum(points, 'cold_boots')),
       delta: halfOverHalf(points, 'cold_boots'),
-      caption: `Wakes from a parked app, against ${halfLabel}`,
+      caption: 'Starts of parked instances in this window',
     }),
     // The series counts wakes; the rollup reports the share of requests that
     // caused one. Different question, so a different name on the card.
@@ -271,12 +247,24 @@ export function buildCard(
 export function chosenCards(
   chosen: string[],
   points: AnalyticsPoint[],
-  halfLabel: string
+  halfLabel: string,
+  comparison?: { from?: string; until?: string; incomplete?: boolean }
 ): AnalyticsCardSpec[] {
   return chosen
     .map((id) => CATALOG.find((def) => def.id === id))
     .filter((def): def is MetricDef => !!def)
-    .map((def) => buildCard(def, points, halfLabel));
+    .map((def) => {
+      const card = buildCard(def, points, halfLabel);
+      return comparison
+        ? {
+            ...card,
+            delta: comparison.incomplete
+              ? null
+              : (compareRequestHalves(points, card.id, comparison.from, comparison.until)?.delta ??
+                null),
+          }
+        : card;
+    });
 }
 
 /**
@@ -308,285 +296,324 @@ export function scalarCards(chosen: string[], row: AppMetricsRow): AnalyticsCard
     });
 }
 
-/** Catalog entries not currently on the grid — what the picker offers. */
+export type MetricChoice = Pick<AnalyticsCardSpec, 'id' | 'label'>;
 export function availableMetrics(chosen: string[]): MetricDef[] {
-  const on = new Set(chosen);
-  return CATALOG.filter((def) => !on.has(def.id));
-}
-
-/**
- * The reader's grid, or null when they have never arranged one.
- *
- * Null and empty are different answers: empty is a grid someone deliberately
- * cleared, and defaulting it back to five cards would undo that on every
- * reload.
- */
-function readChosen(): string[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(ORDER_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : null;
-  } catch {
-    return null;
-  }
+  return CATALOG.filter((def) => !chosen.includes(def.id));
 }
 
 export function AnalyticsGrid({
   points,
   build,
+  onInspect,
+  historyState = 'ready',
   loading = false,
-  picking: pickingProp,
+  picking = false,
   onPicking,
+  catalog = CATALOG,
+  defaults = DEFAULT_IDS,
+  showAddSlot = true,
+  storageKey = 'gregale.analytics.order',
 }: {
-  /** Drawn beneath any card that names a series. Empty on the scalar path, so
-   *  the charts simply do not appear rather than being suppressed. */
   points: AnalyticsPoint[];
-  /** Where the figures come from — the hourly series, or the rollup. The grid
-   *  owns which metrics are shown and in what order; not what they read. */
+  onInspect?: (id: string) => void;
+  historyState?: 'loading' | 'ready' | 'unavailable';
   build: (chosen: string[]) => AnalyticsCardSpec[];
   loading?: boolean;
-  /** Controlled by the section header's + when it is passed. */
   picking?: boolean;
-  onPicking?: (open: boolean) => void;
+  onPicking: (open: boolean) => void;
+  showAddSlot?: boolean;
+  catalog?: MetricChoice[];
+  defaults?: string[];
+  storageKey?: string;
 }) {
   const reduce = useReducedMotion();
-  const [stored, setStored] = useState<string[] | null>(readChosen);
-  const [ownPicking, setOwnPicking] = useState(false);
-  const picking = pickingProp ?? ownPicking;
-  const setPicking = onPicking ?? setOwnPicking;
-  const chosen = stored ?? DEFAULT_IDS;
-  const cards = build(chosen);
-  const available = availableMetrics(chosen);
-
-  const commit = useCallback((next: string[]) => {
-    setStored(next);
+  const moveHelpId = useId();
+  const [chosen, setChosen] = useState<string[]>(() => {
     try {
-      window.localStorage.setItem(ORDER_KEY, JSON.stringify(next));
+      const raw: unknown = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
+      if (Array.isArray(raw))
+        return [...new Set(raw)].filter(
+          (id): id is string => typeof id === 'string' && catalog.some((item) => item.id === id)
+        );
     } catch {
-      // Storage unavailable — the grid still holds for this visit.
+      /* A private browser can still customize for this visit. */
     }
-  }, []);
-
-  const add = useCallback(
-    (id: string) => {
-      commit([...(readChosen() ?? DEFAULT_IDS), id]);
-      setPicking(false);
-    },
-    // setPicking is onPicking when the section drives the picker, so it is a
-    // prop and can change — not the stable setState the shorter list assumed.
-    [commit, setPicking]
-  );
-  const remove = useCallback(
-    (id: string) => commit((readChosen() ?? DEFAULT_IDS).filter((entry) => entry !== id)),
-    [commit]
-  );
-
-  const grid = 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4';
-  const cardClass = (card: AnalyticsCardSpec) =>
-    cn('relative rounded-xl border border-border bg-card p-5', card.span === 2 && 'lg:col-span-2');
-
-  const slot =
-    available.length > 0 ? (
-      <li className="lg:col-span-1">
-        <AddMetricSlot
-          open={picking}
-          available={available}
-          onOpen={() => setPicking(true)}
-          onClose={() => setPicking(false)}
-          onAdd={add}
-        />
-      </li>
-    ) : null;
-
-  const body = cards.map((card) => (
-    <AnalyticsCard key={card.id} card={card} points={points} loading={loading} onRemove={remove} />
-  ));
-
-  // No drag under reduced motion: the reorder is a nicety, and a gesture whose
-  // whole feedback channel is movement has nothing to say without it.
-  if (reduce) {
-    return (
-      <ul className={grid}>
-        {cards.map((card, i) => (
-          <li key={card.id} className={cardClass(card)}>
-            {body[i]}
-          </li>
-        ))}
-        {slot}
-      </ul>
-    );
-  }
-
+    return defaults;
+  });
+  const [announcement, announce] = useState('');
+  const dragging = useRef<string | null>(null);
+  const cards = build(chosen);
+  const available = catalog.filter((item) => !chosen.includes(item.id));
+  const commit = (next: string[]) => {
+    setChosen(next);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      /* Session only. */
+    }
+  };
+  const move = (id: string, to: number) => {
+    const from = chosen.indexOf(id);
+    if (from < 0 || from === to || to < 0 || to >= chosen.length) return;
+    const next = chosen.filter((entry) => entry !== id);
+    next.splice(to, 0, id);
+    commit(next);
+    announce(`${catalog.find((item) => item.id === id)?.label} moved to position ${to + 1}`);
+  };
   return (
-    <Reorder.Group
-      as="ul"
-      axis="xy"
-      values={chosen}
-      onReorder={commit}
-      className={grid}
-      // The add slot is not reorderable and must not be dragged into the
-      // sequence, so it sits outside the Group's values as a plain child.
-      layoutScroll
-    >
-      {cards.map((card, i) => (
-        <Reorder.Item
-          key={card.id}
-          value={card.id}
-          // Position only. A reorder moves cards; it does not resize them, and
-          // animating size across a one-column/two-column swap stretches the
-          // card — and the canvas inside it — through the whole transition.
-          layout="position"
-          transition={REFLOW}
-          // Elevation rather than scale: a transform on a layout-animated card
-          // distorts its children, and the shadow is what reads as "lifted"
-          // anyway.
-          whileDrag={{ boxShadow: 'var(--elevation-3)', cursor: 'grabbing' }}
-          className={cn(cardClass(card), 'touch-none')}
-        >
-          {body[i]}
-        </Reorder.Item>
-      ))}
-      {slot}
-    </Reorder.Group>
-  );
-}
-
-/**
- * The empty cell, and the picker it becomes.
- *
- * The slot turns into the list in place rather than opening a dialog, so the
- * card's destination is visible while it is chosen — the answer to "where will
- * this land" is simply "here".
- */
-function AddMetricSlot({
-  open,
-  available,
-  onOpen,
-  onClose,
-  onAdd,
-}: {
-  open: boolean;
-  available: MetricDef[];
-  onOpen: () => void;
-  onClose: () => void;
-  onAdd: (id: string) => void;
-}) {
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={onOpen}
-        className="pressable flex h-full min-h-40 w-full items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-      >
-        <Plus aria-hidden="true" className="h-5 w-5" />
-        <span className="sr-only">Add a metric</span>
-      </button>
-    );
-  }
-  return (
-    <div className="flex h-full min-h-40 flex-col rounded-xl border border-border bg-card">
-      <div className="flex items-center justify-between px-4 py-3">
-        <p className="text-xs text-muted-foreground">Add metric</p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Cancel adding a metric"
-          className="pressable rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        >
-          <Xmark aria-hidden="true" className="h-4 w-4" />
-        </button>
-      </div>
-      <ul className="flex-1 overflow-y-auto pb-2">
-        {available.map((def) => (
-          <li key={def.id}>
-            <button
-              type="button"
-              onClick={() => onAdd(def.id)}
-              className="pressable w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
-            >
-              {def.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function AnalyticsCard({
-  card,
-  points,
-  loading,
-  onRemove,
-}: {
-  card: AnalyticsCardSpec;
-  points: AnalyticsPoint[];
-  loading: boolean;
-  onRemove: (id: string) => void;
-}) {
-  const chart = card.series && points.length > 1;
-  return (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-muted-foreground">{card.label}</p>
-        {/* Bubble phase, on a wrapper — never capture, and never on the
-            trigger itself. Radix opens this menu on pointerdown; stopping the
-            event in the capture phase halts it before the target phase, so the
-            trigger's own handler never runs and the menu cannot open. Here the
-            event reaches the trigger first, then stops on its way out, before
-            the card's drag gesture reads it as the start of a drag. */}
-        <span onPointerDown={(event) => event.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label={`${card.label} options`}
-              className="pressable -mr-1 -mt-1 rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            >
-              <MoreHoriz aria-hidden="true" className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onRemove(card.id)}>Remove</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </span>
-      </div>
-      <div className="mt-3 flex items-baseline gap-2">
-        {loading ? (
-          <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
-        ) : (
-          <>
-            <p className="text-[26px] leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
-              {card.value}
-            </p>
-            {card.delta !== null && (
-              <span
-                className="text-xs [font-variant-numeric:tabular-nums]"
-                style={{
-                  color:
-                    card.delta >= 0 === card.deltaGood
-                      ? 'var(--status-good)'
-                      : 'var(--status-critical)',
-                }}
-              >
-                {card.delta >= 0 ? '↗' : '↘'} {Math.abs(card.delta).toFixed(1)}%
-              </span>
-            )}
-          </>
-        )}
-      </div>
-      {chart && !loading && (
-        <div className="mt-4 -mx-1">
-          <AreaChart
-            data={points.map((p) => ({ at: p.start, v: Number(p[card.series!] ?? 0) }))}
-            config={{ v: { label: card.label, color: 'green' as const } }}
-            className="h-24 w-full"
+    <div className="flex flex-col gap-3">
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
+      {picking && available.length === 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+          <p>Every available metric is on your board.</p>
+          <button
+            type="button"
+            onClick={() => onPicking(false)}
+            className="pressable rounded text-foreground"
           >
-            <Area dataKey="v" />
-          </AreaChart>
+            Done
+          </button>
         </div>
       )}
-      <p className="mt-3 text-xs text-muted-foreground">{card.caption}</p>
-    </>
+
+      <ul
+        aria-label="Metric cards"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+      >
+        {cards.map((card, index) => (
+          <motion.li
+            key={card.id}
+            layout={reduce ? false : 'position'}
+            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+            data-metric-id={card.id}
+            onDragOver={(event) => {
+              if (dragging.current) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (dragging.current) move(dragging.current, index);
+              dragging.current = null;
+            }}
+            className={cn(
+              'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand',
+              onInspect && 'hover:border-border-secondary',
+              card.span === 2 && 'xl:col-span-2'
+            )}
+          >
+            {onInspect && (
+              <button
+                type="button"
+                onClick={() => onInspect(card.id)}
+                aria-label={`View ${card.label} details`}
+                className="absolute inset-0 z-10 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              />
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
+              <div className="relative z-20 flex items-center gap-1">
+                <button
+                  type="button"
+                  draggable
+                  aria-label={`Move ${card.label}`}
+                  aria-describedby={moveHelpId}
+                  onDragStart={(event) => {
+                    dragging.current = card.id;
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', card.id);
+                  }}
+                  onDragEnd={() => {
+                    dragging.current = null;
+                  }}
+                  onPointerDown={(event) => {
+                    if (event.pointerType !== 'mouse') {
+                      dragging.current = card.id;
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.pointerType === 'mouse' || !dragging.current) return;
+                    const target = document
+                      .elementFromPoint(event.clientX, event.clientY)
+                      ?.closest<HTMLElement>('[data-metric-id]');
+                    if (target?.dataset.metricId)
+                      move(card.id, chosen.indexOf(target.dataset.metricId));
+                    dragging.current = null;
+                  }}
+                  onPointerCancel={() => {
+                    dragging.current = null;
+                  }}
+                  onKeyDown={(event) => {
+                    if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
+                      event.preventDefault();
+                      move(
+                        card.id,
+                        index + (['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1)
+                      );
+                    }
+                  }}
+                  className="touch-none cursor-grab rounded p-1 text-muted-foreground/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand active:cursor-grabbing"
+                >
+                  <Drag aria-hidden className="size-4" />
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label={`${card.label} options`}
+                    className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <MoreHoriz aria-hidden className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={index === 0}
+                      onSelect={() => move(card.id, index - 1)}
+                    >
+                      Move earlier
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={index === cards.length - 1}
+                      onSelect={() => move(card.id, index + 1)}
+                    >
+                      Move later
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => commit(chosen.filter((id) => id !== card.id))}
+                    >
+                      Remove
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-baseline gap-2">
+              {loading ? (
+                <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
+              ) : (
+                <>
+                  <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums">
+                    {card.value}
+                  </p>
+                  {card.delta !== null && (
+                    <span
+                      className="text-xs tabular-nums"
+                      style={{
+                        color:
+                          card.delta === 0
+                            ? 'var(--muted-foreground)'
+                            : card.delta >= 0 === card.deltaGood
+                              ? 'var(--status-good)'
+                              : 'var(--status-critical)',
+                      }}
+                    >
+                      {card.delta === 0
+                        ? 'No change'
+                        : `${card.delta > 0 ? '↗' : '↘'} ${Math.abs(card.delta).toFixed(1)}%`}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+            {card.series &&
+              !loading &&
+              (historyState !== 'ready' ? (
+                <div
+                  role="status"
+                  className="mt-5 flex h-24 items-center justify-center text-xs text-muted-foreground"
+                >
+                  {historyState === 'loading' ? 'Loading history…' : 'History unavailable'}
+                </div>
+              ) : points.length > 0 && points.some((point) => point.requests > 0) ? (
+                <TimeChart
+                  data={points.map((point) => ({
+                    at: utcLabel(point.start),
+                    value:
+                      (card.series?.endsWith('_ms') || card.id === 'error_rate') &&
+                      point.requests === 0
+                        ? null
+                        : Number(point[card.series!] ?? 0),
+                  }))}
+                  x="at"
+                  series={{
+                    value: {
+                      label: card.label,
+                      color: card.id === 'errors' || card.id === 'error_rate' ? 'red' : 'blue',
+                    },
+                  }}
+                  compact
+                  className="mt-5 h-24"
+                />
+              ) : (
+                <div className="mt-5 flex h-24 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground">
+                  No requests in this window
+                </div>
+              ))}
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{card.caption}</p>
+          </motion.li>
+        ))}
+        {available.length > 0 && (showAddSlot || picking) && (
+          <li className="min-h-36 rounded-xl border border-dashed border-border">
+            {picking ? (
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <p className="text-xs font-medium">Add metric</p>
+                  <button
+                    type="button"
+                    aria-label="Cancel adding a metric"
+                    onClick={() => onPicking(false)}
+                    className="pressable rounded p-1"
+                  >
+                    <Xmark className="size-4" />
+                  </button>
+                </div>
+                <ul className="max-h-56 overflow-y-auto pb-2">
+                  {available.map((metric) => (
+                    <li key={metric.id}>
+                      <button
+                        type="button"
+                        className="pressable w-full px-4 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                        onClick={() => {
+                          commit([...chosen, metric.id]);
+                          onPicking(false);
+                          announce(`${metric.label} added`);
+                        }}
+                      >
+                        {metric.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <button
+                type="button"
+                aria-label="Add a metric"
+                onClick={() => onPicking(true)}
+                className="pressable flex h-full min-h-36 w-full flex-col items-center justify-center gap-2 rounded-xl text-muted-foreground hover:bg-muted/40 hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                <Plus className="size-5" />
+                <span className="text-xs">Add metric</span>
+              </button>
+            )}
+          </li>
+        )}
+      </ul>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <p id={moveHelpId}>
+          Drag a handle to arrange, or use its arrow keys. Select a card to explore.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            commit(defaults);
+            onPicking(false);
+            announce('Default layout restored');
+          }}
+          className="pressable rounded underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Reset layout
+        </button>
+      </div>
+    </div>
   );
 }

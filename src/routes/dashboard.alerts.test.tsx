@@ -1,9 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 type Row = { id: string; name: string; destination: string; condition: string };
-type TableProps = { rows: Row[]; rowActions: (row: Row) => React.ReactNode };
+type TableProps = {
+  rows: Row[];
+  columns: { key: string; render?: (row: Row) => React.ReactNode }[];
+  onRowClick?: unknown;
+  rowActions: (row: Row) => React.ReactNode;
+};
 
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/queries', () => ({
@@ -20,6 +25,8 @@ vi.mock('@/lib/api/queries', () => ({
         webhook_url: 'https://hooks.example.com/a',
         enabled: true,
         state: 'firing',
+        app_id: 'app-1',
+        action: 'webhook',
       },
     ],
     isPending: false,
@@ -38,19 +45,24 @@ vi.mock('@/lib/api/capabilities', () => ({
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));
 vi.mock('@/components/dashboard/resource-table', () => ({
-  ResourceTable: ({ rows, rowActions }: TableProps) => (
+  ResourceTable: ({ rows, columns, onRowClick, rowActions }: TableProps) => (
     <ul>
       {rows.map((r) => (
-        <li key={r.id}>
-          <span>{r.condition}</span>
-          <span>{r.destination}</span>
+        <li key={r.id} data-row-clickable={Boolean(onRowClick)}>
+          {columns.map((c) => (
+            <div key={c.key}>{c.render?.(r)}</div>
+          ))}
           {rowActions(r)}
         </li>
       ))}
     </ul>
   ),
 }));
-vi.mock('@/components/dashboard/alert-rule-form', () => ({ AlertRuleForm: () => null }));
+vi.mock('@/components/dashboard/alert-rule-form', () => ({
+  AlertRuleForm: ({ onCreated }: { onCreated: (rule: { id: string }) => void }) => (
+    <button onClick={() => onCreated({ id: 'new-rule' })}>Create rule</button>
+  ),
+}));
 vi.mock('@/components/dashboard/alert-presets', () => ({ AlertPresets: () => null }));
 vi.mock('@/components/dashboard/notification-channels', () => ({
   NotificationChannels: () => <p>channels panel</p>,
@@ -65,7 +77,7 @@ vi.mock('@/components/dashboard/app-select', () => ({
   useSelectedApp: () => ({ slug: 'api', apps: [], select: vi.fn() }),
 }));
 
-const { AlertsBody, validateAlertsSearch } = await import('./dashboard.alerts');
+const { AlertsBody, validateAlertsSearch } = await import('@/components/dashboard/pages/alerts');
 
 describe('alerts page', () => {
   it('keeps the channels view in the URL and drops anything else', () => {
@@ -75,10 +87,23 @@ describe('alerts page', () => {
 
   it('lists where each rule delivers, by channel name, and opens its detail', async () => {
     render(<AlertsBody slug="api" />);
-    expect(screen.getByText('Error rate > 5%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Details for Checkout errors' })).toHaveTextContent(
+      'Error rate is above 5%'
+    );
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-row-clickable', 'false');
     expect(screen.getByText('ops-slack, hooks.example.com/a')).toBeInTheDocument();
     expect(screen.queryByText(/detail of/)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Details for Checkout errors' }));
     expect(screen.getByText('detail of r1')).toBeInTheDocument();
   });
+});
+
+it('opens the shared alert form in a sheet and selects the created rule', async () => {
+  render(<AlertsBody slug="api" />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add rule' });
+  await userEvent.click(within(sheet).getByRole('button', { name: 'Create rule' }));
+  expect(screen.getByText('detail of new-rule')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });

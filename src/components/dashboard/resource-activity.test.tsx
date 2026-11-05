@@ -119,13 +119,12 @@ describe('resource activity timeline', () => {
       screen
         .getAllByRole('link', { name: 'View affected configuration' })
         .map((link) => link.getAttribute('href'))
-    ).toEqual(['/dashboard/apps/api?tab=Configuration', '/dashboard/apps/api?tab=Environment']);
+    ).toEqual(['/dashboard/apps/api?tab=Runtime', '/dashboard/apps/api?tab=Environment']);
     expect(screen.getByRole('link', { name: 'View affected domain' })).toHaveAttribute(
       'href',
       '/dashboard/domains?q=api.example.com'
     );
-    expect(screen.getByText(/retention expiry/)).toBeInTheDocument();
-    expect(screen.getByText(/Historical coverage can be incomplete/)).toBeInTheDocument();
+    expect(screen.getByText(/Coverage can be incomplete/)).toBeInTheDocument();
   });
   it('keeps unknown outcomes and actor identities explicit', () => {
     state.rows = [

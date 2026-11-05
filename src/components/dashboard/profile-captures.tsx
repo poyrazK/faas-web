@@ -236,11 +236,11 @@ function CapturesPanel({
   const oomFollowed = review.filter((c) => c.oom_killed_at).length;
 
   return (
-    <Panel
-      title="Profile captures"
-      description="Profile one running instance now: CPU, heap, stacks, and Go lock contention."
-      actions={<MaturityLabel capability={capability} />}
-    >
+    <Panel title="Profile captures" actions={<MaturityLabel capability={capability} />}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {'Profile one running instance now: CPU, heap, stacks, and Go lock contention.'}
+      </p>
+
       <div className="flex flex-col gap-5">
         {review.length > 0 && (
           <p

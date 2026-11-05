@@ -1,12 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Clock, Database, Pause, Plus, Trash, Undo } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
-import { useConfirm } from '@/components/ui/confirm';
-import { CopyableId } from '@/components/ui/copyable-id';
-import { FIELD, Select } from '@/components/ui/field';
-import { Switch } from '@/components/ui/switch';
-import { Timestamp } from '@/components/ui/timestamp';
-import { useToast } from '@/components/ui/toast';
+import { CliCommand } from '@/components/dashboard/cli-command';
+import { PlanGated } from '@/components/dashboard/plan-gated';
 import {
   EmptyState,
   ErrorState,
@@ -15,16 +8,20 @@ import {
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
-import { CliCommand } from '@/components/dashboard/cli-command';
-import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
+import { CopyableId } from '@/components/ui/copyable-id';
+import { FIELD, Select } from '@/components/ui/field';
+import { Switch } from '@/components/ui/switch';
+import { Timestamp } from '@/components/ui/timestamp';
+import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   usePostgresUsage,
   usePurgePostgresDatabase,
   useUndeletePostgresDatabase,
 } from '@/lib/api/postgres';
-import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import {
   useApps,
   useCreatePostgresBinding,
@@ -38,10 +35,14 @@ import {
   type PostgresBinding,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { formatRelative } from '@/lib/mock-data';
 import { absoluteTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { Clock, Database, Pause, Plus, Trash, Undo } from 'iconoir-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Sheet } from './kit/sheet';
 import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
 import { ConnectionBudget, DatabaseConditions } from './postgres-health';
 import { StatusTag, TONE, explainPostgres } from './postgres-shared';
@@ -140,6 +141,7 @@ export function PostgresDatabases() {
   // The same read as the usage panel's: the cap holds every database at once.
   const capSuspended = usePostgresUsage().data?.compute_cap_state === 'suspended';
   const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   // The resize or policy change started for each database, kept here so it is
   // still followed after its detail is closed and opened again: the API has no
   // list of a database's changes to find it by.
@@ -154,7 +156,13 @@ export function PostgresDatabases() {
         <PostgresUsage />
         <Panel
           title="Databases"
-          description="Provisioned and run by the platform. Connection details reach your apps as secrets, never this page."
+          help="Connection details reach your apps as secrets, never this page."
+          actions={
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Create database
+            </Button>
+          }
         >
           {phase === 'unreachable' ? (
             <UnreachableState onRetry={() => void databases.refetch()} />
@@ -165,7 +173,14 @@ export function PostgresDatabases() {
           ) : (
             <div className="flex flex-col gap-5">
               {items.length === 0 ? (
-                <EmptyState message="No managed databases yet. Create one below and bind it to an app." />
+                <EmptyState
+                  message="No managed databases yet."
+                  action={
+                    <Button size="sm" onClick={() => setCreating(true)}>
+                      Create database
+                    </Button>
+                  }
+                />
               ) : (
                 <ul className="flex flex-col divide-y divide-border">
                   {items.map((database) => (
@@ -180,10 +195,12 @@ export function PostgresDatabases() {
                   ))}
                 </ul>
               )}
-              <CreateDatabase />
             </div>
           )}
         </Panel>
+        <Sheet open={creating} onClose={() => setCreating(false)} title="Create database">
+          <CreateDatabase onDone={() => setCreating(false)} />
+        </Sheet>
 
         {/* Keyed on the database: the restore and binding forms belong to the
             one that is open, and must not carry over to the next. */}
@@ -349,7 +366,6 @@ function DatabaseDetail({
   return (
     <Panel
       title={database.name}
-      description={`Restore window ${hours(database.restore_window_seconds)} · ${database.availability === 'high_availability' ? 'high availability' : 'single zone'}`}
       actions={
         scheduled ? undefined : (
           <Button
@@ -368,6 +384,10 @@ function DatabaseDetail({
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Database ID</span>
           <CopyableId value={database.id} label="database ID" full />
+          <span>
+            · Restore window {hours(database.restore_window_seconds)} ·{' '}
+            {database.availability === 'high_availability' ? 'high availability' : 'single zone'}
+          </span>
         </div>
         {scheduled && <ScheduledDeletion database={database} />}
         {database.plan_excess ? (
@@ -652,6 +672,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
   const [scope, setScope] = useState('default');
+  const [binding, setBinding] = useState(false);
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
@@ -693,6 +714,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
         environment_key: environmentKey.trim(),
         access,
       });
+      setBinding(false);
       toast({
         kind: 'success',
         title: 'Binding created',
@@ -823,8 +845,20 @@ function Bindings({ database }: { database: PostgresDatabase }) {
       )}
 
       {appList.length > 0 && (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => setBinding(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Bind app
+          </Button>
+        </div>
+      )}
+      <Sheet
+        open={binding}
+        onClose={() => setBinding(false)}
+        title={`Bind an app to ${database.name}`}
+      >
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             if (environmentKey.trim() && !create.isPending) void submit();
@@ -836,7 +870,6 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={chosenApp}
               onChange={(e) => setAppId(e.target.value)}
               aria-label="App to bind"
-              className="h-8 text-xs"
             >
               {appList.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -851,7 +884,7 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={environmentKey}
               onChange={(e) => setEnvironmentKey(e.target.value)}
               aria-label="Environment key"
-              className={cn(FIELD, 'h-8 w-44 text-xs font-mono')}
+              className={cn(FIELD, 'font-mono')}
             />
           </label>
           <label className="flex flex-col gap-1.5">
@@ -860,7 +893,6 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={access}
               onChange={(e) => setAccess(e.target.value as 'read_write' | 'read_only')}
               aria-label="Binding access"
-              className="h-8 text-xs"
             >
               <option value="read_write">Read and write</option>
               <option value="read_only">Read only</option>
@@ -872,30 +904,29 @@ function Bindings({ database }: { database: PostgresDatabase }) {
               value={scope}
               onChange={(e) => setScope(e.target.value)}
               aria-label="Binding scope"
-              className={cn(FIELD, 'h-8 w-28 text-xs')}
+              className={FIELD}
             />
           </label>
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={!environmentKey.trim()}
-            busy={create.isPending}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Bind app
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            The connection string reaches the app as this secret and is never shown in the console.
+          </p>
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!environmentKey.trim()}
+              busy={create.isPending}
+            >
+              Bind app
+            </Button>
+          </div>
         </form>
-      )}
-      <p className="text-xs text-muted-foreground">
-        The connection string is written into the app as a secret under that name. It is never shown
-        in the console and never returned by the API.
-      </p>
+      </Sheet>
     </div>
   );
 }
 
-function CreateDatabase() {
+function CreateDatabase({ onDone }: { onDone: () => void }) {
   const { toast } = useToast();
   const create = useCreatePostgresDatabase();
   const [name, setName] = useState('');
@@ -918,6 +949,7 @@ function CreateDatabase() {
         scale_to_zero: scaleToZero,
       });
       setName('');
+      onDone();
       toast({
         kind: 'success',
         title: `${database.name} is provisioning`,
@@ -930,22 +962,21 @@ function CreateDatabase() {
 
   return (
     <form
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !create.isPending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">New database</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="text-xs text-muted-foreground">Name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="orders"
             aria-label="Database name"
-            className={cn(FIELD, 'w-44')}
+            className={FIELD}
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -981,7 +1012,7 @@ function CreateDatabase() {
             ))}
           </Select>
         </label>
-        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={ha}
             onCheckedChange={setHa}
@@ -990,7 +1021,7 @@ function CreateDatabase() {
           />
           High availability
         </label>
-        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={scaleToZero}
             onCheckedChange={setScaleToZero}
@@ -999,21 +1030,16 @@ function CreateDatabase() {
           />
           Scale to zero
         </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!ready}
-          busy={create.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Create database
-        </Button>
       </div>
       <p className="text-xs text-muted-foreground">
         {SERVICE_CLASSES.find((s) => s.value === serviceClass)?.blurb} Lower-case letters, digits
         and dashes in the name.
       </p>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!ready} busy={create.isPending}>
+          Create database
+        </Button>
+      </div>
     </form>
   );
 }

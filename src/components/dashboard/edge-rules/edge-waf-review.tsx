@@ -85,7 +85,7 @@ export function EdgeWAFReview({ slug, rules }: { slug: string; rules: EdgeRule[]
   return (
     <Panel
       title="WAF review"
-      description={`WAF detections${q.data ? ` since ${new Date(q.data.since).toLocaleDateString()}` : ''}, grouped by rule, CRS check and path. Detections are sampled, so counts are lower bounds.${q.data?.truncated ? ' The window held more than a review reads; the oldest were left out.' : ''}`}
+      help={`${q.data ? `Since ${new Date(q.data.since).toLocaleDateString()}. ` : ''}Detections are sampled, so counts are lower bounds.${q.data?.truncated ? ' The oldest were left out.' : ''}`}
       padded={false}
     >
       {phase !== 'ready' ? (

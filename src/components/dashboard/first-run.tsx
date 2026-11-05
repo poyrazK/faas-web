@@ -31,11 +31,7 @@ export function FirstRun() {
   return (
     <Panel padded={false} title="Deploy your first app">
       <div className="px-5 py-6 sm:px-6">
-        <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-          Connect a GitHub repository and take it from source to a live endpoint, right here in the
-          console.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button asChild variant="cta">
             <Link to="/dashboard/apps/new" search={{ source: 'git' }}>
               <Github aria-hidden />
@@ -48,9 +44,6 @@ export function FirstRun() {
             </Link>
           </Button>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Templates provide starter code to deploy with the CLI.
-        </p>
         <ol className="mt-7 grid gap-5 border-t border-border pt-5 sm:grid-cols-3">
           {[
             ['Choose a source', 'Select your repository and branch.'],

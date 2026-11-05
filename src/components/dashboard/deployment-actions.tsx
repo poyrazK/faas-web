@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
+import { Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import {
@@ -9,6 +9,7 @@ import {
   useReorderDeployment,
   type Deployment,
 } from '@/lib/api/queries';
+import { useState } from 'react';
 import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 
 /**
@@ -168,7 +169,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
       <label className="text-xs text-muted-foreground" htmlFor={`priority-${deployment.id}`}>
         Queue position
       </label>
-      <select
+      <Select
         id={`priority-${deployment.id}`}
         className="h-6 rounded-md border border-border bg-background px-2 text-xs"
         value={priority}
@@ -179,7 +180,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
             {p.label}
           </option>
         ))}
-      </select>
+      </Select>
       <Button
         size="xs"
         variant="outline"

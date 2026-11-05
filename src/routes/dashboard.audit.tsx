@@ -92,10 +92,7 @@ function AuditPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Audit Log"
-        description="Every account-level change, append-only. Who did what, and when."
-      />
+      <PageHeader title="Audit log" />
       <ResourceTable
         rows={rows}
         columns={columns}

@@ -181,7 +181,7 @@ export function DebugStatusPanel({
                           onClick={() => onOpenRequest(req.id!)}
                           className="pressable rounded text-brand underline-offset-2 hover:underline"
                         >
-                          Open evidence
+                          Open request details
                         </button>
                       )}
                     </li>

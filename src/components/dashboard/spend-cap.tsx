@@ -1,16 +1,16 @@
-import { useId, useState } from 'react';
+import { useMfa } from '@/components/auth/mfa-provider';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
-import { useMfa } from '@/components/auth/mfa-provider';
-import { useOverageCap, useSetOverageCap } from '@/lib/api/queries';
-import { useOrgOverageCap, useSetOrgOverageCap } from '@/lib/api/org-billing';
-import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { InlinePhase, Panel, queryPhase } from './primitives';
-import { orgBillingMessage } from './org-billing';
+import { useOrgOverageCap, useSetOrgOverageCap } from '@/lib/api/org-billing';
+import { useOverageCap, useSetOverageCap } from '@/lib/api/queries';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { formatCents } from '@/lib/money';
+import { useId, useState } from 'react';
+import { orgBillingMessage } from './org-billing';
+import { InlinePhase, Panel, queryPhase } from './primitives';
 
 // A $0 cap counts as reached at once, so workloads stop even inside the
 // included allowance (faas docs/billing.md:33-35, pkg/sched/overage.go:207).
@@ -75,7 +75,7 @@ export function SpendCap({ compact = false }: { compact?: boolean }) {
 
   if (!compact)
     return (
-      <Panel title={org ? `${workspace}'s spend cap` : 'Spend cap'} description={description}>
+      <Panel title={org ? `${workspace}'s spend cap` : 'Spend cap'} help={description}>
         {ready && (
           <p className="mb-4 text-sm text-muted-foreground">
             Monthly overage cap: <span className="font-medium text-foreground">{label}</span>

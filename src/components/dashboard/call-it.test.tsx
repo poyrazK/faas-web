@@ -97,9 +97,9 @@ describe('CallIt', () => {
     expect(screen.getByText('curl -i https://orders-api.gregale.dev')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy: curl command' })).toBeInTheDocument();
     expect(screen.getByText('gregale logs orders-api --follow')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open the Invoke tab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Invoke it from the console' })).toHaveAttribute(
       'href',
-      '/dashboard/apps/orders-api?tab=Invoke'
+      '/dashboard/apps/orders-api?invoke=true'
     );
     expect(screen.getByRole('link', { name: 'View logs' })).toHaveAttribute(
       'href',
@@ -123,16 +123,11 @@ describe('CallIt', () => {
     );
   });
 
-  it('describes the function contract for a function', () => {
-    render(<CallIt app={{ ...app, type: 'function' }} />);
-    expect(screen.getByText(/handler receives the request/)).toBeInTheDocument();
-  });
-
   it('says an internal app has no public URL but keeps logs and Invoke', () => {
     render(<CallIt app={{ ...app, visibility: 'internal', url: '' }} />);
     expect(screen.queryByText(/^curl/)).not.toBeInTheDocument();
     expect(screen.getByText(/Internal service only: there is no public URL/)).toBeInTheDocument();
     expect(screen.getByText('gregale logs orders-api --follow')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open the Invoke tab' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Invoke it from the console' })).toBeInTheDocument();
   });
 });

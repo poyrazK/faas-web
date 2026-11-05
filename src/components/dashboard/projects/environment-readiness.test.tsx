@@ -79,7 +79,7 @@ it('shows preview identities without treating can_promote as console authorizati
   expect(screen.getByText('exact-source')).toBeVisible();
   expect(screen.getByText(/q · passed/)).toBeVisible();
   expect(screen.getByRole('button', { name: 'Promote' })).toBeDisabled();
-  expect(screen.getByText(/separate isolated staging qualification/)).toBeVisible();
+  expect(screen.getByText(/Promote, rollback, full clone and GitOps/)).toBeVisible();
 });
 it('keeps blockers and missing qualification explicit', () => {
   setup();

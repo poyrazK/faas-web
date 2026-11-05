@@ -1,147 +1,301 @@
-import { useState } from 'react';
-import { Plus, Refresh } from 'iconoir-react';
-import { AppSelect } from '@/components/dashboard/app-select';
-import { isPlanGate } from '@/components/dashboard/plan-gated';
-import { errorMessage } from '@/lib/api/errors';
-import { useAppAnalyticsTimeseries, useAppsMetrics } from '@/lib/api/queries';
+import { useMetricInspector } from './metric-inspector';
+import { isDetailMetric } from './metric-detail-search';
+import { incompleteTelemetry, utcLabel } from './analytics-data';
+import { useId, useState } from 'react';
+import { Link } from '@tanstack/react-router';
+import { Plus, Refresh, ArrowRight } from 'iconoir-react';
+import { Select } from '@/components/ui/field';
+import { useAuth } from '@/lib/auth';
+import { isPaidPlan } from '@/lib/plan';
+import { useAppAnalyticsTimeseries, useAppsMetrics, type MetricsRange } from '@/lib/api/queries';
+import { InlinePhase, queryPhase } from './primitives';
+import { PlanGate } from './plan-gate';
+import { WINDOWS } from './app-analytics-search';
+import { HelpTip } from './kit/help-tip';
 import {
   AnalyticsGrid,
   chosenCards,
-  scalarCards,
+  CATALOG,
+  type AnalyticsCardSpec,
   type AnalyticsPoint,
-  type AppMetricsRow,
 } from './analytics-grid';
 import {
   RangePicker,
   rangeHalfLabel,
+  rangeLabel,
   rollupWindow,
   ROLLUP_PRESETS,
   type Range,
 } from './range-picker';
 
-/**
- * Analytics on the overview, scoped to one app.
- *
- * The window is per-app because the series is: `/analytics/timeseries` answers
- * for one app, and the platform has no account-level rollup of it. Summing N
- * apps here would look like the account total it is not — apps on different
- * plans keep different retention, so the earlier end of such a sum would
- * quietly thin out as the shortest retention ran out.
- *
- * Free has no request analytics at all (`DebugTelemetryEnabled`), which is a
- * fact about the plan rather than a failure, so it is said plainly.
- */
+const ACCOUNT_METRICS = [
+  { id: 'requests', label: 'Requests' },
+  { id: 'errors', label: 'Errors' },
+  { id: 'error_rate', label: 'Error rate' },
+  { id: 'wake_p95', label: 'Wake p95' },
+];
 
+/** One board, one scope, one time window. Account totals have no invented history. */
 export function AnalyticsSection({
   apps,
-  slug,
-  onSelectApp,
+  initialRange = '24h',
+  onRangeChange,
+  extras = [],
+  onRefresh,
 }: {
   apps: { slug: string }[];
-  slug: string;
-  onSelectApp: (slug: string) => void;
+  initialRange?: MetricsRange;
+  onRangeChange?: (range: MetricsRange) => void;
+  extras?: AnalyticsCardSpec[];
+  onRefresh?: () => void;
 }) {
-  const [range, setRange] = useState<Range>({ kind: 'preset', value: '24h' });
+  const id = useId();
+  const inspect = useMetricInspector();
+  const { account } = useAuth();
+  const paid = isPaidPlan(account?.plan);
+  const [scope, setScope] = useState('');
+  // A deleted app cannot leave the board querying an unreachable selection.
+  const slug = apps.some((app) => app.slug === scope) ? scope : '';
+  const [range, setRange] = useState<Range>({ kind: 'preset', value: initialRange });
   const [picking, setPicking] = useState(false);
   const since = range.kind === 'preset' ? range.value : range.since;
-  const until = range.kind === 'custom' ? range.until : undefined;
-  const series = useAppAnalyticsTimeseries(slug, since, { until });
-  // Free has no hourly series (`DebugTelemetryEnabled`), but it does have the
-  // account rollup — same metrics, no history. So the gate costs the charts and
-  // the deltas, not the section. The Overview already holds this query, so the
-  // fallback is a cache hit rather than a second request.
-  const gated = isPlanGate(series.error);
-  const rollupRange = rollupWindow(range);
-  const rollup = useAppsMetrics(rollupRange, { enabled: gated });
-  const row = rollup.data?.apps?.[slug] as AppMetricsRow | undefined;
-  const points = (gated ? [] : (series.data?.points ?? [])) as AnalyticsPoint[];
-  // The server clamps to what the plan retains. When it does, the control says
-  // what was drawn rather than what was asked for — a button still reading
-  // "Last 14 days" over three days of data is the console lying about its own
-  // chart.
-  const drawn: Range =
-    series.data?.window_clamped && series.data.since
-      ? { kind: 'preset', value: series.data.since }
+  const series = useAppAnalyticsTimeseries(paid ? slug : '', since, {
+    until: range.kind === 'custom' ? range.until : undefined,
+  });
+  const rollup = useAppsMetrics(rollupWindow(range), { enabled: paid && !slug });
+  const result = slug ? series : rollup;
+  const degraded =
+    !slug &&
+    (rollup.data?.source !== 'prometheus' ||
+      Object.values(rollup.data?.apps ?? {}).some((row) => row.source !== 'prometheus'));
+  const phase = queryPhase({ error: result.error, loading: paid && result.isPending });
+  const points = (series.data?.points ?? []) as AnalyticsPoint[];
+  const rows = Object.values(rollup.data?.apps ?? {});
+  const requests = rows.reduce((total, row) => total + row.request_count, 0);
+  const errors = rows.reduce(
+    (total, row) => total + (row.request_count * row.error_rate_pct) / 100,
+    0
+  );
+  const wake = rows.find(
+    (row) => row.wake_p95_ms > 0 && (row.wake_samples === undefined || row.wake_samples >= 20)
+  )?.wake_p95_ms;
+  const known = paid && phase === 'ready' && !degraded;
+  const compact = (value: number) =>
+    new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  const accountCards: AnalyticsCardSpec[] = [
+    {
+      id: 'requests',
+      label: 'Requests',
+      span: 1,
+      value: known ? compact(requests) : '—',
+      delta: null,
+      deltaGood: true,
+      caption: `Across ${apps.length} apps · ${rangeLabel(range).toLowerCase()}`,
+    },
+    {
+      id: 'errors',
+      label: 'Errors',
+      span: 1,
+      value: known ? compact(Math.round(errors)) : '—',
+      delta: null,
+      deltaGood: false,
+      caption: 'Derived from traffic-weighted error rates',
+    },
+    {
+      id: 'error_rate',
+      label: 'Error rate',
+      span: 1,
+      value: known && requests > 0 ? `${((errors / requests) * 100).toFixed(2)}%` : '—',
+      delta: null,
+      deltaGood: false,
+      caption: 'Weighted by requests across apps',
+    },
+    {
+      id: 'wake_p95',
+      label: 'Wake p95',
+      span: 1,
+      value: known && wake ? `${Math.round(wake)} ms` : '—',
+      delta: null,
+      deltaGood: false,
+      caption: 'Cold-start latency, fleet-wide',
+    },
+  ];
+  const catalog = slug ? CATALOG : [...(paid ? ACCOUNT_METRICS : []), ...extras];
+  const defaults = slug
+    ? ['requests', 'errors', 'error_rate', 'p95', 'cold_boots']
+    : catalog.filter((metric) => metric.id !== 'errors').map((metric) => metric.id);
+  const drawn =
+    slug && series.data?.window_clamped && series.data.since
+      ? { kind: 'preset' as const, value: series.data.since }
       : range;
-
+  const changeRange = (next: Range) => {
+    setRange(next);
+    if (
+      next.kind === 'preset' &&
+      ['5m', '15m', '1h', '6h', '24h', '7d', '15d'].includes(next.value)
+    )
+      onRangeChange?.(next.value as MetricsRange);
+  };
+  const refresh = () => {
+    if (paid) void result.refetch();
+    onRefresh?.();
+  };
   return (
-    <section className="flex flex-col gap-3" aria-labelledby="analytics-heading">
+    <section aria-labelledby={id} className="relative flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Not "Analytics": the overview already has a section of that name
-            carrying the account's scalars. This one is the request series for
-            one app, and the picker beside it says which. */}
-        <h2 id="analytics-heading" className="text-sm font-semibold">
-          Request analytics
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 id={id} className="text-base font-semibold">
+            Analytics
+          </h2>
+          <HelpTip label="About analytics">
+            All apps shows account totals. Choose an app for hourly history. Customize each view;
+            your metric choices and order are saved in this browser.
+          </HelpTip>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <AppSelect slug={slug} onSelect={onSelectApp} apps={apps} />
-          <RangePicker
-            range={drawn}
-            onChange={setRange}
-            presets={gated ? ROLLUP_PRESETS : undefined}
-            allowCustom={!gated}
-          />
+          <Select
+            aria-label="Analytics scope"
+            value={slug}
+            disabled={!paid}
+            onChange={(event) => {
+              const next = event.target.value;
+              setScope(next);
+              setPicking(false);
+              if (
+                !next &&
+                (range.kind === 'custom' ||
+                  !ROLLUP_PRESETS.some((preset) => preset.value === range.value))
+              )
+                changeRange({ kind: 'preset', value: '24h' });
+            }}
+            className="max-w-52"
+          >
+            <option value="">All apps</option>
+            {apps.map((app) => (
+              <option key={app.slug} value={app.slug}>
+                {app.slug}
+              </option>
+            ))}
+          </Select>
+          {paid && (
+            <RangePicker
+              range={drawn}
+              onChange={changeRange}
+              presets={slug ? undefined : ROLLUP_PRESETS}
+              allowCustom={Boolean(slug)}
+            />
+          )}
           <button
             type="button"
-            onClick={() => setPicking(true)}
             aria-label="Add a metric"
-            className="pressable rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            onClick={() => setPicking(!picking)}
+            className="pressable rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <Plus aria-hidden="true" className="h-4 w-4" />
+            <Plus className="size-4" />
           </button>
           <button
             type="button"
-            onClick={() => void series.refetch()}
             aria-label="Refresh analytics"
-            className="pressable rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            onClick={refresh}
+            disabled={result.isFetching}
+            className="pressable rounded-md border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
-            <Refresh aria-hidden="true" className="h-4 w-4" />
+            <Refresh className="size-4" />
           </button>
         </div>
       </div>
-
-      {series.error && !gated ? (
-        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-          {errorMessage(series.error)}
-        </p>
-      ) : gated && rollup.error ? (
-        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-          {errorMessage(rollup.error)}
-        </p>
-      ) : gated && !rollup.isPending && !row ? (
-        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-          No metrics for this app in this window.
-        </p>
-      ) : !gated && !series.isPending && points.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-5 text-xs text-muted-foreground">
-          No requests in this window.
-        </p>
-      ) : (
-        <AnalyticsGrid
-          points={points}
-          build={(chosen) =>
-            gated
-              ? row
-                ? scalarCards(chosen, row)
-                : []
-              : chosenCards(chosen, points, rangeHalfLabel(drawn))
-          }
-          loading={gated ? rollup.isPending : series.isPending}
-          picking={picking}
-          onPicking={setPicking}
+      {!paid && (
+        <PlanGate
+          feature="Metrics"
+          description="Request metrics require a paid plan. Your compute usage and resident instances remain available."
         />
       )}
-
-      {gated && (
-        <p className="text-xs text-muted-foreground">
-          These are the current figures. Hourly history, trends and charts need Hobby or above.
+      {paid && (phase === 'error' || phase === 'unreachable') && (
+        <InlinePhase phase={phase} error={result.error} onRetry={refresh} />
+      )}
+      {paid && !slug && phase === 'ready' && degraded && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Metrics degraded. Figures are unavailable for this window.
         </p>
       )}
-
-      {series.data?.window_clamped && (
+      {slug && (
         <p className="text-xs text-muted-foreground">
+          Hourly history for {slug} · UTC
+          {series.data?.from && series.data.until
+            ? ` · ${utcLabel(series.data.from)} – ${utcLabel(series.data.until)}`
+            : ''}
+          . Changes compare equal groups of complete UTC hours within this window. Partial hours are
+          excluded.
+        </p>
+      )}
+      {slug && incompleteTelemetry(series.data) && (
+        <p role="status" className="text-xs text-status-warning">
+          Some request records are missing. These figures may be incomplete.
+        </p>
+      )}
+      {slug && series.data?.window_clamped && (
+        <p role="status" className="text-xs text-muted-foreground">
           Plan retention capped this to {series.data.since}.
         </p>
+      )}
+      {slug && phase === 'ready' && points.length === 0 ? (
+        <InlinePhase phase="empty" emptyMessage="No requests in this window. Try another range." />
+      ) : (
+        <AnalyticsGrid
+          key={`${slug ? 'app' : 'account'}-${paid}`}
+          points={slug && phase === 'ready' ? points : []}
+          storageKey={
+            slug
+              ? 'gregale.analytics.order'
+              : extras.length
+                ? 'gregale.analytics.overview.order'
+                : 'gregale.analytics.account.order'
+          }
+          catalog={catalog}
+          defaults={defaults}
+          onInspect={(metric) => {
+            if (isDetailMetric(metric))
+              inspect({
+                metric,
+                app: slug || undefined,
+                since: slug ? (series.data?.from ?? since) : rollupWindow(range),
+                until: slug
+                  ? (series.data?.until ?? (range.kind === 'custom' ? range.until : undefined))
+                  : undefined,
+              });
+          }}
+          showAddSlot={Boolean(slug)}
+          historyState={
+            phase === 'loading' ? 'loading' : phase === 'ready' ? 'ready' : 'unavailable'
+          }
+          picking={picking}
+          onPicking={setPicking}
+          loading={paid && phase === 'loading'}
+          build={(chosen) =>
+            slug
+              ? chosenCards(chosen, phase === 'ready' ? points : [], rangeHalfLabel(drawn), {
+                  from: series.data?.from,
+                  until: series.data?.until,
+                  incomplete: incompleteTelemetry(series.data),
+                }).map((card) => (phase === 'ready' ? card : { ...card, value: '—', delta: null }))
+              : chosen.flatMap((key) =>
+                  [...accountCards, ...extras].filter((card) => card.id === key)
+                )
+          }
+        />
+      )}
+      {slug && (
+        <div className="flex justify-end">
+          <Link
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: slug }}
+            search={{ tab: 'Metrics', analyticsSince: WINDOWS.find((window) => window === since) }}
+            className="pressable inline-flex items-center gap-1.5 rounded text-xs text-brand"
+          >
+            Explore {slug}
+            <ArrowRight className="size-3.5" />
+          </Link>
+        </div>
       )}
     </section>
   );

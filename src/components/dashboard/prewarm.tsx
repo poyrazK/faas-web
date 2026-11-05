@@ -80,7 +80,7 @@ export function PrewarmPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Prewarm"
-      description="Have instances ready for a known spike. They start about a minute before the window and go when it ends; your minimum instances setting is unchanged."
+      help="Instances start about a minute before the window and stop when it ends; minimum instances is unchanged."
     >
       <form
         className="flex flex-wrap items-end gap-3"

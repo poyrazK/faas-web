@@ -131,7 +131,7 @@ export function PostgresUsage() {
   return (
     <Panel
       title="Usage this month"
-      description={`Pooled across ${org ? `${label}'s` : 'your'} databases. Figures can trail the databases by up to two hours.`}
+      help={`Pooled across ${org ? `${label}'s` : 'your'} databases. Figures can trail the databases by up to two hours.`}
       actions={
         data?.observed_at ? (
           <span className="text-xs text-muted-foreground">

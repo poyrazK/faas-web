@@ -232,7 +232,7 @@ function WarmForm({
               The pool fills from the latest published snapshot, a few instances per scheduler pass,
               and stays empty until a deployment has produced one. It is emptied while the app is
               not active, and whenever {capHolder} reaches its{' '}
-              <Link to="/dashboard/usage" className="text-brand underline-offset-2 hover:underline">
+              <Link to="/dashboard/usage" className="text-brand underline underline-offset-2">
                 spend cap
               </Link>
               , until the cap is raised or the month rolls over.
@@ -330,11 +330,13 @@ export function WarmStarts({ app, plan }: { app: App; plan: Plan | undefined }) 
   const { access, capability, refresh } = useCapabilityAccess(CAPABILITY);
   const entitled = access !== 'plan-not-entitled';
   return (
-    <Panel
-      title="Warm starts"
-      description="Keep paused instances ready to resume, and snapshot a process once it has warmed up, so a wake skips the cold path."
-      actions={<MaturityLabel capability={capability} />}
-    >
+    <Panel title="Warm starts" actions={<MaturityLabel capability={capability} />}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Keep paused instances ready to resume, and snapshot a process once it has warmed up, so a wake skips the cold path.'
+        }
+      </p>
+
       {access !== 'on' && entitled ? (
         <div className="flex flex-col gap-3">
           <div

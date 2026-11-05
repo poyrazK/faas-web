@@ -74,7 +74,8 @@ describe('BillingIdentityPanel', () => {
     expect(screen.getByText(/Torstraße 1/)).toBeInTheDocument();
     const taxRow = screen.getByText('Tax ID').closest('div')!;
     expect(within(taxRow).getByText('Not set')).toBeInTheDocument();
-    expect(screen.getByText(/issued from now on/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'About Billing identity' }));
+    expect(await screen.findByText(/issued from now on/i)).toBeInTheDocument();
   });
 
   it('sends only the changed fields, clears with an empty string, and shows the saved result', async () => {

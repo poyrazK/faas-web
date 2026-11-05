@@ -37,7 +37,7 @@ export function DebugRequestLookup({ onOpen }: { onOpen: (requestId: string) => 
         />
       </span>
       <Button type="submit" size="xs" variant="outline" disabled={!valid}>
-        Open evidence
+        Open request details
       </Button>
     </form>
   );

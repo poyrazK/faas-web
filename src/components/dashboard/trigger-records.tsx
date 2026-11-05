@@ -4,6 +4,7 @@ import { Pill } from '@/components/dashboard/resource-table';
 import { useTriggerRecords, type TriggerRecordState } from '@/lib/api/queries';
 import { TriggerRecordActions } from './trigger-record-actions';
 import { formatRelative } from '@/lib/mock-data';
+import { Select } from '@/components/ui/field';
 
 /**
  * The records a trigger has taken off its broker, and what happened to each.
@@ -63,7 +64,7 @@ export function TriggerRecords({ triggerId }: { triggerId: string }) {
     <div className="flex flex-col gap-3">
       <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
         State
-        <select
+        <Select
           aria-label="State"
           value={state}
           onChange={(e) => setState(e.target.value as TriggerRecordState | '')}
@@ -74,7 +75,7 @@ export function TriggerRecords({ triggerId }: { triggerId: string }) {
               {s || 'All states'}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       {phase !== 'ready' ? (

@@ -89,7 +89,6 @@ export function ProjectDangerZone({
   return (
     <Panel
       title="Danger zone"
-      description="The console asks you to type the project's slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">

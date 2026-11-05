@@ -123,7 +123,7 @@ export function DebugReplayAction({
         </p>
       ) : gone ? (
         <p role="alert" className="text-xs" style={{ color: 'var(--status-warning)' }}>
-          This request&apos;s telemetry is no longer retained, so there is nothing to replay.
+          This request&apos;s details are no longer retained, so there is nothing to replay.
         </p>
       ) : (
         replay.error && (

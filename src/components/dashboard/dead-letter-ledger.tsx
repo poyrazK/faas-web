@@ -327,7 +327,6 @@ function LedgerBody({ slug }: { slug: string }) {
   return (
     <Panel
       title="Dead-letter ledger"
-      description="Everything that failed on every attempt in this app — invocations, trigger records, webhook deliveries and event routing — kept for 30 days."
       actions={
         phase === 'ready' ? (
           <div className="flex flex-wrap gap-2">
@@ -348,6 +347,12 @@ function LedgerBody({ slug }: { slug: string }) {
         ) : undefined
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Everything that failed on every attempt in this app — invocations, trigger records, webhook deliveries and event routing — kept for 30 days.'
+        }
+      </p>
+
       {phase === 'ready' ? (
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col">

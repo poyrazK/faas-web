@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { Panel } from '@/components/dashboard/primitives';
 import { useCapability } from '@/lib/api/capabilities';
 import { useAutomations } from '@/lib/api/automations';
@@ -170,7 +170,7 @@ function BindingContext({
   return (
     <Panel
       title="Automation binding"
-      description="A binding routes future verified Stripe events directly to a published automation instead of the app path."
+      help="Future verified Stripe events go to the automation instead of the app."
     >
       <div className="space-y-4 text-sm">
         {!available && (
@@ -188,13 +188,12 @@ function BindingContext({
         {binding.data && (
           <p>
             Current binding: <strong>{binding.data.workflow_name}</strong> ·{' '}
-            {binding.data.event_type} · version {binding.data.version}. This is configured routing,
-            not evidence of a successful run.
+            {binding.data.event_type} · version {binding.data.version}
           </p>
         )}
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Published automation</span>
-          <select
+          <Select
             className={FIELD}
             value={workflow}
             onChange={(event) => setWorkflow(event.target.value)}
@@ -206,7 +205,7 @@ function BindingContext({
                 {automation.enabled ? '' : ' (paused)'}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {published.length === 0 && (
           <p>No published same-app automation is available. Publish one before binding.</p>

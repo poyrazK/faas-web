@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
@@ -98,8 +98,10 @@ describe('MirrorRules', () => {
 
   it('creates a rule from two live deployments with the parsed redact list', async () => {
     render(<MirrorRules slug="api" />);
-    await userEvent.type(screen.getByPlaceholderText(/X-Tenant-Id/), 'X-Trace, X-Debug');
     await userEvent.click(screen.getByRole('button', { name: /add mirror/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByPlaceholderText(/X-Tenant-Id/), 'X-Trace, X-Debug');
+    await userEvent.click(within(sheet).getByRole('button', { name: /add mirror/i }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith({
         source_deployment_id: 'aaaaaaaa1111',
@@ -118,6 +120,8 @@ describe('MirrorRules', () => {
     );
     render(<MirrorRules slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: /add mirror/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByRole('button', { name: /add mirror/i }));
     await waitFor(() => expect(toast).toHaveBeenCalled());
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'info', title: 'Not on your plan' })
@@ -130,6 +134,8 @@ describe('MirrorRules', () => {
     );
     render(<MirrorRules slug="api" />);
     await userEvent.click(screen.getByRole('button', { name: /add mirror/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.click(within(sheet).getByRole('button', { name: /add mirror/i }));
     await waitFor(() => expect(toast).toHaveBeenCalled());
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'error', title: 'Both deployments must be live' })

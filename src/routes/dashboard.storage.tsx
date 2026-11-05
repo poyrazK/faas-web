@@ -32,10 +32,7 @@ function StoragePage() {
   const navigate = Route.useNavigate();
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Object storage"
-        description="Private S3 buckets for your apps. Connect one to your code, or reach it from anywhere that speaks S3."
-      />
+      <PageHeader title="Object storage" />
       <ObjectStorage
         selection={search}
         // A choice someone makes is a Back step; only a change the page makes

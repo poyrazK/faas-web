@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,7 +29,7 @@ vi.mock('@/components/dashboard/app-select', () => ({
   useSelectedApp: () => ({ slug: 'api', apps: [], select: vi.fn() }),
 }));
 
-const { UpstreamsBody } = await import('./dashboard.upstreams');
+const { UpstreamsBody } = await import('@/components/dashboard/pages/upstreams');
 
 beforeEach(() => {
   addUpstream
@@ -42,12 +42,14 @@ beforeEach(() => {
 describe('upstream form validation', () => {
   it('focuses malformed host, port, and scope fields before allowing a retryable request', async () => {
     render(<UpstreamsBody slug="api" />);
-    const host = screen.getByRole('textbox', { name: 'Host' });
-    const port = screen.getByRole('spinbutton', { name: 'Port' });
-    const scope = screen.getByRole('textbox', { name: 'Scope' });
+    await userEvent.click(screen.getByRole('button', { name: /declare upstream/i }));
+    const sheet = await screen.findByRole('dialog');
+    const host = within(sheet).getByRole('textbox', { name: 'Host' });
+    const port = within(sheet).getByRole('spinbutton', { name: 'Port' });
+    const scope = within(sheet).getByRole('textbox', { name: 'Scope' });
 
     await userEvent.type(host, '127.0.0.1');
-    await userEvent.click(screen.getByRole('button', { name: 'Declare' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Declare' }));
     expect(host).toHaveFocus();
     expect(host).toHaveAccessibleDescription('Enter a hostname, not an IP address or URL.');
     expect(addUpstream).not.toHaveBeenCalled();

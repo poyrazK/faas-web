@@ -15,7 +15,7 @@ function PostgresPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Postgres"
-        description="Managed PostgreSQL databases, and the apps bound to them. Credentials are delivered to an app as a secret and never shown here."
+        help="Credentials are delivered to an app as a secret and never shown here."
       />
       <PostgresDatabases />
     </div>

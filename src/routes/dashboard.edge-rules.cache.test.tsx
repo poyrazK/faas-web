@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 vi.mock('@/lib/api/queries', () => ({
+  useCorsPresets: () => ({ data: { presets: [] }, isPending: false, error: null }),
   useEdgeRules: () => ({ data: state.rules, isPending: false, error: null, refetch: vi.fn() }),
   useAppEdgeRules: () => ({ data: state.rules, isPending: false, error: null, refetch: vi.fn() }),
   useApps: () => ({ data: [{ id: 'app-1', slug: 'api' }] }),
@@ -35,7 +36,7 @@ vi.mock('@/components/dashboard/edge-rules/edge-rules-extras', () => ({
 }));
 vi.mock('@/components/dashboard/edge-rules/dialog', () => ({ EdgeRuleDialog: () => null }));
 
-import { EdgeRulesBody } from './dashboard.edge-rules';
+import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
 
 const cacheRule: EdgeRule = cacheEdgeRule({
   id: 'cache-1',
@@ -110,5 +111,5 @@ it('summarises the kind-wrapped action apid returns (faas edgerules/rules.go:46)
     },
   ];
   render(<EdgeRulesBody slug="api" />);
-  expect(screen.getByText('→ billing')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Sends .* to billing/ })).toBeInTheDocument();
 });

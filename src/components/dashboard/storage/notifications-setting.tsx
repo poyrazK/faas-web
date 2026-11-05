@@ -148,7 +148,7 @@ export function NotificationsSetting({
         title: 'Notification rules were not saved',
         description:
           error instanceof ApiError && error.code === 'validation_failed'
-            ? 'apid refused a rule: each destination must be your own function or queue in this region, and two rules cannot send the same event for overlapping keys.'
+            ? 'Gregale refused a rule: each destination must be your own function or queue in this region, and two rules cannot send the same event for overlapping keys.'
             : storageRefusal(error),
         error,
       }),

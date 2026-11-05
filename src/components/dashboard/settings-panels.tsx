@@ -31,15 +31,13 @@ import type { SettingsSection } from './settings-search';
 const ELSEWHERE: { label: string; description: string; to: '/dashboard/apps'; cta: string }[] = [
   {
     label: 'Scale to zero',
-    description:
-      'How long an app idles before it snapshots, and how many instances stay resident. Set per app, since a queue consumer and a public API want different answers.',
+    description: 'How long an app idles before it snapshots, and how many instances stay resident.',
     to: '/dashboard/apps',
     cta: 'Open an app',
   },
   {
     label: 'Deployment alerts',
-    description:
-      'Threshold rules that POST to a webhook when an app breaches them. Set per app, on its Alerts tab.',
+    description: 'Webhook rules for when an app crosses a threshold, on its Alerts tab.',
     to: '/dashboard/apps',
     cta: 'Open an app',
   },
@@ -149,7 +147,7 @@ function ExportPanel() {
   return (
     <Panel
       title="Export your data"
-      description="Everything the platform holds about this account — apps, deployments, builds, usage, domains, crons, keys, sealed-secret envelopes, and the audit trail — as one JSON file."
+      help="One JSON file with everything this account owns, including sealed secrets and the audit trail."
     >
       <Button
         size="sm"
@@ -246,7 +244,7 @@ function EgressExtraPanel() {
   return (
     <Panel
       title="Egress allowlist budget"
-      description="Extra allowlist entries on top of the plan's cap, shared across apps."
+      help="Extra allowlist entries on top of the plan's cap, shared across apps."
     >
       <form
         noValidate
@@ -331,7 +329,7 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
           toast({
             kind: 'info',
             title: 'Account state could not be refreshed',
-            description: `${errorMessage(err)} Recovery remains available below.`,
+            description: `${errorMessage(err)} Recovery remains available.`,
           })
         );
       })
@@ -360,10 +358,7 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
 
       {section === 'platform-limits' && (
         <>
-          <Panel
-            title="Runtime behaviour"
-            description="Set per app rather than per account — the API keeps these on the app."
-          >
+          <Panel title="Runtime behaviour" help="Set per app, not per account.">
             <ul className="flex flex-col divide-y divide-border">
               {ELSEWHERE.map((item) => (
                 <li

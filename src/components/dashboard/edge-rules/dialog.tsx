@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { NavArrowLeft, Sparks } from 'iconoir-react';
+import { NavArrowDown, NavArrowLeft, Sparks } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
@@ -19,9 +19,21 @@ import { cn } from '@/lib/utils';
 import type { CapabilityAccess } from '@/lib/capability-state';
 import { validateConditions } from '@/lib/edge-rule-match';
 import { SegmentedControl } from '../tabs';
-import { ChipSet, Field, INPUT, KeyValueField, NumberField, TextField, ToggleRow } from './fields';
+import {
+  ChipSet,
+  Field,
+  INPUT,
+  KeyValueField,
+  NumberField,
+  SelectField,
+  TextField,
+  ToggleRow,
+} from './fields';
 import { ruleAction } from '@/lib/api/edge-rules';
-import { KINDS, KIND_ORDER, type ActionMap, type Kind } from './kinds';
+import { KINDS, type ActionMap, type Kind } from './kinds';
+import { OUTCOMES, OUTCOME_GROUPS, SIMPLE_FIELDS, SIMPLE_FORMS } from './creation';
+import { explainRule, ruleScope } from './explain';
+import { RuleSummary } from './rule-summary';
 import { MatchConditionsField, matchOf, matchState, type MatchState } from './match-conditions';
 import {
   PENALTY_KINDS,
@@ -60,8 +72,8 @@ const CACHE_METHODS = ['GET', 'HEAD'] as const;
  * `/api/**` the prefix and everything beneath, `/users/?*` one segment.
  * OpenAPI templates are refused by apid, which suggests the glob; the form
  * says so first. `match_host` is required on create — it is in the request's
- * `required` list — so the form defaults it to `*` rather than letting empty
- * mean anything.
+ * `required` list — so creation uses `@app` and `/**`: every path served by
+ * the selected app. Custom host and path patterns live in Advanced settings.
  */
 const HOST_GLOB =
   /^(@app|\*|(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*)$/i;
@@ -188,12 +200,30 @@ export function EdgeRuleDialog({
   const create = useCreateEdgeRule();
   const update = useUpdateEdgeRule();
   const editing = rule !== null;
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const advancedId = useId();
+  const formHeading = useRef<HTMLHeadingElement>(null);
+  const formContent = useRef<HTMLDivElement>(null);
+  const [formNotice, setFormNotice] = useState('');
+  const unfinishedJson = () => {
+    const invalid = formContent.current?.querySelector<HTMLTextAreaElement>(
+      '[data-invalid-json="true"]'
+    );
+    if (!invalid) {
+      setFormNotice('');
+      return false;
+    }
+    setFormNotice('Correct the JSON before continuing. Your text has been kept.');
+    invalid.focus();
+    return true;
+  };
   const [penalty, setPenalty] = useState<Penalty | null>(rule?.penalty ?? null);
 
   const [kind, setKind] = useState<Kind | null>(null);
   const [match, setMatch] = useState<Match>({
-    match_host: '*',
-    match_path: '/*',
+    match_host: '@app',
+    match_path: '/**',
     match_methods: [],
     match_headers: {},
     priority: nextPriority,
@@ -226,8 +256,8 @@ export function EdgeRuleDialog({
     } else {
       setKind(null);
       setMatch({
-        match_host: '*',
-        match_path: '/*',
+        match_host: '@app',
+        match_path: '/**',
         match_methods: [],
         match_headers: {},
         priority: nextPriority,
@@ -242,7 +272,12 @@ export function EdgeRuleDialog({
     setSuggestOpen(false);
   }
 
+  useEffect(() => {
+    if (kind && !editing) formHeading.current?.focus();
+  }, [kind, editing]);
+
   const def = kind ? KINDS[kind] : null;
+  const SimpleForm = kind ? SIMPLE_FORMS[kind] : null;
   const plan = account?.plan ?? 'free';
   const target = apps.find((a) => a.slug === slug);
   /** Why the picker cannot offer a kind, or null when it can. */
@@ -263,12 +298,13 @@ export function EdgeRuleDialog({
       return 'Preview apps only; this app is not a preview.';
     return null;
   };
-  const planAllows = (k: Kind) => refusal(k) === null;
   const showPenalty =
     kind !== null && PENALTY_KINDS.has(kind) && (penaltyReleased || Boolean(rule?.penalty));
 
   const pick = (next: Kind) => {
     setKind(next);
+    setFormNotice('');
+    setAdvancedOpen(false);
     setAction(KINDS[next].empty() as ActionMap[Kind]);
     if (next === 'cache') setMatch((current) => ({ ...current, match_methods: ['GET', 'HEAD'] }));
     setFieldErrors({});
@@ -277,7 +313,7 @@ export function EdgeRuleDialog({
 
   const submit = () => {
     if (!kind || !def || !action) return;
-    if (!contextCurrent) return;
+    if (!contextCurrent || unfinishedJson()) return;
     if (kind === 'cache' && !canCache) return;
     // The match block and then the kind's own rules; the server is the
     // backstop, not the plan.
@@ -301,10 +337,18 @@ export function EdgeRuleDialog({
         ? { expires: 'Pick a time in the future.' }
         : {}),
       ...def.validate(action as never),
+      ...(!editing &&
+      kind === 'headers' &&
+      !(action as ActionMap['headers']).request_headers?.length &&
+      !(action as ActionMap['headers']).response_headers?.length
+        ? { request_headers: 'Add at least one header change.' }
+        : {}),
       ...(showPenalty ? validatePenalty(penalty) : {}),
     };
     if (Object.keys(local).length) {
       setFieldErrors(local);
+      if (Object.keys(local).some((key) => !SIMPLE_FIELDS[kind]?.includes(key)))
+        setAdvancedOpen(true);
       return;
     }
     setFieldErrors({});
@@ -373,6 +417,7 @@ export function EdgeRuleDialog({
     const failed = (err: unknown) => {
       if (err instanceof ApiError) {
         setProblem(err);
+        if (err.fields.length || err.code === 'edge_rule_conflict') setAdvancedOpen(true);
         // 400/422 name the field that was wrong; put the message on it.
         const mapped: Record<string, string> = {};
         for (const f of err.fields) mapped[f.field.replace(/^action\./, '')] = f.expected;
@@ -397,20 +442,84 @@ export function EdgeRuleDialog({
   };
 
   const pending = create.isPending || update.isPending;
+  const preview: EdgeRule | null =
+    kind && action
+      ? {
+          id: rule?.id ?? 'draft',
+          account_id: account?.id ?? '',
+          app_id: rule?.app_id ?? '',
+          created_at: rule?.created_at ?? '',
+          updated_at: rule?.updated_at ?? '',
+          ...match,
+          kind,
+          action,
+          mode: details.mode,
+          validate_mode: details.validate_mode,
+          match: matchOf(conditions) ?? undefined,
+          ...(details.expires && !Number.isNaN(Date.parse(details.expires))
+            ? { expires_at: new Date(details.expires).toISOString() }
+            : {}),
+        }
+      : null;
+  const previewReady =
+    preview &&
+    def &&
+    action &&
+    !formNotice &&
+    !Object.keys({ ...def.validate(action as never), ...validateMatch(match, kind!) }).length &&
+    (conditions.mode === 'builder'
+      ? !Object.keys(validateConditions(conditions.conditions)).length
+      : matchOf(conditions) !== null);
+  const previewEmphasis: string[] = [];
+  const previewText = previewReady
+    ? explainRule(preview, slug, {
+        wafBlocking: wafBlockingAccess === 'on',
+        onEmphasis: (text) => previewEmphasis.push(text),
+      })
+    : '';
+  const visibleGroups = OUTCOME_GROUPS.map((group) => ({
+    ...group,
+    kinds: group.kinds.filter((key) =>
+      `${OUTCOMES[key].title} ${OUTCOMES[key].hint} ${KINDS[key].label} ${key}`
+        .toLowerCase()
+        .includes(search.trim().toLowerCase())
+    ),
+  })).filter((group) => group.kinds.length);
+  const actionFormProps = {
+    value: action as never,
+    onChange: (next: unknown) => setAction(next as ActionMap[Kind]),
+    errors: fieldErrors,
+    apps,
+    slug,
+    wafBlocking: contextCurrent && wafBlockingAccess === 'on',
+    suggest:
+      kind === 'throttle' ? (
+        <ThrottleSuggest
+          slug={slug}
+          open={suggestOpen}
+          onOpen={() => setSuggestOpen(true)}
+          onPick={(rps, burst) =>
+            setAction(
+              (current) => ({ ...current, requests_per_second: rps, burst }) as ActionMap[Kind]
+            )
+          }
+        />
+      ) : undefined,
+  };
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={editing ? `Edit rule` : kind ? KINDS[kind].label : 'Add an edge rule'}
+      title={editing ? 'Edit rule' : 'Add a rule'}
       description={
         editing
           ? 'Rules are evaluated in priority order, lowest first.'
           : kind
-            ? KINDS[kind].desc
-            : 'Rules run at the gateway, before a request reaches an app.'
+            ? `Set what happens to requests for ${slug}.`
+            : `What should happen to requests for ${slug}?`
       }
-      width="max-w-3xl"
+      placement="right"
       footer={
         kind ? (
           <>
@@ -422,7 +531,7 @@ export function EdgeRuleDialog({
                 onClick={() => setKind(null)}
               >
                 <NavArrowLeft className="h-3.5 w-3.5" />
-                Kind
+                Change action
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -441,42 +550,52 @@ export function EdgeRuleDialog({
     >
       {/* Step one, create only: which kind. Kind cannot change afterwards. */}
       {!kind ? (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {KIND_ORDER.map((k) => {
-            const allowed = planAllows(k);
-            const stage = (KINDS[k] as { stage?: string }).stage;
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => allowed && pick(k)}
-                aria-disabled={!allowed}
-                className={cn(
-                  'flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors',
-                  allowed
-                    ? 'border-border bg-card hover:border-brand/50'
-                    : 'cursor-not-allowed border-border bg-card opacity-60'
-                )}
-              >
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  {KINDS[k].label}
-                  {KINDS[k].paid && (
-                    <span className="label-mono rounded-full border border-border px-1.5 text-muted-foreground">
-                      {(KINDS[k] as { plans?: readonly string[] }).plans ? 'pro' : 'paid'}
-                    </span>
-                  )}
-                  {stage && (
-                    <span className="label-mono rounded-full border border-border px-1.5 text-muted-foreground">
-                      {stage}
-                    </span>
-                  )}
-                </span>
-                <span className="text-xs leading-relaxed text-muted-foreground">
-                  {refusal(k) ?? KINDS[k].desc}
-                </span>
-              </button>
-            );
-          })}
+        <div className="flex flex-col gap-6">
+          <TextField
+            label="Find an action"
+            mono={false}
+            value={search}
+            onChange={setSearch}
+            placeholder="Try countries, redirects, or rate limits…"
+          />
+          {visibleGroups.map((group) => (
+            <section key={group.title} className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground">{group.title}</h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.kinds.map((k) => {
+                  const reason = refusal(k);
+                  const stage = (KINDS[k] as { stage?: string }).stage;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => !reason && pick(k)}
+                      aria-disabled={Boolean(reason)}
+                      className={cn(
+                        'flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        reason
+                          ? 'cursor-not-allowed border-border bg-card opacity-60'
+                          : 'border-border bg-card hover:border-brand/50 hover:bg-muted/40'
+                      )}
+                    >
+                      <span className="text-sm font-medium">{OUTCOMES[k].title}</span>
+                      <span className="text-xs leading-relaxed text-muted-foreground">
+                        {OUTCOMES[k].hint}
+                      </span>
+                      {(reason || stage) && (
+                        <span className="text-xs text-muted-foreground">{reason ?? stage}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+          {!visibleGroups.length && (
+            <p role="status" className="text-sm text-muted-foreground">
+              No actions match “{search}”. Try a different word.
+            </p>
+          )}
           {(account?.plan ?? 'free') === 'free' && (
             <p className="text-xs text-muted-foreground sm:col-span-2">
               JWT and IP rules need a paid plan.{' '}
@@ -496,7 +615,12 @@ export function EdgeRuleDialog({
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
+        <div ref={formContent} className="flex flex-col gap-5">
+          {formNotice && (
+            <p role="alert" className="text-sm text-status-critical">
+              {formNotice}
+            </p>
+          )}
           {!contextCurrent && (
             <p role="status" className="text-xs text-muted-foreground">
               Account or app selection changed. Close and reopen this rule before saving.
@@ -512,7 +636,7 @@ export function EdgeRuleDialog({
           {editing && (
             <p className="text-xs text-muted-foreground">
               Kind is <span className="font-mono text-foreground">{kind}</span> and cannot be
-              changed — delete the rule and create a new one to switch.
+              changed.
             </p>
           )}
 
@@ -545,179 +669,242 @@ export function EdgeRuleDialog({
             </p>
           )}
 
-          <section className="flex flex-col gap-4">
-            <p className="label-mono text-muted-foreground">Rule</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label="Name"
-                hint="Optional. Shown in events and stats."
-                error={fieldErrors.name}
-                mono={false}
-                value={details.name}
-                onChange={(name) => setDetails({ ...details, name })}
-                placeholder="Block scraper"
-              />
-              <Field
-                label="Expires"
-                hint="Optional, your local time. The gateway stops applying the rule then."
-                error={fieldErrors.expires ?? fieldErrors.expires_at}
+          {!editing && (
+            <>
+              <h3
+                ref={formHeading}
+                tabIndex={-1}
+                className="text-lg font-semibold tracking-tight outline-none"
               >
-                <input
-                  type="datetime-local"
-                  value={details.expires}
-                  onChange={(e) => setDetails({ ...details, expires: e.target.value })}
-                  aria-invalid={fieldErrors.expires ? true : undefined}
-                  className={cn(INPUT, 'font-mono')}
-                />
-              </Field>
-            </div>
-            <TextField
-              label="Description"
-              hint="Optional notes for whoever reads the rule next."
-              error={fieldErrors.description}
-              mono={false}
-              value={details.description}
-              onChange={(description) => setDetails({ ...details, description })}
-            />
-            <div className="flex flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Mode</span>
-              <SegmentedControl
-                label="Rule mode"
-                value={details.mode}
-                options={[
-                  { key: 'enforce', label: 'Enforce' },
-                  { key: 'log', label: 'Log only' },
-                ]}
-                onChange={(mode) => setDetails({ ...details, mode })}
-              />
-              <span className="text-xs text-muted-foreground">
-                {details.mode === 'log'
-                  ? 'Matched and counted, never acts. Check its stats and events, then enforce it.'
-                  : 'Acts on every request it matches.'}
-              </span>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-4 border-t border-border pt-5">
-            <p className="label-mono text-muted-foreground">Match</p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label="Host"
-                hint="@app for every host the app serves, a hostname, or a glob: * for any, *.example.com for subdomains."
-                error={fieldErrors.match_host}
-                value={match.match_host}
-                onChange={(match_host) => setMatch({ ...match, match_host })}
-                placeholder="api.example.com"
-              />
-              <TextField
-                label="Path"
-                hint="A glob: /api/** is /api and everything beneath it, /api/* the paths beneath, /users/?* one segment."
-                error={fieldErrors.match_path}
-                value={match.match_path}
-                onChange={(match_path) => setMatch({ ...match, match_path })}
-                placeholder="/v1/*"
-              />
-            </div>
-            <ChipSet
-              label="Methods"
-              hint={
-                kind === 'cache'
-                  ? 'Cache rules match GET, HEAD, or both.'
-                  : 'None selected matches every method.'
-              }
-              error={fieldErrors.match_methods}
-              options={kind === 'cache' ? CACHE_METHODS : METHODS}
-              value={match.match_methods as (typeof METHODS)[number][]}
-              onChange={(match_methods) => setMatch({ ...match, match_methods })}
-            />
-            <KeyValueField
-              label="Header selectors"
-              hint="Optional, up to 10. Each header must be present with exactly this value; names ignore case."
-              error={fieldErrors.match_headers}
-              value={match.match_headers}
-              onChange={(match_headers) => setMatch({ ...match, match_headers })}
-              keyPlaceholder="x-tenant"
-              valuePlaceholder="acme"
-            />
-            <MatchConditionsField
-              value={conditions}
-              onChange={setConditions}
-              errors={fieldErrors}
-              aiCrawlers={aiCrawlerAccess === 'on'}
-            />
-            <NumberField
-              label="Priority"
-              hint="Lowest first. Leave gaps so a rule can be slotted between later."
-              error={fieldErrors.priority}
-              value={match.priority}
-              min={0}
-              onChange={(priority) => setMatch({ ...match, priority: priority ?? 0 })}
-              className="sm:w-56"
-            />
-            <div className="border-t border-border">
-              <ToggleRow
-                label="Enabled"
-                hint="A disabled rule stays configured and is skipped at the gateway."
-                checked={match.enabled}
-                onChange={(enabled) => setMatch({ ...match, enabled })}
-              />
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-4 border-t border-border pt-5">
-            <p className="label-mono text-muted-foreground">{def?.label}</p>
-            {kind === 'validate' && (
-              <div className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">On a failure</span>
-                <SegmentedControl
-                  label="Validation mode"
-                  value={details.validate_mode}
-                  options={[
-                    { key: 'block', label: 'Block' },
-                    { key: 'warn', label: 'Warn' },
-                    { key: 'observe', label: 'Observe' },
-                  ]}
-                  onChange={(validate_mode) => setDetails({ ...details, validate_mode })}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {details.validate_mode === 'block'
-                    ? 'Answers 422 request_validation_failed, with each error.'
-                    : details.validate_mode === 'warn'
-                      ? 'Lets the request through and adds X-Validation-Warning to the response.'
-                      : 'Lets the request through and counts the failure.'}
+                {OUTCOMES[kind].title}
+              </h3>
+              {!advancedOpen && SimpleForm && action && (
+                <div className="flex flex-col gap-5">
+                  <SimpleForm {...actionFormProps} />
+                  <SelectField
+                    label="When this rule is created"
+                    value={!match.enabled ? 'paused' : details.mode}
+                    onChange={(value) => {
+                      setMatch({ ...match, enabled: value !== 'paused' });
+                      setDetails({ ...details, mode: value === 'log' ? 'log' : 'enforce' });
+                    }}
+                    options={[
+                      { value: 'enforce', label: 'Start applying it immediately' },
+                      { value: 'log', label: 'Only record matches for now' },
+                      { value: 'paused', label: 'Save it paused' },
+                    ]}
+                  />
+                </div>
+              )}
+              <div
+                className="rounded-lg border border-border bg-card p-4"
+                role="region"
+                aria-label="Rule preview"
+                aria-live="polite"
+              >
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  If you create this rule
+                </p>
+                <p className="text-sm font-medium leading-relaxed [overflow-wrap:anywhere]">
+                  {previewReady ? (
+                    <RuleSummary text={previewText} emphasis={previewEmphasis} />
+                  ) : (
+                    'Complete the settings to see what this rule will do.'
+                  )}
+                </p>
+                {preview && (
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+                    {ruleScope(preview, slug) || `Applies to matching requests for ${slug}.`}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Runs at priority {match.priority}, after rules with a lower number. Other rules
+                  can affect the final response.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-expanded={advancedOpen}
+                aria-controls={advancedId}
+                onClick={() => {
+                  if (!advancedOpen || !unfinishedJson()) setAdvancedOpen(!advancedOpen);
+                }}
+                className="flex w-full items-center justify-between gap-3 border-t border-border pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span>
+                  <span className="text-sm font-medium">Advanced settings</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Paths, domains, conditions, and all action options.
+                  </span>
                 </span>
-              </div>
-            )}
-            {def && action && (
-              // The registry keeps kind and action in step; this cast is the
-              // one place the pairing is asserted rather than inferred.
-              <def.Form
-                value={action as never}
-                onChange={(next: unknown) => setAction(next as ActionMap[Kind])}
-                errors={fieldErrors}
-                apps={apps}
-                wafBlocking={contextCurrent && wafBlockingAccess === 'on'}
-                slug={editing ? (apps.find((a) => a.slug === slug)?.slug ?? slug) : slug}
-                suggest={
-                  kind === 'throttle' ? (
-                    <ThrottleSuggest
-                      slug={slug}
-                      open={suggestOpen}
-                      onOpen={() => setSuggestOpen(true)}
-                      onPick={(rps, burst) =>
-                        setAction({ requests_per_second: rps, burst } as ActionMap[Kind])
-                      }
+                <NavArrowDown
+                  aria-hidden
+                  className={cn(
+                    'size-4 shrink-0 transition-transform motion-reduce:transition-none',
+                    advancedOpen && 'rotate-180'
+                  )}
+                />
+              </button>
+            </>
+          )}
+          {(editing || advancedOpen) && (
+            <div id={advancedId} className="flex flex-col gap-5">
+              <section className="flex flex-col gap-4">
+                <p className="label-mono text-muted-foreground">Rule</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TextField
+                    label="Name"
+                    hint="Optional. Shown in events and stats."
+                    error={fieldErrors.name}
+                    mono={false}
+                    value={details.name}
+                    onChange={(name) => setDetails({ ...details, name })}
+                    placeholder="Block scraper"
+                  />
+                  <Field
+                    label="Expires"
+                    hint="Optional, your local time. The gateway stops applying the rule then."
+                    error={fieldErrors.expires ?? fieldErrors.expires_at}
+                  >
+                    <input
+                      type="datetime-local"
+                      value={details.expires}
+                      onChange={(e) => setDetails({ ...details, expires: e.target.value })}
+                      aria-invalid={fieldErrors.expires ? true : undefined}
+                      className={cn(INPUT, 'font-mono')}
                     />
-                  ) : undefined
-                }
-              />
-            )}
-            {showPenalty && (
-              <div className="border-t border-border">
-                <PenaltyField value={penalty} onChange={setPenalty} errors={fieldErrors} />
-              </div>
-            )}
-          </section>
+                  </Field>
+                </div>
+                <TextField
+                  label="Description"
+                  hint="Optional notes for whoever reads the rule next."
+                  error={fieldErrors.description}
+                  mono={false}
+                  value={details.description}
+                  onChange={(description) => setDetails({ ...details, description })}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <span className="label-mono text-muted-foreground">Mode</span>
+                  <SegmentedControl
+                    label="Rule mode"
+                    value={details.mode}
+                    options={[
+                      { key: 'enforce', label: 'Enforce' },
+                      { key: 'log', label: 'Log only' },
+                    ]}
+                    onChange={(mode) => setDetails({ ...details, mode })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {details.mode === 'log'
+                      ? 'Matched and counted, never acts. Check its stats and events, then enforce it.'
+                      : 'Acts on every request it matches.'}
+                  </span>
+                </div>
+              </section>
+
+              <section className="flex flex-col gap-4 border-t border-border pt-5">
+                <p className="label-mono text-muted-foreground">Match</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TextField
+                    label="Host"
+                    hint="@app for every host the app serves, a hostname, or a glob: * for any, *.example.com for subdomains."
+                    error={fieldErrors.match_host}
+                    value={match.match_host}
+                    onChange={(match_host) => setMatch({ ...match, match_host })}
+                    placeholder="api.example.com"
+                  />
+                  <TextField
+                    label="Path"
+                    hint="A glob: /api/** is /api and everything beneath it, /api/* the paths beneath, /users/?* one segment."
+                    error={fieldErrors.match_path}
+                    value={match.match_path}
+                    onChange={(match_path) => setMatch({ ...match, match_path })}
+                    placeholder="/v1/*"
+                  />
+                </div>
+                <ChipSet
+                  label="Methods"
+                  hint={
+                    kind === 'cache'
+                      ? 'Cache rules match GET, HEAD, or both.'
+                      : 'None selected matches every method.'
+                  }
+                  error={fieldErrors.match_methods}
+                  options={kind === 'cache' ? CACHE_METHODS : METHODS}
+                  value={match.match_methods as (typeof METHODS)[number][]}
+                  onChange={(match_methods) => setMatch({ ...match, match_methods })}
+                />
+                <KeyValueField
+                  label="Header selectors"
+                  hint="Optional, up to 10. Each header must be present with exactly this value; names ignore case."
+                  error={fieldErrors.match_headers}
+                  value={match.match_headers}
+                  onChange={(match_headers) => setMatch({ ...match, match_headers })}
+                  keyPlaceholder="x-tenant"
+                  valuePlaceholder="acme"
+                />
+                <MatchConditionsField
+                  value={conditions}
+                  onChange={setConditions}
+                  errors={fieldErrors}
+                  aiCrawlers={aiCrawlerAccess === 'on'}
+                />
+                <NumberField
+                  label="Priority"
+                  hint="Lowest first. Leave gaps so a rule can be slotted between later."
+                  error={fieldErrors.priority}
+                  value={match.priority}
+                  min={0}
+                  onChange={(priority) => setMatch({ ...match, priority: priority ?? 0 })}
+                  className="sm:w-56"
+                />
+                <div className="border-t border-border">
+                  <ToggleRow
+                    label="Enabled"
+                    hint="A disabled rule stays configured and is skipped at the gateway."
+                    checked={match.enabled}
+                    onChange={(enabled) => setMatch({ ...match, enabled })}
+                  />
+                </div>
+              </section>
+
+              <section className="flex flex-col gap-4 border-t border-border pt-5">
+                <p className="label-mono text-muted-foreground">{def?.label}</p>
+                {kind === 'validate' && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="label-mono text-muted-foreground">On a failure</span>
+                    <SegmentedControl
+                      label="Validation mode"
+                      value={details.validate_mode}
+                      options={[
+                        { key: 'block', label: 'Block' },
+                        { key: 'warn', label: 'Warn' },
+                        { key: 'observe', label: 'Observe' },
+                      ]}
+                      onChange={(validate_mode) => setDetails({ ...details, validate_mode })}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {details.validate_mode === 'block'
+                        ? 'Answers 422 request_validation_failed, with each error.'
+                        : details.validate_mode === 'warn'
+                          ? 'Lets the request through and adds X-Validation-Warning to the response.'
+                          : 'Lets the request through and counts the failure.'}
+                    </span>
+                  </div>
+                )}
+                {def && action && (
+                  // The registry keeps kind and action in step; this cast is the
+                  // one place the pairing is asserted rather than inferred.
+                  <def.Form {...actionFormProps} />
+                )}
+                {showPenalty && (
+                  <div className="border-t border-border">
+                    <PenaltyField value={penalty} onChange={setPenalty} errors={fieldErrors} />
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
         </div>
       )}
     </Modal>
@@ -770,8 +957,7 @@ function ThrottleSuggest({
         </div>
       ) : q.data?.route_metrics_disabled ? (
         <p className="text-xs text-muted-foreground">
-          Per-route metrics are off for this app, so there is nothing to measure. Turn them on in
-          the app&rsquo;s Configuration tab.
+          Per-route metrics are off for this app. Turn them on in its Configuration tab.
         </p>
       ) : !rows.length ? (
         <p className="text-xs text-muted-foreground">

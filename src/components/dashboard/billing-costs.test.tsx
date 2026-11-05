@@ -232,7 +232,7 @@ describe('coverage gaps', () => {
     get.mockResolvedValue(ok(data));
     await mount();
     const gaps = await screen.findByRole('list', { name: 'Coverage gaps' });
-    expect(gaps).toHaveTextContent('Evidence retention started');
+    expect(gaps).toHaveTextContent('Usage history starts');
     expect(gaps).toHaveTextContent('10 GB-hours is unpriced and not in the known cost');
     expect(gaps).toHaveTextContent("not priced at today's rate");
     expect(screen.getByTestId('known-usage')).toHaveTextContent('$0.32');

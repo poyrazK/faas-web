@@ -41,7 +41,6 @@ export interface NavItem {
   to: string;
   label: string;
   icon: NavIcon;
-  /** Small wayfinding accents in the sidebar; labels and other menus stay neutral. */
   sidebarIconClassName?: string;
   exact?: boolean;
   search?: Record<string, string>;
@@ -73,10 +72,10 @@ export interface NavHub extends NavItem {
 export const NAV_HUBS: NavHub[] = [
   {
     to: '/dashboard',
+    sidebarIconClassName: 'text-brand/80',
     label: 'Overview',
     icon: ViewGrid,
     exact: true,
-    sidebarIconClassName: 'text-brand/80',
   },
   {
     // Projects are the way in: apps live inside them (standalone apps are a
@@ -85,23 +84,23 @@ export const NAV_HUBS: NavHub[] = [
     // and Import used to nest here; both redirect into the New app wizard, so
     // they live in PALETTE_ONLY rather than as rows that are never current.
     to: '/dashboard/projects',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Projects',
     icon: Folder,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     // Not in the rail. Kept as a hub so `/dashboard/apps` keeps its title,
     // breadcrumb and ⌘K entry.
     to: '/dashboard/apps',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Apps',
     icon: WorkflowIcon,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     to: '/dashboard/releases',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Releases',
     icon: Rocket,
-    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/releases', label: 'Deployments', icon: Rocket },
@@ -110,9 +109,9 @@ export const NAV_HUBS: NavHub[] = [
   },
   {
     to: '/dashboard/jobs',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Jobs',
     icon: Play,
-    sidebarIconClassName: 'text-cat-compute/80',
     pageOwnsNavigation: true,
     sections: [
       { to: '/dashboard/jobs', label: 'Jobs', icon: Play },
@@ -122,64 +121,64 @@ export const NAV_HUBS: NavHub[] = [
         icon: WorkflowIcon,
         search: { section: 'automations' },
       },
-      { to: '/dashboard/crons', label: 'Cron Jobs', icon: Timer },
+      { to: '/dashboard/crons', label: 'Scheduled requests', icon: Timer },
       { to: '/dashboard/triggers', label: 'Triggers', icon: Antenna },
     ],
   },
   {
     // The microVMs that run apps: compute you can see, not a way of watching it.
     to: '/dashboard/instances',
+    sidebarIconClassName: 'text-cat-compute/80',
     label: 'Instances',
     icon: Server,
-    sidebarIconClassName: 'text-cat-compute/80',
   },
   {
     // Not "Storage": the heading above already says that word.
     to: '/dashboard/storage',
+    sidebarIconClassName: 'text-cat-storage/80',
     label: 'Object storage',
     icon: HardDrive,
     capability: 'object-storage',
-    sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/postgres',
+    sidebarIconClassName: 'text-cat-storage/80',
     label: 'Postgres',
     icon: Database,
     capability: 'managed-postgres',
-    sidebarIconClassName: 'text-cat-storage/80',
   },
   {
     to: '/dashboard/domains',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Domains',
     icon: Globe,
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // The account view: every app's rules plus CORS presets. The per-app view
     // is the app page's Connect tab. The label matches APP_TABS, so ⌘K and the
     // breadcrumb list the page once.
     to: '/dashboard/edge-rules',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Edge rules',
     icon: FilterList,
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Account-wide: the event router has no per-app read for its backlog,
     // storage, or receipts, so this is its own hub rather than an app tab.
     to: '/dashboard/events',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Events',
     icon: DataTransferBoth,
     capability: 'events',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Outbound integrations are account-owned; apps bind to them, but the
     // integration, its credential, and its budget exist once per account.
     to: '/dashboard/integrations',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Integrations',
     icon: Network,
     capability: 'outbound-integrations',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     // Your end customers across apps (platform tenants). Monetize rather than
@@ -187,35 +186,35 @@ export const NAV_HUBS: NavHub[] = [
     // not settings of your own Gregale account, and Billing there is what
     // Gregale charges you, not what you charge them.
     to: '/dashboard/customers',
+    sidebarIconClassName: 'text-cat-network/80',
     label: 'Customers',
     icon: Community,
     capability: 'platform-tenants',
-    sidebarIconClassName: 'text-cat-network/80',
   },
   {
     to: '/dashboard/analytics',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Analytics',
     icon: GraphUp,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/debug',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Debugger',
     icon: Search,
     capability: 'debug',
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/invocations',
+    sidebarIconClassName: 'text-cat-security/80',
     label: 'Invocations',
     icon: Activity,
-    sidebarIconClassName: 'text-cat-security/80',
   },
   {
     to: '/dashboard/audit',
-    label: 'Audit Log',
-    icon: Journal,
     sidebarIconClassName: 'text-cat-security/80',
+    label: 'Audit log',
+    icon: Journal,
   },
   {
     to: '/dashboard/usage',
@@ -269,10 +268,12 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   { hubs: ['Overview'] },
   { title: 'Compute', hubs: ['Projects', 'Releases', 'Jobs', 'Instances'] },
   { title: 'Storage', hubs: ['Object storage', 'Postgres'] },
-  { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
+  { title: 'Networking', hubs: ['Domains'] },
   { title: 'Messaging', hubs: ['Events', 'Integrations'] },
   { title: 'Monetize', hubs: ['Customers'] },
-  { title: 'Observe', hubs: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'] },
+  // The Debugger is per app (the app's Observe section); its account route is
+  // an app picker, reachable from ⌘K rather than a rail row of its own.
+  { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
   { title: 'Account', hubs: ['Billing', 'Settings'] },
 ];
 
@@ -466,7 +467,7 @@ export const SECTION_LABELS: Record<string, string> = {
   // title is the page's own.
   releases: 'Releases',
   team: 'Team',
-  keys: 'API Keys',
+  keys: 'API keys',
   account: 'Account',
   security: 'Security',
 };

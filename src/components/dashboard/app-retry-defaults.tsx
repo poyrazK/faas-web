@@ -50,7 +50,7 @@ function RetryDefaultsPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Retry default"
-      description="How this app's async and sync invokes, delayed tasks, queue sends and inbound webhooks retry when they set no curve of their own. A queue binding's policy, or one sent with an invocation, replaces it."
+      help="How this app's async and sync invokes, delayed tasks, queue sends and inbound webhooks retry when they set no curve of their own. A queue binding's policy, or one sent with an invocation, replaces it."
       actions={<AsyncInvocationsMaturity />}
     >
       {phase !== 'ready' ? (

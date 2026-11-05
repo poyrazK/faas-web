@@ -113,7 +113,7 @@ export function PreAuthGuardPanel({ slug }: { slug: string }) {
     <div role="region" aria-label="Pre-auth guard">
       <Panel
         title="Pre-auth guard"
-        description="A limit on each client address that runs after the host is matched and before credentials are checked, a body is read or the app wakes."
+        help="A limit on each client address that runs after the host is matched and before credentials are checked, a body is read or the app wakes."
         actions={phase === 'ready' ? <ModeBadge mode={storedMode} /> : undefined}
       >
         {phase !== 'ready' ? (

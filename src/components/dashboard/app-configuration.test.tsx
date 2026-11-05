@@ -116,11 +116,13 @@ describe('Runtime change preview', () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="runtime" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    fireEvent.change(screen.getByLabelText(/Max concurrency/), { target: { value: '30' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Max concurrency' }), {
+      target: { value: '30' },
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(mocks.diff).toHaveBeenCalledWith({ max_concurrency: 30 });
     const dialog = await screen.findByRole('dialog', { name: 'What this change would do' });
@@ -152,11 +154,13 @@ describe('App deletion contract copy', () => {
     render(
       <QueryClientProvider client={client}>
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="runtime" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    fireEvent.change(screen.getByLabelText(/Max concurrency/), { target: { value: '2' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Max concurrency' }), {
+      target: { value: '2' },
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ max_concurrency: 2 }));
     expect(await screen.findByText('Pending')).toBeVisible();
@@ -172,11 +176,11 @@ describe('App deletion contract copy', () => {
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="runtime" />
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    const idle = screen.getByLabelText(/Idle timeout/);
+    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
     await user.clear(idle);
     await user.type(idle, '30');
     expect(idle).toHaveValue(30);
@@ -189,10 +193,10 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
-    const idle = screen.getByLabelText(/Idle timeout/);
+    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
     await user.clear(idle);
     await user.type(idle, '2');
     expect(idle).toHaveValue(2);
@@ -203,7 +207,7 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     const slug = screen.getByLabelText('Slug');
@@ -218,7 +222,7 @@ describe('App deletion contract copy', () => {
     const user = userEvent.setup();
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     const slug = screen.getByLabelText('Slug');
@@ -226,19 +230,20 @@ describe('App deletion contract copy', () => {
     await user.type(slug, 'tag-alpha');
     expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
   });
-  it('explains live policy convergence separately from boot-time memory', () => {
+  it('explains live policy convergence separately from boot-time memory', async () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
     expect(screen.queryByText(/Applied on the next wake/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Memory requires a fresh instance/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'About Runtime' }));
+    expect(await screen.findByText(/Memory requires a fresh instance/)).toBeVisible();
   });
   it('disables memory sizes above the account limit in configuration', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
     expect(screen.getByRole('button', { name: '2048 MB' })).toBeDisabled();
@@ -248,7 +253,7 @@ describe('App deletion contract copy', () => {
   it('shows the health probes and restart contract for the app and the account plan', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="health" />
       </ConfirmProvider>
     );
     expect(screen.getByText('Health and restarts for alpha on scale')).toBeInTheDocument();
@@ -256,7 +261,7 @@ describe('App deletion contract copy', () => {
   it('makes the API-assigned endpoint clickable in configuration', () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
     expect(
@@ -267,10 +272,10 @@ describe('App deletion contract copy', () => {
   it('explains the restore window without weakening typed confirmation', async () => {
     render(
       <ConfirmProvider>
-        <AppConfiguration slug="alpha" />
+        <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
-    expect(screen.getByText(/7-day grace/)).toBeInTheDocument();
+    expect(screen.getByText(/Recently deleted for 7 days/)).toBeInTheDocument();
     expect(screen.queryByText(/no restore action/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/no grace period|Every deployment, secret|Permanent\./)
@@ -295,7 +300,7 @@ describe('Release settings', () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ConfirmProvider>
-          <AppConfiguration slug="alpha" />
+          <AppConfiguration slug="alpha" section="health" />
         </ConfirmProvider>
       </QueryClientProvider>
     );

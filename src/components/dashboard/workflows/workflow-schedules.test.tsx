@@ -138,7 +138,9 @@ describe('Workflow schedules', () => {
       }),
     });
     renderWithProviders(<WorkflowSchedulesBody slug="billing" onOpenRun={vi.fn()} />);
-    await userEvent.click(await screen.findByText('0 2 * * *'));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Preview nightly-report schedule' })
+    );
     const preview = await screen.findByRole('region', { name: 'Next fires of nightly-report' });
     expect(within(preview).getByText('2026-11-04T02:00:00+03:00 local')).toBeInTheDocument();
     expect(within(preview).getByText(/Moved forward by a daylight-saving gap/)).toBeInTheDocument();

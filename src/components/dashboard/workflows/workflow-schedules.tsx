@@ -110,7 +110,15 @@ function Schedules({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string) 
       label: 'Workflow',
       render: (r) => (
         <span className="flex flex-col gap-1">
-          <span className="[overflow-wrap:anywhere]">{r.id}</span>
+          <button
+            type="button"
+            className="self-start text-left text-brand underline underline-offset-2 [overflow-wrap:anywhere]"
+            aria-label={`Preview ${r.id} schedule`}
+            aria-expanded={open === r.id}
+            onClick={() => setOpen(open === r.id ? null : r.id)}
+          >
+            {r.id}
+          </button>
           {!r.schedule.enabled && <span className="text-xs text-muted-foreground">Disabled</span>}
         </span>
       ),
@@ -171,10 +179,9 @@ function Schedules({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string) 
 
   return (
     <div className="flex flex-col gap-5">
-      <Panel
-        title="Schedules"
-        description={`${stage ? `${stage} · ` : ''}Workflows the live deployment starts on a cron. Change a schedule in gregale.yaml and deploy; disabling or redeploying one does not cancel runs it already started.`}
-      >
+      <Panel title="Schedules">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}Workflows the live deployment starts on a cron. Change a schedule in gregale.yaml and deploy; disabling or redeploying one does not cancel runs it already started.`}</p>
+
         {reason && (
           <p
             role="status"
@@ -190,7 +197,6 @@ function Schedules({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string) 
           loading={q.isPending}
           error={q.error}
           onRetry={() => void q.refetch()}
-          onRowClick={(r) => setOpen(open === r.id ? null : r.id)}
           desktopMinWidth="md:min-w-[760px]"
           emptyMessage="No scheduled workflows on the live deployment. Add a schedule trigger to a workflow in gregale.yaml."
         />
@@ -456,7 +462,6 @@ function Occurrences({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string
   return (
     <Panel
       title="Fire history"
-      description="Every due minute of the last 30 days, started or skipped. Missed minutes are not inferred."
       actions={
         chosen.length > 0 ? (
           <Button
@@ -470,6 +475,12 @@ function Occurrences({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string
         ) : undefined
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Every due minute of the last 30 days, started or skipped. Missed minutes are not inferred.'
+        }
+      </p>
+
       <ResourceTable
         rows={rows}
         columns={columns}

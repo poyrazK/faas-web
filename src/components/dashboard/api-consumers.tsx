@@ -31,7 +31,7 @@ import {
   type ConsumerKeyScope,
   type ConsumerPlan,
 } from '@/lib/api/monetization';
-import { InlinePhase, Panel, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from './primitives';
 import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { ConsumerStatements } from './api-consumer-statements';
@@ -143,7 +143,6 @@ function ConsumersPanel({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       <Panel
         title="Consumers"
-        description="Stable identities for the customers who call this API. Keys, plans, usage and statements belong to a consumer."
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setRegistering(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -161,7 +160,7 @@ function ConsumersPanel({ slug }: { slug: string }) {
           loading={consumers.isPending}
           error={consumers.error}
           onRetry={() => void consumers.refetch()}
-          emptyMessage="No consumers yet. Register one for each customer that calls this API."
+          emptyMessage="No consumers yet."
           minWidth="min-w-[560px]"
         />
       </Panel>
@@ -253,6 +252,8 @@ function RegisterConsumer({
       onClose={close}
       title="Register consumer"
       description="A stable identity for one customer of this API. Keys are issued to it afterwards."
+      placement="right"
+      width="sm:max-w-[420px]"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         <FormField
@@ -348,7 +349,6 @@ function ConsumerDetail({
   return (
     <Panel
       title={consumer.name}
-      description={`External reference ${consumer.external_ref}`}
       actions={
         <div className="flex items-center gap-2">
           {active && (
@@ -380,6 +380,7 @@ function ConsumerDetail({
                 {consumer.id}
               </span>,
             ],
+            ['External reference', consumer.external_ref],
             ['Created', formatUtc(consumer.created_at)],
             ...(consumer.revoked_at
               ? ([['Revoked', formatUtc(consumer.revoked_at)]] as [string, string][])
@@ -691,12 +692,6 @@ function ConsumerPlanSection({
           <p className="text-sm">
             On <strong>{planLabel(current?.plan_id, plans)}</strong>
             {current ? ` since ${formatUtc(current.effective_from)}` : ''}.
-            {!current?.plan_id && (
-              <span className="text-muted-foreground">
-                {' '}
-                The default plan prices usage with the app-wide rate cards.
-              </span>
-            )}
           </p>
           {scheduled.map((a) => (
             <p key={a.id} className="text-sm text-muted-foreground">
@@ -773,9 +768,7 @@ function ConsumerPlanSection({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            The move cannot start in the past, and the target plan needs a rate card in force when
-            it does. Statements price each minute with the plan in force then; monthly allowances
-            keep counting across the change.
+            The move cannot start in the past, and the target plan needs a rate card in force then.
           </p>
         </form>
       )}
@@ -823,7 +816,7 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
           }}
         />
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stats columns={4}>
         <StatTile
           label="Requests"
           state={tile(usage)}
@@ -854,13 +847,8 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
               : 'Estimate, not an invoice'
           }
         />
-      </div>
-      {quote.data && quote.data.unpriced_units > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Usage before the first effective rate card is reported as unpriced rather than treated as
-          free.
-        </p>
-      )}
+      </Stats>
+
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">Usage alerts</p>
         <InlinePhase

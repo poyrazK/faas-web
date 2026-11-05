@@ -82,7 +82,7 @@ describe('DebugCoverage', () => {
       ok({ telemetry_rows: 0, represented_requests: 0 } as never)
     );
     render(<DebugCoverage slug="api" since="24h" />);
-    expect(screen.getByText(/No request telemetry was retained/)).toBeInTheDocument();
+    expect(screen.getByText(/No request details were saved/)).toBeInTheDocument();
   });
 });
 
@@ -179,7 +179,7 @@ describe('DebugStatusPanel', () => {
     const open = vi.fn();
     hooks.useDebugStatus.mockReturnValue(ok(status));
     render(<DebugStatusPanel slug="api" since="1h" onOpenRequest={open} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open evidence' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open request details' }));
     expect(open).toHaveBeenCalledWith('req-1');
     expect(screen.getByText('trim in-memory state')).toBeInTheDocument();
     expect(screen.getByText(/peak 600 MB, plan\s+512 MB/)).toBeInTheDocument();

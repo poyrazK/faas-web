@@ -160,9 +160,8 @@ export function CronOccurrences({
       <section className="flex flex-col gap-2">
         <h3 className="label-mono text-muted-foreground">Recorded</h3>
         <p className="text-xs text-muted-foreground">
-          The scheduler’s decision for each time this cron reached, newest first. Settled decisions
-          are kept for 90 days{active ? '; this list refreshes while one is in progress' : ''}.
-          Manual runs are not listed here.
+          Kept for 90 days{active ? '; refreshing while one is in progress' : ''}. Manual runs are
+          not listed.
         </p>
         {phase !== 'ready' ? (
           <InlinePhase

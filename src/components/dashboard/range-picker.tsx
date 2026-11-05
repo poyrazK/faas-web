@@ -40,14 +40,17 @@ export const PRESETS: Preset[] = [
  * rollup would quietly return something else, so the picker offers only the
  * intersection when that is where the figures come from.
  */
-export const ROLLUP_PRESETS: Preset[] = PRESETS.filter((p) =>
-  ['1h', '6h', '24h', '7d'].includes(p.value)
-);
+export const ROLLUP_PRESETS: Preset[] = [
+  { value: '5m', label: 'Last 5 minutes', half: 'the previous half' },
+  { value: '15m', label: 'Last 15 minutes', half: 'the previous half' },
+  ...PRESETS.filter((preset) => ['1h', '6h', '24h', '7d'].includes(preset.value)),
+  { value: '15d', label: 'Last 15 days', half: 'the previous half' },
+];
 
 /** The rollup's own window for a chosen range; 24h when it cannot express it. */
-export function rollupWindow(range: Range): '1h' | '6h' | '24h' | '7d' {
-  if (range.kind === 'preset' && ['1h', '6h', '24h', '7d'].includes(range.value)) {
-    return range.value as '1h' | '6h' | '24h' | '7d';
+export function rollupWindow(range: Range): '5m' | '15m' | '1h' | '6h' | '24h' | '7d' | '15d' {
+  if (range.kind === 'preset' && ROLLUP_PRESETS.some((preset) => preset.value === range.value)) {
+    return range.value as '5m' | '15m' | '1h' | '6h' | '24h' | '7d' | '15d';
   }
   return '24h';
 }
@@ -71,7 +74,9 @@ export function localZoneLabel(now = new Date()): string {
 
 export function rangeLabel(range: Range): string {
   if (range.kind === 'preset') {
-    return PRESETS.find((p) => p.value === range.value)?.label ?? range.value;
+    return (
+      [...PRESETS, ...ROLLUP_PRESETS].find((p) => p.value === range.value)?.label ?? range.value
+    );
   }
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });

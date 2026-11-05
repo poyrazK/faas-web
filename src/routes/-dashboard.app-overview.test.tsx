@@ -118,6 +118,35 @@ vi.mock('@/lib/api/queries', async (original) => ({
     fixtures.buildIds = ids;
     return [];
   },
+  useAppAnalytics: () => ({
+    data:
+      fixtures.metrics && fixtures.metrics.source === 'prometheus'
+        ? {
+            requests: fixtures.metrics.request_count,
+            error_requests: Math.round(
+              (fixtures.metrics.request_count * fixtures.metrics.error_rate_pct) / 100
+            ),
+            error_rate_pct: fixtures.metrics.error_rate_pct,
+            p50_ms: fixtures.metrics.latency_p50_ms,
+            p95_ms: fixtures.metrics.latency_p95_ms,
+            p99_ms: fixtures.metrics.latency_p99_ms,
+            cold_boots: 0,
+            groups: [],
+            since: '24h',
+            from: '2026-09-11T12:00:00Z',
+            until: '2026-09-12T12:00:00Z',
+          }
+        : undefined,
+    isPending: fixtures.metricsLoading,
+    error: fixtures.metricsError,
+    refetch: fixtures.retry,
+  }),
+  useAppAnalyticsTimeseries: () => ({
+    data: { points: [] },
+    isPending: false,
+    error: null,
+    refetch: fixtures.retry,
+  }),
   useAppMetrics: () => ({
     data: fixtures.metrics,
     isPending: fixtures.metricsLoading,
@@ -170,7 +199,7 @@ afterEach(cleanup);
 describe('App Overview', () => {
   it('opens a useful overview for Free accounts without fetching per-release builds', async () => {
     await mount();
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Overview');
     expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('release-new');
     expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
@@ -181,17 +210,17 @@ describe('App Overview', () => {
     expect(fixtures.buildIds).toEqual([]);
   });
 
-  it("shows the app's stateless contract on Overview only", async () => {
+  it("shows the app's local disk watch under Runtime", async () => {
     const router = await mount();
-    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
+    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
     await act(async () => {
       await router.navigate({
         to: '/dashboard/apps/$appSlug',
         params: { appSlug: 'alpha' },
-        search: { tab: 'Logs' },
+        search: { tab: 'Runtime' },
       });
     });
-    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
   });
 
   it('offers to copy the live endpoint URL next to its link', async () => {
@@ -326,15 +355,11 @@ describe('App Overview', () => {
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('constructor');
   });
 
-  it('preserves explicit Metrics links and supports keyboard access to Overview', async () => {
+  it('preserves explicit Metrics links and switches back to Overview', async () => {
     await mount('/dashboard/apps/alpha?tab=Metrics');
-    const pages = screen.getByRole('group', { name: 'Overview pages' });
-    expect(within(pages).getByRole('button', { name: 'Metrics' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
-    within(pages).getByRole('button', { name: 'Overview' }).focus();
-    await userEvent.keyboard('{Enter}');
+    const section = screen.getByRole('combobox', { name: 'Section' });
+    expect(section).toHaveValue('Metrics');
+    await userEvent.selectOptions(section, 'Overview');
     expect(await screen.findByRole('region', { name: 'Latest release' })).toBeInTheDocument();
   });
 });
@@ -372,8 +397,8 @@ describe('App log investigation links', () => {
       router.history.back();
     });
     await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Overview');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
     expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
   });
   it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {
@@ -436,4 +461,21 @@ describe('App header', () => {
         .map((item) => item.textContent)
     ).toEqual(['Park', 'Restart', 'Roll back']);
   });
+});
+
+describe('Invoke deep links', () => {
+  it.each(['invoke=1', 'invoke=true', 'tab=Invoke'])(
+    'opens the Invoke sheet from %s and preserves context when closed',
+    async (query) => {
+      const router = await mount(`/dashboard/apps/alpha?${query}&keep=yes#context`);
+      expect(await screen.findByRole('dialog', { name: 'Invoke' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Invoke' })).not.toBeInTheDocument()
+      );
+      expect(router.state.location.search.invoke).toBeUndefined();
+      expect(router.state.location.search.keep).toBe('yes');
+      expect(router.state.location.hash).toBe('context');
+    }
+  );
 });

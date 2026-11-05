@@ -276,8 +276,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            Send all of this app&apos;s traffic to {label}, after a bindings check. A failed check
-            leaves traffic as it is.
+            A bindings check runs first; if it fails, traffic stays as it is.
           </p>
           <ServingNote serving={serving} action="promotion" />
           <label className="flex items-start gap-2 text-xs">

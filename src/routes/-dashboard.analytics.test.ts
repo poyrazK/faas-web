@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { ANALYTICS_GROUPS } from '@/components/dashboard/app-analytics';
 import { Route } from './dashboard.analytics';
 
 const validate = Route.options.validateSearch as (search: Record<string, unknown>) => unknown;
 
 describe('Analytics search', () => {
-  it.each(ANALYTICS_GROUPS.map((group) => group.value))(
-    'keeps the %s grouping the selector offers',
-    (group) => {
-      expect(validate({ group })).toMatchObject({ group });
-    }
-  );
+  it('keeps the window and drops the per-app filters that moved to Metrics', () => {
+    expect(validate({ window: '7d', group: 'route', route: '/orders' })).toEqual({ window: '7d' });
+  });
 
-  it('drops a grouping the API does not offer', () => {
-    expect(validate({ group: 'planet' })).not.toHaveProperty('group');
+  it('keeps an old app link, filters included, so it can be redirected', () => {
+    expect(validate({ app: 'alpha', wake: 'w1', group: 'route' })).toEqual({
+      app: 'alpha',
+      wake: 'w1',
+      group: 'route',
+    });
   });
 });

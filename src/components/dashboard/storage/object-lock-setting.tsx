@@ -44,8 +44,8 @@ const WAITING: Record<NonNullable<BucketObjectLock['last_error_code']>, string> 
   unsettled_writes: 'Waiting for writes in flight to settle.',
   multipart_active: 'Waiting for multipart uploads in progress to finish.',
   capacity_active: 'Waiting for a capacity count to finish.',
-  provider_failed: 'Storage refused the change; apid retries on its own.',
-  provider_mismatch: 'Storage reported a different setting; apid retries on its own.',
+  provider_failed: 'Storage refused the change; Gregale retries on its own.',
+  provider_mismatch: 'Storage reported a different setting; Gregale retries on its own.',
   provider_unsupported: "This bucket's storage does not support the change.",
 };
 

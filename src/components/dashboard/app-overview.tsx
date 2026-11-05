@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { CheckCircle, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/mock-data';
@@ -8,9 +9,10 @@ import { ReleaseStatusLabel } from './release-status-label';
 import { failureSummary } from './failure-summary';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
-type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Configuration';
+type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Runtime';
 
 interface AppOverviewProps {
+  analytics?: ReactNode;
   app: Workflow;
   releases: Read<Deployment[]>;
   metrics: Read<AppMetrics>;
@@ -47,6 +49,7 @@ function measured(value: number | undefined): value is number {
 /** A read-only landing view. All actions lead to existing, app-scoped workflows. */
 export function AppOverview({
   app,
+  analytics,
   releases,
   metrics,
   metricsAccess,
@@ -148,11 +151,7 @@ export function AppOverview({
               ) : (
                 empty && (
                   <div className="mt-5">
-                    <p className="text-sm">Your first release starts here.</p>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Deploy from GitHub or upload an archive. Its progress and result will appear
-                      here.
-                    </p>
+                    <p className="text-sm">No releases yet.</p>
                     <Button className="mt-5" size="sm" onClick={onDeploy}>
                       Deploy your app
                     </Button>
@@ -165,9 +164,6 @@ export function AppOverview({
 
         <section aria-label="Needs attention" className="min-w-0 px-1 py-2 xl:px-2">
           <h2 className="text-base font-medium">Needs attention</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            From app state, the latest release, and available traffic.
-          </p>
           <div className="mt-4 divide-y divide-border">
             {failed && latest && (
               <div className="py-3 first:pt-0">
@@ -191,9 +187,6 @@ export function AppOverview({
             {appError && (
               <div className="py-3 first:pt-0">
                 <p className="text-sm font-medium">The app reports an error</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Check runtime output for the reported failure.
-                </p>
                 <Button
                   className="mt-2"
                   size="xs"
@@ -209,7 +202,6 @@ export function AppOverview({
                 <p className="text-sm font-medium">Requests returned errors</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {observed.error_rate_pct.toFixed(2)}% error rate in the {observed.range} window.
-                  This does not identify the cause.
                 </p>
                 <Button
                   className="mt-2"
@@ -233,20 +225,20 @@ export function AppOverview({
                       ? 'Nothing flagged in the available signals.'
                       : 'No confirmed issues to show yet.'}
                   </p>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                    {!observed
-                      ? 'Request health is unconfirmed without metrics.'
-                      : !hasTraffic
-                        ? 'No traffic to assess in this window.'
-                        : 'This is a summary of reported signals, not an uptime check.'}
-                  </p>
+                  {(!observed || !hasTraffic) && (
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                      {!observed
+                        ? 'Request health is unconfirmed without metrics.'
+                        : 'No traffic in this window.'}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('Configuration')}
+            onClick={() => onNavigate('Runtime')}
             className="mt-5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-brand"
           >
             View app configuration
@@ -261,70 +253,70 @@ export function AppOverview({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-medium">
             Traffic{' '}
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              {observed?.range ?? '24h'}
-            </span>
+            {!analytics && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {observed?.range ?? '24h'}
+              </span>
+            )}
           </h2>
-          {metricsAccess === 'available' && (
+          {metricsAccess === 'available' && !analytics && (
             <Button size="xs" variant="ghost" onClick={() => onNavigate('Metrics')}>
               View metrics
             </Button>
           )}
         </div>
-        {metricsAccess === 'checking' || (metricsAccess === 'available' && metrics.isPending) ? (
-          <p className="mt-4 text-sm text-muted-foreground" role="status">
-            Loading traffic signals…
-          </p>
-        ) : metricsAccess === 'restricted' ? (
-          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-            Request metrics are available on Hobby and above. Your app status and release history
-            remain available here.
-          </p>
-        ) : !observed ? (
-          <div className="mt-4" role="status">
-            <p className="text-sm text-muted-foreground">
-              Traffic metrics are unavailable. Missing data is not a zero error rate.
+        {analytics ??
+          (metricsAccess === 'checking' || (metricsAccess === 'available' && metrics.isPending) ? (
+            <p className="mt-4 text-sm text-muted-foreground" role="status">
+              Loading traffic signals…
             </p>
-            <Button className="mt-3" size="xs" variant="outline" onClick={onRetryMetrics}>
-              Retry metrics
-            </Button>
-          </div>
-        ) : (
-          <>
-            <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-5">
-              <Signal
-                label="Requests"
-                value={
-                  measured(observed.request_count)
-                    ? formatCompact(observed.request_count)
-                    : 'Unavailable'
-                }
-              />
-              <Signal
-                label="Error rate"
-                value={
-                  hasTraffic && measured(observed.error_rate_pct)
-                    ? `${observed.error_rate_pct.toFixed(2)}%`
-                    : '—'
-                }
-              />
-              <Signal
-                label="p95 response time"
-                value={
-                  hasTraffic && measured(observed.latency_p95_ms)
-                    ? formatMs(observed.latency_p95_ms)
-                    : '—'
-                }
-                note="Successful (2xx) responses"
-              />
-            </dl>
-            <p className="mt-5 text-xs text-muted-foreground">
-              {observed.request_count === 0
-                ? 'No requests recorded in this window. Latency and error rate are not assessed.'
-                : `As of ${timestamp(observed.as_of)}. App state and request health are separate signals.`}
+          ) : metricsAccess === 'restricted' ? (
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              Request metrics are available on Hobby and above.
             </p>
-          </>
-        )}
+          ) : !observed ? (
+            <div className="mt-4" role="status">
+              <p className="text-sm text-muted-foreground">Traffic metrics are unavailable.</p>
+              <Button className="mt-3" size="xs" variant="outline" onClick={onRetryMetrics}>
+                Retry metrics
+              </Button>
+            </div>
+          ) : (
+            <>
+              <dl className="mt-5 grid grid-cols-3 gap-3 sm:gap-5">
+                <Signal
+                  label="Requests"
+                  value={
+                    measured(observed.request_count)
+                      ? formatCompact(observed.request_count)
+                      : 'Unavailable'
+                  }
+                />
+                <Signal
+                  label="Error rate"
+                  value={
+                    hasTraffic && measured(observed.error_rate_pct)
+                      ? `${observed.error_rate_pct.toFixed(2)}%`
+                      : '—'
+                  }
+                />
+                <Signal
+                  label="p95 response time"
+                  value={
+                    hasTraffic && measured(observed.latency_p95_ms)
+                      ? formatMs(observed.latency_p95_ms)
+                      : '—'
+                  }
+                  note="Successful (2xx) responses"
+                />
+              </dl>
+              <p className="mt-5 text-xs text-muted-foreground">
+                {observed.request_count === 0
+                  ? 'No requests in this window.'
+                  : `As of ${timestamp(observed.as_of)}.`}
+              </p>
+            </>
+          ))}
       </section>
     </div>
   );

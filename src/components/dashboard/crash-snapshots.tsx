@@ -149,11 +149,13 @@ export function CrashSnapshotsPanel({ slug }: { slug: string }) {
 
   return (
     <div role="region" aria-label="Crash snapshots">
-      <Panel
-        title="Crash snapshots"
-        description="Memory captured after a 5xx, opened as a fork to see the state that produced the error."
-        actions={<MaturityLabel capability={capability} />}
-      >
+      <Panel title="Crash snapshots" actions={<MaturityLabel capability={capability} />}>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          {
+            'Memory captured after a 5xx, opened as a fork to see the state that produced the error.'
+          }
+        </p>
+
         <div className="flex flex-col gap-5">
           <p
             role="note"

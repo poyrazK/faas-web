@@ -153,7 +153,6 @@ function Recovery({ slug }: { slug: string }) {
     <div className="flex flex-col gap-5">
       <Panel
         title="Recovery policy"
-        description={`${stage ? `${stage} · ` : ''}What happens when a workflow run fails: prepare a recovery plan for review, or retry within budgets. Cancelling stays manual.`}
         actions={
           current && (
             <div className="flex flex-wrap gap-2">
@@ -173,6 +172,8 @@ function Recovery({ slug }: { slug: string }) {
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}What happens when a workflow run fails: prepare a recovery plan for review, or retry within budgets. Cancelling stays manual.`}</p>
+
         {!current || policy.error ? (
           <InlinePhase
             phase={queryPhase({ loading: policy.isPending, error: policy.error })}
@@ -292,10 +293,13 @@ function Health({ slug }: { slug: string }) {
   const h = q.data;
   const badge = h ? HEALTH[h.status] : undefined;
   return (
-    <Panel
-      title="Recovery health"
-      description="A snapshot of the automatic retry queue. Advisory: it never releases a slot or starts a retry."
-    >
+    <Panel title="Recovery health">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'A snapshot of the automatic retry queue. Advisory: it never releases a slot or starts a retry.'
+        }
+      </p>
+
       {!h ? (
         <InlinePhase
           phase={queryPhase({ loading: q.isPending, error: q.error })}

@@ -75,10 +75,7 @@ function ProjectPage() {
       >
         All projects
       </Link>
-      <PageHeader
-        title={project.slug}
-        description="Project membership, environment evidence and stage desired queue settings."
-      />
+      <PageHeader title={project.slug} />
       <Panel title="Project details">
         <dl className="grid gap-4 p-4 text-sm sm:grid-cols-2">
           {[

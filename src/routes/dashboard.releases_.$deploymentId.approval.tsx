@@ -35,7 +35,7 @@ export function ReleaseApprovalPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Release approval"
-        description="Approve the release to let its rollout continue, or reject it to abort the rollout."
+        help="Approve the release to let its rollout continue, or reject it to abort the rollout."
         actions={
           <Link
             to="/dashboard/releases"

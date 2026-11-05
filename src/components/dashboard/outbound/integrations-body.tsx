@@ -145,7 +145,6 @@ export function IntegrationsBody({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Integrations"
-        description="Fixed HTTPS destinations your apps call through the outbound gateway, with a sealed credential, a daily budget, and an admission policy."
         actions={
           view === 'integrations' && (
             <Button size="sm" onClick={() => setCreating(true)}>
@@ -177,7 +176,7 @@ export function IntegrationsBody({
               loading={list.isPending}
               error={list.error}
               onRetry={() => void list.refetch()}
-              emptyMessage="No integrations yet. Create one to let your apps call an external API through the gateway."
+              emptyMessage="No integrations yet."
               emptyAction={
                 <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
                   New integration

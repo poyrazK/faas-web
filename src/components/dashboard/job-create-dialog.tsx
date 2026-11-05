@@ -92,7 +92,8 @@ export function JobCreateDialog({
       onClose={close}
       title="New workload"
       description="Define a container job. Creating it does not start a run."
-      width="max-w-xl"
+      placement="right"
+      width="sm:max-w-[560px]"
       footer={
         <>
           <Button type="button" variant="ghost" disabled={create.isPending} onClick={close}>
@@ -112,7 +113,7 @@ export function JobCreateDialog({
       <form
         id="create-workload-form"
         noValidate
-        className="max-h-[calc(100dvh-17rem)] space-y-5 overflow-y-auto p-1"
+        className="space-y-5 p-1"
         onSubmit={async (event) => {
           event.preventDefault();
           if (resourceDetails.current && RESOURCE_FIELDS.some(([key]) => errors[key]))

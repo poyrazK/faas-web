@@ -125,7 +125,7 @@ async function openVersion3() {
 describe('EdgeRuleVersions', () => {
   it('lists versions newest first, marks the current one and says it is beta', () => {
     render(<EdgeRuleVersions slug="api" />);
-    expect(screen.getByText(/^Beta · /)).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
     const rows = screen.getAllByRole('listitem');
     expect(rows[0]).toHaveTextContent('v4');
     expect(rows[0]).toHaveTextContent('Current');

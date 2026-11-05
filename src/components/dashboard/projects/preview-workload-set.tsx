@@ -1,17 +1,17 @@
-import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { ApiError } from '@/lib/api/errors';
+import { parsePreviewSlug } from '@/lib/api/pr-previews';
 import {
-  usePreviewSet,
   usePreviewApp,
+  usePreviewSet,
   useProjectPreviewApps,
   type PreviewApp,
 } from '@/lib/api/preview-environments';
-import { useAuth } from '@/lib/auth';
-import { parsePreviewSlug } from '@/lib/api/pr-previews';
 import { useOrgApps, useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { ApiError } from '@/lib/api/errors';
 import { publicAppUrl } from '@/lib/app-url';
-import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth';
+import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { ErrorState, LoadingState, Panel } from '../primitives';
 function evidenceHref(value: string) {
   if (value.startsWith('/v1/') && !value.includes('\\') && !/\s/.test(value)) return value;
@@ -50,7 +50,7 @@ export function PreviewWorkloadSet({
   return (
     <Panel
       title="PR preview workload set"
-      description="Current-head readiness for the recorded set. Production dependencies may be shared; this is not a complete isolated clone."
+      help="Production dependencies may be shared; a preview is not an isolated clone."
     >
       <div className="space-y-4 p-4 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -80,17 +80,13 @@ export function PreviewWorkloadSet({
         {unavailable ? (
           <div>
             <p className="font-medium">Workload set unavailable</p>
-            <p className="mt-1 text-muted-foreground">
-              App-level information only. This may be a developer preview, an unrecorded legacy
-              preview, or a sibling rather than the recorded root. No whole-set readiness is
-              inferred.
-            </p>
+            <p className="mt-1 text-muted-foreground">App-level information only.</p>
           </div>
         ) : refused ? (
           <p role="status" className="text-muted-foreground">
             Only the member who created {app.preview_of_slug ?? 'its app'}, while an owner or admin
-            of {organization}, can read this preview’s workload set: apid has not opened it to other
-            members yet. The app-level facts above come from the app itself.
+            of {organization}, can read this preview’s workload set: the API has not opened it to
+            other members yet. The app-level facts above come from the app itself.
           </p>
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -210,7 +206,7 @@ function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: str
           {app.preview_pr_number ? ` · PR #${app.preview_pr_number}` : ' · Developer preview'}
         </p>
         <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? 'Hide preview evidence' : 'Inspect preview workload set'}
+          {open ? 'Hide preview details' : 'Inspect preview workload set'}
         </Button>
       </div>
       {open &&
@@ -282,7 +278,7 @@ function CompanyProjectPreviews({
   return (
     <Panel
       title="PR previews"
-      description={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
+      help={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
     >
       <div className="space-y-4 p-4">
         <Button
@@ -381,10 +377,7 @@ function PersonalProjectPreviews({
   ];
   const app = candidates.find((item) => item.slug === selected);
   return (
-    <Panel
-      title="PR previews"
-      description="App-backed preview discovery. Recorded roots are verified only when selected; this list does not claim complete project PR-set coverage."
-    >
+    <Panel title="PR previews">
       <div className="space-y-4 p-4">
         <Button
           size="sm"

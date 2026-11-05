@@ -27,6 +27,7 @@ import {
   type TenantSurface,
 } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { Sheet } from './kit/sheet';
 
 /**
  * Tenant surfaces (ADR-100): a customer's own hostnames grouped under one
@@ -130,13 +131,22 @@ function parseHostnames(value: string): string[] {
 export function TenantSurfaces({ slug }: { slug: string }) {
   const app = useApp(slug);
   const surfaces = useTenantSurfaces(slug);
+  const [creating, setCreating] = useState(false);
   const phase = queryPhase({ error: surfaces.error, loading: surfaces.isPending });
 
   return (
     <PlanGated error={surfaces.error} feature="Tenant surfaces">
       <Panel
         title="Tenant surfaces"
-        description="Group your customers' hostnames under one certificate bundle; each hostname is verified by a TXT record."
+        help="Each hostname is verified by a TXT record before the certificate is issued."
+        actions={
+          app.data ? (
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Create surface
+            </Button>
+          ) : undefined
+        }
       >
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={() => void surfaces.refetch()} />
@@ -147,7 +157,16 @@ export function TenantSurfaces({ slug }: { slug: string }) {
         ) : (
           <div className="flex flex-col gap-6">
             {(surfaces.data?.surfaces.length ?? 0) === 0 ? (
-              <EmptyState message="No tenant surfaces yet. Create one with the hostnames it should serve." />
+              <EmptyState
+                message="No tenant surfaces yet."
+                action={
+                  app.data ? (
+                    <Button size="sm" onClick={() => setCreating(true)}>
+                      Create surface
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : (
               <ul className="flex flex-col gap-4">
                 {surfaces.data?.surfaces.map((surface) => (
@@ -157,10 +176,14 @@ export function TenantSurfaces({ slug }: { slug: string }) {
                 ))}
               </ul>
             )}
-            {app.data && <CreateSurface slug={slug} appId={app.data.id} />}
           </div>
         )}
       </Panel>
+      {app.data && (
+        <Sheet open={creating} onClose={() => setCreating(false)} title="Create surface">
+          <CreateSurface slug={slug} appId={app.data.id} onDone={() => setCreating(false)} />
+        </Sheet>
+      )}
     </PlanGated>
   );
 }
@@ -330,7 +353,15 @@ function SurfaceCard({ surface, slug }: { surface: TenantSurface; slug: string }
   );
 }
 
-function CreateSurface({ slug, appId }: { slug: string; appId: string }) {
+function CreateSurface({
+  slug,
+  appId,
+  onDone,
+}: {
+  slug: string;
+  appId: string;
+  onDone: () => void;
+}) {
   const { toast } = useToast();
   const create = useCreateTenantSurface(slug);
   const [name, setName] = useState('');
@@ -348,6 +379,7 @@ function CreateSurface({ slug, appId }: { slug: string; appId: string }) {
       });
       setName('');
       setHostnames('');
+      onDone();
       toast({
         kind: 'success',
         title: `Surface "${surface.name}" created`,
@@ -363,44 +395,36 @@ function CreateSurface({ slug, appId }: { slug: string; appId: string }) {
 
   return (
     <form
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !create.isPending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">New surface</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-48 flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">Name</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="customer-domains"
-            className={cn(FIELD, 'w-full')}
-            aria-label="Surface name"
-          />
-        </label>
-        <label className="flex min-w-64 flex-1 flex-col gap-1.5">
-          <span className="text-xs text-muted-foreground">
-            Seed hostnames (comma or space separated)
-          </span>
-          <input
-            value={hostnames}
-            onChange={(e) => setHostnames(e.target.value)}
-            placeholder="app.acme.example, app.globex.example"
-            className={cn(FIELD, 'w-full')}
-            aria-label="Seed hostnames"
-          />
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!ready}
-          busy={create.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">Name</span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="customer-domains"
+          className={cn(FIELD, 'w-full')}
+          aria-label="Surface name"
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">
+          Seed hostnames (comma or space separated)
+        </span>
+        <input
+          value={hostnames}
+          onChange={(e) => setHostnames(e.target.value)}
+          placeholder="app.acme.example, app.globex.example"
+          className={cn(FIELD, 'w-full')}
+          aria-label="Seed hostnames"
+        />
+      </label>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!ready} busy={create.isPending}>
           Create surface
         </Button>
       </div>

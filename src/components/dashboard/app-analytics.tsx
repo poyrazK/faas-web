@@ -1,27 +1,30 @@
+import { useMetricInspector } from './metric-inspector';
+import { isDetailMetric } from './metric-detail-search';
+import { utcLabel, incompleteTelemetry } from './analytics-data';
+import { AnalyticsGrid, chosenCards, scalarCards, type AnalyticsPoint } from './analytics-grid';
+import { rangeHalfLabel } from './range-picker';
 import { useState, type KeyboardEvent } from 'react';
-import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { TimeChart } from './kit/chart';
 import { SegmentedControl } from './tabs';
 import { Select } from '@/components/ui/field';
-import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import {
   useAppAnalytics,
   useAppAnalyticsTimeseries,
   type AnalyticsGroupBy,
-  type AppAnalyticsTimeseriesOptions,
 } from '@/lib/api/queries';
+import {
+  ANALYTICS_GROUPS,
+  WINDOWS,
+  type AnalyticsMethod,
+  type AppAnalyticsSearch,
+} from './app-analytics-search';
 
-const WINDOWS = ['24h', '3d', '7d'] as const;
-/** Every grouping the selector offers; the routes' search validation reads it too. */
-export const ANALYTICS_GROUPS: { value: AnalyticsGroupBy; label: string }[] = [
-  { value: 'route', label: 'Route' },
-  { value: 'country', label: 'Country' },
-  { value: 'referrer_host', label: 'Referrer' },
-  { value: 'ua_family', label: 'Client' },
-  { value: 'status', label: 'Status' },
-  { value: 'consumer_id', label: 'Consumer' },
-];
+export { ANALYTICS_GROUPS, validateAppAnalyticsSearch } from './app-analytics-search';
+export type { AppAnalyticsSearch } from './app-analytics-search';
+
 /**
  * What the hourly chart plots. Every series comes from the same zero-filled
  * hourly buckets. Latency leaves out hours with no requests: a zero-filled
@@ -50,8 +53,6 @@ const CHART_METRICS = {
 } as const;
 type ChartMetric = keyof typeof CHART_METRICS;
 
-type AnalyticsMethod = NonNullable<AppAnalyticsTimeseriesOptions['method']>;
-
 export type AppAnalyticsBodyProps = {
   slug: string;
   since: string;
@@ -65,12 +66,7 @@ export type AppAnalyticsBodyProps = {
   onRouteChange: (route: string | undefined, method: AnalyticsMethod | undefined) => void;
 };
 
-function hourLabel(iso: string): string {
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms)
-    ? iso
-    : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+const hourLabel = utcLabel;
 
 export function AppAnalyticsBody({
   slug,
@@ -83,6 +79,7 @@ export function AppAnalyticsBody({
   onGroupByChange,
   onRouteChange,
 }: AppAnalyticsBodyProps) {
+  const inspect = useMetricInspector();
   const analytics = useAppAnalytics(slug, since, groupBy);
   const hasRouteFilter = groupBy === 'route' && Boolean(route && method);
   const series = useAppAnalyticsTimeseries(slug, since, {
@@ -94,17 +91,28 @@ export function AppAnalyticsBody({
   const enabled = Boolean(slug);
   const planGateError = [analytics.error, series.error].find(isPlanGate);
   const [metric, setMetric] = useState<ChartMetric>('traffic');
-  const points = (series.data?.points ?? [])
-    .filter((point) => metric !== 'latency' || point.requests > 0)
-    .map((point) => ({
-      at: hourLabel(point.start),
-      requests: point.requests,
-      error_requests: point.error_requests,
-      p50_ms: point.p50_ms,
-      p95_ms: point.p95_ms,
-      p99_ms: point.p99_ms,
-      cold_boots: point.cold_boots,
-    }));
+  const [picking, setPicking] = useState(false);
+  const points = (series.data?.points ?? []).map((point) => ({
+    at: hourLabel(point.start),
+    requests: point.requests,
+    error_requests: point.error_requests,
+    p50_ms: point.requests ? point.p50_ms : null,
+    p95_ms: point.requests ? point.p95_ms : null,
+    p99_ms: point.requests ? point.p99_ms : null,
+    cold_boots: point.cold_boots,
+  }));
+  const inspectMetric = (selected: string) => {
+    if (isDetailMetric(selected))
+      inspect({
+        metric: selected,
+        app: slug,
+        since: series.data?.from ?? since,
+        until: series.data?.until,
+        route: hasRouteFilter ? route : undefined,
+        method: hasRouteFilter ? method : undefined,
+        group: groupBy,
+      });
+  };
   const chart = CHART_METRICS[metric];
   const analyticsPhase = queryPhase({
     error: analytics.error,
@@ -114,17 +122,14 @@ export function AppAnalyticsBody({
   const seriesPhase = queryPhase({
     error: series.error,
     loading: enabled && series.isPending,
-    // The unfiltered series decides whether there is a chart at all: the
-    // latency view drops idle hours, and must not hide the metric switch.
-    isEmpty: (series.data?.points ?? []).length < 2,
+    // Preserve idle buckets as gaps in latency, keeping their place on the time axis.
+    isEmpty: (series.data?.points ?? []).length === 0,
   });
   const groupsPhase = queryPhase({
     error: analytics.error,
     loading: enabled && analytics.isPending,
     isEmpty: (data?.groups.length ?? 0) === 0,
   });
-  const tileState =
-    analyticsPhase === 'loading' ? 'loading' : analyticsPhase === 'ready' ? 'ready' : 'unavailable';
 
   const changeGroup = (next: AnalyticsGroupBy) => {
     onGroupByChange(next);
@@ -146,10 +151,17 @@ export function AppAnalyticsBody({
   return (
     <PlanGated error={planGateError} feature="Request analytics">
       <Panel
-        title="Request analytics"
-        description="Aggregated at the edge from route templates, hostname-only referrers and country codes — never full URLs."
+        title="Analytics"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-label="Add a metric"
+              onClick={() => setPicking(!picking)}
+              className="pressable rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+            >
+              Add metric
+            </button>
             {showWindowSelector && (
               <Select
                 value={since}
@@ -188,26 +200,89 @@ export function AppAnalyticsBody({
           />
         ) : (
           <div className="flex flex-col gap-5">
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <StatTile label="Requests" value={data?.requests} state={tileState} />
-              <StatTile label="Errors" value={data?.error_requests} state={tileState} tone="red" />
-              <StatTile
-                label="Error rate"
-                value={data ? data.error_rate_pct.toFixed(2) : undefined}
-                unit="%"
-                state={tileState}
-                tone="orange"
-              />
-              <StatTile label="p50" value={data?.p50_ms} unit="ms" state={tileState} tone="grey" />
-              <StatTile label="p95" value={data?.p95_ms} unit="ms" state={tileState} tone="grey" />
-              <StatTile
-                label="Cold boots"
-                value={data?.cold_boots}
-                state={tileState}
-                tone="orange"
-              />
-            </div>
-
+            <AnalyticsGrid
+              onInspect={inspectMetric}
+              historyState={
+                seriesPhase === 'loading'
+                  ? 'loading'
+                  : seriesPhase === 'error' || seriesPhase === 'unreachable'
+                    ? 'unavailable'
+                    : 'ready'
+              }
+              points={
+                (seriesPhase === 'ready' ? (series.data?.points ?? []) : []) as AnalyticsPoint[]
+              }
+              picking={picking}
+              onPicking={setPicking}
+              loading={seriesPhase === 'loading'}
+              build={(chosen) => {
+                const raw = (
+                  seriesPhase === 'ready' ? (series.data?.points ?? []) : []
+                ) as AnalyticsPoint[];
+                const cards = chosenCards(
+                  chosen,
+                  raw,
+                  rangeHalfLabel({ kind: 'preset', value: since }),
+                  {
+                    from: series.data?.from,
+                    until: series.data?.until,
+                    incomplete: incompleteTelemetry(series.data) || incompleteTelemetry(data),
+                  }
+                );
+                if (hasRouteFilter)
+                  return cards.map((card) =>
+                    seriesPhase === 'ready' ? card : { ...card, value: '—', delta: null }
+                  );
+                // Aggregated percentiles come from the aggregate, never averaged hourly percentiles.
+                const totals = data
+                  ? scalarCards(chosen, {
+                      request_count: data.requests,
+                      error_rate_pct: data.error_rate_pct,
+                      latency_p50_ms: data.p50_ms,
+                      latency_p95_ms: data.p95_ms,
+                      latency_p99_ms: data.p99_ms,
+                      cold_start_pct: 0,
+                    })
+                  : [];
+                return cards.map((card) => {
+                  if (!data) return { ...card, value: '—', delta: null };
+                  if (card.id === 'errors')
+                    return {
+                      ...card,
+                      value: String(data.error_requests),
+                      caption:
+                        card.delta === null ? 'Errored responses in this window' : card.caption,
+                    };
+                  if (card.id === 'cold_boots')
+                    return {
+                      ...card,
+                      value: String(data.cold_boots),
+                      caption: card.delta === null ? 'Cold boots in this window' : card.caption,
+                    };
+                  const total = totals.find((item) => item.id === card.id);
+                  return total
+                    ? {
+                        ...card,
+                        value: total.value,
+                        caption: card.id.startsWith('p')
+                          ? 'Recorded responses in this window'
+                          : card.delta !== null
+                            ? card.caption
+                            : total.caption,
+                      }
+                    : card;
+                });
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Hourly history · UTC. Changes compare equal groups of complete hours within this
+              window; partial hours are excluded.
+            </p>
+            {(incompleteTelemetry(data) || incompleteTelemetry(series.data)) && (
+              <p role="status" className="text-xs text-status-warning">
+                Some request records are missing. These figures may be incomplete.
+              </p>
+            )}
             {data?.window_clamped && (
               <p className="text-xs text-muted-foreground">
                 The window was clamped to the retention this plan keeps.
@@ -244,26 +319,28 @@ export function AppAnalyticsBody({
                     onChange={setMetric}
                   />
                 </div>
-                {points.length ? (
-                  <AreaChart data={points} config={chart.config} className="h-48 w-full">
-                    <Grid />
-                    <XAxis dataKey="at" />
-                    <YAxis />
-                    <Tooltip />
-                    {Object.keys(chart.config).map((key) => (
-                      <Area key={key} dataKey={key} />
-                    ))}
-                  </AreaChart>
+                {points.some((point) => point.requests > 0) ? (
+                  <TimeChart
+                    onInspect={() =>
+                      inspectMetric(
+                        metric === 'traffic'
+                          ? 'requests'
+                          : metric === 'latency'
+                            ? 'p95'
+                            : 'cold_boots'
+                      )
+                    }
+                    data={points}
+                    x="at"
+                    series={chart.config}
+                    kind={metric === 'latency' ? 'line' : 'area'}
+                    className="h-48"
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     {metric === 'latency'
-                      ? 'No requests in this window, so there is no latency to plot.'
+                      ? 'No requests in this window.'
                       : 'No hourly points in this window yet.'}
-                  </p>
-                )}
-                {metric === 'latency' && points.length > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Hours without requests are left out.
                   </p>
                 )}
               </div>
@@ -363,25 +440,39 @@ export function AppAnalyticsBody({
   );
 }
 
-export function AppAnalyticsPanel({ slug }: { slug: string }) {
-  const [since, setSince] = useState<string>('24h');
-  const [groupBy, setGroupBy] = useState<AnalyticsGroupBy>('route');
-  const [route, setRoute] = useState<string>();
-  const [method, setMethod] = useState<AnalyticsMethod>();
-
+/** Request analytics for one app, with its filters in the URL so a link keeps them. */
+export function AppAnalyticsPanel({
+  slug,
+  search,
+  onSearchChange,
+}: {
+  slug: string;
+  search: AppAnalyticsSearch;
+  onSearchChange: (patch: AppAnalyticsSearch) => void;
+}) {
   return (
     <AppAnalyticsBody
       slug={slug}
-      since={since}
-      groupBy={groupBy}
-      route={route}
-      method={method}
-      onSinceChange={setSince}
-      onGroupByChange={setGroupBy}
-      onRouteChange={(nextRoute, nextMethod) => {
-        setRoute(nextRoute);
-        setMethod(nextMethod);
-      }}
+      since={search.analyticsSince ?? '24h'}
+      groupBy={search.analyticsGroup ?? 'route'}
+      route={search.analyticsRoute}
+      method={search.analyticsMethod}
+      onSinceChange={(since) =>
+        onSearchChange({ analyticsSince: WINDOWS.find((w) => w === since) })
+      }
+      onGroupByChange={(group) =>
+        onSearchChange({
+          analyticsGroup: group,
+          analyticsRoute: undefined,
+          analyticsMethod: undefined,
+        })
+      }
+      onRouteChange={(route, method) =>
+        onSearchChange({
+          analyticsRoute: route && method ? route : undefined,
+          analyticsMethod: route && method ? method : undefined,
+        })
+      }
     />
   );
 }

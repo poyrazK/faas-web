@@ -103,7 +103,7 @@ const PHASES: Record<Assessment['phase'], { label: string; note?: string }> = {
 /** Where apid says to look next (AppHealthCheck.action), as the app tab that answers it. */
 const ACTIONS = {
   deployments: { tab: 'Deployments', label: 'Inspect release' },
-  configuration: { tab: 'Configuration', label: 'Inspect configuration' },
+  configuration: { tab: 'Runtime', label: 'Inspect configuration' },
   logs: { tab: 'Logs', label: 'Inspect logs' },
   metrics: { tab: 'Metrics', label: 'Inspect metrics' },
   errors: { tab: 'Errors', label: 'Inspect errors' },
@@ -186,7 +186,7 @@ function HealthBody({ slug }: { slug: string }) {
   return (
     <Panel
       title="Health"
-      description="Observed serving health from evidence Gregale already holds. Reading it never wakes or probes your app."
+      help="Observed serving health from checks Gregale already holds. Reading it never wakes or probes your app."
       actions={
         <div className="flex items-center gap-2">
           <MaturityLabel capability={capability} />
@@ -214,7 +214,7 @@ function HealthBody({ slug }: { slug: string }) {
           <InlinePhase
             phase={phase}
             error={health.error}
-            loadingMessage="Reading health evidence…"
+            loadingMessage="Reading health…"
             onRetry={() => void health.refetch()}
           />
         ) : (
@@ -293,7 +293,7 @@ function Evidence({ slug, data }: { slug: string; data: Assessment }) {
               .
             </p>
           ) : (
-            <p>Request counts unconfirmed: missing evidence is not a zero error rate.</p>
+            <p>Request counts unconfirmed: missing data does not mean a zero error rate.</p>
           )}
           <p className="mt-1">
             Diagnostic defaults, not your SLO: a warning at {requests.policy.warning_error_rate_pct}
@@ -437,7 +437,11 @@ function History({ history, now }: { history: HistoryRead; now: number }) {
               >
                 <span className="flex flex-wrap items-center gap-2">
                   {entry.kind === 'gap' ? (
-                    <StatusMark {...STATUS.unknown} label="Evidence expired" className="text-xs" />
+                    <StatusMark
+                      {...STATUS.unknown}
+                      label="Assessment expired"
+                      className="text-xs"
+                    />
                   ) : entry.kind === 'baseline' ? (
                     <>
                       <span className="text-xs text-muted-foreground">First assessment</span>
@@ -495,7 +499,8 @@ function History({ history, now }: { history: HistoryRead; now: number }) {
         )
       )}
       <p className="text-xs text-muted-foreground">
-        Times are when evidence was observed or expired, not when an incident began or ended.
+        Times show when health was assessed or its validity ended, not when an incident began or
+        ended.
       </p>
     </section>
   );

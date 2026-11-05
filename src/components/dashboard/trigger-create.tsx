@@ -206,12 +206,8 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
       <StepRail step={step} />
       <Panel
         title={STEPS[step]}
-        description={
-          step === 0
-            ? 'Choose the immutable destination, source kind, and trigger handle.'
-            : step === 1
-              ? 'Configure polling and delivery. The platform validates shape when you save; broker connectivity is observed after creation.'
-              : 'Confirm how this source invokes your app before it starts consuming.'
+        help={
+          step === 0 ? 'Destination, source kind, and slug cannot be changed later.' : undefined
         }
       >
         <form
@@ -287,7 +283,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                 />
               </section>
               <section className="flex flex-col gap-3 border-t border-border pt-6">
-                <h3 className="label-mono text-muted-foreground">Delivery contract</h3>
+                <h3 className="label-mono text-muted-foreground">Delivery</h3>
                 <TriggerDeliveryFields
                   sourceKind={draft.source.kind}
                   delivery={draft.delivery}
@@ -342,7 +338,7 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
                 ))}
               </dl>
               <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted p-4">
-                <p className="label-mono text-muted-foreground">Handler contract</p>
+                <p className="label-mono text-muted-foreground">Handler</p>
                 <code className="font-mono text-xs text-brand">
                   POST /_triggers/{draft.source.kind}/{draft.slug}
                 </code>
@@ -408,8 +404,8 @@ export function CreateTrigger({ account, apps }: { account: Account; apps: App[]
         </form>
       </Panel>
       <p className="text-xs text-muted-foreground">
-        The API enforces {account.limits.trigger_limit_per_app} triggers per app and{' '}
-        {account.limits.trigger_limit_per_account} per account on this plan.
+        Your plan allows {account.limits.trigger_limit_per_app} triggers per app and{' '}
+        {account.limits.trigger_limit_per_account} per account.
       </p>
     </div>
   );

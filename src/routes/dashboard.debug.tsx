@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate, redirect } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
+import { remembered } from '@/components/dashboard/selected-app';
 import { DebugBody } from '@/components/dashboard/debug-body';
 import { validateDebugSearch } from '@/components/dashboard/debug-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
@@ -10,6 +11,18 @@ import { consoleHead } from '@/lib/seo';
 export const Route = createFileRoute('/dashboard/debug')({
   component: withCapability('debug', 'Debugger', DebugPage),
   validateSearch: validateDebugSearch,
+  // Explicit deep links can redirect immediately. A remembered selection
+  // must first be checked against the current inventory in DebugPage.
+  beforeLoad: ({ search }) => {
+    const app = search.app;
+    if (!app) return;
+    throw redirect({
+      to: '/dashboard/apps/$appSlug',
+      params: { appSlug: app },
+      search: { ...search, app: undefined, tab: 'Debugger' },
+      replace: true,
+    });
+  },
   head: () => consoleHead('debug'),
 });
 
@@ -36,11 +49,21 @@ function DebugPage() {
     });
   };
 
+  if (!search.app && remembered() && !appState.loadingApps && !appState.appsError && available)
+    return (
+      <Navigate
+        to="/dashboard/apps/$appSlug"
+        params={{ appSlug: slug }}
+        search={{ ...search, app: undefined, tab: 'Debugger' }}
+        hash
+        replace
+      />
+    );
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Debugger"
-        description="What happened, what the evidence explains, and what to inspect next."
         actions={
           <AppSelect
             slug={slug}
@@ -49,7 +72,7 @@ function DebugPage() {
           />
         }
       />
-      <AppScope state={appState} resource="request telemetry">
+      <AppScope state={appState} resource="requests">
         {available ? (
           <DebugBody
             slug={slug}
@@ -63,9 +86,7 @@ function DebugPage() {
             }
           />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            The selected app is unavailable. Select an app to investigate its requests.
-          </p>
+          <p className="text-sm text-muted-foreground">The selected app is unavailable.</p>
         )}
       </AppScope>
       <WakeDrawer

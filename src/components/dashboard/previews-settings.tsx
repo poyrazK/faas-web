@@ -33,7 +33,7 @@ export function PreviewsSettings() {
   return (
     <Panel
       title={org ? `Previews for ${label}` : 'Previews'}
-      description="Features that are off by default. Joining one turns it on for this workspace; it may change before general availability."
+      help="Joining a preview turns it on for this workspace; it may change before general availability."
     >
       <InlinePhase
         phase={phase}

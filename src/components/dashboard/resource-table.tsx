@@ -1,20 +1,22 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useContext, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Search, Xmark } from 'iconoir-react';
-import { EmptyState, ErrorState, Skeleton, UnreachableState, queryPhase } from './primitives';
-import { EASE } from './motion';
+import {
+  EmptyState,
+  ErrorState,
+  FlushContext,
+  Skeleton,
+  UnreachableState,
+  queryPhase,
+} from './primitives';
 import { cn } from '@/lib/utils';
 import { IconButton } from '@/components/ui/icon-button';
 
-/** Rows past this index appear together — a stagger that long reads as lag. */
-const STAGGER_CAP = 15;
 /** Enough to fill the fold without pretending to know the row count. */
 const SKELETON_ROWS = 6;
-const STAGGER_STEP = 0.02;
 /** The height of the header row plus SKELETON_ROWS skeleton rows. Applied to
  * the empty/error/unreachable boxes so replacing a loading table with one of
  * them does not move the rest of the page. */
-const STATE_MIN_H = 'min-h-[17.75rem]';
+const STATE_MIN_H = 'min-h-56';
 /** Rows rendered before the table asks. The API has no cursors yet, so every
  * response arrives whole — this bounds the DOM, not the data. Filtering and
  * sorting still cover the full set. */
@@ -103,7 +105,7 @@ export function ResourceTable<T extends { id: string }>({
   const setQuery = onQueryChange ?? setInternalQuery;
   const [sort, setSort] = useState(initialSort);
   const [shownCount, setShownCount] = useState(PAGE_SIZE);
-  const reduce = useReducedMotion();
+  const flush = useContext(FlushContext);
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
   const secondary = columns.filter((column) => column.priority === 'secondary');
   const primaryIndex = columns.findIndex((column) => column.priority !== 'secondary');
@@ -169,14 +171,19 @@ export function ResourceTable<T extends { id: string }>({
   };
 
   return (
-    <div className="animate-item-enter flex flex-col gap-4">
+    <div className={cn('flex flex-col', flush ? 'gap-0' : 'gap-3')}>
       {/* Also shown, filterless, once a table is big enough to truncate —
           the count is then the only statement of how much exists. */}
       {(searchKeys?.length || filters || rows.length > PAGE_SIZE) && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div
+          className={cn(
+            'flex flex-wrap items-center gap-3',
+            flush && 'border-b border-border px-4 py-2'
+          )}
+        >
           {searchKeys?.length ? (
             <label className="relative flex min-w-56 flex-1 items-center sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="search"
                 aria-label="Filter resources"
@@ -192,7 +199,7 @@ export function ResourceTable<T extends { id: string }>({
                   }
                 }}
                 placeholder={searchPlaceholder}
-                className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-9 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50 [&::-webkit-search-cancel-button]:appearance-none"
+                className="h-8 w-full rounded-md border border-border bg-card pl-8 pr-8 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50 [&::-webkit-search-cancel-button]:appearance-none"
               />
               {query && (
                 <IconButton
@@ -230,12 +237,7 @@ export function ResourceTable<T extends { id: string }>({
           to a shorter box, so the page holds still. Loading and ready share a
           key: data landing swaps skeleton rows for real ones without re-fading
           the chrome. */}
-      <motion.div
-        key={phase === 'ready' || phase === 'loading' ? 'table' : phase}
-        initial={reduce ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.18 }}
-      >
+      <div key={phase === 'ready' || phase === 'loading' ? 'table' : phase}>
         {phase === 'unreachable' ? (
           <UnreachableState className={STATE_MIN_H} onRetry={onRetry} />
         ) : phase === 'error' ? (
@@ -259,7 +261,9 @@ export function ResourceTable<T extends { id: string }>({
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div
+            className={cn('overflow-hidden bg-card', !flush && 'rounded-lg border border-border')}
+          >
             {/* relative: the sr-only (absolute) header text is positioned inside
                 this box, so it is clipped with the table instead of widening the page. */}
             <div className="relative overflow-x-auto">
@@ -272,7 +276,7 @@ export function ResourceTable<T extends { id: string }>({
                 )}
               >
                 <thead>
-                  <tr className="border-b border-border text-left">
+                  <tr className="border-b border-border bg-muted/30 text-left">
                     {columns.map((col, index) => {
                       const isSorted = sort?.key === col.key;
                       return (
@@ -283,7 +287,7 @@ export function ResourceTable<T extends { id: string }>({
                             isSorted ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'
                           }
                           className={cn(
-                            'px-3 py-3 md:px-4',
+                            'h-8 px-3 py-0 align-middle font-normal',
                             col.numeric && 'text-right',
                             col.width,
                             col.priority === 'secondary' && 'hidden md:table-cell'
@@ -330,7 +334,7 @@ export function ResourceTable<T extends { id: string }>({
                             <td
                               key={`${col.key}:${index}`}
                               className={cn(
-                                'px-3 py-3 md:px-4',
+                                'h-8 px-3 py-1.5',
                                 col.priority === 'secondary' && 'hidden md:table-cell'
                               )}
                             >
@@ -339,7 +343,7 @@ export function ResourceTable<T extends { id: string }>({
                               />
                             </td>
                           ))}
-                          {rowActions && <td className="px-4 py-3" />}
+                          {rowActions && <td className="px-3 py-1.5" />}
                         </tr>
                       ))
                     : null}
@@ -350,21 +354,11 @@ export function ResourceTable<T extends { id: string }>({
                       </td>
                     </tr>
                   )}
-                  {shown.map((row, i) => {
+                  {shown.map((row) => {
                     const isNew = newIds.has(row.id);
-                    // Keyed by id, so rows entering the filtered set rise in
-                    // and rows that stay put do not re-animate. No `layout` —
-                    // table cells and layout projection do not get along.
                     return (
-                      <motion.tr
+                      <tr
                         key={row.id}
-                        initial={reduce ? false : { opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          duration: 0.28,
-                          ease: EASE,
-                          delay: reduce ? 0 : Math.min(i, STAGGER_CAP) * STAGGER_STEP,
-                        }}
                         onClick={onRowClick ? () => onRowClick(row) : undefined}
                         // Clickable rows are keyboard-operable too: Enter or Space
                         // on the row itself (not on a control inside it) activates.
@@ -382,7 +376,7 @@ export function ResourceTable<T extends { id: string }>({
                             : undefined
                         }
                         className={cn(
-                          'transition-colors hover:bg-muted/40',
+                          'hover:bg-muted/40',
                           isNew && 'animate-row-arrive',
                           onRowClick &&
                             'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
@@ -392,7 +386,7 @@ export function ResourceTable<T extends { id: string }>({
                           <td
                             key={`${col.key}:${index}`}
                             className={cn(
-                              'px-3 py-3 md:px-4',
+                              'h-8 px-3 py-1.5',
                               secondary.length > 0 && '[overflow-wrap:anywhere]',
                               col.priority === 'secondary' && 'hidden md:table-cell',
                               col.numeric && 'text-right [font-variant-numeric:tabular-nums]'
@@ -443,7 +437,7 @@ export function ResourceTable<T extends { id: string }>({
                           </td>
                         ))}
                         {rowActions && (
-                          <td className="w-0 whitespace-nowrap px-4 py-3 text-right">
+                          <td className="w-0 whitespace-nowrap px-3 py-1 text-right">
                             {/* The shield: controls in here act on the row's
                                 data, never as a click on the row. */}
                             <span
@@ -455,7 +449,7 @@ export function ResourceTable<T extends { id: string }>({
                             </span>
                           </td>
                         )}
-                      </motion.tr>
+                      </tr>
                     );
                   })}
                   {phase === 'ready' && visible.length > shown.length && (
@@ -464,7 +458,7 @@ export function ResourceTable<T extends { id: string }>({
                         <button
                           type="button"
                           onClick={() => setShownCount((n) => n + PAGE_SIZE)}
-                          className="pressable w-full px-4 py-3 text-center text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                          className="pressable w-full px-3 py-2 text-center text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                         >
                           Show {Math.min(PAGE_SIZE, visible.length - shown.length)} more —{' '}
                           {visible.length - shown.length} not shown
@@ -477,7 +471,7 @@ export function ResourceTable<T extends { id: string }>({
             </div>
           </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -487,7 +481,7 @@ export function Pill({ label, color }: { label: string; color?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs',
+        'inline-flex h-5 items-center whitespace-nowrap rounded border px-1.5 text-xs',
         !color && 'border-border text-muted-foreground'
       )}
       style={

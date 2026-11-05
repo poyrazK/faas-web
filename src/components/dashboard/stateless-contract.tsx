@@ -71,10 +71,20 @@ export function StatelessContract({ slug }: { slug: string }) {
   const retry = () => void (app.error ? app.refetch() : advisories.refetch());
 
   return (
-    <div role="region" aria-label="Stateless contract">
+    <div role="region" aria-label="Local disk">
       <Panel
-        title="Stateless contract"
-        description="Writes to state-shaped directories seen while the app ran. Anything written to local disk is lost when the instance parks."
+        title="Local disk"
+        help={
+          <>
+            Anything written to local disk is lost when the instance parks. Gregale watches /data,
+            /db and database directories under /var/lib; that is not a guarantee the app is
+            stateless. See{' '}
+            <a href="/docs/storage" className="text-brand underline underline-offset-4">
+              Storage
+            </a>
+            .
+          </>
+        }
         padded={false}
       >
         {phase === 'ready' ? (
@@ -94,21 +104,11 @@ export function StatelessContract({ slug }: { slug: string }) {
             />
           </div>
         )}
-        <div className="flex flex-col gap-1 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-          {events.length >= ADVISORY_LIMIT && (
-            <p>Showing the newest {ADVISORY_LIMIT} batches; older writes are not counted here.</p>
-          )}
-          <p>
-            Gregale watches /data, /db and database directories under /var/lib and reports writes;
-            the app keeps running. It is observation of a fixed set of paths, not a guarantee the
-            app is stateless. Deploys are checked separately, and a failed check fails the
-            deployment. See{' '}
-            <a href="/docs/storage" className="text-brand underline underline-offset-4">
-              Storage
-            </a>
-            .
+        {events.length >= ADVISORY_LIMIT && (
+          <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+            Showing the newest {ADVISORY_LIMIT} batches.
           </p>
-        </div>
+        )}
       </Panel>
     </div>
   );

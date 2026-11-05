@@ -172,11 +172,9 @@ export function SyntheticsBody({ slug }: { slug: string }) {
       </div>
 
       <PlanGated error={list.error} feature="Synthetic checks">
-        <Panel
-          title="Checks"
-          description={`Uptime and p95 latency over 24 hours, and the last result. ${checks.length} of ${CHECK_LIMIT} defined.`}
-          padded={phase !== 'ready'}
-        >
+        <Panel title="Checks" padded={phase !== 'ready'}>
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground px-4 pt-4">{`Uptime and p95 latency over 24 hours, and the last result. ${checks.length} of ${CHECK_LIMIT} defined.`}</p>
+
           {phase === 'unreachable' ? (
             <UnreachableState onRetry={() => void list.refetch()} />
           ) : phase === 'error' ? (
@@ -240,7 +238,7 @@ export function SyntheticsBody({ slug }: { slug: string }) {
           />
         )}
 
-        <Panel lit title="Create a check">
+        <Panel title="Create a check">
           <CheckForm
             slug={slug}
             full={checks.length >= CHECK_LIMIT}
@@ -307,7 +305,6 @@ function CheckDetail({
   return (
     <Panel
       title={check.name}
-      description={`${check.method} ${check.url} ${everyLabel(check.interval_seconds)}, ${expectation(check)}, timeout ${check.timeout_ms.toLocaleString()} ms`}
       actions={
         <span className="flex flex-wrap items-center gap-3">
           <CopyableId value={check.id} label="check ID" />
@@ -336,6 +333,8 @@ function CheckDetail({
         </span>
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${check.method} ${check.url} ${everyLabel(check.interval_seconds)}, ${expectation(check)}, timeout ${check.timeout_ms.toLocaleString()} ms`}</p>
+
       <div className="flex flex-col gap-5">
         {!check.enabled && (
           <p role="status" className="text-sm text-muted-foreground">
@@ -741,7 +740,7 @@ function ProbeCostNote() {
             href="/docs/synthetic-checks"
             target="_blank"
             rel="noopener"
-            className="text-brand underline-offset-4 hover:underline"
+            className="text-brand underline underline-offset-4"
           >
             What checks cost
           </a>

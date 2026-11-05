@@ -1,4 +1,4 @@
-import { Panel, StatTile } from '@/components/dashboard/primitives';
+import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import type { components } from '@/lib/api/schema';
 import { ACCOUNT_CURRENCY } from '@/lib/money';
 
@@ -54,9 +54,21 @@ export function ObjectStorageUsagePanel({ data }: { data: ObjectStorageUsage }) 
   return (
     <Panel
       title="Object storage"
-      description={`Since ${new Date(usage.period_start).toLocaleDateString()}.${usage.fresh ? '' : ' The last report is stale; these figures lag behind.'}`}
+      padded={false}
+      actions={
+        <span className="text-xs text-muted-foreground">
+          Since {new Date(usage.period_start).toLocaleDateString()}
+          {!usage.fresh && (
+            <span style={{ color: 'var(--status-warning)' }}>
+              {' '}
+              · The last report is stale; these figures lag behind.
+            </span>
+          )}
+        </span>
+      }
+      help={`Since ${new Date(usage.period_start).toLocaleDateString()}.${usage.fresh ? '' : ' The last report is stale; these figures lag behind.'}`}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stats columns={4}>
         <StatTile
           label="Stored"
           value={bytes(usage.observed_bytes)}
@@ -69,7 +81,7 @@ export function ObjectStorageUsagePanel({ data }: { data: ObjectStorageUsage }) 
           tone="grey"
         />
         <StatTile
-          label="Egress"
+          label="Storage egress"
           value={bytes(usage.egress_bytes)}
           note={`cap ${bytes(policy.max_monthly_egress_bytes)}/month`}
           tone="orange"
@@ -87,7 +99,7 @@ export function ObjectStorageUsagePanel({ data }: { data: ObjectStorageUsage }) 
               : undefined
           }
         />
-      </div>
+      </Stats>
     </Panel>
   );
 }

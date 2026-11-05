@@ -30,26 +30,22 @@ function Observation({ data }: { data: OpenAPIPreview }) {
     <div className="space-y-2 text-sm text-muted-foreground" role="status">
       <p>
         {status === 'unavailable'
-          ? 'Live telemetry is unavailable.'
+          ? 'Live request data is unavailable.'
           : status === 'partial'
-            ? 'Live telemetry is partial.'
-            : 'Live telemetry available.'}{' '}
+            ? 'Live request data is partial.'
+            : 'Live request data available.'}{' '}
         {data.collectors_healthy} of {data.collectors_expected} expected collectors are healthy.
       </p>
       {data.observed_inventory_available && (
         <p>Retained discovered routes are included; they do not establish current live traffic.</p>
       )}
       {data.observed_cap_hit && <p>Route cap reached. This snapshot may omit routes.</p>}
-      {!data.openapi_version && (
-        <p>
-          No imported declaration. Import a document below to compare declared and observed routes.
-        </p>
-      )}
+      {!data.openapi_version && <p>No imported document to compare yet.</p>}
       {data.routes.length === 0 && (
         <p>
           {status === 'live'
-            ? 'No observations in this live snapshot. This does not establish complete API coverage.'
-            : 'No routes returned. Incomplete observation cannot establish that the app has no routes.'}
+            ? 'No observations in this live snapshot.'
+            : 'No routes returned; observation is incomplete.'}
         </p>
       )}
     </div>
@@ -78,7 +74,7 @@ function PreviewPanel({ accountId, slug }: { accountId: string; slug: string }) 
   return (
     <Panel
       title="Route and policy preview"
-      description="Compare the imported declaration with retained route observations and matching edge policies."
+      help="A policy match does not prove the policy works, and an unobserved route may still exist."
       actions={
         <Button
           variant="outline"
@@ -93,16 +89,12 @@ function PreviewPanel({ accountId, slug }: { accountId: string; slug: string }) 
       <InlinePhase
         phase={phase}
         error={query.error}
-        loadingMessage="Reading route and policy evidence…"
+        loadingMessage="Reading routes and policies…"
         onRetry={() => void query.refetch()}
       />
       {data && (
         <div className="space-y-4">
           <Observation data={data} />
-          <p className="text-xs text-muted-foreground">
-            A policy match does not prove policy correctness or execution health. Missing
-            observations do not prove a route is absent.
-          </p>
           <div className="flex flex-wrap gap-2">
             <Input
               aria-label="Filter routes"

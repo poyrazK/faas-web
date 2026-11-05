@@ -469,7 +469,6 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
     <section aria-label="Release approvals">
       <Panel
         title="Release approvals"
-        description={`${stage ? `${stage} · ` : ''}Production releases wait in a canary stage until enough eligible people approve them. A rejection or the timeout aborts the rollout.`}
         actions={
           phase === 'ready' &&
           !editing && (
@@ -491,6 +490,8 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}Production releases wait in a canary stage until enough eligible people approve them. A rejection or the timeout aborts the rollout.`}</p>
+
         <div className="flex flex-col gap-4">
           {phase !== 'ready' ? (
             <InlinePhase

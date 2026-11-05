@@ -1,22 +1,15 @@
-import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD, Textarea } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, Select, Textarea } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { ErrorState, LoadingState, Panel, StatTile } from './primitives';
-import {
-  useAppSlo,
-  useInvokeApp,
-  useInvokeAppAsync,
-  useInvocation,
-  type AppSLOWindow,
-} from '@/lib/api/queries';
+import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
 import { errorMessage } from '@/lib/api/errors';
+import { useInvocation, useInvokeApp, useInvokeAppAsync } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { PlanGate } from './plan-gate';
+import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { AsyncInvokeOptionsFields } from './async-invoke-options';
-import { asyncInvokeExtras, NO_ASYNC_OPTIONS } from '@/lib/api/async-invocations';
+import { Panel } from './primitives';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -100,9 +93,8 @@ export function InvokePanel({ slug }: { slug: string }) {
 
   return (
     <Panel
-      lit
       title="Invoke"
-      description="Send a request to this app without leaving the dashboard. Async requests can be followed here after they are queued."
+      help="Sync waits for the result and takes longer on a cold app. Async returns at once and is followed here."
       actions={
         <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Mode">
           {(['sync', 'async'] as const).map((value) => (
@@ -128,11 +120,11 @@ export function InvokePanel({ slug }: { slug: string }) {
       <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Method</span>
-          <select value={method} onChange={(e) => setMethod(e.target.value)} className={FIELD}>
+          <Select value={method} onChange={(e) => setMethod(e.target.value)} className={FIELD}>
             {['POST', 'GET', 'PUT', 'PATCH', 'DELETE'].map((value) => (
               <option key={value}>{value}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Path</span>
@@ -167,12 +159,7 @@ export function InvokePanel({ slug }: { slug: string }) {
         {mode === 'async' && (
           <AsyncInvokeOptionsFields slug={slug} value={asyncOptions} onChange={setAsyncOptions} />
         )}
-        <div className="flex items-center justify-between gap-3 sm:col-span-2">
-          <p className="text-xs text-muted-foreground">
-            {mode === 'sync'
-              ? 'The request waits for the platform result and may take longer on a cold app.'
-              : 'The request returns immediately; its status is polled until it reaches a terminal state.'}
-          </p>
+        <div className="flex items-center justify-end gap-3 sm:col-span-2">
           <Button size="sm" onClick={submit} disabled={authLoading || !invokeAvailable} busy={busy}>
             Send request
           </Button>
@@ -204,110 +191,6 @@ export function InvokePanel({ slug }: { slug: string }) {
               {pretty(invocation.data ?? output)}
             </pre>
           )}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-const SLO_WINDOWS: AppSLOWindow[] = ['1h', '24h', '7d'];
-
-export function SloPanel({ slug }: { slug: string }) {
-  const { account, loading: authLoading } = useAuth();
-  const [window, setWindow] = useState<AppSLOWindow>('24h');
-  const paidAccess = account !== null && isPaidPlan(account.plan);
-  const slo = useAppSlo(slug, window, { enabled: paidAccess });
-  const data = slo.data;
-  const degraded = Boolean(data && data.source !== 'prometheus');
-  const tileState = degraded ? ('unavailable' as const) : ('ready' as const);
-
-  return (
-    <Panel
-      title="Service level"
-      description="Customer-facing SLO signals over a fixed window. The source label calls out degraded telemetry instead of hiding it."
-      actions={
-        <select
-          value={window}
-          onChange={(e) => setWindow(e.target.value as AppSLOWindow)}
-          disabled={!paidAccess}
-          className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:border-brand/50"
-          aria-label="SLO window"
-        >
-          {SLO_WINDOWS.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      }
-    >
-      {authLoading ? (
-        <LoadingState message="Checking plan access…" />
-      ) : account === null || !paidAccess ? (
-        <PlanGate
-          feature="Service-level metrics"
-          description="Per-app SLOs include request, error, cold-boot, wake-queue, and latency signals for paid plans."
-        />
-      ) : slo.error ? (
-        <ErrorState error={slo.error} onRetry={() => void slo.refetch()} />
-      ) : slo.isPending || !data ? (
-        <LoadingState message="Reading service level…" />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {degraded && (
-            <p className="text-xs text-muted-foreground" role="status">
-              Telemetry source: <span className="font-mono">{data.source}</span>
-            </p>
-          )}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label="Requests"
-              value={data.requests_total.toLocaleString()}
-              state={tileState}
-            />
-            <StatTile
-              label="Error rate"
-              value={data.error_rate_pct.toFixed(2)}
-              unit="%"
-              deltaGood={false}
-              state={tileState}
-            />
-            <StatTile
-              label="Cold boots"
-              value={data.cold_boot_rate_pct.toFixed(2)}
-              unit="%"
-              state={tileState}
-            />
-            <StatTile
-              label="Wake queue p95"
-              value={
-                data.wake_queue_p95_ms == null ? '—' : `${data.wake_queue_p95_ms.toFixed(1)} ms`
-              }
-              note={
-                data.wake_queue_p95_ms == null
-                  ? data.wake_queue_sample_status === 'no_sample'
-                    ? 'No wake-queue samples in this window.'
-                    : 'Wake-queue telemetry unavailable.'
-                  : undefined
-              }
-              state={tileState}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatTile
-              label="Latency p50"
-              value={`${data.request_duration.p50_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-            <StatTile
-              label="Latency p95"
-              value={`${data.request_duration.p95_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-            <StatTile
-              label="Latency p99"
-              value={`${data.request_duration.p99_ms.toFixed(1)} ms`}
-              state={tileState}
-            />
-          </div>
         </div>
       )}
     </Panel>

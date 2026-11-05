@@ -94,8 +94,8 @@ function reasonSentence(reason: string, m: FinancialMeterCosts, retainedFrom: st
     case 'retention_started_during_or_after_period':
       return (
         <>
-          Evidence retention started <Timestamp value={retainedFrom} mode="absolute" />, so usage
-          before then is not in this report.
+          Usage history starts <Timestamp value={retainedFrom} mode="absolute" />, so usage before
+          then is not in this report.
         </>
       );
     case 'missing_sampling_windows':
@@ -203,7 +203,7 @@ export function CostBreakdown() {
   return (
     <Panel
       title="Cost breakdown"
-      description="Usage costs for one UTC month, priced at the rate in force when the usage happened. Not an invoice."
+      help="Usage costs for one UTC month, priced at the rate in force when the usage happened. Not an invoice."
       actions={
         months.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">

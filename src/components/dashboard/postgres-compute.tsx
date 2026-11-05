@@ -338,7 +338,7 @@ function Progress({ followed }: { followed: Followed }) {
       </p>
       {!done && change.last_error_code && (
         <p className="flex flex-wrap items-baseline gap-x-2">
-          The provider has not confirmed it yet; apid keeps retrying.
+          The provider has not confirmed it yet; the API keeps retrying.
           <code className="font-mono">{change.last_error_code}</code>
         </p>
       )}

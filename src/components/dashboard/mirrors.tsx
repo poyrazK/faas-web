@@ -12,6 +12,7 @@ import {
   LoadingState,
   Panel,
   RangeSelector,
+  Stats,
   StatTile,
   UnreachableState,
   queryPhase,
@@ -30,6 +31,7 @@ import {
   type MirrorWindow,
 } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { Sheet } from './kit/sheet';
 
 /**
  * Traffic mirroring (ADR-124 / ADR-125): a share of a live deployment's
@@ -105,6 +107,8 @@ export function MirrorRules({ slug }: { slug: string }) {
   const rules = useMirrorRules(slug);
   const deployments = useAppDeployments(slug);
   const appDeployments: Deployment[] = deployments.data?.pages.flatMap((page) => page.items) ?? [];
+  const live = appDeployments.filter((d) => d.status === 'live');
+  const [creating, setCreating] = useState(false);
   // The create form's "there are none right now" is a claim about the app's
   // deployments, so it must not be made while those queries are still out.
   const readError = rules.error ?? (appDeployments.length === 0 ? deployments.error : undefined);
@@ -121,7 +125,15 @@ export function MirrorRules({ slug }: { slug: string }) {
   return (
     <Panel
       title="Mirror rules"
-      description="Replay a share of a live deployment's requests against another deployment and count the differences."
+      help="Replays a share of a live deployment's requests against another deployment."
+      actions={
+        phase === 'ready' && live.length >= 2 ? (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add mirror
+          </Button>
+        ) : undefined
+      }
     >
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={retry} />
@@ -132,7 +144,16 @@ export function MirrorRules({ slug }: { slug: string }) {
       ) : (
         <div className="flex flex-col gap-6">
           {(rules.data?.rules.length ?? 0) === 0 ? (
-            <EmptyState message="No mirror rules yet. Bind a live deployment to a second one below." />
+            <EmptyState
+              message="No mirror rules yet."
+              action={
+                live.length >= 2 ? (
+                  <Button size="sm" onClick={() => setCreating(true)}>
+                    Add mirror
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : (
             <ul className="flex flex-col gap-4">
               {rules.data?.rules.map((rule) => (
@@ -142,7 +163,12 @@ export function MirrorRules({ slug }: { slug: string }) {
               ))}
             </ul>
           )}
-          <CreateMirrorRule slug={slug} deployments={appDeployments} />
+          {live.length < 2 && (
+            <p className="text-sm text-muted-foreground">
+              A mirror binds two live deployments of this app; there{' '}
+              {live.length === 1 ? 'is one' : 'are none'} right now.
+            </p>
+          )}
           {deployments.hasNextPage && (
             <div className="flex flex-col items-center gap-2">
               <Button
@@ -163,6 +189,13 @@ export function MirrorRules({ slug }: { slug: string }) {
           )}
         </div>
       )}
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add mirror">
+        <CreateMirrorRule
+          slug={slug}
+          deployments={appDeployments}
+          onDone={() => setCreating(false)}
+        />
+      </Sheet>
     </Panel>
   );
 }
@@ -191,7 +224,7 @@ function MirrorRuleCard({
     if (
       !(await confirm({
         title: 'Delete this mirror rule?',
-        description: 'Mirrored traffic stops and the comparison ledger for this rule is discarded.',
+        description: "Mirrored traffic stops and this rule's comparison history is discarded.",
         confirmLabel: 'Delete',
         destructive: true,
       }))
@@ -294,7 +327,7 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
         <p className="text-sm text-muted-foreground">{errorMessage(summary.error)}</p>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stats columns={5}>
             <StatTile label="Mirrored" value={data?.total_invocations} state={state} />
             <StatTile
               label="Status diffs"
@@ -315,7 +348,7 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
               tone="orange"
             />
             <StatTile label="Crashes" value={data?.crash_count} state={state} tone="red" />
-          </div>
+          </Stats>
           {data && (
             <p className="text-sm text-muted-foreground">
               Latency:{' '}
@@ -330,7 +363,15 @@ export function MirrorSummary({ slug, id }: { slug: string; id: string }) {
   );
 }
 
-function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: Deployment[] }) {
+function CreateMirrorRule({
+  slug,
+  deployments,
+  onDone,
+}: {
+  slug: string;
+  deployments: Deployment[];
+  onDone: () => void;
+}) {
   const { toast } = useToast();
   const create = useCreateMirrorRule(slug);
   const live = deployments.filter((d) => d.status === 'live');
@@ -366,30 +407,21 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
         description: `${percentValue}% of ${shortId(sourceId)}'s traffic is mirrored to ${shortId(mirrorId)}.`,
       });
       setRedact('');
+      onDone();
     } catch (err) {
       toast(explainMirrorError(err));
     }
   };
 
-  if (live.length < 2) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        A mirror binds two live deployments of this app; there{' '}
-        {live.length === 1 ? 'is one' : 'are none'} right now.
-      </p>
-    );
-  }
-
   return (
     <form
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !create.isPending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">New mirror rule</p>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Source</span>
           <Select value={sourceId} onChange={(e) => setSource(e.target.value)}>
@@ -410,7 +442,7 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
             ))}
           </Select>
         </label>
-        <label className="flex w-24 flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Share %</span>
           <input
             type="number"
@@ -423,7 +455,7 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
             className={cn(FIELD, 'w-full')}
           />
         </label>
-        <label className="flex min-w-56 flex-1 flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Redact headers (comma-separated)</span>
           <input
             value={redact}
@@ -432,7 +464,7 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
             className={cn(FIELD, 'w-full')}
           />
         </label>
-        <label className="flex h-9 items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
           <Switch
             checked={includeBody}
             onCheckedChange={setIncludeBody}
@@ -441,16 +473,6 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
           />
           Compare bodies
         </label>
-        <Button
-          type="submit"
-          size="sm"
-          className="gap-1.5"
-          disabled={!ready}
-          busy={create.isPending}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add mirror
-        </Button>
       </div>
       {!percentOk && (
         <FieldError id="mirror-percent-error">A whole number between 0 and 100.</FieldError>
@@ -460,6 +482,11 @@ function CreateMirrorRule({ slug, deployments }: { slug: string; deployments: De
           Source and mirror must be different deployments.
         </p>
       )}
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!ready} busy={create.isPending}>
+          Add mirror
+        </Button>
+      </div>
     </form>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import {
   deleteQueueBinding,
   queueBindingsKey,
@@ -356,7 +356,7 @@ function Editor({ accountId, plan, slug, binding }: Props) {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span>Delivery mode</span>
-                <select
+                <Select
                   className={FIELD}
                   value={mode}
                   disabled={busy}
@@ -364,7 +364,7 @@ function Editor({ accountId, plan, slug, binding }: Props) {
                 >
                   <option value="pull">Pull</option>
                   <option value="push">Push</option>
-                </select>
+                </Select>
               </label>
               <label className="flex flex-col gap-1.5">
                 <span>Max concurrency</span>

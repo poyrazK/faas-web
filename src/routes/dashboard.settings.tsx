@@ -22,6 +22,7 @@ import { errorMessage } from '@/lib/api/errors';
 import { Button } from '@/components/ui/button';
 import { consoleHead } from '@/lib/seo';
 import { PreviewsSettings } from '@/components/dashboard/previews-settings';
+import { Select } from '@/components/ui/field';
 
 export const Route = createFileRoute('/dashboard/settings')({
   validateSearch: validateSettingsSearch,
@@ -58,7 +59,7 @@ function OrganizationScope({
     <div className="flex flex-col gap-6">
       <label className="flex max-w-sm flex-col gap-1.5">
         Active organization
-        <select
+        <Select
           className="h-9 rounded-md border border-border bg-card px-2.5 text-sm"
           value={active?.slug ?? ''}
           onChange={(event) => {
@@ -73,7 +74,7 @@ function OrganizationScope({
               {org.slug}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {organization && <CreateOrganization onCreated={(org) => onSelection({ org })} />}
       {orgs.isPending ? (
@@ -138,10 +139,7 @@ function SettingsPage() {
   };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Settings"
-        description="Account preferences, organization access and security."
-      />
+      <PageHeader title="Settings" />
       <SettingsPanels section={section} />
       {(section === 'organization' || section === 'members') && (
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />

@@ -1,20 +1,9 @@
-import {
-  Bar,
-  BarChart,
-  Grid,
-  Tooltip,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from '@/components/dither-kit';
 import type { components } from '@/lib/api/schema';
 import { dailyUsage, dayLabel } from '@/lib/usage-daily';
 import { formatUsageNumber } from '@/lib/usage-format';
 import { Panel } from './primitives';
 
 type DailyUsagePoint = components['schemas']['DailyUsagePoint'];
-
-const CONFIG: ChartConfig = { gbHours: { label: 'GB-hours', color: 'green' } };
 
 /**
  * This month day by day: one bar per UTC day from `compute.daily`, the
@@ -37,25 +26,35 @@ export function DailyUsagePanel({
 }) {
   const { days, rolledUp, missing, fromFirst, peak } = dailyUsage(daily, month, now);
   return (
-    <Panel title="Day by day" description="GB-hours per UTC day this month, from daily rollups.">
+    <Panel title="Day by day" help="GB-hours per UTC day this month, from daily rollups.">
       {days.length === 0 ? (
         <p className="text-sm text-muted-foreground">No daily rollups for this month yet.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <BarChart
-            data={days.map((day) => ({ day: dayLabel(day.date), gbHours: day.gbHours }))}
-            config={CONFIG}
-            className="h-44 w-full"
-          >
-            <Grid />
-            <XAxis dataKey="day" />
-            <YAxis />
-            <Tooltip
-              labelKey="day"
-              valueFormatter={(value) => `${formatUsageNumber(value)} GB-h`}
-            />
-            <Bar dataKey="gbHours" />
-          </BarChart>
+          <figure aria-label="Daily compute usage in GB-hours" className="flex h-44 flex-col gap-2">
+            <div className="flex min-h-0 flex-1 items-end gap-1 border-b border-border">
+              {days.map((day) => (
+                <div
+                  key={day.date}
+                  className="flex h-full min-w-0 flex-1 items-end"
+                  role="img"
+                  aria-label={`${dayLabel(day.date)}: ${formatUsageNumber(day.gbHours)} GB-h`}
+                  title={`${dayLabel(day.date)}: ${formatUsageNumber(day.gbHours)} GB-h`}
+                >
+                  <span
+                    className="w-full rounded-t-sm bg-[var(--status-good)]"
+                    style={{
+                      height: `${(day.gbHours / Math.max(1, ...days.map((d) => d.gbHours))) * 100}%`,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <figcaption className="flex justify-between text-xs text-muted-foreground">
+              <span>{dayLabel(days[0].date)}</span>
+              <span>{dayLabel(days[days.length - 1].date)}</span>
+            </figcaption>
+          </figure>
           <p className="font-mono text-xs text-muted-foreground">
             Daily rollups: {formatUsageNumber(rolledUp)} GB-h · live total:{' '}
             {formatUsageNumber(usedGbHours)} GB-h

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { Panel } from '@/components/dashboard/primitives';
+import { Sheet } from '@/components/dashboard/kit/sheet';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { WebhookAutomationBinding } from '@/components/dashboard/webhook-automation-binding';
 import { WebhookReceipt } from '@/components/dashboard/webhook-receipt';
@@ -46,6 +48,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
   const confirm = useConfirm();
   const context = `${accountId}/${slug}`;
   const mountedRef = useRef(true);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [secret, setSecret] = useState('');
   const [path, setPath] = useState('/');
@@ -103,6 +106,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
       if (!isCurrent(submitted)) return;
       if (!created.endpoint_url) {
         setUnresolved({ context: submitted, name: attemptedName, path: attemptedPath });
+        setCreating(false);
         void endpoints.refetch();
         return;
       }
@@ -111,6 +115,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
       setCopyFailed(false);
       setName('');
       setPath('/');
+      setCreating(false);
       void cache.invalidateQueries({ queryKey: inboundWebhookKey(accountId, slug) });
     } catch (caught) {
       if (!isCurrent(submitted)) return;
@@ -119,6 +124,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
       if (definitive) setError(errorMessage(caught));
       else {
         setUnresolved({ context: submitted, name: attemptedName, path: attemptedPath });
+        setCreating(false);
         void endpoints.refetch();
       }
     } finally {
@@ -329,18 +335,14 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        lit
-        title="Stripe inbound webhooks"
-        description="Stripe sends signed events to Gregale. After verification and durable acceptance, Gregale delivers to your app path or a bound automation."
-      >
-        <div className="mb-4">
-          <CapabilityNotice
-            capability={capability.capability}
-            state={capability.state}
-            onRetry={capability.refresh}
-          />
-        </div>
+      <Panel title="Stripe inbound webhooks">
+        <CapabilityNotice
+          capability={capability.capability}
+          state={capability.state}
+          onRetry={capability.refresh}
+        />
+      </Panel>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Create Stripe endpoint">
         <form
           noValidate
           onSubmit={(event) => void submit(event)}
@@ -390,7 +392,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
               {error}
             </p>
           )}
-          <div className="sm:col-span-2">
+          <div className="flex justify-end sm:col-span-2">
             <Button
               type="submit"
               size="sm"
@@ -401,7 +403,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
             </Button>
           </div>
         </form>
-      </Panel>
+      </Sheet>
 
       {managementMessage && (
         <p role="status" className="text-sm text-muted-foreground">
@@ -451,7 +453,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="label-mono text-muted-foreground">Inaccessible endpoint</span>
-                  <select
+                  <Select
                     className={FIELD}
                     value={replacementId}
                     onChange={(event) => setReplacementId(event.target.value)}
@@ -462,7 +464,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
                         {endpoint.name} · {endpoint.id}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <Button
                   type="button"
@@ -481,7 +483,17 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
 
       <Panel
         title="Inbound endpoints"
-        description="Enabled means Gregale accepts future ingress. It does not prove an app delivery or automation run succeeded."
+        help="Enabled means new events are accepted. It does not prove a delivery succeeded."
+        actions={
+          <Button
+            size="sm"
+            disabled={!available || Boolean(activeUnresolved) || Boolean(activeDisclosure)}
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create Stripe endpoint
+          </Button>
+        }
       >
         {endpoints.isPending ? (
           <p>Loading endpoints…</p>
@@ -546,7 +558,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
       {selectedEndpoint && (
         <Panel
           title={`Manage ${selectedEndpoint.name}`}
-          description="Signing-secret rotation changes verification only. It does not recover the endpoint URL."
+          help="Rotation changes verification only. It does not recover the endpoint URL."
         >
           <div className="space-y-3 text-sm">
             <p>

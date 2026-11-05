@@ -65,6 +65,7 @@ it('lists the exact records, newest first, with who called and from where', asyn
 it('says what is collected, what is not, and how long it is kept', async () => {
   renderWithProviders(<RequestAuditPanel slug="api" />);
   await screen.findByText('/orders');
+  await userEvent.click(screen.getByRole('button', { name: 'About Request audit' }));
   expect(screen.getByText(/kept 30 days/)).toBeInTheDocument();
   expect(screen.getByText(/no query strings, headers or bodies/i)).toBeInTheDocument();
   expect(screen.getByText(/personal data/i)).toBeInTheDocument();

@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import {
   EmptyState,
@@ -209,7 +209,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
   return (
     <Panel
       title="Outbound integrations"
-      description="Fixed destinations this app may call through the gateway. Binding attaches the app to an integration available to your account; it never carries a provider key."
+      help="Binding attaches this app to an integration available to your account; it never carries a provider key."
       actions={
         <Link
           to="/dashboard/integrations"
@@ -229,7 +229,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
         ) : bindingsPhase === 'empty' ? (
           integrationsPhase === 'empty' ? (
             <EmptyState
-              message="No integrations in this account yet. Create one, then bind this app to it."
+              message="No integrations in this account yet."
               action={
                 <Link
                   to="/dashboard/integrations"
@@ -265,7 +265,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
           >
             <label className="flex min-w-56 flex-1 flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Integration</span>
-              <select
+              <Select
                 value={choice}
                 onChange={(e) => setChoice(e.target.value)}
                 disabled={available.length === 0}
@@ -281,7 +281,7 @@ export function AppOutboundBindings({ slug }: { slug: string }) {
                     {operatorOwned(i) ? `${i.name} (Operator-managed)` : i.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <Button
               type="submit"

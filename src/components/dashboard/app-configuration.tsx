@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
-import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/ui/confirm';
+import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
+import { Modal } from '@/components/ui/modal';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
+import { useCapabilityStage } from '@/lib/api/capabilities';
+import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
 import {
   useApp,
   useAppDiff,
@@ -13,28 +14,29 @@ import {
   useUpdateApp,
   type App,
 } from '@/lib/api/queries';
+import { configurationEffects } from '@/lib/api/runtime-policy';
+import { publicAppUrl } from '@/lib/app-url';
+import { useAuth } from '@/lib/auth';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
-import { Modal } from '@/components/ui/modal';
-import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
+import { useNavigate } from '@tanstack/react-router';
+import { useId, useMemo, useState } from 'react';
 import { RegistryCredentialsPanel } from './app-core-panels';
-import { GatedSupplyChainPanel } from './supply-chain-gate';
-import { DeployTokensPanel } from './deploy-tokens';
 import { StaticEgressIP, StreamingCapNote } from './app-insights';
 import { PurgeCacheControl } from './app-lifecycle';
-import { publicAppUrl } from '@/lib/app-url';
-import { appNameError } from './new-app-validation';
-import { useAuth } from '@/lib/auth';
-import { MemorySelect } from './memory-select';
-import { configurationEffects } from '@/lib/api/runtime-policy';
-import { APP_DELETE_GRACE_DAYS } from '@/lib/api/deleted-apps';
-import { PolicyStatus } from './policy-status';
-import { AppVisibility } from './app-visibility';
-import { usePolicyOperation } from './policy-operation';
-import { HealthProbes } from './health-probes';
-import { SnapshotHooks } from './snapshot-hooks';
 import { AppReleaseSettings } from './app-release-settings';
+import { AppVisibility } from './app-visibility';
 import { DeployDiffPreview } from './deploy-diff-preview';
-import { useCapabilityStage } from '@/lib/api/capabilities';
+import { DeployTokensPanel } from './deploy-tokens';
+import { HealthProbes } from './health-probes';
+import { FieldLabel } from './kit/field-label';
+import { HelpTip } from './kit/help-tip';
+import { MemorySelect } from './memory-select';
+import { appNameError } from './new-app-validation';
+import { usePolicyOperation } from './policy-operation';
+import { PolicyStatus } from './policy-status';
+import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from './primitives';
+import { SnapshotHooks } from './snapshot-hooks';
+import { GatedSupplyChainPanel } from './supply-chain-gate';
 import { WarmStarts } from './warm-starts';
 
 /**
@@ -101,13 +103,16 @@ const FIELD = `${BASE_FIELD} w-full [font-variant-numeric:tabular-nums]`;
 
 function NumberField({
   label,
-  hint,
+  help,
+  range,
   value,
   min,
   onChange,
 }: {
   label: string;
-  hint: string;
+  help: string;
+  /** Allowed values, shown under the field ("1–100"). */
+  range?: string;
   value: number;
   min: number;
   onChange: (n: number) => void;
@@ -115,6 +120,7 @@ function NumberField({
   // The text is a draft: clamping on each keystroke turned "30" into 530 when
   // the minimum is 5, because "3" was raised to 5 before the "0" arrived.
   // Values below the minimum are only raised once the field loses focus.
+  const id = useId();
   const [text, setText] = useState(String(value));
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
@@ -122,9 +128,10 @@ function NumberField({
     if (Number(text) !== value) setText(String(value));
   }
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="label-mono text-muted-foreground">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <FieldLabel label={label} help={help} htmlFor={id} />
       <input
+        id={id}
         type="number"
         min={min}
         value={text}
@@ -141,39 +148,40 @@ function NumberField({
         }}
         className={FIELD}
       />
-      <span className="text-xs text-muted-foreground">{hint}</span>
-    </label>
+      {range && <span className="text-xs text-muted-foreground">{range}</span>}
+    </div>
   );
 }
 
 function Toggle({
   label,
-  hint,
+  help,
   checked,
   onChange,
 }: {
   label: string;
-  hint: string;
+  help: string;
   checked: boolean;
   onChange: (on: boolean) => void;
 }) {
   return (
-    <li className="flex items-start justify-between gap-6 py-4 first:pt-0 last:pb-0">
-      <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">{hint}</p>
-      </div>
+    <li className="flex items-center justify-between gap-6 py-2.5 first:pt-0 last:pb-0">
+      <p className="flex items-center gap-1 text-sm font-medium">
+        {label}
+        <HelpTip label={`About ${label}`}>{help}</HelpTip>
+      </p>
       <Switch
         checked={checked}
         onCheckedChange={onChange}
         aria-label={label}
-        className="mt-1 data-[state=checked]:bg-brand"
+        className="data-[state=checked]:bg-brand"
       />
     </li>
   );
 }
 
 function ConfigForm({ app }: { app: App }) {
+  const formId = useId();
   const { account, loading: limitsLoading } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -260,9 +268,8 @@ function ConfigForm({ app }: { app: App }) {
   return (
     <>
       <Panel
-        lit
         title="Runtime"
-        description="Request, egress and scaling policies can converge live. Memory requires a fresh instance."
+        help="Memory requires a fresh instance. Other settings apply live."
         actions={
           <>
             {/* The CLI's deploy --diff, one click before Save: the server
@@ -315,8 +322,8 @@ function ConfigForm({ app }: { app: App }) {
           </p>
         ) : null}
         <div className="grid gap-5 sm:grid-cols-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Memory</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel label="Memory" help="Billed as GB-seconds while resident." />
             <MemorySelect
               value={draft.ram_mb}
               maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
@@ -324,50 +331,52 @@ function ConfigForm({ app }: { app: App }) {
             />
             <span className="text-xs text-muted-foreground">
               {account
-                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance. `
-                : 'Checking plan limits… '}
-              Billed as GB-seconds while resident.
+                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
+                : 'Checking plan limits…'}
             </span>
-          </label>
+          </div>
 
           <NumberField
             label="Idle timeout (s)"
-            hint="Seconds without a request before the instance snapshots and parks. This is scale-to-zero."
+            help="Seconds without a request before the instance snapshots and parks. This is scale-to-zero."
             value={draft.idle_timeout_s}
             min={5}
             onChange={(n) => set('idle_timeout_s', n)}
           />
           <NumberField
             label="Minimum instances"
-            hint="Kept resident even when idle, and billed the whole time. 0 means park when quiet."
+            help="Kept resident even when idle, and billed the whole time. 0 means park when quiet."
             value={draft.min_instances}
             min={0}
             onChange={(n) => set('min_instances', n)}
           />
           <NumberField
             label="Max concurrency"
-            hint="Instances this app may run at once. Each one costs memory."
+            help="Instances this app may run at once. Each one costs memory."
             value={draft.max_concurrency}
             min={1}
             onChange={(n) => set('max_concurrency', n)}
           />
           <NumberField
             label="Autoscale target (rps)"
-            hint="Requests per second per instance before another one is added."
+            help="Requests per second per instance before another one is added."
             value={draft.autoscale_target_rps}
             min={1}
             onChange={(n) => set('autoscale_target_rps', n)}
           />
           <NumberField
             label="Autoscale target (CPU %)"
-            hint="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
+            help="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
             value={draft.autoscale_target_cpu_pct}
             min={0}
             onChange={(n) => set('autoscale_target_cpu_pct', Math.min(100, n))}
           />
 
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Eviction tier</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel
+              label="Eviction tier"
+              help="Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per account."
+            />
             <div className="flex gap-1.5">
               {(['best_effort', 'reserved'] as const).map((tier) => (
                 <button
@@ -385,28 +394,31 @@ function ConfigForm({ app }: { app: App }) {
                 </button>
               ))}
             </div>
-            <span className="text-xs text-muted-foreground">
-              Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per
-              account.
-            </span>
-          </label>
+          </div>
 
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Overflow node</span>
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel
+              label="Overflow node"
+              htmlFor={`${formId}-overflow-node`}
+              help="Preferred spill target under node pressure. Empty leaves placement to the scheduler."
+            />
             <input
+              id={`${formId}-overflow-node`}
               value={draft.overflow_node}
               onChange={(e) => set('overflow_node', e.target.value)}
               placeholder="fra-metal-2"
               spellCheck={false}
               className={FIELD}
             />
-            <span className="text-xs text-muted-foreground">
-              Preferred spill target under node pressure. Empty leaves placement to the scheduler.
-            </span>
-          </label>
-          <label className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="label-mono text-muted-foreground">Egress allowlist</span>
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <FieldLabel
+              label="Egress allowlist"
+              htmlFor={`${formId}-egress-allowlist`}
+              help="Empty means the platform denylist alone applies. Pro allows 16 entries, Scale 64."
+            />
             <textarea
+              id={`${formId}-egress-allowlist`}
               value={draft.egress_allowlist}
               onChange={(e) => set('egress_allowlist', e.target.value)}
               rows={3}
@@ -414,11 +426,8 @@ function ConfigForm({ app }: { app: App }) {
               placeholder={'10.0.0.0/8\n203.0.113.4/32'}
               className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
             />
-            <span className="text-xs text-muted-foreground">
-              One CIDR per line. Empty means the platform denylist alone applies. Pro allows 16,
-              Scale 64.
-            </span>
-          </label>
+            <span className="text-xs text-muted-foreground">One CIDR per line</span>
+          </div>
           <div className="sm:col-span-2">
             <StaticEgressIP slug={app.slug} />
           </div>
@@ -432,38 +441,38 @@ function ConfigForm({ app }: { app: App }) {
         <ul className="flex flex-col divide-y divide-border">
           <Toggle
             label="Streaming responses"
-            hint="Flush the response as the handler writes it, instead of buffering to the end."
+            help="Flush the response as the handler writes it, instead of buffering to the end."
             checked={draft.streaming_enabled}
             onChange={(on) => set('streaming_enabled', on)}
           />
           <StreamingCapNote slug={app.slug} />
           <Toggle
             label="WebSockets"
-            hint="Allow upgrade requests. An open socket keeps the instance resident."
+            help="Allow upgrade requests. An open socket keeps the instance resident."
             checked={draft.websocket_enabled}
             onChange={(on) => set('websocket_enabled', on)}
           />
           <Toggle
             label="Per-route metrics"
-            hint="Record latency and errors per route, so the Routes tab can list them. Paid plans."
+            help="Record latency and errors per route, so the Routes tab can list them. Paid plans."
             checked={draft.route_metrics_enabled}
             onChange={(on) => set('route_metrics_enabled', on)}
           />
           <Toggle
             label="Maintenance mode"
-            hint="Answer every request with 503 and park. Deployments still work."
+            help="Answer every request with 503 and park. Deployments still work."
             checked={draft.maintenance_mode}
             onChange={(on) => set('maintenance_mode', on)}
           />
           <Toggle
             label="Require API key for app requests"
-            hint="Require an API key to call the app's public URL. Pro and Scale."
+            help="Require an API key to call the app's public URL. Pro and Scale."
             checked={draft.require_authn}
             onChange={(on) => set('require_authn', on)}
           />
           <Toggle
             label="Default CORS headers"
-            hint="Answer preflights at the edge with the origins below, before the app wakes."
+            help="Answer preflights at the edge with the origins below, before the app wakes."
             checked={draft.cors_default_enabled}
             onChange={(on) => set('cors_default_enabled', on)}
           />
@@ -561,7 +570,7 @@ function RenamePanel({ app }: { app: App }) {
   return (
     <Panel
       title="Name"
-      description="The slug is also the subdomain: renaming changes the URL, and the old one stops answering."
+      help="The slug is also the subdomain. Renaming changes the URL, and the old one stops answering."
     >
       {/* The error goes under the row, not inside it, so the button stays
           level with the input when it appears. */}
@@ -585,7 +594,7 @@ function RenamePanel({ app }: { app: App }) {
               void navigate({
                 to: '/dashboard/apps/$appSlug',
                 params: { appSlug: next },
-                search: { tab: 'Configuration' },
+                search: { tab: 'General' },
               });
             })
             .catch((err: unknown) =>
@@ -633,16 +642,14 @@ function DangerZone({ app }: { app: App }) {
   return (
     <Panel
       title="Danger zone"
-      description="Stops serving traffic. The console asks you to type the slug before it goes through."
       className="border-[color:color-mix(in_oklab,var(--status-critical)_35%,transparent)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium">Delete {app.slug}</p>
           <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            The app is hidden from active lists and enters a {APP_DELETE_GRACE_DAYS}-day grace
-            window before permanent cleanup. Restore it from Recently deleted on the Apps page
-            during that window. Delete any object storage buckets first.
+            Restorable from Recently deleted for {APP_DELETE_GRACE_DAYS} days. Delete its storage
+            buckets first.
           </p>
         </div>
         <Button
@@ -682,7 +689,10 @@ function DangerZone({ app }: { app: App }) {
   );
 }
 
-export function AppConfiguration({ slug }: { slug: string }) {
+export type ConfigSection = 'general' | 'runtime' | 'health' | 'source';
+
+/** One screen of an app's configuration; `section` picks which. */
+export function AppConfiguration({ slug, section }: { slug: string; section: ConfigSection }) {
   const { account } = useAuth();
   const { data, isPending, error, refetch } = useApp(
     slug,
@@ -695,8 +705,37 @@ export function AppConfiguration({ slug }: { slug: string }) {
   if (phase === 'error') return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (phase === 'loading' || !data) return <LoadingState message="Loading configuration…" />;
 
+  if (section === 'runtime')
+    // Keyed on the id so a rename or a fresh read reseeds the draft.
+    return (
+      <div className="flex flex-col gap-5">
+        <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
+        <WarmStarts
+          key={`warm:${account?.id}:${data.id}:${data.slug}`}
+          app={data}
+          plan={account?.plan}
+        />
+      </div>
+    );
+  if (section === 'health')
+    return (
+      <div className="flex flex-col gap-5">
+        <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
+        <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
+        <SnapshotHooks key={`snapshot:${data.id}:${data.slug}`} app={data} />
+      </div>
+    );
+  if (section === 'source')
+    return (
+      <div className="flex flex-col gap-5">
+        <GatedSupplyChainPanel slug={data.slug} />
+        <RegistryCredentialsPanel slug={data.slug} />
+        <DeployTokensPanel slug={data.slug} />
+      </div>
+    );
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <AppVisibility
         key={`${account?.id ?? ''}:${data.id}`}
         accountId={account?.id ?? ''}
@@ -738,19 +777,6 @@ export function AppConfiguration({ slug }: { slug: string }) {
           })}
         </dl>
       </Panel>
-      {/* Keyed on the id so a rename or a fresh read reseeds the draft. */}
-      <ConfigForm key={`${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
-      <WarmStarts
-        key={`warm:${account?.id}:${data.id}:${data.slug}`}
-        app={data}
-        plan={account?.plan}
-      />
-      <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
-      <SnapshotHooks key={`hooks:${data.id}:${data.slug}`} app={data} />
-      <GatedSupplyChainPanel slug={data.slug} />
-      <RegistryCredentialsPanel slug={data.slug} />
-      <DeployTokensPanel slug={data.slug} />
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

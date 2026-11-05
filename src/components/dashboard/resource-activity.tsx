@@ -13,6 +13,7 @@ import {
   type ActivityFilters,
   type ResourceActivity,
 } from '@/lib/api/resource-activity';
+import { Select } from '@/components/ui/field';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -89,23 +90,19 @@ function ActivityTimeline({
           {deploymentId ? 'Release activity' : 'App activity'}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Newest events first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
-          Curated workspace activity is append-only; the API does not advertise a retention expiry.
-          Historical coverage can be incomplete for older or deleted resources. Only records visible
-          to your current workspace membership appear.
+          Newest first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
+          Coverage can be incomplete for older or deleted resources.
         </p>
         {deploymentId && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Only events identifying this release appear here. Older app pages may contain no
-            matching release; load more to continue. App-wide config and domain events are in the
-            app’s Activity tab.
+            Only events naming this release appear; app-wide events are on the app’s Activity tab.
           </p>
         )}
       </div>
       <div className="flex flex-wrap gap-3">
         <label className="flex flex-col gap-1 text-xs">
           Event category
-          <select
+          <Select
             aria-label="Event category"
             value={filters.kind_prefix ?? ''}
             onChange={(event) =>
@@ -121,11 +118,11 @@ function ActivityTimeline({
             <option value="app.">App lifecycle and config</option>
             <option value="env.">Environment changes</option>
             <option value="domain.">Domains and TLS</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs">
           Actor category
-          <select
+          <Select
             aria-label="Actor category"
             value={filters.actor_type ?? ''}
             onChange={(event) =>
@@ -142,7 +139,7 @@ function ActivityTimeline({
             <option value="github">GitHub</option>
             <option value="system">System</option>
             <option value="operator">Operator</option>
-          </select>
+          </Select>
         </label>
         {Boolean(workspace.data) && (
           <Button
@@ -163,8 +160,7 @@ function ActivityTimeline({
         </p>
       ) : !workspace.data && !workspace.isPending ? (
         <p className="text-sm text-muted-foreground">
-          This app’s persisted workspace could not be resolved from the accessible inventory. No
-          unscoped activity is shown.
+          This app’s workspace could not be found, so no activity is shown.
         </p>
       ) : workspace.isPending || activity.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">
@@ -266,7 +262,7 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
         <Link
           to="/dashboard/apps/$appSlug"
           params={{ appSlug: appSlug }}
-          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Configuration' }}
+          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Runtime' }}
           className="inline-block text-xs text-brand hover:underline"
         >
           View affected configuration

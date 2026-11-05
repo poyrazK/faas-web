@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useCapability } from '@/lib/api/capabilities';
 import { patchAppVisibility, readAppVisibilityContext } from '@/lib/api/bindings';
 import { keys, type App } from '@/lib/api/queries';
@@ -118,21 +118,17 @@ export function AppVisibility({
   }
 
   return (
-    <Panel
-      title="App visibility"
-      description="Public edge routing and internal service access are separate policies."
-    >
+    <Panel title="App visibility">
       <div className="space-y-3 p-4 text-sm">
         <p>
-          Reported visibility: <strong>{app.visibility}</strong>. Internal service routing and
-          caller policy are shown in Connect → Services.
+          Reported visibility: <strong>{app.visibility}</strong>.
         </p>
         {!available && (
           <p role="status">Visibility changes require confirmed private-app capability access.</p>
         )}
         <label className="flex flex-col gap-1.5">
           <span>Visibility</span>
-          <select
+          <Select
             aria-label="App visibility"
             className={FIELD}
             value={desired}
@@ -145,7 +141,7 @@ export function AppVisibility({
           >
             <option value="public">Public edge and internal service</option>
             <option value="internal">Internal service only</option>
-          </select>
+          </Select>
         </label>
         {message && <p role="alert">{message}</p>}
         <Button
@@ -159,15 +155,11 @@ export function AppVisibility({
           <div className="space-y-2 rounded border border-border p-3">
             {desired === 'internal' ? (
               <p>
-                Public platform URLs and custom domains will stop serving this app. Existing public
-                links will fail. Authenticated same-account service callers remain subject to their
-                caller policy.
+                Public platform URLs and custom domains will stop serving this app, and existing
+                public links will fail.
               </p>
             ) : (
-              <p>
-                Public edge reachability will be restored when routing accepts the change. Verify
-                domain and edge state separately.
-              </p>
+              <p>Public URLs serve this app again once routing accepts the change.</p>
             )}
             <Button disabled={busy || !available} busy={busy} onClick={() => void save()}>
               Save visibility

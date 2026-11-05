@@ -127,8 +127,8 @@ export function EvidenceIdentity({ request }: { request: Evidence['request'] }) 
     <div className="flex flex-col gap-2">
       {request.evidence_status === 'request_id_only' && (
         <p role="note" className="text-xs" style={{ color: 'var(--status-warning)' }}>
-          Only the request ID was kept for this request; its detailed telemetry was not sampled, so
-          timings, spans and logs are absent rather than zero.
+          Only the request ID was kept for this request; its detailed request data was not sampled,
+          so timings, spans and logs are absent rather than zero.
         </p>
       )}
       {rows.length > 0 && (
@@ -244,7 +244,7 @@ export function EvidenceCorrelation({ correlation }: { correlation: Evidence['co
     <Section title="Edge to billing">
       <p className="text-xs text-muted-foreground">
         {correlation.complete
-          ? 'Every stage that applies has complete retained evidence.'
+          ? 'Every applicable stage has a complete saved record.'
           : 'Some stages are partial or missing; their time is unknown, not zero.'}
       </p>
       <ul className="grid gap-2 text-xs sm:grid-cols-2">

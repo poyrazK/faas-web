@@ -147,11 +147,11 @@ function ForksPanel({ slug }: { slug: string }) {
   };
 
   return (
-    <Panel
-      title="Production forks"
-      description="A private copy of this running app to send requests to while you debug."
-      actions={<MaturityLabel capability={capability} />}
-    >
+    <Panel title="Production forks" actions={<MaturityLabel capability={capability} />}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {'A private copy of this running app to send requests to while you debug.'}
+      </p>
+
       <div className="flex flex-col gap-5">
         <p
           role="note"

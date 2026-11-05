@@ -625,7 +625,6 @@ export function ReleaseFreezes({
     <section aria-label="Deploy freezes">
       <Panel
         title="Deploy freezes"
-        description={`${stage ? `${stage} · ` : ''}${description ?? `${FREEZE_BLOCKS} ${FREEZE_SPARES}`}`}
         actions={
           !adding && (
             <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
@@ -638,6 +637,8 @@ export function ReleaseFreezes({
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}${description ?? `${FREEZE_BLOCKS} ${FREEZE_SPARES}`}`}</p>
+
         <div className="flex flex-col gap-4">
           {owner.kind === 'app' && <FreezeStatusLine slug={owner.slug} />}
           {adding && <NewFreezeForm owner={owner} onDone={() => setAdding(false)} />}

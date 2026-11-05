@@ -198,7 +198,7 @@ function RuleDetail({
   return (
     <Panel
       title={rule.name}
-      description={describeCondition(rule)}
+      help={describeCondition(rule)}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 text-xs">

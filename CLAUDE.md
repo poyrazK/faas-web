@@ -128,6 +128,30 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   not mean `npm run check` passes — run the latter before claiming done.
 - **Sign in with a real email and password.** The `123456` demo code is gone —
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
+- **Use concise, plain English.** Show essential scope and effects in place;
+  secondary technical details can go in `help` or an expandable section. Edge
+  rule rows lead with their saved outcome and values, including paused and log-only
+  states. Open the row for technical settings; keep generic kind descriptions inside
+  the editor. Country names, destinations and limits belong in the row summary.
+  Accent only the action and key values in brand green; keep connective prose
+  neutral, including on hover. Apply this to the creation preview as well.
+  Add rule starts with plain-English outcomes and essential inputs. Keep full
+  technical fields under Advanced settings, sharing the same action draft. Do not
+  discard invalid JSON on collapse or silently save its last valid value. Creation
+  defaults to every path on the selected app; the preview must show custom scope,
+  paused/log-only behavior and the effective validation mode.
+  Preserve the seven-source New app wizard and its deployment recovery. Overview
+  and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
+  URL-backed `MetricInspectorProvider` without changing the underlying route.
+  Drag handles and menus remain separate from the card's detail button. Sidebar
+  disclosures, the foil New app control, and profile rim retain main's motion
+  and respect reduced-motion preferences.
+  Check `/dashboard/kit` (dev only) after changing a primitive. Analytics controls
+  must share one time window for every figure they govern; never chart account
+  scalars or average hourly percentiles into a window percentile. Request history
+  uses UTC and explicit retained bounds; comparisons use equal groups of complete
+  hours within that window, excluding partial hours. Account metrics are platform
+  snapshots (latency covers 2xx); request records include all response statuses.
 - **Do not add `dark:` variants or literal hex to components.** The two
   polarities are token-driven in `index.css`; a component that needs a new
   colour needs a new token defined in _both_ `:root` and `.console`.

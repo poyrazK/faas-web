@@ -85,7 +85,7 @@ export function DebugRequestEvidence({
     <Modal
       open={reqId !== null}
       onClose={onClose}
-      title={data ? `${data.request.method} ${data.request.route}` : 'Request evidence'}
+      title={data ? `${data.request.method} ${data.request.route}` : 'Request details'}
       description={
         data
           ? `${data.request.status} · ${data.request.latency_ms} ms · ${new Date(data.request.received_at).toLocaleString()}`
@@ -96,20 +96,20 @@ export function DebugRequestEvidence({
       <div className="max-h-[70vh] overflow-y-auto pr-1">
         <DebugGate error={evidence.error}>
           {evidence.isPending ? (
-            <p className="text-sm text-muted-foreground">Collecting the evidence…</p>
+            <p className="text-sm text-muted-foreground">Loading request details…</p>
           ) : missing ? (
             <p className="text-sm text-muted-foreground">
-              No telemetry is kept for this request any more.
+              No data is kept for this request any more.
             </p>
           ) : evidence.error || !data ? (
             <div className="flex flex-col items-start gap-3">
               <p className="text-sm text-muted-foreground">
                 {evidence.error
                   ? errorMessage(evidence.error)
-                  : 'No evidence was returned for this request.'}
+                  : 'No details were returned for this request.'}
               </p>
               <Button size="xs" variant="outline" onClick={() => void evidence.refetch()}>
-                Retry evidence
+                Retry
               </Button>
             </div>
           ) : (
@@ -213,8 +213,8 @@ export function DebugRequestEvidence({
                       'No deterministic explanation is available for this request.'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Explanation from recorded platform evidence. Unobserved means no comparison
-                    verdict is available.
+                    Explanation from saved request records. Unobserved means no comparison verdict
+                    is available.
                   </p>
                   <EvidenceFindings explanation={data.explanation} />
                 </div>
@@ -327,7 +327,7 @@ export function DebugRequestEvidence({
                   )}
                   {data.spans_truncated && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      The span list was cut; this is partial evidence.
+                      The span list was cut short.
                     </p>
                   )}
                 </div>
@@ -371,10 +371,7 @@ export function DebugRequestEvidence({
                   <a href="/dashboard/invocations">Browse invocations</a>
                   <a href="/dashboard/instances">Browse instances</a>
                 </nav>
-                <p className="text-xs text-muted-foreground">
-                  Logs open for this app. Invocations and instances open their lists; request, trace
-                  and time filters are not supported by those links.
-                </p>
+
                 <Button
                   className="self-start"
                   size="sm"
@@ -387,8 +384,7 @@ export function DebugRequestEvidence({
                   Copy safe support bundle
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Copies bounded identifiers, status, timings and deterministic evidence. Excludes
-                  headers, bodies, credentials, SQL and free-form payloads.
+                  Excludes headers, bodies, credentials, SQL and payloads.
                 </p>
                 <p aria-live="polite" className="text-xs">
                   {copyError
@@ -409,7 +405,7 @@ export function DebugRequestEvidence({
                 )}
               </section>
               <p className="text-xs text-muted-foreground">
-                Evidence generated: {data.generated_at || 'Not reported'}
+                Generated: {data.generated_at || 'Not reported'}
               </p>
             </div>
           )}

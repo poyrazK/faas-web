@@ -33,7 +33,7 @@ export function FailurePanel({
       </div>
       {summary.evidence.length > 0 && (
         <div className="mt-5">
-          <h3 className="mb-2 text-xs font-medium text-muted-foreground">Relevant evidence</h3>
+          <h3 className="mb-2 text-xs font-medium text-muted-foreground">Relevant excerpts</h3>
           <Excerpts rows={summary.evidence.slice(0, 3)} />
           {summary.evidence.length > 3 && (
             <details className="mt-2">

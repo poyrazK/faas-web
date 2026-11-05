@@ -160,10 +160,9 @@ function TcpListenersBody({ slug }: { slug: string }) {
   const list = useTcpListeners(slug);
   return (
     <div className="flex flex-col gap-5">
-      <Panel
-        title="TCP listeners"
-        description={`Raw TCP on a stable public port (${PUBLIC_PORT_MIN}–${PUBLIC_PORT_MAX}), forwarded to a TCP port the app declares. The port stays the same across wakes, moves and deploys.`}
-      >
+      <Panel title="TCP listeners">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`Raw TCP on a stable public port (${PUBLIC_PORT_MIN}–${PUBLIC_PORT_MAX}), forwarded to a TCP port the app declares. The port stays the same across wakes, moves and deploys.`}</p>
+
         <ListenerList
           query={list}
           noun="TCP listeners"
@@ -439,12 +438,12 @@ function CertificateStatus({ slug, name }: { slug: string; name: string }) {
       <InlinePhase
         phase={phase}
         error={read.error}
-        loadingMessage="Reading certificate evidence…"
+        loadingMessage="Reading certificate reports…"
         emptyMessage="No edge has reported a certificate for this listener. That is unknown, not ready."
         onRetry={() => void read.refetch()}
       />
       {phase === 'ready' && data && (
-        <ul className="flex flex-col gap-2" aria-label="Certificate evidence by edge">
+        <ul className="flex flex-col gap-2" aria-label="Certificate reports by edge">
           {data.observations.map((o) => (
             <li key={o.edge_id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="font-mono text-xs">{o.edge_id}</span>
@@ -463,9 +462,9 @@ function CertificateStatus({ slug, name }: { slug: string; name: string }) {
         </ul>
       )}
       <p className="text-xs text-muted-foreground">
-        Evidence from the edges that reported it. A minute without a report, or a changed TLS
-        policy, reads as unknown; this does not prove every edge, client trust or that the app is
-        listening.
+        Certificate status from the edges that reported it. A minute without a report, or a changed
+        TLS policy, reads as unknown; this does not prove every edge, client trust or that the app
+        is listening.
       </p>
     </div>
   );
@@ -479,10 +478,9 @@ function UdpListenersBody({ slug }: { slug: string }) {
   const list = useUdpListeners(slug);
   return (
     <div className="flex flex-col gap-5">
-      <Panel
-        title="UDP listeners"
-        description={`Datagrams on a stable public port (${PUBLIC_PORT_MIN}–${PUBLIC_PORT_MAX}), forwarded to a UDP port the app declares. New listeners start disabled.`}
-      >
+      <Panel title="UDP listeners">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`Datagrams on a stable public port (${PUBLIC_PORT_MIN}–${PUBLIC_PORT_MAX}), forwarded to a UDP port the app declares. New listeners start disabled.`}</p>
+
         <ListenerList
           query={list}
           noun="UDP listeners"
@@ -598,10 +596,9 @@ function ExposePort({
   const declared = declaredListeners(app.data?.manifest?.ports, protocol);
   const free = declared.filter((d) => !taken.includes(d.name));
   return (
-    <Panel
-      title={`Expose a ${label} port`}
-      description={`Only ports the app declares can be exposed. Declare one in the app's ports (a Compose ports entry, named ${protocol}-<port> when unnamed), then choose it here.`}
-    >
+    <Panel title={`Expose a ${label} port`}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`Only ports the app declares can be exposed. Declare one in the app's ports (a Compose ports entry, named ${protocol}-<port> when unnamed), then choose it here.`}</p>
+
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}

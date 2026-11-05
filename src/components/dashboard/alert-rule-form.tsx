@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import { keys } from '@/lib/api/queries';
 import { cliSloCreateCommand, cliSyntheticCheckCreateCommand } from '@/lib/cli-commands';
 import { cn } from '@/lib/utils';
 import {
-  COMPARISON_SYMBOL,
   FAILURE_SOURCES,
   availableMetrics,
   baselineRange,
@@ -30,6 +29,7 @@ import {
   type AlertWindow,
   type FailureSource,
 } from './alert-metrics';
+import { COMPARISON_WORDS, alertWindowLabel, explainAlertCondition } from './alert-language';
 import { CliCommand } from './cli-command';
 import { ChannelPicker } from './notification-channels';
 import { InlinePhase, queryPhase } from './primitives';
@@ -108,6 +108,7 @@ export function AlertRuleForm({
   const [saving, setSaving] = useState(false);
   const validation = useFormValidation<Field>();
   const formId = useId();
+  const advancedRef = useRef<HTMLDetailsElement>(null);
 
   // Derived, so a metric change never leaves a comparison or window apid
   // would refuse for it selected.
@@ -169,6 +170,7 @@ export function AlertRuleForm({
   const shown = (field: Field) => (validation.submitAttempted ? errors[field] : undefined);
 
   const submit = async (form: HTMLFormElement) => {
+    if (errors.cooldown && advancedRef.current) advancedRef.current.open = true;
     if (!validation.validate(errors, form) || saving) return;
     const body: CreateAlertRule = {
       name: name.trim(),
@@ -210,201 +212,262 @@ export function AlertRuleForm({
   return (
     <form
       noValidate
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="flex flex-col gap-5"
       onSubmit={(e) => {
         e.preventDefault();
         void submit(e.currentTarget);
       }}
     >
-      <label className="flex flex-col gap-1.5 sm:col-span-2">
-        <span className="label-mono text-muted-foreground">Name</span>
-        <input
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          {...fieldErrorProps(shown('name'), 'alert-name-error')}
-          placeholder="Error rate over 5%"
-          maxLength={64}
-          className={FIELD}
-        />
-        {shown('name') && <FieldError id="alert-name-error">{shown('name')}</FieldError>}
-      </label>
-      <label className="flex flex-col gap-1.5 sm:col-span-2">
-        <span className="label-mono text-muted-foreground">Metric</span>
-        <select
-          value={metric}
-          onChange={(e) => setMetric(e.target.value as AlertMetric)}
-          className={FIELD}
-        >
-          {groups.map((group) => (
-            <optgroup key={group} label={group}>
-              {metrics
-                .filter((m) => m.group === group)
-                .map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
-
-      {target && (
-        <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-4">
-          <TargetField
-            slug={slug}
-            target={target}
-            failureSource={failureSource}
-            onFailureSource={setFailureSource}
-            slo={slo}
-            onSlo={setSloId}
-            slos={slos}
-            check={check}
-            onCheck={setCheckId}
-            checks={checks}
-            logQuery={logQuery}
-            onLogQuery={setLogQuery}
-            customName={customName}
-            onCustomName={setCustomName}
-            error={shown('target')}
-          />
-        </div>
-      )}
-
-      <div className="flex gap-2 sm:col-span-2">
-        <label className="flex w-32 shrink-0 sm:w-40 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Is</span>
+      <p className="text-sm leading-relaxed text-muted-foreground">
+        Get a notification when a metric crosses a limit you choose.
+      </p>
+      <section className="flex flex-col gap-4" aria-labelledby={`${formId}-condition`}>
+        <h3 id={`${formId}-condition`} className="text-sm font-medium">
+          1. Choose what to watch
+        </h3>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Metric</span>
           <select
-            value={comparison}
-            onChange={(e) => setComparison(e.target.value as AlertComparison)}
+            value={metric}
+            onChange={(e) => setMetric(e.target.value as AlertMetric)}
             className={FIELD}
           >
-            {comparisons.map((c) => (
-              <option key={c} value={c}>
-                {COMPARISON_SYMBOL[c]}
-              </option>
+            {groups.map((group) => (
+              <optgroup key={group} label={group}>
+                {metrics
+                  .filter((m) => m.group === group)
+                  .map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </select>
         </label>
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <label htmlFor={`${formId}-threshold`} className="label-mono text-muted-foreground">
-            {isBaseline(comparison) ? 'Multiplier' : 'Threshold'}
-          </label>
-          <input
-            id={`${formId}-threshold`}
-            name="threshold"
-            type="number"
-            step="any"
-            value={threshold}
-            onChange={(e) => setThreshold(e.target.value)}
-            {...fieldErrorProps(shown('threshold'), 'alert-threshold-error')}
-            className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
-          />
-          {shown('threshold') ? (
-            <FieldError id="alert-threshold-error">{shown('threshold')}</FieldError>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {isBaseline(comparison)
-                ? 'Times the usual value at this time of day, over the last 7 days.'
-                : spec?.unit}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-2 sm:col-span-2">
-        {!spec?.ignoresWindow && (
-          <label className="flex flex-1 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Window</span>
+
+        {target && (
+          <div className="flex flex-col gap-1.5">
+            <TargetField
+              slug={slug}
+              target={target}
+              failureSource={failureSource}
+              onFailureSource={setFailureSource}
+              slo={slo}
+              onSlo={setSloId}
+              slos={slos}
+              check={check}
+              onCheck={setCheckId}
+              checks={checks}
+              logQuery={logQuery}
+              onLogQuery={setLogQuery}
+              customName={customName}
+              onCustomName={setCustomName}
+              error={shown('target')}
+            />
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="text-sm font-medium">Is</span>
             <select
-              value={window}
-              onChange={(e) => setWindow(e.target.value as AlertWindow)}
-              className={`${FIELD} font-mono`}
+              value={comparison}
+              onChange={(e) => setComparison(e.target.value as AlertComparison)}
+              className={FIELD}
             >
-              {windows.map((w) => (
-                <option key={w} value={w}>
-                  {w}
+              {comparisons.map((c) => (
+                <option key={c} value={c}>
+                  {COMPARISON_WORDS[c]}
                 </option>
               ))}
             </select>
           </label>
-        )}
-        <label className="flex w-28 flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Cooldown</span>
+          <div className="flex w-32 shrink-0 flex-col gap-1.5">
+            <label htmlFor={`${formId}-threshold`} className="text-sm font-medium">
+              {isBaseline(comparison) ? 'Multiplier' : 'Threshold'}
+            </label>
+            <input
+              id={`${formId}-threshold`}
+              name="threshold"
+              type="number"
+              step="any"
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+              {...fieldErrorProps(shown('threshold'), 'alert-threshold-error')}
+              className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
+            />
+            {shown('threshold') ? (
+              <FieldError id="alert-threshold-error">{shown('threshold')}</FieldError>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {isBaseline(comparison)
+                  ? 'Times the usual value at this time of day, over the last 7 days.'
+                  : spec?.unit}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {!spec?.ignoresWindow && (
+            <label className="flex flex-1 flex-col gap-1.5">
+              <span className="text-sm font-medium">Window</span>
+              <select
+                value={window}
+                onChange={(e) => setWindow(e.target.value as AlertWindow)}
+                className={`${FIELD} font-mono`}
+              >
+                {windows.map((w) => (
+                  <option key={w} value={w}>
+                    {alertWindowLabel(w)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+          <p className="text-xs text-muted-foreground">Notify me when</p>
+          <p className="mt-1 text-sm leading-relaxed">
+            {!errors.threshold
+              ? explainAlertCondition({
+                  metric,
+                  comparison,
+                  threshold: parsedThreshold,
+                  window_spec: window,
+                })
+              : 'Choose a valid threshold to preview this condition.'}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {spec?.ignoresWindow
+              ? target === 'slo'
+                ? 'Uses the selected SLO’s measurement period.'
+                : 'Counts consecutive failures for the selected check.'
+              : `${alertWindowLabel(window)} evaluation window. Checks the metric across this rolling period.`}
+          </p>
+        </div>
+      </section>
+      <section
+        className="flex flex-col gap-4 border-t border-border pt-5"
+        aria-labelledby={`${formId}-delivery`}
+      >
+        <h3 id={`${formId}-delivery`} className="text-sm font-medium">
+          2. Choose where to notify you
+        </h3>
+        <div className="min-w-0">
+          <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="rule-channel" />
+        </div>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">
+            Webhook URL{channelIds.length > 0 && ' (optional)'}
+          </span>
           <input
-            name="cooldown"
-            type="number"
-            min={5}
-            max={1440}
-            step={1}
-            value={cooldown}
-            onChange={(e) => setCooldown(e.target.value)}
-            {...fieldErrorProps(shown('cooldown'), 'alert-cooldown-error')}
-            title="Minutes between firings"
-            className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
+            name="webhookUrl"
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            {...fieldErrorProps(shown('webhookUrl'), 'alert-webhook-url-error')}
+            placeholder="https://hooks.example.com/gregale"
+            spellCheck={false}
+            className={`${FIELD} font-mono`}
           />
-          {shown('cooldown') && (
-            <FieldError id="alert-cooldown-error">{shown('cooldown')}</FieldError>
+          {shown('webhookUrl') && (
+            <FieldError id="alert-webhook-url-error">{shown('webhookUrl')}</FieldError>
           )}
         </label>
-      </div>
-
-      <div className="sm:col-span-2 lg:col-span-4">
-        <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="rule-channel" />
-      </div>
-      <label className="flex flex-col gap-1.5 sm:col-span-2">
-        <span className="label-mono text-muted-foreground">
-          Webhook URL{channelIds.length > 0 && ' (optional)'}
-        </span>
-        <input
-          name="webhookUrl"
-          value={webhookUrl}
-          onChange={(e) => setWebhookUrl(e.target.value)}
-          {...fieldErrorProps(shown('webhookUrl'), 'alert-webhook-url-error')}
-          placeholder="https://hooks.example.com/gregale"
-          spellCheck={false}
-          className={`${FIELD} font-mono`}
-        />
-        {shown('webhookUrl') && (
-          <FieldError id="alert-webhook-url-error">{shown('webhookUrl')}</FieldError>
+        {url && (
+          <>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Webhook secret</span>
+              <input
+                name="secret"
+                type="password"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                {...fieldErrorProps(shown('secret'), 'alert-secret-error')}
+                placeholder="1–256 characters"
+                autoComplete="new-password"
+                className={`${FIELD} font-mono`}
+              />
+              {shown('secret') && (
+                <FieldError id="alert-secret-error">{shown('secret')}</FieldError>
+              )}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notifyResolved}
+                onChange={(e) => setNotifyResolved(e.target.checked)}
+                className="h-3.5 w-3.5 accent-[color:var(--brand)]"
+              />
+              Also notify this webhook when the issue is resolved
+            </label>
+          </>
         )}
-      </label>
-      {url && (
-        <>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Channels also receive a notification when the issue is resolved. A webhook secret lets
+          your receiver verify that a message came from Gregale; it cannot be read back after
+          saving.
+        </p>
+      </section>
+      <section
+        className="flex flex-col gap-4 border-t border-border pt-5"
+        aria-labelledby={`${formId}-name`}
+      >
+        <h3 id={`${formId}-name`} className="text-sm font-medium">
+          3. Name this rule
+        </h3>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Name</span>
+          <input
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            {...fieldErrorProps(shown('name'), 'alert-name-error')}
+            placeholder="Error rate over 5%"
+            maxLength={64}
+            className={FIELD}
+          />
+          {shown('name') && <FieldError id="alert-name-error">{shown('name')}</FieldError>}
+        </label>
+      </section>
+      <details ref={advancedRef} className="border-t border-border pt-4">
+        <summary className="cursor-pointer text-sm font-medium">Advanced settings</summary>
+        <div className="pt-4">
           <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Webhook secret</span>
+            <span className="text-sm font-medium">Minutes between repeat alerts</span>
             <input
-              name="secret"
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              {...fieldErrorProps(shown('secret'), 'alert-secret-error')}
-              placeholder="1–256 characters"
-              autoComplete="new-password"
-              className={`${FIELD} font-mono`}
+              name="cooldown"
+              type="number"
+              min={5}
+              max={1440}
+              step={1}
+              value={cooldown}
+              onChange={(e) => setCooldown(e.target.value)}
+              {...fieldErrorProps(shown('cooldown'), 'alert-cooldown-error')}
+              aria-describedby={
+                shown('cooldown') ? 'alert-cooldown-error' : `${formId}-cooldown-help`
+              }
+              className={`${FIELD} font-mono [font-variant-numeric:tabular-nums]`}
             />
-            {shown('secret') && <FieldError id="alert-secret-error">{shown('secret')}</FieldError>}
+            {shown('cooldown') && (
+              <FieldError id="alert-cooldown-error">{shown('cooldown')}</FieldError>
+            )}
+            <span
+              id={`${formId}-cooldown-help`}
+              className="text-xs leading-relaxed text-muted-foreground"
+            >
+              Wait at least this long before firing again while the condition is met. Between 5
+              minutes and 24 hours.
+            </span>
           </label>
-          <label className="flex items-center gap-2 self-end pb-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={notifyResolved}
-              onChange={(e) => setNotifyResolved(e.target.checked)}
-              className="h-3.5 w-3.5 accent-[color:var(--brand)]"
-            />
-            Also send alert.resolved
-          </label>
-        </>
-      )}
-      <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
+        </div>
+      </details>
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" size="sm" className="gap-1.5" busy={saving}>
           <Plus className="h-3.5 w-3.5" />
           Add rule
         </Button>
-        <span className="text-xs text-muted-foreground">
-          Channels always receive resolves. The webhook secret is sealed on save and never shown
-          again.
-        </span>
       </div>
     </form>
   );
@@ -449,7 +512,7 @@ function TargetField({
   if (target === 'failure_source')
     return (
       <label className="flex max-w-xs flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Failure source</span>
+        <span className="text-sm font-medium">Failure source</span>
         <select
           value={failureSource}
           onChange={(e) => onFailureSource(e.target.value as FailureSource)}
@@ -457,7 +520,7 @@ function TargetField({
         >
           {FAILURE_SOURCES.map((source) => (
             <option key={source} value={source}>
-              {source.replace('_', ' ')}
+              {source === 'any' ? 'Any source' : source.replaceAll('_', ' ')}
             </option>
           ))}
         </select>
@@ -476,7 +539,7 @@ function TargetField({
     if (phase !== 'ready')
       return (
         <div className="flex flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">{label}</span>
+          <span className="text-sm font-medium">{label}</span>
           <InlinePhase
             phase={phase}
             error={query.error}
@@ -498,7 +561,7 @@ function TargetField({
       );
     return (
       <label className="flex max-w-sm flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium">{label}</span>
         <select
           name="target"
           value={isSlo ? slo : check}
@@ -519,7 +582,7 @@ function TargetField({
   if (target === 'log_query')
     return (
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={`${id}-log`} className="label-mono text-muted-foreground">
+        <label htmlFor={`${id}-log`} className="text-sm font-medium">
           Log query
         </label>
         <input
@@ -543,7 +606,7 @@ function TargetField({
     );
   return (
     <div className="flex max-w-sm flex-col gap-1.5">
-      <label htmlFor={`${id}-custom`} className="label-mono text-muted-foreground">
+      <label htmlFor={`${id}-custom`} className="text-sm font-medium">
         Custom metric name
       </label>
       <input

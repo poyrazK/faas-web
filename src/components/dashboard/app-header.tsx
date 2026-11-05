@@ -88,7 +88,7 @@ export function AppHeader({
         <Link
           to="/dashboard/projects/$projectSlug"
           params={{ projectSlug: project }}
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           <ArrowLeft className="h-3 w-3" />
           Project {project}
@@ -96,7 +96,7 @@ export function AppHeader({
       ) : (
         <Link
           to="/dashboard/projects"
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           <ArrowLeft className="h-3 w-3" />
           Projects

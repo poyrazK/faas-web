@@ -289,12 +289,12 @@ describe('DebugRequestEvidence', () => {
       error: new ApiError({ status: 404, code: 'not_found', title: 'Not found' }),
     });
     render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
-    expect(screen.getByText(/no telemetry is kept/i)).toBeInTheDocument();
+    expect(screen.getByText(/no data is kept/i)).toBeInTheDocument();
   });
 
   it('stays closed with no request selected', () => {
     render(<DebugRequestEvidence slug="api" reqId={null} onClose={vi.fn()} />);
-    expect(screen.queryByText(/request evidence/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/request details/i)).not.toBeInTheDocument();
   });
 
   it('groups observed facts, explanation, and supported investigation links', () => {
@@ -404,7 +404,7 @@ describe('DebugRequestEvidence', () => {
       refetch: retry,
     });
     const view = render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry evidence' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalledOnce();
     useDebugRequestEvidence.mockReturnValue({
       data: {

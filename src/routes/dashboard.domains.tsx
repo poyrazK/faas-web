@@ -1,15 +1,21 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { Activity, Trash } from 'iconoir-react';
+import { Plus } from 'iconoir-react';
+import { Select } from '@/components/ui/field';
+import { DomainAddForm, isDomainName } from '@/components/dashboard/domain-add-form';
+import { DomainDetailButton } from '@/components/dashboard/domain-detail';
+import { DomainDoctor } from '@/components/dashboard/domain-doctor';
+import { Sheet } from '@/components/dashboard/kit/sheet';
+import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
-import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
-import { useConfirm } from '@/components/ui/confirm';
+import { useToast } from '@/components/ui/toast';
+import { slugIndex } from '@/lib/api/adapters';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { ApiError } from '@/lib/api/errors';
 import {
   useAddDomain,
   useApps,
@@ -17,13 +23,10 @@ import {
   useDomains,
   useRetryDomain,
 } from '@/lib/api/queries';
-import { DomainAddForm, isDomainName } from '@/components/dashboard/domain-add-form';
-import { DomainDetailButton } from '@/components/dashboard/domain-detail';
-import { DomainDoctor } from '@/components/dashboard/domain-doctor';
-import { slugIndex } from '@/lib/api/adapters';
-import { ApiError } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
-import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Activity, Trash } from 'iconoir-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 export const Route = createFileRoute('/dashboard/domains')({
   component: DomainsPage,
@@ -96,8 +99,8 @@ function DomainsPage() {
       resetScroll: false,
     });
   const setDoctorFor = (doctor?: string) => select({ doctor });
-  const hostInput = useRef<HTMLInputElement>(null);
 
+  const [creating, setCreating] = useState(false);
   const rows = useMemo<DomainRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
     return (data ?? []).map((d) => ({
@@ -363,12 +366,29 @@ function DomainsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Domains"
-        description="Custom hostnames and their DNS verification. TLS is issued and renewed automatically once a domain verifies."
+        help="TLS is issued and renewed automatically once a domain verifies."
+        actions={
+          <Button
+            size="sm"
+            disabled={!apps?.length || Boolean(appQuery.error)}
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add domain
+          </Button>
+        }
       />
 
-      <Panel lit title="Add a domain">
-        <DomainAddForm hostRef={hostInput} />
-      </Panel>
+      {appQuery.error && (
+        <InlinePhase
+          phase={queryPhase({ error: appQuery.error })}
+          error={appQuery.error}
+          onRetry={() => void appQuery.refetch()}
+        />
+      )}
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add domain">
+        <DomainAddForm onCreated={() => setCreating(false)} />
+      </Sheet>
 
       <ResourceTable
         rows={
@@ -385,7 +405,7 @@ function DomainsPage() {
         filters={
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Domain status
-            <select
+            <Select
               className="rounded-md border border-border bg-card p-2"
               value={search.status ?? ''}
               onChange={(event) =>
@@ -395,7 +415,7 @@ function DomainsPage() {
               <option value="">All statuses</option>
               <option value="pending">Pending</option>
               <option value="verified">Verified</option>
-            </select>
+            </Select>
           </label>
         }
         emptyMessage={rows.length ? 'No domains match these filters.' : 'No custom domains yet.'}
@@ -409,13 +429,7 @@ function DomainsPage() {
               Clear filters
             </Button>
           ) : appQuery.isPending || appQuery.error ? undefined : apps?.length ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                hostInput.current?.scrollIntoView({ block: 'center' });
-                hostInput.current?.focus();
-              }}
-            >
+            <Button size="sm" onClick={() => setCreating(true)}>
               Add your first domain
             </Button>
           ) : apps ? (
@@ -460,7 +474,6 @@ function DomainsPage() {
           onClose={() => setDoctorFor()}
           width="max-w-2xl"
           title={`Doctor — ${doctorFor}`}
-          description="What the platform observes for this hostname right now."
         >
           <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-1">
             <DomainDoctor domain={doctorFor} />

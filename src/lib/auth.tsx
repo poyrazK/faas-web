@@ -289,10 +289,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshAccount = useCallback(async () => {
     const generation = sessionGeneration.current;
-    const next = await queryClient.fetchQuery({
-      queryKey: ['account'],
-      queryFn: ({ signal }) => unwrap(api.GET('/v1/account', { signal })),
-      staleTime: 0,
+    const fetchAccount = () =>
+      queryClient.fetchQuery({
+        queryKey: ['account'],
+        queryFn: ({ signal }) => unwrap(api.GET('/v1/account', { signal })),
+        staleTime: 0,
+      });
+    // A newer fetch of the same key cancels this one. That is not the API
+    // being down: wait for the fetch that replaced it instead.
+    const next = await fetchAccount().catch((err: unknown) => {
+      if (isCancelledError(err)) return fetchAccount();
+      throw err;
     });
     if (generation !== sessionGeneration.current) return;
     setReachable(true);

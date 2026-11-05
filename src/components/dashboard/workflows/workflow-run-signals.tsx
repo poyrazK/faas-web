@@ -205,7 +205,7 @@ export function RunCallbacks({ slug, run }: { slug: string; run: WorkflowRun }) 
   return (
     <Panel
       title="Callbacks"
-      description="Steps waiting for an outside system to report back. Complete one here when that system cannot call the API itself."
+      help="Steps waiting for an outside system to report back. Complete one here when that system cannot call the API itself."
     >
       <InlinePhase
         phase={queryPhase({ loading: callbacks.isPending, error: callbacks.error })}

@@ -174,11 +174,9 @@ export function SlosBody({ slug }: { slug: string }) {
       </div>
 
       <PlanGated error={list.error} feature="SLOs">
-        <Panel
-          title="Your SLOs"
-          description={`Budget left over each SLO’s window and its current burn rate. ${slos.length} of ${SLO_LIMIT} defined.`}
-          padded={phase !== 'ready'}
-        >
+        <Panel title="Your SLOs" padded={phase !== 'ready'}>
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground px-4 pt-4">{`Budget left over each SLO’s window and its current burn rate. ${slos.length} of ${SLO_LIMIT} defined.`}</p>
+
           {phase === 'unreachable' ? (
             <UnreachableState onRetry={() => void list.refetch()} />
           ) : phase === 'error' ? (
@@ -244,11 +242,13 @@ export function SlosBody({ slug }: { slug: string }) {
           />
         )}
 
-        <Panel
-          lit
-          title="Define an SLO"
-          description="Availability counts non-5xx responses among 2xx and 5xx (a 4xx is the client’s error and does not count). Latency counts requests that finish within the threshold."
-        >
+        <Panel title="Define an SLO">
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+            {
+              'Availability counts non-5xx responses among 2xx and 5xx (a 4xx is the client’s error and does not count). Latency counts requests that finish within the threshold.'
+            }
+          </p>
+
           <SloForm
             slug={slug}
             full={slos.length >= SLO_LIMIT}
@@ -302,7 +302,6 @@ function SloDetail({
   return (
     <Panel
       title={slo.name}
-      description={`${describeObjective(slo)} over ${slo.window_days} days`}
       actions={
         <span className="flex items-center gap-3">
           <CopyableId value={slo.id} label="SLO ID" />
@@ -318,6 +317,8 @@ function SloDetail({
         </span>
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${describeObjective(slo)} over ${slo.window_days} days`}</p>
+
       <div className="flex flex-col gap-5">
         {phase !== 'ready' || !status ? (
           <InlinePhase
@@ -374,7 +375,7 @@ function SloDetail({
                   className="mt-0.5 h-3.5 w-3.5 shrink-0"
                   style={{ color: 'var(--status-warning)' }}
                 />
-                Telemetry: <span className="font-mono">{degraded}</span>
+                Data coverage: <span className="font-mono">{degraded}</span>
               </p>
             )}
           </>

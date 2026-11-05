@@ -23,6 +23,7 @@ import {
   LoadingState,
   PageHeader,
   Panel,
+  Stats,
   StatTile,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
@@ -137,10 +138,7 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
   const hasConfig = data.config != null && Object.keys(data.config).length > 0;
 
   return (
-    <Panel
-      title="Configuration"
-      description="As deployed. Manage changes from the trigger detail page."
-    >
+    <Panel title="Configuration">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Pill label={data.kind} />
@@ -277,7 +275,11 @@ export function TriggerDetail({
       </Link>
       <PageHeader
         title={trigger.slug ?? trigger.kind}
-        description={`${trigger.kind} · ${destination} · updated ${new Date(trigger.updated_at).toLocaleString()}`}
+        meta={
+          <span className="text-sm text-muted-foreground">
+            {trigger.kind} · {destination} · updated {new Date(trigger.updated_at).toLocaleString()}
+          </span>
+        }
         actions={
           <>
             <Pill
@@ -311,24 +313,21 @@ export function TriggerDetail({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-5">
+      <Stats columns={5}>
         {(['pending', 'claimed', 'succeeded', 'retry', 'dead_letter'] as const).map((state) => (
           <StatTile
             key={state}
-            label={state.replace('_', ' ')}
+            label={(state[0].toUpperCase() + state.slice(1)).replace('_', ' ')}
             value={counters ? counters[`${state}_count`] : undefined}
             state={
               metrics.isPending ? 'loading' : metrics.error || !counters ? 'unavailable' : 'ready'
             }
           />
         ))}
-      </div>
+      </Stats>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
-        <Panel
-          title="Source and delivery"
-          description="The effective configuration currently polled by the platform."
-        >
+        <Panel title="Source and delivery">
           <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>Trigger ID</span>
             <CopyableId value={trigger.id} label="trigger ID" full />
@@ -372,10 +371,7 @@ export function TriggerDetail({
           </div>
         </Panel>
 
-        <Panel
-          title="Handler contract"
-          description="The route and partial-batch response your destination implements."
-        >
+        <Panel title="Handler">
           <code className="font-mono text-xs text-brand">
             POST /_triggers/{trigger.kind}/{trigger.slug}
           </code>
@@ -391,10 +387,7 @@ export function TriggerDetail({
       </div>
 
       {edit && (
-        <Panel
-          title="Edit trigger"
-          description="Destination, source kind, and slug are immutable. Blank secret inputs preserve configured credentials."
-        >
+        <Panel title="Edit trigger" help="Leave a secret blank to keep the configured credential.">
           <form
             className="flex flex-col gap-6"
             onSubmit={(event) => {
@@ -448,10 +441,7 @@ export function TriggerDetail({
         </Panel>
       )}
 
-      <Panel
-        title="Record activity"
-        description="Inspect delivery outcomes and recover individual failures."
-      >
+      <Panel title="Record activity">
         <SegmentedControl
           label="Trigger activity"
           value={tab}

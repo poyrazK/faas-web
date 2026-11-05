@@ -79,13 +79,13 @@ export function FirstDeploymentRecovery({
     code === 'env_var_missing'
       ? 'Environment'
       : code === 'app_runtime_oom' || code === 'app_startup_timeout' || code === 'app_not_listening'
-        ? 'Configuration'
+        ? 'Runtime'
         : undefined;
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
       <PageHeader
         title="Your first deployment"
-        description="Your app is saved. Recovery creates another attempt, not another app."
+        help="Your app is saved. Recovery creates another attempt, not another app."
       />
       <p className="text-sm text-muted-foreground">
         {app.data.slug} · {app.data.runtime ?? app.data.type} · {app.data.ram_mb} MB

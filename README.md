@@ -536,30 +536,44 @@ is the rule to preserve: if you find yourself writing a literal hex or a
 The colour ramp, contrast measurements, and chart tokens are documented inline
 at the top of `index.css`.
 
+The console is compact and flat (the `Console density` block in `index.css`):
+13px reading size, 12px labels, small radii, hairlines instead of shadows.
+Labels are sentence case in the sans face; mono is for identifiers and code.
+
 ### Motion
 
-One curve, a few speeds, everywhere. The vocabulary lives in two places that
-mirror each other — change one, change both:
+Pages, panels, tables and numbers arrive in place. Overview retains its greeting
+and subtle background from the main console; the foil New app button and profile
+rim respond to interaction. Metric cards animate their position when rearranged.
+Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
+All of these respect reduced motion.
 
-- **TypeScript** — `components/dashboard/motion.tsx` exports `EASE`,
-  `DURATION`, and the components: `Stagger`/`Item` (an orchestrated entrance
-  for content that all mounts in the same commit — never for children that
-  can arrive late, which it strands at opacity 0), `CountUp` (a figure that
-  rolls to its new value), and `Swap` (a keyed cross-fade for a block whose
-  content is replaced, like a metrics window change). Page entrances are NOT
-  Stagger: `PageHeader`, `Panel`, `StatTile`, and `ResourceTable` carry the
-  CSS `animate-item-enter` mount animation, which replays whenever they
-  enter the DOM — including code-split routes and post-fetch panels.
-- **CSS** — `--motion-ease` / `--motion-fast|base|slow` tokens in `index.css`,
-  the `ease-console` Tailwind utility, and the `.pressable` class (the 0.97
-  press dip for anything button-shaped that is not a `<Button>`; use it
-  _instead of_ `transition-colors`, which it includes).
+`components/dashboard/motion.tsx` exports the one curve (`EASE`, mirrored in
+CSS as `--motion-ease` / `ease-console`) and `Swap`, a keyed block for content
+that is replaced. Everything honours `prefers-reduced-motion`.
 
-When to reach for which: an element **arriving** joins the page's `Stagger` or
-fades in; a value **updating in place** rolls with `CountUp`; a block being
-**replaced** cross-fades with `Swap`; never two of those at once. Everything
-honours `prefers-reduced-motion` — Framer components via `useReducedMotion()`,
-CSS via the blanket `[class*='animate-']` rule in `index.css`.
+### Analytics customization
+
+Overview has one Analytics board: All apps shows account totals, and selecting
+an app shows its real hourly history. Account totals never pretend to have a
+series. Resource cards explicitly say whether they describe now or the billing
+period. The range picker offers only windows the current source supports.
+
+`AnalyticsGrid` owns metric selection and ordering. Drag a handle, use its arrow
+keys, or choose Move earlier/later in the card menu. Add, remove, and Reset layout
+persist in browser storage; a deliberately empty layout stays empty. The app
+layout keeps the original `gregale.analytics.order` preference. Overview's account
+layout is separate. Browser storage failures affect persistence, not editing.
+
+App Metrics uses one URL-backed analytics window for summaries, charts and grouped
+requests. Window percentiles come from the API aggregate; hourly percentiles are
+never averaged. A route-filtered card explicitly reflects the selected series.
+
+### Component kit
+
+`/dashboard/kit` (dev only, never built for production) shows every console
+primitive in its ready, loading, empty, error and unreachable states. Review a
+component change there before clicking through pages.
 
 ## Deployment
 
@@ -746,18 +760,26 @@ calling a function with the wrong type.
   **Segments** (`SegmentedControl`, or `SegmentGroup` + `segmentClassName` for
   links) switch a view inside a panel: a direction, scope, filter, or range. Do
   not style a switcher with `Button` variants or a one-off class string.
-- **Reuse the shared primitives.** `PageHeader`, `Panel`, `StatTile`,
-  `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`) and
-  `ResourceTable` (`dashboard/resource-table.tsx`) already cover the shape
-  almost every console page needs.
+- **Reuse the shared primitives.** `PageHeader`, `Panel`, `Stats` +
+  `StatTile`, `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`),
+  `ResourceTable` (`dashboard/resource-table.tsx`), and the kit in
+  `dashboard/kit/`: `Sheet` for create and edit flows, `HelpTip` for
+  explanations, `TimeChart`/`Sparkline` for series. Figures go in a `Stats`
+  strip, not a grid of cards; a table in an unpadded `Panel` drops its own
+  frame.
+- **Say less.** A page has a title and no subtitle; a panel has a title and no
+  description. An explanation someone needs before acting goes in the `help`
+  prop (a "?" popover), short. Internal names (apid, microVM, evidence,
+  telemetry) never reach the UI; `src/lib/copy.test.ts` pins that.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
   reachable everywhere at once. The sidebar lists account-wide pages only,
   grouped by resource category (Compute, Storage, Networking, Messaging,
-  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
-  instead (`APP_TABS`). The reasoning is in
-  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app
+  section instead (`APP_TAB_GROUPS` in `app-tab-navigation.tsx`): opening an
+  app swaps the rail to that app's sections (`app-rail.tsx`). The reasoning
+  is in `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 
@@ -833,3 +855,29 @@ cursor. Its separate limits and permission failures are stated beside the feed.
 The account audit log remains linked for security/account events outside the
 resource timeline. Mock mode includes scoped inventory, curated actor categories,
 config/environment/domain/TLS events, and older pages.
+
+### Console analytics and creation
+
+New app starts with seven compact source choices and keeps the existing wizard,
+source fields, OAuth handoffs and deployment recovery. Edge rules live under each
+app and describe each saved outcome, such as routing a path to a named app or
+blocking requests from a named country. Opening a row shows its technical settings.
+Add rule starts with searchable, plain-English outcomes and essential inputs, with
+country names and readable units. A live preview shows the effect, app scope and
+starting mode. Advanced settings exposes the full editor without losing the draft;
+hidden validation errors reopen it, and malformed JSON stays visible until corrected.
+Sidebar groups animate their expansion and respect reduced motion.
+
+Overview and app analytics cards retain add, remove and reorder controls. Select
+a card or the larger request chart to open an in-place detail dialog. Its metric,
+app, grouping, route and time bounds use the `inspect*` URL keys; closing preserves
+the page's existing filters. Drag handles use arrow keys independently of opening
+details. Charts support arrow-key readouts and the dialog offers hourly table data.
+
+Account Analytics presents platform totals, response times, ranked apps and a
+clearly labelled selected-app history. Account totals have no hourly series or
+previous-period comparison in the current API. Platform latency covers successful
+(2xx) responses; per-app request history includes all recorded statuses. Estimated
+error counts from platform rates are labelled. Request charts use UTC and the
+server's retained bounds; partial hours are excluded from within-window comparisons.
+Missing telemetry, empty windows, plan limits and failed reads have distinct states.

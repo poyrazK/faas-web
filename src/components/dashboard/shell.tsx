@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
   CloudXmark,
@@ -32,7 +32,6 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { NeedsAttentionButton } from './needs-attention';
 import { CommandPalette } from './command-palette';
-import { ConsolePageTransition } from './page-transition';
 import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
   findNavHub,
@@ -46,6 +45,7 @@ import {
   sidebarSectionsFor,
 } from './nav-config';
 import { DashboardSecondaryNavigation } from './secondary-navigation';
+import { AppRail, appOfPath } from './app-rail';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
@@ -110,7 +110,6 @@ function NavRow({
   nested = false,
   collapsed = false,
   labelCls,
-  reduce,
   onNavigate,
   pathname,
   hash,
@@ -120,7 +119,6 @@ function NavRow({
   nested?: boolean;
   collapsed?: boolean;
   labelCls: string;
-  reduce: boolean | null;
   onNavigate?: () => void;
   pathname: string;
   hash: string;
@@ -141,23 +139,16 @@ function NavRow({
       aria-label={collapsed ? label : undefined}
       aria-current={current ? 'page' : undefined}
       className={cn(
-        'pressable relative isolate flex items-center rounded-md py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        'pressable relative flex h-8 items-center rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
         // The nested row trades its icon for indent: a second column of glyphs
         // reads as ten more destinations rather than as detail under one.
-        nested ? 'gap-2.5 py-1 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
-        current ? 'text-brand' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        current && reduce && 'bg-brand/10 ring-1 ring-inset ring-brand/15'
+        nested ? 'h-7 gap-2.5 pl-7 pr-2.5' : 'gap-2.5 px-2.5',
+        current
+          ? 'bg-muted font-medium text-foreground'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       )}
     >
       <>
-        {current && !reduce && (
-          <motion.span
-            aria-hidden="true"
-            layoutId="sidebar-active"
-            className="absolute inset-0 -z-10 rounded-md bg-brand/10 ring-1 ring-inset ring-brand/15"
-            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-          />
-        )}
         {!nested && (
           <Icon
             aria-hidden="true"
@@ -290,22 +281,18 @@ function NavDisclosure({
 }
 
 function SidebarBody({
-  id,
   onNavigate,
   onOpenSearch,
   collapsed = false,
 }: {
   /** Opens the command palette; the rail's search field is its front door. */
   onOpenSearch?: () => void;
-  /** Namespaces the shared active pill — the desktop rail and the mobile
-   * drawer each get their own, so one never tries to fly to the other. */
-  id: string;
   onNavigate?: () => void;
   collapsed?: boolean;
 }) {
-  const reduce = useReducedMotion();
   const { pathname, hash } = useRouterState({ select: (s) => s.location });
   const currentHub = findNavHub(pathname);
+  const app = appOfPath(pathname);
   const isOff = useCapabilityOff();
   const groups = useMemo(() => visibleNavGroups(NAV_GROUPS, isOff), [isOff]);
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
@@ -325,7 +312,7 @@ function SidebarBody({
   // Horizontal geometry stays fixed; nested groups fold on the vertical axis.
   const labelCls = sidebarLabelClass(collapsed);
   return (
-    <LayoutGroup id={id}>
+    <>
       <Link
         to="/"
         className="relative flex h-9 items-center overflow-hidden px-2.5 py-1"
@@ -370,97 +357,100 @@ function SidebarBody({
         </kbd>
       </button>
 
-      {/* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
-          and shoves the icons off-center (it did). */}
-      <nav
-        aria-label="Main"
-        className="scrollbar-none mt-4 flex flex-col gap-4 overflow-x-hidden overflow-y-auto"
-      >
-        {groups.map((group, gi) => (
-          <div key={group.title ?? `group-${gi}`}>
-            {/* One fixed-height slot per group header, whichever face it
+      {/* Inside an app, the rail is that app's sections. */}
+      {app ? (
+        <AppRail slug={app} collapsed={collapsed} labelCls={labelCls} onNavigate={onNavigate} />
+      ) : (
+        /* scrollbar-none: at 40px-wide rows a native scrollbar eats the rail
+          and shoves the icons off-center (it did). */
+        <nav
+          aria-label="Main"
+          className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
+        >
+          {groups.map((group, gi) => (
+            <div key={group.title ?? `group-${gi}`}>
+              {/* One fixed-height slot per group header, whichever face it
                 wears — the heading when wide, a hairline when narrow — so
                 the rows below never shift vertically during the change. */}
-            {group.title && (
-              <div className="relative h-6">
-                <p
-                  className={cn(
-                    'label-mono absolute bottom-1 left-2.5 text-muted-foreground/70',
-                    labelCls
-                  )}
-                >
-                  {group.title}
-                </p>
-                <div
-                  aria-hidden
-                  className={cn(
-                    'absolute inset-x-1 top-2.5 h-px bg-border',
-                    sidebarLabelClass(!collapsed)
-                  )}
-                />
-              </div>
-            )}
+              {group.title && (
+                <div className="relative h-6">
+                  <p
+                    className={cn(
+                      'absolute bottom-1 left-2.5 text-xs font-medium text-muted-foreground/70',
+                      labelCls
+                    )}
+                  >
+                    {group.title}
+                  </p>
+                  <div
+                    aria-hidden
+                    className={cn(
+                      'absolute inset-x-1 top-2.5 h-px bg-border',
+                      sidebarLabelClass(!collapsed)
+                    )}
+                  />
+                </div>
+              )}
 
-            <ul className="flex flex-col gap-0.5">
-              {group.items.map((hub) => {
-                // Collapsed, the rail is 40px of icons — there is no room for a
-                // second level, and the hub tooltip is the whole affordance.
-                const disclosure = isDisclosureHub(hub);
-                const onBranch = currentHub?.to === hub.to;
-                if (!disclosure) {
+              <ul className="flex flex-col gap-px">
+                {group.items.map((hub) => {
+                  // Collapsed, the rail is 40px of icons — there is no room for a
+                  // second level, and the hub tooltip is the whole affordance.
+                  const disclosure = isDisclosureHub(hub);
+                  const onBranch = currentHub?.to === hub.to;
+                  if (!disclosure) {
+                    return (
+                      <li key={hub.to}>
+                        <NavRow
+                          item={hub}
+                          collapsed={collapsed}
+                          labelCls={labelCls}
+                          onNavigate={onNavigate}
+                          pathname={pathname}
+                          hash={hash}
+                          current={onBranch}
+                        />
+                      </li>
+                    );
+                  }
+                  const sections = sidebarSectionsFor(hub);
+                  // Open unless shut: a hub nobody has closed is a hub whose
+                  // contents should be readable without being asked for.
+                  const open = !collapsed && !closedGroups.includes(hub.to);
                   return (
                     <li key={hub.to}>
-                      <NavRow
-                        item={hub}
+                      <NavDisclosure
+                        hub={hub}
+                        open={open}
+                        onToggle={() => toggleGroup(hub.to)}
+                        onBranch={onBranch}
                         collapsed={collapsed}
                         labelCls={labelCls}
-                        reduce={reduce}
-                        onNavigate={onNavigate}
-                        pathname={pathname}
-                        hash={hash}
-                        current={onBranch}
-                      />
+                      >
+                        {sections.map((section) => (
+                          <li key={`${section.to}-${section.label}`}>
+                            <NavRow
+                              item={section}
+                              nested
+                              collapsed={collapsed}
+                              labelCls={labelCls}
+                              onNavigate={onNavigate}
+                              pathname={pathname}
+                              hash={hash}
+                              current={!collapsed && matchesNavPath(pathname, section)}
+                            />
+                          </li>
+                        ))}
+                      </NavDisclosure>
                     </li>
                   );
-                }
-                const sections = sidebarSectionsFor(hub);
-                // Open unless shut: a hub nobody has closed is a hub whose
-                // contents should be readable without being asked for.
-                const open = !collapsed && !closedGroups.includes(hub.to);
-                return (
-                  <li key={hub.to}>
-                    <NavDisclosure
-                      hub={hub}
-                      open={open}
-                      onToggle={() => toggleGroup(hub.to)}
-                      onBranch={onBranch}
-                      collapsed={collapsed}
-                      labelCls={labelCls}
-                    >
-                      {sections.map((section) => (
-                        <li key={`${section.to}-${section.label}`}>
-                          <NavRow
-                            item={section}
-                            nested
-                            collapsed={collapsed}
-                            labelCls={labelCls}
-                            reduce={reduce}
-                            onNavigate={onNavigate}
-                            pathname={pathname}
-                            hash={hash}
-                            current={!collapsed && matchesNavPath(pathname, section)}
-                          />
-                        </li>
-                      ))}
-                    </NavDisclosure>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </nav>
-    </LayoutGroup>
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      )}
+    </>
   );
 }
 
@@ -501,10 +491,7 @@ function Breadcrumbs() {
   }
 
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className="flex min-w-0 items-center gap-1.5 font-mono text-xs [font-variant-numeric:tabular-nums]"
-    >
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <WorkspaceSwitcher />
 
       {trail.map(({ label, to }, i) => {
@@ -518,17 +505,14 @@ function Breadcrumbs() {
               <Link
                 to={to}
                 activeOptions={{ exact: true }}
-                className="pressable truncate rounded-md px-1 py-1 lowercase text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="pressable truncate rounded-md px-1 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 {label}
               </Link>
             ) : (
               <span
                 aria-current={last ? 'page' : undefined}
-                className={cn(
-                  'truncate lowercase',
-                  last ? 'text-foreground' : 'text-muted-foreground'
-                )}
+                className={cn('truncate', last ? 'text-foreground' : 'text-muted-foreground')}
               >
                 {label}
               </span>
@@ -768,11 +752,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     recordVisit(pathname);
   }, [pathname]);
-  // Wait for the destination to commit, not merely a link click. Query and
-  // hash changes belong to the current page and must not replay its entrance.
-  const pageKey = useRouterState({
-    select: (s) => (s.resolvedLocation?.pathname ?? s.location.pathname).replace(/\/$/, ''),
-  });
 
   // Toasts render at the root, outside this tree, so the dark palette has to
   // reach them too: mirror `console` onto <html> while the shell is mounted.
@@ -851,23 +830,19 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 // on a real hover or toggle, never on load. Horizontal padding
                 // is constant across both widths — geometry that never moves
                 // is what keeps the expansion smooth.
-                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-5 transition-[width] lg:flex',
+                'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-4 transition-[width] lg:flex',
                 sidebarSizeClass(railCollapsed),
-                railCollapsed ? 'w-16' : 'w-60',
+                railCollapsed ? 'w-16' : 'w-56',
                 // Hover-expanded over pinned-collapsed content: a floating
                 // peek, so it carries elevation the pinned states do not.
                 collapsed && !railCollapsed && 'shadow-elevation-3'
               )}
             >
-              <SidebarBody
-                id="desktop"
-                collapsed={railCollapsed}
-                onOpenSearch={() => setPaletteOpen(true)}
-              />
+              <SidebarBody collapsed={railCollapsed} onOpenSearch={() => setPaletteOpen(true)} />
 
               {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
-              <div className="mt-auto overflow-hidden pt-4">
+              <div className="mt-auto shrink-0 overflow-hidden border-t border-border pt-2">
                 <Tooltip
                   content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
                   side="right"
@@ -931,7 +906,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                     <Xmark className="h-4 w-4" />
                   </button>
                   <SidebarBody
-                    id="mobile"
                     onNavigate={() => setMobileOpen(false)}
                     onOpenSearch={() => setPaletteOpen(true)}
                   />
@@ -941,13 +915,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div
               className={cn(
-                'console-atmosphere min-h-screen transition-[padding]',
+                'min-h-screen transition-[padding]',
                 sidebarSizeClass(collapsed),
-                collapsed ? 'lg:pl-16' : 'lg:pl-60'
+                collapsed ? 'lg:pl-16' : 'lg:pl-56'
               )}
             >
               {/* Top bar */}
-              <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
+              <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
                 <button
                   aria-label="Open navigation"
                   className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
@@ -967,16 +941,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 </div>
               </header>
 
-              <main id="main" tabIndex={-1} className="px-4 py-8 outline-none sm:px-6 lg:px-8">
-                {/* A measure, not the full viewport: past ~1100px a form row or a
-                label/value pair stops scanning as a pair. Tables set their own
-                min-width and scroll inside it. */}
-                <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
+              <main id="main" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6">
+                {/* Wide enough for a dense table, still a measure: past ~1280px
+                a label/value pair stops scanning as a pair. */}
+                <div className="mx-auto flex max-w-[1280px] flex-col gap-5">
                   <UnreachableBanner />
-                  <ConsolePageTransition pageKey={pageKey}>
+                  <div className="console-page flex flex-col gap-5">
                     <DashboardSecondaryNavigation />
                     {children}
-                  </ConsolePageTransition>
+                  </div>
                 </div>
               </main>
             </div>

@@ -155,7 +155,7 @@ export function SpendControl({ overageCents }: { overageCents: number | undefine
   return (
     <Panel
       title="Spend control"
-      description="Overage is usage beyond the included allowance. The cap stops it from growing past a set amount."
+      help="Overage is usage beyond the included allowance. The cap stops it growing past a set amount."
       actions={
         cap.data && (
           <Button size="xs" variant="outline" onClick={() => setEditing(true)}>

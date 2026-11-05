@@ -120,11 +120,13 @@ function Subscriptions({ slug, picker }: { slug: string; picker: React.ReactNode
   });
 
   return (
-    <Panel
-      title="Subscriptions"
-      description="Declared by event_triggers in the app's gregale.yaml: a deploy adds, changes and disables them. Pause and resume are operator controls that survive deploys."
-      actions={picker}
-    >
+    <Panel title="Subscriptions" actions={picker}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          "Declared by event_triggers in the app's gregale.yaml: a deploy adds, changes and disables them. Pause and resume are operator controls that survive deploys."
+        }
+      </p>
+
       {phase === 'ready' ? (
         <ul className="flex flex-col">
           {subscriptions.map((subscription) => (
@@ -351,7 +353,6 @@ function Deliveries({ slug }: { slug: string }) {
   return (
     <Panel
       title="Deliveries"
-      description="Invocations this app's subscriptions produced, and operator replays of them, newest first."
       actions={
         <Select
           aria-label="Delivery state"
@@ -366,6 +367,12 @@ function Deliveries({ slug }: { slug: string }) {
         </Select>
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          "Invocations this app's subscriptions produced, and operator replays of them, newest first."
+        }
+      </p>
+
       <div className="flex flex-col gap-4">
         {phase === 'ready' ? (
           <ul className="flex flex-col">

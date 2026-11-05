@@ -18,6 +18,7 @@ vi.mock('@/lib/api/billing-identity', () => ({
   useBillingStatus: () => mocks.billingStatus,
 }));
 
+vi.mock('@/components/dashboard/app-capacity', () => ({ AppCapacity: () => null }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: mocks.account,

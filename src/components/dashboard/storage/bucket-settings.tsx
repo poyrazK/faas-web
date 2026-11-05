@@ -268,7 +268,7 @@ function VersioningSetting({
               {v.last_error_code && (
                 <span className="text-xs text-muted-foreground">
                   The last attempt failed (<code className="font-mono">{v.last_error_code}</code>);
-                  apid retries on its own.
+                  Gregale retries on its own.
                 </span>
               )}
             </div>

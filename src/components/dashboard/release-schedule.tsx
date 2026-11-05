@@ -404,11 +404,9 @@ export function ScheduledReleases({
   });
   return (
     <section aria-label="Scheduled releases">
-      <Panel
-        title="Scheduled releases"
-        description={`${stage ? `${stage} · ` : ''}Releases built ahead of time that start their rollout at a set time. Times are shown in your time zone, ${localZone()}.`}
-        padded={false}
-      >
+      <Panel title="Scheduled releases" padded={false}>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground px-4 pt-4">{`${stage ? `${stage} · ` : ''}Releases built ahead of time that start their rollout at a set time. Times are shown in your time zone, ${localZone()}.`}</p>
+
         {phase !== 'ready' ? (
           <div className="p-5">
             <InlinePhase

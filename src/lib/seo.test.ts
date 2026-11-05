@@ -41,8 +41,8 @@ describe('consoleHead', () => {
   it('reads the label from the nav config rather than restating it', () => {
     // These differ from their URL segment, so a passing assertion proves the
     // lookup happened instead of the segment being title-cased.
-    expect(titleOf(consoleHead('keys'))).toBe('API Keys · Gregale');
-    expect(titleOf(consoleHead('crons'))).toBe('Cron Jobs · Gregale');
+    expect(titleOf(consoleHead('keys'))).toBe('API keys · Gregale');
+    expect(titleOf(consoleHead('crons'))).toBe('Scheduled requests · Gregale');
     expect(titleOf(consoleHead('env'))).toBe('Env vars · Gregale');
     expect(titleOf(consoleHead('queues'))).toBe('Queues · Gregale');
   });

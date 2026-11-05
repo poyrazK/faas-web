@@ -9,6 +9,7 @@ import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useUpdateApp, type App } from '@/lib/api/queries';
 import { CAPABILITY_LABELS } from '@/lib/capability-state';
 import { Panel } from './primitives';
+import { FieldLabel } from './kit/field-label';
 
 /**
  * How a production release reaches traffic: `release_policy`,
@@ -29,7 +30,7 @@ type Policy = 'safe' | 'fast' | 'immediate';
 const POLICIES: { value: Policy; line: string }[] = [
   {
     value: 'safe',
-    line: 'Canary at 1%, 10%, 50%, then 100%, advancing on clean evidence. A 5xx regression rolls back.',
+    line: 'Canary at 1%, 10%, 50%, then 100%, advancing on clean results. A 5xx regression rolls back.',
   },
   {
     value: 'fast',
@@ -180,7 +181,7 @@ export function AppReleaseSettings({ app }: { app: App }) {
   return (
     <Panel
       title="Releases"
-      description="How a production release reaches traffic when the deploy names no rollout."
+      help="Applies once an app serves traffic. First deploys, previews and named environments keep their own rollout."
       actions={
         <Button
           size="sm"
@@ -206,7 +207,15 @@ export function AppReleaseSettings({ app }: { app: App }) {
         )}
 
         <div role="group" aria-label="Release policy" className="flex flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Release policy</span>
+          <FieldLabel
+            label="Release policy"
+            help={
+              <>
+                Also set with{' '}
+                <code className="font-mono">gregale app {app.slug} --release-policy</code>.
+              </>
+            }
+          />
           <div className="grid gap-2 sm:grid-cols-3">
             {POLICIES.map(({ value, line }) => {
               const selected = draft.policy === value;
@@ -231,12 +240,6 @@ export function AppReleaseSettings({ app }: { app: App }) {
               );
             })}
           </div>
-          <span className="text-xs text-muted-foreground">
-            Applies to an app that already serves traffic. First deploys, previews and named
-            environments keep their own rollout, and one deploy can override it with{' '}
-            <code className="font-mono">gregale deploy --rollout</code>. Also set with{' '}
-            <code className="font-mono">gregale app {app.slug} --release-policy</code>.
-          </span>
           {mode && NON_REQUEST_MODES.has(mode) && (
             <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
               This app runs in {mode} mode, so the default rollout does not apply to it.
@@ -245,9 +248,16 @@ export function AppReleaseSettings({ app }: { app: App }) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="release-probe-paths" className="label-mono text-muted-foreground">
-            Rollout probe paths
-          </label>
+          <FieldLabel
+            label="Rollout probe paths"
+            htmlFor="release-probe-paths"
+            help={
+              <>
+                Probed with GET while traffic is too quiet to judge; empty probes /. Also set with{' '}
+                <code className="font-mono">gregale app {app.slug} --release-probe-paths</code>.
+              </>
+            }
+          />
           <textarea
             id="release-probe-paths"
             value={draft.paths}
@@ -262,18 +272,24 @@ export function AppReleaseSettings({ app }: { app: App }) {
           {pathsError && <FieldError id="release-probe-paths-error">{pathsError}</FieldError>}
           <span className="text-xs text-muted-foreground">
             {draft.policy === 'immediate'
-              ? 'Not used while the policy is immediate. '
-              : 'While traffic is too quiet to judge, the rollout sends GET requests to these paths on both revisions instead of /. '}
-            One per line, up to {MAX_PROBE_PATHS}; empty probes /. Also set with{' '}
-            <code className="font-mono">gregale app {app.slug} --release-probe-paths</code>.
+              ? 'Not used while the policy is immediate'
+              : `One per line, up to ${MAX_PROBE_PATHS}`}
           </span>
         </div>
 
         {isFunction && (
           <div className="flex flex-col gap-1.5 sm:max-w-md">
-            <label htmlFor="function-concurrency" className="label-mono text-muted-foreground">
-              Function concurrency
-            </label>
+            <FieldLabel
+              label="Function concurrency"
+              htmlFor="function-concurrency"
+              help={
+                <>
+                  Requests one worker serves at once, from the next deploy. A{' '}
+                  <code className="font-mono">concurrency:</code> under{' '}
+                  <code className="font-mono">functions:</code> in gregale.yaml overrides it.
+                </>
+              }
+            />
             <input
               id="function-concurrency"
               type="number"
@@ -289,12 +305,7 @@ export function AppReleaseSettings({ app }: { app: App }) {
             {concurrencyError && (
               <FieldError id="function-concurrency-error">{concurrencyError}</FieldError>
             )}
-            <span className="text-xs text-muted-foreground">
-              Requests one Node or Python worker serves at once, up to {bound} on your plan. Applies
-              from the next deploy. A <code className="font-mono">concurrency:</code> in this
-              function&apos;s <code className="font-mono">functions:</code> entry in gregale.yaml
-              replaces it on <code className="font-mono">gregale deploy</code>.
-            </span>
+            <span className="text-xs text-muted-foreground">Up to {bound} on your plan</span>
           </div>
         )}
       </div>

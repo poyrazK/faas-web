@@ -63,9 +63,8 @@ export function RolloutObservation({ slug, deployment }: { slug: string; deploym
             <Count label="Retired" value={data.retired_residents} />
           </dl>
           <p className="text-xs text-muted-foreground">
-            Snapshot from {data.checked_at.replace('T', ' ').slice(0, 19)} UTC. Residents of this
-            release, not deliveries: the snapshot does not confirm queue processing or that external
-            consumers finished.
+            Snapshot from {data.checked_at.replace('T', ' ').slice(0, 19)} UTC. It does not confirm
+            queue processing or that external consumers finished.
           </p>
         </>
       )}

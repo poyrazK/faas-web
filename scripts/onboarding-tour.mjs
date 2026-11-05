@@ -68,7 +68,18 @@ try {
   await shot(page, 'start-1440');
   await page.getByRole('button', { name: 'Explore the console' }).click();
   await page.waitForURL('**/dashboard');
-  assert.equal(await page.evaluate(() => localStorage.getItem('gregale.onboarded')), null);
+  // Dismissal also writes the legacy marker so a flag rollback keeps the console reachable.
+  assert.equal(await page.evaluate(() => localStorage.getItem('gregale.onboarded')), 'true');
+  assert.equal(
+    await page.evaluate(() =>
+      Object.keys(localStorage).some(
+        (key) =>
+          key.startsWith('gregale.onboarding.v2.') &&
+          JSON.parse(localStorage.getItem(key)).dismissed === true
+      )
+    ),
+    true
+  );
   const deploySample = page.getByRole('link', { name: 'Deploy a sample', exact: true });
   await deploySample.focus();
   await page.keyboard.press('Enter');
@@ -117,10 +128,13 @@ try {
     `${base}/onboarding?source=git&repo=acme-corp%2Fwebhook-router&ref=${sha}&step=setup`
   );
   await git.page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
-  await git.page.getByLabel('Ref', { exact: true }).waitFor();
+  await git.page.getByLabel('Branch, tag or commit', { exact: true }).waitFor();
   await git.page.getByRole('radio', { name: 'acme-corp/webhook-router', exact: true }).waitFor();
   await git.page.getByText('One service detected (Procfile).', { exact: true }).waitFor();
-  assert.equal(await git.page.getByLabel('Ref', { exact: true }).inputValue(), sha);
+  assert.equal(
+    await git.page.getByLabel('Branch, tag or commit', { exact: true }).inputValue(),
+    sha
+  );
   const connect = git.posts.find((p) => p.path === '/dashboard/install/connect');
   assert.equal(
     new URLSearchParams(connect.body).get('return_to'),
@@ -129,7 +143,10 @@ try {
   await git.page.getByRole('button', { name: 'Continue', exact: true }).click();
   await git.page.getByLabel('App name', { exact: true }).waitFor();
   await git.page.goBack();
-  assert.equal(await git.page.getByLabel('Ref', { exact: true }).inputValue(), sha);
+  assert.equal(
+    await git.page.getByLabel('Branch, tag or commit', { exact: true }).inputValue(),
+    sha
+  );
   await git.page.goForward();
   await git.page
     .getByLabel('App name', { exact: true })

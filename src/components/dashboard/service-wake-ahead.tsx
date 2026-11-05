@@ -68,7 +68,7 @@ export function ServiceWakeAhead({ slug, previewOf }: { slug: string; previewOf?
   return (
     <Panel
       title="Service wake-ahead"
-      description="Starts the services this app calls while it wakes, so their restores overlap. Each one woken ahead bills GB-hours from that moment, and one the app never calls bills until its idle timeout parks it."
+      help="Starts the services this app calls while it wakes, so their restores overlap. Each one bills GB-hours from that moment."
     >
       <div className="space-y-4 text-sm">
         <InlinePhase
@@ -95,8 +95,7 @@ export function ServiceWakeAhead({ slug, previewOf }: { slug: string; previewOf?
             </div>
             {data.learned && !previewOf && <Measured learned={data.learned} />}
             <p className="text-xs text-muted-foreground">
-              At most three services per wake, within your plan’s concurrency limit. Skipped while
-              the platform is busy, and never stops another app to make room.
+              At most three services per wake, within your plan’s concurrency limit.
             </p>
           </>
         )}

@@ -162,9 +162,9 @@ export function GitHubBranchDeployments({
         )}
         <p>
           Whether pull requests get previews, and whether production deploys come from the GitHub
-          App or a GitHub Actions workflow, is the project’s GitHub deployment policy. apid serves
-          that policy only to API keys with the github:manage scope, not to a signed-in browser, so
-          the console cannot show or change it.
+          App or a GitHub Actions workflow, is the project’s GitHub deployment policy. The API
+          serves that policy only to API keys with the github:manage scope, not to a signed-in
+          browser, so the console cannot show or change it.
         </p>
       </div>
     </div>

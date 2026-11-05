@@ -96,7 +96,6 @@ export function ReleaseGates({ slug }: { slug: string }) {
     <section aria-label="Release gates">
       <Panel
         title="Release gates"
-        description={`${stage ? `${stage} · ` : ''}Stop a rollout on your own signals. A failed gate aborts the canary, or rolls the release back within 30 minutes of reaching 100%. A gate without enough samples is listed as not judged and never holds a rollout.`}
         actions={
           !adding && (
             <Button
@@ -113,6 +112,8 @@ export function ReleaseGates({ slug }: { slug: string }) {
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}Stop a rollout on your own signals. A failed gate aborts the canary, or rolls the release back within 30 minutes of reaching 100%. A gate without enough samples is listed as not judged and never holds a rollout.`}</p>
+
         <div className="flex flex-col gap-4">
           {adding && <NewGateForm slug={slug} onDone={() => setAdding(false)} />}
           {phase !== 'ready' ? (

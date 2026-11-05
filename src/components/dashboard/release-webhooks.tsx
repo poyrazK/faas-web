@@ -209,9 +209,8 @@ export function ReleaseWebhooks() {
   return (
     <div className="flex flex-col gap-6">
       <Panel
-        lit
         title="Add a release receiver"
-        description="One signed endpoint for deployment and rollout events from every app on the account, including apps you create later. It shares the account's webhook quota with app webhooks."
+        help="One signed endpoint for deployment and rollout events from every app on the account, including apps you create later. It shares the account's webhook quota with app webhooks."
         actions={<MaturityLabel capability={capability} />}
       >
         <div className="flex flex-col gap-4">
@@ -472,7 +471,7 @@ function ReceiverDetail({ hook, onClose }: { hook: ReleaseWebhook; onClose: () =
   return (
     <Panel
       title="Release receiver"
-      description="Release events from every app on the account"
+      help="Release events from every app on the account"
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button

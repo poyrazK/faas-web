@@ -46,7 +46,10 @@ export function EdgeRuleSuggestions({ slug }: { slug: string }) {
     <PlanGated error={q.error} feature="Suggested protections">
       <Panel
         title="Suggested protections"
-        description={`${stage ? `${stage} · ` : ''}From the last ${days ? `${days} ${days === '1' ? 'day' : 'days'}` : 'week'} of this app's traffic. Each adds one rule, which counts before it refuses unless you enforce it now.`}
+        help={`From the last ${days ? `${days} ${days === '1' ? 'day' : 'days'}` : 'week'} of traffic. Each adds one rule, which counts before it refuses unless you enforce it now.`}
+        actions={
+          stage ? <span className="label-mono text-muted-foreground">{stage}</span> : undefined
+        }
         padded={false}
       >
         {phase !== 'ready' ? (
@@ -55,7 +58,7 @@ export function EdgeRuleSuggestions({ slug }: { slug: string }) {
               phase={phase}
               error={q.error}
               loadingMessage="Reading traffic…"
-              emptyMessage="Nothing to suggest: no bot surge, busy sign-in path, open admin area or scanner probes in the window."
+              emptyMessage="Nothing to suggest in this window."
               onRetry={() => void q.refetch()}
             />
           </div>

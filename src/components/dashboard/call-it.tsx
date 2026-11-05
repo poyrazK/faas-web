@@ -114,19 +114,14 @@ export function CallIt({ app, unreadable = false }: { app: CallTarget; unreadabl
               Only requests from this app’s allowed IP ranges get through.
             </p>
           )}
-          {app.type === 'function' && (
-            <p className="text-xs text-muted-foreground">
-              Your handler receives the request’s method, path, query, headers, and body.
-            </p>
-          )}
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
           {unreadable
-            ? 'This app’s access settings could not be read, so no request is suggested. Send a test request from the Invoke tab.'
+            ? 'This app’s access settings could not be read.'
             : call.internal
-              ? 'Internal service only: there is no public URL. Call it from another app in this account, or send a test request from the Invoke tab.'
-              : 'The platform has not reported a public URL for this app yet. Send a test request from the Invoke tab.'}
+              ? 'Internal service only: there is no public URL.'
+              : 'No public URL reported for this app yet.'}
         </p>
       )}
       <div className="flex flex-col gap-1.5">
@@ -137,10 +132,10 @@ export function CallIt({ app, unreadable = false }: { app: CallTarget; unreadabl
         <Link
           to="/dashboard/apps/$appSlug"
           params={{ appSlug: app.slug }}
-          search={{ tab: 'Invoke' }}
+          search={{ invoke: true }}
           className="text-brand underline-offset-4 hover:underline"
         >
-          Open the Invoke tab
+          Invoke it from the console
         </Link>
         <Link
           to="/dashboard/apps/$appSlug"

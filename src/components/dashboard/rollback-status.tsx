@@ -27,7 +27,7 @@ function statusSentence(op: RollbackOperation, target: string): string {
     case 'ready':
       return `Ready: ${target} passed its checks and waits for the traffic switch.`;
     case 'blocked':
-      return 'Blocked: fresh evidence is missing. Gregale retries without choosing another release.';
+      return 'Blocked: fresh checks are missing. Gregale retries without choosing another release.';
     case 'routing':
       return `Moving traffic to ${target}.`;
     case 'complete':

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,7 +59,9 @@ beforeEach(() => {
 describe('domain form validation', () => {
   it('explains an empty keyboard submission and focuses the hostname', async () => {
     render(<DomainsPage />);
-    const hostname = screen.getByRole('textbox', { name: 'Hostname' });
+    await userEvent.click(screen.getByRole('button', { name: /add domain/i }));
+    const sheet = await screen.findByRole('dialog');
+    const hostname = within(sheet).getByRole('textbox', { name: 'Hostname' });
 
     await userEvent.type(hostname, '{Enter}');
 

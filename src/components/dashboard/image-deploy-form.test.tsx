@@ -100,14 +100,17 @@ it('reviews and submits an OCI worker without HTTP port or health assumptions', 
   );
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   expect(screen.queryByLabelText('Port override')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Health path override')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByText('Advanced settings'));
   await userEvent.selectOptions(screen.getByLabelText('Restart policy'), 'on-failure');
   await userEvent.clear(screen.getByLabelText('Startup deadline (seconds)'));
   await userEvent.type(screen.getByLabelText('Startup deadline (seconds)'), '20');
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
-  expect(screen.getByText(/Worker execution/)).toHaveTextContent(/on-failure/);
+  expect(screen.getByText('Restart behavior').nextElementSibling).toHaveTextContent(
+    'Restart only after a failure'
+  );
   await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
   await screen.findByText('Worker release dep-worker');
   expect(state.readWorker).toHaveBeenCalledTimes(2);
@@ -135,11 +138,15 @@ it('blocks Free worker creation and rejects a retry cap beyond Hobby', async () 
   state.account.plan = 'hobby';
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
+  await userEvent.click(screen.getByText('Advanced settings'));
   await userEvent.clear(screen.getByLabelText('Max restart retries'));
   await userEvent.type(screen.getByLabelText('Max restart retries'), '6');
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(/5/);
+  expect(screen.getByLabelText('Max restart retries')).toHaveAccessibleDescription(
+    'Restart retries must be 0 to 5 for this plan.'
+  );
+  expect(screen.getByLabelText('Max restart retries')).toHaveFocus();
   expect(readImageOperation('a', '', 'worker')).toBeNull();
 });
 it('keeps a lost worker create frozen across reload and reuses its original key only on request', async () => {
@@ -169,7 +176,7 @@ it('keeps a lost worker create frozen across reload and reuses its original key 
     );
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
   await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/Could not reach the API/i);
@@ -202,7 +209,7 @@ it('freezes an accepted worker app whose execution mode is not confirmed', async
   );
   mount(undefined, 'worker');
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
   await userEvent.click(screen.getByRole('button', { name: 'Create worker and deploy image' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/execution mode is not confirmed/i);
@@ -262,7 +269,9 @@ it('blocks a resumed worker release when lifecycle settings changed before deplo
   expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeInTheDocument();
   expect(screen.getByText(/Continuing with saved app/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
-  expect(screen.getByText(/Review:/)).toHaveTextContent(/no restart/);
+  expect(screen.getByText('Restart behavior').nextElementSibling).toHaveTextContent(
+    'Do not restart'
+  );
   await userEvent.click(screen.getByRole('button', { name: 'Deploy reviewed image' }));
   await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
   expect(readImageOperation('a', '', 'worker')?.createRequest.restart_policy).toBe('no');
@@ -294,16 +303,18 @@ it('opens the worker image journey from an authoritative worker app page', async
     </QueryClientProvider>
   );
   await userEvent.click(await screen.findByRole('button', { name: 'Deploy image' }));
-  expect(await screen.findByRole('region', { name: 'OCI worker image' })).toHaveTextContent(
+  expect(await screen.findByRole('region', { name: 'Worker image' })).toHaveTextContent(
     /no HTTP listener/
   );
   expect(screen.queryByLabelText('Port override')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Review worker deployment' })).toBeInTheDocument();
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
-  expect(screen.getByText(/Review:/)).toHaveTextContent(
-    /on-failure restart · startup deadline 20 · retry cap 3/
+  expect(screen.getByText('Restart behavior').nextElementSibling).toHaveTextContent(
+    'Restart only after a failure'
   );
+  expect(screen.getByText('Startup deadline').nextElementSibling).toHaveTextContent('20 seconds');
+  expect(screen.getByText('Restart retry limit').nextElementSibling).toHaveTextContent('3');
 });
 it('reviews internal image creation, persists visibility and rechecks capability before POST', async () => {
   spyApi('GET').mockImplementation(async (path) =>
@@ -318,10 +329,12 @@ it('reviews internal image creation, persists visibility and rechecks capability
   );
   mount();
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
-  await userEvent.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
+  await userEvent.click(screen.getByRole('radio', { name: 'Internal only' }));
   await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
-  expect(screen.getByText(/Review:/)).toHaveTextContent(/internal service only/i);
+  expect(screen.getByText('Access').nextElementSibling).toHaveTextContent(
+    'Internal only. No public endpoint.'
+  );
   await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
   await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
   expect(state.readPrivate).toHaveBeenCalledTimes(1);
@@ -334,8 +347,8 @@ it('freezes an accepted app when internal visibility was not confirmed', async (
   );
   mount();
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
-  await userEvent.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
+  await userEvent.click(screen.getByRole('radio', { name: 'Internal only' }));
   await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
   await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -381,7 +394,7 @@ it.each([422, 409])(
       );
     mount();
     await userEvent.type(screen.getByLabelText('App name'), 'api');
-    await userEvent.type(screen.getByLabelText('Image reference'), reference);
+    await userEvent.type(screen.getByLabelText('Image address'), reference);
     await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
     await userEvent.click(screen.getByRole('button', { name: 'Create app and deploy image' }));
     await screen.findByText('Reserved slug');
@@ -414,9 +427,9 @@ it('corrects a definitively rejected image payload without recreating its accept
   mount();
   await userEvent.click(screen.getByRole('button', { name: 'Edit rejected request' }));
   expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
-  await userEvent.clear(screen.getByLabelText('Image reference'));
+  await userEvent.clear(screen.getByLabelText('Image address'));
   await userEvent.type(
-    screen.getByLabelText('Image reference'),
+    screen.getByLabelText('Image address'),
     `ghcr.io/team/api@sha256:${'b'.repeat(64)}`
   );
   await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
@@ -443,9 +456,9 @@ it.each(['failed', 'cancelled', 'superseded'])(
     expect(post).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Read confirmed terminal status' }));
     await userEvent.click(screen.getByRole('button', { name: 'Choose another image' }));
-    await userEvent.clear(screen.getByLabelText('Image reference'));
+    await userEvent.clear(screen.getByLabelText('Image address'));
     await userEvent.type(
-      screen.getByLabelText('Image reference'),
+      screen.getByLabelText('Image address'),
       `ghcr.io/team/api@sha256:${'b'.repeat(64)}`
     );
     await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
@@ -462,7 +475,7 @@ afterEach(() => {
 });
 async function review() {
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
 }
 it('deploys a public image without GitHub, persists before POST, and stores the accepted release', async () => {
@@ -538,7 +551,7 @@ it('retains an app after credential failure and never persists the password', as
   const post = spyApi('POST').mockResolvedValue(ok({ id: 'app-1', slug: 'my-api' }));
   const put = spyApi('PUT').mockRejectedValue(new Error('credential rejected'));
   mount();
-  await userEvent.click(screen.getByLabelText('Add registry credentials'));
+  await userEvent.click(screen.getByLabelText('Use a private image'));
   await userEvent.type(screen.getByLabelText('Registry username'), 'alice');
   await userEvent.type(screen.getByLabelText('Registry password'), 'private-token');
   await review();
@@ -666,16 +679,18 @@ it('puts each review complaint beside its field and focuses the first', async ()
   expect(name).toHaveFocus();
   expect(name).toHaveAttribute('aria-invalid', 'true');
   expect(name).toHaveAccessibleDescription('Enter an app name.');
-  expect(screen.getByLabelText('Image reference')).toHaveAccessibleDescription(
+  expect(screen.getByLabelText('Image address')).toHaveAccessibleDescription(
     /repository@sha256: reference/
   );
-  expect(screen.queryByText(/Review:/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Create app and deploy image' })
+  ).not.toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
 });
 it('opens advanced settings to focus an invalid port override', async () => {
   mount();
   await userEvent.type(screen.getByLabelText('App name'), 'my-api');
-  await userEvent.type(screen.getByLabelText('Image reference'), reference);
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
   await userEvent.click(screen.getByText('Advanced settings'));
   await userEvent.type(screen.getByLabelText('Port override'), '70000');
   await userEvent.click(screen.getByText('Advanced settings'));
@@ -684,4 +699,59 @@ it('opens advanced settings to focus an invalid port override', async () => {
   expect(port).toBeVisible();
   expect(port).toHaveFocus();
   expect(port).toHaveAccessibleDescription('Port must be an integer from 1 to 65535.');
+});
+
+it('reopens a collapsed invalid worker deadline and focuses it without losing the draft', async () => {
+  state.account.plan = 'pro';
+  mount(undefined, 'worker');
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
+  const toggle = screen.getByText('Advanced settings');
+  const details = toggle.closest('details')!;
+  expect(details.open).toBe(false);
+  await userEvent.click(toggle);
+  const deadline = screen.getByLabelText('Startup deadline (seconds)');
+  await userEvent.clear(deadline);
+  await userEvent.type(deadline, '31');
+  await userEvent.click(toggle);
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(details.open).toBe(true);
+  expect(deadline).toHaveFocus();
+  expect(deadline).toHaveAccessibleDescription(
+    'Startup deadline must be 0 to 30 seconds for this plan.'
+  );
+  expect(screen.getByLabelText('Image address')).toHaveValue(reference);
+  expect(readImageOperation('a', '', 'worker')).toBeNull();
+  await userEvent.clear(deadline);
+  await userEvent.type(deadline, '20');
+  await userEvent.click(screen.getByRole('button', { name: 'Review worker deployment' }));
+  expect(screen.getByText('Startup deadline').nextElementSibling).toHaveTextContent('20 seconds');
+  expect(screen.getByLabelText('Image address')).not.toBeVisible();
+  expect(screen.getByRole('region', { name: 'Review deployment' })).toHaveFocus();
+  await userEvent.click(screen.getByRole('button', { name: 'Edit configuration' }));
+  expect(screen.getByLabelText('Image address')).toBeVisible();
+  expect(screen.getByLabelText('Image address')).toHaveFocus();
+  expect(deadline).toHaveValue(20);
+});
+
+it('reopens invalid advanced memory and focuses required private image credentials', async () => {
+  state.account.plan = 'hobby';
+  mount();
+  await userEvent.type(screen.getByLabelText('App name'), 'my-api');
+  await userEvent.type(screen.getByLabelText('Image address'), reference);
+  const toggle = screen.getByText('Advanced settings');
+  await userEvent.click(toggle);
+  const memory = screen.getByLabelText('Memory (MB)');
+  await userEvent.clear(memory);
+  await userEvent.type(memory, '64');
+  await userEvent.click(toggle);
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  expect(memory).toHaveFocus();
+  expect(memory).toBeVisible();
+  await userEvent.clear(memory);
+  await userEvent.type(memory, '128');
+  await userEvent.click(screen.getByLabelText('Use a private image'));
+  await userEvent.click(screen.getByRole('button', { name: 'Review image deployment' }));
+  expect(screen.getByRole('textbox', { name: /Registry username/ })).toHaveFocus();
+  expect(readImageOperation('a', '', 'http')).toBeNull();
 });

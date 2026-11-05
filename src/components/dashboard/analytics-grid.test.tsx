@@ -1,180 +1,116 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  AnalyticsGrid,
-  availableMetrics,
-  buildCard,
-  CATALOG,
-  chosenCards,
-  DEFAULT_IDS,
-  scalarCards,
-  type AnalyticsPoint,
-  type MetricDef,
-} from './analytics-grid';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { AnalyticsGrid, chosenCards, type AnalyticsPoint } from './analytics-grid';
 
-function points(counts: number[]): AnalyticsPoint[] {
-  return counts.map((requests, i) => ({
-    start: `2026-09-11T0${i}:00:00.000Z`,
-    requests,
-    error_requests: 0,
-    error_rate_pct: 0,
-    cold_boots: 0,
-    p50_ms: 10,
-    p95_ms: 20,
-    p99_ms: 30,
-  }));
+const points: AnalyticsPoint[] = [0, 1, 2, 3].map((hour) => ({
+  start: `2026-11-03T0${hour}:00:00Z`,
+  requests: (hour + 1) * 10,
+  error_requests: hour,
+  error_rate_pct: hour,
+  cold_boots: 1,
+  p50_ms: 20,
+  p95_ms: 80,
+  p99_ms: 120,
+}));
+function Board({ onInspect }: { onInspect?: (id: string) => void }) {
+  const [picking, setPicking] = useState(false);
+  return (
+    <AnalyticsGrid
+      points={points}
+      build={(ids) => chosenCards(ids, points, 'the first half')}
+      picking={picking}
+      onPicking={setPicking}
+      onInspect={onInspect}
+    />
+  );
 }
+it('opens details by keyboard while keeping reordering and menus independent', async () => {
+  const inspect = vi.fn();
+  render(<Board onInspect={inspect} />);
+  screen.getByRole('button', { name: 'Move Requests' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  await userEvent.click(screen.getByRole('button', { name: 'Requests options' }));
+  await userEvent.keyboard('{Escape}');
+  expect(inspect).not.toHaveBeenCalled();
+  screen.getByRole('button', { name: 'View Requests details' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(inspect).toHaveBeenCalledExactlyOnceWith('requests');
+});
+const order = () =>
+  [...screen.getByRole('list', { name: 'Metric cards' }).querySelectorAll('[data-metric-id]')].map(
+    (card) => card.getAttribute('data-metric-id')
+  );
+beforeEach(() => localStorage.clear());
 
-const def = (id: string): MetricDef => CATALOG.find((d) => d.id === id)!;
-
-describe('the catalog', () => {
-  it('ships every default', () => {
-    for (const id of DEFAULT_IDS) expect(CATALOG.map((d) => d.id)).toContain(id);
-  });
-
-  it('offers more than it shows, so the picker is never empty on a fresh grid', () => {
-    expect(availableMetrics(DEFAULT_IDS).length).toBeGreaterThan(0);
-  });
-
-  it('uses each id once — two cards of one metric would reorder against itself', () => {
-    expect(new Set(CATALOG.map((d) => d.id)).size).toBe(CATALOG.length);
-  });
+it('moves cards by keyboard and retains their order after remounting', async () => {
+  const view = render(<Board />);
+  screen.getByRole('button', { name: 'Move Requests' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
+  expect(screen.getByRole('status')).toHaveTextContent('Requests moved to position 2');
+  view.unmount();
+  render(<Board />);
+  expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
 });
 
-describe('availableMetrics', () => {
-  it('offers only what is not already on the grid', () => {
-    const available = availableMetrics(['requests', 'p95']).map((d) => d.id);
-    expect(available).not.toContain('requests');
-    expect(available).not.toContain('p95');
-    expect(available).toContain('p99');
-  });
-
-  it('offers nothing once every metric is on the grid', () => {
-    expect(availableMetrics(CATALOG.map((d) => d.id))).toEqual([]);
-  });
+it('adds, removes, and resets metrics through the visible controls', async () => {
+  render(<Board />);
+  await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Latency p99' }));
+  expect(order()).toContain('p99');
+  await userEvent.click(screen.getByRole('button', { name: 'Latency p99 options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  expect(order()).not.toContain('p99');
+  await userEvent.click(screen.getByRole('button', { name: 'Reset layout' }));
+  expect(order()).toEqual(['requests', 'errors', 'error_rate', 'p95', 'cold_boots']);
 });
 
-describe('chosenCards', () => {
-  it('keeps the reader’s order', () => {
-    const ids = chosenCards(['p95', 'requests'], points([1, 2, 3, 4]), 'x').map((c) => c.id);
-    expect(ids).toEqual(['p95', 'requests']);
-  });
-
-  it('skips an id we no longer ship rather than rendering a hole', () => {
-    const ids = chosenCards(['retired', 'p50'], points([1, 2, 3, 4]), 'x').map((c) => c.id);
-    expect(ids).toEqual(['p50']);
-  });
-
-  it('renders an empty grid for a reader who cleared theirs', () => {
-    expect(chosenCards([], points([1, 2, 3, 4]), 'x')).toEqual([]);
-  });
+it('retains a deliberately empty layout and can add a card back', async () => {
+  localStorage.setItem('gregale.analytics.order', '[]');
+  render(<Board />);
+  expect(order()).toEqual([]);
+  await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Requests' }));
+  expect(order()).toEqual(['requests']);
 });
 
-describe('buildCard', () => {
-  it('reads its figures off the series, not off a scalar', () => {
-    const card = buildCard(def('requests'), points([10, 10, 30, 30]), 'x');
-    expect(card.value).toBe('80');
-    // 20 in the first half, 60 in the second.
-    expect(card.delta).toBeCloseTo(200);
+it('continues editing the current layout when browser storage is unavailable', async () => {
+  const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('blocked');
   });
-
-  it('withholds a delta when the window is too short to halve', () => {
-    expect(buildCard(def('requests'), points([5, 5]), 'x').delta).toBeNull();
+  const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('blocked');
   });
-
-  it('withholds a delta rather than dividing by an empty first half', () => {
-    const quiet = buildCard(def('requests'), points([0, 0, 0, 0]), 'x');
-    expect(quiet.delta).toBeNull();
-    expect(quiet.value).toBe('0');
-  });
-
-  it('says what every delta is measured against', () => {
-    for (const metric of CATALOG) {
-      const card = buildCard(metric, points([1, 2, 3, 4]), 'the 12 hours before');
-      if (card.delta !== null) expect(card.caption).toContain('the 12 hours before');
+  try {
+    render(<Board />);
+    for (const label of ['Requests', 'Errors']) {
+      await userEvent.click(screen.getByRole('button', { name: `${label} options` }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
     }
-  });
-
-  it('reports an error rate of zero rather than NaN when nothing was served', () => {
-    expect(buildCard(def('error_rate'), points([0, 0, 0, 0]), 'x').value).toBe('0.00%');
-  });
-
-  it('shows a dash for a latency with no bucket to read', () => {
-    expect(buildCard(def('p99'), [], 'x').value).toBe('—');
-  });
+    expect(order()).toEqual(['error_rate', 'p95', 'cold_boots']);
+  } finally {
+    read.mockRestore();
+    write.mockRestore();
+  }
 });
 
-describe('the card menu', () => {
-  const points4 = points([1, 2, 3, 4]);
-
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  it('opens and removes the card', async () => {
-    // This is the regression. The trigger opens on pointerdown, and the card
-    // around it is a drag surface, so an earlier version stopped the event in
-    // the capture phase — which halts it before the target phase and stops the
-    // trigger's own handler from ever running. The menu could not open at all.
-    render(<AnalyticsGrid points={points4} build={(c) => chosenCards(c, points4, 'x')} />);
-    expect(screen.getByText('Latency p95')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-
-    await waitFor(() => expect(screen.queryByText('Latency p95')).not.toBeInTheDocument());
-    expect(
-      JSON.parse(window.localStorage.getItem('gregale.analytics.order') ?? '[]')
-    ).not.toContain('p95');
-  });
-
-  it('offers a removed metric back in the picker', async () => {
-    render(<AnalyticsGrid points={points4} build={(c) => chosenCards(c, points4, 'x')} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Latency p95 options' }));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-
-    await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Latency p95' }));
-    await waitFor(() => expect(screen.getByText('Latency p95')).toBeInTheDocument());
-  });
+it('does not invent a growth percentage when the earlier half has no traffic', () => {
+  const cards = chosenCards(
+    ['requests'],
+    points.map((p, i) => ({ ...p, requests: i < 2 ? 0 : 10 })),
+    'the first half'
+  );
+  expect(cards[0].delta).toBeNull();
 });
 
-describe('scalarCards', () => {
-  const row = {
-    request_count: 1000,
-    latency_p50_ms: 12,
-    latency_p95_ms: 88,
-    latency_p99_ms: 210,
-    error_rate_pct: 2.5,
-    cold_start_pct: 4.9,
-  };
-
-  it('answers every default metric without a series', () => {
-    // The point of the fallback: a Free account loses the history, not the
-    // figures. Every default card still has something true to show.
-    expect(scalarCards(DEFAULT_IDS, row).map((c) => c.id)).toEqual(DEFAULT_IDS);
-  });
-
-  it('never carries a delta, because there is no series to halve', () => {
-    for (const card of scalarCards(DEFAULT_IDS, row)) expect(card.delta).toBeNull();
-  });
-
-  it('renames the card when the rollup answers a different question', () => {
-    // The series counts wakes; the rollup reports the share of requests that
-    // caused one. Keeping the label while changing the unit would be the lie.
-    const cold = scalarCards(['cold_boots'], row)[0];
-    expect(cold.label).toBe('Cold starts');
-    expect(cold.value).toBe('4.9%');
-  });
-
-  it('says when a figure is derived rather than reported', () => {
-    const errors = scalarCards(['errors'], row)[0];
-    expect(errors.value).toBe('25');
-    expect(errors.caption).toMatch(/derived/i);
-  });
-
-  it('names no series, so the grid draws no chart', () => {
-    for (const card of scalarCards(DEFAULT_IDS, row)) expect(card.series).toBeUndefined();
-  });
+it('uses the latest hour with requests for an hourly latency card', () => {
+  const cards = chosenCards(
+    ['p95'],
+    [...points, { ...points[0], requests: 0, p95_ms: 0 }],
+    'the first half'
+  );
+  expect(cards[0].value).toBe('80 ms');
+  expect(cards[0].caption).toBe('Latest hour with requests');
 });

@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
-import { InlinePhase, Panel, queryPhase, StatTile } from './primitives';
+import { InlinePhase, Panel, queryPhase, Stats, StatTile } from './primitives';
 import { Tabs, tabId } from './tabs';
 import { ResourceTable, type Column } from './resource-table';
 import { AutomationEditor, JsonField, JsonReadout } from './automation-editor';
@@ -98,7 +98,7 @@ export function AutomationsBody({
         {unavailableApp ? (
           <Panel title="App unavailable">
             <p className="text-sm text-muted-foreground">
-              The app in this link is not in your accessible app list. Select an app to continue.
+              The app in this link is not in your app list.
             </p>
           </Panel>
         ) : account ? (
@@ -251,7 +251,6 @@ function AppAutomations({
     <>
       <Panel
         title="Automations"
-        description="Connect app handlers into durable steps, with dependencies, retries, and waits."
         actions={
           <Button size="sm" disabled={phase !== 'ready' || atLimit} onClick={create}>
             <Plus className="h-4 w-4" />
@@ -265,7 +264,7 @@ function AppAutomations({
             role="status"
           >
             <WarningTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>{blocked} Draft editing, validation, and simulation remain available.</p>
+            <p>{blocked}</p>
           </div>
         )}
         {q.data && (
@@ -284,7 +283,7 @@ function AppAutomations({
           loading={q.isPending}
           error={q.error}
           onRetry={() => void q.refetch()}
-          emptyMessage={`Create your first automation for ${slug}. Call a handler, run on a schedule, or connect two steps. Start with a draft and publish when you're ready.`}
+          emptyMessage="No automations yet."
           emptyAction={
             phase === 'ready' && !atLimit ? (
               <Button size="sm" onClick={create}>
@@ -471,7 +470,6 @@ function AutomationWorkspace({
     <>
       <Panel
         title={automation.name}
-        description={`${slug} · ${automation.source === 'manifest' ? 'Manifest owned' : 'API owned'} · Saved revision ${automation.version}`}
         actions={
           <>
             {automation.published && trigger !== 'manual' && (
@@ -649,7 +647,7 @@ function HealthDetails({ health }: { health: Health }) {
       />
       {health.data && !health.error && (
         <>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <Stats columns={4}>
             <StatTile label="Runs · last 7 days" value={health.data.run_count} />
             <StatTile
               label="Success rate"
@@ -661,7 +659,7 @@ function HealthDetails({ health }: { health: Health }) {
             />
             <StatTile label="Active now" value={health.data.active_run_count} />
             <StatTile label="Queued now" value={health.data.queued_run_count} />
-          </div>
+          </Stats>
           {health.data.failed_steps.length > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
               Frequently failed steps:{' '}
@@ -693,10 +691,7 @@ function RevisionHistory({
   const confirm = useConfirm();
   const [error, setError] = useState('');
   return (
-    <Panel
-      title="Published revisions"
-      description="Immutable publications. Restoring creates a draft; publish it separately to change future runs."
-    >
+    <Panel title="Published revisions">
       <InlinePhase
         phase={queryPhase({
           loading: q.isPending,
@@ -704,7 +699,7 @@ function RevisionHistory({
           isEmpty: q.data?.revisions.length === 0,
         })}
         error={q.error}
-        emptyMessage="No retained publications. Manifest-only definitions do not have API publication history."
+        emptyMessage="No published revisions."
         onRetry={() => void q.refetch()}
       />
       <div className="flex flex-col gap-3">

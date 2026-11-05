@@ -2,14 +2,14 @@ import { sampleVersion, type OnboardingDraft } from '@/lib/onboarding-draft';
 import { resourceId } from '@/lib/resource-id';
 import type { Deployment } from '@/lib/api/queries';
 import { MemorySelect } from './memory-select';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { FUNCTION_STARTERS, languageOf, type FunctionLanguage } from '@/lib/function-starters';
 import { gzip, tarball } from '@/lib/tar';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, Check, NavArrowDown, RefreshDouble } from 'iconoir-react';
+import { ArrowRight, Check, RefreshDouble } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -35,7 +35,13 @@ import { NewAppChooser } from './new-app-chooser';
 import { NewAppHeader, NewAppReviewGrid } from './new-app-rail';
 import { hasSetup, stationFor, stepForStation, type Station } from './new-app-station';
 import { NewAppStage } from './new-app-layout';
-import { SettingRow, SettingsSection } from './new-app-settings';
+import {
+  AdvancedSettings,
+  APP_ACCESS_OPTIONS,
+  SettingChoices,
+  SettingRow,
+  SettingsSection,
+} from './new-app-settings';
 import { sourceName } from './new-app-sources';
 import { ImageDeployForm } from './image-deploy-form';
 import { FunctionSource } from './function-source';
@@ -80,10 +86,26 @@ const RUNTIMES: { id: Runtime; label: string }[] = [
   { id: 'go124-alpine', label: 'Go 1.24 (Alpine)' },
 ];
 
-const APP_TYPES: { id: 'function' | 'app'; label: string; desc: string }[] = [
-  { id: 'function', label: 'Function', desc: 'One handler on a managed runtime.' },
-  { id: 'app', label: 'App', desc: 'Your own server or Dockerfile.' },
-];
+const APP_TYPES = [
+  {
+    value: 'function',
+    label: 'Function handler',
+    description: 'Gregale calls your handler for each request.',
+  },
+  {
+    value: 'app',
+    label: 'Web app or API',
+    description: 'Your code runs an HTTP server, using a framework or Dockerfile.',
+  },
+] as const;
+
+const RUNTIME_LANGUAGES = [
+  { id: 'node', label: 'JavaScript (Node.js)', defaultRuntime: 'node22' },
+  { id: 'python', label: 'Python', defaultRuntime: 'python312' },
+  { id: 'go', label: 'Go', defaultRuntime: 'go124' },
+] as const;
+const runtimeLanguage = (runtime: Runtime) =>
+  runtime.startsWith('python') ? 'python' : runtime.startsWith('go') ? 'go' : 'node';
 
 // A full commit SHA: what a compatibility check hands over to deploy exactly.
 const FULL_SHA = /^[a-f0-9]{40}$/i;
@@ -508,7 +530,7 @@ function CreateAppWizard({
         : quotaExceeded
           ? undefined
           : !memoryAllowed(account, selectedMemoryMb)
-            ? `${selectedMemoryMb} MB is above your plan's per-app memory. Lower it in Resource settings.`
+            ? `${selectedMemoryMb} MB is above your plan's per-app memory. Lower it in Advanced settings.`
             : visibility === 'internal' && !privateAvailable
               ? 'Internal-only apps are not confirmed for this account yet. Choose public visibility, or try again shortly.'
               : undefined;
@@ -748,10 +770,7 @@ function CreateAppWizard({
     );
     return (
       <div className="flex flex-col gap-8">
-        <NewAppHeader
-          title={onboarding ? 'Your first deployment' : name}
-          description="Track the app and its first deployment from the platform state."
-        />
+        <NewAppHeader title={onboarding ? 'Your first deployment' : name} />
 
         {tracked ? (
           <DeploymentProgress
@@ -1064,8 +1083,7 @@ function CreateAppWizard({
             <div>
               <p className="text-sm font-medium">Connect GitHub first</p>
               <p className="mt-1 max-w-md text-xs text-muted-foreground">
-                Gregale uses your GitHub App installation to list repositories and fetch the exact
-                ref you deploy.
+                Connect your GitHub account to choose a repository and the version to deploy.
                 {quickstart && ' Signing in with GitHub does not grant repository access.'}
               </p>
             </div>
@@ -1123,7 +1141,7 @@ function CreateAppWizard({
             </div>
             <div className="flex flex-col gap-3">
               <label htmlFor={`${uid}-ref`} className="text-sm font-medium text-muted-foreground">
-                Ref
+                Branch, tag or commit
               </label>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <Input
@@ -1139,7 +1157,7 @@ function CreateAppWizard({
                   className={cn(CONTROL, 'w-56 font-mono')}
                 />
                 <span className="text-[13px] text-muted-foreground">
-                  Branch, tag, or commit SHA
+                  The exact version of your code to deploy.
                 </span>
               </div>
               {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
@@ -1197,10 +1215,15 @@ function CreateAppWizard({
         className="flex flex-col gap-8"
       >
         <SettingsSection id={`${uid}-app-settings`} title="App">
-          <SettingRow label="App name" htmlFor="new-app-name">
+          <SettingRow
+            label="App name"
+            htmlFor="new-app-name"
+            hint="A short name used in the console and URLs."
+          >
             <Input
               id="new-app-name"
               name="name"
+              placeholder="my-app"
               aria-describedby={nameShown ? 'new-app-name-error' : undefined}
               aria-invalid={nameShown ? true : undefined}
               value={name}
@@ -1227,155 +1250,170 @@ function CreateAppWizard({
               </pre>
             </details>
           )}
-          <QuickstartAdvanced collapsed={quickstart}>
-            {source !== 'function' && (
-              <SettingRow
-                label="Type"
-                htmlFor={`${uid}-type`}
-                hintId={`${uid}-type-hint`}
-                hint={
-                  <>
-                    {APP_TYPES.find((t) => t.id === appType)?.desc}
-                    {detectedType && appTypeDraft === null && (
-                      <> Detected from {detectedFrom} — change it if that is wrong.</>
-                    )}
-                  </>
-                }
+          {source !== 'function' && (
+            <SettingRow
+              label="How does your code run?"
+              labelId={`${uid}-type-label`}
+              hint={
+                detectedType && appTypeDraft === null
+                  ? `Detected from ${detectedFrom}. You can change this choice.`
+                  : undefined
+              }
+            >
+              <SettingChoices
+                labelId={`${uid}-type-label`}
+                value={appType}
+                onChange={setAppType}
+                options={APP_TYPES}
+              />
+            </SettingRow>
+          )}
+          {appType === 'function' && source !== 'function' && (
+            <SettingRow
+              label="Language"
+              htmlFor={`${uid}-language`}
+              hint="Choose the language your handler is written in."
+            >
+              <Select
+                id={`${uid}-language`}
+                value={runtimeLanguage(runtime)}
+                className={CONTROL}
+                onChange={(event) => {
+                  const language = RUNTIME_LANGUAGES.find((item) => item.id === event.target.value);
+                  if (language && language.id !== runtimeLanguage(runtime))
+                    setRuntime(language.defaultRuntime);
+                }}
               >
-                <Select
-                  id={`${uid}-type`}
-                  name="type"
-                  aria-describedby={`${uid}-type-hint`}
-                  value={appType}
-                  onChange={(e) => setAppType(e.target.value as 'function' | 'app')}
-                  className={CONTROL}
-                >
-                  {APP_TYPES.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
-                    </option>
-                  ))}
-                </Select>
-              </SettingRow>
-            )}
+                {RUNTIME_LANGUAGES.map((language) => (
+                  <option key={language.id} value={language.id}>
+                    {language.label}
+                  </option>
+                ))}
+              </Select>
+            </SettingRow>
+          )}
+          {source === 'function' && (
+            <SettingRow
+              label="Your function"
+              hint={
+                quickstart
+                  ? 'The sample handler Gregale will deploy.'
+                  : 'The handler you wrote in the previous step.'
+              }
+            >
+              <p className="text-sm">
+                {fnStarter.label} · <code className="font-mono">{fnStarter.filename}</code>
+              </p>
+            </SettingRow>
+          )}
+          <SettingRow
+            label="Who can reach this app?"
+            labelId={`${uid}-visibility-label`}
+            hint={
+              visibility === 'internal' && !privateAvailable
+                ? 'Checking private-app availability before creation.'
+                : undefined
+            }
+          >
+            <SettingChoices
+              labelId={`${uid}-visibility-label`}
+              value={visibility}
+              onChange={setVisibility}
+              options={APP_ACCESS_OPTIONS}
+            />
+          </SettingRow>
+          {/* No region picker: this is a one-box platform and the API
+              exposes no region to choose. */}
+        </SettingsSection>
 
-            {appType === 'function' && (
-              <SettingRow
-                label="Runtime"
-                htmlFor={`${uid}-runtime`}
-                hint={source === 'function' ? `${fnStarter.label} versions` : undefined}
+        <AdvancedSettings
+          summary={
+            <>
+              {appType === 'function' && `${RUNTIMES.find((r) => r.id === runtime)?.label} · `}
+              {selectedMemoryMb} MB memory ·{' '}
+              {effectiveScaleToZero ? 'Sleeps when idle' : 'Keeps one instance running'}
+            </>
+          }
+        >
+          {appType === 'function' && (
+            <SettingRow
+              label="Runtime version"
+              htmlFor={`${uid}-runtime`}
+              hint="The version used to run your handler."
+            >
+              <Select
+                id={`${uid}-runtime`}
+                name="runtime"
+                value={runtime}
+                onChange={(e) => setRuntime(e.target.value as Runtime)}
+                className={CONTROL}
               >
-                <Select
-                  id={`${uid}-runtime`}
-                  name="runtime"
-                  value={runtime}
-                  onChange={(e) => setRuntime(e.target.value as Runtime)}
-                  className={CONTROL}
-                >
-                  {(source === 'function'
-                    ? RUNTIMES.filter((r) => fnStarter.runtimes.some((id) => id === r.id))
-                    : RUNTIMES
-                  ).map((r) => (
+                {RUNTIMES.filter((r) => runtimeLanguage(r.id) === runtimeLanguage(runtime)).map(
+                  (r) => (
                     <option key={r.id} value={r.id}>
                       {r.label}
                     </option>
-                  ))}
-                </Select>
-              </SettingRow>
-            )}
-
-            <SettingRow
-              label="App visibility"
-              htmlFor={`${uid}-visibility`}
-              hintId={`${uid}-visibility-hint`}
-              hint={
-                <>
-                  Internal apps have no public platform URL or custom-domain route.
-                  {visibility === 'internal' && !privateAvailable
-                    ? ' Checking private-app availability before creation.'
-                    : ''}
-                </>
-              }
-            >
-              <Select
-                id={`${uid}-visibility`}
-                name="visibility"
-                aria-describedby={`${uid}-visibility-hint`}
-                value={visibility}
-                onChange={(event) => setVisibility(event.target.value as 'public' | 'internal')}
-                className={CONTROL}
-              >
-                <option value="public">Public edge and internal service</option>
-                <option value="internal">Internal service only</option>
+                  )
+                )}
               </Select>
             </SettingRow>
-            {/* No region picker: this is a one-box platform and the API
-              exposes no region to choose. */}
-          </QuickstartAdvanced>
-        </SettingsSection>
-
-        {/* Resources keep sensible defaults, so they stay folded, with what
-            they are set to shown on the fold. */}
-        <details className="group/res rounded-xl border border-border bg-card">
-          <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-sm font-medium">Resource settings</span>
-              <span className="text-[13px] text-muted-foreground">
-                {selectedMemoryMb} MB ·{' '}
-                {effectiveScaleToZero ? 'Parks when idle' : 'One instance kept resident'}
-              </span>
-            </span>
-            <NavArrowDown
-              aria-hidden
-              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/res:rotate-180 motion-reduce:transition-none"
+          )}
+          <SettingRow
+            label="Memory"
+            hint={
+              account ? (
+                `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
+              ) : limitsLoading ? (
+                <span role="status">Checking plan limits…</span>
+              ) : undefined
+            }
+          >
+            <MemorySelect
+              value={selectedMemoryMb}
+              maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+              onChange={setMemoryMb}
             />
-          </summary>
-          <div className="@container flex flex-col divide-y divide-border border-t border-border">
-            <SettingRow
-              label="Memory"
-              hint={
-                account ? (
-                  `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
-                ) : limitsLoading ? (
-                  <span role="status">Checking plan limits…</span>
-                ) : undefined
-              }
-            >
-              <MemorySelect
-                value={selectedMemoryMb}
-                maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
-                onChange={setMemoryMb}
-              />
-            </SettingRow>
-            <SettingRow
-              label="Scale to zero"
-              hint={
-                <>
-                  Park the app when idle; the next request wakes it.
-                  {account && !canKeepResident && (
-                    <span id="scale-to-zero-plan-note" className="mt-1 block">
-                      Keeping an instance resident requires a paid plan.
-                    </span>
-                  )}
-                </>
-              }
-            >
-              <Switch
-                checked={effectiveScaleToZero}
-                disabled={!canKeepResident}
-                onCheckedChange={setScaleToZero}
-                aria-label="Scale to zero"
-                aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
-                className="data-[state=checked]:bg-brand"
-              />
-            </SettingRow>
-          </div>
-        </details>
+          </SettingRow>
+          <SettingRow
+            label="Sleep when idle"
+            hint={
+              <>
+                The app sleeps when idle and wakes for the next request. Turn this off to keep one
+                instance running.
+                {account && !canKeepResident && (
+                  <span id="scale-to-zero-plan-note" className="mt-1 block">
+                    Keeping an instance resident requires a paid plan.
+                  </span>
+                )}
+              </>
+            }
+          >
+            <Switch
+              checked={effectiveScaleToZero}
+              disabled={!canKeepResident}
+              onCheckedChange={setScaleToZero}
+              aria-label="Sleep when idle"
+              aria-describedby={!canKeepResident ? 'scale-to-zero-plan-note' : undefined}
+              className="data-[state=checked]:bg-brand"
+            />
+          </SettingRow>
+        </AdvancedSettings>
 
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {quickstart
+            ? 'Gregale will create the app and deploy this code using the choices above.'
+            : source === 'git'
+              ? `Next, review your choices. Gregale will create the app and build ${repo.trim()} at ${normalizedRef}.`
+              : source === 'function'
+                ? 'Next, review your choices. Gregale will create the app and deploy your handler.'
+                : source === 'template'
+                  ? 'Next, create the app. You’ll get CLI commands to download the starter and deploy its code.'
+                  : 'Next, create the app. It will be ready for you to deploy code with the CLI.'}
+        </p>
         {quickstart && (
           <p className="text-sm text-muted-foreground">
             {account?.plan} plan · {selectedMemoryMb} MB ·{' '}
-            {effectiveScaleToZero ? 'Parks when idle' : 'Keeps an instance running'}.{' '}
+            {effectiveScaleToZero ? 'Sleeps when idle' : 'Keeps an instance running'}.{' '}
             {visibility === 'public'
               ? 'Your app will have a public URL.'
               : 'Your app is internal only.'}{' '}
@@ -1467,7 +1505,11 @@ function CreateAppWizard({
             onClick={() => void createFunction()}
             className="h-10 gap-2 rounded-lg px-6"
           >
-            {source === 'git' ? 'Deploy app' : 'Create app'}
+            {source === 'git'
+              ? 'Deploy app'
+              : source === 'function'
+                ? 'Deploy function'
+                : 'Create app'}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
@@ -1488,7 +1530,7 @@ function CreateAppWizard({
             title: 'Deploy your first app',
             description: 'Choose a Git repository, configure it, and watch the real build go live.',
           }
-        : { title: 'New app', description: 'Choose how to start.', back: 'apps' };
+        : { title: 'New app', back: 'apps' };
     if (station === 'setup') {
       const back = onboarding ? undefined : { label: 'Sources', onBack: toSources };
       if (onboarding)
@@ -1498,28 +1540,37 @@ function CreateAppWizard({
           description:
             source === 'function'
               ? 'Deploy a working function with no repository.'
-              : 'Choose a repository and the ref to build.',
+              : 'Choose a repository and the branch, tag or commit to deploy.',
         };
       const page: Record<AppSource, { title: string; description: string }> = {
-        git: { title: 'Pick a repository', description: 'Choose what to build and which ref.' },
+        git: {
+          title: 'Pick a repository',
+          description: 'Choose your code and the branch, tag or commit to deploy.',
+        },
         function: {
           title: 'Write a function',
-          description: 'One handler on a managed runtime. No repository needed.',
+          description: 'Choose a language, then write the code Gregale will run for each request.',
         },
         template: {
           title: 'Pick a starter',
           description:
-            'Pick a starter to prefill your app. The CLI writes its code once the app exists.',
+            'Choose starter code for your app. After creation, use the CLI to download and deploy it.',
         },
         empty: { title: 'Empty app', description: '' },
         container: {
           title: 'Run a container image',
-          description: 'An HTTP image you already built.',
+          description:
+            'Choose the image for your website or API. Gregale will create the app and deploy it.',
         },
-        worker: { title: 'Run a worker', description: 'A background process with no HTTP port.' },
+        worker: {
+          title: 'Run a worker',
+          description:
+            'Run your image continuously in the background. Workers have no public URL and are billed while running.',
+        },
         import: {
           title: 'Import a project',
-          description: 'Scan a repository with several services and create them together.',
+          description:
+            'Upload a repository archive. Preview the apps Gregale can create before you confirm.',
         },
       };
       return { step: of(1), back, ...page[source ?? 'git'] };
@@ -1531,8 +1582,9 @@ function CreateAppWizard({
           ? source === 'function'
             ? 'Deploy a sample'
             : 'Deploy your repository'
-          : 'Configure',
-        description: 'Name it and choose how it runs.',
+          : 'Set up your app',
+        description:
+          'Choose how your code runs and who can reach it. Fine-tune the defaults in Advanced settings.',
         back:
           quickstart && source === 'function'
             ? undefined
@@ -1546,13 +1598,17 @@ function CreateAppWizard({
       step: of(3),
       title: 'Review',
       description:
-        source === 'git' ? 'Check the details, then deploy.' : 'Check the details, then create.',
+        source === 'git' || source === 'function'
+          ? 'Check what will be created and deployed.'
+          : 'Create the app now. Deploy its code later with the CLI.',
       back: { label: 'Configure', onBack: () => setStep(1) },
     };
   }
 
   const form = (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)]">
+    <div
+      className={`mx-auto flex w-full flex-col gap-6 text-[length:var(--console-body-size,0.875rem)] leading-[var(--console-body-leading,1.5714)] ${station === 'sources' ? 'max-w-[640px]' : 'max-w-3xl'}`}
+    >
       {/* One tree, before and during creation: the content column swaps the
           station for the completion, so the import draft below it (and the
           rest of the form state) survives a failed attempt from any source. */}
@@ -1598,16 +1654,4 @@ function CreateAppWizard({
   );
 
   return form;
-}
-
-function QuickstartAdvanced({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
-  if (!collapsed) return <>{children}</>;
-  return (
-    <details>
-      <summary className="cursor-pointer py-3 text-sm text-muted-foreground">
-        Advanced app settings
-      </summary>
-      {children}
-    </details>
-  );
 }

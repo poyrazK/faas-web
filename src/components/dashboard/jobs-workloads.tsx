@@ -1,20 +1,20 @@
-import { useMemo, useState } from 'react';
-import { Plus } from 'iconoir-react';
-import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
-import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
-import { JobCreateDialog } from './job-create-dialog';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { JobActions } from '@/components/dashboard/job-actions';
+import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
 import { JobRuns } from '@/components/dashboard/job-runs';
 import { JobTasks } from '@/components/dashboard/job-tasks';
-import { JobDefinition, JobRunDetail } from '@/components/dashboard/job-detail';
+import { isPlanGate, PlanGated } from '@/components/dashboard/plan-gated';
+import { InlinePhase, PageHeader, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { JobRegistryCredentialsPanel } from '@/components/dashboard/registry-credentials';
-import { CapabilityGate } from '@/components/dashboard/capability-gate';
+import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
-import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
 import { useCapabilityStage } from '@/lib/api/capabilities';
+import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
+import { Plus } from 'iconoir-react';
+import { useMemo, useState } from 'react';
+import { JobCreateDialog } from './job-create-dialog';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -189,7 +189,6 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
     <div className="@container flex flex-col gap-6">
       <PageHeader
         title="Workloads"
-        description="Container jobs for batch and recurring work. Create workloads and inspect their runs."
         actions={
           <>
             {stage && <Pill label={stage} />}
@@ -223,7 +222,7 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
           initialSort={{ key: 'name', dir: 'asc' }}
           searchKeys={['name', 'image', 'kind']}
           searchPlaceholder="Filter by job, image, or kind…"
-          emptyMessage="No workloads yet. Start with a container image."
+          emptyMessage="No workloads yet."
           emptyAction={
             <Button size="sm" onClick={() => setCreating(true)}>
               Create your first workload
@@ -269,7 +268,7 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
         {job && selectedJob && (
           <Panel
             title={`Definition — ${job}`}
-            description="Current configuration and schedule. Changing the image, command, environment or resources still takes gregale job update."
+            help="Current configuration and schedule. Changing the image, command, environment or resources still takes gregale job update."
             actions={
               <JobActions
                 name={job}
@@ -288,7 +287,7 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
         {job && (
           <Panel
             title={`Runs — ${job}`}
-            description="Newest first. Cancel stops tasks still in flight; Replay failed reruns a finished run's failed inputs."
+            help="Newest first. Cancel stops tasks still in flight; Replay failed reruns a finished run's failed inputs."
           >
             <JobRuns
               name={job}
@@ -296,15 +295,12 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
               selectedRunId={runId}
               renderSelected={(selectedRun) => (
                 <div className="mt-6 flex flex-col gap-6">
-                  <Panel
-                    title="Run"
-                    description="What this run did, counted as the API reports it."
-                  >
+                  <Panel title="Run">
                     <JobRunDetail name={job} runId={selectedRun} />
                   </Panel>
                   <Panel
                     title="Tasks"
-                    description="One row per task. Open a task for the tail of its log; retry a failed one, or download what a successful one published."
+                    help="One row per task. Open a task for the tail of its log; retry a failed one, or download what a successful one published."
                   >
                     <JobTasks
                       name={job}

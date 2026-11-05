@@ -13,7 +13,6 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { DashboardShell } from './shell';
 import type { Workflow } from '@/lib/mock-data';
-import { OverviewSearch } from './overview-search';
 import { validateSettingsSearch } from './settings-search';
 import type { ReactNode } from 'react';
 import { keys, type App } from '@/lib/api/queries';
@@ -164,14 +163,14 @@ function attentionClient() {
   return client;
 }
 
-describe('global Needs Attention dropdown', () => {
+describe('global Needs attention dropdown', () => {
   it('opens live attention checks from a non-overview page and restores focus on Escape', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard/usage', undefined, attentionClient());
     expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: 'Needs Attention' });
+    const dialog = screen.getByRole('dialog', { name: 'Needs attention' });
     expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
@@ -182,7 +181,7 @@ describe('global Needs Attention dropdown', () => {
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(trigger).toHaveFocus();
   });
@@ -190,42 +189,42 @@ describe('global Needs Attention dropdown', () => {
   it('dismisses the dropdown when an investigation link navigates to the failed deployment', async () => {
     const user = userEvent.setup();
     const router = await renderShell('/dashboard', undefined, attentionClient());
-    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
     await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
     await waitFor(() =>
       expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
   });
 
   it('can close and reopen checks using the dropdown close button', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', undefined, attentionClient());
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
     await user.click(
-      within(screen.getByRole('dialog', { name: 'Needs Attention' })).getByRole('button', {
+      within(screen.getByRole('dialog', { name: 'Needs attention' })).getByRole('button', {
         name: 'Close',
       })
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     await user.click(trigger);
-    expect(screen.getByRole('dialog', { name: 'Needs Attention' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Needs attention' })).toBeInTheDocument();
   });
 
-  it('toggles the dropdown closed on a second click of the Needs Attention button', async () => {
+  it('toggles the dropdown closed on a second click of the Needs attention button', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', undefined, attentionClient());
-    const trigger = screen.getByRole('button', { name: 'Needs Attention' });
+    const trigger = screen.getByRole('button', { name: 'Needs attention' });
     await user.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await user.click(trigger);
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
@@ -233,11 +232,11 @@ describe('global Needs Attention dropdown', () => {
   it('dismisses on an outside click without blocking the underlying page', async () => {
     const user = userEvent.setup();
     await renderShell('/dashboard', <button type="button">Page action</button>, attentionClient());
-    await user.click(screen.getByRole('button', { name: 'Needs Attention' }));
+    await user.click(screen.getByRole('button', { name: 'Needs attention' }));
     const action = screen.getByRole('button', { name: 'Page action' });
     await user.click(action);
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Needs Attention' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
     expect(action).toHaveFocus();
   });
@@ -259,14 +258,12 @@ const RAIL = [
   'Object storage',
   'Postgres',
   'Domains',
-  'Edge rules',
   'Events',
   'Integrations',
   'Customers',
   'Analytics',
-  'Debugger',
   'Invocations',
-  'Audit Log',
+  'Audit log',
   'Usage',
   'Budgets',
   'Invoices',
@@ -288,10 +285,10 @@ const RAIL_PARENTS = ['Billing'];
 const RAIL_GROUP_ROWS: Record<string, string[]> = {
   Compute: ['Projects', 'Releases', 'Jobs', 'Instances'],
   Storage: ['Object storage', 'Postgres'],
-  Networking: ['Domains', 'Edge rules'],
+  Networking: ['Domains'],
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
-  Observe: ['Analytics', 'Debugger', 'Invocations', 'Audit Log'],
+  Observe: ['Analytics', 'Invocations', 'Audit log'],
   Account: ['Usage', 'Budgets', 'Invoices', 'Plans', 'Settings'],
 };
 
@@ -511,20 +508,12 @@ describe('dashboard navigation foundation', () => {
     await waitFor(() =>
       expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/edge-rules')
     );
-    // Edge rules is a rail row now. Its page is the account view, so the
-    // per-app strip goes; the app page's Connect tab is the per-app way in.
-    expect(within(main).getByRole('link', { name: 'Edge rules' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-    expect(screen.queryByRole('navigation', { name: 'App sections' })).not.toBeInTheDocument();
+    expect(within(main).queryByRole('link', { name: 'Edge rules' })).not.toBeInTheDocument();
   });
 
   it.each([
     ['/dashboard/instances', 'Instances'],
     ['/dashboard/postgres', 'Postgres'],
-    ['/dashboard/edge-rules', 'Edge rules'],
-    ['/dashboard/debug', 'Debugger'],
   ])('lights %s as its own rail row', async (path, label) => {
     await renderShell(path);
     const main = screen.getByRole('navigation', { name: 'Main' });
@@ -591,7 +580,7 @@ describe('dashboard navigation foundation', () => {
     await act(async () => billing.focus());
     expect(billing).toHaveFocus();
     expect(billing).toBe(within(main).getByRole('button', { name: 'Billing' }));
-    expect(main.closest('aside')).toHaveClass('w-60');
+    expect(main.closest('aside')).toHaveClass('w-56');
     expect(window.localStorage.getItem('gregale.sidebar.collapsed')).toBe('1');
   });
 
@@ -630,16 +619,18 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.href).toBe('/dashboard/projects?q=api#list');
   });
 
-  it('files apps under Projects: no Apps row, and app pages light Projects', async () => {
+  it('swaps the rail for the app’s own sections on an app page', async () => {
     await renderShell('/dashboard/apps/api');
-    const main = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(main).queryByRole('link', { name: 'All apps' })).toBeNull();
-    expect(within(main).queryByRole('link', { name: 'Apps' })).toBeNull();
-    expect(within(main).getByRole('link', { name: 'Projects' })).toHaveAttribute(
+    const [rail] = screen.getAllByRole('navigation', { name: 'App' });
+    expect(within(rail).getByRole('link', { name: 'Overview' })).toHaveAttribute(
       'aria-current',
       'page'
     );
-    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(within(rail).getByRole('link', { name: 'Logs' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/api?tab=Logs'
+    );
+    expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
   });
 
   it.each(['/dashboard/apps', '/dashboard/apps/'])(
@@ -756,34 +747,6 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.hash).toBe('');
   });
 
-  it('keeps overview search results unique while changing between hub and page searches', async () => {
-    await renderShell('/dashboard', <OverviewSearch workflows={[app]} />);
-    const user = userEvent.setup();
-    const input = screen.getByRole('combobox', { name: 'Search apps, pages, and actions' });
-    await user.type(input, 't');
-    await user.clear(input);
-    await user.type(input, 'Data');
-    expect(
-      screen
-        .getAllByRole('option')
-        .map((option) => option.textContent)
-        .filter((text) => text?.endsWith('Page'))
-    ).toEqual(['Data and privacyPage']);
-    await user.clear(input);
-    await user.type(input, 'Storage');
-    // The label hit leads; Postgres follows because it is filed under Storage.
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'Object storagePage',
-      'PostgresPage',
-    ]);
-    await user.clear(input);
-    // Debugger is both a rail row and an app section: one result, not two.
-    await user.type(input, 'Debugger');
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'DebuggerPage',
-    ]);
-  });
-
   it.each([
     ['/dashboard/builds', 'Releases', 'Builds', '/dashboard/releases'],
     ['/dashboard/team', 'Settings', 'Team', '/dashboard/settings'],
@@ -823,26 +786,9 @@ describe('dashboard navigation foundation', () => {
     expect(router.state.location.search).toEqual({ tab: 'Logs' });
   });
 
-  it('finds the pages filed under a rail heading from the overview search', async () => {
-    // The overview search is the same matching over the same destinations as
-    // ⌘K, so a heading finds its pages here too.
-    await renderShell('/dashboard', <OverviewSearch workflows={[app]} />);
-    const user = userEvent.setup();
-    await user.type(
-      screen.getByRole('combobox', { name: 'Search apps, pages, and actions' }),
-      'Observe'
-    );
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'AnalyticsPage',
-      'DebuggerPage',
-      'InvocationsPage',
-      'Audit LogPage',
-    ]);
-  });
-
   it.each([
-    ['Observe', ['Analytics', 'Debugger', 'Invocations', 'Audit Log']],
-    ['Networking', ['Domains', 'Edge rules']],
+    ['Observe', ['Analytics', 'Invocations', 'Audit log']],
+    ['Networking', ['Domains']],
     ['Storage', ['Object storage', 'Postgres']],
   ])('finds the pages filed under %s from the command palette', async (heading, labels) => {
     await renderShell();
@@ -861,7 +807,6 @@ describe('dashboard navigation foundation', () => {
     ['Builds', '/dashboard/builds'],
     ['Object storage', '/dashboard/storage'],
     ['Debugger', '/dashboard/debug'],
-    ['Edge rules', '/dashboard/edge-rules'],
     ['Instances', '/dashboard/instances'],
     ['Templates', '/dashboard/templates'],
     ['Import', '/dashboard/import'],
@@ -879,4 +824,12 @@ describe('dashboard navigation foundation', () => {
     await user.click(options[0]);
     await waitFor(() => expect(router.state.location.pathname).toBe(path));
   });
+});
+
+it('marks only the selected app section current on a deep link', async () => {
+  await renderShell('/dashboard/apps/api?tab=Runtime');
+  const rail = screen.getByRole('navigation', { name: 'App' });
+  const current = within(rail).getAllByRole('link', { current: 'page' });
+  expect(current).toHaveLength(1);
+  expect(current[0]).toHaveTextContent('Runtime');
 });

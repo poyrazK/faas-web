@@ -207,10 +207,10 @@ describe('NewAppWizard source picker', () => {
       );
     const importCard = within(others).getByRole('button', { name: 'Import' });
     expect(importCard).toHaveAccessibleDescription(
-      'Turn a repository with several services into a project.'
+      'Upload a repository archive. Preview and create its apps together.'
     );
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      'Build and deploy a function or an app from a branch, tag, or commit.'
+      'Choose a GitHub repository and branch. Gregale builds and deploys your code.'
     );
   });
 
@@ -233,7 +233,7 @@ describe('NewAppWizard source picker', () => {
     const user = userEvent.setup();
     render(<NewAppWizard />);
     await user.click(screen.getByRole('button', { name: 'Template' }));
-    expect(await screen.findByText(/Pick a starter to prefill your app/)).toBeInTheDocument();
+    expect(await screen.findByText(/Choose starter code for your app/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Git repository' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     expect(await screen.findByRole('button', { name: 'Template' })).toHaveAttribute(
@@ -366,11 +366,11 @@ describe('NewAppWizard repository prefill', () => {
     });
     expect(screen.getByText(/One service detected \(Single service\)/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    const type = await screen.findByLabelText('Type');
-    expect(type).toHaveValue('app');
+    const type = await screen.findByRole('radio', { name: 'Web app or API' });
+    expect(type).toBeChecked();
     expect(screen.getByText(/Detected from Single service/)).toBeInTheDocument();
-    await user.selectOptions(type, 'function');
-    expect(type).toHaveValue('function');
+    await user.click(screen.getByRole('radio', { name: 'Function handler' }));
+    expect(type).not.toBeChecked();
     expect(screen.queryByText(/Detected from Single service/)).not.toBeInTheDocument();
   });
 
@@ -386,8 +386,8 @@ describe('NewAppWizard repository prefill', () => {
     const user = userEvent.setup();
     render(<NewAppWizard search={{ source: 'git' }} onSearchChange={onSearchChange} />);
     await user.type(screen.getByLabelText('Repository'), 'gregale/shop');
-    await user.clear(screen.getByLabelText('Ref'));
-    await user.type(screen.getByLabelText('Ref'), 'develop');
+    await user.clear(screen.getByLabelText('Branch, tag or commit'));
+    await user.type(screen.getByLabelText('Branch, tag or commit'), 'develop');
     expect(
       screen.getByText(
         'This repository has 3 services. Import it as a project to create them together.'
@@ -416,7 +416,7 @@ describe('NewAppWizard repository prefill', () => {
     expect(note).not.toHaveAttribute('role', 'alert');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    expect(await screen.findByLabelText('Type')).toHaveValue('function');
+    expect(await screen.findByRole('radio', { name: 'Function handler' })).toBeChecked();
     expect(mocks.toast).not.toHaveBeenCalled();
   });
 });
@@ -437,7 +437,7 @@ describe('NewAppWizard validation', () => {
     const user = userEvent.setup();
     render(<NewAppWizard />);
     await user.click(screen.getByRole('button', { name: 'Template' }));
-    await screen.findByText(/Pick a starter to prefill your app/);
+    await screen.findByText(/Choose starter code for your app/);
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
   });
 
@@ -458,7 +458,7 @@ describe('NewAppWizard validation', () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
-    const ref = screen.getByLabelText('Ref');
+    const ref = screen.getByLabelText('Branch, tag or commit');
     await user.clear(ref);
     await user.type(ref, 'bad..ref');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -470,14 +470,14 @@ describe('NewAppWizard validation', () => {
     const user = userEvent.setup();
     render(<NewAppWizard onboarding />);
     expect(screen.getByLabelText('Repository')).toHaveAttribute('name', 'repository');
-    expect(screen.getByLabelText('Ref')).toHaveValue('main');
+    expect(screen.getByLabelText('Branch, tag or commit')).toHaveValue('main');
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByLabelText('App name')).toHaveValue('demo');
-    expect(screen.getByLabelText('Type')).toHaveValue('function');
-    expect(screen.getByLabelText('Runtime')).toHaveValue('node22');
-    expect(screen.getByLabelText('App visibility')).toHaveAccessibleDescription(
-      /Internal apps have no public platform URL/
+    expect(screen.getByRole('radio', { name: 'Function handler' })).toBeChecked();
+    expect(screen.getByLabelText('Runtime version')).toHaveValue('node22');
+    expect(screen.getByRole('radio', { name: 'Internal only' })).toHaveAccessibleDescription(
+      /No public URL/
     );
   });
 
@@ -487,7 +487,7 @@ describe('NewAppWizard validation', () => {
     render(<NewAppWizard onboarding />);
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
-    await user.selectOptions(await screen.findByLabelText('App visibility'), 'internal');
+    await user.click(await screen.findByRole('radio', { name: 'Internal only' }));
     await user.click(screen.getByRole('button', { name: 'Review' }));
     const deploy = await screen.findByRole('button', { name: 'Deploy app' });
     expect(deploy).toBeDisabled();
@@ -533,7 +533,7 @@ describe('NewAppWizard review', () => {
     mocks.apps = [{ id: 'b', slug: 'storefront', url: 'https://storefront.gregale.app' }];
     const user = userEvent.setup();
     await reviewGit(user);
-    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('radio', { name: 'Internal only' }));
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
@@ -550,9 +550,15 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'poyrazK/imgpipe');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'imgpipe-gateway');
-    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
-    expect(screen.queryByLabelText('Runtime')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Language'), 'go');
+    await user.click(
+      within(screen.getByRole('group', { name: 'Advanced settings' })).getByText(
+        'Advanced settings'
+      )
+    );
+    await user.selectOptions(screen.getByLabelText('Runtime version'), 'go124');
+    await user.click(screen.getByRole('radio', { name: 'Web app or API' }));
+    expect(screen.queryByLabelText('Runtime version')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /review/i }));
     expect(screen.queryByText('go124')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: /deploy app/i }));
@@ -569,10 +575,16 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'team/function');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'go-function');
-    await user.selectOptions(screen.getByLabelText('Runtime'), 'go124');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'app');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^Type/ }), 'function');
-    expect(screen.getByLabelText('Runtime')).toHaveValue('go124');
+    await user.selectOptions(screen.getByLabelText('Language'), 'go');
+    await user.click(
+      within(screen.getByRole('group', { name: 'Advanced settings' })).getByText(
+        'Advanced settings'
+      )
+    );
+    await user.selectOptions(screen.getByLabelText('Runtime version'), 'go124');
+    await user.click(screen.getByRole('radio', { name: 'Web app or API' }));
+    await user.click(screen.getByRole('radio', { name: 'Function handler' }));
+    expect(screen.getByLabelText('Runtime version')).toHaveValue('go124');
     await user.click(screen.getByRole('button', { name: /review/i }));
     await user.click(await screen.findByRole('button', { name: /deploy app/i }));
     await waitFor(() =>
@@ -601,7 +613,7 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'demo-app');
-    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('radio', { name: 'Internal only' }));
     await user.click(screen.getByRole('button', { name: 'Review' }));
     const deploy = await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('Public URL').nextElementSibling).toHaveTextContent(
@@ -630,7 +642,7 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'demo-app');
-    await user.selectOptions(screen.getByLabelText('App visibility'), 'internal');
+    await user.click(screen.getByRole('radio', { name: 'Internal only' }));
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
     await waitFor(() => expect(mocks.readPrivate).toHaveBeenCalledTimes(1));
@@ -648,7 +660,9 @@ describe('NewAppWizard Git submission', () => {
     mocks.account.github_install_id = '';
     render(<NewAppWizard />);
     const container = screen.getByRole('button', { name: 'Container image' });
-    expect(container).toHaveAccessibleDescription('Run an HTTP image you already built.');
+    expect(container).toHaveAccessibleDescription(
+      'Deploy a container image that serves a website or API.'
+    );
     await userEvent.click(container);
     expect(await screen.findByText('HTTP image setup')).toBeInTheDocument();
     expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
@@ -988,15 +1002,19 @@ describe('NewAppWizard Git submission', () => {
     render(<NewAppWizard onboarding />);
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
-    const summary = await screen.findByText('Resource settings');
+    const summary = within(
+      await screen.findByRole('group', { name: 'Advanced settings' })
+    ).getByText('Advanced settings');
     const details = summary.closest('details');
     expect(details).not.toHaveAttribute('open');
     // The configuration step fades in; finding its text does not mean the
     // entrance animation has made it visible yet.
-    await waitFor(() => expect(screen.getByText('128 MB · Parks when idle')).toBeVisible());
+    await waitFor(() =>
+      expect(screen.getByText('Node 22 · 128 MB memory · Sleeps when idle')).toBeVisible()
+    );
     await user.click(summary);
     expect(details).toHaveAttribute('open');
-    expect(screen.getByRole('switch', { name: /scale to zero/i })).toBeVisible();
+    expect(screen.getByRole('switch', { name: /sleep when idle/i })).toBeVisible();
   });
 
   it('preserves chosen resources through review and back', async () => {
@@ -1005,21 +1023,29 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
     await nameApp(user, 'demo-app');
-    await user.click(screen.getByText('Resource settings'));
+    await user.click(
+      within(screen.getByRole('group', { name: 'Advanced settings' })).getByText(
+        'Advanced settings'
+      )
+    );
     await user.click(screen.getByRole('button', { name: '256 MB' }));
-    await user.click(screen.getByRole('switch', { name: /scale to zero/i }));
-    expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible();
+    await user.click(screen.getByRole('switch', { name: /sleep when idle/i }));
+    expect(screen.getByText('Node 22 · 256 MB memory · Keeps one instance running')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByRole('button', { name: 'Deploy app' });
     expect(screen.getByText('256 MB')).toBeInTheDocument();
-    expect(screen.getByText('One instance kept resident')).toBeInTheDocument();
+    expect(screen.getByText('Keeps one instance running')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
     await waitFor(() =>
-      expect(screen.getByText('256 MB · One instance kept resident')).toBeVisible()
+      expect(screen.getByText('Node 22 · 256 MB memory · Keeps one instance running')).toBeVisible()
     );
-    await user.click(screen.getByText('Resource settings'));
+    await user.click(
+      within(screen.getByRole('group', { name: 'Advanced settings' })).getByText(
+        'Advanced settings'
+      )
+    );
     expect(screen.getByRole('button', { name: '256 MB' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('switch', { name: /scale to zero/i })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: /sleep when idle/i })).not.toBeChecked();
     expect(mocks.addWorkflow).not.toHaveBeenCalled();
   });
 
@@ -1112,8 +1138,12 @@ describe('NewAppWizard Git submission', () => {
     await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
     await user.click(screen.getByRole('button', { name: /continue/i }));
 
-    await user.click(await screen.findByText('Resource settings'));
-    expect(screen.getByRole('switch', { name: /scale to zero/i })).toBeDisabled();
+    await user.click(
+      within(await screen.findByRole('group', { name: 'Advanced settings' })).getByText(
+        'Advanced settings'
+      )
+    );
+    expect(screen.getByRole('switch', { name: /sleep when idle/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: '128 MB' })).toBeEnabled();
     for (const memory of [256, 512, 1024, 2048]) {
       expect(screen.getByRole('button', { name: `${memory} MB` })).toBeDisabled();
@@ -1205,8 +1235,10 @@ describe('NewAppWizard function written here', () => {
 
     // Configure: a function by construction, on this language's versions.
     await nameApp(user, 'hello-fn');
-    expect(screen.queryByLabelText('Type')).not.toBeInTheDocument();
-    const runtimes = [...(screen.getByLabelText('Runtime') as HTMLSelectElement).options];
+    expect(
+      screen.queryByRole('radiogroup', { name: 'How does your code run?' })
+    ).not.toBeInTheDocument();
+    const runtimes = [...(screen.getByLabelText('Runtime version') as HTMLSelectElement).options];
     expect(runtimes.map((o) => o.value)).toEqual(['python312', 'python313']);
     await user.click(screen.getByRole('button', { name: 'Review' }));
 
@@ -1214,7 +1246,7 @@ describe('NewAppWizard function written here', () => {
     expect(screen.getByText('First deploy').nextElementSibling).toHaveTextContent(
       'handler.py, right after create'
     );
-    await user.click(screen.getByRole('button', { name: 'Create app' }));
+    await user.click(screen.getByRole('button', { name: 'Deploy function' }));
 
     await waitFor(() => expect(mocks.deployFunction).toHaveBeenCalledTimes(1));
     expect(mocks.addWorkflow).toHaveBeenCalledWith(
@@ -1242,7 +1274,7 @@ describe('NewAppWizard repository from a compatibility check', () => {
     }
     render(<Journey />);
     expect(screen.getByLabelText('Repository')).toHaveValue('team/checked-api');
-    expect(screen.getByLabelText('Ref')).toHaveValue('a'.repeat(40));
+    expect(screen.getByLabelText('Branch, tag or commit')).toHaveValue('a'.repeat(40));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await nameApp(user, 'checked-api');
     await user.click(screen.getByRole('button', { name: 'Review' }));
@@ -1269,6 +1301,38 @@ describe('NewAppWizard repository from a compatibility check', () => {
     expect(repository).toHaveAccessibleDescription(/installation cannot see this repository/);
     expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
   });
+});
+
+it('keeps essential choices visible and preserves a language version through review', async () => {
+  const user = userEvent.setup();
+  render(<NewAppWizard onboarding />);
+  await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await waitFor(() =>
+    expect(screen.getByRole('radio', { name: 'Function handler' })).toBeVisible()
+  );
+  expect(screen.getByRole('radio', { name: 'Web app or API' })).toBeVisible();
+  expect(screen.getByRole('radio', { name: 'Public URL' })).toBeVisible();
+  expect(screen.getByRole('radio', { name: 'Internal only' })).toBeVisible();
+  expect(screen.getByLabelText('Runtime version')).not.toBeVisible();
+  await user.selectOptions(screen.getByLabelText('Language'), 'python');
+  const advanced = screen.getByRole('group', { name: 'Advanced settings' });
+  await user.click(within(advanced).getByText('Advanced settings'));
+  const version = screen.getByRole('combobox', { name: 'Runtime version' });
+  expect(
+    within(version)
+      .getAllByRole('option')
+      .map((option) => (option as HTMLOptionElement).value)
+  ).toEqual(['python312', 'python313']);
+  await user.selectOptions(version, 'python313');
+  await user.click(within(advanced).getByText('Advanced settings'));
+  expect(version).not.toBeVisible();
+  expect(advanced).toHaveTextContent('Python 3.13');
+  await user.click(screen.getByRole('button', { name: 'Review' }));
+  expect(await screen.findByText('Python 3.13')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Back to Configure' }));
+  expect(screen.getByLabelText('Language')).toHaveValue('python');
+  expect(screen.getByLabelText('Runtime version')).toHaveValue('python313');
 });
 
 describe('first-signup quickstart', () => {

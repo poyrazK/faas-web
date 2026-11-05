@@ -1,117 +1,26 @@
-import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import {
   APP_TAB_ANY_CAPABILITY,
   APP_TAB_CAPABILITY,
-  AppTabNavigation,
+  APP_TAB_GROUPS,
   resolveAppTab,
   visibleAppTabs,
-  type AppTab,
 } from './app-tab-navigation';
 
-function Navigation({ initial }: { initial: AppTab }) {
-  const [tab, select] = useState(initial);
-  return <AppTabNavigation tab={tab} onSelect={select} panelId="panel" />;
-}
-
-const pages = (group: string) => screen.getByRole('group', { name: `${group} pages` });
-
-it('opens the right group from a deep linked page', () => {
-  render(<Navigation initial="Edge rules" />);
-  expect(screen.getByRole('tab', { name: 'Connect' })).toHaveAttribute('aria-selected', 'true');
-  expect(within(pages('Connect')).getByRole('button', { name: 'Edge rules' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
-  expect(screen.getAllByRole('tab')).toHaveLength(7);
-});
-
-it('moves between groups with the arrow keys and lands on the first page', async () => {
-  render(<Navigation initial="Configuration" />);
-  screen.getByRole('tab', { name: 'Configure' }).focus();
-  await userEvent.keyboard('{ArrowLeft}');
-  expect(screen.getByRole('tab', { name: 'Automate' })).toHaveFocus();
-  expect(screen.getByRole('tab', { name: 'Automate' })).toHaveAttribute('aria-selected', 'true');
-  expect(within(pages('Automate')).getByRole('button', { name: 'Automations' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
-  await userEvent.keyboard('{Home}');
-  expect(screen.getByRole('tab', { name: 'Overview' })).toHaveFocus();
-});
-
-it('remembers the page last open in each group', async () => {
-  render(<Navigation initial="Edge rules" />);
-  await userEvent.click(within(pages('Connect')).getByRole('button', { name: 'Mirrors' }));
-  await userEvent.click(screen.getByRole('tab', { name: 'Automate' }));
-  expect(within(pages('Automate')).getAllByRole('button')).toHaveLength(8);
-  await userEvent.click(screen.getByRole('tab', { name: 'Connect' }));
-  expect(within(pages('Connect')).getByRole('button', { name: 'Mirrors' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
-});
-
-it('offers env vars and secrets as one Environment page', () => {
-  render(<Navigation initial="Environment" />);
-  expect(
-    within(pages('Configure'))
-      .getAllByRole('button')
-      .map((b) => b.textContent)
-  ).toEqual(['Environment', 'Configuration']);
-});
+const group = (label: string) => APP_TAB_GROUPS.find((g) => g.label === label)?.tabs;
 
 it('resolves retired tab names so old links still land', () => {
   expect(resolveAppTab('Secrets')).toBe('Environment');
   expect(resolveAppTab('Env vars')).toBe('Environment');
+  expect(resolveAppTab('Invoke')).toBe('Overview');
   expect(resolveAppTab('Logs')).toBe('Logs');
   expect(resolveAppTab('nope')).toBeUndefined();
   expect(resolveAppTab(3)).toBeUndefined();
 });
 
-it('groups the consumer pages under Monetize', () => {
-  render(<Navigation initial="Consumer plans" />);
-  expect(screen.getByRole('tab', { name: 'Monetize' })).toHaveAttribute('aria-selected', 'true');
-  expect(
-    within(pages('Monetize'))
-      .getAllByRole('button')
-      .map((b) => b.textContent)
-  ).toEqual(['Consumers', 'Consumer plans']);
-});
-
-it('puts Outbound integrations under Connect, beside the app’s other destinations', () => {
-  render(<Navigation initial="Outbound" />);
-  expect(screen.getByRole('tab', { name: 'Connect' })).toHaveAttribute('aria-selected', 'true');
-  expect(within(pages('Connect')).getByRole('button', { name: 'Outbound' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
-  expect(resolveAppTab('Outbound')).toBe('Outbound');
-});
-
-it('puts the request audit with the other Observe pages', () => {
-  render(<Navigation initial="Request audit" />);
-  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
-  expect(
-    within(pages('Observe'))
-      .getAllByRole('button')
-      .map((b) => b.textContent)
-  ).toEqual([
-    'Logs',
-    'Log drains',
-    'Errors',
-    'Issues',
-    'Alerts',
-    'SLOs',
-    'Synthetic checks',
-    'Debugger',
-    'Forks',
-    'Profile captures',
-    'Request audit',
-  ]);
-  expect(resolveAppTab('Request audit')).toBe('Request audit');
+it('files metrics with the other Observe sections', () => {
+  expect(group('Observe')?.[0]).toBe('Metrics');
+  expect(group('Overview')).toEqual(['Overview']);
 });
 
 describe('visibleAppTabs', () => {
@@ -161,55 +70,14 @@ describe('visibleAppTabs', () => {
   });
 });
 
-describe('AppTabNavigation with hidden tabs', () => {
-  it('drops hidden pages from their group and groups left empty', () => {
-    const visible = visibleAppTabs((id) =>
-      ['api-consumers', 'api-monetization', 'traffic-mirroring'].includes(id) ? 'off' : 'on'
-    );
-    render(<AppTabNavigation tab="Routes" onSelect={() => {}} panelId="p" visible={visible} />);
-    expect(screen.queryByRole('tab', { name: 'Monetize' })).toBeNull();
-    const connect = screen.getByRole('group', { name: 'Connect pages' });
-    expect(within(connect).queryByRole('button', { name: 'Mirrors' })).toBeNull();
-    expect(within(connect).getByRole('button', { name: 'Routes' })).toBeInTheDocument();
-  });
-});
-
-it('puts Release safety in Delivery and hides it only when all of its capabilities are off', () => {
-  render(<Navigation initial="Release safety" />);
-  expect(screen.getByRole('tab', { name: 'Delivery' })).toHaveAttribute('aria-selected', 'true');
-  expect(
-    within(pages('Delivery'))
-      .getAllByRole('button')
-      .map((b) => b.textContent)
-  ).toEqual(['Deployments', 'Release safety', 'Activity']);
-  const gated = APP_TAB_ANY_CAPABILITY['Release safety'] ?? [];
-  expect(gated).toEqual(expect.arrayContaining(['deploy-freezes', 'scheduled-releases']));
-  expect(visibleAppTabs((id) => (id === 'deploy-freezes' ? 'off' : 'on'))).toContain(
-    'Release safety'
-  );
-  expect(visibleAppTabs((id) => (gated.includes(id) ? 'off' : 'on'))).not.toContain(
-    'Release safety'
-  );
-});
-
-it('puts edge protection beside edge rules, gated on its capability', () => {
-  render(<Navigation initial="Edge rules" />);
-  const names = within(pages('Connect'))
-    .getAllByRole('button')
-    .map((b) => b.textContent);
-  expect(names.indexOf('Edge protection')).toBe(names.indexOf('Edge rules') + 1);
-  expect(APP_TAB_CAPABILITY['Edge protection']).toBe('edge-protection');
-  expect(visibleAppTabs((id) => (id === 'edge-protection' ? 'off' : 'on'))).not.toContain(
-    'Edge protection'
-  );
+it('includes Workflows in Automate and honors its capability', () => {
+  expect(group('Automate')).toContain('Workflows');
+  expect(APP_TAB_CAPABILITY.Workflows).toBe('workflows');
+  expect(visibleAppTabs((id) => (id === 'workflows' ? 'off' : 'on'))).not.toContain('Workflows');
 });
 
 it('puts realtime with the other messaging pages under Automate, gated on its capability', () => {
-  render(<Navigation initial="Realtime" />);
-  expect(screen.getByRole('tab', { name: 'Automate' })).toHaveAttribute('aria-selected', 'true');
-  const names = within(pages('Automate'))
-    .getAllByRole('button')
-    .map((b) => b.textContent);
+  const names: readonly string[] = group('Automate') ?? [];
   expect(names.indexOf('Realtime')).toBe(names.indexOf('Queues') + 1);
   expect(APP_TAB_CAPABILITY.Realtime).toBe('realtime');
   expect(visibleAppTabs((id) => (id === 'realtime' ? 'off' : 'on'))).not.toContain('Realtime');
@@ -217,11 +85,7 @@ it('puts realtime with the other messaging pages under Automate, gated on its ca
 });
 
 it('puts SLOs beside alerts under Observe, gated on custom-slos', () => {
-  render(<Navigation initial="SLOs" />);
-  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
-  const names = within(pages('Observe'))
-    .getAllByRole('button')
-    .map((b) => b.textContent);
+  const names: readonly string[] = group('Observe') ?? [];
   expect(names.indexOf('SLOs')).toBe(names.indexOf('Alerts') + 1);
   expect(APP_TAB_CAPABILITY.SLOs).toBe('custom-slos');
   expect(visibleAppTabs((id) => (id === 'custom-slos' ? 'off' : 'on'))).not.toContain('SLOs');
@@ -230,11 +94,7 @@ it('puts SLOs beside alerts under Observe, gated on custom-slos', () => {
 });
 
 it('puts synthetic checks after SLOs under Observe, gated on their capability', () => {
-  render(<Navigation initial="Synthetic checks" />);
-  expect(screen.getByRole('tab', { name: 'Observe' })).toHaveAttribute('aria-selected', 'true');
-  const names = within(pages('Observe'))
-    .getAllByRole('button')
-    .map((b) => b.textContent);
+  const names: readonly string[] = group('Observe') ?? [];
   expect(names.indexOf('Synthetic checks')).toBe(names.indexOf('SLOs') + 1);
   expect(APP_TAB_CAPABILITY['Synthetic checks']).toBe('synthetic-checks');
   expect(visibleAppTabs((id) => (id === 'synthetic-checks' ? 'off' : 'on'))).not.toContain(
@@ -245,14 +105,35 @@ it('puts synthetic checks after SLOs under Observe, gated on their capability', 
 });
 
 it('puts the TCP and UDP listeners under Connect, each gated on its own capability', () => {
-  render(<Navigation initial="TCP listeners" />);
-  const names = within(pages('Connect'))
-    .getAllByRole('button')
-    .map((b) => b.textContent);
+  const names: readonly string[] = group('Connect') ?? [];
   expect(names.indexOf('UDP listeners')).toBe(names.indexOf('TCP listeners') + 1);
   expect(APP_TAB_CAPABILITY['TCP listeners']).toBe('tcp-listeners');
   expect(APP_TAB_CAPABILITY['UDP listeners']).toBe('udp-listeners');
   const tabs = visibleAppTabs((id) => (id === 'udp-listeners' ? 'off' : 'on'));
   expect(tabs).toContain('TCP listeners');
   expect(tabs).not.toContain('UDP listeners');
+});
+
+it('preserves Release safety and hides it only when all of its capabilities are off', () => {
+  expect(group('Delivery')).toEqual(['Deployments', 'Release safety', 'Activity']);
+  const gated = APP_TAB_ANY_CAPABILITY['Release safety'] ?? [];
+  expect(gated).toEqual(expect.arrayContaining(['deploy-freezes', 'scheduled-releases']));
+  expect(visibleAppTabs((id) => (id === 'deploy-freezes' ? 'off' : 'on'))).toContain(
+    'Release safety'
+  );
+  expect(visibleAppTabs((id) => (gated.includes(id) ? 'off' : 'on'))).not.toContain(
+    'Release safety'
+  );
+});
+
+it('keeps workflow schedules, insights and recovery in Automate with their capability gates', () => {
+  for (const [tab, capability] of [
+    ['Workflow schedules', 'workflow-schedules'],
+    ['Workflow insights', 'workflow-insights'],
+    ['Recovery policy', 'workflow-recovery'],
+  ] as const) {
+    expect(group('Automate')).toContain(tab);
+    expect(APP_TAB_CAPABILITY[tab]).toBe(capability);
+    expect(visibleAppTabs((id) => (id === capability ? 'off' : 'on'))).not.toContain(tab);
+  }
 });

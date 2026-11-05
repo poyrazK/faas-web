@@ -49,18 +49,6 @@ vi.mock('@/components/dashboard/app-capacity', () => ({
 vi.mock('@/components/dashboard/object-storage-usage', () => ({
   ObjectStorageUsagePanel: () => <section aria-label="Object storage" />,
 }));
-vi.mock('@/components/dither-kit', () => ({
-  BarChart: ({ data, children }: { data: unknown[]; children: React.ReactNode }) => (
-    <div data-testid="daily-chart" data-points={data.length}>
-      {children}
-    </div>
-  ),
-  Bar: ({ dataKey }: { dataKey: string }) => <span data-testid="series">{dataKey}</span>,
-  Grid: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
-}));
 vi.mock('@/components/dashboard/spend-cap', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/components/dashboard/spend-cap')>()),
   SpendCap: () => <p>workspace spend cap</p>,
@@ -107,10 +95,9 @@ describe('cost breakdown', () => {
 });
 
 describe('app capacity', () => {
-  it('shows app slots against the plan here, instead of a bare app count', () => {
+  it('leaves app slots to the Plans page', () => {
     render(<UsagePage />);
-    expect(screen.getByRole('region', { name: 'App capacity' })).toBeInTheDocument();
-    expect(screen.queryByText('Apps', { selector: 'p, span, dt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'App capacity' })).not.toBeInTheDocument();
   });
 });
 
@@ -263,7 +250,9 @@ describe('the account usage projection', () => {
     };
     render(<UsagePage />);
     // Aug 1 to Aug 3: the day without a rollup keeps its place at zero.
-    expect(screen.getByTestId('daily-chart')).toHaveAttribute('data-points', '3');
+    const chart = screen.getByRole('figure', { name: 'Daily compute usage in GB-hours' });
+    expect(within(chart).getAllByRole('img')).toHaveLength(3);
+    expect(within(chart).getByRole('img', { name: 'Aug 2: 0 GB-h' })).toBeInTheDocument();
     expect(screen.getByText(/Biggest day: Aug 3, 0.5 GB-h, mostly api \(0.4 GB-h\)/)).toBeVisible();
     expect(screen.getByText(/1 day has no rollup and is drawn at zero/)).toBeVisible();
     expect(screen.getByText(/Daily rollups: 0.75 GB-h · live total: 1 GB-h/)).toBeVisible();
@@ -271,7 +260,7 @@ describe('the account usage projection', () => {
 
   it('says so instead of drawing an empty chart when there are no rollups', () => {
     render(<UsagePage />);
-    expect(screen.queryByTestId('daily-chart')).toBeNull();
+    expect(screen.queryByRole('figure', { name: 'Daily compute usage in GB-hours' })).toBeNull();
     expect(screen.getByText('No daily rollups for this month yet.')).toBeInTheDocument();
   });
 
@@ -332,7 +321,6 @@ describe('when the account usage projection fails', () => {
     render(<UsagePage />);
     // Compute comes from the usage summary, unaffected.
     expect(screen.getByText('GB-hours used')).toBeInTheDocument();
-    expect(screen.getByText('Included')).toBeInTheDocument();
     expect(screen.getByText('Overage cost')).toBeInTheDocument();
     expect(screen.getByRole('meter', { name: 'Included allowance used' })).toBeInTheDocument();
     expect(screen.getByText(/1 of 50 GB-hours/)).toBeInTheDocument();
@@ -343,7 +331,7 @@ describe('when the account usage projection fails', () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('capacity_unavailable detail');
-    expect(screen.queryByTestId('daily-chart')).toBeNull();
+    expect(screen.queryByRole('figure', { name: 'Daily compute usage in GB-hours' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Object storage' })).toBeNull();
     expect(screen.queryByText('Managed PostgreSQL')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));

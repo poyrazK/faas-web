@@ -14,6 +14,7 @@ import { EnvironmentReadiness, type ReadinessSearch } from './environment-readin
 import { ProjectVerificationRuns } from './project-verification-runs';
 import type { components } from '@/lib/api/schema';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { Select } from '@/components/ui/field';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
 type Props = {
@@ -57,7 +58,7 @@ function SelectedEnvironment({
       />
     );
   if (detail.isPending || state.isPending || (compare && diff.isPending))
-    return <LoadingState message="Loading environment evidence…" />;
+    return <LoadingState message="Loading environment details…" />;
   if (
     detail.data?.project_id !== projectId ||
     detail.data?.slug !== environment ||
@@ -71,7 +72,7 @@ function SelectedEnvironment({
   )
     return (
       <p role="alert" className="text-sm text-destructive">
-        Environment evidence does not match this selection.
+        Environment details do not match this selection.
       </p>
     );
   return (
@@ -170,14 +171,11 @@ function PersonalProjectEnvironments(props: Props) {
       !items.some((item) => item.slug === compare));
   return (
     <>
-      <Panel
-        title="Environments"
-        description="Named environment evidence and comparisons. Stage desired queue settings can be reviewed below."
-      >
+      <Panel title="Environments">
         <div className="flex flex-wrap gap-4 p-4">
           <label className="flex min-w-40 flex-col gap-2 text-sm">
             Environment
-            <select
+            <Select
               aria-label="Environment"
               className={selectClass}
               value={selected ?? ''}
@@ -195,11 +193,11 @@ function PersonalProjectEnvironments(props: Props) {
                   {item.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="flex min-w-40 flex-col gap-2 text-sm">
             Compare from
-            <select
+            <Select
               aria-label="Compare from"
               className={selectClass}
               value={compare ?? ''}
@@ -217,7 +215,7 @@ function PersonalProjectEnvironments(props: Props) {
                     {item.slug}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
         </div>
         {!items.length && (

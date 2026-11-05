@@ -85,7 +85,7 @@ export function BudgetPreviewResult({ preview }: { preview: BudgetPreview }) {
             </ToneLabel>
           )}
         </Fact>
-        <Fact label="Evidence">
+        <Fact label="Saved measurements">
           {preview.fresh ? (
             <ToneLabel tone={{ label: 'Fresh', color: GOOD, icon: CheckCircle }} />
           ) : (

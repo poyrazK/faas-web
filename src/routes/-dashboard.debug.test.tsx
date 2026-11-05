@@ -424,29 +424,26 @@ describe('Debugger investigation navigation', () => {
     expect(router.state.location.search.regression).toBe('["missing","/gone"]');
   });
 
-  it('includes the resolved global app in a newly selected investigation URL', async () => {
+  it('keeps the resolved remembered app when selecting an investigation filter', async () => {
     localStorage.setItem('gregale.selectedApp', 'beta');
     const router = await mount('/dashboard/debug?keep=yes#context');
     fireEvent.change(screen.getByLabelText('Quick filter'), { target: { value: 'cold' } });
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
-        app: 'beta',
+        tab: 'Debugger',
         debugFilter: 'cold',
         keep: 'yes',
       })
     );
+    expect(router.state.location.pathname).toBe('/dashboard/apps/beta');
   });
 
   it('keeps investigation context when moving between app tabs and browser history', async () => {
     const router = await mount(
       '/dashboard/apps/alpha?tab=Debugger&debugFilter=cold&keep=yes#context'
     );
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(
-      within(screen.getByRole('group', { name: 'Overview pages' })).getByRole('button', {
-        name: 'Metrics',
-      })
-    );
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Overview');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Metrics');
     await waitFor(() =>
       expect(router.state.location.search).toMatchObject({
         tab: 'Metrics',
@@ -526,7 +523,7 @@ describe('Debugger investigation navigation', () => {
 
   it('falls back to Overview for an invalid app tab while preserving debugger and unrelated parameters', async () => {
     await mount('/dashboard/apps/alpha?tab=invalid&debugFilter=slow&keep=yes');
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Overview');
   });
 
   it('restores comparison result text filtering through Back, Forward, and copied URL reload after explicitly rerunning', async () => {
@@ -651,7 +648,7 @@ describe('Debugger investigation navigation', () => {
     const detail = screen.getByRole('region', { name: 'Regression details' });
     expect(within(detail).getByRole('button', { name: /failed.*500/ })).toBeInTheDocument();
     expect(
-      within(detail).getByText(/up to 20 recent.*exact route.*all deployments/i)
+      within(detail).getByText(/up to the 20 most recent requests on this route/i)
     ).toBeInTheDocument();
   });
 
@@ -663,15 +660,15 @@ describe('Debugger investigation navigation', () => {
     expect(
       screen.getByText(/No request rows for this deployment in the loaded route sample/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Other matching requests may exist outside this sample/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/most recent requests on this route/i)).toBeInTheDocument();
     cleanup();
     await mount('/dashboard/debug?app=alpha&debugFilter=cold');
     expect(
       screen.getByText(/No requests match these filters in the loaded sample/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/up to 20 recent.*across all routes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/up to the 20 most recent requests in the window/i)
+    ).toBeInTheDocument();
   });
 
   it('does not describe text-hidden regression or comparison rows as absent observations or traffic', async () => {

@@ -244,7 +244,7 @@ it('shows each member with its steps and why one waits, and keeps Complete off',
   const user = userEvent.setup();
   const detail = await openGraph(user);
   const api = within(detail).getByRole('region', { name: 'Member api' });
-  expect(within(api).getByText(/current evidence does not yet satisfy its policy/i)).toBeVisible();
+  expect(within(api).getByText(/current results do not yet satisfy its policy/i)).toBeVisible();
   expect(
     await within(api).findByText('billing has no current service verification.')
   ).toBeVisible();
@@ -296,7 +296,7 @@ it('explains a refused completion by its code', async () => {
   const detail = await openGraph(user);
   await user.click(within(detail).getByRole('button', { name: 'Complete' }));
   expect(await within(detail).findByRole('alert')).toHaveTextContent(
-    /plan, policy, configuration, deadline or evidence changed/i
+    /plan, policy, configuration, deadline or results changed/i
   );
 });
 

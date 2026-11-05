@@ -48,7 +48,7 @@ export function TriggerRecordActions({
           toast({
             kind: 'info',
             title: 'Nothing to re-drive',
-            description: 'Only a record in retry or dead_letter can be sent again.',
+            description: 'Only a record in retry or dead letter can be sent again.',
           });
           return;
         }

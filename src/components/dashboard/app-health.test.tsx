@@ -195,6 +195,7 @@ describe('AppHealthPanel', () => {
   it('is labelled beta and says the read never wakes the app', async () => {
     await mount(<AppHealthPanel slug="api" />);
     expect(screen.getByText('Beta')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'About Health' }));
     expect(screen.getByText(/never wakes or probes/)).toBeInTheDocument();
   });
 
@@ -353,7 +354,7 @@ describe('AppHealthPanel', () => {
     const list = screen.getByRole('list', { name: 'Health history' });
     const rows = within(list).getAllByRole('listitem');
     expect(rows[0]).toHaveTextContent('Healthy → Unhealthy');
-    expect(rows[1]).toHaveTextContent('Evidence expired');
+    expect(rows[1]).toHaveTextContent('Assessment expired');
     expect(rows[2]).toHaveTextContent('First assessment');
     fireEvent.click(screen.getByRole('button', { name: 'Show older changes' }));
     expect(history.fetchNextPage).toHaveBeenCalled();
