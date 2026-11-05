@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { StatusHeader, StatusOverview, StatusUnavailable } from '@/components/status/status-page';
 import { usePublicStatus } from '@/lib/api/status';
+import { readStatusSnapshot, saveStatusSnapshot } from '@/lib/status-snapshot';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/status/')({
@@ -15,7 +17,18 @@ export const Route = createFileRoute('/status/')({
 
 function StatusRoute() {
   const query = usePublicStatus();
-  if (!query.data && query.isError) return <StatusUnavailable />;
+  // Every snapshot that arrives becomes the fallback for the next outage.
+  useEffect(() => {
+    if (query.data) saveStatusSnapshot(query.data);
+  }, [query.data]);
+  if (!query.data && query.isError) {
+    const lastKnown = readStatusSnapshot();
+    return lastKnown ? (
+      <StatusOverview snapshot={lastKnown.snapshot} updatesDelayed lastKnown />
+    ) : (
+      <StatusUnavailable onRetry={() => void query.refetch()} />
+    );
+  }
   if (!query.data) return <StatusLoading />;
   return (
     <StatusOverview
