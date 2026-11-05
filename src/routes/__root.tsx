@@ -4,8 +4,7 @@ import { hexToRgb, type Palette } from 'glimm';
 import { GlimmProvider } from 'glimm/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/lib/auth';
-import { DataProvider } from '@/lib/store';
-import { retryPolicy } from '@/lib/api/queries';
+import { retryPolicy } from '@/lib/api/retry';
 import { ToastProvider } from '@/components/ui/toast';
 import { MfaProvider } from '@/components/auth/mfa-provider';
 import { DevBypassButton } from '@/components/dev-bypass-button';
@@ -80,37 +79,35 @@ function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <MfaProvider>
         <AuthProvider>
-          <DataProvider>
-            {/* Tuned for a paper page: the sweep now has to read as a darkening
-              band rather than a glow, so brightness comes up toward neutral —
-              pulling it down was what kept it from blowing out against the old
-              near-black surface, and on white that only made it muddy. */}
-            <GlimmProvider
-              palette={MINT_SWEEP}
-              brightness={0.94}
-              sweepMs={950}
-              outroMs={620}
-              easing="easeInOutCubic"
-              waveAmount={0.6}
-              swellAmount={0.6}
-            >
-              <ToastProvider>
-                {/* Applies each route's `head` to the document. */}
-                <HeadContent />
-                <Outlet />
-                {/* Statically false in production, so the button and its
-                  module are dropped from the bundle. */}
-                {import.meta.env.DEV && <DevBypassButton />}
-                {/* Vercel Web Analytics. In production the script it injects
-                  is first-party under /_vercel/insights — no cookies, no
-                  cross-site anything. In development it would instead load a
-                  debug script from va.vercel-scripts.com, which the CSP the
-                  dev server sends (src/lib/security-headers.ts) rightly
-                  blocks, so it is not mounted outside production builds. */}
-                {import.meta.env.PROD && <Analytics />}
-              </ToastProvider>
-            </GlimmProvider>
-          </DataProvider>
+          {/* Tuned for a paper page: the sweep now has to read as a darkening
+            band rather than a glow, so brightness comes up toward neutral —
+            pulling it down was what kept it from blowing out against the old
+            near-black surface, and on white that only made it muddy. */}
+          <GlimmProvider
+            palette={MINT_SWEEP}
+            brightness={0.94}
+            sweepMs={950}
+            outroMs={620}
+            easing="easeInOutCubic"
+            waveAmount={0.6}
+            swellAmount={0.6}
+          >
+            <ToastProvider>
+              {/* Applies each route's `head` to the document. */}
+              <HeadContent />
+              <Outlet />
+              {/* Statically false in production, so the button and its
+                module are dropped from the bundle. */}
+              {import.meta.env.DEV && <DevBypassButton />}
+              {/* Vercel Web Analytics. In production the script it injects
+                is first-party under /_vercel/insights — no cookies, no
+                cross-site anything. In development it would instead load a
+                debug script from va.vercel-scripts.com, which the CSP the
+                dev server sends (src/lib/security-headers.ts) rightly
+                blocks, so it is not mounted outside production builds. */}
+              {import.meta.env.PROD && <Analytics />}
+            </ToastProvider>
+          </GlimmProvider>
         </AuthProvider>
       </MfaProvider>
     </QueryClientProvider>

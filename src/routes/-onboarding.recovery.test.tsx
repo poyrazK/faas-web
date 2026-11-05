@@ -20,6 +20,9 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/components/sweep-link', () => ({ useSweepNavigate: () => vi.fn() }));
 vi.mock('@/components/landing/shaders/pixel-beams', () => ({ PixelBeams: () => null }));
+vi.mock('@/lib/store', () => ({
+  DataProvider: ({ children }: { children: unknown }) => children,
+}));
 vi.mock('@/components/dashboard/new-app-wizard', () => ({
   NewAppWizard: function RecoveryConfirmation() {
     const confirm = useConfirm();

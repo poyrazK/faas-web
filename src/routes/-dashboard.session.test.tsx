@@ -19,6 +19,9 @@ vi.mock('@tanstack/react-router', async (original) => ({
 vi.mock('@/components/dashboard/shell', () => ({
   DashboardShell: ({ children }: { children: unknown }) => children,
 }));
+vi.mock('@/lib/store', () => ({
+  DataProvider: ({ children }: { children: unknown }) => children,
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/lib/auth', () => ({
   readSession: () => mocks.session,

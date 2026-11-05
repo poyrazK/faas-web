@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { DashboardShell } from '@/components/dashboard/shell';
+import { DataProvider } from '@/lib/store';
 import { useToast } from '@/components/ui/toast';
 import { hasOnboarded, hasOnboardingGitHubReturn, readSession, useAuth } from '@/lib/auth';
 import { validateSettingsSearch } from '@/components/dashboard/settings-search';
@@ -51,9 +52,14 @@ function DashboardLayout() {
     // Leave once per expiry; `href` changing under it must not navigate again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionExpired]);
+  // The app and deployment store lives here, not in the root: mounted at the
+  // root it fetched /v1/apps and the latest deployments for every visitor to
+  // every public page, and put the console's query hooks in the entry chunk.
   return (
-    <DashboardShell>
-      <Outlet />
-    </DashboardShell>
+    <DataProvider>
+      <DashboardShell>
+        <Outlet />
+      </DashboardShell>
+    </DataProvider>
   );
 }

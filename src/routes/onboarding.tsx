@@ -3,6 +3,7 @@ import { useSweepNavigate } from '@/components/sweep-link';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
 import { Button } from '@/components/ui/button';
 import { ConfirmProvider } from '@/components/ui/confirm';
+import { DataProvider } from '@/lib/store';
 import { PixelBeams } from '@/components/landing/shaders/pixel-beams';
 import { beginOnboardingGitHubConnect, markOnboarded, readSession, useAuth } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
@@ -55,16 +56,20 @@ function OnboardingPage() {
       </header>
 
       <main className="relative px-5 py-10 sm:py-14">
-        <ConfirmProvider>
-          <NewAppWizard
-            onboarding
-            search={{ ...search, source: 'git' }}
-            onSearchChange={(next, options) => void navigate({ search: next, ...options })}
-            onDeploymentAccepted={finishDeployment}
-            onAppCreated={markOnboarded}
-            onConnectGitHub={beginOnboardingGitHubConnect}
-          />
-        </ConfirmProvider>
+        {/* The wizard reads the app store; the dashboard layout mounts it
+            everywhere else, and onboarding sits outside that layout. */}
+        <DataProvider>
+          <ConfirmProvider>
+            <NewAppWizard
+              onboarding
+              search={{ ...search, source: 'git' }}
+              onSearchChange={(next, options) => void navigate({ search: next, ...options })}
+              onDeploymentAccepted={finishDeployment}
+              onAppCreated={markOnboarded}
+              onConnectGitHub={beginOnboardingGitHubConnect}
+            />
+          </ConfirmProvider>
+        </DataProvider>
       </main>
     </div>
   );

@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
   recoverMfa: vi.fn(),
   verifyMfa: vi.fn(),
 }));
-vi.mock('@/lib/api/queries', () => api);
+vi.mock('@/lib/api/mfa', () => api);
 
 // The handler the provider registers for an API answer of `mfa_required` —
 // captured so a test can play the background requests a pending session makes.

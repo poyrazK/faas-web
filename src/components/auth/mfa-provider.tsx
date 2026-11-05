@@ -13,13 +13,7 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import {
-  confirmMfa,
-  enrollMfa,
-  recoverMfa,
-  verifyMfa,
-  type MFAEnrollment,
-} from '@/lib/api/queries';
+import { confirmMfa, enrollMfa, recoverMfa, verifyMfa, type MFAEnrollment } from '@/lib/api/mfa';
 import { setMfaRequiredHandler } from '@/lib/api/client';
 import { useQueryClient } from '@tanstack/react-query';
 
