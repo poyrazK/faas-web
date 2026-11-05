@@ -1,17 +1,27 @@
 import { Link } from '@tanstack/react-router';
+import { useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api/errors';
+import { useOrgMembers } from '@/lib/api/queries';
 import { useOrgApps, type OrgApp, type WorkspaceTarget } from '@/lib/api/workspace-apps';
 import { formatRelative } from '@/lib/mock-data';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ResourceTable, type Column } from './resource-table';
 
 /**
+ * Company roles that may read a company app's own `/v1/apps/{slug}/…` routes:
+ * faas `pkg/authz/authorize.go` grants `org.read_app` to these and not to
+ * `billing`.
+ */
+const READS_APPS = new Set(['owner', 'admin', 'developer', 'viewer']);
+
+/**
  * What a shared workspace has, from `GET /v1/orgs/{slug}/apps`.
  *
- * The summary is deliberately small (no creator, no configuration), and every
- * `/v1/apps/{slug}/…` route still answers only the app's creator, so a slug
- * links only when it is one of the signed-in account's own apps — anything
- * else would open a page that cannot load.
+ * The summary is deliberately small (no creator, no configuration). Company
+ * members reach an app's own routes through its org_id (faas ADR-202610171901),
+ * so a row links whenever the viewer's role can read apps, read from the member
+ * list. Otherwise, or while the role is unknown, only the viewer's own apps
+ * link: anything else would open a page that cannot load.
  */
 export function WorkspaceAppInventory({
   workspace,
@@ -20,6 +30,11 @@ export function WorkspaceAppInventory({
   workspace: WorkspaceTarget & { org: string };
   ownSlugs: ReadonlySet<string>;
 }) {
+  const { account } = useAuth();
+  const members = useOrgMembers(workspace.org);
+  const role = members.data?.members?.find((member) => member.account_id === account?.id)?.role;
+  const opens = (slug: string) =>
+    ownSlugs.has(slug) || (role !== undefined && READS_APPS.has(role));
   const q = useOrgApps(workspace.org);
   const code = q.error instanceof ApiError ? q.error.code : '';
   const phase = queryPhase({
@@ -32,7 +47,7 @@ export function WorkspaceAppInventory({
       key: 'slug',
       label: 'App',
       render: (app) =>
-        ownSlugs.has(app.slug) ? (
+        opens(app.slug) ? (
           <Link
             to="/dashboard/apps/$appSlug"
             params={{ appSlug: app.slug }}
@@ -71,7 +86,7 @@ export function WorkspaceAppInventory({
   return (
     <Panel
       title="In this workspace"
-      description={`Apps attributed to ${workspace.label}. Settings, deploys, and logs stay with each app's creator, so only apps you created open from here.`}
+      description={`Apps attributed to ${workspace.label}. Owners, admins, developers and viewers open any of them; a billing member opens only the apps they created.`}
     >
       {code === 'org_role_forbidden' ? (
         <p className="text-sm text-muted-foreground">
