@@ -7,7 +7,9 @@
  * `scripts/prerender.mjs` exists.
  *
  * The docs chunk is code-split by route, so the marketing pages never pay for
- * this.
+ * this — as long as nothing outside a route's component imports it
+ * statically. A route's `loader`, `head`, and `validateSearch` are not split:
+ * they ship in the entry chunk, so they must `await import()` this module.
  */
 
 const FILES = import.meta.glob('/content/docs/*.md', {
