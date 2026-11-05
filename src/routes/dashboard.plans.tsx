@@ -20,6 +20,7 @@ import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useBillingStatus } from '@/lib/api/billing-identity';
 import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/plans')({
@@ -73,13 +74,25 @@ const PLANS: { id: Plan; name: string; blurb: string; includes: string[] }[] = [
 
 /** Subscription controls the billing portal buries: retry a failed charge
  * without leaving the console, or schedule a cancel that keeps the account
- * alive until the period ends. */
+ * alive until the period ends.
+ *
+ * Only an account with a provider subscription has anything to cancel. Free
+ * has none (apid answers `billing_already_cancelled`), and with billing
+ * disabled every provider operation answers 501, so the panel waits for
+ * `GET /v1/billing/status` and renders nothing in either case. If that read
+ * fails, the plan decides: a paid plan keeps its controls. */
 function BillingControlsPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { account } = useAuth();
+  const status = useBillingStatus();
   const cancel = useCancelBilling();
   const retry = useRetryBilling();
+
+  const hasSubscription = status.data
+    ? status.data.enabled && status.data.subscription_configured
+    : status.isError && account?.plan !== undefined && account.plan !== 'free';
+  if (!hasSubscription) return null;
 
   return (
     <Panel

@@ -24,6 +24,9 @@ vi.mock('@/lib/api/queries', () => ({
   useCancelBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock('@/lib/api/billing-identity', () => ({
+  useBillingStatus: () => ({ data: undefined, isError: false }),
+}));
 
 const { Route } = await import('./dashboard.plans');
 const PlansPage = (Route as unknown as { component: React.ComponentType }).component;
