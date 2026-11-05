@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANALYTICS_GROUPS } from '@/components/dashboard/app-analytics';
+import { ANALYTICS_GROUPS } from '@/components/dashboard/analytics-search';
 import { Route } from './dashboard.analytics';
 
 const validate = Route.options.validateSearch as (search: Record<string, unknown>) => unknown;

@@ -4,7 +4,7 @@ import {
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from '@/components/dashboard/account-analytics';
-import { ANALYTICS_GROUPS } from '@/components/dashboard/app-analytics';
+import { ANALYTICS_GROUPS } from '@/components/dashboard/analytics-search';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { consoleHead } from '@/lib/seo';
