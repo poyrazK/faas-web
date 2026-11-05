@@ -33,6 +33,7 @@ import {
 import { formatCompact, formatMs } from '@/lib/mock-data';
 import {
   useAppDeployments,
+  useAppAnalyticsTimeseries,
   useAppMetrics,
   useBuildRecords,
   type MetricsRange,
@@ -264,6 +265,11 @@ function FunctionDetailPage() {
   const metrics = useAppMetrics(appSlug, tab === 'Overview' ? '24h' : range, {
     enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
   });
+  // The Overview's Traffic field: the same 24h hourly series the Metrics tab
+  // charts (same query key, so they share the cache). Free has no hourly series.
+  const trafficSeries = useAppAnalyticsTimeseries(appSlug, '24h', {
+    enabled: paidAccess && tab === 'Overview',
+  });
   const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
   const metricsTileState = metrics.isPending
     ? ('loading' as const)
@@ -472,6 +478,7 @@ function FunctionDetailPage() {
                   app={fn}
                   releases={releases}
                   metrics={metrics}
+                  series={trafficSeries}
                   metricsAccess={
                     authLoading || account === null
                       ? 'checking'
