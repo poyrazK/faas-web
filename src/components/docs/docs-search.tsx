@@ -1,15 +1,30 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Search, Xmark } from 'iconoir-react';
-import { searchDocs } from '@/lib/docs-search';
+import type { searchDocs as SearchDocs } from '@/lib/docs-search';
+
+/**
+ * The search index holds every docs page (~900 KB of markdown), and this box
+ * is on every docs page. It loads on first focus or keystroke, so reading one
+ * page downloads that page and not the corpus.
+ */
+let searchModule: Promise<typeof SearchDocs> | undefined;
+function loadSearch() {
+  searchModule ??= import('@/lib/docs-search').then((module) => module.searchDocs);
+  return searchModule;
+}
 
 export function DocsSearch() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState<typeof SearchDocs | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const id = useId();
-  const results = searchDocs(query);
+  const results = search ? search(query) : [];
+  const prepare = () => {
+    if (!search) void loadSearch().then((fn) => setSearch(() => fn));
+  };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (
@@ -64,8 +79,12 @@ export function DocsSearch() {
         aria-label="Search documentation"
         placeholder="Search guides, commands, errors…"
         value={query}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          prepare();
+          setOpen(true);
+        }}
         onChange={(event) => {
+          prepare();
           setQuery(event.target.value);
           setOpen(true);
         }}
@@ -88,9 +107,13 @@ export function DocsSearch() {
       {open && query.trim() && (
         <div id={id} ref={resultsRef} className="docs-search-results">
           <p role="status">
-            {results.length ? `${results.length} matching guides` : 'No matching guides'}
+            {!search
+              ? 'Loading search…'
+              : results.length
+                ? `${results.length} matching guides`
+                : 'No matching guides'}
           </p>
-          {results.length ? (
+          {!search ? null : results.length ? (
             <ul>
               {results.map(({ entry, section, excerpt }) => (
                 <li key={entry.slug}>

@@ -1,5 +1,5 @@
 import { DOC_ENTRIES, DOC_SECTIONS } from './docs-manifest';
-import { docSource } from './docs-content';
+import { docSource } from './docs-corpus';
 
 const normalize = (value: string) => value.toLowerCase().replace(/[-_]/g, ' ');
 const SEARCH_INDEX = DOC_ENTRIES.map((entry) => {
