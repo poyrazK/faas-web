@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode, type PointerEvent } from 'react';
 import { MoreHoriz, Plus, Xmark } from 'iconoir-react';
-import { Reorder, useDragControls, useReducedMotion } from 'motion/react';
+import { Reorder, useDragControls, useMotionValue, useReducedMotion } from 'motion/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -341,15 +341,23 @@ export function AnalyticsGrid({
     return defaults;
   });
   const [announcement, announce] = useState('');
+  const orderRef = useRef(chosen);
   const cards = build(chosen);
   const available = catalog.filter((item) => !chosen.includes(item.id));
-  const commit = (next: string[]) => {
-    setChosen(next);
+  const persist = (next: string[]) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       /* Session only. */
     }
+  };
+  const previewOrder = (next: string[]) => {
+    orderRef.current = next;
+    setChosen(next);
+  };
+  const commit = (next: string[]) => {
+    previewOrder(next);
+    persist(next);
   };
   const move = (id: string, to: number) => {
     const from = chosen.indexOf(id);
@@ -381,12 +389,17 @@ export function AnalyticsGrid({
         as="ul"
         axis="xy"
         values={chosen}
-        onReorder={commit}
+        onReorder={previewOrder}
         aria-label="Metric cards"
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
         {cards.map((card, index) => (
-          <SortableMetricCard key={card.id} card={card} reduce={Boolean(reduce)}>
+          <SortableMetricCard
+            key={card.id}
+            card={card}
+            reduce={Boolean(reduce)}
+            onDrop={() => persist(orderRef.current)}
+          >
             {(startDrag) => (
               <>
                 <button
@@ -566,14 +579,18 @@ export function AnalyticsGrid({
 function SortableMetricCard({
   card,
   reduce,
+  onDrop,
   children,
 }: {
   card: AnalyticsCardSpec;
   reduce: boolean;
+  onDrop: () => void;
   children: (start: (event: PointerEvent<HTMLButtonElement>) => void) => ReactNode;
 }) {
   const controls = useDragControls();
   const dragged = useRef(false);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
   return (
     <Reorder.Item
       as="li"
@@ -583,11 +600,34 @@ function SortableMetricCard({
       dragListener={false}
       dragControls={controls}
       dragMomentum={false}
+      style={{ x, y }}
+      initial={false}
+      animate={{ scale: 1, boxShadow: 'var(--elevation-1)' }}
+      dragTransition={{ bounceStiffness: 320, bounceDamping: 30, restDelta: 0.1, restSpeed: 2 }}
       layout="position"
       transition={
-        reduce ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 }
+        reduce
+          ? { duration: 0 }
+          : {
+              type: 'spring',
+              stiffness: 360,
+              damping: 30,
+              mass: 1,
+              layout: { type: 'spring', stiffness: 240, damping: 28, mass: 1 },
+              boxShadow: { duration: 0.2 },
+            }
       }
-      whileDrag={{ boxShadow: 'var(--elevation-3)', cursor: 'grabbing' }}
+      whileDrag={{ scale: reduce ? 1 : 1.018, boxShadow: 'var(--elevation-3)', cursor: 'grabbing' }}
+      onDragEnd={() => {
+        // Save once after release; synchronous storage writes must not interrupt reflow.
+        onDrop();
+        if (reduce) {
+          x.stop();
+          y.stop();
+          x.set(0);
+          y.set(0);
+        }
+      }}
       onPointerDownCapture={() => {
         dragged.current = false;
       }}
