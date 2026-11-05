@@ -1,3 +1,4 @@
+import { featureFlags } from '@/lib/feature-flags';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight, ArrowUpRight, Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status' | '/docs/api';
+  publicRoute?: '/status' | '/docs/api' | '/contact';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -45,6 +46,9 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Features', href: '#why' },
       { label: 'Practical questions', href: '#questions' },
       { label: 'Pricing', href: '#pricing' },
+      ...(featureFlags.salesIntake
+        ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
+        : []),
     ],
   },
   {

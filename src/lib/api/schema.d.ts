@@ -4,6 +4,53 @@
  */
 
 export interface paths {
+    "/v1/sales/inquiries/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prepare an anonymous website sales inquiry
+         * @description Requires the default-off sales intake flag. This opaque one-hour form token must be at least two seconds old when submitted. The challenge and submission share a separate ten-requests-per-minute IP budget.
+         */
+        get: operations["salesInquiryChallenge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sales/inquiries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a contact or demo request from the website
+         * @description Enabled only by FAAS_SALES_INTAKE_ENABLED and FAAS_SALES_ENABLED.
+         *     Browser writes must come from a trusted control-plane origin. A token
+         *     is consumed atomically with intake; retrying that token is idempotent
+         *     until expiry, including when a changed body is presented. Active emails
+         *     are deduplicated without overwriting staff data or ownership. Unknown,
+         *     paused, customer or unavailable salesperson codes enter manager review;
+         *     the response never reveals code validity or ownership. These messages
+         *     are unverified and grant no referral attribution, rewards or account access.
+         */
+        post: operations["submitSalesInquiry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/project-migrations": {
         parameters: {
             query?: never;
@@ -7704,6 +7751,26 @@ export interface paths {
          *     unbound email.
          */
         post: operations["programmaticLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/referrals/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preserve an explicitly entered referral code for OAuth signup.
+         * @description Rate limited pre-signup request. An empty code clears the pending selection; no customer identity is returned. The host-only selection expires in 15 minutes.
+         */
+        post: operations["selectReferralCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -37912,6 +37979,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orgs/{slug}/billing/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the organization's attributable usage costs.
+         * @description Requires current organization membership, usage:read and session MFA.
+         *     An organization that owns its resources pays for its apps, so their
+         *     usage evidence is recorded under it rather than under the members who
+         *     created them. Same report as GET /v1/billing/costs, for the organization.
+         */
+        get: operations["getOrgFinancialCosts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/billing/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the organization's budget policies.
+         * @description Requires current organization membership, usage:read and session MFA. Deleted policies are omitted. Drafts do not enforce limits.
+         */
+        get: operations["listOrgFinancialBudgets"];
+        put?: never;
+        /**
+         * Save an organization budget policy.
+         * @description Requires the organization owner or billing role, admin scope, session MFA
+         *     and an Idempotency-Key (1..255 bytes). A budget covers what the
+         *     organization pays for: its apps, projects and environments, and its
+         *     whole account scope. The organization must own its resources. Monitored
+         *     notify and compute-only stop_previews policies can activate; alerts go
+         *     to the organization's billing contact. Strict policies return 422
+         *     financial_budget_activation_unavailable.
+         */
+        post: operations["createOrgFinancialBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/billing/budgets/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview an organization budget and its workload consequences without writes.
+         * @description Requires current organization membership, usage:read and session MFA. Same preview as POST /v1/billing/budgets/preview, over the apps the organization pays for. No policies, holds or decisions are written.
+         */
+        post: operations["previewOrgFinancialBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/billing/budgets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description Stable identity of an organization-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read an organization budget, including its deletion tombstone.
+         * @description Requires current organization membership, usage:read and session MFA. Foreign or missing policies return 404.
+         */
+        get: operations["getOrgFinancialBudget"];
+        /**
+         * Replace an organization budget at its expected revision.
+         * @description Requires the organization owner or billing role, admin scope, session MFA and Idempotency-Key. expected_revision must match the current policy; stale edits return 409. Strict policies return 422 financial_budget_activation_unavailable.
+         */
+        put: operations["updateOrgFinancialBudget"];
+        post?: never;
+        /**
+         * Tombstone an organization budget while retaining its revision history.
+         * @description Requires the organization owner or billing role, admin scope, session MFA and Idempotency-Key. expected_revision prevents stale deletion.
+         */
+        delete: operations["deleteOrgFinancialBudget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{slug}/billing/budgets/{id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Page through an organization budget's immutable revisions.
+         * @description Requires current organization membership, usage:read and session MFA. Use next_revision as after_revision for continuation.
+         */
+        get: operations["listOrgFinancialBudgetRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/{organization}/projects": {
         parameters: {
             query?: never;
@@ -54415,8 +54640,10 @@ export interface components {
         OAuthProviderCapability: {
             enabled: boolean;
         };
-        /** @description Email + password for signup. Same shape as PasswordLoginRequest so the create-or-claim race detection reuses the verifier. */
+        /** @description Email + password for signup. Same shape as PasswordLoginRequest with an optional referral code. */
         PasswordSignupRequest: {
+            /** @description Optional six-character customer or salesperson referral code; case-insensitive. Requires the referral program to be enabled. */
+            referral_code?: string;
             /** Format: email */
             email: string;
             password: string;
@@ -54469,6 +54696,7 @@ export interface components {
          *     accounts.
          */
         MagicLinkSignupRequest: {
+            referral_code?: string;
             /** Format: email */
             email?: string;
         };
@@ -72513,7 +72741,8 @@ export interface components {
             records: components["schemas"]["TriggerDeadLetter"][];
         };
         /**
-         * @description Aggregated counters per state for one trigger. NOT a Prometheus
+         * @description Aggregated counters per state for one trigger, and the scheduler's
+         *     last observation of its broker consumer. NOT a Prometheus
          *     scrape — /v1/metrics is the Prometheus surface.
          */
         TriggerMetricsResponse: {
@@ -72523,6 +72752,39 @@ export interface components {
             succeeded_count: number;
             retry_count: number;
             dead_letter_count: number;
+            /** @description Where each count stops; a count equal to it means at least that many. */
+            count_limit?: number;
+            consumer?: components["schemas"]["TriggerConsumerStatus"];
+        };
+        /**
+         * @description The scheduler's last observation of a trigger's broker consumer.
+         *     Absent until the trigger's first poll.
+         */
+        TriggerConsumerStatus: {
+            /**
+             * @description `degraded`: the last poll failed (see last_error). `stale`: no
+             *     poll for 30 s (the trigger is disabled, its app cannot run, or
+             *     no scheduler polls it).
+             * @enum {string}
+             */
+            liveness: "healthy" | "degraded" | "stale" | "not_observed" | "unknown";
+            /** Format: date-time */
+            last_poll_at?: string;
+            /** Format: date-time */
+            last_success_at?: string;
+            /** Format: date-time */
+            last_error_at?: string;
+            last_error?: string;
+            /**
+             * Format: int64
+             * @description The broker's backlog for the consumer. Kafka: high watermark
+             *     less the group's committed offset, summed over partitions.
+             *     NATS JetStream: the consumer's pending messages. Redis Streams:
+             *     the group's lag.
+             */
+            lag_messages?: number;
+            /** @description Age of the oldest record the last poll returned. */
+            lag_age_seconds?: number;
         };
         /**
          * @description Inline-manifest path (POST /v1/triggers:batch_create) — fire a
@@ -80560,7 +80822,22 @@ export interface components {
              * @description RFC3339Nano UTC assembly timestamp.
              */
             as_of: string;
+            /**
+             * @description True when every gateway delivered this window's request telemetry, so the totals include every request.
+             *     Judged up to two minutes before `as_of`, because the newest minutes are still arriving. Absent when it could not be judged.
+             */
+            telemetry_complete?: boolean;
+            /** @description Why requests in this window may be missing from the totals. Empty or absent when the window is complete. */
+            telemetry_gaps?: components["schemas"]["RequestAnalyticsTelemetryGap"][];
         };
+        /**
+         * @description One reason request analytics may be missing requests: a gateway with no or a stale delivery report
+         *     (`telemetry_coverage_missing`, `telemetry_coverage_stale`), telemetry switched off or sampled
+         *     (`telemetry_disabled`, `telemetry_sampled`), requests still waiting to be delivered
+         *     (`telemetry_ingestion_pending`), or requests lost or a gateway restarted during the window (`telemetry_window_incomplete`).
+         * @enum {string}
+         */
+        RequestAnalyticsTelemetryGap: "telemetry_coverage_missing" | "telemetry_coverage_stale" | "telemetry_disabled" | "telemetry_sampled" | "telemetry_ingestion_pending" | "telemetry_window_incomplete";
         /** @description One UTC-aligned hourly request analytics bucket. */
         RequestAnalyticsTimeseriesPoint: {
             /**
@@ -80629,6 +80906,10 @@ export interface components {
              * @description UTC time when the series response was assembled.
              */
             as_of: string;
+            /** @description Same as on the analytics overview: true when every gateway delivered the series window, judged up to two minutes before `as_of`. */
+            telemetry_complete?: boolean;
+            /** @description Why requests in the series window may be missing. Empty or absent when the window is complete. */
+            telemetry_gaps?: components["schemas"]["RequestAnalyticsTelemetryGap"][];
         };
         /**
          * @description Per-app SLO panel returned by `GET /v1/apps/{slug}/slo?window=`. Distinct from `AppMetricsResponse`: the SLO surface is a fixed-window
@@ -86957,9 +87238,9 @@ export interface components {
          *       "webhook_id": "fedcba9876543210fedcba9876543210",
          *       "app_id": "8b1f5e5d273e5a18ae0058fceba4fe6c",
          *       "account_id": "8b1f5e5d-273e-5a18-ae00-58fceba4fe6c",
-         *       "event": "cron.fired",
+         *       "event": "app.parked",
          *       "payload": {
-         *         "cron_name": "nightly-rollup"
+         *         "reason": "idle_timeout_300s"
          *       },
          *       "attempt": 0,
          *       "status": "pending",
@@ -96140,6 +96421,90 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    salesInquiryChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Form check prepared */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        challenge: string;
+                        ready_after_ms: number;
+                        expires_in_seconds: number;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    submitSalesInquiry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** Format: email */
+                    email: string;
+                    /** @default  */
+                    company?: string;
+                    /** @enum {string} */
+                    intent: "contact" | "demo";
+                    /** @description UTF-8 byte limit; other text limits are also measured in bytes. */
+                    message: string;
+                    /** @default  */
+                    salesperson_code?: string;
+                    challenge: string;
+                    /**
+                     * @description Leave blank.
+                     * @default
+                     */
+                    website?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Inquiry accepted without disclosing routing details */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        accepted: boolean;
+                    };
+                };
+            };
+            /** @description Invalid form input or sales_challenge_invalid; refresh the form check before resubmitting an expired challenge. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listProjectMigrations: {
         parameters: {
             query?: {
@@ -112437,6 +112802,37 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
         };
     };
+    selectReferralCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    referral_code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Selection accepted; it grants no account access. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        accepted: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
     programmaticSignupMagicLink: {
         parameters: {
             query?: never;
@@ -123508,7 +123904,7 @@ export interface operations {
             query?: {
                 /** @description Lookback duration (`24h`, `3d`, `7d`) or RFC3339 start timestamp. Defaults to `24h` and is retention-clamped. */
                 since?: string;
-                /** @description Optional RFC3339 upper-bound timestamp for the historical window. */
+                /** @description Optional RFC3339 upper-bound timestamp for the historical window. It must be within the plan's telemetry retention, counted back from now. */
                 until?: string;
                 /** @description Bounded top-N grouping dimension. Defaults to route. */
                 group_by?: "route" | "country" | "referrer_host" | "ua_family" | "status" | "consumer_id";
@@ -123611,7 +124007,7 @@ export interface operations {
             query?: {
                 /** @description Lookback duration or RFC3339 start timestamp. Defaults to `24h`. */
                 since?: string;
-                /** @description Exclusive end timestamp; omitted means current server time. */
+                /** @description Exclusive end timestamp; omitted means current server time. It must be within the plan's telemetry retention, counted back from now. */
                 until?: string;
                 /** @description Exact bounded route label to drill into (for example `GET /users/{id}`). Must be provided together with `method`; omitted means all routes. */
                 route?: string;
@@ -170321,6 +170717,326 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getOrgFinancialCosts: {
+        parameters: {
+            query?: {
+                /** @description UTC usage month of the organization's report; defaults to the current month. */
+                month?: string;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-owned cost breakdown, coverage, forecasts, and separate invoice facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialCostsResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listOrgFinancialBudgets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-owned policies, bounded to 128. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetListResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createOrgFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable identity of this organization budget creation, required for retries. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved policy with revision 1; retries retain its identity. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Invalid organization policy count, or a strict or unsupported activation; nothing was written. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    previewOrgFinancialBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinancialBudgetPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The organization's financial observation, affected workloads and readiness. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetPreviewResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getOrgFinancialBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description Stable identity of an organization-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization budget's saved intent and enforcement readiness. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateOrgFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Retry key for replacing this organization budget at its expected revision. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description Stable identity of an organization-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated policy and incremented revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Strict or unsupported activation for an organization; its current revision is kept. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteOrgFinancialBudget: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Retry identity for tombstoning this organization budget. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description Stable identity of an organization-owned budget policy. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteFinancialBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description The organization budget's tombstone at its next revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listOrgFinancialBudgetRevisions: {
+        parameters: {
+            query?: {
+                /** @description Exclusive cursor over the organization budget's revisions; pass the last next_revision. */
+                after_revision?: number;
+                /** @description Maximum organization budget revisions returned in this page. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description Org slug. Lowercase letters, digits, hyphens; must start
+                 *     and end with alnum. 3..32 chars. Mirrors `OrgSlugPattern` exactly so the spec drift gate
+                 *     (`make spec-check`) stays green.
+                 */
+                slug: components["parameters"]["OrgSlug"];
+                /** @description Organization budget whose immutable revision audit is listed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization budget's revisions, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialBudgetHistoryResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listOrgProjects: {
