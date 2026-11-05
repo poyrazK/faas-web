@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   toast: vi.fn(),
   update: vi.fn(),
+  capabilitiesOn: new Set<string>(),
   diff: vi.fn(),
 }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
@@ -25,13 +26,19 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({ accountId: 'account', state: 'unavailable' }),
-  useCapabilityAccess: () => ({ access: 'off', refresh: () => {} }),
+  useCapabilityAccess: (id: string) => ({
+    access: mocks.capabilitiesOn.has(id) ? 'on' : 'off',
+    refresh: () => {},
+  }),
   useCapabilityStage: () => 'Beta',
 }));
 vi.mock('./app-core-panels', () => ({ RegistryCredentialsPanel: () => null }));
 vi.mock('./supply-chain-panel', () => ({ SupplyChainPanel: () => null }));
 vi.mock('./deploy-tokens', () => ({ DeployTokensPanel: () => null }));
-vi.mock('./app-insights', () => ({ StaticEgressIP: () => null, StreamingCapNote: () => null }));
+vi.mock('./app-insights', () => ({
+  StaticEgressIP: ({ slug }: { slug: string }) => <p>static egress IP for {slug}</p>,
+  StreamingCapNote: () => null,
+}));
 vi.mock('./app-lifecycle', () => ({ PurgeCacheControl: () => null }));
 vi.mock('./app-visibility', () => ({ AppVisibility: () => null }));
 vi.mock('./health-probes', () => ({
@@ -302,5 +309,30 @@ describe('Release settings', () => {
     expect(screen.getByRole('region', { name: 'Releases' })).toHaveTextContent(
       'release settings for alpha'
     );
+  });
+});
+
+describe('Static egress IP', () => {
+  function renderConfiguration() {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConfirmProvider>
+          <AppConfiguration slug="alpha" />
+        </ConfirmProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  it('is not mounted, and so reads nothing, while the preview is off for the account', () => {
+    mocks.capabilitiesOn.clear();
+    renderConfiguration();
+    expect(screen.queryByText('static egress IP for alpha')).not.toBeInTheDocument();
+  });
+
+  it('is offered once the registry turns static-egress-ip on', () => {
+    mocks.capabilitiesOn.clear();
+    mocks.capabilitiesOn.add('static-egress-ip');
+    renderConfiguration();
+    expect(screen.getByText('static egress IP for alpha')).toBeInTheDocument();
   });
 });

@@ -524,10 +524,9 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 71,
     name: 'Static egress IP',
-    status: 'none',
-    surfaces: [],
-    gap: 'Static egress IP',
-    wave: 3,
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    capability: 'static-egress-ip',
   },
   // D72 · beta
   {
