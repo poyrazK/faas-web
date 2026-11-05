@@ -19,7 +19,9 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => mocks.navigate,
 }));
-vi.mock('@/lib/auth', () => ({
+vi.mock('@/lib/auth', async (original) => ({
+  // The real marker, so the test sees exactly what a rollback would read.
+  markOnboarded: (await original<typeof import('@/lib/auth')>()).markOnboarded,
   useAuth: () => ({
     account: mocks.account,
     user: mocks.user,
@@ -88,12 +90,12 @@ it('respects a supplied repository and immutable ref instead of forcing a choice
   expect(screen.getByTestId('wizard')).toHaveTextContent(ref);
   expect(screen.queryByRole('button', { name: 'Try a sample' })).not.toBeInTheDocument();
 });
-it('dismisses into the console without writing the legacy completion flag', async () => {
+it('dismisses into the console and writes the legacy marker, so a flag rollback still opens the console', async () => {
   render(<Setup />);
   fireEvent.click(await screen.findByRole('button', { name: 'Explore the console' }));
   expect(mocks.navigate).toHaveBeenCalledWith({ to: '/dashboard' });
   expect(readOnboarding({ account: 'actor-a', workspace: null }).dismissed).toBe(true);
-  expect(localStorage.getItem('gregale.onboarded')).toBeNull();
+  expect(localStorage.getItem('gregale.onboarded')).toBe('true');
 });
 it('binds a saved company before mounting the inventory or creation owner', async () => {
   localStorage.setItem('gregale.active-org.actor-a', 'company-a');

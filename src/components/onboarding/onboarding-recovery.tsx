@@ -16,6 +16,7 @@ import { onboardingProgress } from '@/lib/onboarding-progress';
 import { resourceId } from '@/lib/resource-id';
 import { OnboardingSuccess } from './onboarding-success';
 import { onboardingEvent } from '@/lib/onboarding-events';
+import { markOnboarded } from '@/lib/auth';
 
 export function OnboardingRecovery({
   owner,
@@ -53,18 +54,6 @@ export function OnboardingRecovery({
     },
     owner.account
   );
-  const history = useQuery({
-    queryKey: ['onboarding', owner.account, owner.workspace, draft.app, 'history'],
-    queryFn: ({ signal }) =>
-      unwrap(
-        api.GET('/v1/apps/{slug}/deployments', {
-          params: { path: { slug: draft.app! }, query: { limit: 5 } },
-          signal,
-        })
-      ),
-    enabled: Boolean(draft.app && draft.phase === 'unknown'),
-    retry: false,
-  });
   const upload = useDeployFunctionSourceFor();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -87,9 +76,25 @@ export function OnboardingRecovery({
     ),
     error: app.error ?? deployment.error,
   });
+  const history = useQuery({
+    queryKey: ['onboarding', owner.account, owner.workspace, draft.app, 'history'],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/deployments', {
+          params: { path: { slug: draft.app! }, query: { limit: 5 } },
+          signal,
+        })
+      ),
+    // Any outcome without a confirmed result reads the history, including a recovery
+    // that saved an app but no deployment; a query left disabled would pend forever.
+    enabled: Boolean(draft.app && progress === 'unknown' && draft.phase !== 'submitting'),
+    retry: false,
+  });
   const permitted = Boolean(draft.app && apps.some((a) => a.slug === draft.app));
   useEffect(() => {
     if (!permitted || inventoryUnavailable) return;
+    // The flag-off dashboard checks the legacy marker; a confirmed live app counts.
+    if (progress === 'live') markOnboarded();
     if (progress === 'live' || progress === 'failed')
       onboardingEvent(
         progress === 'live' ? 'deployment_live' : 'deployment_failed',

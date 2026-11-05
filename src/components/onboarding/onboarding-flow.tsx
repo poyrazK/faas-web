@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmProvider } from '@/components/ui/confirm';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
 import { newAppPath, type NewAppSearch } from '@/components/dashboard/new-app-source';
-import { beginOnboardingGitHubConnect, useAuth } from '@/lib/auth';
+import { beginOnboardingGitHubConnect, markOnboarded, useAuth } from '@/lib/auth';
 import { useOnboardingWorkspace } from './use-onboarding-workspace';
 import { useOnboardingInventory } from '@/lib/api/onboarding';
 import {
@@ -262,6 +262,9 @@ function ScopedOnboarding({
   function explore() {
     onboardingEvent('setup_dismissed', { plan });
     update({ ...recordRef.current, dismissed: true });
+    // The legacy marker is what the flag-off dashboard checks; without it a rollback
+    // would bounce this customer back to setup on every visit.
+    markOnboarded();
     void navigate({ to: '/dashboard' });
   }
   return (

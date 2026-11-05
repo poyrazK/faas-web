@@ -97,6 +97,19 @@ it('requires a fresh matching live read and gives Free customers a public URL/cu
   expect(screen.getByRole('button', { name: /curl command/ })).toBeVisible();
   expect(post).not.toHaveBeenCalled();
 });
+it('writes the legacy completion marker once live is confirmed, so a flag rollback still opens the console', async () => {
+  localStorage.clear();
+  responses();
+  setup();
+  await screen.findByRole('heading', { name: 'Your app is live' });
+  await waitFor(() => expect(localStorage.getItem('gregale.onboarded')).toBe('true'));
+});
+it('reads the history for a recovery that saved an app but no deployment', async () => {
+  responses();
+  setup({ ...draft, phase: 'accepted', deployment: undefined });
+  expect(await screen.findByRole('button', { name: 'Use this deployment' })).toBeVisible();
+  expect(screen.queryByText('Reading recent deployments…')).not.toBeInTheDocument();
+});
 it('does not announce cached success while the required fresh read fails', async () => {
   responses({ fail: true });
   setup(draft, { cached: true });
