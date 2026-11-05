@@ -199,6 +199,9 @@ async function exerciseOverviewControls() {
     await page.keyboard.press('Enter');
   }
 
+  await page.waitForFunction(
+    () => document.querySelector('button[aria-label="Refresh analytics"]')?.disabled === false
+  );
   await refresh.focus();
   await Promise.all([
     page.waitForRequest(
@@ -209,8 +212,8 @@ async function exerciseOverviewControls() {
     page.keyboard.press('Enter'),
   ]);
 
-  // Use real mouse movement: dispatching drag events alone misses a chart
-  // surface that intercepts clicks but cannot actually start a browser drag.
+  // Use real pointer movement and check before release: the cards must reflow
+  // while dragging, without opening the detail panel.
   const cards = section.locator('[data-metric-id]');
   const before = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
   if (before.length >= 2) {
@@ -222,10 +225,11 @@ async function exerciseOverviewControls() {
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
-    await page.mouse.up();
+    await page.waitForTimeout(150);
     const after = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
     if (after[0] !== before[1] || after[1] !== before[0])
-      throw new Error('dragging a chart with the mouse did not reorder it');
+      throw new Error('cards did not reorder while the pointer was held down');
+    await page.mouse.up();
     if (new URL(page.url()).searchParams.has('inspect'))
       throw new Error('dragging a chart opened its detail panel');
   }

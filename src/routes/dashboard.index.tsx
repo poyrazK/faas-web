@@ -2,7 +2,7 @@ import { featureFlags } from '@/lib/feature-flags';
 import { OnboardingChecklist } from '@/components/onboarding/onboarding-checklist';
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowRight, ClockRotateRight, NavArrowRight, Plus } from 'iconoir-react';
+import { ClockRotateRight, NavArrowRight, Plus } from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
@@ -83,7 +83,11 @@ const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
 
 type Verdict = { text: string; color: string; trouble: boolean };
 
-function verdictOf(accountStatus: string | undefined, failing: number, degraded: boolean): Verdict {
+function verdictOf(
+  accountStatus: string | undefined,
+  failing: number,
+  degraded: boolean
+): Verdict | null {
   if (accountStatus && accountStatus !== 'active')
     return {
       text: `Account ${accountStatus.replace(/_/g, ' ')}`,
@@ -97,7 +101,7 @@ function verdictOf(accountStatus: string | undefined, failing: number, degraded:
       trouble: true,
     };
   if (degraded) return { text: 'Metrics degraded', color: 'var(--status-warning)', trouble: false };
-  return { text: 'All systems normal', color: 'var(--status-good)', trouble: false };
+  return null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -386,17 +390,19 @@ function OverviewPage() {
         <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
           {/* The verdict rides above the greeting as a pill; when something
               is wrong it is the page's alert and links to the trouble. */}
-          <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
-            <Magnetic range={60} strength={0.2}>
-              <Link
-                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
-                className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
-              >
-                <LiveDot color={verdict.color} />
-                {verdict.text}
-              </Link>
-            </Magnetic>
-          </p>
+          {verdict && (
+            <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
+              <Magnetic range={60} strength={0.2}>
+                <Link
+                  to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
+                  className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                >
+                  <LiveDot color={verdict.color} />
+                  {verdict.text}
+                </Link>
+              </Magnetic>
+            </p>
+          )}
 
           <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             <WordReveal
@@ -501,15 +507,6 @@ function OverviewPage() {
           },
         ]}
       />
-      <div className="relative flex justify-end">
-        <Link
-          to="/dashboard/usage"
-          className="pressable inline-flex items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-brand"
-        >
-          Usage and billing
-          <ArrowRight className="size-3.5" />
-        </Link>
-      </div>
     </div>
   );
 }

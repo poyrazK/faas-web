@@ -1,6 +1,6 @@
-import { useId, useRef, useState, type DragEvent } from 'react';
-import { MoreHoriz, Plus, Xmark, Drag } from 'iconoir-react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useId, useRef, useState, type ReactNode, type PointerEvent } from 'react';
+import { MoreHoriz, Plus, Xmark } from 'iconoir-react';
+import { Reorder, useDragControls, useReducedMotion } from 'motion/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -341,27 +341,6 @@ export function AnalyticsGrid({
     return defaults;
   });
   const [announcement, announce] = useState('');
-  const dragging = useRef<string | null>(null);
-  const [dragged, setDragged] = useState<string | null>(null);
-  const startDrag = (event: DragEvent<HTMLButtonElement>, id: string) => {
-    dragging.current = id;
-    setDragged(id);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', id);
-    const card = event.currentTarget.closest<HTMLElement>('[data-metric-id]');
-    if (card) {
-      const bounds = card.getBoundingClientRect();
-      event.dataTransfer.setDragImage(
-        card,
-        event.clientX - bounds.left,
-        event.clientY - bounds.top
-      );
-    }
-  };
-  const endDrag = () => {
-    dragging.current = null;
-    setDragged(null);
-  };
   const cards = build(chosen);
   const available = catalog.filter((item) => !chosen.includes(item.id));
   const commit = (next: string[]) => {
@@ -398,72 +377,27 @@ export function AnalyticsGrid({
         </div>
       )}
 
-      <ul
+      <Reorder.Group
+        as="ul"
+        axis="xy"
+        values={chosen}
+        onReorder={commit}
         aria-label="Metric cards"
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
         {cards.map((card, index) => (
-          <motion.li
-            key={card.id}
-            layout={reduce ? false : 'position'}
-            transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-            data-metric-id={card.id}
-            onDragOver={(event) => {
-              if (dragging.current) event.preventDefault();
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (dragging.current) move(dragging.current, index);
-              endDrag();
-            }}
-            className={cn(
-              'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand',
-              onInspect && 'hover:border-border-secondary',
-              dragged === card.id && 'opacity-50',
-              card.span === 2 && 'xl:col-span-2'
-            )}
-          >
-            {onInspect && (
-              <button
-                type="button"
-                draggable
-                onDragStart={(event) => startDrag(event, card.id)}
-                onDragEnd={endDrag}
-                onClick={() => onInspect(card.id)}
-                aria-label={`View ${card.label} details`}
-                className="absolute inset-0 z-10 cursor-grab rounded-lg active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              />
-            )}
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
-              <div className="relative z-20 flex items-center gap-1">
+          <SortableMetricCard key={card.id} card={card} reduce={Boolean(reduce)}>
+            {(startDrag) => (
+              <>
                 <button
                   type="button"
-                  draggable
-                  aria-label={`Move ${card.label}`}
-                  aria-describedby={moveHelpId}
-                  onDragStart={(event) => startDrag(event, card.id)}
-                  onDragEnd={endDrag}
                   onPointerDown={(event) => {
-                    if (event.pointerType !== 'mouse') {
-                      dragging.current = card.id;
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    }
+                    // Preserve touch scrolling; the options menu also supports reordering.
+                    if (event.pointerType === 'mouse') startDrag(event);
                   }}
-                  onPointerUp={(event) => {
-                    if (event.pointerType === 'mouse' || !dragging.current) return;
-                    const target = document
-                      .elementFromPoint(event.clientX, event.clientY)
-                      ?.closest<HTMLElement>('[data-metric-id]');
-                    if (target?.dataset.metricId)
-                      move(card.id, chosen.indexOf(target.dataset.metricId));
-                    dragging.current = null;
-                  }}
-                  onPointerCancel={(event) => {
-                    // Native mouse dragging cancels the pointer stream at drag start.
-                    // Its lifecycle ends at dragend, not pointercancel.
-                    if (event.pointerType !== 'mouse') dragging.current = null;
-                  }}
+                  onClick={() => onInspect?.(card.id)}
+                  aria-label={onInspect ? `View ${card.label} details` : `Move ${card.label}`}
+                  aria-describedby={moveHelpId}
                   onKeyDown={(event) => {
                     if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
                       event.preventDefault();
@@ -473,103 +407,106 @@ export function AnalyticsGrid({
                       );
                     }
                   }}
-                  className="touch-none cursor-grab rounded p-1 text-muted-foreground/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand active:cursor-grabbing"
-                >
-                  <Drag aria-hidden className="size-4" />
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    aria-label={`${card.label} options`}
-                    className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <MoreHoriz aria-hidden className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      disabled={index === 0}
-                      onSelect={() => move(card.id, index - 1)}
-                    >
-                      Move earlier
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={index === cards.length - 1}
-                      onSelect={() => move(card.id, index + 1)}
-                    >
-                      Move later
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => commit(chosen.filter((id) => id !== card.id))}
-                    >
-                      Remove
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-baseline gap-2">
-              {loading ? (
-                <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
-              ) : (
-                <>
-                  <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums">
-                    {card.value}
-                  </p>
-                  {card.delta !== null && (
-                    <span
-                      className="text-xs tabular-nums"
-                      style={{
-                        color:
-                          card.delta === 0
-                            ? 'var(--muted-foreground)'
-                            : card.delta >= 0 === card.deltaGood
-                              ? 'var(--status-good)'
-                              : 'var(--status-critical)',
-                      }}
-                    >
-                      {card.delta === 0
-                        ? 'No change'
-                        : `${card.delta > 0 ? '↗' : '↘'} ${Math.abs(card.delta).toFixed(1)}%`}
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-            {card.series &&
-              !loading &&
-              (historyState !== 'ready' ? (
-                <div
-                  role="status"
-                  className="mt-5 flex h-24 items-center justify-center text-xs text-muted-foreground"
-                >
-                  {historyState === 'loading' ? 'Loading history…' : 'History unavailable'}
-                </div>
-              ) : points.length > 0 && points.some((point) => point.requests > 0) ? (
-                <TimeChart
-                  data={points.map((point) => ({
-                    at: utcLabel(point.start),
-                    value:
-                      (card.series?.endsWith('_ms') || card.id === 'error_rate') &&
-                      point.requests === 0
-                        ? null
-                        : Number(point[card.series!] ?? 0),
-                  }))}
-                  x="at"
-                  series={{
-                    value: {
-                      label: card.label,
-                      color: card.id === 'errors' || card.id === 'error_rate' ? 'red' : 'blue',
-                    },
-                  }}
-                  compact
-                  className="mt-5 h-24"
+                  className="absolute inset-0 z-10 touch-pan-y cursor-grab rounded-lg active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 />
-              ) : (
-                <div className="mt-5 flex h-24 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground">
-                  No requests in this window
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
+                  <div className="relative z-20 flex items-center gap-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        aria-label={`${card.label} options`}
+                        className="pressable rounded p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <MoreHoriz aria-hidden className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          disabled={index === 0}
+                          onSelect={() => move(card.id, index - 1)}
+                        >
+                          Move earlier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={index === cards.length - 1}
+                          onSelect={() => move(card.id, index + 1)}
+                        >
+                          Move later
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => commit(chosen.filter((id) => id !== card.id))}
+                        >
+                          Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-              ))}
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{card.caption}</p>
-          </motion.li>
+                <div className="mt-3 flex flex-wrap items-baseline gap-2">
+                  {loading ? (
+                    <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
+                  ) : (
+                    <>
+                      <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums">
+                        {card.value}
+                      </p>
+                      {card.delta !== null && (
+                        <span
+                          className="text-xs tabular-nums"
+                          style={{
+                            color:
+                              card.delta === 0
+                                ? 'var(--muted-foreground)'
+                                : card.delta >= 0 === card.deltaGood
+                                  ? 'var(--status-good)'
+                                  : 'var(--status-critical)',
+                          }}
+                        >
+                          {card.delta === 0
+                            ? 'No change'
+                            : `${card.delta > 0 ? '↗' : '↘'} ${Math.abs(card.delta).toFixed(1)}%`}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {card.series &&
+                  !loading &&
+                  (historyState !== 'ready' ? (
+                    <div
+                      role="status"
+                      className="mt-5 flex h-24 items-center justify-center text-xs text-muted-foreground"
+                    >
+                      {historyState === 'loading' ? 'Loading history…' : 'History unavailable'}
+                    </div>
+                  ) : points.length > 0 && points.some((point) => point.requests > 0) ? (
+                    <TimeChart
+                      data={points.map((point) => ({
+                        at: utcLabel(point.start),
+                        value:
+                          (card.series?.endsWith('_ms') || card.id === 'error_rate') &&
+                          point.requests === 0
+                            ? null
+                            : Number(point[card.series!] ?? 0),
+                      }))}
+                      x="at"
+                      series={{
+                        value: {
+                          label: card.label,
+                          color: card.id === 'errors' || card.id === 'error_rate' ? 'red' : 'blue',
+                        },
+                      }}
+                      compact
+                      className="mt-5 h-24"
+                    />
+                  ) : (
+                    <div className="mt-5 flex h-24 items-center justify-center rounded border border-dashed border-border text-xs text-muted-foreground">
+                      No requests in this window
+                    </div>
+                  ))}
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{card.caption}</p>
+              </>
+            )}
+          </SortableMetricCard>
         ))}
         {available.length > 0 && (showAddSlot || picking) && (
           <li className="min-h-36 rounded-xl border border-dashed border-border">
@@ -617,24 +554,61 @@ export function AnalyticsGrid({
             )}
           </li>
         )}
-      </ul>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <p id={moveHelpId}>
-          Drag a card or its handle to arrange. Click a card to explore, or use the handle’s arrow
-          keys to move it.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            commit(defaults);
-            onPicking(false);
-            announce('Default layout restored');
-          }}
-          className="pressable rounded underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Reset layout
-        </button>
-      </div>
+      </Reorder.Group>
+      <p id={moveHelpId} className="sr-only">
+        Drag a card to arrange. Click to explore. Use arrow keys or the options menu to move it.
+      </p>
     </div>
+  );
+}
+
+/** Motion owns pointer tracking and grid reflow, so the card stays under the hand. */
+function SortableMetricCard({
+  card,
+  reduce,
+  children,
+}: {
+  card: AnalyticsCardSpec;
+  reduce: boolean;
+  children: (start: (event: PointerEvent<HTMLButtonElement>) => void) => ReactNode;
+}) {
+  const controls = useDragControls();
+  const dragged = useRef(false);
+  return (
+    <Reorder.Item
+      as="li"
+      value={card.id}
+      tabIndex={-1}
+      data-metric-id={card.id}
+      dragListener={false}
+      dragControls={controls}
+      dragMomentum={false}
+      layout="position"
+      transition={
+        reduce ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 }
+      }
+      whileDrag={{ boxShadow: 'var(--elevation-3)', cursor: 'grabbing' }}
+      onPointerDownCapture={() => {
+        dragged.current = false;
+      }}
+      onDragStart={() => {
+        dragged.current = true;
+      }}
+      onClickCapture={(event) => {
+        // Even a drag that returns to its starting slot must not open details.
+        if (dragged.current && event.detail !== 0) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      className={cn(
+        'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand hover:border-border-secondary',
+        card.span === 2 && 'xl:col-span-2'
+      )}
+    >
+      {children((event) => {
+        if (event.button === 0) controls.start(event);
+      })}
+    </Reorder.Item>
   );
 }

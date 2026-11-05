@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AnalyticsGrid, chosenCards, type AnalyticsPoint } from './analytics-grid';
@@ -29,7 +29,7 @@ function Board({ onInspect }: { onInspect?: (id: string) => void }) {
 it('opens details by keyboard while keeping reordering and menus independent', async () => {
   const inspect = vi.fn();
   render(<Board onInspect={inspect} />);
-  screen.getByRole('button', { name: 'Move Requests' }).focus();
+  screen.getByRole('button', { name: 'View Requests details' }).focus();
   await userEvent.keyboard('{ArrowRight}');
   await userEvent.click(screen.getByRole('button', { name: 'Requests options' }));
   await userEvent.keyboard('{Escape}');
@@ -55,7 +55,7 @@ it('moves cards by keyboard and retains their order after remounting', async () 
   expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
 });
 
-it('adds, removes, and resets metrics through the visible controls', async () => {
+it('adds and removes metrics through the visible controls', async () => {
   render(<Board />);
   await userEvent.click(screen.getByRole('button', { name: 'Add a metric' }));
   await userEvent.click(screen.getByRole('button', { name: 'Latency p99' }));
@@ -63,7 +63,6 @@ it('adds, removes, and resets metrics through the visible controls', async () =>
   await userEvent.click(screen.getByRole('button', { name: 'Latency p99 options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
   expect(order()).not.toContain('p99');
-  await userEvent.click(screen.getByRole('button', { name: 'Reset layout' }));
   expect(order()).toEqual(['requests', 'errors', 'error_rate', 'p95', 'cold_boots']);
 });
 
@@ -113,39 +112,4 @@ it('uses the latest hour with requests for an hourly latency card', () => {
   );
   expect(cards[0].value).toBe('80 ms');
   expect(cards[0].caption).toBe('Latest hour with requests');
-});
-
-it('drags the chart surface without opening details and saves the new order', () => {
-  const inspect = vi.fn();
-  const view = render(<Board onInspect={inspect} />);
-  const chart = screen.getByRole('button', { name: 'View Requests details' });
-  expect(chart).toHaveAttribute('draggable', 'true');
-  const transfer = { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() };
-  fireEvent.dragStart(chart, { dataTransfer: transfer });
-  fireEvent.dragOver(screen.getByRole('button', { name: 'View Errors details' }));
-  fireEvent.drop(screen.getByRole('button', { name: 'View Errors details' }));
-  fireEvent.dragEnd(chart);
-  expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
-  expect(inspect).not.toHaveBeenCalled();
-  view.unmount();
-  render(<Board onInspect={inspect} />);
-  expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
-  fireEvent.click(screen.getByRole('button', { name: 'View Requests details' }));
-  expect(inspect).toHaveBeenCalledExactlyOnceWith('requests');
-});
-
-it('keeps a mouse handle drag active when native dragging cancels the pointer stream', () => {
-  render(<Board />);
-  const handle = screen.getByRole('button', { name: 'Move Requests' });
-  fireEvent.dragStart(handle, {
-    dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() },
-  });
-  const cancel = new Event('pointercancel', { bubbles: true });
-  Object.defineProperty(cancel, 'pointerType', { value: 'mouse' });
-  fireEvent(handle, cancel);
-  const target = screen.getByRole('button', { name: 'Move Errors' });
-  fireEvent.dragOver(target);
-  fireEvent.drop(target);
-  fireEvent.dragEnd(handle);
-  expect(order().slice(0, 2)).toEqual(['errors', 'requests']);
 });
