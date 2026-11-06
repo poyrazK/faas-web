@@ -201,7 +201,9 @@ function ScopedOnboarding({
         {
           source: draft.kind === 'git' ? 'git' : 'function',
           step: 'configure',
-          ...(draft.kind === 'git' ? { repo: draft.repo, ref: draft.ref } : {}),
+          ...(draft.kind === 'git'
+            ? { repo: draft.repo, ref: draft.ref, installation: draft.installation }
+            : {}),
         },
         { replace: true }
       );

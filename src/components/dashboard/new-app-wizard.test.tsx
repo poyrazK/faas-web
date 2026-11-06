@@ -1,3 +1,8 @@
+const accountConnections = vi.hoisted(() => ({
+  data: undefined as
+    undefined | { connections: { installation_id: number; github_login: string }[] },
+}));
+vi.mock('@/lib/api/github-accounts', () => ({ useGitHubAccounts: () => accountConnections }));
 import { useState, type ReactNode } from 'react';
 import type { NewAppSearch } from './new-app-source';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -167,6 +172,7 @@ async function submitGitApp(onDeploymentAccepted = vi.fn()) {
 }
 
 beforeEach(() => {
+  accountConnections.data = undefined;
   mocks.workspace = { org: null, label: 'Personal', ready: true };
   vi.clearAllMocks();
   mocks.account.id = 'account-1';
@@ -1515,4 +1521,22 @@ it('hands an onboarding monorepo to the existing project importer with the selec
     search: { source: 'import', slug: 'shop', branch: 'develop' },
   });
   expect(mocks.addWorkflow).not.toHaveBeenCalled();
+});
+
+it('requires an explicit installation when the account has several', async () => {
+  accountConnections.data = {
+    connections: [
+      { installation_id: 42, github_login: 'personal' },
+      { installation_id: 99, github_login: 'company' },
+    ],
+  };
+  const user = userEvent.setup();
+  render(<NewAppWizard onboarding />);
+  await user.type(screen.getByLabelText('Repository'), 'gregale/demo');
+  await user.click(screen.getByRole('button', { name: /continue/i }));
+  expect(screen.getByText('Choose a GitHub installation before continuing.')).toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText('GitHub installation'), '99');
+  expect(screen.getByLabelText('Repository')).toHaveValue('');
+  await user.type(screen.getByLabelText('Repository'), 'company/demo');
+  expect(screen.getByRole('button', { name: /continue/i })).not.toBeDisabled();
 });

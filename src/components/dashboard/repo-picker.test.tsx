@@ -6,6 +6,7 @@ import { RepoPicker } from './repo-picker';
 
 const mocks = vi.hoisted(() => ({
   refetch: vi.fn(),
+  installQuery: vi.fn(),
   error: null as Error | null,
   data: [] as { id: number; full_name: string; default_branch: string; private: boolean }[],
 }));
@@ -13,7 +14,10 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { id: 'owner', github_install_id: '42' } }),
 }));
 vi.mock('@/lib/api/queries', () => ({
-  useInstallRepos: () => ({ ...mocks, isPending: false, isFetching: false }),
+  useInstallRepos: (id: number | null, account: string) => {
+    mocks.installQuery(id, account);
+    return { ...mocks, isPending: false, isFetching: false };
+  },
 }));
 afterEach(() => {
   mocks.error = null;
@@ -280,4 +284,13 @@ describe('a repository carried in from a compatibility check', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/not listed in your GitHub installation/);
     expect(onAvailabilityChange).toHaveBeenLastCalledWith(false);
   });
+});
+
+it('loads repositories from the explicitly selected installation instead of the account default', () => {
+  render(<RepoPicker installationId={99} value="" onChange={vi.fn()} />);
+  expect(mocks.installQuery).toHaveBeenLastCalledWith(99, 'owner');
+});
+it('keeps repository loading unselected until the customer chooses an installation', () => {
+  render(<RepoPicker installationId={null} value="" onChange={vi.fn()} />);
+  expect(mocks.installQuery).toHaveBeenLastCalledWith(null, 'owner');
 });

@@ -10291,6 +10291,47 @@ const INSTALL_REPOS = [
   { id: 1003, full_name: 'acme-corp/webhook-router', default_branch: 'master', private: false },
   { id: 1004, full_name: 'acme-corp/nightly-etl', default_branch: 'main', private: true },
 ];
+route('GET', '/v1/install/connections', ({ res }) => {
+  res.setHeader(
+    'Set-Cookie',
+    `faas_csrf_github_account=${GITHUB_MANAGE_CSRF}; Path=/; HttpOnly; SameSite=Lax`
+  );
+  return {
+    connections: db.account.github_install_id
+      ? [
+          {
+            installation_id: Number(db.account.github_install_id),
+            github_login: 'acme',
+            health: 'healthy',
+            repository_count: INSTALL_REPOS.length,
+            last_verified_at: githubInstall.reconciledAt,
+          },
+        ]
+      : [],
+    csrf_token: GITHUB_MANAGE_CSRF,
+  };
+});
+route('POST', '/v1/install/connections/{installationID}/verify', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  requireGitHub();
+  if (params.installationID !== db.account.github_install_id)
+    throw new Problem(404, 'github_install_not_found');
+  return {
+    account_type: 'Organization',
+    repository_selection: 'selected',
+    permissions: { contents: 'read', checks: 'write', pull_requests: 'write' },
+    verified_at: new Date().toISOString(),
+    repository_count: INSTALL_REPOS.length,
+  };
+});
+route('DELETE', '/v1/install/connections/{installationID}', ({ params, body }) => {
+  requireGitHubManageCSRF(body);
+  if (params.installationID === db.account.github_install_id) {
+    db.account.github_install_id = null;
+    githubBindings.clear();
+  }
+  return NO_CONTENT;
+});
 route('POST', '/v1/install/repos/list', () => {
   requireGitHub();
   const seeded = [...INSTALL_REPOS];

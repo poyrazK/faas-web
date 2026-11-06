@@ -12,7 +12,7 @@ type CommonDraft = { app?: string; deployment?: string; name?: string; phase: Su
 export type OnboardingDraft = CommonDraft &
   (
     | { kind: 'sample'; starter: string }
-    | { kind: 'git'; repo: string; ref: string }
+    | { kind: 'git'; repo: string; ref: string; installation?: string }
     | { kind: 'existing'; app: string }
   );
 export interface OnboardingRecord {
@@ -68,7 +68,15 @@ export function validateOnboardingDraft(raw: unknown): OnboardingDraft | undefin
     /^[a-zA-Z0-9._/-]*$/.test(d.repo) &&
     bounded(d.ref, 200)
   )
-    return { ...common, kind: 'git', repo: d.repo, ref: d.ref };
+    return {
+      ...common,
+      kind: 'git',
+      repo: d.repo,
+      ref: d.ref,
+      ...(typeof d.installation === 'string' && /^[1-9][0-9]{0,14}$/.test(d.installation)
+        ? { installation: d.installation }
+        : {}),
+    };
 }
 export function readOnboarding(owner: OnboardingOwner): OnboardingRecord {
   const empty: OnboardingRecord = { version: 1, owner, dismissed: false };

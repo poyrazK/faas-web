@@ -72,6 +72,11 @@ const CHECK_STATUS: Record<CheckStatus, { label: string; color: string; icon: Ic
 /** apid's closed set of check codes (AppHealthCheck.code), in words. */
 const CHECK_NAMES: Record<Check['code'], string> = {
   workload: 'Workload',
+  queue: 'Queue',
+  memory: 'Memory',
+  replicas: 'Replicas',
+  backlog: 'Backlog',
+  dead_letters: 'Failed messages',
   deployment: 'Serving release',
   latest_deployment: 'Latest release',
   readiness: 'Readiness',

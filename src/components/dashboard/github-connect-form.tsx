@@ -68,9 +68,11 @@ export function GitHubConnectForm({
         {refresh ? 'Refresh GitHub connection' : 'Connect GitHub'}
       </Button>
       {error && (
-        <p role="alert" className="max-w-md text-sm text-destructive">
-          {error}
-        </p>
+        <div role="alert" className="max-w-md space-y-1 text-sm">
+          <p className="font-medium">GitHub connection could not start</p>
+          <p className="text-muted-foreground">{error}</p>
+          <p>Try Connect GitHub again after resolving the issue above.</p>
+        </div>
       )}
     </form>
   );

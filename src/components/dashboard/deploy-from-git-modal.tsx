@@ -156,7 +156,10 @@ export function DeployFromGitModal({
     setConflict(null);
   }
 
-  const installationId = account?.github_install_id ? Number(account.github_install_id) : 0;
+  const installationId =
+    bound?.installation_id ??
+    binding.data?.installation_id ??
+    ((binding.data?.installations?.length ?? 0) > 1 ? 0 : Number(account?.github_install_id) || 0);
   // Same query (and cache entry) as the picker's list.
   const installRepos = useInstallRepos(installationId || null, account?.id);
   const canBindAmbiguous =
@@ -494,6 +497,7 @@ export function DeployFromGitModal({
             Repository
           </label>
           <RepoPicker
+            installationId={installationId || null}
             id="deploy-git-repository"
             value={repo}
             unlistedNote={repo && repo === bound?.repo_full_name ? 'bound repository' : undefined}

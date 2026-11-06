@@ -6,6 +6,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { FUNCTION_STARTERS, languageOf, type FunctionLanguage } from '@/lib/function-starters';
 import { gzip, tarball } from '@/lib/tar';
+import { useGitHubAccounts } from '@/lib/api/github-accounts';
 import { RepoPicker } from '@/components/dashboard/repo-picker';
 import { GitHubConnectForm } from '@/components/dashboard/github-connect-form';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -74,7 +75,8 @@ import { cn } from '@/lib/utils';
 import { predictedAppUrl } from '@/lib/app-url';
 import { FirstDeploymentRecovery } from './first-deployment-recovery';
 
-type SourceField = 'source-git' | 'source-template' | 'repository' | 'ref' | 'handler';
+type SourceField =
+  'source-git' | 'source-template' | 'repository' | 'ref' | 'handler' | 'installation';
 
 /** The set `apid` accepts on `POST /v1/apps`; anything else is a 400. */
 const RUNTIMES: { id: Runtime; label: string }[] = [
@@ -179,6 +181,7 @@ function CreateAppWizard({
   const { toast } = useToast();
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
+  const connections = useGitHubAccounts();
   const workspace = useWorkspaceTarget();
   const privateCapability = useCapability('private-apps');
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
@@ -190,7 +193,17 @@ function CreateAppWizard({
   const [submittedSearch, setSubmittedSearch] = useState<NewAppSearch | null>(null);
   const search = submittedSearch ?? urlSearch ?? localSearch;
   const changeSearch = onSearchChange ?? setLocalSearch;
-  const githubConnected = Boolean(account?.github_install_id);
+  const availableInstalls = connections.data?.connections;
+  const installId = search.installation
+    ? Number(search.installation)
+    : availableInstalls
+      ? availableInstalls.length === 1
+        ? availableInstalls[0].installation_id
+        : null
+      : connections.isPending
+        ? null
+        : Number(account?.github_install_id) || null;
+  const githubConnected = Boolean(account?.github_install_id || availableInstalls?.length);
   // With GitHub connected the common path is already chosen; an explicit
   // source (or a template link) in the URL always wins.
   const source =
@@ -361,18 +374,34 @@ function CreateAppWizard({
   ): OnboardingDraft {
     const common = { phase, name, ...(app ? { app } : {}), ...(deployment ? { deployment } : {}) };
     return source === 'git'
-      ? { ...common, kind: 'git', repo: repo.trim(), ref: normalizedRef }
+      ? {
+          ...common,
+          kind: 'git',
+          repo: repo.trim(),
+          ref: normalizedRef,
+          installation: search.installation,
+        }
       : { ...common, kind: 'sample', starter: sampleVersion() };
   }
   useEffect(() => {
     if (quickstart && !createdId && !deploying) onDraftChange?.(onboardingDraft('preparing'));
     // The fields, rather than a new object each render, own draft persistence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickstart, name, repo, normalizedRef, source, createdId, deploying, onDraftChange]);
+  }, [
+    quickstart,
+    name,
+    repo,
+    normalizedRef,
+    source,
+    search.installation,
+    createdId,
+    deploying,
+    onDraftChange,
+  ]);
   const repoValid = isValidGitHubRepo(repo);
   const refValid = isValidGitRef(normalizedRef);
-  const gitSourceValid = source !== 'git' || (repoValid && refValid);
-  const installId = Number(account?.github_install_id) || null;
+  const gitSourceValid = source !== 'git' || (repoValid && refValid && Boolean(installId));
+
   const scanProjectSlug = appNameFromRepo(repo) || 'app';
   const scan = useSourceRefScan({
     repo: repo.trim(),
@@ -430,6 +459,7 @@ function CreateAppWizard({
   // Where a GitHub connection returns: this source, with this repository and ref.
   // A named source lands on its Setup, so `source=git` is all it needs.
   const gitReturn: NewAppSearch = {
+    installation: search.installation,
     source: 'git',
     ...(repo.trim() ? { repo: repo.trim(), ref: normalizedRef } : {}),
   };
@@ -443,6 +473,10 @@ function CreateAppWizard({
   // Each reason Continue cannot go on, keyed by the control that fixes it.
   // Source-level reasons focus the card the customer most likely meant.
   const sourceErrors: Partial<Record<SourceField, string>> = {
+    installation:
+      source === 'git' && githubConnected && !installId
+        ? 'Choose a GitHub installation before continuing.'
+        : undefined,
     'source-git': !source
       ? 'Choose where the code comes from to continue.'
       : source === 'git' && !githubConnected
@@ -557,7 +591,7 @@ function CreateAppWizard({
 
   async function submitGitSource(slug: string) {
     sourceRequested.current = false;
-    const installationId = Number(account?.github_install_id);
+    const installationId = installId ?? 0;
     if (!Number.isSafeInteger(installationId) || installationId <= 0) {
       throw new Error('Connect GitHub before deploying from a repository.');
     }
@@ -1121,7 +1155,41 @@ function CreateAppWizard({
                 Repository
               </label>
               <div className="rounded-xl border border-border bg-card">
+                {availableInstalls && availableInstalls.length > 1 && (
+                  <div className="p-4 border-b border-border">
+                    <label htmlFor={`${uid}-installation`} className="text-sm font-medium">
+                      GitHub installation
+                    </label>
+                    <Select
+                      id={`${uid}-installation`}
+                      name="installation"
+                      form={`${uid}-source-form`}
+                      {...fieldErrorProps(
+                        sourceShown ? sourceErrors.installation : undefined,
+                        `${uid}-installation-error`
+                      )}
+                      value={installId ?? ''}
+                      onChange={(event) => {
+                        changeSearch({ ...search, installation: event.target.value || undefined });
+                        setRepo('');
+                      }}
+                    >
+                      <option value="">Choose an installation</option>
+                      {availableInstalls.map((i) => (
+                        <option key={i.installation_id} value={i.installation_id}>
+                          {i.github_login} · {i.installation_id}
+                        </option>
+                      ))}
+                    </Select>
+                    {sourceShown && sourceErrors.installation && (
+                      <FieldError id={`${uid}-installation-error`}>
+                        {sourceErrors.installation}
+                      </FieldError>
+                    )}
+                  </div>
+                )}
                 <RepoPicker
+                  installationId={installId}
                   variant="list"
                   labelledBy={`${uid}-repository-label`}
                   id={`${uid}-repository`}
