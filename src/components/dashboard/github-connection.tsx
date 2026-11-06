@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { CheckCircle, Clock, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import {
 } from '@/lib/api/github-connection';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { formatRelative } from '@/lib/mock-data';
+import { githubDeployReason } from './github-deploy-reason';
+import { GitHubBindingEditor } from './github-binding-editor';
 import { GitHubBranchDeployments } from './github-branch-deployments';
 
 /**
@@ -92,6 +94,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function GitHubConnectionPanel({ slug }: { slug: string }) {
+  const [editing, setEditing] = useState(false);
   const connection = useGitHubConnection(slug);
   const sync = useSyncGitHub(slug);
   const disconnect = useDisconnectGitHub(slug);
@@ -207,12 +210,14 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
           status: item.status,
           sha: item.commit_sha,
           at: item.updated_at,
+          explanation: githubDeployReason(item.skip_reason),
         })),
         ...data.activity.check_updates.map((item) => ({
           kind: 'Check Run',
           status: item.status,
           sha: item.commit_sha,
           at: item.updated_at,
+          explanation: undefined,
         })),
       ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     : [];
@@ -226,6 +231,9 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
         actions={
           bound ? (
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => setEditing(true)}>
+                Change repository
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -250,6 +258,9 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
           ) : undefined
         }
       >
+        {editing && data && (
+          <GitHubBindingEditor slug={slug} current={data} onClose={() => setEditing(false)} />
+        )}
         {notShared ? (
           <p role="status" className="text-sm text-muted-foreground">
             GitHub connections are not shared through {workspace.label} yet: the API shows an app’s
@@ -276,9 +287,17 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
         ) : data.state === 'installed' ? (
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
             <p>
-              This app is not bound to a repository, so pushes do not deploy this app. Deploying
-              from a repository binds it, or bind it from the CLI:
+              This app is not bound to a repository, so pushes do not deploy this app. Choose a
+              repository here or bind it from the CLI:
             </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              onClick={() => setEditing(true)}
+            >
+              Bind repository
+            </Button>
             <code className="w-fit max-w-full overflow-x-auto rounded-md border border-border bg-muted px-2.5 py-1.5 font-mono text-xs text-foreground">
               gregale github link {slug} --repo OWNER/NAME
             </code>
@@ -371,11 +390,23 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
                           }`}
                         >
                           <Icon aria-hidden className="h-3 w-3" />
-                          {shown.label}
+                          {item.explanation ? 'Skipped' : shown.label}
                         </span>
                         <span className="ml-auto text-xs text-muted-foreground" title={item.at}>
                           {ago(item.at)}
                         </span>
+                        {item.explanation && (
+                          <p className="basis-full text-xs text-muted-foreground">
+                            {item.explanation}{' '}
+                            <Link
+                              to="/dashboard/settings"
+                              search={{ section: 'integrations' }}
+                              className="text-brand hover:underline"
+                            >
+                              Review GitHub access
+                            </Link>
+                          </p>
+                        )}
                       </li>
                     );
                   })}

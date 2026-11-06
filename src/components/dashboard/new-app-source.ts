@@ -39,6 +39,7 @@ export type AppSource =
   'git' | 'function' | 'container' | 'worker' | 'empty' | 'template' | 'import';
 export interface NewAppSearch {
   source?: AppSource;
+  installation?: string;
   template?: string;
   step?: 'source' | 'setup' | 'configure' | 'review';
   slug?: string;
@@ -60,6 +61,10 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
       search.source === 'template' ||
       search.source === 'import'
         ? search.source
+        : undefined,
+    installation:
+      typeof search.installation === 'string' && /^[1-9][0-9]{0,14}$/.test(search.installation)
+        ? search.installation
         : undefined,
     template: typeof search.template === 'string' ? search.template : undefined,
     step:
@@ -84,7 +89,16 @@ export function validateNewAppSearch(search: Record<string, unknown>): NewAppSea
 export function newAppPath(search: NewAppSearch, onboarding = false): string {
   const params: Record<string, string> = {};
   const validated = validateNewAppSearch(search as Record<string, unknown>);
-  for (const key of ['source', 'repo', 'ref', 'template', 'step', 'slug', 'branch'] as const) {
+  for (const key of [
+    'source',
+    'repo',
+    'ref',
+    'template',
+    'step',
+    'slug',
+    'branch',
+    'installation',
+  ] as const) {
     const value = validated[key];
     if (value) params[key] = value;
   }

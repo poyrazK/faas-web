@@ -36,6 +36,7 @@ type ControlProps = Pick<
 
 export function RepoPicker({
   value,
+  installationId,
   onChange,
   className,
   variant = 'select',
@@ -45,6 +46,7 @@ export function RepoPicker({
   ...control
 }: {
   value: string;
+  installationId?: number | null;
   onChange: (repo: string, defaultBranch?: string) => void;
   className?: string;
   variant?: 'select' | 'list';
@@ -59,7 +61,12 @@ export function RepoPicker({
   onAvailabilityChange?: (available: boolean) => void;
 } & ControlProps) {
   const { account } = useAuth();
-  const installId = account?.github_install_id ? Number(account.github_install_id) : null;
+  const installId =
+    installationId !== undefined
+      ? installationId
+      : account?.github_install_id
+        ? Number(account.github_install_id)
+        : null;
   const repos = useInstallRepos(installId, account?.id);
   const list = repos.data ?? [];
   // GitHub may report a repository's canonical casing; match it either way.

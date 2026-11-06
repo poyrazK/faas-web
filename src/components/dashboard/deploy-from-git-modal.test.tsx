@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   binding: null as null | {
     state: 'not_installed' | 'installed' | 'bound';
+    installation_id?: number;
     repo_full_name?: string;
     production_branch?: string;
   },
@@ -58,16 +59,19 @@ vi.mock('@/components/dashboard/repo-picker', () => ({
     value,
     onChange,
     unlistedNote,
+    installationId,
   }: {
     id?: string;
     value: string;
     onChange: (repo: string) => void;
     unlistedNote?: string;
+    installationId?: number | null;
   }) => (
     <input
       id={id}
       value={value}
       data-unlisted-note={unlistedNote}
+      data-installation={installationId}
       onChange={(e) => onChange(e.target.value)}
     />
   ),
@@ -502,4 +506,15 @@ describe('Deploy from Git', () => {
       );
     });
   });
+});
+
+it('uses the app’s bound installation instead of the account’s default installation', () => {
+  mocks.binding = {
+    state: 'bound',
+    installation_id: 99,
+    repo_full_name: 'company/api',
+    production_branch: 'main',
+  };
+  open();
+  expect(screen.getByLabelText('Repository')).toHaveAttribute('data-installation', '99');
 });

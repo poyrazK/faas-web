@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitHubConnectForm } from './github-connect-form';
 import { IntegrationSettings } from './integration-settings';
 
+vi.mock('./github-accounts', () => ({ GitHubAccounts: () => null }));
+
 const issueCSRF = vi.hoisted(() => vi.fn());
 const auth = vi.hoisted(() => ({
   account: {} as { github_install_id?: string },
@@ -129,11 +131,57 @@ describe('GitHub browser connection', () => {
       <IntegrationSettings search={{ github: 'connect-forbidden', section: 'integrations' }} />
     );
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'The GitHub connection request expired or could not be verified.'
+      'The connection request expired or its browser cookie is missing.'
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     await waitFor(() => expect(submissions).toHaveLength(1));
     expect(submissions[0].body.get('csrf_token')).toBe('settings-proof');
+  });
+
+  it.each([
+    ['github_access_denied', 'GitHub connection cancelled', 'approve repository access'],
+    ['csrf_missing', 'GitHub connection expired', 'browser cookie is missing'],
+    ['csrf_mismatch', 'GitHub connection could not be verified', 'Close older connection tabs'],
+    ['github_unreachable', 'GitHub connection could not finish', 'in a minute'],
+    [
+      'oauth_provider_unavailable',
+      'GitHub connections are temporarily unavailable',
+      'contact support',
+    ],
+    [
+      'github_account_conflict',
+      'GitHub deployment connection could not be saved',
+      'same GitHub account',
+    ],
+  ])('explains %s and offers a fresh connection', async (code, title, recovery) => {
+    issueCSRF.mockResolvedValue('recovery-proof');
+    render(
+      <IntegrationSettings
+        search={{ section: 'integrations', github: 'connect-failed', github_error: code }}
+      />
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(title);
+    expect(alert).toHaveTextContent(recovery);
+    expect(alert).toHaveTextContent(`Error code: ${code}`);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
+    await waitFor(() => expect(submissions).toHaveLength(1));
+    expect(submissions[0].body.get('csrf_token')).toBe('recovery-proof');
+  });
+
+  it('uses safe fallback copy for unknown callback errors', () => {
+    render(
+      <IntegrationSettings
+        search={{
+          section: 'integrations',
+          github: 'connect-failed',
+          github_error: '<script>provider secret</script>',
+        }}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Start Connect GitHub again.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('provider secret');
+    expect(screen.queryByText('Error code:')).not.toBeInTheDocument();
   });
 });

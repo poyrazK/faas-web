@@ -79,3 +79,17 @@ it.each([
 ])('rejects an invalid persisted descriptor', (draft) => {
   expect(validateOnboardingDraft(draft)).toBeUndefined();
 });
+
+it('restores the selected GitHub installation without accepting malformed installation IDs', () => {
+  const draft = {
+    kind: 'git',
+    repo: 'company/api',
+    ref: 'main',
+    phase: 'preparing',
+    installation: '99',
+  };
+  expect(validateOnboardingDraft(draft)).toMatchObject({ installation: '99' });
+  expect(validateOnboardingDraft({ ...draft, installation: 'private/error' })).not.toHaveProperty(
+    'installation'
+  );
+});

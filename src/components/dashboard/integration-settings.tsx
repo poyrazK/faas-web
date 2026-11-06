@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/dashboard/primitives';
 import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
+import { GitHubAccounts } from './github-accounts';
 import { GitHubConnectForm } from './github-connect-form';
+import { GitHubConnectError } from './github-connect-error';
 import type { SettingsSearch } from './settings-search';
 import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 
@@ -22,7 +24,7 @@ import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 export function IntegrationSettings({ search }: { search: SettingsSearch }) {
   const navigate = useNavigate();
   const { account, apiReachable } = useAuth();
-  const { github, default_branch } = search;
+  const { github, github_error, default_branch } = search;
   const githubConnected = Boolean(account?.github_install_id);
   const justConnected = github === 'connected' && githubConnected;
 
@@ -36,14 +38,10 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {github === 'connect-forbidden' && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          The GitHub connection request expired or could not be verified. Please try connecting
-          again.
-        </p>
+      {(github === 'connect-forbidden' || github === 'connect-failed') && (
+        <GitHubConnectError
+          code={github_error ?? (github === 'connect-forbidden' ? 'csrf_missing' : '')}
+        />
       )}
       {justConnected && (
         <div
@@ -77,6 +75,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
       >
         {githubConnected ? (
           <div className="flex flex-col gap-4">
+            <GitHubAccounts />
             <div className="flex flex-wrap gap-2">
               <GitHubConnectForm refresh disabled={!apiReachable} />
               <Button asChild size="sm" className="gap-1.5">
@@ -103,7 +102,8 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 <Github className="h-4 w-4" />
               </span>
               <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Connect GitHub to deploy from your repositories.
+                Connect GitHub to deploy from your repositories. You can use the same GitHub account
+                for deployments in other Gregale accounts. This does not change how you sign in.
               </p>
             </div>
             <GitHubConnectForm disabled={!apiReachable} />
