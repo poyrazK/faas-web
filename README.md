@@ -548,6 +548,25 @@ rim respond to interaction. Metric cards animate their position when rearranged.
 Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
 All of these respect reduced motion.
 
+Console microinteractions live in `components/dashboard/microinteractions.css`,
+loaded by the dashboard route and scoped to `.console`. Tabs and segments share
+an interruptible selection indicator; keyboard changes, wrapped-row changes and
+reduced-motion selection snap into place. Buttons give a small press response.
+Validation and disclosures reveal locally, and deployment stage icons transition
+only when their reported state changes. No page-wide content entrance is added.
+
+`SaveButton` takes an explicit `saved` acknowledgement; an ended request is never
+enough to show success. Runtime, release and retry settings use it after an accepted save, while
+runtime application remains separately verified. Copy uses the existing
+clipboard-confirmed icon morph. The Overview search's third-party beam is static
+under reduced motion, including when the preference changes while it is open.
+
+With `npm run dev:mock` running, `node scripts/microinteractions-tour.mjs` checks
+selection travel, keyboard focus, button press, saved-state width, disclosures,
+mobile alignment and live reduced motion. As with the other tours, Playwright
+is installed separately. `BASE_URL`, `PLAYWRIGHT_MODULE`,
+`CHROMIUM_EXECUTABLE_PATH` and optional `SHOTS` configure the browser run.
+
 `components/dashboard/motion.tsx` exports the one curve (`EASE`, mirrored in
 CSS as `--motion-ease` / `ease-console`) and `Swap`, a keyed block for content
 that is replaced. Everything honours `prefers-reduced-motion`.

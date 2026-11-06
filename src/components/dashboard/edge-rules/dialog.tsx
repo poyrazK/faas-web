@@ -748,7 +748,7 @@ export function EdgeRuleDialog({
             </>
           )}
           {(editing || advancedOpen) && (
-            <div id={advancedId} className="flex flex-col gap-5">
+            <div id={advancedId} className="console-disclosure-body flex flex-col gap-5">
               <section className="flex flex-col gap-4">
                 <p className="label-mono text-muted-foreground">Rule</p>
                 <div className="grid gap-4 sm:grid-cols-2">

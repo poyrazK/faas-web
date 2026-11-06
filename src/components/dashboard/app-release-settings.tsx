@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { SaveButton } from './save-button';
 import { FIELD, FieldError, fieldErrorProps } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -183,14 +183,15 @@ export function AppReleaseSettings({ app }: { app: App }) {
       title="Releases"
       help="Applies once an app serves traffic. First deploys, previews and named environments keep their own rollout."
       actions={
-        <Button
+        <SaveButton
+          saved={update.isSuccess && !dirty}
           size="sm"
           disabled={!dirty || blocked}
           busy={update.isPending}
           onClick={() => void save()}
         >
           Save release settings
-        </Button>
+        </SaveButton>
       }
     >
       <div className="flex flex-col gap-6">

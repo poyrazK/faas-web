@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { useSelectionIndicator } from './selection-indicator';
 
 /* ------------------------------------------------------------------ *
  * Two switchers, one rule.
@@ -23,7 +24,8 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 /** Class for one underline tab. For `Link`s and buttons alike. */
 export function tabClassName(active: boolean, className?: string) {
   return cn(
-    'pressable -mb-px whitespace-nowrap rounded-t-md border-b-2 px-3 py-1.5 text-sm',
+    'console-tab pressable -mb-px whitespace-nowrap rounded-t-md border-b-2 px-3 py-1.5 text-sm',
+    active && 'console-tab-current',
     FOCUS,
     active
       ? 'border-brand font-medium text-foreground'
@@ -42,8 +44,18 @@ export function TabNav({
   children: ReactNode;
   className?: string;
 }) {
+  const { setRoot, indicatorRef } = useSelectionIndicator('tab');
   return (
-    <nav aria-label={label} className={cn('flex flex-wrap border-b border-border', className)}>
+    <nav
+      ref={setRoot}
+      aria-label={label}
+      className={cn('console-selection-strip flex flex-wrap border-b border-border', className)}
+    >
+      <span
+        ref={indicatorRef}
+        aria-hidden
+        className="console-selection-indicator console-tab-indicator"
+      />
       {children}
     </nav>
   );
@@ -70,12 +82,19 @@ export function Tabs<T extends string>({
   className?: string;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const { setRoot, indicatorRef } = useSelectionIndicator('tab');
   return (
     <div
+      ref={setRoot}
       role="tablist"
       aria-label={label}
-      className={cn('flex flex-wrap border-b border-border', className)}
+      className={cn('console-selection-strip flex flex-wrap border-b border-border', className)}
     >
+      <span
+        ref={indicatorRef}
+        aria-hidden
+        className="console-selection-indicator console-tab-indicator"
+      />
       {options.map((option, index) => {
         const active = option.key === value;
         return (
@@ -123,7 +142,8 @@ function rovingIndex(key: string, index: number, length: number): number | null 
 /** Class for one segment. For `Link`s and buttons alike. */
 export function segmentClassName(active: boolean, className?: string) {
   return cn(
-    'pressable inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs disabled:opacity-50',
+    'console-segment pressable inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs disabled:opacity-50',
+    active && 'console-segment-current',
     FOCUS,
     active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
     className
@@ -143,12 +163,22 @@ export function SegmentGroup({
   className?: string;
 }) {
   const Frame = as;
+  const { setRoot, indicatorRef } = useSelectionIndicator('segment');
   return (
     <Frame
+      ref={setRoot}
       {...(as === 'div' ? { role: 'group' } : {})}
       aria-label={label}
-      className={cn('flex w-fit flex-wrap rounded-md border border-border p-0.5', className)}
+      className={cn(
+        'console-selection-strip flex w-fit flex-wrap rounded-md border border-border p-0.5',
+        className
+      )}
     >
+      <span
+        ref={indicatorRef}
+        aria-hidden
+        className="console-selection-indicator console-segment-indicator"
+      />
       {children}
     </Frame>
   );

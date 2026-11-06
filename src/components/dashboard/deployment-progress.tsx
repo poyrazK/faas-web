@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useConsoleReducedMotion } from './use-console-reduced-motion';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Check, NavArrowDown, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -77,6 +79,7 @@ export function DeploymentProgress({
   appSlug?: string;
   accountId?: string;
 }) {
+  const reduce = useConsoleReducedMotion();
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
   const statusQuery = useDeployment(
@@ -237,15 +240,33 @@ export function DeploymentProgress({
                   aria-current={state === 'current' ? 'step' : undefined}
                   className="flex items-center gap-2 text-[13px]"
                 >
-                  {i > 0 && <span aria-hidden className="h-px w-5 bg-border" />}
-                  <span aria-hidden className="flex h-4 w-4 items-center justify-center">
-                    {state === 'done' ? (
-                      <Check className="h-4 w-4 text-brand" />
-                    ) : state === 'current' ? (
-                      <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
-                    ) : (
-                      <span className="h-1.5 w-1.5 rounded-full bg-border-secondary" />
-                    )}
+                  {i > 0 && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'console-deploy-connector h-px w-5',
+                        state === 'upcoming' ? 'bg-border' : 'bg-brand/60'
+                      )}
+                    />
+                  )}
+                  <span aria-hidden className="relative flex h-4 w-4 items-center justify-center">
+                    <AnimatePresence initial={false}>
+                      <motion.span
+                        key={state}
+                        initial={reduce ? false : { opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: reduce ? 0 : 0.18 }}
+                        className="flex items-center justify-center"
+                      >
+                        {state === 'done' ? (
+                          <Check className="h-4 w-4 text-brand" />
+                        ) : state === 'current' ? (
+                          <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-border-secondary" />
+                        )}
+                      </motion.span>
+                    </AnimatePresence>
                   </span>
                   <span
                     className={cn(

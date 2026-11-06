@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 
 /**
- * The console's motion vocabulary, now down to what is functional: dialogs,
- * drawers, toasts and menus moving in and out. Content does not animate.
+ * The console's motion vocabulary: overlays and local feedback for an action,
+ * selection or reported state change. Data pages still arrive in place.
  */
 
 /** The console curve. Mirrored in CSS as `--motion-ease` / `ease-console`

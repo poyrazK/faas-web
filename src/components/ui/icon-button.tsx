@@ -15,7 +15,7 @@ export function IconButton({
           type="button"
           {...props}
           className={cn(
-            'inline-flex min-h-8 min-w-8 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+            'console-icon-action inline-flex min-h-8 min-w-8 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
             className
           )}
         >

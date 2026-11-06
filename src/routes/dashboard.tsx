@@ -1,4 +1,5 @@
 import { MetricInspectorProvider } from '@/components/dashboard/metric-inspector';
+import '@/components/dashboard/microinteractions.css';
 import { validateMetricDetailSearch } from '@/components/dashboard/metric-detail-search';
 import { featureFlags } from '@/lib/feature-flags';
 import { useEffect } from 'react';

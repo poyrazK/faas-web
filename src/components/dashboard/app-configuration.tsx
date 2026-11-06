@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { SaveButton } from './save-button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD as BASE_FIELD, FieldError } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
@@ -295,14 +296,15 @@ function ConfigForm({ app }: { app: App }) {
             >
               Preview
             </Button>
-            <Button
+            <SaveButton
+              saved={Boolean(savedEffects) && !dirty}
               size="sm"
               disabled={!dirty || memoryBlocked}
               busy={update.isPending || operation.busy}
               onClick={save}
             >
               Save changes
-            </Button>
+            </SaveButton>
           </>
         }
       >
