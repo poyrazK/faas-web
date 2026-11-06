@@ -10782,6 +10782,7 @@ const MOCK_CSRF_ACTIONS = new Set([
   'mfa_confirm',
   'mfa_recover',
   'mfa_disable',
+  'mfa_disable_email',
   'set_password',
   'connect_github',
   'bind_app_to_repo',
@@ -10813,6 +10814,7 @@ const mockAuth = {
   // with 403 mfa_required until /verify or /recover clears the session.
   sessionPending: process.env.MOCK_MFA === 'pending',
   steppedUpAt: 0,
+  recoveryCodes: new Set(Array.from({ length: 10 }, (_, index) => `MOCKRECOV${index}`)),
 };
 const STEP_UP_TTL_MS = 5 * 60_000;
 
@@ -10830,33 +10832,74 @@ route('POST', '/v1/account/mfa/verify', ({ body }) => {
   mockAuth.sessionPending = false;
   return { account_id: db.ACCOUNT_ID, mfa_pending: false };
 });
-route('POST', '/v1/account/mfa/enroll', () => ({
-  otpauth_url: 'otpauth://totp/Gregale:design@gregale.dev?secret=JBSWY3DPEHPK3PXP&issuer=Gregale',
-  secret: 'JBSWY3DPEHPK3PXP',
-  qr_code_png_base64:
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  recovery_codes: [
-    'MOCKRECOV1',
-    'MOCKRECOV2',
-    'MOCKRECOV3',
-    'MOCKRECOV4',
-    'MOCKRECOV5',
-    'MOCKRECOV6',
-    'MOCKRECOV7',
-    'MOCKRECOV8',
-    'MOCKRECOV9',
-    'MOCKRECOV0',
-  ],
-}));
+route('POST', '/v1/account/mfa/enroll', () => {
+  if (mockAuth.mfaEnrolled)
+    throw new Problem(409, 'conflict', 'An authenticator is already enrolled.');
+  mockAuth.recoveryCodes = new Set(Array.from({ length: 10 }, (_, index) => `MOCKRECOV${index}`));
+  return {
+    otpauth_url: 'otpauth://totp/Gregale:design@gregale.dev?secret=JBSWY3DPEHPK3PXP&issuer=Gregale',
+    secret: 'JBSWY3DPEHPK3PXP',
+    qr_code_png_base64:
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    recovery_codes: [
+      'MOCKRECOV1',
+      'MOCKRECOV2',
+      'MOCKRECOV3',
+      'MOCKRECOV4',
+      'MOCKRECOV5',
+      'MOCKRECOV6',
+      'MOCKRECOV7',
+      'MOCKRECOV8',
+      'MOCKRECOV9',
+      'MOCKRECOV0',
+    ],
+  };
+});
 route('POST', '/v1/account/mfa/confirm', ({ body }) => {
+  if (mockAuth.password !== null && body.current_password !== mockAuth.password)
+    throw new Problem(401, 'invalid_credentials', 'Enter your current password to finish setup.');
   if (!/^\d{6}$/.test(String(body.totp ?? '')))
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.mfaEnrolled = true;
-  mockAuth.mfaRequired = false;
   mockAuth.sessionPending = false;
   mockAuth.steppedUpAt = Date.now();
   return {};
 });
+route('POST', '/v1/account/mfa/recover', ({ body }) => {
+  if (!mockAuth.mfaEnrolled)
+    throw new Problem(403, 'mfa_required', 'Finish setting up your authenticator first.');
+  const code = String(body.code ?? '')
+    .trim()
+    .toUpperCase();
+  if (!mockAuth.recoveryCodes.has(code))
+    throw new Problem(401, 'mfa_invalid_code', 'No matching recovery code.');
+  if (mockAuth.recoveryCodes.size === 1)
+    throw new Problem(409, 'mfa_last_recovery_code', 'Reset your authenticator with this code.');
+  mockAuth.recoveryCodes.delete(code);
+  mockAuth.sessionPending = false;
+  mockAuth.steppedUpAt = Date.now();
+  return {};
+});
+route('POST', '/v1/account/mfa/disable', ({ body }) => {
+  const code = String(body.recovery_code ?? '')
+    .trim()
+    .toUpperCase();
+  const password = typeof body.password === 'string' && body.password.length > 0;
+  if (Boolean(code) === password)
+    throw new Problem(400, 'validation_failed', 'Use one recovery code or your password.');
+  if (
+    code
+      ? !mockAuth.recoveryCodes.has(code)
+      : mockAuth.sessionPending || body.password !== mockAuth.password
+  )
+    throw new Problem(401, 'invalid_credentials', 'The recovery code or password did not match.');
+  mockAuth.recoveryCodes.clear();
+  mockAuth.mfaEnrolled = false;
+  mockAuth.sessionPending = mockAuth.mfaRequired;
+  mockAuth.steppedUpAt = 0;
+  return {};
+});
+route('POST', '/v1/account/mfa/disable-email', () => ({}));
 route('POST', '/dashboard/account/set-password', ({ body, res }) => {
   if (body.csrf_token !== 'mock-csrf')
     throw new Problem(400, 'validation_failed', 'Invalid CSRF token');
@@ -10927,7 +10970,7 @@ function deployTokenRows(a: db.App): DeployTokenRow[] {
 function requireMintStepUp() {
   if (mockAuth.mfaRequired && !mockAuth.mfaEnrolled)
     throw new Problem(403, 'mfa_required', 'enable two-factor authentication to continue');
-  if (Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS)
+  if (mockAuth.mfaEnrolled && Date.now() - mockAuth.steppedUpAt >= STEP_UP_TTL_MS)
     throw new Problem(
       403,
       'step_up_required',

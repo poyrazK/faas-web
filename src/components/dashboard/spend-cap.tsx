@@ -1,4 +1,5 @@
 import { useMfa } from '@/components/auth/mfa-provider';
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
@@ -144,12 +145,15 @@ export function SpendCapEditor({
 
 function PersonalCapEditor({ initialCents }: { initialCents: number | null }) {
   const mutation = useSetOverageCap();
+  const withMfa = useMfaAction();
   return (
     <CapForm
       initialCents={initialCents}
       pending={mutation.isPending}
       subject="Spend cap"
-      write={async (value) => void (await mutation.mutateAsync(value))}
+      write={async (value) =>
+        void (await withMfa(() => mutation.mutateAsync(value), 'Verify to change your spend cap.'))
+      }
       describe={errorMessage}
     />
   );
@@ -172,10 +176,10 @@ function OrgCapEditor({
   const mutation = useSetOrgOverageCap(org);
   const { openMfa } = useMfa();
 
-  const stepUp = (code: StepUpCode) =>
+  const stepUp = (_code: StepUpCode) =>
     new Promise<boolean>((resolve) =>
       // Enrolment also stamps the session, so both resolve the same way.
-      openMfa(code === 'mfa_required' ? 'choose' : 'verify', {
+      openMfa('choose', {
         onVerified: () => resolve(true),
         onDismissed: () => resolve(false),
       })

@@ -1,3 +1,4 @@
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { useState } from 'react';
 import { Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,7 @@ import { useAuth } from '@/lib/auth';
  * Organization identity, seats and ownership. Shared keys have their own scope.
  */
 export function OrgPanel({ slug }: { slug: string }) {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const confirm = useConfirm();
   const org = useOrg(slug);
@@ -163,8 +165,10 @@ export function OrgPanel({ slug }: { slug: string }) {
                   }))
                 )
                   return;
-                void transfer
-                  .mutateAsync(newOwner)
+                void withMfa(
+                  () => transfer.mutateAsync(newOwner),
+                  'Verify to transfer organization ownership.'
+                )
                   .then(() => {
                     setNewOwner('');
                     toast({ kind: 'success', title: 'Ownership transferred' });
@@ -197,6 +201,7 @@ export function OrgKeysPanel({ slug, canManage = true }: { slug: string; canMana
 }
 
 function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const confirm = useConfirm();
   const keys = useOrgKeys(slug);
@@ -273,8 +278,14 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                 )
                   return;
                 const receive = evidence.capture();
-                void create
-                  .mutateAsync({ label: label.trim(), scopes: ['deploy:write', 'apps:read'] })
+                void withMfa(
+                  () =>
+                    create.mutateAsync({
+                      label: label.trim(),
+                      scopes: ['deploy:write', 'apps:read'],
+                    }),
+                  'Verify to create an organization key.'
+                )
                   .then((key) => {
                     if (receive(key.plaintext ?? null)) {
                       setLabel('');
@@ -385,8 +396,10 @@ function OrgKeysBody({ slug, canManage }: { slug: string; canManage: boolean }) 
                           )
                             return;
                           const receive = evidence.capture(() => origin.focus());
-                          void rotate
-                            .mutateAsync(k.id)
+                          void withMfa(
+                            () => rotate.mutateAsync(k.id),
+                            'Verify to rotate this organization key.'
+                          )
                             .then((r) => {
                               receive(r.key_plaintext ?? null);
                               toast({ kind: 'success', title: 'Key rotated' });

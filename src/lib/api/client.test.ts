@@ -90,4 +90,26 @@ describe('a 401 that is not about the session', () => {
     await api.GET('/v1/account');
     expect(signOut).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the session when an MFA code is wrong', async () => {
+    const { api } = await clientWith(
+      answer(401, { code: 'mfa_invalid_code', status: 401, title: 'Wrong code' })
+    );
+    const { setUnauthorizedHandler } = await import('./client');
+    const signOut = vi.fn();
+    setUnauthorizedHandler(signOut);
+    await api.POST('/v1/account/mfa/verify', { body: { totp: '000000' } });
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('still signs out when the session expires during MFA verification', async () => {
+    const { api } = await clientWith(
+      answer(401, { code: 'session_expired', status: 401, title: 'Sign in again' })
+    );
+    const { setUnauthorizedHandler } = await import('./client');
+    const signOut = vi.fn();
+    setUnauthorizedHandler(signOut);
+    await api.POST('/v1/account/mfa/verify', { body: { totp: '123456' } });
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
 });
