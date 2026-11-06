@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { BorderBeam } from 'border-beam';
+import { useConsoleReducedMotion } from './use-console-reduced-motion';
 import { GitBranch, Plus, Search, Upload } from 'iconoir-react';
 import { Kbd } from '@/components/ui/kbd';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
@@ -31,6 +32,7 @@ interface Item {
 }
 
 export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
+  const reduce = useConsoleReducedMotion();
   const navigate = useNavigate();
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -124,12 +126,14 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
   return (
     <div
       ref={rootRef}
-      className="relative w-full"
+      className="console-overview-search relative w-full"
       onBlur={(e) => {
         if (!rootRef.current?.contains(e.relatedTarget as Node | null)) close();
       }}
     >
       <BorderBeam
+        active={!reduce}
+        staticColors={Boolean(reduce)}
         size="md"
         colorVariant="ocean"
         theme="dark"
@@ -149,7 +153,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
           }}
           className="glass relative flex h-11 w-full cursor-text items-center gap-3 overflow-hidden rounded-xl border border-border px-4 shadow-elevation-1 focus-within:border-border-secondary"
         >
-          <PointerGlow />
+          {!reduce && <PointerGlow />}
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -199,6 +203,8 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
         // instrument — but at a crawl: the list is where reading happens,
         // and a fast orbit around prose is a distraction, not a light.
         <BorderBeam
+          active={!reduce}
+          staticColors={Boolean(reduce)}
           size="md"
           colorVariant="ocean"
           theme="dark"

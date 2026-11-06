@@ -30,7 +30,7 @@ export function Select({ className, ...props }: React.ComponentProps<'select'>) 
  */
 export function FieldError({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <p id={id} className="text-xs" style={{ color: 'var(--status-critical)' }}>
+    <p id={id} className="console-field-error text-xs" style={{ color: 'var(--status-critical)' }}>
       {children}
     </p>
   );

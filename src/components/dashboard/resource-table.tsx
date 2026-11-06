@@ -1,5 +1,5 @@
 import { useContext, useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Search, Xmark } from 'iconoir-react';
+import { ArrowDown, ArrowUp, NavArrowDown, Search, Xmark } from 'iconoir-react';
 import {
   EmptyState,
   ErrorState,
@@ -401,7 +401,7 @@ export function ResourceTable<T extends { id: string }>({
                                 onKeyDown={(event) => event.stopPropagation()}
                               >
                                 <summary
-                                  className="cursor-pointer text-xs text-muted-foreground underline underline-offset-4"
+                                  className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground underline underline-offset-4 [&::-webkit-details-marker]:hidden"
                                   onClick={(event) => {
                                     event.preventDefault();
                                     setExpandedRows((previous) => {
@@ -417,6 +417,13 @@ export function ResourceTable<T extends { id: string }>({
                                     {row[col.key] !== row.id && ` (${row.id})`}
                                   </span>
                                   <span aria-hidden>Details</span>
+                                  <NavArrowDown
+                                    aria-hidden
+                                    className={cn(
+                                      'size-3 motion-reduce:transition-none',
+                                      expandedRows.has(row.id) && 'rotate-180'
+                                    )}
+                                  />
                                 </summary>
                                 {expandedRows.has(row.id) && (
                                   <dl className="mt-3 space-y-2 text-left text-xs">

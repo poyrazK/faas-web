@@ -17,6 +17,9 @@ import {
 import { Pill, ResourceTable, type Column } from '../resource-table';
 import { SegmentedControl, Tabs } from '../tabs';
 import { Button } from '@/components/ui/button';
+import { SaveButton } from '../save-button';
+import { CopyIconButton } from '@/components/ui/copy-button';
+import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/field';
 import { ApiError } from '@/lib/api/errors';
@@ -89,6 +92,7 @@ export default function Gallery() {
   const [tab, setTab] = useState<'one' | 'two' | 'three'>('one');
   const [range, setRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [sheet, setSheet] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   return (
     <div className="flex flex-col gap-8">
@@ -200,6 +204,27 @@ export default function Gallery() {
       </Section>
 
       <Section title="Controls">
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveButton saved={saved} onClick={() => setSaved(true)}>
+            Save changes
+          </SaveButton>
+          <Button variant="ghost" onClick={() => setSaved(false)}>
+            Reset acknowledgement
+          </Button>
+          <CopyIconButton text="gregale apps list" label="example command" />
+        </div>
+        <FormField
+          id="kit-validation"
+          label="Validated name"
+          error="Choose a name."
+          showError={!saved}
+        >
+          {(props) => <Input {...props} className="max-w-xs" />}
+        </FormField>
+        <details>
+          <summary className="cursor-pointer text-sm">Optional settings</summary>
+          <p className="mt-2 text-sm text-muted-foreground">Disclosure feedback sample.</p>
+        </details>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm">Primary</Button>
           <Button size="sm" variant="outline">
