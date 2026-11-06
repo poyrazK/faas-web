@@ -1,3 +1,4 @@
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { useMemo, useState } from 'react';
 import { Plus, Refresh, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -153,6 +154,7 @@ export function PersonalKeysBody({
   onCloseKey?: () => void;
   onSelectKey?: (id: string) => void;
 } = {}) {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useApiKeys();
@@ -253,8 +255,7 @@ export function PersonalKeysBody({
               )
                 return;
               const receive = evidence.capture(() => origin.focus());
-              void rotateKey
-                .mutateAsync(k.id)
+              void withMfa(() => rotateKey.mutateAsync(k.id), 'Verify to rotate this API key.')
                 .then((result) => {
                   receive(result.key_plaintext);
                   toast({
@@ -363,8 +364,10 @@ export function PersonalKeysBody({
                 )
                   return;
                 const receive = evidence.capture();
-                void createKey
-                  .mutateAsync({ label: label.trim() || undefined, scopes })
+                void withMfa(
+                  () => createKey.mutateAsync({ label: label.trim() || undefined, scopes }),
+                  'Verify to create an API key.'
+                )
                   .then((result) => {
                     // `plaintext` on create; the rotate response calls the same
                     // thing `key_plaintext`. Both are the only copy that exists.

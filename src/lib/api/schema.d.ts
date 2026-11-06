@@ -83314,10 +83314,15 @@ export interface components {
              */
             recovery_codes: string[];
         };
-        /** @description Body for /confirm — a single 6-digit TOTP code. */
+        /** @description Body for /confirm — a TOTP code and the existing password, if set. */
         MFAConfirmRequest: {
             /** @description 6-digit rotating code from the authenticator app. */
             totp: string;
+            /**
+             * Format: password
+             * @description Required when the account already has a password; authorizes the new factor.
+             */
+            current_password?: string;
             /**
              * @description Dashboard CSRF token. The dashboard sets a
              *     `faas_csrf` cookie on every authenticated response; the
@@ -83365,7 +83370,9 @@ export interface components {
         /**
          * @description Empty success body. Side effects: the matching hash is
          *     removed from `mfa_recovery_codes_hash`; the session cookie
-         *     is re-issued without `mfa_pending`.
+         *     is re-issued without `mfa_pending` and with recent MFA verification.
+         *     The last remaining code returns `mfa_last_recovery_code`; use it
+         *     to reset the authenticator instead, then enroll a replacement.
          */
         MFARecoverResponse: Record<string, never>;
         /**
@@ -83385,7 +83392,8 @@ export interface components {
          * @description Empty success body. Side effects: mfa_secret_encrypted,
          *     mfa_recovery_codes_hash, and mfa_enrolled_at are all NULL.
          *     mfa_required is left as-is so an explicit policy remains in
-         *     force after disable.
+         *     force after disable. The browser cookie is refreshed with the
+         *     current enrollment requirement and its recent-verification stamp cleared.
          */
         MFADisableResponse: Record<string, never>;
         /** @description Body for requesting email-assisted MFA disable. */

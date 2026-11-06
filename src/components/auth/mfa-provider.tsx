@@ -15,22 +15,21 @@ import { CopyMorph, useCopy } from '@/components/ui/copy-button';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
   confirmMfa,
+  disableMfa,
   enrollMfa,
   recoverMfa,
+  requestMfaRecoveryEmail,
   verifyMfa,
   type MFAEnrollment,
 } from '@/lib/api/queries';
 import { setMfaRequiredHandler } from '@/lib/api/client';
 import { useQueryClient } from '@tanstack/react-query';
 
-type MfaMode = 'choose' | 'confirm' | 'verify' | 'recover';
+type MfaMode = 'choose' | 'confirm' | 'verify' | 'recover' | 'email-recovery';
 
 /**
- * How the session got through. Only an authenticator code (`/mfa/verify`)
- * stamps a step-up on the cookie; finishing enrolment (`/mfa/confirm`) and a
- * recovery code (`/mfa/recover`) re-issue it without one
- * (handlers_mfa.go: mfaConfirm, mfaVerify, mfaRecover), so a caller waiting on
- * a step-up gate must tell them apart.
+ * Enrollment, an authenticator code and a saved recovery code all establish
+ * recent MFA. Callers can report the method without demanding another code.
  */
 export type MfaMethod = 'authenticator' | 'recovery' | 'enrolment';
 
@@ -42,9 +41,7 @@ interface MfaOpenOptions {
   /** The modal closed without success. */
   onDismissed?: () => void;
   /**
-   * Whether to offer a recovery code. Defaults to true. A step-up gate that
-   * only an authenticator code satisfies (`/mfa/recover` never stamps one)
-   * passes false rather than offer a path it will always refuse.
+   * Whether to offer recovery choices. Defaults to true.
    */
   allowRecovery?: boolean;
 }
@@ -79,6 +76,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<MfaMode>('choose');
   const [enrollment, setEnrollment] = useState<MFAEnrollment | null>(null);
   const [code, setCode] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [lastRecoveryCode, setLastRecoveryCode] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [required, setRequired] = useState(false);
@@ -93,6 +93,9 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const resetTransient = useCallback(() => {
     setEnrollment(null);
     setCode('');
+    setCurrentPassword('');
+    setLastRecoveryCode(false);
+    setEmailSent(false);
     setError(null);
   }, []);
 
@@ -215,9 +218,15 @@ export function MfaProvider({ children }: { children: ReactNode }) {
 
       setBusy(true);
       try {
+        if (mode === 'email-recovery') {
+          await requestMfaRecoveryEmail();
+          setEmailSent(true);
+          setBusy(false);
+          return;
+        }
         let via: MfaMethod = 'authenticator';
         if (mode === 'confirm') {
-          await confirmMfa(code);
+          await confirmMfa(code, currentPassword || undefined);
           via = 'enrolment';
         } else if (mode === 'verify') await verifyMfa(code);
         else if (mode === 'recover') {
@@ -226,11 +235,16 @@ export function MfaProvider({ children }: { children: ReactNode }) {
         }
         await complete(via);
       } catch (err: unknown) {
-        setError(errorMessage(err));
+        setLastRecoveryCode(err instanceof ApiError && err.code === 'mfa_last_recovery_code');
+        setError(
+          mode === 'confirm' && err instanceof ApiError && err.code === 'invalid_credentials'
+            ? 'Enter your current password to finish authenticator setup.'
+            : errorMessage(err)
+        );
         setBusy(false);
       }
     },
-    [code, complete, mode]
+    [code, complete, currentPassword, mode]
   );
 
   const context = useMemo(() => ({ openMfa }), [openMfa]);
@@ -251,15 +265,19 @@ export function MfaProvider({ children }: { children: ReactNode }) {
             : 'Multi-factor authentication'
         }
         description={
-          mode === 'choose'
-            ? required
-              ? 'This session needs MFA before the dashboard can load.'
-              : reason
-                ? 'This action needs a recent code from your authenticator app.'
-                : 'MFA is optional. Set it up when you want extra protection for your account.'
-            : allowRecovery
-              ? 'Use an authenticator app or a saved recovery code to continue.'
-              : 'Use your authenticator app to continue.'
+          mode === 'email-recovery'
+            ? 'Receive a recovery link at your account email.'
+            : mode === 'confirm'
+              ? 'Confirm your new authenticator and save your recovery codes.'
+              : mode === 'choose'
+                ? required
+                  ? 'This session needs MFA before the dashboard can load.'
+                  : reason
+                    ? 'This action needs a recent code from your authenticator app.'
+                    : 'MFA is optional. Set it up when you want extra protection for your account.'
+                : allowRecovery
+                  ? 'Use an authenticator app or a saved recovery code to continue.'
+                  : 'Use your authenticator app to continue.'
         }
         width="max-w-lg"
       >
@@ -339,6 +357,8 @@ export function MfaProvider({ children }: { children: ReactNode }) {
               error={error}
               submitLabel="Confirm MFA"
               hint="Enter the current six-digit code."
+              currentPassword={currentPassword}
+              onPasswordChange={setCurrentPassword}
             />
           </div>
         )}
@@ -383,13 +403,39 @@ export function MfaProvider({ children }: { children: ReactNode }) {
               <input
                 id="mfa-recovery-code"
                 value={code}
-                onChange={(event) => setCode(event.target.value.toUpperCase())}
+                onChange={(event) => {
+                  setLastRecoveryCode(false);
+                  setCode(event.target.value.toUpperCase());
+                }}
                 autoComplete="one-time-code"
                 autoFocus
                 spellCheck={false}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono text-sm uppercase outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               />
               {error && <InlineError message={error} />}
+              {lastRecoveryCode && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    void disableMfa({ recovery_code: code.trim().toUpperCase() })
+                      .then(() => {
+                        setCode('');
+                        setLastRecoveryCode(false);
+                        setMode('choose');
+                        return startEnrollment();
+                      })
+                      .catch((err: unknown) => {
+                        setError(errorMessage(err));
+                        setBusy(false);
+                      });
+                  }}
+                >
+                  Reset authenticator with this code
+                </Button>
+              )}
               <div className="flex justify-end gap-2 pt-1">
                 <Button
                   type="button"
@@ -409,6 +455,36 @@ export function MfaProvider({ children }: { children: ReactNode }) {
             </form>
           </div>
         )}
+        {mode === 'email-recovery' && (
+          <form onSubmit={submit} className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Request an email to reset your authenticator. The link can be confirmed after a
+              24-hour waiting period. Signing in again will be required after the reset.
+            </p>
+            {emailSent ? (
+              <p role="status" className="text-sm">
+                Check your email for the recovery link and its confirmation time.
+              </p>
+            ) : (
+              <Button type="submit" disabled={busy}>
+                Send recovery email
+              </Button>
+            )}
+            {error && <InlineError message={error} />}
+          </form>
+        )}
+        {allowRecovery && mode !== 'confirm' && mode !== 'email-recovery' && (
+          <div className="mt-4">
+            <SwitchMode
+              onClick={() => {
+                setError(null);
+                setMode('email-recovery');
+              }}
+            >
+              Recover by email
+            </SwitchMode>
+          </div>
+        )}
       </Modal>
     </MfaContext.Provider>
   );
@@ -422,6 +498,8 @@ function MfaForm({
   error,
   submitLabel,
   hint,
+  currentPassword,
+  onPasswordChange,
 }: {
   code: string;
   onCodeChange: (value: string) => void;
@@ -430,9 +508,30 @@ function MfaForm({
   error: string | null;
   submitLabel: string;
   hint: string;
+  currentPassword?: string;
+  onPasswordChange?: (password: string) => void;
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-3">
+      {onPasswordChange && (
+        <div className="space-y-2">
+          <label htmlFor="mfa-current-password" className="label-mono text-muted-foreground">
+            Current password
+          </label>
+          <input
+            id="mfa-current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(event) => onPasswordChange(event.target.value)}
+            autoComplete="current-password"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Required if you sign in with a password. Leave empty if you use a sign-in provider or
+            email link only.
+          </p>
+        </div>
+      )}
       <label htmlFor="mfa-totp" className="label-mono text-muted-foreground">
         Authenticator code
       </label>

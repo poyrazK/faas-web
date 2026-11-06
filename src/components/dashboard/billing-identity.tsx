@@ -128,10 +128,10 @@ function BillingIdentityForm({ saved, onDone }: { saved: Draft; onDone: () => vo
     FIELDS.map(({ name, label }) => [name, limitError(name, label, draft[name])])
   ) as Record<BillingIdentityField, string | undefined>;
 
-  const stepUp = (code: 'step_up_required' | 'mfa_required') =>
+  const stepUp = (_code: 'step_up_required' | 'mfa_required') =>
     new Promise<boolean>((resolve) =>
       // Enrolment also stamps the session, so both resolve the same way.
-      openMfa(code === 'mfa_required' ? 'choose' : 'verify', {
+      openMfa('choose', {
         onVerified: () => resolve(true),
         onDismissed: () => resolve(false),
       })

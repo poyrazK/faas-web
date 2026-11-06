@@ -3,12 +3,15 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MfaProvider, useMfa } from './mfa-provider';
+import { ApiError } from '@/lib/api/errors';
 
 const api = vi.hoisted(() => ({
   confirmMfa: vi.fn(),
   enrollMfa: vi.fn(),
   recoverMfa: vi.fn(),
   verifyMfa: vi.fn(),
+  disableMfa: vi.fn(),
+  requestMfaRecoveryEmail: vi.fn(),
 }));
 vi.mock('@/lib/api/queries', () => api);
 
@@ -39,6 +42,8 @@ beforeEach(() => {
   api.confirmMfa.mockReset().mockResolvedValue({});
   api.recoverMfa.mockReset().mockResolvedValue({});
   api.verifyMfa.mockReset().mockResolvedValue({});
+  api.disableMfa.mockReset().mockResolvedValue({});
+  api.requestMfaRecoveryEmail.mockReset().mockResolvedValue({});
   api.enrollMfa.mockReset().mockResolvedValue({
     qr_code_png_base64: '',
     secret: 'SECRET',
@@ -219,6 +224,80 @@ describe('openMfa completion method and reason', () => {
       screen.getByRole('heading', { name: /multi-factor authentication/i })
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/two-factor/i);
+  });
+});
+
+describe('enrollment and recovery', () => {
+  it('sends the current password with the enrollment code and completes once', async () => {
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="choose" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(screen.getByRole('button', { name: 'Set up authenticator' }));
+    await user.type(await screen.findByLabelText('Current password'), 'my-current-password');
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Confirm MFA' }));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('enrolment'));
+    expect(api.confirmMfa).toHaveBeenCalledWith('123456', 'my-current-password');
+    expect(api.verifyMfa).not.toHaveBeenCalled();
+  });
+
+  it('offers email recovery without pretending the email request verified MFA', async () => {
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="choose" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(screen.getByRole('button', { name: 'Recover by email' }));
+    expect(await screen.findByText(/24-hour waiting period/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Send recovery email' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Check your email');
+    expect(api.requestMfaRecoveryEmail).toHaveBeenCalledTimes(1);
+    expect(onVerified).not.toHaveBeenCalled();
+  });
+
+  it('lets the last saved code reset the authenticator', async () => {
+    api.recoverMfa.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'mfa_last_recovery_code', title: 'Last recovery code' })
+    );
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="choose" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(screen.getByRole('button', { name: /use a recovery code/i }));
+    await user.type(screen.getByLabelText('Recovery code'), 'LAST-CODE');
+    await user.click(screen.getByRole('button', { name: 'Recover access' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset authenticator with this code' })
+    );
+    expect(api.disableMfa).toHaveBeenCalledWith({ recovery_code: 'LAST-CODE' });
+    expect(await screen.findByRole('button', { name: 'Confirm MFA' })).toBeInTheDocument();
+    expect(onVerified).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Confirm MFA' }));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('enrolment'));
+  });
+
+  it('offers replacement setup if enrollment fails after the last code was consumed', async () => {
+    api.recoverMfa.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'mfa_last_recovery_code', title: 'Last recovery code' })
+    );
+    api.enrollMfa.mockRejectedValueOnce(new Error('Setup is temporarily unavailable.'));
+    const onVerified = vi.fn();
+    renderWith(<OpenerWith mode="choose" onVerified={onVerified} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.click(screen.getByRole('button', { name: /use a recovery code/i }));
+    await user.type(screen.getByLabelText('Recovery code'), 'LAST-CODE');
+    await user.click(screen.getByRole('button', { name: 'Recover access' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset authenticator with this code' })
+    );
+    expect(await screen.findByText('Setup is temporarily unavailable.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set up authenticator' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Reset authenticator with this code' })
+    ).not.toBeInTheDocument();
+    expect(onVerified).not.toHaveBeenCalled();
   });
 });
 

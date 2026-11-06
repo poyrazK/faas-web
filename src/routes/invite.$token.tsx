@@ -6,12 +6,13 @@ import { useAcceptInvitation, useInvitation } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { readSession } from '@/lib/auth';
 import { pageHead } from '@/lib/seo';
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 
 export const Route = createFileRoute('/invite/$token')({
   head: () => pageHead({ title: 'Invitation' }),
   // Accepting binds the signed-in account, so the invitee signs in first.
-  beforeLoad: () => {
-    if (!readSession()) throw redirect({ to: '/login' });
+  beforeLoad: ({ location }) => {
+    if (!readSession()) throw redirect({ to: '/login', search: { next: location.href } });
   },
   component: InvitePage,
 });
@@ -22,6 +23,7 @@ export const Route = createFileRoute('/invite/$token')({
  * what is being joined before anything is consumed; Accept is one press.
  */
 function InvitePage() {
+  const withMfa = useMfaAction();
   const { token } = Route.useParams();
   const { toast } = useToast();
   const sweepNavigate = useSweepNavigate();
@@ -77,8 +79,7 @@ function InvitePage() {
               className="mt-6 w-full"
               busy={accept.isPending}
               onClick={() =>
-                void accept
-                  .mutateAsync(token)
+                void withMfa(() => accept.mutateAsync(token), 'Verify to accept this invitation.')
                   .then((member) => {
                     toast({
                       kind: 'success',

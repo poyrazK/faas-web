@@ -117622,7 +117622,7 @@ components:
             the plaintext never reappears.
 
     MFAConfirmRequest:
-      description: Body for /confirm — a single 6-digit TOTP code.
+      description: Body for /confirm — a TOTP code and the existing password, if set.
       type: object
       required: [totp]
       properties:
@@ -117630,6 +117630,10 @@ components:
           type: string
           pattern: '^[0-9]{6}$'
           description: 6-digit rotating code from the authenticator app.
+        current_password:
+          type: string
+          format: password
+          description: Required when the account already has a password; authorizes the new factor.
         csrf_token:
           type: string
           description: |
@@ -117688,7 +117692,9 @@ components:
       description: |
         Empty success body. Side effects: the matching hash is
         removed from `mfa_recovery_codes_hash`; the session cookie
-        is re-issued without `mfa_pending`.
+        is re-issued without `mfa_pending` and with recent MFA verification.
+        The last remaining code returns `mfa_last_recovery_code`; use it
+        to reset the authenticator instead, then enroll a replacement.
       type: object
       additionalProperties: false
 
@@ -117716,7 +117722,8 @@ components:
         Empty success body. Side effects: mfa_secret_encrypted,
         mfa_recovery_codes_hash, and mfa_enrolled_at are all NULL.
         mfa_required is left as-is so an explicit policy remains in
-        force after disable.
+        force after disable. The browser cookie is refreshed with the
+        current enrollment requirement and its recent-verification stamp cleared.
       type: object
       additionalProperties: false
 

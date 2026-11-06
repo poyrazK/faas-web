@@ -1,3 +1,4 @@
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { WarningTriangle, ArrowRight } from 'iconoir-react';
@@ -294,6 +295,7 @@ function EgressExtraPanel() {
 }
 
 export function SettingsPanels({ section }: { section: SettingsSection }) {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const { account, refreshAccount, signOut } = useAuth();
   const navigate = useNavigate();
@@ -315,8 +317,7 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
   };
 
   const handleDeleteAccount = () => {
-    void deleteAccount
-      .mutateAsync()
+    void withMfa(() => deleteAccount.mutateAsync(), 'Verify to schedule account deletion.')
       .then(() => {
         setDeletionPending(true);
         setShowDeleteAccount(false);

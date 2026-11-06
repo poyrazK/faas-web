@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { Modal } from '@/components/ui/modal';
@@ -83,6 +84,7 @@ const PLANS: { id: Plan; name: string; blurb: string; includes: string[] }[] = [
  * `GET /v1/billing/status` and renders nothing in either case. If that read
  * fails, the plan decides: a paid plan keeps its controls. */
 function BillingControlsPanel() {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const confirm = useConfirm();
   const { account } = useAuth();
@@ -140,8 +142,7 @@ function BillingControlsPanel() {
               }))
             )
               return;
-            void cancel
-              .mutateAsync()
+            void withMfa(() => cancel.mutateAsync(), 'Verify to cancel your subscription.')
               .then((r) =>
                 toast({
                   kind: 'success',
@@ -190,6 +191,7 @@ function PlansPage() {
 }
 
 function PersonalPlans() {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
   const { openMfa } = useMfa();
@@ -222,32 +224,16 @@ function PersonalPlans() {
     new Promise<MfaMethod | null>((resolve) =>
       openMfa(mode, {
         reason,
-        allowRecovery: false,
         onVerified: (via) => resolve(via),
         onDismissed: () => resolve(null),
       })
     );
 
-  /**
-   * Plan changes sit behind a five-minute step-up that only an authenticator
-   * code satisfies, and every browser session starts without one — including
-   * accounts with no MFA at all (middleware.go requireStepUp; WithStepUp is
-   * always applied to cookie sessions). No API response says whether MFA is
-   * enrolled, so the first prompt is the provider's "set up or enter a code"
-   * choice, which already falls through to verification when enrolment answers
-   * 409. Finishing enrolment and a recovery code both reissue the cookie
-   * without a stamp (handlers_mfa.go: only mfaVerify stamps), so enrolment is
-   * followed by a code and the recovery option is not offered at all.
-   */
+  // The API asks only when this account uses MFA. Every supported successful
+  // verification establishes freshness; enrollment does not need a second code.
   const stepUp = async (): Promise<'confirmed' | 'dismissed'> => {
-    let via = await openStep('choose', 'Plan changes need multi-factor authentication.');
-    if (via === 'enrolment') {
-      via = await openStep(
-        'verify',
-        'Authenticator set up. Enter a new code from your authenticator to confirm this change.'
-      );
-    }
-    return via === 'authenticator' ? 'confirmed' : 'dismissed';
+    const via = await openStep('choose', 'Verify to confirm this plan change.');
+    return via === null ? 'dismissed' : 'confirmed';
   };
 
   const apply = (plan: Plan, retried = false): Promise<void> =>
@@ -335,8 +321,7 @@ function PersonalPlans() {
             className="gap-1.5"
             disabled={portal.isPending}
             onClick={() => {
-              void portal
-                .mutateAsync()
+              void withMfa(() => portal.mutateAsync(), 'Verify to open your billing settings.')
                 .then((result) => {
                   if (result.url) window.location.href = result.url;
                 })
