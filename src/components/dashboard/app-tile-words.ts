@@ -1,7 +1,8 @@
 import type { Deployment, Workflow } from '@/lib/mock-data';
+import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './overview/overview-data';
 
-/** An error share at or above this reads as trouble. */
-export const HOT_ERROR_PCT = 5;
+/** An error share at or above this reads as trouble — the console's one threshold. */
+export const HOT_ERROR_PCT = FIELD_ERROR_PCT;
 
 /**
  * A runtime id as a person says it: `node22` → "Node 22", `python313` →
@@ -63,7 +64,12 @@ export function latestDeployNote(
 
 /** True when the app's 24 h figures are real and its error share is high. */
 export function failingShare(app: Workflow): number | null {
-  if (app.metricsUnavailable || app.state === 'undeployed' || app.invocations24h <= 0) return null;
+  if (
+    app.metricsUnavailable ||
+    app.state === 'undeployed' ||
+    app.invocations24h < FIELD_ERROR_MIN_REQUESTS
+  )
+    return null;
   return app.errorRatePct >= HOT_ERROR_PCT ? app.errorRatePct : null;
 }
 
