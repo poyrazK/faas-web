@@ -4,7 +4,9 @@ import {
   dayLabel,
   environmentHeadline,
   groupByDay,
+  guardState,
   guardWords,
+  revisionGuardState,
   isEmptyDiff,
   revisionDiff,
   revisionWords,
@@ -178,26 +180,90 @@ const guard = (over: Partial<ConfigGuard>): ConfigGuard => ({
 });
 
 describe('guardWords', () => {
-  it('watching: says it can undo the change, unless a secret went', () => {
-    expect(guardWords(guard({ window_ends_at: '2026-10-31T09:10:00Z' }), true).sentence).toBe(
+  // Five minutes after the change; the window closes at 09:10.
+  const now = Date.parse('2026-10-31T09:05:00Z');
+  const open = { window_ends_at: '2026-10-31T09:10:00Z' };
+  const closed = { window_ends_at: '2026-10-31T08:57:00Z' };
+
+  it('open window: watching, and says it can undo the change unless a secret went', () => {
+    const w = guardWords(guard(open), true, now);
+    expect(w).toMatchObject({ word: 'Watching', tone: 'active' });
+    expect(w.sentence).toBe(
       'Gregale is watching the latest change. If the app starts failing, the previous values come back automatically.'
     );
-    expect(
-      guardWords(guard({ window_ends_at: '2026-10-31T09:10:00Z', restorable: false }), true)
-        .sentence
-    ).toMatch(/can’t be undone automatically/);
+    expect(guardWords(guard({ ...open, restorable: false }), true, now).sentence).toMatch(
+      /can’t be undone automatically/
+    );
+  });
+
+  it('closed window without a verdict: not confirmed, never watching', () => {
+    const w = guardWords(guard(closed), true, now);
+    expect(w.word).toBe('Not confirmed');
+    expect(w.sentence).toBe(
+      'The latest change wasn’t confirmed: its watch window ended 8m ago without a result. It stays in place.'
+    );
+    expect(w.sentence).not.toMatch(/watching/i);
+  });
+
+  it('passed', () => {
+    expect(guardWords(guard({ status: 'clean' }), true, now)).toMatchObject({
+      word: 'Passed',
+      tone: 'good',
+      sentence: 'The latest change passed: the app served traffic without more errors than before.',
+    });
+  });
+
+  it('undone', () => {
+    expect(guardWords(guard({ status: 'restored' }), true, now)).toMatchObject({
+      word: 'Undone',
+      tone: 'critical',
+      sentence: 'The latest change made the app fail, so Gregale put the previous values back.',
+    });
   });
 
   it('names the revision when the guarded change is no longer the newest', () => {
-    expect(guardWords(guard({ status: 'clean' }), false).sentence).toBe(
+    expect(guardWords(guard({ status: 'clean' }), false, now).sentence).toBe(
       'The change in revision 5 passed: the app served traffic without more errors than before.'
     );
   });
 
   it('tells the person what to do when the guard could not undo a failure', () => {
-    const w = guardWords(guard({ status: 'regressed' }), true);
+    const w = guardWords(guard({ status: 'regressed' }), true, now);
     expect(w).toMatchObject({ word: 'Failed, kept', tone: 'critical' });
     expect(w.next).toMatch(/roll the variables back/);
+  });
+});
+
+describe('guardState and revisionGuardState', () => {
+  const now = Date.parse('2026-10-31T09:05:00Z');
+
+  it('reads watching past its window as unconfirmed, and leaves verdicts alone', () => {
+    expect(guardState({ status: 'watching', window_ends_at: '2026-10-31T09:10:00Z' }, now)).toBe(
+      'watching'
+    );
+    expect(guardState({ status: 'watching', window_ends_at: '2026-10-31T09:00:00Z' }, now)).toBe(
+      'unconfirmed'
+    );
+    // No window yet: waiting for the first request, still watching.
+    expect(guardState({ status: 'watching' }, now)).toBe('watching');
+    expect(guardState({ status: 'clean', window_ends_at: '2026-10-31T09:00:00Z' }, now)).toBe(
+      'clean'
+    );
+  });
+
+  it('gives the row of the guarded change the same word as the summary', () => {
+    const g = guard({ id: 'g-2', window_ends_at: '2026-10-31T09:00:00Z' });
+    expect(
+      revisionGuardState({ revision: 5, guard_id: 'g-2', guard_status: 'watching' }, g, now)
+    ).toBe('unconfirmed');
+    expect(revisionGuardState({ revision: 5, guard_status: 'watching' }, g, now)).toBe(
+      'unconfirmed'
+    );
+    expect(
+      revisionGuardState({ revision: 3, guard_id: 'g-1', guard_status: 'watching' }, g, now)
+    ).toBe('watching');
+    expect(revisionGuardState({ revision: 2, guard_status: 'clean' }, g, now)).toBe('clean');
+    expect(revisionGuardState({ revision: 1 }, g, now)).toBeUndefined();
   });
 });
 

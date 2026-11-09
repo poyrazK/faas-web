@@ -1,4 +1,5 @@
 import type { components } from '@/lib/api/schema';
+import { relativeTime } from '@/lib/time';
 import type { ConfigGuard, ConfigRevision, ConfigRevisionDetail } from '@/lib/config-history';
 
 /**
@@ -222,10 +223,37 @@ export const GUARD_WORDS: Record<string, { word: string; tone: Tone }> = {
   regressed: { word: 'Failed, kept', tone: 'critical' },
   no_traffic: { word: 'Not judged', tone: 'idle' },
   superseded: { word: 'Replaced', tone: 'idle' },
+  // Not an API status: `watching` whose window has already ended (see guardState).
+  unconfirmed: { word: 'Not confirmed', tone: 'idle' },
 };
+
+/**
+ * The guard status to put into words. The API keeps `watching` until it
+ * records a verdict; once `window_ends_at` has passed without one, saying
+ * "watching" would contradict the window, so it reads as `unconfirmed`.
+ */
+export function guardState(g: Pick<ConfigGuard, 'status' | 'window_ends_at'>, now: number): string {
+  if (g.status !== 'watching' || !g.window_ends_at) return g.status;
+  const ends = Date.parse(g.window_ends_at);
+  return !Number.isNaN(ends) && ends <= now ? 'unconfirmed' : 'watching';
+}
 
 export function guardWord(status: string): { word: string; tone: Tone } {
   return GUARD_WORDS[status] ?? { word: status, tone: 'idle' };
+}
+
+/**
+ * A revision row's guard verdict, matching the guard summary: a row still
+ * `watching` under the newest guard takes that guard's window into account.
+ */
+export function revisionGuardState(
+  r: Pick<ConfigRevision, 'guard_id' | 'guard_status' | 'revision'>,
+  guard: ConfigGuard | null | undefined,
+  now: number
+): string | undefined {
+  if (r.guard_status !== 'watching' || !guard) return r.guard_status;
+  const same = r.guard_id ? r.guard_id === guard.id : r.revision === guard.head_revision;
+  return same ? guardState(guard, now) : r.guard_status;
 }
 
 export interface GuardWords {
@@ -241,10 +269,17 @@ export interface GuardWords {
  * still the newest revision: if not, the sentence names its revision rather
  * than calling it "the latest change".
  */
-export function guardWords(g: ConfigGuard, latest: boolean): GuardWords {
-  const { word, tone } = guardWord(g.status);
+export function guardWords(g: ConfigGuard, latest: boolean, now: number): GuardWords {
+  const state = guardState(g, now);
+  const { word, tone } = guardWord(state);
   const change = latest ? 'the latest change' : `the change in revision ${g.head_revision}`;
   const Change = change[0].toUpperCase() + change.slice(1);
+  if (state === 'unconfirmed')
+    return {
+      word,
+      tone,
+      sentence: `${Change} wasn’t confirmed: its watch window ended ${relativeTime(Date.parse(g.window_ends_at ?? ''), now)} without a result. It stays in place.`,
+    };
   switch (g.status) {
     case 'watching':
       if (!g.window_ends_at)

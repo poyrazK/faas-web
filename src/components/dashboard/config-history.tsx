@@ -26,7 +26,9 @@ import { cn } from '@/lib/utils';
 import {
   groupByDay,
   guardWord,
+  guardState,
   guardWords,
+  revisionGuardState,
   isEmptyDiff,
   revisionDiff,
   revisionWords,
@@ -140,7 +142,8 @@ function GuardBody({ guard, latest }: { guard: ConfigGuard; latest: boolean }) {
   const [open, setOpen] = useState(false);
   // Read once per mount: the guard query refetches while it watches.
   const [now] = useState(() => Date.now());
-  const words = guardWords(guard, latest);
+  const words = guardWords(guard, latest, now);
+  const windowOpen = guardState(guard, now) === 'watching' && Boolean(guard.window_ends_at);
   const d = guard.decision;
   return (
     <div className="flex flex-col gap-2">
@@ -149,22 +152,13 @@ function GuardBody({ guard, latest }: { guard: ConfigGuard; latest: boolean }) {
         {words.word}
       </span>
       <Lead>{words.sentence}</Lead>
-      {(words.next || (guard.status === 'watching' && guard.window_ends_at)) && (
+      {(words.next || windowOpen) && (
         <p className="text-sm text-muted-foreground">
           {words.next}
-          {guard.status === 'watching' && guard.window_ends_at && (
+          {windowOpen && (
             <>
               {words.next && ' '}
-              {Date.parse(guard.window_ends_at) > now ? (
-                <>
-                  The watch ends <Timestamp value={guard.window_ends_at} />.
-                </>
-              ) : (
-                <>
-                  The watch window closed <Timestamp value={guard.window_ends_at} />; no verdict is
-                  recorded yet.
-                </>
-              )}
+              The watch ends <Timestamp value={guard.window_ends_at} />.
             </>
           )}
         </p>
@@ -220,6 +214,7 @@ function Timeline({
   review: ReactNode;
 }) {
   const revisions = useConfigRevisions(slug);
+  const guard = useConfigGuard(slug);
   const rows = revisions.data?.revisions ?? [];
   // Read once per mount, so day headings do not shift while the page is open.
   const [now] = useState(() => Date.now());
@@ -257,6 +252,7 @@ function Timeline({
                         revision={r}
                         previous={rows[index + 1]}
                         current={index === 0}
+                        guardStatus={revisionGuardState(r, guard.data, now)}
                         selected={target === r.revision}
                         onRollback={() => onRollback(r.revision)}
                       />
@@ -279,6 +275,7 @@ function RevisionItem({
   revision: r,
   previous,
   current,
+  guardStatus,
   selected,
   onRollback,
 }: {
@@ -286,12 +283,14 @@ function RevisionItem({
   revision: ConfigRevision;
   previous: ConfigRevision | undefined;
   current: boolean;
+  /** The row's guard verdict as words should read it (see `revisionGuardState`). */
+  guardStatus: string | undefined;
   selected: boolean;
   onRollback: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const words = revisionWords(r);
-  const guard = r.guard_status ? guardWord(r.guard_status) : null;
+  const guard = guardStatus ? guardWord(guardStatus) : null;
   return (
     <div className="flex flex-col gap-2 py-2.5">
       <div className="flex items-start gap-3">
@@ -336,7 +335,7 @@ function RevisionItem({
             <ToneWord
               tone={guard.tone}
               word={guard.word}
-              term={`Config guard: ${r.guard_status}`}
+              term={`Config guard: ${r.guard_status ?? guardStatus}`}
             />
           </span>
         )}

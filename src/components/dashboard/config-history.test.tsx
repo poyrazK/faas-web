@@ -126,6 +126,20 @@ describe('config guard', () => {
     expect(guard).toHaveTextContent(/The latest change/);
   });
 
+  it('says a change was not confirmed once its window ends without a verdict, row included', async () => {
+    const closed = { ...watching, window_ends_at: '2026-10-31T10:08:00Z' };
+    guardResponse = ok(closed);
+    revisionsResponse = ok({ revisions, guard: closed });
+    mount();
+    const guard = await screen.findByRole('region', { name: 'Config guard' });
+    await waitFor(() => expect(guard).toHaveTextContent('Not confirmed'));
+    expect(guard).toHaveTextContent(/wasn’t confirmed: its watch window ended .* without a result/);
+    expect(guard).not.toHaveTextContent(/watching/i);
+    const history = screen.getByRole('region', { name: 'Revisions' });
+    await waitFor(() => expect(history).toHaveTextContent('Not confirmed'));
+    expect(history).not.toHaveTextContent('Watching');
+  });
+
   it('shows the decision samples of a restored guard', async () => {
     guardResponse = ok({
       ...watching,
