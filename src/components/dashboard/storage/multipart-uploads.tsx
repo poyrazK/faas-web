@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, Circle, RefreshDouble, Xmark } from 'iconoir-react';
+import { CheckCircle, Circle, NavArrowRight, RefreshDouble, Xmark } from 'iconoir-react';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { Button } from '@/components/ui/button';
 import { CopyableId } from '@/components/ui/copyable-id';
@@ -76,84 +76,95 @@ export function MultipartUploads({ slug, bucket }: { slug: string; bucket: Objec
       abort.mutate(u.id);
   };
 
+  const unfinished = items.filter((u) => OPEN.has(u.state)).length;
   return (
-    <section aria-labelledby={`${bucket.id}-multipart`} className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 id={`${bucket.id}-multipart`} className="text-sm font-medium">
-          Uploads in parts
-        </h4>
-        <Button variant="ghost" size="sm" onClick={() => void uploads.refetch()}>
-          Refresh
-        </Button>
-      </div>
-      {phase !== 'ready' ? (
-        <InlinePhase
-          phase={phase}
-          error={uploads.error}
-          onRetry={() => void uploads.refetch()}
-          emptyMessage="No uploads in parts. Files above the single-upload limit upload in parts automatically."
+    <details className="storage-disclosure group flex flex-col">
+      <summary className="pressable flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <NavArrowRight
+          aria-hidden="true"
+          className="size-3.5 transition-transform group-open:rotate-90 motion-reduce:transition-none"
         />
-      ) : (
-        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
-          {items.map((u) => (
-            <li
-              key={u.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
-            >
-              <SessionChip state={u.state} />
-              <span className="min-w-0 flex-1 break-all font-mono text-xs" title={u.key}>
-                {u.key}
-              </span>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {formatUsageBytes(u.size_bytes)} in {u.part_count}{' '}
-                {u.part_count === 1 ? 'part' : 'parts'}
-              </span>
-              {OPEN.has(u.state) && (
-                <span className="text-xs text-muted-foreground">
-                  expires <Timestamp value={u.expires_at} />
+        Unfinished uploads{phase === 'loading' || phase === 'error' ? '' : ` (${unfinished})`}
+      </summary>
+      <section aria-label="Uploads in parts" className="mt-3 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Files above the single-upload limit go up in parts. An interrupted one keeps its parts
+            until it finishes, is aborted, or expires 24 hours after it started.
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => void uploads.refetch()}>
+            Refresh
+          </Button>
+        </div>
+        {phase !== 'ready' ? (
+          <InlinePhase
+            phase={phase}
+            error={uploads.error}
+            onRetry={() => void uploads.refetch()}
+            emptyMessage="No uploads in parts. Files above the single-upload limit upload in parts automatically."
+          />
+        ) : (
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
+            {items.map((u) => (
+              <li
+                key={u.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+              >
+                <SessionChip state={u.state} />
+                <span className="min-w-0 flex-1 break-all font-mono text-xs" title={u.key}>
+                  {u.key}
                 </span>
-              )}
-              <CopyableId value={u.id} label="upload ID" />
-              <span className="flex gap-1">
-                {u.state === 'active' && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-expanded={open === u.id}
-                    aria-label={`Parts of ${u.key}`}
-                    onClick={() => setOpen(open === u.id ? '' : u.id)}
-                  >
-                    Parts
-                  </Button>
-                )}
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {formatUsageBytes(u.size_bytes)} in {u.part_count}{' '}
+                  {u.part_count === 1 ? 'part' : 'parts'}
+                </span>
                 {OPEN.has(u.state) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Abort upload of ${u.key}`}
-                    disabled={abort.isPending}
-                    onClick={() => void ask(u)}
-                  >
-                    Abort
-                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    expires <Timestamp value={u.expires_at} />
+                  </span>
                 )}
-              </span>
-              {u.completion_error_code && (
-                <span className="basis-full text-xs" style={{ color: 'var(--status-critical)' }}>
-                  Completion was refused ({u.completion_error_code}).
+                <CopyableId value={u.id} label="upload ID" />
+                <span className="flex gap-1">
+                  {u.state === 'active' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-expanded={open === u.id}
+                      aria-label={`Parts of ${u.key}`}
+                      onClick={() => setOpen(open === u.id ? '' : u.id)}
+                    >
+                      Parts
+                    </Button>
+                  )}
+                  {OPEN.has(u.state) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Abort upload of ${u.key}`}
+                      disabled={abort.isPending}
+                      onClick={() => void ask(u)}
+                    >
+                      Abort
+                    </Button>
+                  )}
                 </span>
-              )}
-              {open === u.id && <ConfirmedParts slug={slug} bucket={bucket} upload={u} />}
-            </li>
-          ))}
-        </ul>
-      )}
-      {phase === 'ready' && items.some((u) => u.state === 'active') && (
-        <p className="text-xs text-muted-foreground">
-          To resume an unfinished upload, choose the same file with the same object key.
-        </p>
-      )}
-    </section>
+                {u.completion_error_code && (
+                  <span className="basis-full text-xs" style={{ color: 'var(--status-critical)' }}>
+                    Completion was refused ({u.completion_error_code}).
+                  </span>
+                )}
+                {open === u.id && <ConfirmedParts slug={slug} bucket={bucket} upload={u} />}
+              </li>
+            ))}
+          </ul>
+        )}
+        {phase === 'ready' && items.some((u) => u.state === 'active') && (
+          <p className="text-xs text-muted-foreground">
+            To resume an unfinished upload, choose the same file with the same object key.
+          </p>
+        )}
+      </section>
+    </details>
   );
 }
 

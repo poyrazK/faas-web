@@ -57,3 +57,53 @@
   border-color: color-mix(in oklab, var(--brand) 40%, var(--border));
   background: color-mix(in oklab, var(--brand) 6%, var(--card));
 }
+
+/* The open bucket's card: a brand ring over the lit surface. */
+.console .storage-bucket[data-open] {
+  box-shadow:
+    inset 0 1px 0 var(--surface-highlight),
+    0 0 0 1.5px color-mix(in oklab, var(--brand) 70%, transparent);
+}
+.console .storage-bucket:not([data-open]):hover {
+  background: color-mix(in oklab, var(--muted) 35%, var(--card));
+}
+.console .storage-bucket:has(button:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.console .storage-folder:hover {
+  background: color-mix(in oklab, var(--muted) 45%, var(--card));
+}
+
+/* Icon, name, size, changed, actions. */
+.console .storage-file-row {
+  grid-template-columns: 1rem minmax(0, 1fr) 4.5rem 2rem;
+  column-gap: 0.875rem;
+}
+@media (min-width: 640px) {
+  .console .storage-file-row {
+    grid-template-columns: 1rem minmax(0, 1fr) 5rem 6.5rem 2rem;
+  }
+}
+
+.console .storage-find:focus-within {
+  box-shadow:
+    inset 0 1px 2px var(--well-shade),
+    0 0 0 1.5px color-mix(in oklab, var(--brand) 55%, transparent);
+}
+
+/* Access chips: mint reads, amber writes, both for read and write. */
+.console .storage-grant {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  color: var(--foreground);
+}
+.console .storage-grant__dot {
+  background: var(--brand);
+}
+.console .storage-grant[data-permission='write'] .storage-grant__dot {
+  background: var(--status-warning);
+}
+.console .storage-grant[data-permission='read_write'] .storage-grant__dot {
+  background: linear-gradient(90deg, var(--brand) 50%, var(--status-warning) 50%);
+}
