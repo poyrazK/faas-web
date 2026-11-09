@@ -510,6 +510,8 @@ function FunctionDetailPage() {
                     ) : undefined
                   }
                   app={fn}
+                  slug={fn.id}
+                  analyticsSince={search.analyticsSince ?? '24h'}
                   releases={releases}
                   metrics={metrics}
                   metricsAccess={

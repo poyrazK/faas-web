@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { AppMetrics, Deployment } from '@/lib/api/queries';
 import {
   allClear,
+  analyticsEvidence,
   attentionItems,
+  errorsNeedAttention,
+  metricsEvidence,
   releaseAnswer,
   trafficSentence,
   windowWords,
@@ -109,6 +112,43 @@ describe('releaseAnswer', () => {
   });
 });
 
+const analytics = (requests: number, errorPct: number, window = 'the last 24 hours') =>
+  ({ source: 'analytics', requests, errorPct, window }) as const;
+
+describe('request evidence', () => {
+  it('reads the analytics summary for the Traffic window, saying "this window" when clamped', () => {
+    expect(analyticsEvidence({ requests: 100, error_rate_pct: 6 }, '7d')).toEqual({
+      source: 'analytics',
+      requests: 100,
+      errorPct: 6,
+      window: 'the last 7 days',
+    });
+    expect(
+      analyticsEvidence({ requests: 100, error_rate_pct: 6, window_clamped: true }, '7d')?.window
+    ).toBe('this window');
+    expect(analyticsEvidence(undefined, '24h')).toBeUndefined();
+    expect(analyticsEvidence({}, '24h')).toBeUndefined();
+  });
+
+  it('labels the platform metrics as their own source', () => {
+    expect(metricsEvidence(metrics({ error_rate_pct: 0.42 }))).toEqual({
+      source: 'metrics',
+      requests: 1000,
+      errorPct: 0.42,
+      window: 'the last 24 hours',
+    });
+    expect(metricsEvidence(undefined)).toBeUndefined();
+  });
+
+  it('flags errors at 5% of at least 20 requests, the hour field’s bar', () => {
+    expect(errorsNeedAttention(analytics(20, 5))).toBe(true);
+    expect(errorsNeedAttention(analytics(19, 50))).toBe(false);
+    expect(errorsNeedAttention(analytics(1000, 4.99))).toBe(false);
+    expect(errorsNeedAttention({ source: 'analytics', requests: 100, window: 'x' })).toBe(false);
+    expect(errorsNeedAttention(undefined)).toBe(false);
+  });
+});
+
 describe('attentionItems', () => {
   it('flags a failed newest attempt even while an older version serves', () => {
     const items = attentionItems({
@@ -117,7 +157,7 @@ describe('attentionItems', () => {
         deployment({ id: 'old', revision: 43 }),
       ],
       rawState: 'running',
-      observed: undefined,
+      requests: undefined,
     });
     expect(items).toEqual([
       expect.objectContaining({
@@ -134,57 +174,78 @@ describe('attentionItems', () => {
       attentionItems({
         items: [deployment({ status: 'cancelled' })],
         rawState: 'running',
-        observed: undefined,
+        requests: undefined,
       })
     ).toEqual([]);
   });
 
-  it('flags an app error state and request errors, each with one action', () => {
+  it('flags an app error state and request errors over the bar, each with one action', () => {
     const items = attentionItems({
       items: [deployment()],
       rawState: 'Crashed',
-      observed: metrics({ error_rate_pct: 0.42 }),
+      requests: analytics(6700, 6.2),
     });
     expect(items.map((item) => [item.sentence, item.action.label])).toEqual([
       ['The app is reporting an error.', 'Inspect logs'],
-      ['Requests returned errors: 0.42% in the last 24 hours.', 'Inspect errors'],
+      ['Requests returned errors: 6.20% in the last 24 hours.', 'Inspect errors'],
     ]);
   });
 
-  it('never reads an error rate from a window with no requests', () => {
-    expect(
-      attentionItems({
-        items: [deployment()],
-        rawState: 'running',
-        observed: metrics({ request_count: 0, error_rate_pct: 5 }),
-      })
-    ).toEqual([]);
+  it('says so when the figure comes from platform metrics instead', () => {
+    const [item] = attentionItems({
+      items: [deployment()],
+      rawState: 'running',
+      requests: { source: 'metrics', requests: 500, errorPct: 8, window: 'the last 24 hours' },
+    });
+    expect(item.sentence).toBe(
+      'Platform metrics show 8.00% of requests failing in the last 24 hours.'
+    );
+    expect(item.term).toMatch(/request analytics could not be read/);
+  });
+
+  it('leaves an error rate under the bar, or over too few requests, unflagged', () => {
+    for (const requests of [analytics(6700, 1), analytics(10, 50), analytics(0, 0)])
+      expect(attentionItems({ items: [deployment()], rawState: 'running', requests })).toEqual([]);
   });
 });
 
 describe('allClear', () => {
-  it('only vouches for requests when metrics saw traffic', () => {
-    expect(
-      allClear({ releasesKnown: true, observed: metrics(), metricsAccess: 'available' })
-    ).toEqual({ sentence: 'Nothing needs your attention.' });
-    expect(
-      allClear({
-        releasesKnown: true,
-        observed: metrics({ request_count: 0 }),
-        metricsAccess: 'available',
-      }).note
-    ).toBe('No requests in the last 24 hours, so request errors can’t be judged.');
-    expect(
-      allClear({ releasesKnown: true, observed: undefined, metricsAccess: 'available' })
-    ).toEqual({
+  const clear = (requests: Parameters<typeof allClear>[0]['requests'], access = 'available') =>
+    allClear({
+      releasesKnown: true,
+      requests,
+      metricsAccess: access as 'available' | 'restricted',
+    });
+
+  it('only vouches for requests when there were enough to judge', () => {
+    expect(clear(analytics(1000, 0))).toEqual({ sentence: 'Nothing needs your attention.' });
+    expect(clear(analytics(1000, 1))).toEqual({
+      sentence: 'Nothing needs your attention.',
+      note: '1.00% of requests returned errors, under the 5% that is flagged.',
+    });
+    expect(clear(analytics(0, 0)).note).toBe(
+      'No requests in the last 24 hours, so request errors can’t be judged.'
+    );
+    expect(clear(analytics(10, 50))).toEqual({
+      sentence: 'Nothing flagged so far.',
+      note: 'Only 10 requests in the last 24 hours, too few to judge the error rate.',
+    });
+    expect(clear({ source: 'analytics', requests: 50, window: 'x' })).toEqual({
+      sentence: 'Nothing flagged so far.',
+      note: 'Request errors were not reported.',
+    });
+  });
+
+  it('says what is unknown without request figures', () => {
+    expect(clear(undefined)).toEqual({
       sentence: 'Nothing flagged so far.',
       note: 'Request errors are unconfirmed without metrics.',
     });
+    expect(clear(undefined, 'restricted').note).toBe(
+      'Request errors are tracked on Hobby and above.'
+    );
     expect(
-      allClear({ releasesKnown: true, observed: undefined, metricsAccess: 'restricted' }).note
-    ).toBe('Request errors are tracked on Hobby and above.');
-    expect(
-      allClear({ releasesKnown: false, observed: metrics(), metricsAccess: 'available' })
+      allClear({ releasesKnown: false, requests: analytics(10, 0), metricsAccess: 'available' })
     ).toEqual({ sentence: 'No confirmed issues yet.' });
   });
 });

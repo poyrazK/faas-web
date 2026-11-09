@@ -50,7 +50,10 @@ export function AppAnalyticsPreview({
       ? `${utcLabel(series.data.from)} – ${utcLabel(series.data.until)}`
       : '';
   // A window cut short by the plan's retention is no longer "the last 7 days".
-  const sentence = trafficSentence(data, series.data?.window_clamped ? '' : since);
+  const sentence = trafficSentence(
+    data,
+    data?.window_clamped || series.data?.window_clamped ? '' : since
+  );
   return (
     <PlanGated error={summary.error ?? series.error} feature="Request analytics">
       <div className="flex flex-col gap-3">

@@ -24,6 +24,9 @@ const fixtures = vi.hoisted(() => ({
   metrics: undefined as AppMetrics | undefined,
   metricsLoading: false,
   metricsError: null as Error | null,
+  /** Request analytics, when it should differ from the platform metrics. */
+  analytics: undefined as { requests: number; error_rate_pct: number } | undefined,
+  analyticsError: null as Error | null,
   retry: vi.fn(),
   buildIds: [] as string[],
   stream: vi.fn(),
@@ -119,26 +122,37 @@ vi.mock('@/lib/api/queries', async (original) => ({
     return [];
   },
   useAppAnalytics: () => ({
-    data:
-      fixtures.metrics && fixtures.metrics.source === 'prometheus'
+    data: fixtures.analyticsError
+      ? undefined
+      : fixtures.analytics
         ? {
-            requests: fixtures.metrics.request_count,
+            ...fixtures.analytics,
             error_requests: Math.round(
-              (fixtures.metrics.request_count * fixtures.metrics.error_rate_pct) / 100
+              (fixtures.analytics.requests * fixtures.analytics.error_rate_pct) / 100
             ),
-            error_rate_pct: fixtures.metrics.error_rate_pct,
-            p50_ms: fixtures.metrics.latency_p50_ms,
-            p95_ms: fixtures.metrics.latency_p95_ms,
-            p99_ms: fixtures.metrics.latency_p99_ms,
             cold_boots: 0,
             groups: [],
             since: '24h',
-            from: '2026-09-11T12:00:00Z',
-            until: '2026-09-12T12:00:00Z',
           }
-        : undefined,
+        : fixtures.metrics && fixtures.metrics.source === 'prometheus'
+          ? {
+              requests: fixtures.metrics.request_count,
+              error_requests: Math.round(
+                (fixtures.metrics.request_count * fixtures.metrics.error_rate_pct) / 100
+              ),
+              error_rate_pct: fixtures.metrics.error_rate_pct,
+              p50_ms: fixtures.metrics.latency_p50_ms,
+              p95_ms: fixtures.metrics.latency_p95_ms,
+              p99_ms: fixtures.metrics.latency_p99_ms,
+              cold_boots: 0,
+              groups: [],
+              since: '24h',
+              from: '2026-09-11T12:00:00Z',
+              until: '2026-09-12T12:00:00Z',
+            }
+          : undefined,
     isPending: fixtures.metricsLoading,
-    error: fixtures.metricsError,
+    error: fixtures.analyticsError ?? fixtures.metricsError,
     refetch: fixtures.retry,
   }),
   useAppAnalyticsTimeseries: () => ({
@@ -190,6 +204,8 @@ beforeEach(() => {
   fixtures.metrics = undefined;
   fixtures.metricsError = null;
   fixtures.metricsLoading = false;
+  fixtures.analytics = undefined;
+  fixtures.analyticsError = null;
   fixtures.retry.mockReset();
   fixtures.buildIds = [];
   fixtures.stream.mockClear();
@@ -373,21 +389,70 @@ describe('App Overview', () => {
     }
   );
 
-  it('links observed request errors to the app Errors tab', async () => {
+  it('links request errors over the bar to the app Errors tab', async () => {
     fixtures.plan = 'pro';
-    fixtures.metrics = metrics({ error_rate_pct: 2.5 });
+    fixtures.metrics = metrics({ error_rate_pct: 6.2 });
     const router = await mount();
     const traffic = screen.getByRole('region', { name: 'Traffic snapshot' });
-    expect(traffic).toHaveTextContent('1.2K requests in the last 24 hours; 2.50% returned errors.');
+    expect(traffic).toHaveTextContent('1.2K requests in the last 24 hours; 6.20% returned errors.');
     // Short card labels; what each figure means is behind the section's tip.
     expect(traffic).toHaveTextContent('95th percentile');
     expect(traffic).not.toHaveTextContent('Percentile of recorded responses');
     await userEvent.click(within(traffic).getByRole('button', { name: 'About these figures' }));
     expect(await screen.findByText(/not an average of hours/)).toBeInTheDocument();
     const attention = screen.getByRole('region', { name: 'Needs attention' });
-    expect(attention).toHaveTextContent('Requests returned errors: 2.50% in the last 24 hours.');
+    expect(attention).toHaveTextContent('Requests returned errors: 6.20% in the last 24 hours.');
     await userEvent.click(within(attention).getByRole('button', { name: 'Inspect errors' }));
     expect(router.state.location.search.tab).toBe('Errors');
+  });
+
+  it('quotes one error rate: Needs attention reads the figures Traffic reads', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics({ error_rate_pct: 0.42 });
+    fixtures.analytics = { requests: 6700, error_rate_pct: 1 };
+    await mount();
+    expect(screen.getByRole('region', { name: 'Traffic snapshot' })).toHaveTextContent(
+      '1.00% returned errors'
+    );
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    // Under 5%: reported neutrally, not flagged.
+    expect(attention).toHaveTextContent('Nothing needs your attention.');
+    expect(attention).toHaveTextContent('1.00% of requests returned errors, under the 5%');
+    expect(within(attention).queryByRole('button', { name: 'Inspect errors' })).toBeNull();
+    expect(document.body).not.toHaveTextContent('0.42%');
+  });
+
+  it('follows the Traffic window', async () => {
+    fixtures.plan = 'pro';
+    fixtures.analytics = { requests: 400, error_rate_pct: 12.5 };
+    fixtures.metrics = metrics();
+    await mount('/dashboard/apps/alpha?analyticsSince=7d');
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'Requests returned errors: 12.50% in the last 7 days.'
+    );
+  });
+
+  it('does not flag a high rate over too few requests', async () => {
+    fixtures.plan = 'pro';
+    fixtures.analytics = { requests: 10, error_rate_pct: 50 };
+    fixtures.metrics = metrics();
+    await mount();
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(attention).toHaveTextContent('Nothing flagged so far.');
+    expect(attention).toHaveTextContent('too few to judge the error rate');
+  });
+
+  it('labels platform metrics as such when request analytics cannot be read', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics({ error_rate_pct: 8 });
+    fixtures.analyticsError = new Error('Analytics unavailable');
+    await mount();
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'Platform metrics show 8.00% of requests failing in the last 24 hours.'
+    );
+    expect(screen.getByRole('region', { name: 'Traffic snapshot' })).toHaveTextContent(
+      'unavailable'
+    );
   });
 
   it('treats a zero-request window as no traffic, not proof of health', async () => {

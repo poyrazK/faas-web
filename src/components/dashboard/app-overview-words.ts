@@ -8,6 +8,7 @@ import {
 } from '@/lib/deployment-history-view';
 import { deploymentLabel } from './deployment-promote';
 import { failureSummary } from './failure-summary';
+import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './overview/overview-data';
 
 /**
  * The app Overview's answer, in plain English (docs/console-plain-english.md):
@@ -207,6 +208,58 @@ export function hasTraffic(observed: AppMetrics | undefined): boolean {
 }
 
 /**
+ * The request figures the Overview judges errors by. Request analytics is the
+ * source the Traffic section's sentence and cards read, for the same window,
+ * so the two always agree; the platform metrics are only a labelled fallback
+ * when analytics could not be read.
+ */
+export interface RequestEvidence {
+  source: 'analytics' | 'metrics';
+  requests: number;
+  /** Undefined when the source did not report it. */
+  errorPct?: number;
+  /** "the last 24 hours", or "this window" when retention cut it short. */
+  window: string;
+}
+
+export function analyticsEvidence(
+  summary: { requests?: number; error_rate_pct?: number; window_clamped?: boolean } | undefined,
+  since: string
+): RequestEvidence | undefined {
+  if (!summary || !measured(summary.requests)) return undefined;
+  return {
+    source: 'analytics',
+    requests: summary.requests,
+    errorPct: measured(summary.error_rate_pct) ? summary.error_rate_pct : undefined,
+    window: windowWords(summary.window_clamped ? '' : since),
+  };
+}
+
+export function metricsEvidence(observed: AppMetrics | undefined): RequestEvidence | undefined {
+  if (!observed || !measured(observed.request_count)) return undefined;
+  return {
+    source: 'metrics',
+    requests: observed.request_count,
+    errorPct: measured(observed.error_rate_pct) ? observed.error_rate_pct : undefined,
+    window: windowWords(observed.range),
+  };
+}
+
+/**
+ * Errors need attention at the same bar as the Overview's hour field: at least
+ * FIELD_ERROR_PCT of requests, over at least FIELD_ERROR_MIN_REQUESTS of them.
+ * Below it the rate is reported neutrally (Traffic), not flagged.
+ */
+export function errorsNeedAttention(evidence: RequestEvidence | undefined): boolean {
+  return Boolean(
+    evidence &&
+    evidence.errorPct !== undefined &&
+    evidence.requests >= FIELD_ERROR_MIN_REQUESTS &&
+    evidence.errorPct >= FIELD_ERROR_PCT
+  );
+}
+
+/**
  * Everything the Overview flags, each a sentence with one action. The newest
  * attempt is checked separately from what is serving: a failed latest
  * attempt needs attention even when an older version still serves.
@@ -214,11 +267,11 @@ export function hasTraffic(observed: AppMetrics | undefined): boolean {
 export function attentionItems({
   items,
   rawState,
-  observed,
+  requests,
 }: {
   items: readonly Deployment[];
   rawState: string;
-  observed: AppMetrics | undefined;
+  requests: RequestEvidence | undefined;
 }): AttentionItem[] {
   const out: AttentionItem[] = [];
   // The app-scoped API orders deployments newest-first.
@@ -245,36 +298,44 @@ export function attentionItems({
       term: `Status: ${rawState}`,
       action: { label: 'Inspect logs', tab: 'Logs' },
     });
-  if (
-    observed &&
-    hasTraffic(observed) &&
-    measured(observed.error_rate_pct) &&
-    observed.error_rate_pct > 0
-  )
-    out.push({
-      key: 'requests',
-      sentence: `Requests returned errors: ${observed.error_rate_pct.toFixed(2)}% in ${windowWords(observed.range)}.`,
-      term: `Error rate over ${observed.range}`,
-      action: { label: 'Inspect errors', tab: 'Errors' },
-    });
+  if (requests && errorsNeedAttention(requests)) {
+    const pct = `${requests.errorPct!.toFixed(2)}%`;
+    out.push(
+      requests.source === 'analytics'
+        ? {
+            key: 'requests',
+            sentence: `Requests returned errors: ${pct} in ${requests.window}.`,
+            term: 'Request analytics, the same figures as Traffic',
+            action: { label: 'Inspect errors', tab: 'Errors' },
+          }
+        : {
+            key: 'requests',
+            // Said as a different source: these platform figures can differ
+            // from request analytics, which could not be read.
+            sentence: `Platform metrics show ${pct} of requests failing in ${requests.window}.`,
+            term: 'Platform metrics; request analytics could not be read',
+            action: { label: 'Inspect errors', tab: 'Errors' },
+          }
+    );
+  }
   return out;
 }
 
 /**
  * The all-clear, said only as strongly as the evidence allows: without
- * request metrics the Overview cannot vouch for requests.
+ * request figures the Overview cannot vouch for requests.
  */
 export function allClear({
   releasesKnown,
-  observed,
+  requests,
   metricsAccess,
 }: {
   releasesKnown: boolean;
-  observed: AppMetrics | undefined;
+  requests: RequestEvidence | undefined;
   metricsAccess: 'checking' | 'available' | 'restricted';
 }): { sentence: string; note?: string } {
   if (!releasesKnown) return { sentence: 'No confirmed issues yet.' };
-  if (!observed)
+  if (!requests)
     return {
       sentence: 'Nothing flagged so far.',
       note:
@@ -282,12 +343,25 @@ export function allClear({
           ? 'Request errors are tracked on Hobby and above.'
           : 'Request errors are unconfirmed without metrics.',
     };
-  if (!hasTraffic(observed))
+  if (requests.requests === 0)
     return {
       sentence: 'Nothing needs your attention.',
-      note: `No requests in ${windowWords(observed.range)}, so request errors can’t be judged.`,
+      note: `No requests in ${requests.window}, so request errors can’t be judged.`,
     };
-  return { sentence: 'Nothing needs your attention.' };
+  if (requests.errorPct === undefined)
+    return { sentence: 'Nothing flagged so far.', note: 'Request errors were not reported.' };
+  if (requests.requests < FIELD_ERROR_MIN_REQUESTS && requests.errorPct >= FIELD_ERROR_PCT)
+    return {
+      sentence: 'Nothing flagged so far.',
+      note: `Only ${requests.requests} ${requests.requests === 1 ? 'request' : 'requests'} in ${requests.window}, too few to judge the error rate.`,
+    };
+  return {
+    sentence: 'Nothing needs your attention.',
+    note:
+      requests.errorPct > 0
+        ? `${requests.errorPct.toFixed(2)}% of requests returned errors, under the ${FIELD_ERROR_PCT}% that is flagged.`
+        : undefined,
+  };
 }
 
 /** Where a release came from, capitalised for the start of a meta line. */

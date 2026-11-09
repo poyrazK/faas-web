@@ -12,12 +12,14 @@ import {
 import { Timestamp } from '@/components/ui/timestamp';
 import type { Workflow } from '@/lib/mock-data';
 import { formatCompact, formatMs } from '@/lib/mock-data';
-import type { AppMetrics, Deployment } from '@/lib/api/queries';
+import { useAppAnalytics, type AppMetrics, type Deployment } from '@/lib/api/queries';
 import { shortDigest, type VersionTone } from '@/lib/deployment-history-view';
 import {
   allClear,
+  analyticsEvidence,
   attentionItems,
   hasTraffic,
+  metricsEvidence,
   observedMetrics,
   releaseAnswer,
   shortCommit,
@@ -36,6 +38,9 @@ type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Runtime';
 interface AppOverviewProps {
   analytics?: ReactNode;
   app: Workflow;
+  /** The app slug and the Traffic window, so errors are judged on Traffic's figures. */
+  slug: string;
+  analyticsSince?: string;
   releases: Read<Deployment[]>;
   metrics: Read<AppMetrics>;
   metricsAccess: 'checking' | 'available' | 'restricted';
@@ -73,6 +78,8 @@ function measured(value: number | undefined): value is number {
  */
 export function AppOverview({
   app,
+  slug,
+  analyticsSince = '24h',
   analytics,
   releases,
   metrics,
@@ -90,7 +97,18 @@ export function AppOverview({
     metricsAccess === 'available' && !metrics.isPending && !metrics.error
       ? observedMetrics(metrics.data)
       : undefined;
-  const flagged = attentionItems({ items, rawState, observed });
+  // The same read the Traffic section makes (TanStack shares it), so Needs
+  // attention and Traffic quote one error rate for one window.
+  const paid = metricsAccess === 'available';
+  const summary = useAppAnalytics(paid ? slug : '', analyticsSince, 'route');
+  const fromAnalytics =
+    paid && !summary.isPending && !summary.error
+      ? analyticsEvidence(summary.data, analyticsSince)
+      : undefined;
+  // Platform metrics only stand in once analytics has answered without figures.
+  const requests =
+    fromAnalytics ?? (paid && !summary.isPending ? metricsEvidence(observed) : undefined);
+  const flagged = attentionItems({ items, rawState, requests });
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -153,7 +171,7 @@ export function AppOverview({
             <AllClear
               {...allClear({
                 releasesKnown: releasesReady && Boolean(answer),
-                observed,
+                requests,
                 metricsAccess,
               })}
             />
