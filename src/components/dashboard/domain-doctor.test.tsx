@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
@@ -53,13 +53,19 @@ function report(checks: Check[], extra: Record<string, unknown> = {}) {
 const OK: Check = { name: 'dns_record', status: 'ok', detail: 'CNAME resolves' };
 
 describe('DomainDoctor', () => {
-  it('lists every check with its status', () => {
+  it('lists every check in plain words, with the API detail behind Show details', () => {
     useDomainDoctor.mockReturnValue(
       report([OK, { name: 'caa_permits', status: 'na', detail: 'No CAA record' }])
     );
     render(<DomainDoctor domain="app.example.com" />);
-    expect(screen.getByText('dns_record')).toBeInTheDocument();
-    expect(screen.getByText('caa_permits')).toBeInTheDocument();
+    expect(screen.getByText('Everything checks out.')).toBeInTheDocument();
+    expect(screen.getByText('DNS record')).toBeInTheDocument();
+    expect(screen.getByText('The domain resolves in DNS.')).toBeInTheDocument();
+    expect(screen.getByText('Certificate authority allowed')).toBeInTheDocument();
+    expect(screen.getByText('Doesn’t apply to this domain.')).toBeInTheDocument();
+    expect(screen.queryByText('CNAME resolves')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show what each check found' }));
+    expect(screen.getByText('dns_record · ok')).toBeInTheDocument();
     expect(screen.getByText('CNAME resolves')).toBeInTheDocument();
   });
 
@@ -76,7 +82,14 @@ describe('DomainDoctor', () => {
       ])
     );
     render(<DomainDoctor domain="app.example.com" />);
+    // The first failure is the answer, and its fix is shown in place.
+    expect(
+      screen.getByText('It points somewhere else, so its traffic doesn’t reach Gregale.', {
+        selector: 'p.text-lg',
+      })
+    ).toBeInTheDocument();
     expect(screen.getByText('Set CNAME app.example.com → edge.gregale.dev')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show what each check found' }));
     expect(screen.getByText('wrong.example.com.')).toBeInTheDocument();
   });
 

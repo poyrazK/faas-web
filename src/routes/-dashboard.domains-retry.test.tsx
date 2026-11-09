@@ -121,7 +121,7 @@ async function mount() {
   await screen.findByText('alpha.example.com');
 }
 
-const rowOf = (host: string) => screen.getByText(host).closest('tr') as HTMLElement;
+const rowOf = (host: string) => screen.getByRole('article', { name: host });
 
 const domainReads = () => get.mock.calls.filter(([path]) => path === '/v1/domains').length;
 
@@ -247,9 +247,11 @@ describe('Domain verification retry', () => {
       )
     );
     const dialog = within(await screen.findByRole('dialog', { name: /New TXT record/ }));
-    expect(dialog.getByText(NEW_TXT)).toBeInTheDocument();
+    // The one-line record is split into the two fields a DNS provider asks for.
+    expect(dialog.getByText('_gregale-challenge.alpha.example.com')).toBeInTheDocument();
+    expect(dialog.getByText('new-token')).toBeInTheDocument();
     expect(dialog.getByText(/previous value no longer works/i)).toBeInTheDocument();
-    expect(dialog.getByRole('button', { name: /Copy: TXT record/ })).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'Copy: TXT value new-token' })).toBeInTheDocument();
   });
 
   it('keeps the domain environment when it re-arms an expired challenge', async () => {
