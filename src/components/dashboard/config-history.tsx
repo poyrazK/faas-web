@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react';
+import { NavArrowDown, Undo } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Timestamp } from '@/components/ui/timestamp';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
-import { Pill } from '@/components/dashboard/resource-table';
 import { useRestartAction } from '@/components/dashboard/app-lifecycle';
 import { useAppEnv } from '@/lib/api/queries';
 import {
@@ -14,67 +16,73 @@ import {
 } from '@/lib/api/config-history';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
-  GUARD_STATUS_LABEL,
-  guardHeadline,
   planRollback,
-  revisionChange,
   rollbackSummary,
   type ConfigGuard,
   type ConfigRevision,
   type ConfigSecretDifference,
 } from '@/lib/config-history';
-import { formatRelative } from '@/lib/mock-data';
+import { cn } from '@/lib/utils';
+import {
+  groupByDay,
+  guardWord,
+  guardState,
+  guardWords,
+  revisionGuardState,
+  isEmptyDiff,
+  revisionDiff,
+  revisionWords,
+  secretChangeWords,
+} from './environment-words';
+import { Lead, RowMenu, ToneDot, ToneWord } from './environment-parts';
 
 type RollbackResult = NonNullable<ReturnType<typeof useRollbackConfig>['data']>;
 
-const GUARD_COLOR: Record<string, string> = {
-  watching: 'var(--status-warning)',
-  clean: 'var(--status-good)',
-  restored: 'var(--status-critical)',
-  regressed: 'var(--status-critical)',
-  no_traffic: 'var(--status-idle)',
-  superseded: 'var(--status-idle)',
-};
-
-function When({ at }: { at: string | undefined }) {
-  // Read once per mount: the guard query refetches while it watches.
-  const [now] = useState(() => Date.now());
-  if (!at) return <span>—</span>;
-  const ms = Date.parse(at);
-  // formatRelative reads a future time as "just now"; a guard window ends ahead.
-  const ahead = ms - now;
+/** A quiet "Show …" / "Hide …" toggle. */
+function Disclosure({
+  open,
+  onToggle,
+  show,
+  hide,
+  label,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  show: string;
+  hide: string;
+  label?: string;
+}) {
   return (
-    <time dateTime={at} title={at}>
-      {Number.isNaN(ms)
-        ? at
-        : ahead > 60_000
-          ? `in ${Math.ceil(ahead / 60_000)} min`
-          : formatRelative(ms)}
-    </time>
-  );
-}
-
-function GuardPill({ status }: { status: string }) {
-  return (
-    <Pill
-      label={GUARD_STATUS_LABEL[status] ?? status}
-      color={GUARD_COLOR[status] ?? 'var(--status-idle)'}
-    />
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={label}
+      onClick={onToggle}
+      className="pressable inline-flex items-center gap-1 rounded text-[13px] text-muted-foreground hover:text-foreground"
+    >
+      {open ? hide : show}
+      <NavArrowDown
+        aria-hidden="true"
+        className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+      />
+    </button>
   );
 }
 
 /**
  * History, rollback and the config guard for one app's variables and secrets
- * (faas ADR-1451). Values never appear: rows name keys, and the rollback
- * review compares revisions by value without printing either side.
+ * (faas ADR-1451), read in plain English: what the guard is doing about the
+ * newest change, then every change as a timeline grouped by day. Values never
+ * appear: rows name keys, and "Show changes" and the rollback review compare
+ * revisions by value without printing either side.
  */
 export function ConfigHistory({ slug }: { slug: string }) {
   const [target, setTarget] = useState<number | null>(null);
   const [result, setResult] = useState<RollbackResult | null>(null);
   return (
     <div className="flex flex-col gap-4">
-      <GuardPanel slug={slug} />
-      <RevisionsPanel
+      <GuardWell slug={slug} />
+      <Timeline
         slug={slug}
         target={target}
         onRollback={(revision) => {
@@ -101,82 +109,100 @@ export function ConfigHistory({ slug }: { slug: string }) {
   );
 }
 
-function GuardPanel({ slug }: { slug: string }) {
+function GuardWell({ slug }: { slug: string }) {
   const guard = useConfigGuard(slug);
+  const revisions = useConfigRevisions(slug);
   const phase = queryPhase({ error: guard.error, loading: guard.isPending });
+  const newest = revisions.data?.revisions[0]?.revision;
   return (
-    <section aria-label="Config guard">
-      <Panel
-        title="Config guard"
-        help="Watches the first 10 minutes after a config change, and restores the previous values if the app starts failing."
-        actions={guard.data && <GuardPill status={guard.data.status} />}
-      >
-        {phase !== 'ready' ? (
-          <InlinePhase
-            phase={phase}
-            error={guard.error}
-            loadingMessage="Reading the config guard…"
-            onRetry={() => void guard.refetch()}
-          />
-        ) : guard.data ? (
-          <GuardBody guard={guard.data} />
-        ) : (
-          <p className="text-sm text-muted-foreground">No change has been guarded yet.</p>
-        )}
-      </Panel>
+    <section aria-label="Config guard" className="flex flex-col gap-2">
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={guard.error}
+          loadingMessage="Reading the config guard…"
+          onRetry={() => void guard.refetch()}
+        />
+      ) : guard.data ? (
+        <GuardBody
+          guard={guard.data}
+          latest={newest == null || newest === guard.data.head_revision}
+        />
+      ) : (
+        <Lead>
+          No change has been watched yet. After each change, Gregale watches the app and puts the
+          previous values back if it starts failing.
+        </Lead>
+      )}
     </section>
   );
 }
 
-function GuardBody({ guard }: { guard: ConfigGuard }) {
+function GuardBody({ guard, latest }: { guard: ConfigGuard; latest: boolean }) {
+  const [open, setOpen] = useState(false);
+  // Read once per mount: the guard query refetches while it watches.
+  const [now] = useState(() => Date.now());
+  const words = guardWords(guard, latest, now);
+  const windowOpen = guardState(guard, now) === 'watching' && Boolean(guard.window_ends_at);
   const d = guard.decision;
   return (
-    <div className="flex flex-col gap-3 text-sm">
-      <p>{guardHeadline(guard)}</p>
-      {guard.status === 'watching' && (
-        <p className="text-muted-foreground">
-          If the app starts failing, the guard restores the previous values.
-          {guard.window_ends_at && (
+    <div className="flex flex-col gap-2">
+      <span className="bento-label flex items-center gap-2" title={`Config guard: ${guard.status}`}>
+        <ToneDot tone={words.tone} />
+        {words.word}
+      </span>
+      <Lead>{words.sentence}</Lead>
+      {(words.next || windowOpen) && (
+        <p className="text-sm text-muted-foreground">
+          {words.next}
+          {windowOpen && (
             <>
-              {' '}
-              The window closes <When at={guard.window_ends_at} />.
+              {words.next && ' '}
+              The watch ends <Timestamp value={guard.window_ends_at} />.
             </>
           )}
-          {!guard.restorable &&
-            ' This change deleted or rotated a secret, so the guard cannot undo it.'}
         </p>
       )}
-      {guard.status === 'regressed' && (
-        <p className="text-muted-foreground">
-          Fix the config by hand: set the secret again, or roll the variables back.
-        </p>
+      <div>
+        <Disclosure
+          open={open}
+          onToggle={() => setOpen((v) => !v)}
+          show="Show details"
+          hide="Hide details"
+        />
+      </div>
+      {open && (
+        <div className="well flex flex-col gap-2 rounded-xl bg-muted/40 p-3 text-[13px]">
+          {d?.summary && <p>{d.summary}</p>}
+          {d && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+              <dt className="text-muted-foreground">With the new values</dt>
+              <dd className="[font-variant-numeric:tabular-nums]">
+                {d.new_server_errors} of {d.new_requests} requests answered 5xx
+              </dd>
+              <dt className="text-muted-foreground">Before the change</dt>
+              <dd className="[font-variant-numeric:tabular-nums]">
+                {d.old_server_errors} of {d.old_requests} requests answered 5xx
+              </dd>
+            </dl>
+          )}
+          <p className="text-muted-foreground">
+            Watch started <Timestamp value={guard.opened_at} />
+            {guard.closed_at && (
+              <>
+                , ended <Timestamp value={guard.closed_at} />
+              </>
+            )}
+            . Compares revision {guard.head_revision} with revision {guard.base_revision}.
+          </p>
+          <p className="font-mono text-xs text-muted-foreground">config guard · {guard.status}</p>
+        </div>
       )}
-      {d && (
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">
-          <dt className="label-mono text-muted-foreground">New values</dt>
-          <dd className="font-mono">
-            {d.new_server_errors} of {d.new_requests} 5xx
-          </dd>
-          <dt className="label-mono text-muted-foreground">Before</dt>
-          <dd className="font-mono">
-            {d.old_server_errors} of {d.old_requests} 5xx
-          </dd>
-        </dl>
-      )}
-      <p className="text-xs text-muted-foreground">
-        Opened <When at={guard.opened_at} />
-        {guard.closed_at && (
-          <>
-            , closed <When at={guard.closed_at} />
-          </>
-        )}
-        .
-      </p>
     </div>
   );
 }
 
-function RevisionsPanel({
+function Timeline({
   slug,
   target,
   onRollback,
@@ -188,88 +214,203 @@ function RevisionsPanel({
   review: ReactNode;
 }) {
   const revisions = useConfigRevisions(slug);
+  const guard = useConfigGuard(slug);
   const rows = revisions.data?.revisions ?? [];
+  // Read once per mount, so day headings do not shift while the page is open.
+  const [now] = useState(() => Date.now());
   const phase = queryPhase({
     error: revisions.error,
     loading: revisions.isPending,
     isEmpty: rows.length === 0,
   });
   return (
-    <section aria-label="Revisions">
-      <Panel title="Revisions" help="Newest first. Only the newest 100 are kept." padded={false}>
-        {phase !== 'ready' ? (
-          <div className="p-5">
-            <InlinePhase
-              phase={phase}
-              error={revisions.error}
-              loadingMessage="Reading config history…"
-              emptyMessage="No config changes recorded yet."
-              onRetry={() => void revisions.refetch()}
-            />
-          </div>
-        ) : (
-          <ol className="divide-y divide-border">
-            {rows.map((r, i) => (
-              <li key={r.revision} className="flex flex-col">
-                <RevisionRow
-                  revision={r}
-                  current={i === 0}
-                  selected={target === r.revision}
-                  onRollback={() => onRollback(r.revision)}
-                />
-                {target === r.revision && review}
-              </li>
-            ))}
-          </ol>
-        )}
-      </Panel>
+    <section aria-label="Revisions" className="flex flex-col">
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={revisions.error}
+          loadingMessage="Reading config history…"
+          emptyMessage="No config changes recorded yet."
+          onRetry={() => void revisions.refetch()}
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {groupByDay(rows, now).map((group) => (
+            <div key={group.label} className="flex flex-col">
+              <h3 className="bento-label mb-1">{group.label}</h3>
+              <ol className="flex flex-col">
+                {group.items.map((r) => {
+                  const index = rows.indexOf(r);
+                  return (
+                    <li key={r.revision} className="relative flex flex-col pl-5">
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-0 bottom-0 left-[3px] w-px bg-border"
+                      />
+                      <RevisionItem
+                        slug={slug}
+                        revision={r}
+                        previous={rows[index + 1]}
+                        current={index === 0}
+                        guardStatus={revisionGuardState(r, guard.data, now)}
+                        selected={target === r.revision}
+                        onRollback={() => onRollback(r.revision)}
+                      />
+                      {target === r.revision && review}
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          ))}
+          <p className="text-xs text-muted-foreground">Only the newest 100 changes are kept.</p>
+        </div>
+      )}
     </section>
   );
 }
 
-function RevisionRow({
+function RevisionItem({
+  slug,
   revision: r,
+  previous,
   current,
+  guardStatus,
   selected,
   onRollback,
 }: {
+  slug: string;
   revision: ConfigRevision;
+  previous: ConfigRevision | undefined;
   current: boolean;
+  /** The row's guard verdict as words should read it (see `revisionGuardState`). */
+  guardStatus: string | undefined;
   selected: boolean;
   onRollback: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const words = revisionWords(r);
+  const guard = guardStatus ? guardWord(guardStatus) : null;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3 text-sm">
-      <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">#{r.revision}</span>
-      <span className="min-w-0 flex-1 basis-48 font-mono text-xs break-words">
-        {revisionChange(r)}
-      </span>
-      <span
-        className="min-w-0 truncate text-xs text-muted-foreground sm:w-44 sm:text-right"
-        title={r.actor}
-      >
-        {r.actor}
-      </span>
-      <span className="text-xs text-muted-foreground sm:w-16">
-        <When at={r.created_at} />
-      </span>
-      <span className="w-28">{r.guard_status && <GuardPill status={r.guard_status} />}</span>
-      <span className="ml-auto w-24 text-right">
-        {current ? (
-          <span className="text-xs text-muted-foreground">Current</span>
-        ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={`Roll back to revision ${r.revision}`}
-            aria-expanded={selected}
-            onClick={onRollback}
-            disabled={selected}
-          >
-            Roll back
-          </Button>
+    <div className="flex flex-col gap-2 py-2.5">
+      <div className="flex items-start gap-3">
+        <span className="absolute top-[18px] left-0 flex">
+          <ToneDot tone={guard?.tone ?? (current ? 'active' : 'idle')} />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <p className="text-sm break-words" title={words.term}>
+            {words.lead}
+            {words.key && (
+              <>
+                {' '}
+                <span className="font-mono text-[13px]">{words.key}</span>
+              </>
+            )}
+          </p>
+          <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted-foreground">
+            <span className="max-w-full truncate" title={r.actor}>
+              by {r.actor}
+            </span>
+            <span aria-hidden="true">·</span>
+            <Timestamp value={r.created_at} />
+            {current && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="text-foreground">Current</span>
+              </>
+            )}
+          </p>
+          <div>
+            <Disclosure
+              open={open}
+              onToggle={() => setOpen((v) => !v)}
+              show="Show changes"
+              hide="Hide changes"
+              label={`${open ? 'Hide' : 'Show'} changes in revision ${r.revision}`}
+            />
+          </div>
+        </div>
+        {guard && (
+          <span className="pt-0.5">
+            <ToneWord
+              tone={guard.tone}
+              word={guard.word}
+              term={`Config guard: ${r.guard_status ?? guardStatus}`}
+            />
+          </span>
         )}
-      </span>
+        {!current && (
+          <RowMenu label={`Actions for revision ${r.revision}`}>
+            <DropdownMenuItem disabled={selected} onSelect={onRollback}>
+              <Undo aria-hidden="true" className="size-4" />
+              Roll back to revision {r.revision}
+            </DropdownMenuItem>
+          </RowMenu>
+        )}
+      </div>
+      {open && <RevisionChanges slug={slug} revision={r} previous={previous} />}
+    </div>
+  );
+}
+
+function RevisionChanges({
+  slug,
+  revision,
+  previous,
+}: {
+  slug: string;
+  revision: ConfigRevision;
+  previous: ConfigRevision | undefined;
+}) {
+  const after = useConfigRevision(slug, revision.revision);
+  const before = useConfigRevision(slug, previous?.revision ?? null);
+  const error = after.error ?? (previous ? before.error : null);
+  // A disabled query reports pending forever, so only wait for one that runs.
+  const phase = queryPhase({
+    error,
+    loading: after.isPending || (previous != null && before.isPending),
+  });
+  const diff = after.data && before.data ? revisionDiff(before.data, after.data) : null;
+  return (
+    <div
+      role="region"
+      aria-label={`Changes in revision ${revision.revision}`}
+      className="well flex flex-col gap-1.5 rounded-xl bg-muted/40 p-3 text-[13px]"
+    >
+      {phase !== 'ready' ? (
+        <InlinePhase
+          phase={phase}
+          error={error}
+          loadingMessage="Comparing with the change before…"
+          onRetry={() => {
+            void after.refetch();
+            if (previous) void before.refetch();
+          }}
+        />
+      ) : !previous ? (
+        <p className="text-muted-foreground">No earlier change is kept to compare with.</p>
+      ) : diff && isEmptyDiff(diff) ? (
+        <p className="text-muted-foreground">No variable or secret changed.</p>
+      ) : diff ? (
+        <>
+          <KeyLine label="Added" keys={diff.added} />
+          <KeyLine label="Changed" keys={diff.changed} />
+          <KeyLine label="Removed" keys={diff.removed} />
+          {diff.secrets.map((s) => (
+            <p key={s.key}>
+              <span className="text-muted-foreground">Secret </span>
+              <span className="font-mono text-xs">{s.key}</span>
+              <span className="text-muted-foreground">: {secretChangeWords(s)}</span>
+            </p>
+          ))}
+        </>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        After this change: {revision.variable_count}{' '}
+        {revision.variable_count === 1 ? 'variable' : 'variables'}, {revision.secret_count}{' '}
+        {revision.secret_count === 1 ? 'secret' : 'secrets'}. Values are never shown.{' '}
+        <span className="font-mono">#{revision.revision}</span>
+      </p>
     </div>
   );
 }
