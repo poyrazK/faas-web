@@ -34,7 +34,7 @@ function MaturityTag({ maturity }: { maturity?: string }) {
   const label = maturity === 'beta' ? 'Beta' : maturity === 'preview' ? 'Preview' : '';
   if (!label) return null;
   return (
-    <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+    <span className="label-mono rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
       {label}
     </span>
   );
@@ -405,10 +405,7 @@ function HereBody({
   };
 
   return (
-    <section
-      aria-label="Aliases"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
-    >
+    <section aria-label="Aliases" className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
       <div className="flex items-center gap-2">
         <h3 className="label-mono text-muted-foreground">Aliases</h3>
         <MaturityTag maturity={maturity} />

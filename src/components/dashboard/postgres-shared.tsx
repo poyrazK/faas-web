@@ -26,10 +26,10 @@ export function StatusTag({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
       style={{
         color: TONE[tone],
-        borderColor: `color-mix(in oklab, ${TONE[tone]} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${TONE[tone]} 14%, transparent)`,
       }}
     >
       <Icon aria-hidden className="h-3 w-3 shrink-0" />
@@ -42,7 +42,7 @@ export function StatusTag({
 export function StageTag({ stage }: { stage: string }) {
   if (!stage) return null;
   return (
-    <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+    <span className="label-mono rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
       {stage}
     </span>
   );

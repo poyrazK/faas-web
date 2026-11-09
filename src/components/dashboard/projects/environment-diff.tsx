@@ -37,11 +37,7 @@ export function EnvironmentDiffView({ data }: { data: EnvironmentDiff }) {
           </details>
         )}
         {data.workloads.map((workload) => (
-          <details
-            key={workload.workload_slug}
-            open
-            className="rounded-md border border-border p-3"
-          >
+          <details key={workload.workload_slug} open className="well rounded-xl bg-muted/40 p-3">
             <summary className="cursor-pointer font-medium">{workload.workload_name}</summary>
             <div className="mt-3 space-y-3">
               <p>

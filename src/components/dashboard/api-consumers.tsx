@@ -511,7 +511,7 @@ function ConsumerKeys({ slug, consumer }: { slug: string; consumer: Consumer }) 
         onRetry={() => void keys.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {keys.data?.map((k) => (
             <li key={k.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5">
               <span className="text-sm font-medium">{k.name}</span>
@@ -553,7 +553,7 @@ function ConsumerKeys({ slug, consumer }: { slug: string; consumer: Consumer }) 
         </div>
       ) : (
         <form
-          className="flex flex-col gap-4 rounded-lg border border-border p-4"
+          className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
           onSubmit={(e) => void issue(e)}
           noValidate
         >
@@ -722,7 +722,7 @@ function ConsumerPlanSection({
       )}
       {consumer.status === 'active' && (
         <form
-          className="flex flex-col gap-3 rounded-lg border border-border p-4"
+          className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
           onSubmit={(e) => void submit(e)}
         >
           <p className="text-sm font-medium">Move to plan</p>

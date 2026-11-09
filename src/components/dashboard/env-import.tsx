@@ -169,7 +169,7 @@ export function EnvImportButton({
           />
 
           {rows.length > 0 && (
-            <ul className="flex max-h-48 list-none flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
+            <ul className="flex max-h-48 list-none flex-col divide-y divide-border overflow-y-auto well rounded-xl bg-muted/40">
               {rows.map((r) => (
                 <li key={r.key} className="flex items-center gap-3 px-3 py-2">
                   <span

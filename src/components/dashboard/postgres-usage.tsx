@@ -354,7 +354,7 @@ function CapSuspended({
     <div
       role="alert"
       className="flex flex-col gap-3 rounded-lg border p-4"
-      style={{ borderColor: `color-mix(in oklab, ${TONE.critical} 35%, transparent)` }}
+      style={{ backgroundColor: `color-mix(in oklab, ${TONE.critical} 14%, transparent)` }}
     >
       <p className="flex items-center gap-2 text-sm font-medium" style={{ color: TONE.critical }}>
         <Pause aria-hidden className="h-4 w-4 shrink-0" />

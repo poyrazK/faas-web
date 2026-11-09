@@ -111,7 +111,7 @@ export function AppHeader({
             <span
               role="group"
               aria-label="App status"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
+              className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs"
             >
               <Circle
                 aria-hidden

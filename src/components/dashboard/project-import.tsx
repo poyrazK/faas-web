@@ -206,7 +206,7 @@ export function ProjectImport({
                   Detected from {SCAN_SOURCE_LABEL[plan.scan_source]}.
                 </p>
               </div>
-              <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+              <ul className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
                 {(plan.workloads ?? []).map((w) => (
                   <li key={w.name} className="flex flex-col gap-1 px-4 py-3">
                     <span className="flex min-w-0 items-center gap-2">
@@ -259,7 +259,7 @@ export function ProjectImport({
                     use the environment variables below to connect your own.
                   </p>
                 </div>
-                <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+                <ul className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
                   {plan.managed?.map((m) => (
                     <li key={m.name} className="flex flex-col gap-0.5 px-4 py-3">
                       <span className="flex items-center gap-2">
@@ -312,7 +312,7 @@ export function ProjectImport({
           <h2 id="import-applied" className="text-sm font-medium text-muted-foreground">
             Project created
           </h2>
-          <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+          <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
             <div className="flex items-start gap-3.5 px-4 py-4">
               <span
                 aria-hidden

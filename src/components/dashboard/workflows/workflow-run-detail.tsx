@@ -155,7 +155,7 @@ function RunBody({ slug, run }: { slug: string; run: WorkflowRun }) {
         </dl>
         {run.last_error && (
           <p
-            className="mt-4 rounded-md border border-border p-3 font-mono text-xs [overflow-wrap:anywhere]"
+            className="mt-4 well rounded-xl bg-muted/40 p-3 font-mono text-xs [overflow-wrap:anywhere]"
             style={{ color: 'var(--status-critical)' }}
           >
             {run.last_error}
@@ -604,7 +604,7 @@ function StepAttempts({ runId, step }: { runId: string; step: string }) {
         onRetry={() => void q.refetch()}
       />
       {attempts.length > 0 && (
-        <ol className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+        <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
           {attempts.map((a) => (
             <li key={a.attempt} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
               <span className="font-mono text-xs">#{a.attempt}</span>

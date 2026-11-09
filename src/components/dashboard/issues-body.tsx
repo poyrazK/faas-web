@@ -166,7 +166,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               and a valid reporting token.
             </p>
           ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
+            <ul className="divide-y divide-border well rounded-xl bg-muted/40">
               {items.map((item) => (
                 <li
                   key={item.id}

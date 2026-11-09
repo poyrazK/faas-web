@@ -416,7 +416,7 @@ export function WebhooksBody({ slug }: { slug: string }) {
                 Includes all supported app events, including new event types added in the future.
               </p>
             ) : (
-              <div className="flex flex-col gap-4 rounded-lg border border-border p-3">
+              <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-3">
                 {[...new Set(WEBHOOK_EVENTS.map((item) => item.group))].map((group) => (
                   <fieldset key={group}>
                     <legend className="mb-2 text-xs font-medium text-muted-foreground">

@@ -164,9 +164,9 @@ function ReasonBadge({ reason }: { reason: AttentionReason }) {
   const Icon = cfg.icon;
   return (
     <span
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${cfg.color} 14%, transparent)`,
         color: cfg.color,
       }}
     >
@@ -238,7 +238,7 @@ function Attention({ slug, scope, workflow }: { slug: string; scope: string; wor
           onRetry={() => void queue.refetch()}
         />
         {items.length > 0 && (
-          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {items.map((e) => (
               <AttentionItem
                 key={`${e.operation_id}:${e.state.workflow}:${e.state.instance_id}`}
@@ -389,7 +389,7 @@ function Outcomes({ slug, scope, workflow }: { slug: string; scope: string; work
         {items.length > 0 && (
           <section aria-label="Latest outcomes" className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Latest outcomes</h3>
-            <ul className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+            <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
               {items.map((o) => (
                 <li
                   key={`${o.operation_id}:${o.state.workflow}:${o.state.instance_id}`}
@@ -672,7 +672,7 @@ function Slowest({
         ) : q.data.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No measured instance contributes to this.</p>
         ) : (
-          <ol className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+          <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
             {q.data.items.map((i) => (
               <li
                 key={`${i.operation_id}:${i.state.instance_id}`}

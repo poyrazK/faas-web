@@ -21,7 +21,7 @@ function Finding({ finding }: { finding: StatelessFinding }) {
     <li className="flex min-w-0 flex-col gap-2 px-5 py-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span
-          className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+          className="rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ color: severity.color, borderColor: severity.color }}
         >
           {severity.label}

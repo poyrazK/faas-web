@@ -100,8 +100,8 @@ function ServingBadge({ enabled }: { enabled: boolean }) {
     : (['Disabled', 'var(--chart-muted)', Prohibition] as const);
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="size-3" aria-hidden />
       {label}
@@ -119,8 +119,8 @@ function CertBadge({ status }: { status: keyof typeof CERT_STATUS }) {
   const [label, color, Icon] = CERT_STATUS[status];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="size-3" aria-hidden />
       {label}
@@ -233,7 +233,7 @@ function TcpRow({ slug, listener }: { slug: string; listener: TcpListener }) {
   };
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <li className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -544,7 +544,7 @@ function UdpRow({ slug, listener }: { slug: string; listener: UdpListener }) {
   };
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-start sm:justify-between">
+    <li className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm">{listener.name}</span>

@@ -516,7 +516,7 @@ function Suspension({ children }: { children: ReactNode }) {
   return (
     <p
       className="flex items-start gap-2 rounded-lg border p-3 text-sm text-muted-foreground"
-      style={{ borderColor: `color-mix(in oklab, ${TONE.critical} 35%, transparent)` }}
+      style={{ backgroundColor: `color-mix(in oklab, ${TONE.critical} 14%, transparent)` }}
     >
       <Pause aria-hidden className="mt-0.5 h-4 w-4 shrink-0" style={{ color: TONE.critical }} />
       <span>
@@ -622,7 +622,7 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
     <div
       role="status"
       className="flex flex-col gap-3 rounded-lg border p-4"
-      style={{ borderColor: `color-mix(in oklab, ${TONE.warning} 35%, transparent)` }}
+      style={{ backgroundColor: `color-mix(in oklab, ${TONE.warning} 14%, transparent)` }}
     >
       <p className="flex items-center gap-2 text-sm font-medium" style={{ color: TONE.warning }}>
         <Clock aria-hidden className="h-4 w-4 shrink-0" />

@@ -265,7 +265,7 @@ function MirrorRuleCard({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-start gap-6">
         {endpoint(rule.source_deployment_id, 'Source')}
         {endpoint(rule.mirror_deployment_id, 'Mirror')}

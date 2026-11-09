@@ -305,7 +305,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
     setCopyFailed(false);
   }
   return (
-    <section className="min-w-0 space-y-5 rounded-lg border border-border p-4">
+    <section className="min-w-0 space-y-5 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Issue reporting setup</h3>
         <Button variant="outline" disabled={Boolean(secret)} onClick={onClose}>

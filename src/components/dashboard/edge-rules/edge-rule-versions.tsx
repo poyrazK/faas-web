@@ -208,7 +208,7 @@ function VersionDialog({
               key={d.id}
               role="group"
               aria-label={`Rule ${d.id}: ${CHANGE_LABEL[d.change]}`}
-              className="rounded-lg border border-border"
+              className="well rounded-xl bg-muted/40"
             >
               <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
                 <span className="font-mono">{(d.after ?? d.before)?.name || d.id.slice(0, 8)}</span>

@@ -94,7 +94,7 @@ export function MultipartUploads({ slug, bucket }: { slug: string; bucket: Objec
           emptyMessage="No uploads in parts. Files above the single-upload limit upload in parts automatically."
         />
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {items.map((u) => (
             <li
               key={u.id}
@@ -170,7 +170,7 @@ function ConfirmedParts({
   const items = parts.data?.items ?? [];
   const phase = queryPhase({ loading: parts.isPending, error: parts.error });
   return (
-    <div className="basis-full rounded-lg border border-border p-3 text-xs">
+    <div className="basis-full well rounded-xl bg-muted/40 p-3 text-xs">
       {phase !== 'ready' ? (
         <InlinePhase phase={phase} error={parts.error} onRetry={() => void parts.refetch()} />
       ) : (

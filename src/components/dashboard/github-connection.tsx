@@ -350,7 +350,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
                   No pushes or check updates recorded yet.
                 </p>
               ) : (
-                <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+                <ul className="mt-2 divide-y divide-border well rounded-xl bg-muted/40">
                   {activity.map((item, i) => {
                     const shown = ACTIVITY_STATUS[item.status];
                     const Icon = shown.icon;

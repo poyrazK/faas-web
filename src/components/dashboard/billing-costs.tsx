@@ -123,8 +123,8 @@ function CoverageBadge({ gap }: { gap: boolean }) {
   const color = gap ? 'var(--status-warning)' : 'var(--status-good)';
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="h-3 w-3" aria-hidden />
       {gap ? 'Coverage gap' : 'Complete'}
@@ -144,8 +144,8 @@ function InvoiceStatus({ status }: { status: string }) {
   const { color, icon: Icon } = INVOICE_STATUS[status] ?? INVOICE_STATUS.draft;
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="h-3 w-3" aria-hidden />
       {sentence(status)}
@@ -542,7 +542,7 @@ function CostReport({ report }: { report: FinancialCosts }) {
         <h3 className="label-mono text-foreground">Invoices with a period ending in {month}</h3>
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs text-foreground"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
             title="invoice_reconciliation: not_reconciled"
           >
             <Circle className="h-3 w-3" aria-hidden />

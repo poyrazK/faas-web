@@ -790,7 +790,7 @@ function CreateAppWizard({
             appSlug={createdId ?? undefined}
           />
         ) : !createdId ? (
-          <div className="flex items-start gap-3.5 rounded-xl border border-border bg-card px-4 py-4">
+          <div className="flex items-start gap-3.5 surface rounded-[1.25rem] bg-card px-4 py-4">
             <span
               aria-hidden
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-brand"
@@ -809,7 +809,7 @@ function CreateAppWizard({
             <h2 id={`${uid}-next`} className="text-sm font-medium text-muted-foreground">
               Next step
             </h2>
-            <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+            <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
               <div className="flex items-start gap-3.5 px-4 py-4">
                 <span
                   aria-hidden
@@ -929,7 +929,7 @@ function CreateAppWizard({
       return (
         <div
           role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 sm:col-span-2"
+          className="flex flex-wrap items-center justify-between gap-3 surface rounded-[1.25rem] bg-card p-3 sm:col-span-2"
         >
           <p className="min-w-0 flex-1 basis-64 text-sm">
             {count > 1 ? (
@@ -1033,7 +1033,7 @@ function CreateAppWizard({
             }}
           />
           {quickstart ? (
-            <details className="rounded-lg border border-border p-4">
+            <details className="well rounded-xl bg-muted/40 p-4">
               <summary className="cursor-pointer text-sm">View sample code</summary>
               <pre className="mt-3 overflow-x-auto text-xs">
                 <code>{FUNCTION_STARTERS.node.code}</code>
@@ -1120,7 +1120,7 @@ function CreateAppWizard({
               >
                 Repository
               </label>
-              <div className="rounded-xl border border-border bg-card">
+              <div className="surface rounded-[1.25rem] bg-card">
                 <RepoPicker
                   variant="list"
                   labelledBy={`${uid}-repository-label`}
@@ -1243,7 +1243,7 @@ function CreateAppWizard({
           </SettingRow>
 
           {quickstart && source === 'function' && (
-            <details className="rounded-lg border border-border p-4">
+            <details className="well rounded-xl bg-muted/40 p-4">
               <summary className="cursor-pointer text-sm">View sample code</summary>
               <pre className="mt-3 overflow-x-auto whitespace-pre-wrap font-mono text-xs">
                 {fnStarter.code}

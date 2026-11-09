@@ -220,7 +220,7 @@ export function SecretsBody({
         <div
           role="status"
           aria-label="Apply the new values"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-3 surface rounded-[1.25rem] bg-card px-4 py-3"
         >
           <p className="text-sm text-muted-foreground">
             Running instances keep the previous values until they restart.

@@ -207,7 +207,7 @@ function ConditionRow({
     });
   };
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"

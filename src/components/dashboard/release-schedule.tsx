@@ -128,7 +128,7 @@ export function ReleaseSchedule({ deployment, slug }: { deployment: Deployment; 
   return (
     <section
       aria-label="Scheduled release"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
     >
       <p className="label-mono text-muted-foreground">
         {stage ? `Schedule · ${stage}` : 'Schedule'}

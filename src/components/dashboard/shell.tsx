@@ -343,7 +343,7 @@ function SidebarBody({
         type="button"
         onClick={onOpenSearch}
         aria-label="Quick search"
-        className="pressable mt-4 flex h-8 w-full items-center gap-2.5 overflow-hidden rounded-md border border-border px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="pressable mt-4 flex h-8 w-full items-center gap-2.5 overflow-hidden well rounded-xl bg-muted/40 px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
         <span aria-hidden={collapsed} className={labelCls}>
@@ -605,7 +605,7 @@ function UnreachableBanner() {
             .catch(() => {})
             .finally(() => setRetrying(false));
         }}
-        className="pressable ml-auto rounded-full border border-border px-3 py-1 text-xs hover:border-border-secondary disabled:opacity-50"
+        className="pressable ml-auto rounded-full bg-muted px-3 py-1 text-xs hover:border-border-secondary disabled:opacity-50"
       >
         {retrying ? 'Checking…' : 'Check again'}
       </button>

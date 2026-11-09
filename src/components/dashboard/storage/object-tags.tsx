@@ -81,7 +81,7 @@ export function ObjectTags({
     <div
       role="group"
       aria-label={`Tags on ${objectKey}`}
-      className="flex basis-full flex-col gap-3 rounded-xl border border-border p-4"
+      className="flex basis-full flex-col gap-3 well rounded-xl bg-muted/40 p-4"
     >
       {phase !== 'ready' ? (
         <InlinePhase
@@ -170,10 +170,7 @@ export function ObjectTags({
           ) : (
             <ul aria-label={`Tags of ${objectKey}`} className="flex flex-wrap gap-1.5">
               {current.map(([k, v]) => (
-                <li
-                  key={k}
-                  className="rounded-md border border-border px-2 py-0.5 font-mono text-xs"
-                >
+                <li key={k} className="well rounded-xl bg-muted/40 px-2 py-0.5 font-mono text-xs">
                   {k}={v}
                 </li>
               ))}

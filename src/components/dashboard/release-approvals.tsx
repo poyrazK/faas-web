@@ -536,7 +536,7 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
             <form
               noValidate
               aria-label="Approval policy"
-              className="flex flex-col gap-3 rounded-lg border border-border p-4"
+              className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 void submit();
@@ -683,10 +683,7 @@ export function ReleaseApprovalSection({
     );
   if (!status.data || status.data.state === 'not_required') return null;
   return (
-    <section
-      aria-label="Approval"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
-    >
+    <section aria-label="Approval" className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
       <p className="label-mono text-muted-foreground">Approval</p>
       <ReleaseApproval deploymentId={deploymentId} release={release} />
       <a

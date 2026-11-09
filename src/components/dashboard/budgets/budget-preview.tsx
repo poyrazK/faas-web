@@ -20,7 +20,7 @@ function Targets({ title, targets }: { title: string; targets: BudgetTarget[] })
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <h4 className="label-mono text-muted-foreground">{title}</h4>
-      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+      <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
         {targets.map((target) => (
           <li
             key={`${target.kind}-${target.id}-${target.deployment_id ?? ''}`}
@@ -54,10 +54,7 @@ export function BudgetPreviewResult({ preview }: { preview: BudgetPreview }) {
         ? { label: 'Available', color: GOOD, icon: CheckCircle }
         : { label: 'Not available for this spec', color: WARN, icon: WarningTriangle };
   return (
-    <section
-      aria-label="Preview"
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
-    >
+    <section aria-label="Preview" className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="label-mono text-foreground">This month so far</h3>
         <span className="text-xs text-muted-foreground">

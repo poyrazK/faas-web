@@ -394,7 +394,7 @@ export function NewFreezeForm({ owner, onDone }: { owner: FreezeOwner; onDone: (
     <form
       noValidate
       aria-label="New freeze"
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -448,7 +448,7 @@ export function NewFreezeForm({ owner, onDone }: { owner: FreezeOwner; onDone: (
               {WEEKDAYS.map((day) => (
                 <label
                   key={day}
-                  className="pressable flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs capitalize has-[:checked]:border-brand"
+                  className="pressable flex cursor-pointer items-center gap-1.5 well rounded-xl bg-muted/40 px-2 py-1 text-xs capitalize has-[:checked]:border-brand"
                 >
                   <input
                     type="checkbox"
@@ -692,7 +692,7 @@ export function FrozenRefusal({
     <div
       role="alert"
       aria-label="Release frozen"
-      className="flex flex-col gap-3 rounded-md border border-border p-3"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3"
     >
       <Badge color="var(--status-critical)" icon={Lock}>
         {error.detail ?? 'Production releases are frozen.'}

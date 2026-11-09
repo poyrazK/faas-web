@@ -295,7 +295,7 @@ export function AppAnalyticsBody({
 
             {hasRouteFilter && route && method && (
               <div className="flex items-center gap-2 text-xs" aria-label="Active route filter">
-                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-1 font-mono">
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-mono">
                   <Pill label={method} /> {route}
                 </span>
                 <button

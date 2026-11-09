@@ -360,7 +360,7 @@ function PersonalPlans() {
         <div
           role="status"
           aria-label="Plan change pending"
-          className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"
+          className="surface rounded-[1.25rem] bg-card px-4 py-3 text-sm text-muted-foreground"
         >
           A change to the {planName(requested.plan)} plan was requested. You stay on{' '}
           {current ? planName(current) : 'your current plan'} until the billing provider confirms it
@@ -377,7 +377,7 @@ function PersonalPlans() {
           return (
             <div
               key={plan.id}
-              className="flex flex-col gap-4 rounded-xl border bg-card p-5 transition-colors"
+              className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-5 transition-colors"
               style={
                 isCurrent
                   ? { borderColor: 'color-mix(in oklab, var(--brand) 55%, transparent)' }

@@ -642,7 +642,7 @@ function ImageJourney({
         </p>
       )}
       {operation ? (
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-4">
           <p className="break-all text-sm">
             App: <strong>{operation.createRequest.slug}</strong> · Image:{' '}
             <code>{operation.deployRequest.image}</code>
@@ -1127,7 +1127,7 @@ function ImageJourney({
               role="region"
               aria-label="Review deployment"
               tabIndex={-1}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 focus-visible:outline-2 focus-visible:outline-brand"
+              className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-4 focus-visible:outline-2 focus-visible:outline-brand"
             >
               <p className="text-sm leading-relaxed">
                 {fixedApp

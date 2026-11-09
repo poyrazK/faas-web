@@ -169,7 +169,7 @@ export function TeamMembersBody({
                   })
                 );
             }}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-none focus:border-brand/50"
+            className="h-8 surface rounded-[1.25rem] bg-card px-2 text-xs outline-none focus:border-brand/50"
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>

@@ -854,7 +854,7 @@ function ObjectBrowser({
                     type="button"
                     aria-label={`Open folder ${folder.slice(prefix.length)}`}
                     onClick={() => goTo(folder)}
-                    className="storage-folder pressable flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 font-mono text-xs hover:border-[color:var(--brand)]"
+                    className="storage-folder pressable flex items-center gap-2 well rounded-xl bg-muted/40 px-3 py-1.5 font-mono text-xs hover:bg-muted/70"
                   >
                     {folder.slice(prefix.length)}
                     <span className="text-muted-foreground">{count}</span>
@@ -871,7 +871,7 @@ function ObjectBrowser({
             </p>
           )}
           {files.length > 0 && (
-            <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
+            <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
               {files.map((o) => (
                 <li
                   key={o.key}

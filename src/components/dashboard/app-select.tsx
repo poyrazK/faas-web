@@ -139,7 +139,7 @@ export function AppSelect({
         // kept through the change of primitive: the value is announced from the
         // trigger's own content, so the name says what the control is for.
         aria-label={label === 'App' ? 'Select an app' : `Select ${label.toLowerCase()}`}
-        className="pressable flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="pressable flex h-9 items-center gap-2 surface rounded-[1.25rem] bg-card px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <SelectPrimitive.Value />
         <SelectPrimitive.Icon>

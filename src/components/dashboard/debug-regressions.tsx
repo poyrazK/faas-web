@@ -184,7 +184,7 @@ export function DebugRegressions({
           onRowClick={(row) => onSelect({ regression: row.id })}
         />
         {search.regression && !isPending && !error && (
-          <section aria-label="Regression details" className="rounded-lg border border-border p-4">
+          <section aria-label="Regression details" className="well rounded-xl bg-muted/40 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Regression details</h3>
               <Button size="xs" variant="ghost" onClick={() => onSelect({ regression: undefined })}>

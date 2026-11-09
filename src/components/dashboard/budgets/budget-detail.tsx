@@ -150,7 +150,7 @@ function StopSection({ stop }: { stop: BudgetStop }) {
           : 'It stays until this budget is edited, turned off or deleted.'}
       </p>
       {stop.targets.length ? (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {stop.targets.map((target) => {
             const state = TARGET_STATE[target.state] ?? TARGET_STATE.unavailable;
             return (
@@ -308,7 +308,7 @@ function BudgetChannels({ accountId, budget }: { accountId: string; budget: Budg
         <>
           <ul
             aria-label="Budget alert channels"
-            className="flex flex-col divide-y divide-border rounded-md border border-border"
+            className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
           >
             {list.map((channel) => (
               <li
@@ -364,7 +364,7 @@ function BudgetHistory({ accountId, id }: { accountId: string; id: string }) {
         />
       ) : (
         <>
-          <ol className="flex flex-col divide-y divide-border rounded-md border border-border">
+          <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {rows.map((row) => {
               const level = budgetLevel(row.spec);
               return (
@@ -658,7 +658,7 @@ export function BudgetDetail({
             {spec.mode !== 'strict' && (
               <Section title="Alerts this month">
                 {alerts.length ? (
-                  <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+                  <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
                     {alerts.map((alert) => (
                       <AlertRow key={alert.id} alert={alert} />
                     ))}

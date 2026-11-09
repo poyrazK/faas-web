@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Sparkline, type ChartColor } from './kit/chart';
 import { HelpTip } from './kit/help-tip';
 import { cn } from '@/lib/utils';
+import './bento.css';
 import { ProblemHelp } from './problem-help';
 
 /* ------------------------------------------------------------------ *
@@ -105,7 +106,7 @@ export function Stats({
       <div
         className={cn(
           'grid grid-cols-2 gap-px overflow-hidden bg-border',
-          !flush && 'rounded-lg border border-border',
+          !flush && 'surface rounded-[1.25rem]',
           {
             2: 'sm:grid-cols-2',
             3: 'sm:grid-cols-3',
@@ -167,23 +168,23 @@ export function StatTile({
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col gap-1 bg-card px-4 py-3',
-        !inStats && 'rounded-lg border border-border'
+        'flex min-w-0 flex-col gap-1.5 bg-card px-5 py-4',
+        !inStats && 'surface rounded-[1.25rem]'
       )}
     >
-      <p className="truncate text-xs text-muted-foreground">{label}</p>
+      <p className="bento-label truncate">{label}</p>
       <div className="flex items-end justify-between gap-3">
         {state === 'loading' ? (
           <Skeleton className="h-7 w-16" />
         ) : state === 'unavailable' ? (
           <p
-            className="text-xl leading-7 font-semibold text-muted-foreground"
+            className="text-[26px] leading-8 font-normal text-muted-foreground"
             title="The API did not answer, so this figure is unknown."
           >
             —<span className="sr-only">unavailable</span>
           </p>
         ) : (
-          <p className="truncate text-xl leading-7 font-semibold tracking-tight [font-variant-numeric:tabular-nums]">
+          <p className="truncate text-[26px] leading-8 font-normal tracking-[-0.02em] [font-variant-numeric:tabular-nums]">
             {typeof value === 'number' ? (format ? format(value) : value.toLocaleString()) : value}
             {unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>}
           </p>
@@ -268,14 +269,17 @@ export function Panel({
 }) {
   return (
     <section
-      className={cn('relative overflow-hidden rounded-lg border border-border bg-card', className)}
+      className={cn(
+        'surface relative overflow-hidden surface rounded-[1.25rem] bg-card',
+        className
+      )}
     >
       {(title || actions) && (
-        <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-2">
+        <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-3 pb-1">
           <div className="min-w-0">
             {title && (
               <div className="flex items-center gap-1">
-                <h2 className="text-sm font-semibold">{title}</h2>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
                 {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
               </div>
             )}
@@ -284,7 +288,9 @@ export function Panel({
         </header>
       )}
       <FlushContext.Provider value={!padded}>
-        <div className={cn(padded && 'p-4')}>{children}</div>
+        <div className={cn(padded && (title || actions ? 'px-5 pt-2 pb-5' : 'p-5'))}>
+          {children}
+        </div>
       </FlushContext.Provider>
     </section>
   );
@@ -427,7 +433,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-[1.25rem] border border-dashed border-border px-6 py-14 text-center',
         className
       )}
     >
@@ -454,7 +460,7 @@ export function UnreachableState({
     <div
       role="status"
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-[1.25rem] border border-dashed border-border px-6 py-14 text-center',
         className
       )}
     >

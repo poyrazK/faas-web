@@ -261,7 +261,7 @@ export function JobCreateDialog({
               </p>
             </div>
           </div>
-          <details ref={resourceDetails} className="rounded-lg border border-border p-4">
+          <details ref={resourceDetails} className="well rounded-xl bg-muted/40 p-4">
             <summary className="cursor-pointer text-xs font-medium">
               Resource limits{' '}
               <span className="font-normal text-muted-foreground">· plan defaults</span>

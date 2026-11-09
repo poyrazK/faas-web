@@ -166,7 +166,7 @@ export function TemplateCatalog({
                   aria-pressed={filter === c}
                   onClick={() => setFilter(c)}
                   className={cn(
-                    'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                    'inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                     filter === c
                       ? 'border-foreground bg-foreground text-background'
                       : 'border-border text-muted-foreground hover:text-foreground'
@@ -191,7 +191,7 @@ export function TemplateCatalog({
               >
                 {CATEGORY[category].label}
               </h2>
-              <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+              <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
                 {list.filter((t) => t.category === category).map(row)}
               </div>
             </section>
@@ -203,7 +203,7 @@ export function TemplateCatalog({
         // of the screen with the way on.
         <section
           aria-label="Chosen starter"
-          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-card p-3 shadow-lg"
+          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-x-4 gap-y-3 surface rounded-[1.25rem] bg-card p-3 shadow-lg"
         >
           <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1.5">
             <p className="text-xs text-muted-foreground">

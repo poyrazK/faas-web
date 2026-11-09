@@ -85,7 +85,7 @@ export function AdvancedSettings({
     <details
       ref={detailsRef}
       aria-label="Advanced settings"
-      className="group/advanced rounded-xl border border-border bg-card"
+      className="group/advanced surface rounded-[1.25rem] bg-card"
     >
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-xl px-4 py-3 focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
         <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -124,7 +124,7 @@ export function SettingsSection({
       <h2 id={id} className="text-sm font-medium text-muted-foreground">
         {title}
       </h2>
-      <div className="@container flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="@container flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         {children}
       </div>
     </section>

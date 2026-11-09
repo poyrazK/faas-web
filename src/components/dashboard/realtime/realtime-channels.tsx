@@ -74,7 +74,7 @@ export function ChannelSection({ slug, endpointId }: { slug: string; endpointId:
         )}
       </form>
       {channel && (
-        <div key={channel} className="flex flex-col gap-6 rounded-lg border border-border p-4">
+        <div key={channel} className="flex flex-col gap-6 well rounded-xl bg-muted/40 p-4">
           <PublishForm slug={slug} endpointId={endpointId} channel={channel} />
           <RetainedHistory slug={slug} endpointId={endpointId} channel={channel} />
           <ConsumerGroups slug={slug} endpointId={endpointId} channel={channel} />
@@ -189,7 +189,7 @@ function PublishOutcome({ result }: { result: RealtimePublishResult }) {
   const targeted = result.subscribers;
   const problems = (result.queue_full ?? 0) + (result.failed ?? 0);
   return (
-    <div role="status" className="flex flex-col gap-1 rounded-md border border-border p-3 text-sm">
+    <div role="status" className="flex flex-col gap-1 well rounded-xl bg-muted/40 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <StatusTag
           tone={result.partial || problems > 0 ? 'warning' : 'good'}
@@ -271,7 +271,7 @@ function RetainedHistory({
         </p>
       )}
       {phase === 'ready' && (
-        <ol className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {messages.map((m) => {
             const body = m.expired ? undefined : base64ToText(m.data_base64, m.binary);
             return (
@@ -346,7 +346,7 @@ function ConsumerGroups({
         onRetry={() => void groups.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {list.map((g) => {
             const state = groupState(g);
             return (

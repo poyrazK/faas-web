@@ -32,7 +32,7 @@ export function AsyncInvokeOptionsFields({
   if (access !== 'on') return null;
   return (
     <details
-      className="rounded-md border border-border sm:col-span-2"
+      className="well rounded-xl bg-muted/40 sm:col-span-2"
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted-foreground">

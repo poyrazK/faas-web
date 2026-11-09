@@ -30,7 +30,7 @@ export function RolloutObservation({ slug, deployment }: { slug: string; deploym
   return (
     <section
       aria-label="Worker rollout"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
     >
       <p className="label-mono text-muted-foreground">Worker rollout</p>
       {!available ? (

@@ -284,7 +284,7 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
     <form
       noValidate
       aria-label="New release gate"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();

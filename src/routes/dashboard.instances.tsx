@@ -91,7 +91,7 @@ function WorkersPage() {
     {
       key: 'app',
       label: 'App',
-      render: (i) => <span className="font-mono text-xs">{i.app}</span>,
+      render: (i) => <span className="font-medium">{i.app}</span>,
     },
     {
       key: 'state',
@@ -128,7 +128,13 @@ function WorkersPage() {
     {
       key: 'id',
       label: 'Instance',
-      render: (i) => <span className="font-mono text-xs text-muted-foreground">{i.id}</span>,
+      // The first characters tell instances apart; the full id is on hover
+      // and in the detail the row opens.
+      render: (i) => (
+        <span title={i.id} className="font-mono text-xs text-muted-foreground">
+          {i.id.length > 12 ? `${i.id.slice(0, 8)}…` : i.id}
+        </span>
+      ),
     },
   ];
 

@@ -147,8 +147,8 @@ export function StatusChip({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon aria-hidden className="size-3" />
       {label}

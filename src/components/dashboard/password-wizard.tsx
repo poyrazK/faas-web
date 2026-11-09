@@ -51,7 +51,7 @@ function StepRail({ current }: { current: Step }) {
             <span
               aria-current={i === at ? 'step' : undefined}
               className={cn(
-                'flex h-5 min-w-5 items-center justify-center rounded-full border px-1 font-mono text-[10px] transition-colors ease-console',
+                'flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-[10px] transition-colors ease-console',
                 reached
                   ? 'border-brand/40 bg-brand/10 text-brand'
                   : 'border-border text-muted-foreground'

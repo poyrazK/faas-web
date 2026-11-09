@@ -1,8 +1,8 @@
 /* Bento — console only. Shared by the Overview tiles and the app tiles.
 
    Tiles of different sizes, each with its own material: a field of the
-   brand ramp for traffic, a compute-amber glow for the allowance, a rose
-   field for errors, a violet glow for releases. Every colour is composed
+   brand ramp for traffic, a compute-amber glow for the allowance and a rose
+   field for errors. Every colour is composed
    from tokens in index.css (mint ramp, category and status colours), so
    no new literal enters the system. Glows rise from the top-right: the
    gregale is a north-easterly.
@@ -26,6 +26,9 @@
   padding: 1.375rem 1.5rem;
 }
 
+.console .bento-tile[data-span='12'] {
+  grid-column: 1 / -1;
+}
 .console .bento-tile[data-span='8'] {
   grid-column: span 8;
 }
@@ -54,6 +57,22 @@
     border-radius: 1.25rem;
     padding: 1.125rem 1.25rem;
   }
+}
+
+/* --- Light ------------------------------------------------------------- 
+   Depth from light, not lines: a raised surface catches light on its top
+   edge and keeps a faint rim; a well is recessed into the card it sits in. */
+
+.console .surface,
+.console .bento-tile,
+.console .app-tile:not([data-state='undeployed']),
+.console .rt:not([data-flush]) {
+  box-shadow:
+    inset 0 1px 0 var(--surface-highlight),
+    0 0 0 1px var(--surface-rim);
+}
+.console .well {
+  box-shadow: inset 0 1px 2px var(--well-shade);
 }
 
 /* --- Materials ---------------------------------------------------------- */
@@ -85,16 +104,6 @@
     color-mix(in oklch, var(--status-critical) 12%, var(--background)) 55%,
     color-mix(in oklch, var(--status-critical) 5%, var(--card)) 100%
   );
-}
-
-.console .bento-tile[data-tone='release'] {
-  background:
-    radial-gradient(
-      100% 80% at 100% 0%,
-      color-mix(in oklch, var(--cat-security) 16%, transparent) 0%,
-      transparent 65%
-    ),
-    var(--card);
 }
 
 .console .bento-tile[data-tone='field'] {
@@ -327,71 +336,6 @@
   );
 }
 
-/* --- Sparklines -------------------------------------------------------- */
-
-.console .bento-spark path {
-  fill: none;
-  stroke: var(--brand);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-.console .bento-spark[data-hot] path {
-  stroke: var(--status-critical);
-}
-
-/* --- Icon circles (deployments) ------------------------------ */
-
-.console .bento-dot-icon {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  border-radius: 999px;
-}
-.console .bento-dot-icon[data-tone='critical'] {
-  background: color-mix(in oklch, var(--status-critical) 16%, transparent);
-  color: var(--status-critical);
-}
-.console .bento-dot-icon[data-tone='warning'] {
-  background: color-mix(in oklch, var(--status-warning) 16%, transparent);
-  color: var(--status-warning);
-}
-.console .bento-dot-icon[data-tone='good'] {
-  background: color-mix(in oklch, var(--status-good) 16%, transparent);
-  color: var(--status-good);
-}
-.console .bento-dot-icon[data-tone='neutral'] {
-  background: var(--muted);
-  color: var(--muted-foreground);
-}
-
-.console .bento-live {
-  background: color-mix(in oklch, var(--brand) 12%, transparent);
-  color: var(--brand);
-}
-.console .bento-live::before {
-  content: '';
-  width: 0.4375rem;
-  height: 0.4375rem;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 20%, transparent);
-}
-.console .bento-live[data-tone='critical'] {
-  background: color-mix(in oklch, var(--status-critical) 14%, transparent);
-  color: var(--status-critical);
-}
-.console .bento-live[data-tone='critical']::before {
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-critical) 20%, transparent);
-}
-.console .bento-live[data-tone='warning'] {
-  background: color-mix(in oklch, var(--status-warning) 14%, transparent);
-  color: var(--status-warning);
-}
-.console .bento-live[data-tone='warning']::before {
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-warning) 20%, transparent);
-}
-
 /* --- App tiles ----------------------------------------------------------
    An app is a tile, not a table row. A running app carries a mint glow from
    the top-right, a failing one a rose glow, a deploying one amber; an app
@@ -501,12 +445,6 @@
   transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
-.console .bento-dot-icon {
-  transition:
-    background-color 180ms var(--motion-ease),
-    color 180ms var(--motion-ease);
-}
-
 .console .bento-instance {
   transition:
     background-color var(--motion-base) var(--motion-ease),
@@ -538,17 +476,6 @@
   animation: console-feedback-in var(--motion-fast) var(--motion-ease);
 }
 
-/* List rows inside tiles: a quiet wash under a mouse, no movement. */
-.console .bento-row {
-  margin-inline: -0.5rem;
-  padding-inline: 0.5rem;
-}
-@media (hover: hover) and (pointer: fine) {
-  .console .bento-row:hover {
-    background-color: color-mix(in oklch, var(--foreground) 3.5%, transparent);
-  }
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .console .app-tile {
     transition: transform var(--motion-fast) var(--motion-ease);
@@ -561,5 +488,123 @@
 @media (prefers-reduced-motion: reduce) {
   .console .bento-arrive {
     animation: none;
+  }
+}
+
+/* --- Resource table -----------------------------------------------------
+   The console's list of things, in the bento's material: a soft rounded card
+   rather than a bordered box with a grey header band, the mono label voice
+   for column names, roomy 14px rows divided by a faint line, and states as a
+   dot and a word. Inside a flush panel it drops its own card. */
+
+.console .rt {
+  overflow: hidden;
+  border-radius: 1.25rem;
+  background: var(--card);
+}
+.console .rt[data-flush] {
+  border-radius: 0;
+  background: transparent;
+}
+
+.console .rt th {
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.console .rt th button {
+  letter-spacing: inherit;
+}
+
+.console .rt td {
+  height: 3.25rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+.console .rt tbody tr + tr td {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.console .rt th:first-child,
+.console .rt td:first-child {
+  padding-left: 1.25rem;
+}
+.console .rt th:last-child,
+.console .rt td:last-child {
+  padding-right: 1.25rem;
+}
+
+.console .rt tbody tr {
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .console .rt tbody tr:hover {
+    background-color: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  }
+}
+.console .rt tbody tr[data-clickable] {
+  cursor: pointer;
+  outline: none;
+}
+.console .rt tbody tr[data-clickable]:focus-visible {
+  background-color: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
+.console .rt-sort-arrow {
+  transition: transform 120ms var(--motion-ease);
+}
+.console .rt-sort-arrow[data-dir='asc'] {
+  transform: rotate(180deg);
+}
+
+/* Row actions wait until the row is pointed at or focused — with a mouse.
+   Touch and keyboard users always see them. */
+@media (hover: hover) and (pointer: fine) {
+  .console .rt td[data-actions] > span {
+    opacity: 0.35;
+    transition: opacity var(--motion-fast) var(--motion-ease);
+  }
+  .console .rt tr:hover td[data-actions] > span,
+  .console .rt tr:focus-within td[data-actions] > span {
+    opacity: 1;
+  }
+}
+
+.console .rt-search:focus {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--brand) 45%, transparent);
+}
+
+.console .rt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+.console .rt-pill::before {
+  content: '';
+  width: 0.4375rem;
+  height: 0.4375rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: currentColor;
+}
+.console .rt-pill[data-neutral]::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console .rt tbody tr,
+  .console .rt-sort-arrow {
+    transition: none;
   }
 }

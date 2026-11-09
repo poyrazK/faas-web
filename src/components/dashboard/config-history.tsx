@@ -462,7 +462,7 @@ function RollbackOutcome({ slug, result }: { slug: string; result: RollbackResul
           )}
           <SecretLines secrets={result.secrets_not_restored} rollback={result.restored_revision} />
           {changed && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 well rounded-xl bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">
                 Running instances still have the old values. New wakes boot with the restored ones;
                 restart to replace the running instances now.

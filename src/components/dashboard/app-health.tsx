@@ -226,7 +226,7 @@ function HealthBody({ slug }: { slug: string }) {
                   <StatusMark {...status} className="text-base" />
                 </span>
                 {current && (
-                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                     {PHASES[current.phase].label}
                   </span>
                 )}
@@ -372,7 +372,7 @@ function CheckRow({ slug, check }: { slug: string; check: Check }) {
 function FindingRow({ finding }: { finding: Finding }) {
   const mark = CHECK_STATUS[finding.status];
   return (
-    <li className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2 text-xs">
+    <li className="flex flex-col gap-0.5 well rounded-xl bg-muted/40 px-3 py-2 text-xs">
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <StatusMark {...mark} className="text-xs" />
         <span className="text-muted-foreground">{sourceLabel(finding.source)}</span>

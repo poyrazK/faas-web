@@ -37,7 +37,7 @@ export function DeploymentControls({
   const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="well rounded-xl bg-muted/40 p-4">
       <p className="label-mono mb-3 text-muted-foreground">Runtime controls</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">

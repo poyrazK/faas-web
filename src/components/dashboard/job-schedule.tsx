@@ -115,7 +115,7 @@ export function JobScheduleFields({
         timezone={value.timezone}
       />
       <TimezoneField value={value.timezone} onChange={(timezone) => set({ timezone })} />
-      <div className="space-y-3 rounded-lg border border-border p-4">
+      <div className="space-y-3 well rounded-xl bg-muted/40 p-4">
         <label className="flex items-start gap-2 text-xs">
           <input
             type="checkbox"

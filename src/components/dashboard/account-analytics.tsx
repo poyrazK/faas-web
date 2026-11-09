@@ -185,7 +185,7 @@ export function AccountAnalytics({
           type="button"
           aria-label={`View ${METRIC_LABELS[item.id]} details`}
           onClick={() => inspect({ metric: item.id, since: window, source: 'slo' })}
-          className="group rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-border-secondary focus-visible:outline-2 focus-visible:outline-brand"
+          className="group surface rounded-[1.25rem] bg-card p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand"
         >
           <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS[item.id]}</p>
           <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
@@ -254,7 +254,7 @@ export function AccountAnalytics({
           <div className="grid gap-4 lg:grid-cols-2">
             <section
               aria-label="Top apps by requests"
-              className="rounded-lg border border-border bg-card p-4"
+              className="surface rounded-[1.25rem] bg-card p-4"
             >
               <h2 className="text-sm font-semibold">Top apps by requests</h2>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -262,10 +262,7 @@ export function AccountAnalytics({
               </p>
               <AnalyticsBreakdown rows={ranked('requests')} label="Apps ranked by requests" />
             </section>
-            <section
-              aria-label="Errors by app"
-              className="rounded-lg border border-border bg-card p-4"
-            >
+            <section aria-label="Errors by app" className="surface rounded-[1.25rem] bg-card p-4">
               <h2 className="text-sm font-semibold">Errors by app</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Estimated from each app’s request count and 5xx rate.
@@ -278,10 +275,7 @@ export function AccountAnalytics({
             </section>
           </div>
           {trend && (
-            <section
-              aria-label="App history"
-              className="space-y-4 rounded-lg border border-border p-4"
-            >
+            <section aria-label="App history" className="space-y-4 well rounded-xl bg-muted/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold">App history</h2>

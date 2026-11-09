@@ -80,7 +80,7 @@ export function DeploymentRolloutState({ deployment }: { deployment: Deployment 
   return (
     <section
       aria-label="Rollout state"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
     >
       <p className="label-mono text-muted-foreground">Rollout state</p>
       {schedule && <Row label="Schedule">{scheduleSentence(schedule)}</Row>}

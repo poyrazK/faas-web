@@ -128,7 +128,7 @@ export function GitHubBranchDeployments({
       ) : (
         <ul
           aria-labelledby={headingId}
-          className="mt-2 divide-y divide-border rounded-lg border border-border"
+          className="mt-2 divide-y divide-border well rounded-xl bg-muted/40"
         >
           <li className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm">
             <code className="font-mono">{production || '—'}</code>
@@ -235,7 +235,7 @@ function BranchMappingsForm({
       aria-label="Edit branch deployments"
       noValidate
       onSubmit={(event) => void submit(event)}
-      className="mt-2 flex flex-col gap-3 rounded-lg border border-border p-3"
+      className="mt-2 flex flex-col gap-3 well rounded-xl bg-muted/40 p-3"
     >
       <p className="text-xs text-muted-foreground">
         Mappings belong to this app’s project, so they route pushes for every app in it. Use{' '}

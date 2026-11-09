@@ -87,7 +87,7 @@ export function AppOverview({
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <section
           aria-label="Latest release"
-          className="min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+          className="min-w-0 surface rounded-[1.25rem] bg-card p-5 sm:p-6"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-medium">Latest release</h2>
@@ -102,7 +102,7 @@ export function AppOverview({
           ) : (
             <>
               {!!releases.error && (
-                <div className="mt-4 rounded-lg border border-border p-3 text-sm" role="status">
+                <div className="mt-4 well rounded-xl bg-muted/40 p-3 text-sm" role="status">
                   <p className="text-muted-foreground">
                     {latest
                       ? 'Last known release. History could not be refreshed.'
@@ -248,7 +248,7 @@ export function AppOverview({
 
       <section
         aria-label="Traffic snapshot"
-        className="rounded-xl border border-border bg-card p-5 sm:p-6"
+        className="surface rounded-[1.25rem] bg-card p-5 sm:p-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-medium">

@@ -421,7 +421,7 @@ function ScheduleForm({ slug }: { slug: string }) {
         </Button>
       </div>
       <details
-        className="rounded-md border border-border"
+        className="well rounded-xl bg-muted/40"
         onToggle={(e) => setOpen(e.currentTarget.open)}
       >
         <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">

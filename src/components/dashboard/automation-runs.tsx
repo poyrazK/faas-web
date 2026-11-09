@@ -146,7 +146,7 @@ function RunDetail({
             </div>
             {run.last_error && (
               <p
-                className="rounded-md border border-border p-3 text-sm"
+                className="well rounded-xl bg-muted/40 p-3 text-sm"
                 style={{ color: 'var(--status-critical)' }}
               >
                 {run.last_error}
@@ -214,7 +214,7 @@ function StepDetails({
   const attempts = useAutomationAttempts(account, slug, open ? id : '', open ? step.step_name : '');
   return (
     <details
-      className="rounded-lg border border-border p-4"
+      className="well rounded-xl bg-muted/40 p-4"
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
@@ -263,7 +263,7 @@ function StepDetails({
           />
           {!attempts.error &&
             attempts.data?.attempts.map((attempt) => (
-              <div key={attempt.attempt} className="rounded-md border border-border p-3 text-xs">
+              <div key={attempt.attempt} className="well rounded-xl bg-muted/40 p-3 text-xs">
                 <p className="flex flex-wrap items-center gap-3">
                   <span>Attempt {attempt.attempt}</span>
                   <AutomationStatus status={attempt.status} />

@@ -115,7 +115,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3">
       <p className="label-mono text-muted-foreground">Rollout recovery</p>
       <p className="text-xs text-muted-foreground">
         For a rollout that has stopped moving. Advancing is refused while the platform still sees

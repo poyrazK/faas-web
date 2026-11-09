@@ -123,7 +123,7 @@ export function PreviewWorkloadSet({
                 {data.live_workloads}/{data.total_workloads} expected workloads live for this
                 commit.
               </p>
-              <ul className="divide-y divide-border rounded-md border border-border">
+              <ul className="divide-y divide-border well rounded-xl bg-muted/40">
                 {data.members.map((member) => (
                   <li key={member.app_id || member.workload_name} className="space-y-2 p-3">
                     <div className="flex flex-wrap justify-between gap-2">
@@ -200,7 +200,7 @@ function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: str
   const app = query.data;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 well rounded-xl bg-muted/40 p-3 text-sm">
         <p>
           Preview of {app.preview_of_slug}
           {app.preview_pr_number ? ` · PR #${app.preview_pr_number}` : ' · Developer preview'}

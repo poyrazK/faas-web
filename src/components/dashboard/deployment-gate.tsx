@@ -20,7 +20,7 @@ export function NotLiveNotice({ slug }: { slug: string }) {
   return (
     <p
       role="status"
-      className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground"
+      className="surface rounded-[1.25rem] bg-card px-4 py-3 text-sm text-muted-foreground"
     >
       No deployment has gone live yet.{' '}
       <Link

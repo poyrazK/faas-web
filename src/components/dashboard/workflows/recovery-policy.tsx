@@ -127,8 +127,8 @@ export function Badge({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       {Icon ? <Icon aria-hidden className="h-3 w-3" /> : null}
       {label}
@@ -727,7 +727,7 @@ function ChangeImpact({ preview }: { preview: RecoveryPolicyChangePreview }) {
   return (
     <section
       aria-label="What saving changes"
-      className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm"
+      className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3 text-sm"
     >
       <h3 className="font-medium">Saving creates version {preview.next_version}</h3>
       <ul className="flex list-disc flex-col gap-1 pl-5 text-muted-foreground">

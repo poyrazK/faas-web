@@ -117,7 +117,7 @@ function QueueCanaryList({ slug }: { slug: string }) {
       {phase === 'ready' && (
         <ul
           aria-label="Queue bindings"
-          className="divide-y divide-border rounded-lg border border-border"
+          className="divide-y divide-border well rounded-xl bg-muted/40"
         >
           {rows.map((item) => (
             <CanaryRow

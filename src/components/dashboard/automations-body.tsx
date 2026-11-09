@@ -706,7 +706,7 @@ function RevisionHistory({
       <div className="flex flex-col gap-3">
         {!q.error &&
           q.data?.revisions.map((revision) => (
-            <details key={revision.version} className="rounded-lg border border-border p-4">
+            <details key={revision.version} className="well rounded-xl bg-muted/40 p-4">
               <summary className="cursor-pointer text-sm">
                 Revision {revision.version} ·{' '}
                 <Timestamp value={revision.recorded_at} mode="absolute" />
@@ -824,7 +824,7 @@ function RunAutomationDialog({
         </>
       }
     >
-      <details className="rounded-md border border-border p-3" open={input !== '{}'}>
+      <details className="well rounded-xl bg-muted/40 p-3" open={input !== '{}'}>
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Run input {input.trim() === '{}' ? '· empty object' : '· custom'}
         </summary>

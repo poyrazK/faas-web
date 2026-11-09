@@ -406,7 +406,7 @@ function DomainsPage() {
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Domain status
             <Select
-              className="rounded-md border border-border bg-card p-2"
+              className="surface rounded-[1.25rem] bg-card p-2"
               value={search.status ?? ''}
               onChange={(event) =>
                 select({ status: (event.target.value as 'pending' | 'verified') || undefined })

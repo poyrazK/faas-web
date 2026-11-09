@@ -142,10 +142,10 @@ function rovingIndex(key: string, index: number, length: number): number | null 
 /** Class for one segment. For `Link`s and buttons alike. */
 export function segmentClassName(active: boolean, className?: string) {
   return cn(
-    'console-segment pressable inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs disabled:opacity-50',
+    'console-segment pressable inline-flex h-7 items-center whitespace-nowrap rounded-full px-3 text-xs disabled:opacity-50',
     active && 'console-segment-current',
     FOCUS,
-    active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+    active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground',
     className
   );
 }
@@ -170,7 +170,7 @@ export function SegmentGroup({
       {...(as === 'div' ? { role: 'group' } : {})}
       aria-label={label}
       className={cn(
-        'console-selection-strip flex w-fit flex-wrap rounded-md border border-border p-0.5',
+        'console-selection-strip flex w-fit flex-wrap rounded-full bg-muted p-0.5',
         className
       )}
     >

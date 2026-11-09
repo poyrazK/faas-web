@@ -181,7 +181,7 @@ function Headline({ gen }: { gen: WakeGeneration }) {
       <p
         role="status"
         className="rounded-md border px-3 py-2 text-sm"
-        style={{ borderColor: `color-mix(in oklab, ${tone} 35%, transparent)`, color: tone }}
+        style={{ backgroundColor: `color-mix(in oklab, ${tone} 14%, transparent)`, color: tone }}
       >
         {text}
         {code && (

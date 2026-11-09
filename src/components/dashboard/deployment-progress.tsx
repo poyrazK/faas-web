@@ -193,7 +193,7 @@ export function DeploymentProgress({
 
   return (
     <section aria-label="First deployment" className="flex flex-col gap-6">
-      <div className="@container flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="@container flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         <div className="flex items-start gap-3.5 px-4 py-4">
           <span
             aria-hidden

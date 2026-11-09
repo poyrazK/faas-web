@@ -557,7 +557,7 @@ export function CommandPalette({
                     close();
                     navigate({ to: '/dashboard/apps/new' });
                   }}
-                  className="pressable inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                  className="pressable inline-flex items-center gap-1.5 well rounded-xl bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 >
                   <Plus className="h-3 w-3" />
                   Create a new app instead

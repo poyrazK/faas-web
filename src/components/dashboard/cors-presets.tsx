@@ -259,7 +259,7 @@ function PresetRow({ preset, users }: { preset: CorsPreset; users: string[] | nu
         </span>
       </div>
       {editing && (
-        <div className="rounded-md border border-border p-4">
+        <div className="well rounded-xl bg-muted/40 p-4">
           <PresetForm preset={preset} users={users} onDone={() => setEditing(false)} />
         </div>
       )}

@@ -317,7 +317,7 @@ function EnvironmentReferences({
   return (
     <>
       {entries.length ? (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {entries.map(([destination, reference]) => (
             <li key={destination} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
               <span className="font-mono text-xs">{destination}</span>
@@ -350,7 +350,7 @@ function EnvironmentReferences({
             {suppressed.map((name) => (
               <li
                 key={name}
-                className="flex items-center gap-2 rounded-md border border-border px-2 py-1"
+                className="flex items-center gap-2 well rounded-xl bg-muted/40 px-2 py-1"
               >
                 <span className="font-mono text-xs">{name}</span>
                 <button

@@ -176,7 +176,7 @@ function RecoveryActions({
   };
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="well rounded-xl bg-muted/40 p-4">
       <p className="label-mono mb-3 text-muted-foreground">Lifecycle</p>
       <p className="mb-3 text-xs text-muted-foreground">{availability.explanation}</p>
       {availability.kind === 'cancel' && (

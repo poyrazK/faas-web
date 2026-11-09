@@ -214,8 +214,8 @@ function AllowlistState({ restricted }: { restricted: boolean }) {
   const Icon = restricted ? Lock : Globe;
   return (
     <span
-      className="inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon aria-hidden className="h-3 w-3" />
       {restricted ? 'Listed names only' : 'Every name'}

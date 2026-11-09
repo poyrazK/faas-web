@@ -192,7 +192,7 @@ export function ReleasePreviews() {
           </p>
         )}
         {previews.length > 0 && (
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="divide-y divide-border well rounded-xl bg-muted/40">
             {previews.map((row) => (
               <li key={row.id}>
                 <button
@@ -297,7 +297,7 @@ function NewPreviewForm({
     <form
       aria-label="New preview"
       onSubmit={(event) => void submit(event)}
-      className="flex flex-col gap-4 rounded-md border border-border p-4"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1.5 text-sm">
@@ -502,7 +502,7 @@ function PreviewDetail({
   return (
     <section
       aria-label={`Preview ${slug}`}
-      className="flex flex-col gap-4 rounded-md border border-border p-4 text-sm"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4 text-sm"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="min-w-0 truncate font-mono font-medium">{slug}</h3>
