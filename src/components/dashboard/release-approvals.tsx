@@ -22,8 +22,11 @@ import {
 } from '@/lib/api/release-approvals';
 import { minutesLabel } from '@/lib/api/release-freezes';
 import { cn } from '@/lib/utils';
-import { InlinePhase, Panel, queryPhase } from './primitives';
+import { Sheet } from './kit/sheet';
+import { InlinePhase, queryPhase } from './primitives';
 import { ReleaseChannelPicker } from './release-channel-picker';
+import { SafetyCard, useVersionName } from './release-safety-card';
+import { approvalCardWords, approvalPolicyDetails } from './release-safety-words';
 
 const STATE_STYLE: Record<ApprovalStatus['state'], { color: string; icon: typeof Clock }> = {
   not_required: { color: 'var(--muted-foreground)', icon: Circle },
@@ -284,56 +287,74 @@ export function ReleaseApproval({
   );
 }
 
-/** The app's releases waiting for approval, each linking to its approval page. */
-export function WaitingApprovals({ slug }: { slug: string }) {
+/**
+ * The app's releases waiting for approval, each with Review. An empty list
+ * says nothing unless `quietWhenEmpty` is off: the tab's headline already
+ * says no release waits.
+ */
+export function WaitingApprovals({
+  slug,
+  quietWhenEmpty = false,
+}: {
+  slug: string;
+  quietWhenEmpty?: boolean;
+}) {
   const waiting = useWaitingApprovals(slug);
+  const version = useVersionName(slug);
   const rows = waiting.data ?? [];
   const phase = queryPhase({
     error: waiting.error,
     loading: waiting.isPending,
     isEmpty: rows.length === 0,
   });
-  if (phase !== 'ready')
+  if (phase !== 'ready') {
+    if (quietWhenEmpty && (phase === 'empty' || phase === 'loading')) return null;
     return (
       <InlinePhase
         phase={phase}
         error={waiting.error}
         loadingMessage="Reading releases waiting for approval…"
-        emptyMessage="No release is waiting for approval."
+        emptyMessage="No version is waiting for approval."
         onRetry={() => void waiting.refetch()}
       />
     );
+  }
   return (
-    <ul aria-label="Waiting for approval" className="divide-y divide-border">
-      {rows.map((s) => (
-        <li
-          key={s.deployment_id}
-          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5"
-        >
-          <div className="flex min-w-0 flex-col gap-1">
-            <p className="flex flex-wrap items-center gap-x-3 text-sm">
-              <ApprovalStateBadge state={s.state} />
-              <span className="font-mono text-xs">{s.deployment_id.slice(0, 8)}</span>
-              <span>
-                {s.approvals} of {s.required_approvals ?? 1}
-              </span>
-            </p>
-            {s.expires_at && (
-              <p className="text-xs text-muted-foreground">
-                {s.state === 'expired' ? 'Timed out ' : 'Aborts '}
-                <Timestamp value={s.expires_at} mode="absolute" />
-                {s.deployed_by && ` · deployed by ${s.deployed_by}`}
-              </p>
-            )}
-          </div>
-          <a
-            className="text-xs text-brand underline-offset-4 hover:underline"
-            href={approvalPath(s.deployment_id)}
+    <ul aria-label="Waiting for approval" className="flex flex-col divide-y divide-border/60">
+      {rows.map((s) => {
+        const name = version(s.deployment_id);
+        return (
+          <li
+            key={s.deployment_id}
+            className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5"
           >
-            Review and decide
-          </a>
-        </li>
-      ))}
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="flex flex-wrap items-center gap-x-3 text-sm">
+                <span className="font-medium" title={s.deployment_id}>
+                  {name}
+                </span>
+                <ApprovalStateBadge state={s.state} />
+                <span className="text-xs text-muted-foreground">
+                  {s.approvals} of {s.required_approvals ?? 1} approvals
+                </span>
+              </p>
+              {s.expires_at && (
+                <p className="text-xs text-muted-foreground">
+                  {s.state === 'expired' ? 'Timed out ' : 'Rolled back '}
+                  <Timestamp value={s.expires_at} mode="absolute" />
+                  {s.state === 'expired' ? '' : ' unless approved'}
+                  {s.deployed_by && ` · deployed by ${s.deployed_by}`}
+                </p>
+              )}
+            </div>
+            <Button asChild size="xs" variant="secondary">
+              <a href={approvalPath(s.deployment_id)}>
+                Review <span className="sr-only">{name}</span>
+              </a>
+            </Button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -375,23 +396,29 @@ const inRange = (n: number, [lo, hi]: readonly [number, number]) =>
   Number.isInteger(n) && n >= lo && n <= hi;
 
 /**
- * The app's approval policy and the releases waiting for it. Changing or
- * removing it needs the admin scope and, in an organization, an owner or
- * admin. Mount it behind the `release-approvals` capability.
+ * The approval policy form, in a sheet: how many people and who are the
+ * essentials; where the rollout pauses, the timeout and self-approval sit
+ * under Advanced. Removing the policy is the sheet's quiet second action.
  */
-export function ReleaseApprovals({ slug }: { slug: string }) {
-  const policy = useApprovalPolicy(slug);
-  const stage = useCapabilityStage('release-approvals');
+function ApprovalPolicySheet({
+  slug,
+  current,
+  open,
+  onClose,
+}: {
+  slug: string;
+  current: ApprovalPolicy | null;
+  open: boolean;
+  onClose: () => void;
+}) {
   const save = useSetApprovalPolicy(slug);
   const remove = useRemoveApprovalPolicy(slug);
   const confirm = useConfirm();
   const { toast } = useToast();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<Draft>(draftOf(null));
+  const [draft, setDraft] = useState<Draft>(draftOf(current));
   const [failure, setFailure] = useState('');
   const [tried, setTried] = useState(false);
-  const current = policy.data ?? null;
-  const phase = queryPhase({ error: policy.error, loading: policy.isPending });
+  const [advanced, setAdvanced] = useState(false);
 
   const errors = {
     required: inRange(draft.required, APPROVAL_LIMITS.required) ? undefined : 'From 1 to 5 people.',
@@ -404,13 +431,11 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
       : 'Name at least one channel, so approvers learn a release waits.',
   };
   const invalid = Object.values(errors).some(Boolean);
-
-  const start = () => {
-    setDraft(draftOf(current));
-    setFailure('');
-    setTried(false);
-    setEditing(true);
-  };
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+  const shown = (key: keyof typeof errors) => (tried ? errors[key] : undefined);
+  // A refused advanced field is never hidden behind its closed disclosure.
+  const advancedOpen = advanced || Boolean(shown('stage') || shown('timeout'));
 
   const submit = async () => {
     setTried(true);
@@ -432,7 +457,7 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
         notify_channels: draft.notify,
       });
       toast({ kind: 'success', title: 'Approval policy saved' });
-      setEditing(false);
+      onClose();
     } catch (err) {
       setFailure(policyFailure(err));
     }
@@ -449,10 +474,12 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
     try {
       await remove.mutateAsync();
       toast({ kind: 'success', title: 'Approvals no longer required' });
+      onClose();
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'release_approval_policy_not_found')
+      if (err instanceof ApiError && err.code === 'release_approval_policy_not_found') {
         toast({ kind: 'info', title: 'Already removed' });
-      else
+        onClose();
+      } else
         toast({
           kind: 'error',
           title: 'Could not remove the policy',
@@ -461,165 +488,206 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
     }
   };
 
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
-    setDraft((d) => ({ ...d, [key]: value }));
-  const shown = (key: keyof typeof errors) => (tried ? errors[key] : undefined);
-
   return (
-    <section aria-label="Release approvals">
-      <Panel
-        title="Release approvals"
-        actions={
-          phase === 'ready' &&
-          !editing && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={start}>
-                {current ? 'Edit policy' : 'Require approvals'}
-              </Button>
-              {current && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  busy={remove.isPending}
-                  onClick={() => void onRemove()}
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-          )
-        }
-      >
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}Production releases wait in a canary stage until enough eligible people approve them. A rejection or the timeout aborts the rollout.`}</p>
-
-        <div className="flex flex-col gap-4">
-          {phase !== 'ready' ? (
-            <InlinePhase
-              phase={phase}
-              error={policy.error}
-              loadingMessage="Reading the approval policy…"
-              onRetry={() => void policy.refetch()}
-            />
-          ) : current ? (
-            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="label-mono text-muted-foreground">Approvals</dt>
-                <dd>
-                  {current.required_approvals} from {approversLabel(current.approvers)}
-                  {current.allow_self_approval
-                    ? ', the deployer’s own counts'
-                    : ', not the deployer'}
-                </dd>
-              </div>
-              <div>
-                <dt className="label-mono text-muted-foreground">Waits</dt>
-                <dd>
-                  At stage {current.after_stage}, aborted after{' '}
-                  {minutesLabel(current.timeout_minutes)}
-                </dd>
-              </div>
-              <div>
-                <dt className="label-mono text-muted-foreground">Tells</dt>
-                <dd className="font-mono text-xs">{current.notify_channels.join(', ') || '—'}</dd>
-              </div>
-              <div>
-                <dt className="label-mono text-muted-foreground">Last changed</dt>
-                <dd className="text-xs">
-                  by {current.updated_by} <Timestamp value={current.updated_at} />
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-muted-foreground">{slug} does not require approvals.</p>
-          )}
-          {editing && (
-            <form
-              noValidate
-              aria-label="Approval policy"
-              className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void submit();
-              }}
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={current ? `Approval for ${slug}` : `Require approval for ${slug}`}
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {current ? (
+            <Button
+              type="button"
+              variant="ghost"
+              busy={remove.isPending}
+              onClick={() => void onRemove()}
+              className="text-[color:var(--status-critical)]"
             >
-              <div className="grid gap-3 sm:grid-cols-3">
-                <NumberField
-                  label="People who must approve"
-                  value={draft.required}
-                  onChange={(n) => set('required', n)}
-                  error={shown('required')}
-                  id="approval-required"
-                />
-                <NumberField
-                  label="Wait at canary stage"
-                  value={draft.stage}
-                  onChange={(n) => set('stage', n)}
-                  error={shown('stage')}
-                  id="approval-stage"
-                />
-                <NumberField
-                  label="Abort after (minutes)"
-                  value={draft.timeout}
-                  onChange={(n) => set('timeout', n)}
-                  error={shown('timeout')}
-                  hint={minutesLabel(draft.timeout)}
-                  id="approval-timeout"
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="approval-approvers" className="label-mono text-muted-foreground">
-                    Who may approve
-                  </label>
-                  <Select
-                    id="approval-approvers"
-                    value={draft.approvers}
-                    onChange={(e) => set('approvers', e.target.value as Draft['approvers'])}
-                  >
-                    <option value="admin">Owners and admins</option>
-                    <option value="developer">Owners, admins and developers</option>
-                  </Select>
-                </div>
-                <label className="flex items-center gap-2 self-end text-xs">
-                  <input
-                    type="checkbox"
-                    checked={draft.self}
-                    onChange={(e) => set('self', e.target.checked)}
-                  />
-                  The deployer’s own approval counts. An app outside an organization always counts
-                  it.
-                </label>
-              </div>
-              <ReleaseChannelPicker
-                value={draft.notify}
-                onChange={(n) => set('notify', n)}
-                idPrefix={`approval-${slug}`}
-              />
-              {shown('notify') && (
-                <FieldError id="approval-notify-error">{shown('notify')}</FieldError>
-              )}
-              {failure && (
-                <p role="alert" className="text-xs text-[color:var(--status-critical)]">
-                  {failure}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" size="sm" busy={save.isPending}>
-                  {current ? 'Save policy' : 'Require approvals'}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
+              Stop requiring approval
+            </Button>
+          ) : (
+            <span />
           )}
-          <div className="flex flex-col gap-2">
-            <p className="label-mono text-muted-foreground">Waiting now</p>
-            <WaitingApprovals slug={slug} />
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" form={`approval-policy-${slug}`} busy={save.isPending}>
+              {current ? 'Save policy' : 'Require approvals'}
+            </Button>
           </div>
         </div>
-      </Panel>
-    </section>
+      }
+    >
+      <form
+        id={`approval-policy-${slug}`}
+        noValidate
+        aria-label="Approval policy"
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <p className="text-sm text-muted-foreground">
+          Each new version pauses partway through its rollout until enough people approve it. A
+          rejection, or no answer in time, rolls it back.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <NumberField
+            label="People who must approve"
+            value={draft.required}
+            onChange={(n) => set('required', n)}
+            error={shown('required')}
+            id="approval-required"
+          />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="approval-approvers" className="label-mono text-muted-foreground">
+              Who may approve
+            </label>
+            <Select
+              id="approval-approvers"
+              value={draft.approvers}
+              onChange={(e) => set('approvers', e.target.value as Draft['approvers'])}
+            >
+              <option value="admin">Owners and admins</option>
+              <option value="developer">Owners, admins and developers</option>
+            </Select>
+          </div>
+        </div>
+        <ReleaseChannelPicker
+          value={draft.notify}
+          onChange={(n) => set('notify', n)}
+          idPrefix={`approval-${slug}`}
+          legend="Tell approvers in"
+        />
+        {shown('notify') && <FieldError id="approval-notify-error">{shown('notify')}</FieldError>}
+        <details
+          open={advancedOpen}
+          onToggle={(e) => setAdvanced(e.currentTarget.open)}
+          className="border-t border-border pt-4"
+        >
+          <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+          <div className="flex flex-col gap-3 pt-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NumberField
+                label="Wait at canary stage"
+                value={draft.stage}
+                onChange={(n) => set('stage', n)}
+                error={shown('stage')}
+                id="approval-stage"
+              />
+              <NumberField
+                label="Abort after (minutes)"
+                value={draft.timeout}
+                onChange={(n) => set('timeout', n)}
+                error={shown('timeout')}
+                hint={minutesLabel(draft.timeout)}
+                id="approval-timeout"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={draft.self}
+                onChange={(e) => set('self', e.target.checked)}
+              />
+              The deployer’s own approval counts. An app outside an organization always counts it.
+            </label>
+          </div>
+        </details>
+        {failure && (
+          <p role="alert" className="text-xs text-[color:var(--status-critical)]">
+            {failure}
+          </p>
+        )}
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * The app's approval policy and the releases waiting for it, as a card: one
+ * sentence for what the policy makes a new version do, the waiting versions
+ * with Review, and one action opening the policy in a sheet. Changing or
+ * removing it needs the admin scope and, in an organization, an owner or
+ * admin. Mount it behind the `release-approvals` capability.
+ */
+export function ReleaseApprovals({ slug }: { slug: string }) {
+  const policy = useApprovalPolicy(slug);
+  const waiting = useWaitingApprovals(slug);
+  const stage = useCapabilityStage('release-approvals');
+  const [editing, setEditing] = useState(false);
+  const current = policy.data ?? null;
+  const phase = queryPhase({ error: policy.error, loading: policy.isPending });
+  const words = phase === 'ready' ? approvalCardWords(current, waiting.data) : undefined;
+
+  return (
+    <SafetyCard
+      id="release-approvals"
+      title="Approvals"
+      term="Release approvals"
+      stage={stage}
+      word={words?.word}
+      tone={words?.tone}
+      help={
+        <>
+          Production releases wait in a canary stage until enough eligible people approve them. A
+          rejection or the timeout aborts the rollout, and the version serving before takes its
+          traffic back. While approvals are required, a release without a canary is refused.
+        </>
+      }
+      sentence={
+        words ? (
+          words.sentence
+        ) : (
+          <InlinePhase
+            phase={phase}
+            error={policy.error}
+            loadingMessage="Reading the approval policy…"
+            onRetry={() => void policy.refetch()}
+          />
+        )
+      }
+      action={
+        phase === 'ready' && (
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            {current ? 'Change approval' : 'Require approval'}
+          </Button>
+        )
+      }
+    >
+      {current && (
+        <details className="group text-sm">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            Show details
+          </summary>
+          <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            {approvalPolicyDetails(current).map((row) => (
+              <div key={row.label}>
+                <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+            <div>
+              <dt className="text-xs text-muted-foreground">Last changed</dt>
+              <dd>
+                by {current.updated_by} <Timestamp value={current.updated_at} />
+              </dd>
+            </div>
+          </dl>
+        </details>
+      )}
+      <WaitingApprovals slug={slug} quietWhenEmpty={!current} />
+      {editing && (
+        <ApprovalPolicySheet
+          slug={slug}
+          current={current}
+          open={editing}
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </SafetyCard>
   );
 }
 

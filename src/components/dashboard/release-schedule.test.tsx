@@ -198,16 +198,31 @@ describe('ScheduledReleases', () => {
       pending({ id: 's2', state: 'expired', outcome_code: 'not_ready', revision: 43 }),
     ];
     render(<ScheduledReleases onOpen={onOpen} />);
+    expect(screen.getByRole('region', { name: 'Scheduled releases' })).toHaveTextContent(
+      /shop v44 goes live (today|tomorrow) at \d\d:\d\d\./
+    );
     const [first, second] = screen.getAllByRole('listitem');
     expect(first).toHaveTextContent('shop');
     expect(second).toHaveTextContent('Expired');
-    expect(within(second).queryByRole('button', { name: 'Cancel schedule' })).toBeNull();
+    // The outcome in words, its code kept on hover.
+    expect(within(second).getByTitle('not_ready')).toHaveTextContent(
+      'The version wasn’t ready in time.'
+    );
+    expect(within(second).queryByRole('button', { name: /Cancel schedule/ })).toBeNull();
+    await userEvent.click(within(first).getByRole('button', { name: /Cancel schedule/ }));
+    expect(m.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Cancel shop v44’s schedule?', destructive: true })
+    );
     await userEvent.click(within(first).getByRole('button', { name: 'Open release v44' }));
     expect(onOpen).toHaveBeenCalledWith('d'.repeat(32));
   });
 
   it('says so when an app has none', () => {
     render(<ScheduledReleases app="shop" />);
-    expect(screen.getByText('shop has no scheduled releases.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Nothing is scheduled, so new versions start their rollout as soon as they’re ready.'
+      )
+    ).toBeInTheDocument();
   });
 });
