@@ -11,18 +11,27 @@ import { PlanGated } from './plan-gated';
 import { WINDOWS } from './app-analytics-search';
 import { rangeHalfLabel } from './range-picker';
 import { HelpTip } from './kit/help-tip';
+import { CARD_CAPTION, CARD_MEANING, trafficSentence } from './app-overview-words';
 
-/** Shared compact history for an app Overview and Account Analytics' selected app. */
+/**
+ * Shared compact history for an app Overview and Account Analytics' selected
+ * app. It opens with one sentence from the window's summary, the cards carry
+ * short labels, and what each figure means — plus the window's exact UTC
+ * bounds and how changes are compared — sits in one tip.
+ */
 export function AppAnalyticsPreview({
   slug,
   since = '24h',
   onSinceChange,
   storageKey = 'gregale.analytics.app-overview.order',
+  heading,
 }: {
   slug: string;
   since?: string;
   onSinceChange?: (value: string) => void;
   storageKey?: string;
+  /** A section title, when the preview is a section of its own. */
+  heading?: string;
 }) {
   const inspect = useMetricInspector();
   const summary = useAppAnalytics(slug, since, 'route');
@@ -36,13 +45,43 @@ export function AppAnalyticsPreview({
   const historyPhase = queryPhase({ error: series.error, loading: series.isPending });
   const data = phase === 'ready' ? summary.data : undefined;
   const points = (historyPhase === 'ready' ? (series.data?.points ?? []) : []) as AnalyticsPoint[];
+  const bounds =
+    series.data?.from && series.data.until
+      ? `${utcLabel(series.data.from)} – ${utcLabel(series.data.until)}`
+      : '';
+  // A window cut short by the plan's retention is no longer "the last 7 days".
+  const sentence = trafficSentence(
+    data,
+    data?.window_clamped || series.data?.window_clamped ? '' : since
+  );
   return (
     <PlanGated error={summary.error ?? series.error} feature="Request analytics">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            Hourly requests for <span className="text-foreground">{slug}</span> · UTC
-          </p>
+          <div className="flex items-center gap-1">
+            {heading ? (
+              <h2 className="text-base font-medium">{heading}</h2>
+            ) : (
+              <p className="text-xs text-muted-foreground">Hourly · UTC</p>
+            )}
+            <HelpTip label="About these figures">
+              <span className="flex flex-col gap-2">
+                <span>
+                  Hourly requests for <span className="text-foreground">{slug}</span>
+                  {bounds ? `, ${bounds} UTC` : ', in UTC'}.
+                </span>
+                {CARD_MEANING.map((item) => (
+                  <span key={item.id}>
+                    <span className="text-foreground">{item.label}:</span> {item.text}
+                  </span>
+                ))}
+                <span>
+                  Changes compare equal groups of complete UTC hours within this window. Partial
+                  hours are excluded.
+                </span>
+              </span>
+            </HelpTip>
+          </div>
           <div className="flex items-center gap-2">
             {onSinceChange && (
               <Select
@@ -57,11 +96,12 @@ export function AppAnalyticsPreview({
                 ))}
               </Select>
             )}
-            <Button size="xs" variant="outline" onClick={() => setPicking(!picking)}>
+            <Button size="xs" variant="ghost" onClick={() => setPicking(!picking)}>
               Add metric
             </Button>
           </div>
         </div>
+        {sentence && <p className="text-[15px] leading-6">{sentence}</p>}
         {phase === 'loading' && (
           <p role="status" className="text-xs text-muted-foreground">
             Loading traffic signals…
@@ -110,7 +150,13 @@ export function AppAnalyticsPreview({
               until: series.data?.until,
               incomplete: incompleteTelemetry(series.data) || incompleteTelemetry(data),
             }).map((card) => {
-              if (!data || !isDetailMetric(card.id)) return { ...card, value: '—', delta: null };
+              if (!data || !isDetailMetric(card.id))
+                return {
+                  ...card,
+                  value: '—',
+                  delta: null,
+                  caption: CARD_CAPTION[card.id] ?? card.caption,
+                };
               const key = METRIC_SERIES[card.id];
               const value = key ? Number(data[key as keyof typeof data]) : null;
               const latency = ['p50', 'p95', 'p99'].includes(card.id);
@@ -121,20 +167,11 @@ export function AppAnalyticsPreview({
                   !data.requests && (latency || card.id === 'error_rate') ? null : value,
                   true
                 ),
-                caption: latency ? 'Percentile of recorded responses in this window' : card.caption,
+                caption: CARD_CAPTION[card.id] ?? card.caption,
               };
             })
           }
         />
-        <p className="flex flex-wrap items-center gap-1 text-xs leading-relaxed text-muted-foreground">
-          {series.data?.from && series.data.until
-            ? `${utcLabel(series.data.from)} – ${utcLabel(series.data.until)} UTC`
-            : ''}
-          <HelpTip label="About these changes">
-            Changes compare equal groups of complete UTC hours within this window. Partial hours are
-            excluded.
-          </HelpTip>
-        </p>
         {series.data?.window_clamped && (
           <p role="status" className="text-xs text-muted-foreground">
             This window is limited to your plan’s retained history.

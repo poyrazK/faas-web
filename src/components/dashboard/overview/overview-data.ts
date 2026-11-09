@@ -207,7 +207,7 @@ export type FieldCell =
 
 /** Hours whose error share is at least this, with enough requests to mean it. */
 export const FIELD_ERROR_PCT = 5;
-const FIELD_ERROR_MIN_REQUESTS = 20;
+export const FIELD_ERROR_MIN_REQUESTS = 20;
 
 /**
  * One row per app, one cell per hour. Brightness is relative to the busiest
