@@ -576,12 +576,19 @@ apps.push({
     Object.assign(canary, {
       canary_preset: 'balanced',
       canary_step: 1,
-      canary_total_steps: 3,
+      // faas's balanced ladder is 1 → 10 → 50 → 100 (pkg/api/canary/preset.go).
+      canary_total_steps: 4,
       canary_step_started_at: iso(20 * 60 * 1000),
       rollout_state: 'rolling_out',
       rollout_started_at: iso(45 * 60 * 1000),
       traffic_percent: 10,
     } satisfies Partial<Deployment>);
+    // A canary takes its share from the release it replaces, which stays live
+    // serving the rest until the rollout completes or is rolled back.
+    const predecessor = deployments.find(
+      (d) => d.app_id === apps[0].id && d.status === 'superseded' && !d.scope
+    );
+    if (predecessor) Object.assign(predecessor, { status: 'live', traffic_percent: 90 });
   }
   const template = deployments.find((d) => d.app_id === apps[1].id);
   if (template) {

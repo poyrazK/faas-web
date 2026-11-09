@@ -612,7 +612,7 @@ function FunctionDetailPage() {
                         resetScroll: false,
                       })
                     }
-                    actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                    cleanup={<ClearObsoleteDeploymentsButton slug={fn.id} />}
                   />
                   <DeploymentAliasesPanel
                     slug={fn.id}
