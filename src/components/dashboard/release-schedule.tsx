@@ -22,9 +22,11 @@ import {
   type ScheduledRelease,
 } from '@/lib/api/scheduled-releases';
 import { cn } from '@/lib/utils';
-import { InlinePhase, Panel, queryPhase } from './primitives';
+import { InlinePhase, queryPhase } from './primitives';
 import { ReleaseChannelPicker } from './release-channel-picker';
 import { FrozenRefusal, localInputToIso, localZone, zonedTime } from './release-freezes';
+import { SafetyCard } from './release-safety-card';
+import { scheduleCardWords, scheduleOutcome, spokenTime } from './release-safety-words';
 
 const STATE_STYLE: Record<ScheduledRelease['state'], { color: string; icon: typeof Clock }> = {
   scheduled: { color: 'var(--status-warning)', icon: Clock },
@@ -383,8 +385,11 @@ function ScheduleForm({
 }
 
 /**
- * The account's scheduled releases, or one app's: pending ones first, then
- * the most recently ended. Mount it behind the `scheduled-releases` capability.
+ * The account's scheduled releases, or one app's, as a card: one sentence
+ * for what goes live next, then pending ones first and the most recently
+ * ended, each opening its release. Scheduling itself happens on a release
+ * that waits without traffic, in its details. Mount it behind the
+ * `scheduled-releases` capability.
  */
 export function ScheduledReleases({
   app,
@@ -402,44 +407,61 @@ export function ScheduledReleases({
     loading: list.isPending,
     isEmpty: rows.length === 0,
   });
+  const words =
+    phase === 'ready' || phase === 'empty'
+      ? scheduleCardWords({ schedules: rows, app, version: ref, when: (iso) => spokenTime(iso) })
+      : undefined;
   return (
-    <section aria-label="Scheduled releases">
-      <Panel title="Scheduled releases" padded={false}>
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground px-4 pt-4">{`${stage ? `${stage} · ` : ''}Releases built ahead of time that start their rollout at a set time. Times are shown in your time zone, ${localZone()}.`}</p>
-
-        {phase !== 'ready' ? (
-          <div className="p-5">
-            <InlinePhase
-              phase={phase}
-              error={list.error}
-              loadingMessage="Reading schedules…"
-              emptyMessage={app ? `${app} has no scheduled releases.` : 'No scheduled releases.'}
-              onRetry={() => void list.refetch()}
-            />
-          </div>
+    <SafetyCard
+      id="scheduled-releases"
+      title="Scheduled releases"
+      stage={stage}
+      word={words?.word}
+      tone={words?.tone}
+      help={
+        <>
+          A version that is live without traffic can wait for a set time before its rollout starts:
+          schedule it from its details on Deployments. A freeze active at that time stops it, and a
+          newer version serving by then replaces it. Times are in your time zone, {localZone()}.
+        </>
+      }
+      sentence={
+        words ? (
+          words.sentence
         ) : (
-          <ul className="divide-y divide-border">
-            {rows.map((s) => (
+          <InlinePhase
+            phase={phase}
+            error={list.error}
+            loadingMessage="Reading schedules…"
+            onRetry={() => void list.refetch()}
+          />
+        )
+      }
+    >
+      {phase === 'ready' && (
+        <ul aria-label="Scheduled releases" className="flex flex-col divide-y divide-border/60">
+          {rows.map((s) => {
+            const outcome = scheduleOutcome(s);
+            return (
               <li
                 key={s.id}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3"
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5"
               >
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                    <ScheduleStateBadge state={s.state} />
-                    {!app && <span className="font-medium">{s.app}</span>}
                     {onOpen ? (
                       <button
                         type="button"
                         onClick={() => onOpen(s.deployment_id)}
-                        className="font-mono text-xs text-brand underline-offset-4 hover:underline"
+                        className="font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                         aria-label={`Open release ${ref(s)}`}
                       >
-                        {ref(s)}
+                        {app ? ref(s) : `${s.app} ${ref(s)}`}
                       </button>
                     ) : (
-                      <span className="font-mono text-xs">{ref(s)}</span>
+                      <span className="font-medium">{app ? ref(s) : `${s.app} ${ref(s)}`}</span>
                     )}
+                    <ScheduleStateBadge state={s.state} />
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {s.state === 'scheduled'
@@ -451,11 +473,16 @@ export function ScheduledReleases({
                       value={s.state === 'started' ? (s.started_at ?? s.release_at) : s.release_at}
                       mode="absolute"
                     />
-                    {s.outcome_code && (
+                    {outcome && (
+                      <span title={s.outcome_code}>
+                        {' · '}
+                        {outcome}
+                      </span>
+                    )}
+                    {!outcome && s.outcome_code && (
                       <>
                         {' · '}
                         <code className="font-mono">{s.outcome_code}</code>
-                        {s.outcome_detail && ` ${s.outcome_detail}`}
                       </>
                     )}
                   </p>
@@ -467,14 +494,14 @@ export function ScheduledReleases({
                     busy={cancel.pending}
                     onClick={() => void cancel.run(s)}
                   >
-                    Cancel schedule
+                    Cancel schedule <span className="sr-only">{ref(s)}</span>
                   </Button>
                 )}
               </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-    </section>
+            );
+          })}
+        </ul>
+      )}
+    </SafetyCard>
   );
 }

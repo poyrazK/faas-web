@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Calendar, CheckCircle, Clock, Lock, Undo } from 'iconoir-react';
+import { Calendar, Clock, Lock, Plus, Undo } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD, FieldError, Textarea } from '@/components/ui/field';
@@ -32,7 +32,10 @@ import {
   type Weekday,
 } from '@/lib/api/release-freezes';
 import { cn } from '@/lib/utils';
-import { InlinePhase, Panel, queryPhase } from './primitives';
+import { Sheet } from './kit/sheet';
+import { InlinePhase, queryPhase } from './primitives';
+import { SafetyCard } from './release-safety-card';
+import { freezeCardWords, spokenTime } from './release-safety-words';
 import { SegmentedControl } from './tabs';
 
 /** The browser's IANA zone: `datetime-local` inputs speak its wall clock. */
@@ -150,20 +153,18 @@ function liftFailure(err: unknown): {
   return { kind: 'error', title: 'Could not lift the freeze', error: err };
 }
 
-/** The freezes, each with what it covers, when, why, who set it, and Lift. */
-export function FreezeList({
-  freezes,
-  showCoverage = true,
-}: {
-  freezes: ReleaseFreeze[];
-  showCoverage?: boolean;
-}) {
+/**
+ * Lift a freeze after a confirmation saying what goes through again; `busy`
+ * names the freeze being lifted. Shared by the freeze list and the tab's
+ * headline, so both say and do the same.
+ */
+export function useLiftFreeze() {
   const lift = useLiftReleaseFreeze();
   const confirm = useConfirm();
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const onLift = async (freeze: ReleaseFreeze) => {
+  const run = async (freeze: ReleaseFreeze) => {
     const coverage = freezeCoverage(freeze);
     const ok = await confirm({
       title: `Lift the freeze on ${coverage}?`,
@@ -187,6 +188,19 @@ export function FreezeList({
       setBusy(null);
     }
   };
+  return { busy, lift: run };
+}
+
+/** The freezes, each with what it covers, when, why, who set it, and Lift. */
+export function FreezeList({
+  freezes,
+  showCoverage = true,
+}: {
+  freezes: ReleaseFreeze[];
+  showCoverage?: boolean;
+}) {
+  const { busy, lift } = useLiftFreeze();
+  const onLift = lift;
 
   return (
     <ul className="divide-y divide-border">
@@ -205,27 +219,28 @@ export function FreezeList({
             </p>
             <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {showCoverage && <span>Covers {freezeCoverage(freeze)}</span>}
-              <span>
+              <span
+                title={
+                  freeze.source_deployment_id
+                    ? `Rolled back deployment ${freeze.source_deployment_id}`
+                    : undefined
+                }
+              >
                 {freeze.source === 'automatic_rollback'
                   ? 'Set by Gregale after a rollback'
                   : `Set by ${freeze.created_by}`}{' '}
                 <Timestamp value={freeze.created_at} />
               </span>
-              {freeze.source_deployment_id && (
-                <span className="font-mono">
-                  rolled back {freeze.source_deployment_id.slice(0, 8)}
-                </span>
-              )}
             </p>
           </div>
           <Button
             size="xs"
-            variant="outline"
+            variant="secondary"
             busy={busy === freeze.id}
             disabled={busy !== null}
             onClick={() => void onLift(freeze)}
           >
-            Lift
+            Lift <span className="sr-only">“{freeze.reason}”</span>
           </Button>
         </li>
       ))}
@@ -394,7 +409,7 @@ export function NewFreezeForm({ owner, onDone }: { owner: FreezeOwner; onDone: (
     <form
       noValidate
       aria-label="New freeze"
-      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -564,46 +579,20 @@ export function NewFreezeForm({ owner, onDone }: { owner: FreezeOwner; onDone: (
   );
 }
 
-/** Whether a production release of the app would be refused now, and what freezes next. */
-export function FreezeStatusLine({ slug }: { slug: string }) {
-  const status = useFreezeStatus(slug);
-  const phase = queryPhase({ error: status.error, loading: status.isPending });
-  if (phase !== 'ready' || !status.data)
-    return (
-      <InlinePhase
-        phase={phase}
-        error={status.error}
-        loadingMessage="Checking freezes…"
-        onRetry={() => void status.refetch()}
-      />
-    );
-  const { frozen, active, next } = status.data;
-  return (
-    <div role="status" aria-label="Freeze status" className="flex flex-col gap-1">
-      {frozen ? (
-        <Badge color="var(--status-critical)" icon={Lock}>
-          Production releases are frozen now (
-          {active.length === 1 ? active[0].reason : `${active.length} freezes`})
-        </Badge>
-      ) : (
-        <Badge color="var(--status-good)" icon={CheckCircle}>
-          Not frozen: production releases go through
-        </Badge>
-      )}
-      {next && (
-        <span className="text-xs text-muted-foreground">
-          Next: “{next.reason}” starts <Timestamp value={next.next_starts_at} /> (
-          <Timestamp value={next.next_starts_at} mode="absolute" />)
-        </span>
-      )}
-    </div>
-  );
-}
+const SHEET_TITLE = (owner: FreezeOwner) =>
+  owner.kind === 'app'
+    ? `Freeze ${owner.slug}`
+    : owner.kind === 'org'
+      ? `Freeze every app of ${owner.org}`
+      : 'Freeze every personal app';
 
 /**
- * Deploy freezes for one owner: an app (every freeze covering it, its own and
- * its owner's on all apps), an account's personal apps, or an organization's
- * apps. Mount it behind the `deploy-freezes` capability.
+ * Deploy freezes for one owner, as a card: whether releases are paused now
+ * and what pauses them next, the freezes with Lift, and "Add a freeze" opening
+ * the form in a sheet. For an app it lists every freeze covering it (its own
+ * and its owner's on all apps) and reads the app's freeze status; for an
+ * account or an organization, the freezes it holds. Mount it behind the
+ * `deploy-freezes` capability.
  */
 export function ReleaseFreezes({
   owner,
@@ -613,58 +602,71 @@ export function ReleaseFreezes({
   description?: string;
 }) {
   const freezes = useReleaseFreezes(owner);
+  const status = useFreezeStatus(owner.kind === 'app' ? owner.slug : '', owner.kind === 'app');
   const stage = useCapabilityStage('deploy-freezes');
   const [adding, setAdding] = useState(false);
-  const list = freezes.data ?? [];
+  // What withholds releases now comes first.
+  const list = [...(freezes.data ?? [])].sort((a, b) => Number(b.active) - Number(a.active));
   const phase = queryPhase({
-    error: freezes.error,
-    loading: freezes.isPending,
+    error: freezes.error ?? (owner.kind === 'app' ? status.error : undefined),
+    loading: freezes.isPending || (owner.kind === 'app' && status.isPending),
     isEmpty: list.length === 0,
   });
+  const words =
+    phase === 'ready' || phase === 'empty'
+      ? freezeCardWords({
+          owner,
+          freezes: list,
+          status: owner.kind === 'app' ? status.data : undefined,
+          when: (iso) => spokenTime(iso),
+        })
+      : undefined;
   return (
-    <section aria-label="Deploy freezes">
-      <Panel
-        title="Deploy freezes"
-        actions={
-          !adding && (
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-              {owner.kind === 'app'
-                ? `Freeze ${owner.slug}`
-                : owner.kind === 'org'
-                  ? `Freeze every app of ${owner.org}`
-                  : 'Freeze every personal app'}
-            </Button>
-          )
-        }
-      >
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}${description ?? `${FREEZE_BLOCKS} ${FREEZE_SPARES}`}`}</p>
-
-        <div className="flex flex-col gap-4">
-          {owner.kind === 'app' && <FreezeStatusLine slug={owner.slug} />}
-          {adding && <NewFreezeForm owner={owner} onDone={() => setAdding(false)} />}
-          {phase === 'ready' ? (
-            <FreezeList
-              freezes={list}
-              showCoverage={owner.kind !== 'app' || list.some((f) => !f.app)}
-            />
-          ) : (
-            <InlinePhase
-              phase={phase}
-              error={freezes.error}
-              loadingMessage="Reading freezes…"
-              emptyMessage={
-                owner.kind === 'app'
-                  ? `No freeze covers ${owner.slug}.`
-                  : owner.kind === 'org'
-                    ? `${owner.org} has no freezes that have not ended.`
-                    : 'Your account has no freezes that have not ended.'
-              }
-              onRetry={() => void freezes.refetch()}
-            />
-          )}
-        </div>
-      </Panel>
-    </section>
+    <SafetyCard
+      id="release-freezes"
+      title="Freezes"
+      term="Deploy freezes"
+      stage={stage}
+      word={words?.word}
+      tone={words?.tone}
+      help={
+        <>
+          {description ?? `${FREEZE_BLOCKS} ${FREEZE_SPARES}`} A freeze can be a one-off window, a
+          weekly window, or a pause after each automatic rollback.
+        </>
+      }
+      sentence={
+        words ? (
+          words.sentence
+        ) : (
+          <InlinePhase
+            phase={phase}
+            error={freezes.error ?? status.error}
+            loadingMessage="Reading freezes…"
+            onRetry={() => {
+              void freezes.refetch();
+              if (owner.kind === 'app') void status.refetch();
+            }}
+          />
+        )
+      }
+      action={
+        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+          <Plus aria-hidden className="h-3.5 w-3.5" />
+          Add a freeze
+        </Button>
+      }
+    >
+      {phase === 'ready' && (
+        <FreezeList
+          freezes={list}
+          showCoverage={owner.kind !== 'app' || list.some((f) => !f.app)}
+        />
+      )}
+      <Sheet open={adding} onClose={() => setAdding(false)} title={SHEET_TITLE(owner)}>
+        {adding && <NewFreezeForm owner={owner} onDone={() => setAdding(false)} />}
+      </Sheet>
+    </SafetyCard>
   );
 }
 
