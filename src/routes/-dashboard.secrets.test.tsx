@@ -52,8 +52,13 @@ beforeEach(() => {
   mocks.toast.mockReset();
 });
 
+async function menu(user: ReturnType<typeof userEvent.setup>, key: string, action: string) {
+  await user.click(screen.getByRole('button', { name: `Actions for ${key}` }));
+  await user.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: action }));
+}
+
 async function save(user: ReturnType<typeof userEvent.setup>, key: string, paste: string) {
-  await user.click(screen.getByRole('button', { name: 'Set secret' }));
+  await user.click(screen.getByRole('button', { name: 'Add secret' }));
   const sheet = await screen.findByRole('dialog');
   await user.type(within(sheet).getByPlaceholderText('DATABASE_URL'), key);
   await user.click(within(sheet).getByLabelText('Value'));
@@ -75,7 +80,7 @@ describe('Secrets', () => {
     await save(user, 'TLS_KEY', PEM);
     await waitFor(() => expect(mocks.set).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    await user.click(screen.getByRole('button', { name: 'Set secret' }));
+    await user.click(screen.getByRole('button', { name: 'Add secret' }));
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByLabelText('Value').tagName).toBe('INPUT');
     expect(within(sheet).getByLabelText('Value')).toHaveAttribute('type', 'password');
@@ -96,12 +101,12 @@ describe('Secrets', () => {
   it('masks the rotate field again when the dialog is closed and reopened', async () => {
     const user = userEvent.setup();
     render(<SecretsBody slug="alpha" />);
-    await user.click(screen.getByRole('button', { name: 'Rotate' }));
+    await menu(user, 'API_TOKEN', 'Rotate value');
     await user.click(screen.getByLabelText('New value'));
     await user.paste(PEM);
     expect(screen.getByLabelText('New value').tagName).toBe('TEXTAREA');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    await user.click(screen.getByRole('button', { name: 'Rotate' }));
+    await menu(user, 'API_TOKEN', 'Rotate value');
     expect(await screen.findByLabelText('New value')).toHaveAttribute('type', 'password');
   });
 
@@ -164,7 +169,7 @@ describe('Secrets', () => {
     it('shows the same notice after a rotation', async () => {
       const user = userEvent.setup();
       render(<SecretsBody slug="alpha" />);
-      await user.click(screen.getByRole('button', { name: 'Rotate' }));
+      await menu(user, 'API_TOKEN', 'Rotate value');
       await user.click(screen.getByLabelText('New value'));
       await user.paste('rotated');
       await user.click(screen.getByRole('button', { name: 'Rotate secret' }));
@@ -187,7 +192,7 @@ describe('Secrets', () => {
       const user = userEvent.setup();
       mocks.confirm.mockResolvedValue(true);
       render(<SecretsBody slug="alpha" />);
-      await user.click(screen.getByRole('button', { name: 'Delete secret API_TOKEN' }));
+      await menu(user, 'API_TOKEN', 'Delete secret');
       await waitFor(() => expect(mocks.del).toHaveBeenCalledWith('API_TOKEN'));
       expect(await screen.findByRole('status', NOTICE)).toBeInTheDocument();
     });

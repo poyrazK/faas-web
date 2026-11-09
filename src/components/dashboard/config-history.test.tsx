@@ -121,9 +121,9 @@ describe('config guard', () => {
   it('explains a watching guard and what the customer needs to do', async () => {
     mount();
     const guard = await screen.findByRole('region', { name: 'Config guard' });
-    await waitFor(() => expect(guard).toHaveTextContent(/waiting for the first request/i));
+    await waitFor(() => expect(guard).toHaveTextContent(/hasn’t served a request yet/i));
     expect(guard).toHaveTextContent('Watching');
-    expect(guard).toHaveTextContent(/restores the previous values/i);
+    expect(guard).toHaveTextContent(/The latest change/);
   });
 
   it('shows the decision samples of a restored guard', async () => {
@@ -143,16 +143,20 @@ describe('config guard', () => {
     });
     mount();
     const guard = await screen.findByRole('region', { name: 'Config guard' });
-    await waitFor(() => expect(guard).toHaveTextContent(/restored revision 4/));
-    expect(guard).toHaveTextContent('7 of 9 5xx');
-    expect(guard).toHaveTextContent('1 of 412 5xx');
+    await waitFor(() => expect(guard).toHaveTextContent(/put the previous values back/));
+    // The numbers sit behind "Show details".
+    expect(guard).not.toHaveTextContent('7 of 9');
+    await userEvent.click(within(guard).getByRole('button', { name: 'Show details' }));
+    expect(guard).toHaveTextContent('7 of 9 requests answered 5xx');
+    expect(guard).toHaveTextContent('1 of 412 requests answered 5xx');
+    expect(guard).toHaveTextContent('7 of 9 requests with the new config answered 5xx');
   });
 
   it('says no change has been guarded when the scope has no guard', async () => {
     guardResponse = problem(404, 'config_guard_not_found');
     mount();
     const guard = await screen.findByRole('region', { name: 'Config guard' });
-    await waitFor(() => expect(guard).toHaveTextContent(/No change has been guarded yet/));
+    await waitFor(() => expect(guard).toHaveTextContent(/No change has been watched yet/));
     expect(guard).not.toHaveTextContent('config_guard_not_found detail');
   });
 
@@ -165,18 +169,47 @@ describe('config guard', () => {
 });
 
 describe('config history', () => {
-  it('lists revisions by key, actor and guard verdict, without values', async () => {
+  it('lists changes by key, actor and guard verdict in plain words, without values', async () => {
     mount();
     const history = await screen.findByRole('region', { name: 'Revisions' });
     await waitFor(() => expect(history).toHaveTextContent('Set REGION'));
     expect(history).toHaveTextContent('Rotated secret DATABASE_URL');
-    expect(history).toHaveTextContent('Config guard restored revision 2');
-    expect(history).toHaveTextContent('ada@example.com');
-    expect(history).toHaveTextContent('#5');
+    expect(history).toHaveTextContent('Undone automatically, back to revision 2');
+    expect(history).toHaveTextContent('by ada@example.com');
+    expect(history).toHaveTextContent('Watching');
     expect(history).not.toHaveTextContent('eu-west');
     // The newest revision is the current config; there is nothing to roll back to.
-    expect(within(history).queryByRole('button', { name: 'Roll back to revision 5' })).toBeNull();
-    expect(within(history).getByRole('button', { name: 'Roll back to revision 3' })).toBeEnabled();
+    expect(within(history).queryByRole('button', { name: 'Actions for revision 5' })).toBeNull();
+    expect(within(history).getByRole('button', { name: 'Actions for revision 3' })).toBeEnabled();
+  });
+
+  it('groups changes under day headings', async () => {
+    mount();
+    const history = await screen.findByRole('region', { name: 'Revisions' });
+    await waitFor(() =>
+      expect(within(history).getAllByRole('heading', { level: 3 })).toHaveLength(3)
+    );
+  });
+
+  it('shows what a change did behind "Show changes", by key only', async () => {
+    details[4] = {
+      ...revisions[1],
+      variables: { LOG_LEVEL: 'secret-looking-info', REGION: 'eu-central', OLD_FLAG: 'on' },
+      secret_versions: { DATABASE_URL: 2, STRIPE_KEY: 1 },
+    };
+    mount();
+    const history = await screen.findByRole('region', { name: 'Revisions' });
+    await userEvent.click(
+      await within(history).findByRole('button', { name: 'Show changes in revision 5' })
+    );
+    const changes = await screen.findByRole('region', { name: 'Changes in revision 5' });
+    await waitFor(() => expect(changes).toHaveTextContent('Added EXTRA'));
+    expect(changes).toHaveTextContent('Changed REGION');
+    expect(changes).toHaveTextContent('Removed OLD_FLAG');
+    expect(changes).toHaveTextContent('#5');
+    expect(changes).not.toHaveTextContent('eu-west');
+    expect(changes).not.toHaveTextContent('secret-looking-info');
+    delete details[4];
   });
 
   it('says when nothing has been recorded yet', async () => {
@@ -186,6 +219,17 @@ describe('config history', () => {
     await waitFor(() => expect(history).toHaveTextContent(/No config changes recorded yet/));
   });
 });
+
+async function openRollback(revision: number) {
+  await userEvent.click(
+    await screen.findByRole('button', { name: `Actions for revision ${revision}` })
+  );
+  await userEvent.click(
+    within(await screen.findByRole('menu')).getByRole('menuitem', {
+      name: `Roll back to revision ${revision}`,
+    })
+  );
+}
 
 describe('config rollback', () => {
   it('reviews the keys a rollback changes, confirms, and offers a restart', async () => {
@@ -206,7 +250,7 @@ describe('config rollback', () => {
       throw new Error(`unexpected POST ${path}`);
     });
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Roll back to revision 3' }));
+    await openRollback(3);
 
     const review = await screen.findByRole('region', { name: 'Roll back to revision 3' });
     await waitFor(() => expect(review).toHaveTextContent('Sets OLD_FLAG, REGION'));
@@ -244,7 +288,7 @@ describe('config rollback', () => {
     mocks.confirm.mockResolvedValue(false);
     const post = spyApi('POST');
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Roll back to revision 3' }));
+    await openRollback(3);
     const review = await screen.findByRole('region', { name: 'Roll back to revision 3' });
     await waitFor(() => expect(review).toHaveTextContent('Deletes EXTRA'));
     await userEvent.click(within(review).getByRole('button', { name: 'Roll back' }));
@@ -255,7 +299,7 @@ describe('config rollback', () => {
   it('explains a pruned revision by its code', async () => {
     spyApi('POST').mockResolvedValue(problem(404, 'config_revision_not_found'));
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Roll back to revision 3' }));
+    await openRollback(3);
     const review = await screen.findByRole('region', { name: 'Roll back to revision 3' });
     await waitFor(() => expect(review).toHaveTextContent('Deletes EXTRA'));
     await userEvent.click(within(review).getByRole('button', { name: 'Roll back' }));
@@ -269,7 +313,7 @@ describe('config rollback', () => {
   it('explains a Git-managed variable by its code', async () => {
     spyApi('POST').mockResolvedValue(problem(409, 'environment_field_git_managed'));
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Roll back to revision 3' }));
+    await openRollback(3);
     const review = await screen.findByRole('region', { name: 'Roll back to revision 3' });
     await waitFor(() => expect(review).toHaveTextContent('Deletes EXTRA'));
     await userEvent.click(within(review).getByRole('button', { name: 'Roll back' }));
