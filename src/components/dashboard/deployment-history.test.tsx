@@ -45,6 +45,8 @@ function dep(over: Partial<Deployment>): Deployment {
 
 const canary = dep({
   id: 'canary',
+  revision: 43,
+  created_at: '2026-11-09T08:00:00Z',
   image_digest: 'sha256:f35835e111',
   commit_sha: 'abc1234def',
   canary_preset: 'balanced',
@@ -53,8 +55,18 @@ const canary = dep({
   rollout_state: 'rolling_out',
   traffic_percent: 10,
 });
-const current = dep({ id: 'current', image_digest: 'sha256:9d0c1e2000', traffic_percent: 90 });
-const replaced = dep({ id: 'old', image_digest: 'sha256:700ef9f000', status: 'superseded' });
+const current = dep({
+  id: 'current',
+  revision: 42,
+  image_digest: 'sha256:9d0c1e2000',
+  traffic_percent: 90,
+});
+const replaced = dep({
+  id: 'old',
+  revision: 41,
+  image_digest: 'sha256:700ef9f000',
+  status: 'superseded',
+});
 const failed = dep({ id: 'bad', image_digest: 'sha256:e74b389000', status: 'failed' });
 
 beforeEach(() => {
@@ -86,7 +98,7 @@ describe('Deployment history', () => {
     const now = screen.getByRole('region', { name: "What's happening now" });
     expect(within(now).getByText('A new version is getting 10% of traffic')).toBeInTheDocument();
     expect(
-      within(now).getByText(/The rest stays on 9d0c1e2\. The next step is 50%\./)
+      within(now).getByText(/The rest stays on v42\. The next step is 50%\./)
     ).toBeInTheDocument();
   });
 
@@ -134,15 +146,62 @@ describe('Deployment history', () => {
     renderPanel();
     const buttons = screen.getAllByRole('button', { name: /^Roll back to this/ });
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]).toHaveAccessibleName('Roll back to this (700ef9f)');
+    expect(buttons[0]).toHaveAccessibleName('Roll back to this (v41)');
     await userEvent.click(buttons[0]);
-    expect(rollbackStart).toHaveBeenCalledWith('old', '700ef9f');
+    expect(rollbackStart).toHaveBeenCalledWith('old', 'v41');
   });
 
   it('selects a row to open its release drawer', async () => {
     const onSelect = renderPanel();
     await userEvent.click(screen.getByText('Replaced'));
     expect(onSelect).toHaveBeenCalledWith('old');
+  });
+
+  it('names the well’s version and time exactly as its row would, from the API revision', () => {
+    renderPanel();
+    const now = screen.getByRole('region', { name: "What's happening now" });
+    expect(now).toHaveTextContent(/v43 deployed .* from GitHub/);
+    expect(within(now).getByRole('time')).toHaveAttribute('dateTime', '2026-11-09T08:00:00.000Z');
+    const list = screen.getByRole('region', { name: 'Other versions' });
+    expect(list).toHaveTextContent('Current version (serving 90%) · v42 · 9d0c1e2');
+  });
+
+  it('does not repeat the deployment the well describes as a row', () => {
+    renderPanel();
+    const list = screen.getByRole('region', { name: 'Other versions' });
+    expect(list).not.toHaveTextContent('v43');
+    expect(list).not.toHaveTextContent('f35835e');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('keeps a release in another environment as its own, labelled row', () => {
+    const staging = dep({
+      id: 'staging',
+      revision: 44,
+      scope: 'staging',
+      image_digest: 'sha256:5a5a5a5000',
+      traffic_percent: 100,
+    });
+    items = [staging, canary, current, replaced];
+    renderPanel();
+    const now = screen.getByRole('region', { name: "What's happening now" });
+    expect(now).toHaveTextContent(/v43 deployed/);
+    const list = screen.getByRole('region', { name: 'Other versions' });
+    expect(list).toHaveTextContent('Live in staging (serving 100%) · v44 · 5a5a5a5');
+    expect(list).not.toHaveTextContent('v43');
+  });
+
+  it('falls back to the short deployment id everywhere when there is no revision', async () => {
+    items = [
+      dep({ id: 'live-0001-xyz', traffic_percent: 100 }),
+      dep({ id: 'gone-0002-xyz', status: 'superseded' }),
+    ];
+    renderPanel();
+    expect(screen.getByText('Live: live-000')).toBeInTheDocument();
+    const list = screen.getByRole('region', { name: 'Other versions' });
+    expect(list).toHaveTextContent('Replaced · gone-000');
+    await userEvent.click(within(list).getByRole('button', { name: /^Roll back to this/ }));
+    expect(rollbackStart).toHaveBeenCalledWith('gone-0002-xyz', 'gone-000');
   });
 
   it('says plainly what is live when no rollout runs', () => {

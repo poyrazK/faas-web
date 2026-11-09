@@ -27,6 +27,7 @@ import {
 import { BindingsGateNotice } from './bindings-gate';
 import { RollbackStatus, useRollbackFlow } from './rollback-status';
 import { useRolloutRecovery } from './rollout-recovery';
+import { deploymentLabel } from './deployment-promote';
 
 export interface DeploymentHistoryTiming {
   durationSeconds?: number;
@@ -34,11 +35,12 @@ export interface DeploymentHistoryTiming {
 
 type Timings = ReadonlyMap<string, DeploymentHistoryTiming>;
 
-/** The name a person knows a version by: its revision, else its image. */
-function versionName(deployment: Deployment): string {
-  if (deployment.revision) return `v${deployment.revision}`;
-  return shortDigest(deployment.image_digest) || deployment.id.slice(0, 8);
-}
+/**
+ * One name per version across the console — the API's revision ("v44"), else
+ * the short deployment id — so the headline, the rows, the rollback prompt and
+ * the aliases panel never disagree about which version they mean.
+ */
+const versionName = deploymentLabel;
 
 const TONE: Record<VersionTone, string> = {
   good: 'var(--status-good)',
@@ -183,7 +185,7 @@ function VersionRow({
   const built = humanDuration(timing?.durationSeconds);
   const digest = shortDigest(deployment.image_digest);
   return (
-    <li className="flex items-center gap-2">
+    <li className="flex flex-wrap items-center gap-x-2">
       <button
         type="button"
         aria-current={selected ? 'true' : undefined}
@@ -201,9 +203,9 @@ function VersionRow({
           >
             {status.word}
           </span>
-          <span className="truncate text-[13px] text-muted-foreground sm:text-sm">
+          <span className="text-[13px] text-muted-foreground sm:truncate sm:text-sm">
             {[
-              deployment.revision ? `v${deployment.revision}` : undefined,
+              versionName(deployment),
               digest ? (
                 <span key="digest" className="font-mono text-xs">
                   {digest}
@@ -225,7 +227,14 @@ function VersionRow({
           className="shrink-0 text-[13px] text-muted-foreground [font-variant-numeric:tabular-nums]"
         />
       </button>
-      <span className="flex shrink-0 justify-end sm:w-32">
+      {/* On a phone the action drops under the row's words instead of squeezing them. */}
+      <span
+        className={
+          onRollBack
+            ? 'flex w-full justify-start pb-2.5 pl-5 sm:w-32 sm:shrink-0 sm:justify-end sm:pb-0 sm:pl-0'
+            : 'hidden shrink-0 sm:flex sm:w-32'
+        }
+      >
         {onRollBack && (
           <Button size="xs" variant="outline" disabled={rollbackBusy} onClick={onRollBack}>
             Roll back to this <span className="sr-only">({versionName(deployment)})</span>
@@ -236,17 +245,13 @@ function VersionRow({
   );
 }
 
-/** "Started 2h ago from GitHub · commit 1a2b3c4 · image f35835e · built in 38 s · Details" */
+/** "v44 deployed 2h ago from GitHub · commit 1a2b3c4 · image f35835e · built in 38 s · Details" */
 function MetaLine({
   deployment,
-  verb,
-  at,
   timing,
   onSelect,
 }: {
   deployment: Deployment;
-  verb: string;
-  at: string | null | undefined;
   timing?: DeploymentHistoryTiming;
   onSelect: (id: string) => void;
 }) {
@@ -254,8 +259,8 @@ function MetaLine({
   const built = humanDuration(timing?.durationSeconds);
   return (
     <p className="text-[13px] leading-5 text-muted-foreground [font-variant-numeric:tabular-nums]">
-      {deployment.revision ? `v${deployment.revision} ${verb.toLowerCase()}` : verb}{' '}
-      <Timestamp value={at} /> from {sourceLabel(deployment)}
+      {versionName(deployment)} deployed <Timestamp value={deployment.created_at} /> from{' '}
+      {sourceLabel(deployment)}
       {deployment.commit_sha && (
         <>
           {' · commit '}
@@ -373,15 +378,7 @@ function NowWell({
           ))}
         </ol>
       );
-    meta = (
-      <MetaLine
-        deployment={deployment}
-        verb="Started"
-        at={deployment.rollout_started_at ?? deployment.created_at}
-        timing={timing}
-        onSelect={onSelect}
-      />
-    );
+    meta = <MetaLine deployment={deployment} timing={timing} onSelect={onSelect} />;
   } else if (subject.kind === 'live') {
     label = 'Live';
     tone = 'good';
@@ -412,15 +409,7 @@ function NowWell({
           : 'A newer version is queued to build.'
       );
     }
-    meta = (
-      <MetaLine
-        deployment={deployment}
-        verb="Deployed"
-        at={deployment.created_at}
-        timing={timing}
-        onSelect={onSelect}
-      />
-    );
+    meta = <MetaLine deployment={deployment} timing={timing} onSelect={onSelect} />;
   } else {
     const phase = deploymentPhase(deployment.status);
     const status = versionStatus(deployment);
@@ -437,15 +426,7 @@ function NowWell({
               : 'The latest version failed'
             : `Latest: ${versionName(deployment)}`;
     explanation.push('Nothing is serving traffic.');
-    meta = (
-      <MetaLine
-        deployment={deployment}
-        verb="Started"
-        at={deployment.created_at}
-        timing={timing}
-        onSelect={onSelect}
-      />
-    );
+    meta = <MetaLine deployment={deployment} timing={timing} onSelect={onSelect} />;
   }
 
   return (
