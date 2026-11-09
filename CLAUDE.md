@@ -140,8 +140,10 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   discard invalid JSON on collapse or silently save its last valid value. Creation
   defaults to every path on the selected app; the preview must show custom scope,
   paused/log-only behavior and the effective validation mode.
-  Preserve the seven-source New app wizard and its deployment recovery. Overview
-  and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
+  Preserve the seven-source New app wizard and its deployment recovery. App
+  Metrics uses the customizable `AnalyticsGrid`; the Overview is a fixed bento
+  (`components/dashboard/overview/`) whose tiles share one time window and draw
+  only summed `/analytics/timeseries` counts. Metric cards open the
   URL-backed `MetricInspectorProvider` without changing the underlying route.
   Drag handles and menus remain separate from the card's detail button. Sidebar
   disclosures, the foil New app control, and profile rim retain main's motion

@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
 let plan = 'hobby';
@@ -132,6 +132,28 @@ function metrics(range: string, requestCount: number) {
   };
 }
 
+const hours = (requests: number[], since: string) => ({
+  slug: 'api',
+  since,
+  from: '2026-11-08T22:00:00Z',
+  until: '2026-11-09T01:00:00Z',
+  window_clamped: false,
+  bucket: '1h',
+  as_of: '2026-11-09T00:30:00Z',
+  points: requests.map((n, i) => ({
+    start: new Date(Date.parse('2026-11-08T22:00:00Z') + i * 3_600_000).toISOString(),
+    requests: n,
+    error_requests: Math.round(n / 100),
+    error_rate_pct: 1,
+    cold_boots: i,
+    p50_ms: 20,
+    p95_ms: 60,
+    p99_ms: 90,
+  })),
+});
+
+let get: ReturnType<typeof spyApi>;
+
 beforeEach(() => {
   window.localStorage.clear();
   plan = 'hobby';
@@ -140,57 +162,85 @@ beforeEach(() => {
   useAppsMetrics
     .mockReset()
     .mockImplementation((range: string) => metrics(range, range === '7d' ? 700 : 100));
-});
-
-describe('overview analytics window', () => {
-  it('uses the selected range for the server rollup and preserves it in the URL', async () => {
-    const root = createRootRoute();
-    const overview = Route.update({
-      id: '/dashboard/',
-      path: '/dashboard',
-      getParentRoute: () => root,
-    } as never);
-    const router = createRouter({
-      routeTree: root.addChildren([overview]),
-      history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
-    });
-
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    );
-    expect(await screen.findByText('100')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Time range: Last 24 hours' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }));
-
-    expect(await screen.findByText('700')).toBeInTheDocument();
-    await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
+  get = spyApi('GET').mockImplementation(async (path: string, init?: unknown) => {
+    const since = (init as { params?: { query?: { since?: string } } })?.params?.query?.since;
+    const data =
+      path === '/v1/apps/{slug}/analytics/timeseries'
+        ? hours(since === '7d' ? [500, 600, 300] : [100, 300, 200], since ?? '24h')
+        : path === '/v1/orgs/{slug}/usage'
+          ? companyUsage.rows
+          : path === '/v1/usage'
+            ? [
+                {
+                  app_id: 'app-1',
+                  mb_seconds: 12 * 1024 * 3600,
+                  requests: 1,
+                  included_gb_hours: 100,
+                },
+              ]
+            : {};
+    return { data, response: new Response(null, { status: 200 }) };
   });
 });
 
-function renderOverview() {
+afterEach(() => get.mockRestore());
+
+function renderOverview(withReleases = false) {
   const root = createRootRoute();
+  const extra = withReleases
+    ? [
+        createRoute({
+          getParentRoute: () => root,
+          path: '/dashboard/releases',
+          component: () => <h1>Releases</h1>,
+        }),
+      ]
+    : [];
   const overview = Route.update({
     id: '/dashboard/',
     path: '/dashboard',
     getParentRoute: () => root,
   } as never);
   const router = createRouter({
-    routeTree: root.addChildren([overview]),
+    routeTree: root.addChildren([overview, ...extra]),
     history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
   });
-  // The company allowance is a real query; personal reads are mocked above.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
+  return router;
 }
 
-it('gates Free metrics and range controls while preserving usage and instance reads', async () => {
+describe('overview time window', () => {
+  it('charts the summed hourly series and keeps the chosen window in the URL', async () => {
+    const router = renderOverview();
+    expect(await screen.findByRole('img', { name: '600 requests' })).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(
+      '/v1/apps/{slug}/analytics/timeseries',
+      expect.objectContaining({ params: { path: { slug: 'api' }, query: { since: '24h' } } })
+    );
+
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Time window' })).getByRole('button', {
+        name: '7d',
+      })
+    );
+
+    expect(await screen.findByRole('img', { name: '1,400 requests' })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
+    expect(useAppsMetrics).toHaveBeenLastCalledWith('7d', { enabled: true });
+  });
+
+  it('labels wake p95 as the fleet-wide figure it is', async () => {
+    renderOverview();
+    expect(await screen.findByText('wake p95 80 ms · fleet-wide')).toBeInTheDocument();
+  });
+});
+
+it('gates Free metrics and the window while keeping usage and instance reads', async () => {
   plan = 'free';
   renderOverview();
   expect(await screen.findByText('Metrics is available on Hobby and above')).toBeInTheDocument();
@@ -198,14 +248,12 @@ it('gates Free metrics and range controls while preserving usage and instance re
     'href',
     '/dashboard/plans'
   );
-  expect(screen.queryByRole('button', { name: /Time range:/ })).not.toBeInTheDocument();
-  expect(screen.getByText('Memory now')).toBeInTheDocument();
-  expect(screen.getByText('GB-hours left')).toBeInTheDocument();
-  expect(screen.queryByText('metrics unavailable')).not.toBeInTheDocument();
-  expect(screen.queryByText('Total requests')).not.toBeInTheDocument();
-  expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Time window' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Instances now' })).toBeInTheDocument();
+  expect(await screen.findByText('20 GB-h used')).toBeInTheDocument();
+  expect(get).not.toHaveBeenCalledWith('/v1/apps/{slug}/analytics/timeseries', expect.anything());
   expect(useAppsMetrics).toHaveBeenLastCalledWith('24h', { enabled: false });
-  await userEvent.click(screen.getByRole('button', { name: 'Refresh analytics' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(metricsRefetch).not.toHaveBeenCalled();
 });
 
@@ -217,30 +265,42 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   });
   renderOverview();
   expect(await screen.findByText(/^Metrics degraded\./)).toBeInTheDocument();
+  expect(screen.queryByText(/wake p95/)).not.toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Time range: Last 24 hours' })).toBeEnabled();
+  expect(
+    within(screen.getByRole('group', { name: 'Time window' })).getByRole('button', { name: '24h' })
+  ).toBeEnabled();
+});
+
+it('lists the busiest apps with their window totals, leaving attention to the top bar', async () => {
+  renderOverview();
+  const tile = (await screen.findByRole('heading', { name: 'Apps' })).closest('section')!;
+  expect(await within(tile).findByRole('link', { name: /api.*600.*requests/ })).toHaveAttribute(
+    'href',
+    '/dashboard/apps/api'
+  );
+  expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
 });
 
 it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
   workspace.org = 'acme';
   workspace.label = 'Acme';
-  const get = spyApi('GET').mockImplementation(async (path: string) => ({
-    data: path === '/v1/orgs/{slug}/usage' ? companyUsage.rows : {},
-    response: new Response(null, { status: 200 }),
-  }));
   try {
     renderOverview();
-    // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
-    expect(await screen.findByText(/of 1,000/)).toBeInTheDocument();
-    expect(screen.queryByText(/of 100 /)).not.toBeInTheDocument();
+    // Personal: 20 of 100 GB-h. Company: 2 of 1,000.
+    expect(await screen.findByText('1,000 GB-h included')).toBeInTheDocument();
+    expect(screen.getByText('2 GB-h used')).toBeInTheDocument();
+    expect(screen.queryByText('100 GB-h included')).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
+    // The personal per-app breakdown is never read for a company.
+    expect(get).not.toHaveBeenCalledWith('/v1/usage', expect.anything());
   } finally {
     workspace.org = null;
     workspace.label = 'Personal';
   }
 });
 
-describe('overview deployments column', () => {
+describe('overview deployments tile', () => {
   it.each(['pointer', 'keyboard'])(
     'opens a recent deployment in the releases hub using %s',
     async (input) => {
@@ -254,33 +314,14 @@ describe('overview deployments column', () => {
           message: 'Fix the thing',
           author: 'ada',
           createdAt: Date.now() - 60_000,
+          durationMs: 0,
         },
       ];
-      const root = createRootRoute();
-      const overview = Route.update({
-        id: '/dashboard/',
-        path: '/dashboard',
-        getParentRoute: () => root,
-      } as never);
-      const releases = createRoute({
-        getParentRoute: () => root,
-        path: '/dashboard/releases',
-        component: () => <h1>Releases</h1>,
-      });
-      const router = createRouter({
-        routeTree: root.addChildren([overview, releases]),
-        history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
-      });
-      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-      render(
-        <QueryClientProvider client={client}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-      );
-      const column = (await screen.findByRole('heading', { name: 'Deployments' })).closest(
+      const router = renderOverview(true);
+      const tile = (await screen.findByRole('heading', { name: 'Deployments' })).closest(
         'section'
       )!;
-      const row = within(column).getByRole('link', { name: /api.*failed/i });
+      const row = within(tile).getByRole('link', { name: /api.*failed/i });
       expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
       if (input === 'keyboard') {
         row.focus();

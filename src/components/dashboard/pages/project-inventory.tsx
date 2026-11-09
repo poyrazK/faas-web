@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Upload } from 'iconoir-react';
+import { ArrowUpRight, Upload } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
 import { useProjectMembership, type ProjectDetail } from '@/lib/api/projects';
@@ -14,9 +14,9 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
-  Panel,
-  StateBadge,
 } from '@/components/dashboard/primitives';
+import { AppTile, AppTiles, byState } from '@/components/dashboard/app-tile';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import { Route as ProjectsRoute } from '@/routes/dashboard.projects';
 
 const PAGE = 10;
@@ -26,41 +26,43 @@ function matches(q: string, ...values: (string | undefined)[]) {
   return !needle || values.some((value) => value?.toLowerCase().includes(needle));
 }
 
-/** One app inside a project or in the standalone group. */
-function AppLine({
-  slug,
-  label,
-  app,
-  detail,
+/** A heading, its context and a grid of app tiles — no frame around the tiles. */
+function AppGroup({
+  title,
+  meta,
+  help,
+  action,
+  children,
 }: {
-  slug: string;
-  label?: string;
-  app?: Workflow;
-  detail?: string;
+  title: string;
+  meta?: ReactNode;
+  help?: string;
+  action?: ReactNode;
+  children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3">
-      <div className="min-w-0">
-        <Link
-          to="/dashboard/apps/$appSlug"
-          params={{ appSlug: slug }}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          {app?.name ?? slug}
-        </Link>
-        {(label || app?.runtime) && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {[label, app?.runtime].filter(Boolean).join(' · ')}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {detail && <span>{detail}</span>}
-        {app ? <StateBadge state={app.state} /> : <span>State not loaded</span>}
-      </div>
-    </li>
+    <section aria-labelledby={id} className="flex flex-col gap-3.5">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 id={id} className="flex items-center gap-1 text-xl font-semibold tracking-[-0.01em]">
+            {title}
+            {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
+          </h2>
+          {meta && <span className="font-mono text-xs text-muted-foreground">{meta}</span>}
+        </div>
+        {action}
+      </header>
+      {children}
+    </section>
   );
 }
+
+const GroupNote = ({ children, status }: { children: ReactNode; status?: boolean }) => (
+  <p role={status ? 'status' : undefined} className="text-sm text-muted-foreground">
+    {children}
+  </p>
+);
 
 function ProjectCard({
   slug,
@@ -85,45 +87,36 @@ function ProjectCard({
     matches(q, slug, repo, w.slug, w.workload_name, apps.get(w.slug)?.name)
   );
   return (
-    <Panel
+    <AppGroup
       title={slug}
-      actions={
-        <>
-          <span className="text-xs text-muted-foreground">
-            {[repo || 'No repository connected', branch && `deploys ${branch}`]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
-          <Button asChild size="xs" variant="ghost">
-            <Link
-              to="/dashboard/projects/$projectSlug"
-              params={{ projectSlug: slug }}
-              search={{ q: q || undefined }}
-              aria-label={`Open project ${slug}`}
-            >
-              Open project
-            </Link>
-          </Button>
-        </>
+      meta={[repo || 'No repository connected', branch && `deploys ${branch}`]
+        .filter(Boolean)
+        .join(' · ')}
+      action={
+        <Link
+          to="/dashboard/projects/$projectSlug"
+          params={{ projectSlug: slug }}
+          search={{ q: q || undefined }}
+          aria-label={`Open project ${slug}`}
+          className="pressable inline-flex h-8 items-center gap-1 rounded-full bg-muted px-3 text-[13px] text-foreground"
+        >
+          Open project
+          <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
+        </Link>
       }
-      padded={false}
     >
       {failed ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">
-          This project's apps could not be read.
-        </p>
+        <GroupNote>This project's apps could not be read.</GroupNote>
       ) : loading ? (
-        <p role="status" className="px-5 py-4 text-sm text-muted-foreground">
-          Loading apps…
-        </p>
+        <GroupNote status>Loading apps…</GroupNote>
       ) : !shown.length ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">
+        <GroupNote>
           {workloads?.length ? 'No apps match the search.' : 'This project has no apps yet.'}
-        </p>
+        </GroupNote>
       ) : (
-        <ul aria-label={`Apps in ${slug}`} className="divide-y divide-border">
+        <AppTiles label={`Apps in ${slug}`}>
           {shown.map((w) => (
-            <AppLine
+            <AppTile
               key={w.slug}
               slug={w.slug}
               label={w.workload_name !== w.slug ? w.workload_name : undefined}
@@ -131,9 +124,9 @@ function ProjectCard({
               detail={w.deployment_status}
             />
           ))}
-        </ul>
+        </AppTiles>
       )}
-    </Panel>
+    </AppGroup>
   );
 }
 
@@ -171,7 +164,7 @@ export function ProjectInventory() {
     membership.state === 'ready' && !membership.projects.length && !workflows.length;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-10">
       <PageHeader
         title="Projects"
         actions={
@@ -250,36 +243,33 @@ export function ProjectInventory() {
             <p className="text-sm text-muted-foreground">No projects match the search.</p>
           )}
 
-          <Panel
+          <AppGroup
             title="Standalone apps"
             help="Apps deployed from a folder, an image, or a template belong to no project."
-            padded={false}
           >
             {appsError ? (
               <ErrorState error={appsError} onRetry={refresh} />
             ) : appsLoading || membership.state === 'pending' ? (
-              <p role="status" className="px-5 py-4 text-sm text-muted-foreground">
-                Checking which apps belong to projects…
-              </p>
+              <GroupNote status>Checking which apps belong to projects…</GroupNote>
             ) : membership.state === 'error' ? (
-              <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 Some projects could not be read, so standalone apps cannot be told apart yet.
                 <Button size="xs" variant="outline" onClick={membership.retry}>
                   Retry
                 </Button>
               </div>
             ) : !standalone.length ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
+              <GroupNote>
                 {q ? 'No standalone apps match the search.' : 'Every app belongs to a project.'}
-              </p>
+              </GroupNote>
             ) : (
-              <ul aria-label="Standalone apps" className="divide-y divide-border">
-                {standalone.map((app) => (
-                  <AppLine key={app.id} slug={app.id} app={app} />
+              <AppTiles label="Standalone apps">
+                {[...standalone].sort(byState).map((app) => (
+                  <AppTile key={app.id} slug={app.id} app={app} />
                 ))}
-              </ul>
+              </AppTiles>
             )}
-          </Panel>
+          </AppGroup>
         </>
       )}
     </div>

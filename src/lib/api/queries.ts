@@ -444,11 +444,12 @@ export function useSetEgressExtra() {
 }
 
 /** Per-app monthly usage rows — the detail under the account roll-up. */
-export function usePerAppUsage() {
+export function usePerAppUsage(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['usage', 'per-app'],
     queryFn: () => unwrap(api.GET('/v1/usage', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -3767,6 +3768,24 @@ export function useDependencyLatency(slug: string, since: string) {
     enabled: Boolean(slug),
     retry: retryPolicy,
   });
+}
+
+/**
+ * The unfiltered hourly series for one app, as a query definition — for pages
+ * that read several apps at once (`useQueries`). The key is the one
+ * `useAppAnalyticsTimeseries` uses with no filters, so both share a cache.
+ */
+export function appAnalyticsTimeseriesQuery(slug: string, since: string) {
+  return {
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since, null, null, null, null] as const,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/analytics/timeseries', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+    retry: false,
+  };
 }
 
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */

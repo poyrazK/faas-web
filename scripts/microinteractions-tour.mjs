@@ -119,36 +119,7 @@ try {
   await page.waitForTimeout(120);
   assert.equal(await button.evaluate((el) => getComputedStyle(el).transform), 'none');
   await page.mouse.up();
-  await page.goto(base + '/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('combobox', { name: 'Search apps, pages, and actions' }).click();
-  await page.waitForTimeout(500);
-  let beams = await page.evaluate(
-    () =>
-      document
-        .getAnimations()
-        .filter((a) => a.animationName?.startsWith('beam-') && a.playState === 'running').length
-  );
-  assert.equal(beams, 0);
-  result.push({ reducedMotionRunningBeams: beams });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.waitForTimeout(600);
-  beams = await page.evaluate(
-    () =>
-      document
-        .getAnimations()
-        .filter((a) => a.animationName?.startsWith('beam-') && a.playState === 'running').length
-  );
-  assert.ok(beams > 0);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.waitForTimeout(200);
-  beams = await page.evaluate(
-    () =>
-      document
-        .getAnimations()
-        .filter((a) => a.animationName?.startsWith('beam-') && a.playState === 'running').length
-  );
-  assert.equal(beams, 0);
-  result.push({ livePreferenceChange: true });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(400);
   assert.equal(
