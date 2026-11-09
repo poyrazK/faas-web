@@ -494,6 +494,7 @@ function FunctionDetailPage() {
                     paidAccess ? (
                       <AppAnalyticsPreview
                         slug={fn.id}
+                        heading="Traffic"
                         since={search.analyticsSince ?? '24h'}
                         onSinceChange={(value) =>
                           void navigate({

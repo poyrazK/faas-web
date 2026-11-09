@@ -12,6 +12,7 @@ import { publicAppUrl } from '@/lib/app-url';
 import { useAuth } from '@/lib/auth';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
+import { Timestamp } from '@/components/ui/timestamp';
 import { ErrorState, LoadingState, Panel } from '../primitives';
 function evidenceHref(value: string) {
   if (value.startsWith('/v1/') && !value.includes('\\') && !/\s/.test(value)) return value;
@@ -190,23 +191,50 @@ export function PreviewWorkloadSet({
     </Panel>
   );
 }
+/**
+ * The Overview's first line on a preview app: what it previews, in one
+ * sentence, with the workload set one click away.
+ */
 function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: string }) {
   const query = usePreviewApp(accountId, slug);
   const [open, setOpen] = useState(false);
   // An app read failure is not evidence that this is a production app.
   if (query.isError)
-    return <p className="text-xs text-muted-foreground">Preview identity unavailable.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">Couldn’t check whether this app is a preview.</p>
+    );
   if (!query.data?.preview_of_slug) return null;
   const app = query.data;
+  const parent = (
+    <Link
+      to="/dashboard/apps/$appSlug"
+      params={{ appSlug: app.preview_of_slug! }}
+      className="font-medium text-brand underline-offset-4 hover:underline"
+    >
+      {app.preview_of_slug}
+    </Link>
+  );
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 well rounded-xl bg-muted/40 p-3 text-sm">
-        <p>
-          Preview of {app.preview_of_slug}
-          {app.preview_pr_number ? ` · PR #${app.preview_pr_number}` : ' · Developer preview'}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 well rounded-xl bg-muted/40 px-4 py-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-[15px] leading-6 [overflow-wrap:anywhere]">
+            {app.preview_pr_number ? (
+              <>
+                Preview of {parent} for pull request #{app.preview_pr_number}.
+              </>
+            ) : (
+              <>Developer preview of {parent}, not tied to a pull request.</>
+            )}
+          </p>
+          {app.preview_expires_at && (
+            <p className="text-[13px] text-muted-foreground">
+              Expires <Timestamp value={app.preview_expires_at} />
+            </p>
+          )}
+        </div>
         <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? 'Hide preview details' : 'Inspect preview workload set'}
+          {open ? 'Hide preview details' : 'Show what’s in this preview'}
         </Button>
       </div>
       {open &&
@@ -214,7 +242,7 @@ function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: str
           <PreviewWorkloadSet accountId={accountId} app={app} />
         ) : (
           <p className="text-sm text-muted-foreground">
-            Workload set unavailable. Developer preview; app-level information only.
+            A developer preview has no workload set; only the app’s own details apply.
           </p>
         ))}
     </div>
