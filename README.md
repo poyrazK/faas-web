@@ -542,11 +542,12 @@ Labels are sentence case in the sans face; mono is for identifiers and code.
 
 ### Motion
 
-Pages, panels, tables and numbers arrive in place. The Overview is a bento of
-tiles, each with its own material (a brand-ramp field for traffic, a compute-amber
-glow for the allowance, a rose field for errors), composed from tokens in
-`components/dashboard/bento.css`; the foil New app button and
-profile rim respond to interaction. Metric cards animate their position when rearranged.
+Pages, panels, tables and numbers arrive in place. Overview retains its greeting
+and subtle background from the main console; its Analytics section is bento cards,
+each with its own material (a brand-ramp field for traffic, a compute-amber glow
+for the allowance, a rose field for errors), composed from tokens in
+`components/dashboard/bento.css`. The foil New app button and profile rim respond
+to interaction. Metric cards animate their position when rearranged.
 Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
 All of these respect reduced motion.
 

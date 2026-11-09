@@ -1,8 +1,7 @@
 import '../bento.css';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ArrowRight, ArrowUpRight, Check, Refresh, Xmark } from 'iconoir-react';
-import { formatRelative, type Deployment } from '@/lib/mock-data';
+import { ArrowRight, ArrowUpRight } from 'iconoir-react';
 import { cn } from '@/lib/utils';
 import { InlinePhase, type QueryPhase } from '../primitives';
 import { compareRequestHalves } from '../analytics-data';
@@ -22,7 +21,7 @@ import {
   type Tick,
 } from './overview-data';
 
-type Tone = 'traffic' | 'compute' | 'errors' | 'release' | 'field' | 'plain';
+type Tone = 'traffic' | 'compute' | 'errors' | 'field' | 'plain';
 
 export function Tile({
   span,
@@ -30,7 +29,7 @@ export function Tile({
   className,
   children,
 }: {
-  span: 3 | 4 | 8;
+  span: 3 | 4 | 8 | 12;
   tone?: Tone;
   className?: string;
   children: (headingId: string) => ReactNode;
@@ -584,93 +583,20 @@ export function InstancesTile({ state }: { state: InstancesState }) {
   );
 }
 
-/** A small line of one app's hourly requests, scaled to its own peak. */
-function sparkPath(values: number[], width: number, height: number) {
-  if (values.length < 2) return '';
-  const max = Math.max(1, ...values);
-  return values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * width;
-      const y = height - 1 - (v / max) * (height - 2);
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(' ');
-}
-
-/** The busiest apps in the window, each with its own hourly line. */
-export function AppsTile({ state, appCount }: { state: SeriesState; appCount: number }) {
-  const whole = completeHours(state.series, state.until);
-  const rows = state.series
-    .map((app, i) => ({
-      app,
-      totals: totalsOf(app.points),
-      spark: sparkPath(
-        whole[i].points.map((p) => p.requests),
-        64,
-        20
-      ),
-    }))
-    .sort((a, b) => b.totals.requests - a.totals.requests)
-    .slice(0, 4);
-  const ready = state.paid && state.phase === 'ready';
+export function CpuTile({ cpuHours, phase }: { cpuHours: number | null; phase: QueryPhase }) {
   return (
     <Tile span={3} className="min-h-[12.25rem]">
       {(id) => (
         <>
-          <SmallHead
-            id={id}
-            label="Apps"
-            aside={
-              <Link
-                to="/dashboard/apps"
-                className="font-mono text-xs text-muted-foreground tabular-nums hover:text-foreground"
-              >
-                {appCount} ↗
-              </Link>
-            }
-          />
-          {!ready ? (
-            <p className="mt-auto text-xs text-muted-foreground">
-              {state.paid ? 'Reading request history…' : 'Per-app history starts on Hobby.'}
-            </p>
-          ) : (
-            <ul className="bento-arrive mt-2.5 flex list-none flex-col">
-              {rows.map(({ app, totals, spark }) => {
-                const hot =
-                  totals.requests >= 20 &&
-                  totals.errorRatePct != null &&
-                  totals.errorRatePct >= FIELD_ERROR_PCT;
-                return (
-                  <li key={app.slug}>
-                    <Link
-                      to="/dashboard/apps/$appSlug"
-                      params={{ appSlug: app.slug }}
-                      className="pressable bento-row flex min-h-9 items-center gap-3 rounded-lg text-sm"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{app.name}</span>
-                      <svg
-                        viewBox="0 0 64 20"
-                        aria-hidden
-                        className="bento-spark h-5 w-16 shrink-0"
-                        data-hot={hot || undefined}
-                      >
-                        <path d={spark} />
-                      </svg>
-                      <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-                        {compactFigure(totals.requests)}
-                      </span>
-                      <span className="sr-only">
-                        requests
-                        {totals.errorRatePct != null
-                          ? `, ${totals.errorRatePct.toFixed(1)}% errors`
-                          : ''}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <SmallHead id={id} label="CPU hours" />
+          <Big>
+            {phase === 'ready' && cpuHours != null
+              ? cpuHours.toLocaleString('en', { maximumFractionDigits: 1 })
+              : '—'}
+          </Big>
+          <p className="mt-auto text-xs text-muted-foreground">
+            This billing period · measured, not billed
+          </p>
         </>
       )}
     </Tile>
@@ -689,7 +615,7 @@ export function HourFieldTile({ state, windowLabel }: { state: SeriesState; wind
   const ready = state.paid && state.phase === 'ready' && columns > 0;
   const gap = columns > 72 ? 2 : columns > 36 ? 3 : 5;
   return (
-    <Tile span={8} tone="field" className="min-h-[22.5rem]">
+    <Tile span={12} tone="field" className="min-h-[22.5rem]">
       {(id) => (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -814,120 +740,5 @@ function FieldRow({
         ))}
       </div>
     </>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Deployments
- * ------------------------------------------------------------------ */
-
-const DEPLOY_STATE = {
-  succeeded: { label: 'live', tone: 'good', Icon: Check },
-  failed: { label: 'failed', tone: 'critical', Icon: Xmark },
-  building: { label: 'building', tone: 'warning', Icon: Refresh },
-} as const;
-
-const seconds = (ms: number) =>
-  ms >= 60_000
-    ? `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
-    : `${Math.round(ms / 1000)} s`;
-
-/**
- * Ids that arrived after the first render. The list is capped, so its length
- * never grows; a set difference catches a new deployment pushing an old out.
- */
-function useArrivals(ids: string[]) {
-  const seen = useRef<Set<string> | null>(null);
-  const [arrived, setArrived] = useState<Set<string>>(new Set());
-  const key = ids.join(',');
-  useEffect(() => {
-    const now = key ? key.split(',') : [];
-    if (seen.current) {
-      const fresh = now.filter((id) => !seen.current!.has(id));
-      if (fresh.length) setArrived(new Set(fresh));
-    }
-    seen.current = new Set(now);
-  }, [key]);
-  return arrived;
-}
-
-export function DeploymentsTile({ recent }: { recent: Deployment[] }) {
-  const arrived = useArrivals(recent.map((d) => d.id));
-  return (
-    <Tile span={4} tone="release" className="min-h-[22.5rem]">
-      {(id) => (
-        <>
-          <div className="flex items-center justify-between">
-            <h2 id={id} className="text-lg font-semibold">
-              Deployments
-            </h2>
-            <Link
-              to="/dashboard/releases"
-              className="pressable inline-flex h-8 items-center gap-1 rounded-full bg-muted px-3 text-[13px] text-foreground"
-            >
-              Releases
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          {recent.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">Nothing deployed yet.</p>
-          ) : (
-            <ul className="mt-3 flex list-none flex-col">
-              {recent.map((d) => {
-                const s = DEPLOY_STATE[d.state] ?? DEPLOY_STATE.building;
-                return (
-                  <li key={d.id}>
-                    <Link
-                      to="/dashboard/releases"
-                      search={{ deployment: d.id }}
-                      className={cn(
-                        'pressable bento-row flex min-h-[52px] items-center gap-3 rounded-lg',
-                        arrived.has(d.id) && 'animate-row-arrive'
-                      )}
-                    >
-                      <span
-                        className="bento-dot-icon h-[30px] w-[30px]"
-                        data-tone={s.tone}
-                        aria-hidden
-                      >
-                        <s.Icon
-                          className={cn(
-                            'h-3.5 w-3.5',
-                            d.state === 'building' && 'animate-spin motion-reduce:animate-none'
-                          )}
-                        />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col leading-[18px]">
-                        <span className="truncate font-medium">
-                          {d.workflowId}{' '}
-                          <span
-                            className={cn(
-                              'font-normal',
-                              s.tone === 'good'
-                                ? 'text-muted-foreground'
-                                : 'text-[var(--status-warning)]',
-                              s.tone === 'critical' && 'text-[var(--status-critical)]'
-                            )}
-                          >
-                            · {s.label}
-                          </span>
-                        </span>
-                        <span className="truncate font-mono text-xs text-muted-foreground">
-                          {d.id}
-                          {d.durationMs > 0 ? ` · ${seconds(d.durationMs)}` : ''}
-                        </span>
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-                        {formatRelative(d.createdAt)}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-      )}
-    </Tile>
   );
 }

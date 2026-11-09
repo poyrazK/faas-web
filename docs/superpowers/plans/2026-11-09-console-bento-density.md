@@ -29,17 +29,19 @@ motion only where it acknowledges a real event.
 
 ## Done in this slice
 
-- Overview bento (`components/dashboard/overview/`), shared `bento.css`.
+- Overview: the original greeting, search and Apps / Deployments / Recents
+  columns stay (Bahadir, 2026-11-09); only its Analytics section is bento cards
+  (`components/dashboard/overview/`): requests stream, allowance gauge, error
+  rate, cold boots, instances, CPU hours and the hour field. Shared `bento.css`.
 - Projects page: project groups and standalone apps as `AppTile` grids.
 - `compactTime` / `shortTime` (`lib/time.ts`); `Timestamp mode="absolute"`
   uses it; 16 console files moved off `toLocaleString()`.
 - Activity tab: one line per event, raw kind and id inside Event details.
 - Usage: whole-cent object-storage money; cost and forecast caveats in help.
 - Metrics and Health: comparison, threshold and history caveats in help.
-- Motion: refresh spins while a manual refresh runs (min 400 ms); building
-  deploy icon spins; new deployments wash in; dot numeral cross-fades; a woken
-  instance drifts in from the north-east; figures settle in after loading;
-  mouse-only row wash; app tile press `scale(0.99)`.
+- Motion: refresh spins while a manual refresh runs (min 400 ms); the dot
+  numeral cross-fades; a woken instance drifts in from the north-east; figures
+  settle in after loading; app tile press `scale(0.99)`.
 
 Measured (mock API, 70 surfaces): visible full timestamps 190 → about 5;
 Activity 1,102 → 749 words.

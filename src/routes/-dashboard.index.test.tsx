@@ -272,16 +272,6 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
   ).toBeEnabled();
 });
 
-it('lists the busiest apps with their window totals, leaving attention to the top bar', async () => {
-  renderOverview();
-  const tile = (await screen.findByRole('heading', { name: 'Apps' })).closest('section')!;
-  expect(await within(tile).findByRole('link', { name: /api.*600.*requests/ })).toHaveAttribute(
-    'href',
-    '/dashboard/apps/api'
-  );
-  expect(screen.queryByRole('region', { name: 'Needs attention' })).not.toBeInTheDocument();
-});
-
 it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
   workspace.org = 'acme';
   workspace.label = 'Acme';
@@ -300,7 +290,7 @@ it("shows the company's compute allowance in a company workspace, not the signed
   }
 });
 
-describe('overview deployments tile', () => {
+describe('overview deployments column', () => {
   it.each(['pointer', 'keyboard'])(
     'opens a recent deployment in the releases hub using %s',
     async (input) => {
@@ -314,14 +304,33 @@ describe('overview deployments tile', () => {
           message: 'Fix the thing',
           author: 'ada',
           createdAt: Date.now() - 60_000,
-          durationMs: 0,
         },
       ];
-      const router = renderOverview(true);
-      const tile = (await screen.findByRole('heading', { name: 'Deployments' })).closest(
+      const root = createRootRoute();
+      const overview = Route.update({
+        id: '/dashboard/',
+        path: '/dashboard',
+        getParentRoute: () => root,
+      } as never);
+      const releases = createRoute({
+        getParentRoute: () => root,
+        path: '/dashboard/releases',
+        component: () => <h1>Releases</h1>,
+      });
+      const router = createRouter({
+        routeTree: root.addChildren([overview, releases]),
+        history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      );
+      const column = (await screen.findByRole('heading', { name: 'Deployments' })).closest(
         'section'
       )!;
-      const row = within(tile).getByRole('link', { name: /api.*failed/i });
+      const row = within(column).getByRole('link', { name: /api.*failed/i });
       expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
       if (input === 'keyboard') {
         row.focus();
