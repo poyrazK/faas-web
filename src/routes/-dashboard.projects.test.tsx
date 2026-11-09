@@ -148,7 +148,7 @@ it('lists each project with its apps, without GitHub or a paid capability gate',
     '/dashboard/apps/api'
   );
   expect(screen.getByText(/team\/shop/)).toBeInTheDocument();
-  expect(screen.getByText(/No repository connected/)).toBeInTheDocument();
+  expect(screen.getByText(/not connected to a repository/)).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Open project shop' })).toHaveAttribute(
     'href',
     '/dashboard/projects/shop'

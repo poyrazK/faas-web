@@ -43,8 +43,8 @@ describe('AppTile', () => {
       '/dashboard/apps/api'
     );
     expect(within(list).getByText('6.72K')).toBeInTheDocument();
-    expect(within(list).getByText('0.42%')).toBeInTheDocument();
-    expect(within(list).getByText('512')).toBeInTheDocument();
+    expect(within(list).getByText('0.42% errors')).toBeInTheDocument();
+    expect(within(list).getByText('Node 22 · 512 MB')).toBeInTheDocument();
     expect(memoryOf(2048)).toEqual({ value: '2', unit: 'GB' });
   });
 
@@ -58,11 +58,23 @@ describe('AppTile', () => {
         />
       </>
     );
-    expect(within(list).getByText('25.6%')).toHaveAttribute('data-hot');
+    expect(within(list).getByText('25.6% of requests failed')).toHaveAttribute('data-hot');
     const fresh = within(list).getByRole('link', { name: 'new' }).closest('li')!;
     expect(fresh).toHaveAttribute('data-state', 'undeployed');
     expect(within(fresh).getByText('Not deployed yet')).toBeInTheDocument();
     expect(within(fresh).getByText('No deployments')).toBeInTheDocument();
+  });
+
+  it('says when the latest deploy failed, next to the running state', async () => {
+    const list = await renderTiles(
+      <AppTile
+        slug="api"
+        app={app({})}
+        deploy={{ tone: 'critical', text: 'deploy failed', at: Date.now() - 3 * 3_600_000 }}
+      />
+    );
+    expect(within(list).getByText('Running')).toBeInTheDocument();
+    expect(within(list).getByText(/deploy failed 3h ago/)).toHaveClass('text-status-critical');
   });
 
   it('never shows zeros when request figures are unavailable', async () => {
@@ -72,7 +84,7 @@ describe('AppTile', () => {
         app={app({ metricsUnavailable: true, invocations24h: 0, errorRatePct: 0 })}
       />
     );
-    expect(within(list).getByText('512 MB · request figures unavailable')).toBeInTheDocument();
+    expect(within(list).getByText('Request figures unavailable')).toBeInTheDocument();
     expect(within(list).queryByText('0')).not.toBeInTheDocument();
     expect(within(list).queryByText('0.00%')).not.toBeInTheDocument();
   });

@@ -1,12 +1,11 @@
 import './bento.css';
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
+import { cn } from '@/lib/utils';
 import { formatRelative, type RunState, type Workflow } from '@/lib/mock-data';
 import { StateBadge } from './primitives';
 import { compactFigure } from './overview/dot-numeral';
-
-/** An error share at or above this reads as trouble on a tile. */
-const HOT_ERROR_PCT = 5;
+import { failingShare, runtimeLabel, type DeployNote } from './app-tile-words';
 
 /** 512 MB stays in megabytes; 2048 MB reads as 2 GB. */
 export function memoryOf(mb: number): { value: string; unit: 'MB' | 'GB' } {
@@ -28,51 +27,53 @@ export function byState(a: Workflow, b: Workflow) {
   return STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name);
 }
 
-function Figure({ label, children, hot }: { label: string; children: ReactNode; hot?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <dt className="bento-label truncate">{label}</dt>
-      <dd
-        className="app-tile__figure mt-0.5 truncate text-xl leading-7 tracking-[-0.01em] tabular-nums"
-        data-hot={hot || undefined}
-      >
-        {children}
-      </dd>
-    </div>
-  );
-}
-
 /**
- * One app as a tile. Figures come from the store's 24 h reading; when the
- * plan has no metrics or the rollup is degraded, the tile says so rather
- * than showing zeros.
+ * One app as a tile, read top to bottom: is it running (and is a deploy
+ * failing or under way), its name, its traffic, then what it runs on. Figures
+ * are the store's 24 h reading; with no metrics they say so, never zero.
  */
 export function AppTile({
   slug,
   app,
   label,
-  detail,
+  deploy,
 }: {
   slug: string;
   app?: Workflow;
   /** A project workload's own name, when it differs from the app's. */
   label?: string;
-  /** The latest deployment's status as the project reports it. */
-  detail?: string;
+  /** The latest deployment, when it failed or is still running. */
+  deploy?: DeployNote | null;
 }) {
   const deployed = app && app.state !== 'undeployed';
   const measured = deployed && !app.metricsUnavailable;
   const hasTraffic = measured && app.invocations24h > 0;
+  const failing = app ? failingShare(app) : null;
+  const runsOn = [
+    runtimeLabel(app?.runtime),
+    app?.memoryMb ? `${memoryOf(app.memoryMb).value} ${memoryOf(app.memoryMb).unit}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <li className="app-tile" data-state={app?.state ?? 'unknown'}>
-      <div className="flex items-center justify-between gap-3">
+      <p className="flex items-center gap-x-1.5 truncate text-xs">
         {app ? (
           <StateBadge state={app.state} />
         ) : (
-          <span className="text-xs text-muted-foreground">State not loaded</span>
+          <span className="text-muted-foreground">State not loaded</span>
         )}
-        {app?.runtime && <span className="bento-chip">{app.runtime}</span>}
-      </div>
+        {deploy && (
+          <span
+            className={cn(
+              'truncate',
+              deploy.tone === 'critical' ? 'text-status-critical' : 'text-status-warning'
+            )}
+          >
+            · {deploy.text} {formatRelative(deploy.at)}
+          </span>
+        )}
+      </p>
 
       <div className="min-w-0">
         <Link
@@ -86,46 +87,41 @@ export function AppTile({
       </div>
 
       {measured ? (
-        <dl className="mt-auto grid grid-cols-3 gap-3">
-          <Figure label="Req · 24h">{compactFigure(app.invocations24h)}</Figure>
-          <Figure label="Errors" hot={hasTraffic && app.errorRatePct >= HOT_ERROR_PCT}>
-            {hasTraffic ? `${app.errorRatePct.toFixed(app.errorRatePct < 10 ? 2 : 1)}%` : '—'}
-          </Figure>
-          <Figure label="Memory">
-            {app.memoryMb ? (
-              <>
-                {memoryOf(app.memoryMb).value}
-                <span className="text-sm text-muted-foreground">
-                  {' '}
-                  {memoryOf(app.memoryMb).unit}
-                </span>
-              </>
-            ) : (
-              '—'
-            )}
-          </Figure>
-        </dl>
+        <div className="mt-auto flex flex-col gap-0.5">
+          <p className="tabular-nums">
+            <span className="text-[22px] leading-7 tracking-[-0.01em]">
+              {compactFigure(app.invocations24h)}
+            </span>
+            <span className="text-sm text-muted-foreground"> requests in 24 h</span>
+          </p>
+          {hasTraffic && (
+            <p
+              className="app-tile__figure text-[13px] text-muted-foreground tabular-nums"
+              data-hot={failing != null || undefined}
+            >
+              {failing != null
+                ? `${failing.toFixed(1)}% of requests failed`
+                : `${app.errorRatePct.toFixed(2)}% errors`}
+            </p>
+          )}
+        </div>
       ) : (
         <p className="mt-auto text-sm text-muted-foreground">
           {!app
             ? 'Details not loaded'
             : !deployed
               ? 'Not deployed yet'
-              : app.memoryMb
-                ? `${app.memoryMb} MB · request figures unavailable`
-                : 'Request figures unavailable'}
+              : 'Request figures unavailable'}
         </p>
       )}
 
-      <p className="flex items-center justify-between gap-3 font-mono text-xs text-muted-foreground">
-        <span className="truncate">
+      <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span className="truncate">{runsOn}</span>
+        <span className="shrink-0">
           {app?.lastDeployedAt
-            ? [app.version, `deployed ${formatRelative(app.lastDeployedAt)}`]
-                .filter(Boolean)
-                .join(' · ')
+            ? `deployed ${formatRelative(app.lastDeployedAt)}`
             : 'No deployments'}
         </span>
-        {detail && <span className="shrink-0">{detail}</span>}
       </p>
     </li>
   );
