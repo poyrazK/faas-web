@@ -128,7 +128,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   not mean `npm run check` passes — run the latter before claiming done.
 - **Sign in with a real email and password.** The `123456` demo code is gone —
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
-- **Use concise, plain English.** Show essential scope and effects in place;
+- **Use concise, plain English** — and follow `docs/console-plain-english.md`
+  (answer first, one obvious action, plain words before technical terms, detail
+  on request, change over time as a picture). Show essential scope and effects in place;
   secondary technical details can go in `help` or an expandable section. Edge
   rule rows lead with their saved outcome and values, including paused and log-only
   states. Open the row for technical settings; keep generic kind descriptions inside
