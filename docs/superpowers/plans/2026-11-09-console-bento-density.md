@@ -61,3 +61,24 @@ Activity 1,102 → 749 words.
 
 Open: Bahadir's reference image for "too much precision" (asked for
 2026-11-09; did not arrive).
+
+## Plain English rollout (approved 2026-11-09)
+
+Rules: `docs/console-plain-english.md`. Reference designs: the canvas page
+"Plain English (UX)". Each journey ships as one reviewed slice.
+
+1. **Worked examples** (in progress, parallel branches `ux/health`,
+   `ux/deploys`, `ux/databases`, `ux/storage`): app Health, Deployment
+   history, Databases, Object storage.
+2. **App pages:** app Overview (latest release, needs attention, traffic),
+   Release safety, Activity, Environment and secrets, Domains and routes,
+   Settings (General, Runtime, Health and releases, Source and access).
+3. **Debug journey:** Logs, Wakes, Errors and Issues, Debugger, Request audit,
+   Alerts and SLOs: each opens with what is wrong right now and the one place to
+   look.
+4. **Data:** Postgres detail (compute cap, health, live queries, backups),
+   bucket settings, Events, Integrations.
+5. **Account:** Usage and spend, Budgets, Plans, Invoices, API keys, Team,
+   Security.
+6. **Everything else** in the app menu's folded groups (Connect, Automate,
+   Monetize), lowest traffic last.
