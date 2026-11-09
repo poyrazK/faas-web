@@ -13,6 +13,7 @@ import {
   type FinancialMeterCosts,
 } from '@/lib/api/billing-costs';
 import { formatMillicentRate, formatMillicents } from '@/lib/money';
+import { HelpTip } from './kit/help-tip';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ResourceTable, type Column } from './resource-table';
@@ -427,11 +428,19 @@ function CostReport({ report }: { report: FinancialCosts }) {
         >
           {formatMillicents(report.known_usage_millicents)}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Priced usage of {scope} for {month} (UTC), as of{' '}
-          <Timestamp value={report.as_of} mode="absolute" />. Not an invoice total.
-          {gaps.length > 0 &&
-            ` ${gaps.length} ${gaps.length === 1 ? 'meter has a coverage gap' : 'meters have coverage gaps'}, so this covers only what is known.`}
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            {month} · as of <Timestamp value={report.as_of} mode="absolute" />
+          </span>
+          {gaps.length > 0 && (
+            <span className="text-status-warning">
+              {gaps.length} {gaps.length === 1 ? 'meter' : 'meters'} incomplete
+            </span>
+          )}
+          <HelpTip label="About known usage cost">
+            Priced usage of {scope} for {month} (UTC). Not an invoice total
+            {gaps.length > 0 ? '; meters with coverage gaps count only what is known' : ''}.
+          </HelpTip>
         </p>
       </div>
 

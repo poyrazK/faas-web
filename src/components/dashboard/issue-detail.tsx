@@ -10,6 +10,7 @@ import {
   type IssueHistoryKind,
 } from '@/lib/api/issues';
 import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
 
 type Props = { accountId: string; slug: string; issueId: string; onBack: () => void };
 
@@ -178,9 +179,9 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                 {detail.data.impact.unattributed_events} unattributed events
               </p>
               <p className="text-xs text-muted-foreground">
-                Observed from {new Date(detail.data.impact.window_start).toLocaleString()} to{' '}
-                {new Date(detail.data.impact.window_end).toLocaleString()}. Retained, verified
-                reports only.
+                Observed from <Timestamp value={detail.data.impact.window_start} mode="absolute" />{' '}
+                to <Timestamp value={detail.data.impact.window_end} mode="absolute" />. Retained,
+                verified reports only.
               </p>
             </div>
           )}

@@ -18,6 +18,7 @@ import type { components } from '@/lib/api/schema';
 import { CapabilityGate } from './capability-gate';
 import { MaturityLabel } from './maturity-label';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { HelpTip } from './kit/help-tip';
 
 /* ------------------------------------------------------------------ *
  * apid's observed health for one app (faas docs/app-health.md,
@@ -295,11 +296,15 @@ function Evidence({ slug, data }: { slug: string; data: Assessment }) {
           ) : (
             <p>Request counts unconfirmed: missing data does not mean a zero error rate.</p>
           )}
-          <p className="mt-1">
-            Diagnostic defaults, not your SLO: a warning at {requests.policy.warning_error_rate_pct}
-            % server errors and a failure at {requests.policy.unhealthy_error_rate_pct}%, once there
-            are at least {number(requests.policy.minimum_requests)} requests and{' '}
-            {number(requests.policy.minimum_server_errors)} server errors.
+          <p className="mt-1 flex items-center gap-1">
+            Default thresholds
+            <HelpTip label="About health thresholds">
+              Diagnostic defaults, not your SLO: a warning at{' '}
+              {requests.policy.warning_error_rate_pct}% server errors and a failure at{' '}
+              {requests.policy.unhealthy_error_rate_pct}%, once there are at least{' '}
+              {number(requests.policy.minimum_requests)} requests and{' '}
+              {number(requests.policy.minimum_server_errors)} server errors.
+            </HelpTip>
           </p>
         </div>
       )}
@@ -411,7 +416,13 @@ function History({ history, now }: { history: HistoryRead; now: number }) {
   });
   return (
     <section aria-label="Recorded changes" className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium text-muted-foreground">Recorded changes</h3>
+      <h3 className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        Recorded changes
+        <HelpTip label="About these times">
+          Times show when health was assessed or its validity ended, not when an incident began or
+          ended.
+        </HelpTip>
+      </h3>
       {first && !fresh && (
         <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
           Background collection is behind, so the newest entry may be old. Its time is when it was
@@ -498,10 +509,6 @@ function History({ history, now }: { history: HistoryRead; now: number }) {
           </Button>
         )
       )}
-      <p className="text-xs text-muted-foreground">
-        Times show when health was assessed or its validity ended, not when an incident began or
-        ended.
-      </p>
     </section>
   );
 }

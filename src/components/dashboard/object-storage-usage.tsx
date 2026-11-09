@@ -33,14 +33,18 @@ function bytes(value: number): string {
 
 // `ObjectStorageUsage.cost_millicents` is account money, USD (faas
 // pkg/financial/currency.go, ADR-1430); the `charges` block names its own.
+// Whole cents: a fraction of a cent is precision nobody acts on. A non-zero
+// amount below a cent still reads as more than nothing.
 function money(millicents: number, currency: string = ACCOUNT_CURRENCY): string {
   const amount = millicents / 100_000;
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(amount);
+  const format = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  return amount > 0 && amount < 0.01 ? `< ${format(0.01)}` : format(amount);
 }
 
 function pct(used: number, cap: number): string | undefined {

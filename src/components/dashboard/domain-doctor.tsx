@@ -3,6 +3,7 @@ import { ApiError } from '@/lib/api/errors';
 import { useDomainDoctor } from '@/lib/api/queries';
 import { CapabilityGate } from './capability-gate';
 import { InlinePhase, queryPhase } from './primitives';
+import { shortTime } from '@/lib/time';
 
 /**
  * The five-check domain doctor (ADR-120), displayed in the diagnostics dialog.
@@ -39,7 +40,7 @@ const CHECK_LABEL: Record<string, string> = {
 function formatWhen(value: string | undefined): string {
   if (!value) return '';
   const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '' : new Date(ms).toLocaleString();
+  return Number.isNaN(ms) ? '' : shortTime(ms);
 }
 
 /** The doctor is a preview capability (faas catalog `domain-doctor`); off, it is not probed. */

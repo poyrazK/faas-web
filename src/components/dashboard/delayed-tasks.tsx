@@ -23,6 +23,7 @@ import {
 } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
+import { shortTime } from '@/lib/time';
 
 /**
  * Delayed tasks — durable one-shot invocations of an app at a chosen time
@@ -342,7 +343,7 @@ function ScheduleForm({ slug }: { slug: string }) {
         toast({
           kind: 'success',
           title: 'Task scheduled',
-          description: `Runs ${new Date(t.scheduled_at).toLocaleString()}.`,
+          description: `Runs ${shortTime(t.scheduled_at)}.`,
         });
       })
       .catch((err: unknown) => {

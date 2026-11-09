@@ -655,7 +655,7 @@ function CaptureDetail({
                         <option key={c.id} value={c.id}>
                           {c.id.slice(0, 8)} · {TRIGGER[c.trigger ?? 'manual']} ·{' '}
                           {c.kinds.map((k) => KIND_LABEL[k]).join(', ')} ·{' '}
-                          {new Date(c.created_at).toLocaleString()}
+                          <Timestamp value={c.created_at} mode="absolute" />
                         </option>
                       ))}
                     </select>

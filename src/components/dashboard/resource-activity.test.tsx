@@ -96,7 +96,7 @@ beforeEach(() => {
   state.workspace.mockReset();
 });
 describe('resource activity timeline', () => {
-  it('shows deploy/config/domain/TLS events, captured actor, exact UTC time, outcome and affected links', () => {
+  it('shows deploy/config/domain/TLS events, captured actor, time, failures and affected links', () => {
     state.rows = [
       row('4', 'deploy.failed', { deployment_id: release }),
       row('3', 'app.config_updated'),
@@ -108,9 +108,12 @@ describe('resource activity timeline', () => {
     ];
     render(<ResourceActivityTimeline appId={app} appSlug="api" />);
     expect(screen.getByRole('region', { name: 'App activity' })).toBeInTheDocument();
-    expect(screen.getAllByText('2026-10-01 12:00:00 UTC')).toHaveLength(4);
-    expect(screen.getByText('Actor: Certificate manager (system)')).toBeInTheDocument();
-    expect(screen.getByText('Outcome: Failed')).toBeInTheDocument();
+    expect(screen.getAllByRole('time')).toHaveLength(4);
+    expect(screen.getAllByRole('time')[0]).toHaveAttribute('dateTime', '2026-10-01T12:00:00.000Z');
+    expect(screen.getByText('Certificate manager · system')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    // Completed is the norm and is not spelled out.
+    expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View affected release' })).toHaveAttribute(
       'href',
       `/dashboard/releases?deployment=${release}&releaseSection=audit`
@@ -124,16 +127,16 @@ describe('resource activity timeline', () => {
       'href',
       '/dashboard/domains?q=api.example.com'
     );
-    expect(screen.getByText(/Coverage can be incomplete/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About activity' })).toBeInTheDocument();
   });
   it('keeps unknown outcomes and actor identities explicit', () => {
     state.rows = [
       row('1', 'future.unknown', { actor: { type: 'system', label: '' }, occurred_at: 'invalid' }),
     ];
     render(<ResourceActivityTimeline appId={app} />);
-    expect(screen.getByText('Outcome: Recorded — outcome not provided')).toBeInTheDocument();
-    expect(screen.getByText('Actor: Unknown actor (system)')).toBeInTheDocument();
-    expect(screen.getByText('Timestamp unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Outcome unknown')).toBeInTheDocument();
+    expect(screen.getByText('Unknown actor · system')).toBeInTheDocument();
+    expect(screen.getByText('Time unknown')).toBeInTheDocument();
   });
   it('shows only the exact release while providing app-wide context navigation', () => {
     state.rows = [

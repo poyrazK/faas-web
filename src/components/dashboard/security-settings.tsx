@@ -16,6 +16,7 @@ import { useMfa } from '@/components/auth/mfa-provider';
 import { formatRelative } from '@/lib/mock-data';
 import { PasswordPanel } from '@/components/dashboard/password-wizard';
 import { AuthEventDetail } from '@/components/dashboard/auth-event-detail';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /**
  * Active dashboard sessions, from `/v1/auth/sessions`.
@@ -72,7 +73,7 @@ function AuthEventsPanel() {
                   <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
                 )}
                 <span className="ml-auto text-muted-foreground">
-                  {new Date(e.at).toLocaleString()}
+                  <Timestamp value={e.at} mode="absolute" />
                 </span>
               </button>
             </li>

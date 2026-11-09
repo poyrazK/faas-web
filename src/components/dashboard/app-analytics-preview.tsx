@@ -10,6 +10,7 @@ import { InlinePhase, queryPhase } from './primitives';
 import { PlanGated } from './plan-gated';
 import { WINDOWS } from './app-analytics-search';
 import { rangeHalfLabel } from './range-picker';
+import { HelpTip } from './kit/help-tip';
 
 /** Shared compact history for an app Overview and Account Analytics' selected app. */
 export function AppAnalyticsPreview({
@@ -125,12 +126,14 @@ export function AppAnalyticsPreview({
             })
           }
         />
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="flex flex-wrap items-center gap-1 text-xs leading-relaxed text-muted-foreground">
           {series.data?.from && series.data.until
-            ? `${utcLabel(series.data.from)} – ${utcLabel(series.data.until)} UTC. `
+            ? `${utcLabel(series.data.from)} – ${utcLabel(series.data.until)} UTC`
             : ''}
-          Changes compare equal groups of complete UTC hours within this window. Partial hours are
-          excluded.
+          <HelpTip label="About these changes">
+            Changes compare equal groups of complete UTC hours within this window. Partial hours are
+            excluded.
+          </HelpTip>
         </p>
         {series.data?.window_clamped && (
           <p role="status" className="text-xs text-muted-foreground">

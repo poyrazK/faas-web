@@ -14,6 +14,9 @@ import {
   type ResourceActivity,
 } from '@/lib/api/resource-activity';
 import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
+import { HelpTip } from './kit/help-tip';
+import { parseTime } from '@/lib/time';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -89,9 +92,12 @@ function ActivityTimeline({
         <p className="label-mono text-muted-foreground">
           {deploymentId ? 'Release activity' : 'App activity'}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Newest first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
-          Coverage can be incomplete for older or deleted resources.
+        <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+          Newest first
+          <HelpTip label="About activity">
+            {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}Coverage can be incomplete
+            for older or deleted resources.
+          </HelpTip>
         </p>
         {deploymentId && (
           <p className="mt-2 text-xs text-muted-foreground">
@@ -222,25 +228,29 @@ function ActivityTimeline({
 
 function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string }) {
   const release = activityResourceId(row.deployment_id);
-  const timestamp = Date.parse(row.occurred_at);
-  const when = Number.isFinite(timestamp)
-    ? new Date(timestamp).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
-    : 'Timestamp unavailable';
   const outcome = activityOutcome(row.kind);
+  const actor = row.actor.label || 'Unknown actor';
   return (
-    <li className="space-y-2 py-3 [overflow-wrap:anywhere]">
-      <p className="text-sm">{row.summary || row.kind}</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          Actor: {row.actor.label || 'Unknown actor'} ({row.actor.type || 'unknown'})
-        </span>
-        <time dateTime={Number.isFinite(timestamp) ? row.occurred_at : undefined}>{when}</time>
-        <span className={outcome === 'Failed' ? 'text-status-critical' : ''}>
-          Outcome: {outcome}
-        </span>
+    <li className="space-y-1.5 py-3 [overflow-wrap:anywhere]">
+      <div className="flex items-baseline justify-between gap-4">
+        <p className="text-sm">{row.summary || row.kind}</p>
+        {parseTime(row.occurred_at) === undefined ? (
+          <span className="shrink-0 text-xs text-muted-foreground">Time unknown</span>
+        ) : (
+          <Timestamp value={row.occurred_at} className="shrink-0 text-xs text-muted-foreground" />
+        )}
       </div>
-      <p className="font-mono text-xs text-muted-foreground">
-        {row.kind} · {row.resource.label || row.resource.type} · Event {row.id}
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>
+          {actor}
+          {row.actor.type && row.actor.type !== 'user' ? ` · ${row.actor.type}` : ''}
+        </span>
+        {/* Success is the norm; only the outcomes worth a second look are named. */}
+        {outcome === 'Failed' ? (
+          <span className="text-status-critical">Failed</span>
+        ) : outcome === 'Completed' ? null : (
+          <span>{outcome.startsWith('Recorded') ? 'Outcome unknown' : outcome}</span>
+        )}
       </p>
       {release ? (
         <Link
@@ -268,14 +278,17 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
           View affected configuration
         </Link>
       ) : null}
-      {Object.keys(row.data ?? {}).length > 0 && (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Event details</summary>
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Event details</summary>
+        <p className="mt-2 font-mono">
+          {row.kind} · {row.resource.label || row.resource.type} · event {row.id}
+        </p>
+        {Object.keys(row.data ?? {}).length > 0 && (
           <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2">
             {JSON.stringify(row.data, null, 2)}
           </pre>
-        </details>
-      )}
+        )}
+      </details>
     </li>
   );
 }

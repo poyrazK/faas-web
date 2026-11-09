@@ -21,6 +21,7 @@ import {
   type AnalyticsMethod,
   type AppAnalyticsSearch,
 } from './app-analytics-search';
+import { HelpTip } from './kit/help-tip';
 
 export { ANALYTICS_GROUPS, validateAppAnalyticsSearch } from './app-analytics-search';
 export type { AppAnalyticsSearch } from './app-analytics-search';
@@ -274,9 +275,12 @@ export function AppAnalyticsBody({
                 });
               }}
             />
-            <p className="text-xs text-muted-foreground">
-              Hourly history · UTC. Changes compare equal groups of complete hours within this
-              window; partial hours are excluded.
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              Hourly · UTC
+              <HelpTip label="About these changes">
+                Changes compare equal groups of complete hours within this window; partial hours are
+                excluded.
+              </HelpTip>
             </p>
             {(incompleteTelemetry(data) || incompleteTelemetry(series.data)) && (
               <p role="status" className="text-xs text-status-warning">
