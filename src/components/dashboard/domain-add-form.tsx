@@ -165,7 +165,7 @@ export function DomainAddForm({
           kind: 'success',
           title: 'Domain added',
           description: created.txt_record
-            ? 'Publish the TXT record shown in the table to verify it.'
+            ? 'Publish the TXT record shown on its card to verify it.'
             : undefined,
         });
       })
