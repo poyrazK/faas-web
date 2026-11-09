@@ -488,7 +488,7 @@ describe('Releases hub', () => {
         kind === 'build'
           ? listRow(/build-only/)
           : kind === 'app release'
-            ? screen.getByRole('button', { name: /image aaaa/ })
+            ? screen.getByRole('button', { name: /^Details of / })
             : listRow(/dep-1\b/);
       const select = async () => {
         if (input === 'pointer') await userEvent.click(row);
@@ -704,7 +704,7 @@ describe('Releases hub', () => {
 
   it('restores app release sections and selection through Back, Forward and refresh', async () => {
     const router = await mount('/dashboard/apps/alpha?tab=Deployments#release');
-    await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     const copied = router.state.location.href;
     await act(async () => router.history.back());
@@ -733,7 +733,7 @@ describe('Releases hub', () => {
       debugRoute: '/checkout',
       campaign: 'handoff',
     };
-    await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
     expect(router.state.location.search).toMatchObject({ ...investigation, deployment: 'dep-1' });
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     await userEvent.click(
