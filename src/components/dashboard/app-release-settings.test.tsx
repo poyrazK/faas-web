@@ -47,8 +47,7 @@ function renderWith(app: App, { advanced = true } = {}) {
       <AppReleaseSettings app={app} />
     </QueryClientProvider>
   );
-  if (advanced)
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced release settings' }));
+  if (advanced) fireEvent.click(screen.getByRole('button', { name: 'Advanced release settings' }));
   return view;
 }
 
@@ -132,7 +131,10 @@ describe('AppReleaseSettings', () => {
 
   it('reads an app that never set a policy as safe', () => {
     renderWith({ ...fn, release_policy: undefined } as unknown as App);
-    expect(screen.getByRole('button', { name: /careful/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /careful/i })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
     expect(screen.getByLabelText('Rollout probe paths')).toHaveValue('');
   });
 
