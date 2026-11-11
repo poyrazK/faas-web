@@ -128,9 +128,18 @@ export function AppTile({
 }
 
 /** A grid of app tiles; the list's accessible name says whose apps they are. */
-export function AppTiles({ label, children }: { label: string; children: ReactNode }) {
+export function AppTiles({
+  label,
+  stacked,
+  children,
+}: {
+  label: string;
+  /** One tile per row, for a group laid out as a column. */
+  stacked?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <ul aria-label={label} className="app-tiles">
+    <ul aria-label={label} className="app-tiles" data-stacked={stacked || undefined}>
       {children}
     </ul>
   );

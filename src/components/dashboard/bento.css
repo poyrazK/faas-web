@@ -43,6 +43,10 @@
   list-style: none;
 }
 
+.console .app-tiles[data-stacked] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .console .app-tile {
   position: relative;
   display: flex;
