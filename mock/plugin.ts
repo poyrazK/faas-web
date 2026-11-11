@@ -3552,7 +3552,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   if (!isAnalyticsGroupBy(groupBy))
     throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  const points = analyticsPoints(from, until);
+  const points = analyticsPoints(from, until).map(appTrafficProfile(a.slug));
   const requests = points.reduce((sum, point) => sum + point.requests, 0);
   const errors = points.reduce((sum, point) => sum + point.error_requests, 0);
   const group = (value: string, i: number) => {
@@ -3596,6 +3596,39 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   };
 });
 
+/**
+ * Each app's own traffic, so an account-wide view has something to compare:
+ * a stable per-slug volume, batch-shaped apps busy overnight, and one app
+ * (`webhook-router`) erroring above the console's threshold. Deterministic.
+ */
+function appTrafficProfile(slug: string) {
+  let hash = 0;
+  for (const ch of slug) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  // api-gateway stays the 1× baseline the analytics contract tests pin.
+  const volumes = [0.62, 0.38, 0.21, 0.11, 0.05, 0.02];
+  const volume = slug === 'api-gateway' ? 1 : volumes[hash % volumes.length];
+  const batch = /etl|nightly|cron|batch/.test(slug);
+  const errorRate = slug === 'webhook-router' ? 0.08 : undefined;
+  return (point: ReturnType<typeof analyticsPoints>[number]) => {
+    const hour = new Date(point.start).getUTCHours();
+    const shape = batch ? (hour >= 1 && hour <= 4 ? 5 : 0.08) : 1;
+    const requests = Math.round(point.requests * volume * shape);
+    const errorRequests = Math.min(
+      requests,
+      errorRate === undefined
+        ? Math.round(point.error_requests * volume * shape)
+        : Math.round(requests * errorRate)
+    );
+    return {
+      ...point,
+      requests,
+      error_requests: errorRequests,
+      error_rate_pct: requests === 0 ? 0 : Math.round((errorRequests / requests) * 10000) / 100,
+      cold_boots: Math.round(point.cold_boots * Math.max(1, shape)),
+    };
+  };
+}
+
 function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): AnalyticsTimeseries {
   const a = app(params.slug);
   if (process.env.MOCK_PLAN === 'free')
@@ -3605,7 +3638,7 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
   const { since, from, until, clamped } = analyticsWindow(query);
-  const unfilteredPoints = analyticsPoints(from, until);
+  const unfilteredPoints = analyticsPoints(from, until).map(appTrafficProfile(a.slug));
   const requestedRoute = query.get('route');
   const requestedMethod = query.get('method');
   let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
