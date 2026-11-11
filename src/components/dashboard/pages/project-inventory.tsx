@@ -43,7 +43,7 @@ function AppGroup({
       aria-labelledby={id}
       className="flex flex-col gap-4 rounded-[1.75rem] bg-muted/25 p-4 sm:p-5"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 px-1">
+      <header className="flex items-start justify-between gap-3 px-1">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 id={id} className="flex items-center gap-1 text-lg font-semibold tracking-[-0.01em]">
             {title}
@@ -51,7 +51,7 @@ function AppGroup({
           </h2>
           {meta && <p className="text-[13px] text-muted-foreground">{meta}</p>}
         </div>
-        {action}
+        {action && <div className="shrink-0">{action}</div>}
       </header>
       {children}
     </section>
@@ -129,7 +129,7 @@ function ProjectCard({
           {workloads?.length ? 'No apps match the search.' : 'This project has no apps yet.'}
         </GroupNote>
       ) : (
-        <AppTiles label={`Apps in ${slug}`}>
+        <AppTiles label={`Apps in ${slug}`} stacked>
           {shown.map((w) => (
             <AppTile
               key={w.slug}
@@ -261,24 +261,60 @@ export function ProjectInventory() {
         <EmptyState message="Nothing deployed yet." />
       ) : (
         <>
-          {projects.slice(0, limit).map((project) => {
-            const index = membership.projects.indexOf(project);
-            const detail = membership.details[index];
-            return (
-              <ProjectCard
-                key={project.id}
-                slug={project.slug}
-                repo={project.repo_full_name}
-                branch={project.production_branch}
-                workloads={membership.workloadsOf.get(project.slug)}
-                loading={Boolean(detail?.isPending)}
-                failed={Boolean(detail?.isError)}
-                apps={apps}
-                deployments={deployments}
-                q={q}
-              />
-            );
-          })}
+          {/* Projects stand side by side as columns, apps stacked inside; each
+              column is as tall as its own apps, never stretched to a row's. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,21rem),1fr))] items-start gap-4">
+            {projects.slice(0, limit).map((project) => {
+              const index = membership.projects.indexOf(project);
+              const detail = membership.details[index];
+              return (
+                <ProjectCard
+                  key={project.id}
+                  slug={project.slug}
+                  repo={project.repo_full_name}
+                  branch={project.production_branch}
+                  workloads={membership.workloadsOf.get(project.slug)}
+                  loading={Boolean(detail?.isPending)}
+                  failed={Boolean(detail?.isError)}
+                  apps={apps}
+                  deployments={deployments}
+                  q={q}
+                />
+              );
+            })}
+            <AppGroup
+              title="Standalone apps"
+              help="Apps deployed from a folder, an image, or a template belong to no project."
+            >
+              {appsError ? (
+                <ErrorState error={appsError} onRetry={refresh} />
+              ) : appsLoading || membership.state === 'pending' ? (
+                <GroupNote status>Checking which apps belong to projects…</GroupNote>
+              ) : membership.state === 'error' ? (
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  Some projects could not be read, so standalone apps cannot be told apart yet.
+                  <Button size="xs" variant="outline" onClick={membership.retry}>
+                    Retry
+                  </Button>
+                </div>
+              ) : !standalone.length ? (
+                <GroupNote>
+                  {q ? 'No standalone apps match the search.' : 'Every app belongs to a project.'}
+                </GroupNote>
+              ) : (
+                <AppTiles label="Standalone apps" stacked>
+                  {[...standalone].sort(byState).map((app) => (
+                    <AppTile
+                      key={app.id}
+                      slug={app.id}
+                      app={app}
+                      deploy={latestDeployNote(app.id, deployments)}
+                    />
+                  ))}
+                </AppTiles>
+              )}
+            </AppGroup>
+          </div>
           {projects.length > limit && (
             <Button
               size="sm"
@@ -292,39 +328,6 @@ export function ProjectInventory() {
           {q && !projects.length && membership.projects.length > 0 && (
             <p className="text-sm text-muted-foreground">No projects match the search.</p>
           )}
-
-          <AppGroup
-            title="Standalone apps"
-            help="Apps deployed from a folder, an image, or a template belong to no project."
-          >
-            {appsError ? (
-              <ErrorState error={appsError} onRetry={refresh} />
-            ) : appsLoading || membership.state === 'pending' ? (
-              <GroupNote status>Checking which apps belong to projects…</GroupNote>
-            ) : membership.state === 'error' ? (
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                Some projects could not be read, so standalone apps cannot be told apart yet.
-                <Button size="xs" variant="outline" onClick={membership.retry}>
-                  Retry
-                </Button>
-              </div>
-            ) : !standalone.length ? (
-              <GroupNote>
-                {q ? 'No standalone apps match the search.' : 'Every app belongs to a project.'}
-              </GroupNote>
-            ) : (
-              <AppTiles label="Standalone apps">
-                {[...standalone].sort(byState).map((app) => (
-                  <AppTile
-                    key={app.id}
-                    slug={app.id}
-                    app={app}
-                    deploy={latestDeployNote(app.id, deployments)}
-                  />
-                ))}
-              </AppTiles>
-            )}
-          </AppGroup>
         </>
       )}
     </div>

@@ -4,8 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { formatRelative, type RunState, type Workflow } from '@/lib/mock-data';
 import { StateBadge } from './primitives';
-import { compactFigure } from './compact-figure';
-import { failingShare, runtimeLabel, type DeployNote } from './app-tile-words';
+import { runtimeLabel, type DeployNote } from './app-tile-words';
 
 /** 512 MB stays in megabytes; 2048 MB reads as 2 GB. */
 export function memoryOf(mb: number): { value: string; unit: 'MB' | 'GB' } {
@@ -29,8 +28,8 @@ export function byState(a: Workflow, b: Workflow) {
 
 /**
  * One app as a tile, read top to bottom: is it running (and is a deploy
- * failing or under way), its name, its traffic, then what it runs on. Figures
- * are the store's 24 h reading; with no metrics they say so, never zero.
+ * failing or under way), its name, then what it runs on. No traffic figures:
+ * the tile says what the app is; its numbers live on the app's own page.
  */
 export function AppTile({
   slug,
@@ -45,10 +44,6 @@ export function AppTile({
   /** The latest deployment, when it failed or is still running. */
   deploy?: DeployNote | null;
 }) {
-  const deployed = app && app.state !== 'undeployed';
-  const measured = deployed && !app.metricsUnavailable;
-  const hasTraffic = measured && app.invocations24h > 0;
-  const failing = app ? failingShare(app) : null;
   const runsOn = [
     runtimeLabel(app?.runtime),
     app?.memoryMb ? `${memoryOf(app.memoryMb).value} ${memoryOf(app.memoryMb).unit}` : '',
@@ -86,36 +81,7 @@ export function AppTile({
         {label && <p className="truncate text-[13px] text-muted-foreground">{label}</p>}
       </div>
 
-      {measured ? (
-        <div className="mt-auto flex flex-col gap-0.5">
-          <p className="tabular-nums">
-            <span className="text-[22px] leading-7 tracking-[-0.01em]">
-              {compactFigure(app.invocations24h)}
-            </span>
-            <span className="text-sm text-muted-foreground"> requests in 24 h</span>
-          </p>
-          {hasTraffic && (
-            <p
-              className="app-tile__figure text-[13px] text-muted-foreground tabular-nums"
-              data-hot={failing != null || undefined}
-            >
-              {failing != null
-                ? `${failing.toFixed(1)}% of requests failed`
-                : `${app.errorRatePct.toFixed(2)}% errors`}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className="mt-auto text-sm text-muted-foreground">
-          {!app
-            ? 'Details not loaded'
-            : !deployed
-              ? 'Not deployed yet'
-              : 'Request figures unavailable'}
-        </p>
-      )}
-
-      <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+      <p className="mt-auto flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="truncate">{runsOn}</span>
         <span className="shrink-0">
           {app?.lastDeployedAt
@@ -128,9 +94,18 @@ export function AppTile({
 }
 
 /** A grid of app tiles; the list's accessible name says whose apps they are. */
-export function AppTiles({ label, children }: { label: string; children: ReactNode }) {
+export function AppTiles({
+  label,
+  stacked,
+  children,
+}: {
+  label: string;
+  /** One tile per row, for a group laid out as a column. */
+  stacked?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <ul aria-label={label} className="app-tiles">
+    <ul aria-label={label} className="app-tiles" data-stacked={stacked || undefined}>
       {children}
     </ul>
   );

@@ -43,6 +43,10 @@
   list-style: none;
 }
 
+.console .app-tiles[data-stacked] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .console .app-tile {
   position: relative;
   display: flex;
@@ -115,10 +119,6 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-}
-
-.console .app-tile__figure[data-hot] {
-  color: var(--status-critical);
 }
 
 @media (prefers-reduced-motion: reduce) {
