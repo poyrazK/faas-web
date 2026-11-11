@@ -36,32 +36,27 @@ async function renderTiles(tiles: React.ReactNode) {
 }
 
 describe('AppTile', () => {
-  it('names the app as its link and shows the 24 h figures', async () => {
-    const list = await renderTiles(<AppTile slug="api" app={app({})} />);
+  it('names the app as its link and shows what it runs on, with no traffic figures', async () => {
+    const list = await renderTiles(<AppTile slug="api" app={app({ errorRatePct: 25.65 })} />);
     expect(within(list).getByRole('link', { name: 'api' })).toHaveAttribute(
       'href',
       '/dashboard/apps/api'
     );
-    expect(within(list).getByText('6.72K')).toBeInTheDocument();
-    expect(within(list).getByText('0.42% errors')).toBeInTheDocument();
     expect(within(list).getByText('Node 22 · 512 MB')).toBeInTheDocument();
+    expect(within(list).queryByText(/requests|errors|failed/)).not.toBeInTheDocument();
+    expect(within(list).queryByText('6.72K')).not.toBeInTheDocument();
     expect(memoryOf(2048)).toEqual({ value: '2', unit: 'GB' });
   });
 
-  it('marks a high error share and draws a never-deployed app hollow', async () => {
+  it('draws a never-deployed app hollow', async () => {
     const list = await renderTiles(
-      <>
-        <AppTile slug="hot" app={app({ id: 'hot', name: 'hot', errorRatePct: 25.65 })} />
-        <AppTile
-          slug="new"
-          app={app({ id: 'new', name: 'new', state: 'undeployed', lastDeployedAt: 0 })}
-        />
-      </>
+      <AppTile
+        slug="new"
+        app={app({ id: 'new', name: 'new', state: 'undeployed', lastDeployedAt: 0 })}
+      />
     );
-    expect(within(list).getByText('25.6% of requests failed')).toHaveAttribute('data-hot');
     const fresh = within(list).getByRole('link', { name: 'new' }).closest('li')!;
     expect(fresh).toHaveAttribute('data-state', 'undeployed');
-    expect(within(fresh).getByText('Not deployed yet')).toBeInTheDocument();
     expect(within(fresh).getByText('No deployments')).toBeInTheDocument();
   });
 
@@ -75,18 +70,6 @@ describe('AppTile', () => {
     );
     expect(within(list).getByText('Running')).toBeInTheDocument();
     expect(within(list).getByText(/deploy failed 3h ago/)).toHaveClass('text-status-critical');
-  });
-
-  it('never shows zeros when request figures are unavailable', async () => {
-    const list = await renderTiles(
-      <AppTile
-        slug="api"
-        app={app({ metricsUnavailable: true, invocations24h: 0, errorRatePct: 0 })}
-      />
-    );
-    expect(within(list).getByText('Request figures unavailable')).toBeInTheDocument();
-    expect(within(list).queryByText('0')).not.toBeInTheDocument();
-    expect(within(list).queryByText('0.00%')).not.toBeInTheDocument();
   });
 });
 
