@@ -72,7 +72,7 @@ export function incompleteTelemetry(value: unknown): boolean {
 
 /** Compare equal counts of complete UTC hours. Partial edge buckets never enter a delta. */
 export function compareRequestHalves(
-  points: AnalyticsPoint[],
+  points: Pick<AnalyticsPoint, 'start' | 'requests' | 'error_requests' | 'cold_boots'>[],
   metric: string,
   from?: string,
   until?: string

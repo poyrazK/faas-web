@@ -81,7 +81,7 @@ export function FailurePanel({
 
 function Excerpts({ rows }: { rows: FailureSummary['evidence'] }) {
   return (
-    <ol className="divide-y divide-border rounded-md border border-border">
+    <ol className="divide-y divide-border well rounded-xl bg-muted/40">
       {rows.map((row, index) => (
         <li key={index} className="min-w-0 px-3 py-2.5">
           {(row.source || row.ts || row.level) && (

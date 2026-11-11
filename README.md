@@ -543,8 +543,10 @@ Labels are sentence case in the sans face; mono is for identifiers and code.
 ### Motion
 
 Pages, panels, tables and numbers arrive in place. Overview retains its greeting
-and subtle background from the main console; the foil New app button and profile
-rim respond to interaction. Metric cards animate their position when rearranged.
+and subtle background from the main console; its Analytics section is six soft
+number cards (requests, error rate, wake p95, memory now, GB-hours, CPU) built
+from the materials in `components/dashboard/bento.css`. The foil New app button and profile rim respond
+to interaction. Metric cards animate their position when rearranged.
 Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
 All of these respect reduced motion.
 

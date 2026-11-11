@@ -23,7 +23,7 @@ export function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'animate-pop-in z-[90] min-w-48 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-elevation-3',
+          'animate-pop-in origin-[var(--radix-dropdown-menu-content-transform-origin)] z-[90] min-w-48 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-elevation-3',
           className
         )}
         {...props}

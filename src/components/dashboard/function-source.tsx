@@ -59,7 +59,7 @@ export function FunctionSource({
         <div
           role="radiogroup"
           aria-labelledby={`${uid}-language`}
-          className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card"
+          className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card"
         >
           {LANGUAGES.map((l) => (
             <label
@@ -111,7 +111,7 @@ export function FunctionSource({
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-muted-foreground">Handler</h2>
-        <div className="flex flex-col rounded-xl border border-border bg-card">
+        <div className="flex flex-col surface rounded-[1.25rem] bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
             <label htmlFor={`${uid}-code`} className="font-mono text-[13px] font-medium">
               {starter.filename}

@@ -96,7 +96,7 @@ export function InvokePanel({ slug }: { slug: string }) {
       title="Invoke"
       help="Sync waits for the result and takes longer on a cold app. Async returns at once and is followed here."
       actions={
-        <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Mode">
+        <div className="flex well rounded-xl bg-muted/40 p-0.5" role="group" aria-label="Mode">
           {(['sync', 'async'] as const).map((value) => (
             <button
               key={value}

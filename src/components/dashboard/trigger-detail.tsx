@@ -39,6 +39,7 @@ import {
   validateTriggerDraft,
   type TriggerDraft,
 } from './trigger-form-model';
+import { Timestamp } from '@/components/ui/timestamp';
 
 function sourceRows(draft: TriggerDraft): Array<[string, string]> {
   const source = draft.source;
@@ -277,7 +278,8 @@ export function TriggerDetail({
         title={trigger.slug ?? trigger.kind}
         meta={
           <span className="text-sm text-muted-foreground">
-            {trigger.kind} · {destination} · updated {new Date(trigger.updated_at).toLocaleString()}
+            {trigger.kind} · {destination} · updated{' '}
+            <Timestamp value={trigger.updated_at} mode="absolute" />
           </span>
         }
         actions={

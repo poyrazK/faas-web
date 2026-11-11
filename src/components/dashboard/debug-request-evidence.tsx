@@ -220,7 +220,7 @@ export function DebugRequestEvidence({
                 </div>
 
                 {data.regression && (
-                  <div className="rounded-lg border border-border p-3 text-xs">
+                  <div className="well rounded-xl bg-muted/40 p-3 text-xs">
                     <p className="label-mono mb-1.5 text-muted-foreground">Matched regression</p>
                     <p className="[font-variant-numeric:tabular-nums]">
                       {data.regression.route}: p95 {data.regression.p95_ms} ms against a baseline of{' '}

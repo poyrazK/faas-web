@@ -117,7 +117,7 @@ export function InvoiceSource({ org }: { org?: string | null }) {
       );
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 surface rounded-[1.25rem] bg-card px-4 py-2.5">
       {s.enabled ? (
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {facts(s).map((fact) => (

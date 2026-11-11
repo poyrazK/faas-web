@@ -117,17 +117,24 @@ describe('Domains operational state', () => {
   it('marks the domain that is already its app default', async () => {
     betaDefault = true;
     await mount();
-    const beta = (await screen.findByText('beta.example.com')).closest('tr')!;
-    const alpha = screen.getByText('alpha.example.com').closest('tr')!;
-    expect(within(beta).getByText('default')).toBeInTheDocument();
-    expect(within(alpha).queryByText('default')).not.toBeInTheDocument();
+    const beta = await screen.findByRole('article', { name: 'beta.example.com' });
+    const alpha = screen.getByRole('article', { name: 'alpha.example.com' });
+    expect(within(beta).getByText('Main address')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Default domain')
+    );
+    expect(within(alpha).queryByText('Main address')).not.toBeInTheDocument();
   });
   it('offers no Diagnose action when the domain doctor is not enabled for the account', async () => {
     doctor.access = 'off';
     try {
       await mount('/dashboard/domains');
       expect(await screen.findByText('alpha.example.com')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Diagnose alpha.example.com' })).toBeNull();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions for alpha.example.com' })
+      );
+      expect(await screen.findByRole('menuitem', { name: /Remove domain/ })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /Diagnose/ })).toBeNull();
     } finally {
       doctor.access = 'on';
     }
@@ -135,10 +142,13 @@ describe('Domains operational state', () => {
 
   it('opens diagnostics in a modal and restores focus and filters on Escape', async () => {
     const router = await mount('/dashboard/domains?q=alpha&campaign=handoff#dns');
-    const trigger = await screen.findByRole('button', { name: 'Diagnose alpha.example.com' });
+    const trigger = await screen.findByRole('button', {
+      name: 'More actions for alpha.example.com',
+    });
     await userEvent.click(trigger);
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Diagnose DNS and HTTPS/ }));
     expect(
-      await screen.findByRole('dialog', { name: 'Doctor — alpha.example.com' })
+      await screen.findByRole('dialog', { name: 'Diagnose alpha.example.com' })
     ).toHaveAttribute('aria-modal', 'true');
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -170,9 +180,12 @@ describe('Domains operational state', () => {
     expect(screen.getByRole('combobox', { name: 'Domain status' })).toHaveValue('pending');
     expect(await screen.findByText('alpha.example.com')).toBeInTheDocument();
     expect(screen.queryByText('beta.example.com')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Diagnose alpha.example.com' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'More actions for alpha.example.com' })
+    );
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Diagnose DNS and HTTPS/ }));
     expect(
-      await screen.findByRole('heading', { name: 'Doctor — alpha.example.com' })
+      await screen.findByRole('heading', { name: 'Diagnose alpha.example.com' })
     ).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject({
       q: 'example',
@@ -186,18 +199,18 @@ describe('Domains operational state', () => {
     expect(router.state.location.search.doctor).toBeUndefined();
     await act(async () => router.history.back());
     expect(
-      await screen.findByRole('heading', { name: 'Doctor — alpha.example.com' })
+      await screen.findByRole('heading', { name: 'Diagnose alpha.example.com' })
     ).toBeInTheDocument();
     await act(async () => router.history.back());
     await act(async () => router.history.forward());
     expect(
-      await screen.findByRole('heading', { name: 'Doctor — alpha.example.com' })
+      await screen.findByRole('heading', { name: 'Diagnose alpha.example.com' })
     ).toBeInTheDocument();
     cleanup();
     await mount(copied);
     expect(screen.getByRole('searchbox')).toHaveValue('example');
     expect(
-      await screen.findByRole('heading', { name: 'Doctor — alpha.example.com' })
+      await screen.findByRole('heading', { name: 'Diagnose alpha.example.com' })
     ).toBeInTheDocument();
   });
 
@@ -251,16 +264,38 @@ describe('Domains operational state', () => {
     expect(screen.getByRole('button', { name: 'Add domain' })).toBeDisabled();
   });
 
-  it('keeps TXT evidence available in compact details and exposes operational tooltips', async () => {
+  it('opens with a plain answer and gives the waiting domain its one next step', async () => {
     await mount();
-    expect(await screen.findByRole('columnheader', { name: 'TXT record' })).toHaveClass(
-      'hidden',
-      'md:table-cell'
-    );
-    await userEvent.click(screen.getByText('More details for alpha.example.com'));
-    expect(screen.getAllByText('verify-alpha')).toHaveLength(2);
-    await userEvent.hover(screen.getByRole('button', { name: 'Diagnose alpha.example.com' }));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Diagnose alpha.example.com');
+    expect(
+      await screen.findByText('1 domain is verified and routing traffic.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 is waiting for a DNS record.')).toBeInTheDocument();
+    const alpha = screen.getByRole('article', { name: 'alpha.example.com' });
+    expect(within(alpha).getByText('Waiting for DNS')).toBeInTheDocument();
+    expect(within(alpha).getByText('Add this TXT record at your DNS provider')).toBeInTheDocument();
+    expect(within(alpha).getByText('verify-alpha')).toBeInTheDocument();
+    expect(within(alpha).getByRole('button', { name: 'Check again' })).toBeInTheDocument();
+    // A verified domain needs nothing, so it has no step.
+    const beta = screen.getByRole('article', { name: 'beta.example.com' });
+    expect(within(beta).getByText('Verified')).toBeInTheDocument();
+    expect(within(beta).queryByRole('button', { name: 'Check again' })).toBeNull();
+    // The full record and the removal stay one click away.
+    expect(
+      within(alpha).getByRole('button', { name: 'Details for alpha.example.com' })
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the filters out of the way until there are many domains', async () => {
+    await mount();
+    await screen.findByText('alpha.example.com');
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('opens the add form from a link', async () => {
+    const router = await mount('/dashboard/domains?add=1');
+    expect(await screen.findByRole('textbox', { name: 'Hostname' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(router.state.location.search.add).toBeUndefined());
   });
 
   it('lets the TXT verification value be copied', async () => {

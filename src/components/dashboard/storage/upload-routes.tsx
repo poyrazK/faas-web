@@ -220,7 +220,7 @@ export function UploadRoutes({
           aria-label="Upload route"
           noValidate
           onSubmit={submit}
-          className="flex flex-col gap-3 rounded-xl border border-border p-4"
+          className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={LABEL}>
@@ -328,7 +328,7 @@ export function UploadRoutes({
       ) : (
         <ul
           aria-label={`Upload routes for ${bucket.name}`}
-          className="flex flex-col divide-y divide-border rounded-xl border border-border"
+          className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
         >
           {mine.map((route) => (
             <li

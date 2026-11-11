@@ -373,7 +373,7 @@ export function AnalyticsGrid({
         {announcement}
       </p>
       {picking && available.length === 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 well rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
           <p>Every available metric is on your board.</p>
           <button
             type="button"
@@ -642,7 +642,7 @@ function SortableMetricCard({
         }
       }}
       className={cn(
-        'group relative min-w-0 rounded-lg border border-border bg-card p-4 transition-colors has-[:focus-visible]:border-brand hover:border-border-secondary',
+        'group relative min-w-0 well rounded-2xl bg-muted/40 p-4 transition-colors hover:bg-muted/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
         card.span === 2 && 'xl:col-span-2'
       )}
     >

@@ -60,7 +60,7 @@ function OrganizationScope({
       <label className="flex max-w-sm flex-col gap-1.5">
         Active organization
         <Select
-          className="h-9 rounded-md border border-border bg-card px-2.5 text-sm"
+          className="h-9 surface rounded-[1.25rem] bg-card px-2.5 text-sm"
           value={active?.slug ?? ''}
           onChange={(event) => {
             const org = available.find((item) => item.slug === event.target.value);

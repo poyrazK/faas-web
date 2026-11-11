@@ -209,14 +209,14 @@ export function ReleaseDetailPanel({
                         <DeploymentPreviewUrl deploymentId={deployment.id} />
                       </span>
                     </div>
-                    <section aria-label="Process" className="rounded-lg border border-border p-4">
+                    <section aria-label="Process" className="well rounded-xl bg-muted/40 p-4">
                       <ReleaseProcess phases={releaseProcess(deployment)} />
                     </section>
                     <ReleaseCommand slug={slug} deployment={deployment} />
                     {slug && <DeploymentAliasesHere slug={slug} deployment={deployment} />}
                     {/* Only a canary has a stable release to be compared against. */}
                     {slug && deployment.canary_total_steps ? (
-                      <div className="rounded-lg border border-border p-4">
+                      <div className="well rounded-xl bg-muted/40 p-4">
                         <CanaryHealth slug={slug} deploymentId={deployment.id} />
                       </div>
                     ) : null}
@@ -266,7 +266,7 @@ export function ReleaseDetailPanel({
                     {deployment.error && !failedDeployment && (
                       <p
                         role="alert"
-                        className="rounded-md border border-border px-3 py-2 text-sm text-[color:var(--status-critical)]"
+                        className="well rounded-xl bg-muted/40 px-3 py-2 text-sm text-[color:var(--status-critical)]"
                       >
                         {deployment.error}
                       </p>

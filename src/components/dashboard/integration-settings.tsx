@@ -89,7 +89,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 href="https://github.com/settings/installations"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="inline-flex h-8 items-center gap-1.5 well rounded-xl bg-muted/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 Manage on GitHub
                 <OpenNewWindow className="h-3.5 w-3.5" />

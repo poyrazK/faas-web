@@ -51,7 +51,7 @@ function EnableForm({
   const ready = hasWebhook || (channelIds.length > 0 && !url.trim());
 
   return (
-    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-border p-3">
+    <div className="mt-3 flex flex-wrap items-end gap-3 well rounded-xl bg-muted/40 p-3">
       <div className="w-full">
         <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix={`preset-${name}`} />
       </div>

@@ -41,9 +41,9 @@ export function WorkflowStatus({ status }: { status: string }) {
   const Icon = cfg.icon;
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${cfg.color} 14%, transparent)`,
         color: cfg.color,
       }}
     >

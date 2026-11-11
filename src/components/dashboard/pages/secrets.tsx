@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Plus, Trash } from 'iconoir-react';
+import { Copy, Plus, RefreshDouble, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/dashboard/kit/sheet';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -15,7 +15,17 @@ import { SecretValueField } from '@/components/dashboard/secret-value-field';
 import { FieldError } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 import { Timestamp } from '@/components/ui/timestamp';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { useCopy } from '@/components/ui/copy-button';
 import { configChangeNote } from '@/lib/config-history';
+import {
+  secretChangeVerb,
+  secretDelivery,
+  secretsLead,
+  secretsState,
+  type SecretRow as ApiSecret,
+} from '@/components/dashboard/environment-words';
+import { DANGER_ITEM, Lead, RowMenu, ToneWord } from '@/components/dashboard/environment-parts';
 
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on secret names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
@@ -34,7 +44,11 @@ interface SecretRow {
   id: string;
   key: string;
   updatedAt: string;
+  createdAt: string;
   kid: string;
+  /** Plain delivery word, also what the status column sorts on. */
+  status: string;
+  secret: ApiSecret;
 }
 
 /**
@@ -60,6 +74,7 @@ export function SecretsBody({
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
+  const { copy } = useCopy();
   const { data, isPending, error, refetch } = useAppSecrets(slug);
   const setSecret = useSetSecret(slug);
   const deleteSecret = useRevokeSecret(slug);
@@ -135,66 +150,84 @@ export function SecretsBody({
         id: s.key,
         key: s.key,
         updatedAt: s.updated_at,
+        createdAt: s.created_at,
         kid: s.kid ?? '',
+        status: secretDelivery(s)?.word ?? '',
+        secret: s,
       })),
     [data]
   );
+  // From the API: values written but not yet started in any runtime.
+  const pendingCount = data ? secretsState(data.secrets ?? []).pending.length : 0;
+
+  const remove = async (name: string) => {
+    if (
+      !(await confirm({
+        title: `Delete ${name}?`,
+        description:
+          'Sealed values cannot be recovered. The next boot of this app starts without it; running instances that cannot reload secrets keep it in memory until they restart.',
+        confirmLabel: 'Delete secret',
+        destructive: true,
+      }))
+    )
+      return;
+    void deleteSecret
+      .mutateAsync(name)
+      .then((receipt) => {
+        // The revocation card says per instance whether a restart is
+        // needed; without a receipt (legacy 204), fall back to the notice.
+        if (receipt?.id) setRevocation(receipt);
+        else setUnappliedFor(slug);
+        toast({ kind: 'success', title: `Deleted ${name}` });
+      })
+      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not delete', error: err }));
+  };
 
   const columns: Column<SecretRow>[] = [
     {
       key: 'key',
       label: 'Name',
-      render: (s) => <span className="font-mono text-xs">{s.key}</span>,
-    },
-    {
-      key: 'kid',
-      label: 'Value',
-      render: () => (
-        <span className="font-mono text-xs text-muted-foreground">•••••••• (sealed)</span>
+      render: (s) => (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            className="font-mono text-xs [overflow-wrap:anywhere]"
+            title={s.kid ? `Sealed under host key ${s.kid}` : 'Sealed'}
+          >
+            {s.key}
+          </span>
+          {s.secret.secret_class === 'ephemeral' && (
+            <span
+              className="rounded-full bg-muted px-2 text-[11px] leading-5 text-muted-foreground"
+              title="secret_class: ephemeral. While it exists, this scope's VMs are not snapshotted."
+            >
+              Blocks snapshots
+            </span>
+          )}
+        </span>
       ),
     },
     {
-      key: 'updatedAt',
-      label: 'Updated',
-      numeric: true,
-      render: (s) => <Timestamp value={s.updatedAt} className="text-xs text-muted-foreground" />,
+      key: 'status',
+      label: 'Status',
+      render: (s) => {
+        const delivery = secretDelivery(s.secret);
+        return delivery ? (
+          <ToneWord tone={delivery.tone} word={delivery.word} term={delivery.term} />
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        );
+      },
     },
     {
-      key: 'id',
-      label: '',
-      width: 'w-12',
+      key: 'updatedAt',
+      label: 'Last changed',
+      numeric: true,
+      priority: 'secondary',
+      width: 'w-36',
       render: (s) => (
-        <button
-          type="button"
-          aria-label={`Delete secret ${s.key}`}
-          onClick={async () => {
-            if (
-              !(await confirm({
-                title: `Delete ${s.key}?`,
-                description:
-                  'Sealed values cannot be recovered. The next boot of this app starts without it; running instances that cannot reload secrets keep it in memory until they restart.',
-                confirmLabel: 'Delete secret',
-                destructive: true,
-              }))
-            )
-              return;
-            void deleteSecret
-              .mutateAsync(s.key)
-              .then((receipt) => {
-                // The revocation card says per instance whether a restart is
-                // needed; without a receipt (legacy 204), fall back to the notice.
-                if (receipt?.id) setRevocation(receipt);
-                else setUnappliedFor(slug);
-                toast({ kind: 'success', title: `Deleted ${s.key}` });
-              })
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not delete', error: err })
-              );
-          }}
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Trash className="h-3.5 w-3.5" />
-        </button>
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
+          {secretChangeVerb(s.createdAt, s.updatedAt)} <Timestamp value={s.updatedAt} />
+        </span>
       ),
     },
   ];
@@ -211,18 +244,22 @@ export function SecretsBody({
           />
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="h-3.5 w-3.5" />
-            Set secret
+            Add secret
           </Button>
         </>
       )}
 
-      {unapplied && (
+      {!error && !isPending && <Lead>{secretsLead(rows.length, data?.quota_max)}</Lead>}
+
+      {(unapplied || pendingCount > 0) && (
         <div
           role="status"
           aria-label="Apply the new values"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-3 surface rounded-[1.25rem] bg-card px-4 py-3"
         >
           <p className="text-sm text-muted-foreground">
+            {!unapplied &&
+              `${pendingCount === 1 ? 'One secret has a new value' : `${pendingCount} secrets have new values`} the app hasn’t started with yet. `}
             Running instances keep the previous values until they restart.
           </p>
           <Button size="sm" variant="outline" busy={freshRestart.isPending} onClick={applyNow}>
@@ -231,7 +268,7 @@ export function SecretsBody({
         </div>
       )}
 
-      <Sheet open={creating} onClose={() => setCreating(false)} title="Set secret">
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Add secret">
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
@@ -307,21 +344,41 @@ export function SecretsBody({
         searchKeys={['key']}
         searchPlaceholder="Filter by name…"
         emptyMessage={`No secrets set for ${slug}.`}
-        minWidth="min-w-[720px]"
+        minWidth="min-w-0"
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
         rowActions={(row) => (
-          <button
-            type="button"
-            onClick={() => {
-              setRotating(row.key);
-              setRotateValue('');
-            }}
-            className="pressable rounded text-xs text-muted-foreground hover:text-foreground"
-          >
-            Rotate
-          </button>
+          <RowMenu label={`Actions for ${row.key}`}>
+            <DropdownMenuItem
+              onSelect={() => {
+                setRotating(row.key);
+                setRotateValue('');
+              }}
+            >
+              <RefreshDouble aria-hidden="true" className="size-4" />
+              Rotate value
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                void copy(row.key).then((ok) =>
+                  toast(
+                    ok
+                      ? { kind: 'success', title: `Copied ${row.key}` }
+                      : { kind: 'error', title: 'Could not copy the name' }
+                  )
+                )
+              }
+            >
+              <Copy aria-hidden="true" className="size-4" />
+              Copy name
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className={DANGER_ITEM} onSelect={() => void remove(row.key)}>
+              <Trash aria-hidden="true" className="size-4" />
+              Delete secret
+            </DropdownMenuItem>
+          </RowMenu>
         )}
       />
 

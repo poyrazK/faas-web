@@ -627,7 +627,7 @@ function ReviewedSourceBody({
         operations stay as the serving release has them. {ROLLOUT_COPY[rollout].after}
       </p>
       {review && (
-        <section aria-label="Reviewed source" className="rounded-md border border-border p-3">
+        <section aria-label="Reviewed source" className="well rounded-xl bg-muted/40 p-3">
           <p className="label-mono mb-2 text-muted-foreground">Reviewed source</p>
           <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
             <dt className="text-muted-foreground">Commit</dt>

@@ -390,7 +390,7 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
         {tenant.consumers.length === 0 ? (
           <p className="text-sm text-muted-foreground">No app consumers linked.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {tenant.consumers.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
                 <span className="text-sm font-medium">{c.name}</span>
@@ -414,7 +414,7 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
         {tenant.surfaces.length === 0 ? (
           <p className="text-sm text-muted-foreground">No tenant surfaces linked.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {tenant.surfaces.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
                 <span className="text-sm font-medium">{s.name}</span>
@@ -478,7 +478,7 @@ function LinkExisting({ tenantId, onDone }: { tenantId: string; onDone: () => vo
 
   return (
     <form
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
       onSubmit={(e) => void submit(e)}
     >
       <SegmentedControl
@@ -570,7 +570,7 @@ function CustomerCredentials({ tenant }: { tenant: PlatformTenantDetail }) {
         onRetry={() => void credentials.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {credentials.data?.map((k) => (
             <li
               key={k.id ?? `${k.consumer_id}:${k.prefix}`}

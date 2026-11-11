@@ -131,7 +131,7 @@ export function ConnectionsSection({ slug, endpointId }: { slug: string; endpoin
         onRetry={() => void connections.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {rows.map((c) => (
             <ConnectionRow key={c.id} slug={slug} endpointId={endpointId} connection={c} />
           ))}
@@ -349,7 +349,7 @@ export function OccupancySection({ slug, endpointId }: { slug: string; endpointI
             />
           )}
           {occupancy.data && (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-x-auto well rounded-xl bg-muted/40">
               <table className="w-full text-sm">
                 <caption className="sr-only">Channel occupancy</caption>
                 <thead>

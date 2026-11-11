@@ -23,12 +23,14 @@ describe('Timestamp', () => {
     expect(screen.getByText('in 6d')).toBeInTheDocument();
   });
 
-  it('can show the absolute time as its text', () => {
+  it('shows a short absolute time, with the exact instant on hover', () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 10, 9, 12, 0, 0) });
     const iso = '2026-10-20T14:03:05.000Z';
     render(<Timestamp value={iso} mode="absolute" />);
     const el = screen.getByRole('time');
-    expect(el).toHaveTextContent(/2026/);
-    expect(el).toHaveAttribute('title', el.textContent ?? '');
+    expect(el).not.toHaveTextContent(/:05|2026/);
+    expect(el).toHaveTextContent(/Oct 20/);
+    expect(el).toHaveAttribute('title', expect.stringMatching(/2026.*:05/));
   });
 
   it.each([undefined, null, '', 'garbage', 0])('renders a dash for %j', (value) => {

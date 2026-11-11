@@ -146,7 +146,7 @@ export function EnvironmentReadiness({
                 copied.
               </p>
               {p.qualification ? (
-                <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="space-y-2 well rounded-xl bg-muted/40 p-3">
                   <p>
                     Qualification: {p.qualification.id} · {p.qualification.status}
                   </p>
@@ -199,7 +199,7 @@ export function EnvironmentReadiness({
               )}
               <ul aria-label="Preview workload identities" className="space-y-3">
                 {p.changes.map((change) => (
-                  <li key={change.workload_slug} className="rounded-lg border border-border p-3">
+                  <li key={change.workload_slug} className="well rounded-xl bg-muted/40 p-3">
                     <p className="break-all">
                       {change.workload_slug}: {change.kind}
                     </p>
@@ -300,7 +300,7 @@ export function EnvironmentReadiness({
             </>
           ) : null}
           {operation && (
-            <div className="space-y-3 rounded-lg border border-border p-3">
+            <div className="space-y-3 well rounded-xl bg-muted/40 p-3">
               <p className="break-all">Selected operation: {operation}</p>
               <p>
                 A timeout or disconnect is not permission to restart or roll back; refresh this
@@ -341,7 +341,7 @@ export function EnvironmentReadiness({
                   </dl>
                   <ul aria-label="Operation checkpoints" className="space-y-2">
                     {r.workloads.map((row) => (
-                      <li key={row.workload_slug} className="rounded-md border border-border p-3">
+                      <li key={row.workload_slug} className="well rounded-xl bg-muted/40 p-3">
                         <p className="break-all">
                           {row.workload_slug} · Recorded application: {row.status}
                         </p>

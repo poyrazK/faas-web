@@ -93,13 +93,22 @@ describe('DomainDetail', () => {
     expect(screen.getByText('staging')).toBeInTheDocument();
   });
 
-  it('shows the certificate status, expiry and names', () => {
+  it('opens with the state in plain words', () => {
     render(<DomainDetail domain="shop.example.com" />);
-    expect(screen.getByText('issued')).toBeInTheDocument();
+    expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.getByText('Serving api over HTTPS.')).toBeInTheDocument();
+  });
+
+  it('shows the certificate in words, with its names behind Show certificate details', () => {
+    render(<DomainDetail domain="shop.example.com" />);
+    expect(screen.getByText('Issued')).toBeInTheDocument();
     expect(
-      screen.getByText(new Date('2026-12-30T00:00:00Z').toLocaleDateString())
+      screen.getByText(`Valid until ${new Date('2026-12-30T00:00:00Z').toLocaleDateString()}`)
     ).toBeInTheDocument();
+    expect(screen.queryByText('www.shop.example.com')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show certificate details' }));
     expect(screen.getByText('www.shop.example.com')).toBeInTheDocument();
+    expect(screen.getByText('issued')).toBeInTheDocument();
   });
 
   it('reads a failed live dial as unreachable, with its reason and last error', () => {
@@ -112,7 +121,9 @@ describe('DomainDetail', () => {
       })
     );
     render(<DomainDetail domain="shop.example.com" />);
-    expect(screen.getByText('unreachable')).toBeInTheDocument();
+    expect(screen.getAllByText('Unreachable')).toHaveLength(2);
+    expect(screen.queryByText('routing_mismatch')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show certificate details' }));
     expect(screen.getByText('routing_mismatch')).toBeInTheDocument();
     expect(screen.getByText('domain does not route to Gregale')).toBeInTheDocument();
   });

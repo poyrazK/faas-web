@@ -66,9 +66,10 @@
    - Type: 13px reading size (`text-sm`), 12px for labels and secondary facts
      (`text-xs`). The 1.5 leading is what keeps a dense table from reading as a
      wall; the size can be small because the leading is not.
-   - Shape: 6px corners on surfaces, 4px on controls (`--radius` drives the
-     whole `rounded-*` scale).
-   - Depth: hairlines, not shadows. Only floating chrome (menus, dialogs,
+   - Shape: soft corners in the bento's language — 12px on surfaces, 10px on
+     controls (`--radius` drives the whole `rounded-*` scale); cards and tables
+     use 20px.
+   - Depth: tone and faint hairlines, not shadows. Only floating chrome (menus, dialogs,
      toasts) keeps a shadow, so a lifted surface always means "on top". */
 .console {
   --console-body-size: 0.8125rem;
@@ -76,9 +77,9 @@
   --console-label-size: 0.75rem;
   --console-label-leading: 1.5;
   --console-control-height: 2rem;
-  --console-control-radius: 0.25rem;
-  --console-surface-radius: 0.375rem;
-  --radius: 0.375rem;
+  --console-control-radius: 0.625rem;
+  --console-surface-radius: 0.75rem;
+  --radius: 0.75rem;
   --elevation-1: 0 0 #0000;
   --elevation-2: 0 0 #0000;
   --elevation-3: 0 16px 40px -12px rgb(0 0 0 / 0.55);
@@ -122,6 +123,11 @@
   --destructive-foreground: #ffffff;
   --border: #e4eae7;
   --border-secondary: #ccd6d1;
+  /* Lit surfaces: a card catches light on its top edge and holds a faint rim;
+     a well sits a little below the surface it is cut into. */
+  --surface-highlight: rgb(255 255 255 / 0.7);
+  --surface-rim: rgb(13 21 18 / 0.06);
+  --well-shade: rgb(13 21 18 / 0.06);
   --input: #e4eae7;
   --overlay: #00482a;
   --ring: #00a465;
@@ -217,8 +223,12 @@
   --accent-foreground: #ededed;
   --destructive: #ff9393;
   --destructive-foreground: #431a1a;
-  --border: #3b3b3b;
+  /* Soft: a line that separates without framing (was #3b3b3b). */
+  --border: #2d2d2d;
   --border-secondary: #525252;
+  --surface-highlight: rgb(255 255 255 / 0.045);
+  --surface-rim: rgb(255 255 255 / 0.03);
+  --well-shade: rgb(0 0 0 / 0.28);
   --input: #737373;
   --overlay: #000000;
 

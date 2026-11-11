@@ -2,7 +2,7 @@ import { featureFlags } from '@/lib/feature-flags';
 import { OnboardingChecklist } from '@/components/onboarding/onboarding-checklist';
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ClockRotateRight, NavArrowRight, Plus } from 'iconoir-react';
+import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, Refresh } from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
@@ -16,18 +16,14 @@ import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
-import { AnalyticsSection } from '@/components/dashboard/analytics-section';
+import { SegmentedControl } from '@/components/dashboard/tabs';
+import { OverviewStats } from '@/components/dashboard/overview-analytics/overview-stats';
+import { fleetMetrics } from '@/components/dashboard/overview-analytics/overview-stats-data';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import {
-  useApps,
-  useAppsMetrics,
-  useDeployments,
-  useInstances,
-  type MetricsRange,
-} from '@/lib/api/queries';
+import { useAppsMetrics, useDeployments, useInstances, type MetricsRange } from '@/lib/api/queries';
 import { formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
 import { FlowDotsField } from '@/components/dashboard/shapes';
@@ -35,16 +31,14 @@ import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
-import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
   head: () => consoleHead('overview'),
-  validateSearch: (search: Record<string, unknown>): { range?: MetricsRange } => ({
-    ...(OVERVIEW_RANGES.some(({ key }) => key === search.range)
-      ? { range: search.range as MetricsRange }
-      : {}),
-  }),
+  validateSearch: (search: Record<string, unknown>): { range?: OverviewRange } =>
+    OVERVIEW_RANGES.some(({ key }) => key === search.range)
+      ? { range: search.range as OverviewRange }
+      : {},
 });
 
 /**
@@ -56,18 +50,13 @@ export const Route = createFileRoute('/dashboard/')({
  * top bar no longer carries one), three resource columns (Apps,
  * Deployments, Recents), and an analytics grid below.
  *
- * One customizable analytics board switches between account totals and an
- * app's real hourly history. A degraded read is unknown, never a measured zero.
+ * The analytics cards carry numbers, not charts: `/v1/apps/metrics`,
+ * `/v1/instances` and the usage summary return scalars, and this console
+ * does not draw series it does not have. One range governs every metrics
+ * figure. A degraded rollup reads as unknown, never as zero.
  */
 
-const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-
-function formatMoney(cents: number | undefined): string {
-  if (cents == null) return '—';
-  return formatCents(cents);
-}
-
-const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
+const OVERVIEW_RANGES = [
   { key: '5m', label: '5m' },
   { key: '15m', label: '15m' },
   { key: '1h', label: '1h' },
@@ -75,7 +64,18 @@ const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
   { key: '24h', label: '24h' },
   { key: '7d', label: '7d' },
   { key: '15d', label: '15d' },
-];
+] as const satisfies readonly { key: MetricsRange; label: string }[];
+type OverviewRange = (typeof OVERVIEW_RANGES)[number]['key'];
+
+const RANGE_DESCRIPTION: Record<OverviewRange, string> = {
+  '5m': 'last 5 minutes',
+  '15m': 'last 15 minutes',
+  '1h': 'last hour',
+  '6h': 'last 6 hours',
+  '24h': 'last 24 hours',
+  '7d': 'last 7 days',
+  '15d': 'last 15 days',
+};
 
 /* ------------------------------------------------------------------ *
  * Verdict pill
@@ -136,7 +136,7 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
       <ColumnHeader label="Apps" to="/dashboard/apps" />
       <Link
         to="/dashboard/apps/new"
-        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden surface rounded-[1.25rem] bg-card py-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <PointerGlow />
         <Plus className="h-3.5 w-3.5" />
@@ -281,7 +281,6 @@ function OverviewPage() {
   // the spec has no general event stream to subscribe to instead.
   const instances = useInstances({ refetchInterval: 10_000 });
   useDeployments(50, { refetchInterval: 10_000 });
-  useApps({ refetchInterval: 15_000 });
 
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(
@@ -289,50 +288,52 @@ function OverviewPage() {
   );
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // Resident RAM right now: non-parked instances only — a parked instance's
-  // cgroup is gone, so it holds nothing.
-  // `/v1/instances` is cursor-paginated. Never present a partial page as an
-  // exact fleet total; the Workers view can load the remaining pages.
+  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
+  const figures = useMemo(
+    () => fleetMetrics(Object.values(metrics.data?.apps ?? {})),
+    [metrics.data]
+  );
+
+  // Memory held right now: non-parked instances only — a parked instance's
+  // cgroup is gone, so it holds nothing. `/v1/instances` is cursor-paginated;
+  // a partial page is never presented as an exact total.
   const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
-  const residentPartial = Boolean(instances.data?.next_before);
-  const { residentMb, residentCount } = useMemo(() => {
-    const resident = (instances.data?.instances ?? []).filter(
+  const resident = useMemo(() => {
+    const rows = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
     );
-    return {
-      residentMb: resident.reduce((sum, row) => sum + row.ram_mb, 0),
-      residentCount: resident.length,
-    };
+    return { mb: rows.reduce((sum, row) => sum + row.ram_mb, 0), count: rows.length };
   }, [instances.data]);
 
-  const setRange = (next: MetricsRange) =>
+  const setRange = (next: OverviewRange) =>
     void navigate({
       search: next === '24h' ? {} : { range: next },
       replace: true,
       resetScroll: false,
     });
 
-  const usageData = usage.data;
-  // null: a company with no usage this month carries no allowance yet.
-  const includedKnown = usageData?.included_gb_hours ?? null;
-  const included = includedKnown ?? 0;
-  const usedGbh = usageData?.used_gb_hours ?? 0;
-  const remainingGbh = Math.max(0, included - usedGbh);
-  const overGbh = usageData?.overage_gb_hours ?? 0;
-  const usageFailed = Boolean(usage.error);
+  const usagePhase = queryPhase({ error: usage.error, loading: usage.isPending });
 
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4),
     [deployments]
   );
 
-  const refreshAll = () => {
+  // A manual refresh shows it is working for at least 400ms, so a fast read
+  // still reads as done rather than as a click that did nothing.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
     refresh();
-    void usage.refetch();
-    if (paidAccess) void metrics.refetch();
-    void instances.refetch();
+    await Promise.allSettled([
+      usage.refetch(),
+      instances.refetch(),
+      ...(paidAccess ? [metrics.refetch()] : []),
+      new Promise((done) => setTimeout(done, 400)),
+    ]);
+    setRefreshing(false);
   };
-
   const verdict = verdictOf(account?.status, failing.length, metricsDegraded);
   const firstName = user?.name.split(' ')[0];
   // Nothing deployed and the read succeeded: a page of zeroes is accurate
@@ -395,7 +396,7 @@ function OverviewPage() {
               <Magnetic range={60} strength={0.2}>
                 <Link
                   to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
-                  className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                  className="glass pressable label-mono inline-flex items-center gap-2 rounded-full bg-muted px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
                 >
                   <LiveDot color={verdict.color} />
                   {verdict.text}
@@ -450,63 +451,73 @@ function OverviewPage() {
         <RecentsColumn />
       </div>
 
-      <AnalyticsSection
-        apps={workflows.map((app) => ({ slug: app.id }))}
-        initialRange={range}
-        onRangeChange={setRange}
-        onRefresh={refreshAll}
-        extras={[
-          {
-            id: 'memory',
-            label: 'Memory now',
-            span: 1,
-            value: residentKnown ? `${residentMb.toLocaleString()} MB` : '—',
-            delta: null,
-            deltaGood: false,
-            caption: residentKnown
-              ? `${residentCount} resident instances · right now`
-              : residentPartial
-                ? 'More instances available in Instances'
-                : 'Instance usage unavailable',
-          },
-          {
-            id: 'allowance',
-            label:
-              overGbh > 0
-                ? 'GB-hours over'
-                : includedKnown === null && usageData
-                  ? 'GB-hours used'
-                  : 'GB-hours left',
-            span: 1,
-            value:
-              usage.isPending || usageFailed
-                ? '—'
-                : formatGbHours(
-                    overGbh > 0 ? overGbh : includedKnown === null ? usedGbh : remainingGbh
-                  ),
-            delta: null,
-            deltaGood: true,
-            caption:
-              overGbh > 0 && usageData?.overage_cents !== undefined
-                ? `${formatMoney(usageData.overage_cents)} overage this period`
-                : includedKnown === null
-                  ? 'This billing period'
-                  : `of ${formatGbHours(included)} · this billing period`,
-          },
-          {
-            id: 'cpu',
-            label: 'CPU hours',
-            span: 1,
-            value:
-              usage.isPending || usageFailed || usageData?.used_cpu_hours == null
-                ? '—'
-                : usageData.used_cpu_hours.toLocaleString(undefined, { maximumFractionDigits: 1 }),
-            delta: null,
-            deltaGood: false,
-            caption: 'This billing period · measured, not billed',
-          },
-        ]}
-      />
+      {/* --- Analytics ------------------------------------------------ */}
+      <section aria-labelledby="overview-analytics" className="relative flex flex-col gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 id="overview-analytics" className="text-lg font-semibold">
+              <Link
+                to="/dashboard/analytics"
+                search={range === '7d' ? { window: '7d' } : {}}
+                className="pressable inline-flex items-center gap-1.5 rounded hover:text-brand"
+              >
+                Analytics
+                <ArrowRight aria-hidden className="h-4 w-4" />
+              </Link>
+            </h2>
+            {metricsDegraded && (
+              <p role="status" className="text-xs text-status-warning">
+                Metrics degraded. Figures may be incomplete.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {paidAccess && (
+              <SegmentedControl
+                label="Time window"
+                value={range}
+                options={OVERVIEW_RANGES}
+                onChange={setRange}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => void refreshAll()}
+              aria-label="Refresh"
+              aria-busy={refreshing}
+              className="pressable inline-grid h-8 w-8 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
+            >
+              <Refresh
+                className={cn(
+                  'h-4 w-4',
+                  refreshing && 'animate-spin motion-reduce:animate-none motion-reduce:opacity-50'
+                )}
+              />
+            </button>
+          </div>
+        </header>
+        <OverviewStats
+          paid={paidAccess}
+          showPlanGate={Boolean(account) && !paidAccess}
+          appCount={workflows.length}
+          rangeDescription={RANGE_DESCRIPTION[range]}
+          metrics={{ unavailable: metricsUnavailable, degraded: metricsDegraded, figures }}
+          resident={{
+            known: residentKnown,
+            partial: Boolean(instances.data?.next_before),
+            ...resident,
+          }}
+          usage={{
+            phase: usagePhase,
+            usedGbHours: usage.data?.used_gb_hours ?? 0,
+            // null: a company with no usage this month carries no allowance yet.
+            includedGbHours: usage.data?.included_gb_hours ?? null,
+            overGbHours: usage.data?.overage_gb_hours ?? 0,
+            overageCents: usage.data?.overage_cents,
+            cpuHours: usage.data?.used_cpu_hours ?? null,
+          }}
+        />
+      </section>
     </div>
   );
 }

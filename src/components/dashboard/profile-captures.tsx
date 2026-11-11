@@ -114,8 +114,8 @@ function CaptureStatus({ status }: { status: ProfileCapture['status'] }) {
   const { label, color, icon: Icon } = STATUS[status];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon aria-hidden className="size-3" />
       {label}
@@ -246,7 +246,7 @@ function CapturesPanel({
           <p
             role="status"
             aria-label="Profile captures to review"
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-xs"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 well rounded-xl bg-muted/40 px-3 py-2 text-xs"
           >
             <span>
               {review.length} automatic capture{review.length === 1 ? '' : 's'} in the last 7 days,{' '}
@@ -469,7 +469,7 @@ function CaptureSettings({ slug }: { slug: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 text-sm">
           <Switch
@@ -655,7 +655,7 @@ function CaptureDetail({
                         <option key={c.id} value={c.id}>
                           {c.id.slice(0, 8)} · {TRIGGER[c.trigger ?? 'manual']} ·{' '}
                           {c.kinds.map((k) => KIND_LABEL[k]).join(', ')} ·{' '}
-                          {new Date(c.created_at).toLocaleString()}
+                          <Timestamp value={c.created_at} mode="absolute" />
                         </option>
                       ))}
                     </select>
@@ -1090,7 +1090,7 @@ function Comparison({
   return (
     <section
       aria-label="Comparison"
-      className="flex flex-col gap-3 rounded-lg border border-border p-3"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3"
     >
       {phase !== 'ready' || !data ? (
         <InlinePhase phase={phase} error={diff.error} loadingMessage="Comparing the captures…" />

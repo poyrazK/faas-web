@@ -168,7 +168,7 @@ function Overview({
             : []),
         ]}
       />
-      <div className="rounded-lg border border-border p-3">
+      <div className="well rounded-xl bg-muted/40 p-3">
         <p className="label-mono text-muted-foreground">Requests today (UTC)</p>
         {usage.data ? (
           <p className="mt-1">

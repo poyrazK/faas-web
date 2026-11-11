@@ -192,7 +192,7 @@ function StatementDetail({
   const handoff = useStatementHandoff(slug, consumerId, statement.id, finalized);
   const notRecorded = handoff.error instanceof ApiError && handoff.error.code === 'not_found';
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <p className="text-sm font-medium">
         Revision {statement.revision} · {formatPeriod(statement.period_start, statement.period_end)}
       </p>

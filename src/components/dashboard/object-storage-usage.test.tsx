@@ -49,7 +49,7 @@ describe('ObjectStorageUsagePanel', () => {
     render(<Panel />);
     expect(screen.getByText('38 GB')).toBeInTheDocument();
     expect(screen.getByText('19% of 200 GB')).toBeInTheDocument();
-    expect(screen.getByText('$4.128')).toBeInTheDocument();
+    expect(screen.getByText('$4.13')).toBeInTheDocument();
   });
 
   it('falls back to the account currency, USD, when no charges block names one', () => {
@@ -60,7 +60,7 @@ describe('ObjectStorageUsagePanel', () => {
     });
     render(<Panel />);
     // Account amounts are USD (faas pkg/financial/currency.go, ADR-1430).
-    expect(screen.getByText('$4.128')).toBeInTheDocument();
+    expect(screen.getByText('$4.13')).toBeInTheDocument();
   });
 
   it('says so when the report is stale rather than presenting it as current', () => {

@@ -151,7 +151,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
               inputRef.current?.focus();
             }
           }}
-          className="glass relative flex h-11 w-full cursor-text items-center gap-3 overflow-hidden rounded-xl border border-border px-4 shadow-elevation-1 focus-within:border-border-secondary"
+          className="glass relative flex h-11 w-full cursor-text items-center gap-3 overflow-hidden well rounded-xl bg-muted/40 px-4 shadow-elevation-1 focus-within:border-border-secondary"
         >
           {!reduce && <PointerGlow />}
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />

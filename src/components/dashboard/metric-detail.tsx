@@ -164,7 +164,7 @@ function AppDetail({
           incomplete={incompleteTelemetry(series.data) || incompleteTelemetry(data)}
         />
         {route && (
-          <p className="flex flex-wrap items-center gap-3 rounded-md border border-border p-3 text-xs">
+          <p className="flex flex-wrap items-center gap-3 well rounded-xl bg-muted/40 p-3 text-xs">
             <span className="break-all font-mono">
               {method} {route}
             </span>
@@ -176,7 +176,7 @@ function AppDetail({
             </button>
           </p>
         )}
-        <section aria-label="Metric history" className="rounded-lg border border-border p-4">
+        <section aria-label="Metric history" className="well rounded-xl bg-muted/40 p-4">
           <h3 className="mb-5 text-sm font-medium">
             {METRIC_LABELS[metric]} over time{' '}
             <span className="ml-2 text-xs font-normal text-muted-foreground">Hourly · UTC</span>
@@ -207,7 +207,7 @@ function AppDetail({
           )}
         </section>
         {comparison && (
-          <div className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-2">
+          <div className="grid gap-3 well rounded-xl bg-muted/40 p-4 sm:grid-cols-2">
             <div>
               <p className="text-xs text-muted-foreground">
                 First {comparison.hours} complete hours
@@ -238,7 +238,7 @@ function AppDetail({
             </p>
           </div>
         )}
-        <section className="rounded-lg border border-border p-4" aria-label="Metric breakdown">
+        <section className="well rounded-xl bg-muted/40 p-4" aria-label="Metric breakdown">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Leading contributors</h3>
             <Select
@@ -296,7 +296,7 @@ function ChartData({ points, metric }: { points: AnalyticsPoint[]; metric: Detai
   return (
     <details
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="rounded-lg border border-border p-4"
+      className="well rounded-xl bg-muted/40 p-4"
     >
       <summary
         tabIndex={0}
@@ -428,7 +428,7 @@ function AccountDetail({
             Metrics are unavailable. Retry when the metrics service recovers.
           </p>
         )}
-        <section className="rounded-lg border border-border p-4">
+        <section className="well rounded-xl bg-muted/40 p-4">
           <h3 className="text-sm font-medium">
             {supported ? 'Apps in this window' : 'About this metric'}
           </h3>
@@ -503,7 +503,7 @@ function ResourceDetail({ metric }: { metric: DetailMetric }) {
           Only part of the instance inventory was returned; a full total is unavailable.
         </p>
       )}
-      <p className="rounded-lg border border-border p-4 text-xs text-muted-foreground">
+      <p className="well rounded-xl bg-muted/40 p-4 text-xs text-muted-foreground">
         Hourly history is not available from this snapshot.
       </p>
     </div>

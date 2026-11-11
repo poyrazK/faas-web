@@ -558,7 +558,7 @@ function EditReceiver({ hook, onDone }: { hook: ReleaseWebhook; onDone: () => vo
     <form
       noValidate
       aria-label="Edit receiver"
-      className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2"
+      className="grid grid-cols-1 gap-4 well rounded-xl bg-muted/40 p-4 sm:grid-cols-2"
       onSubmit={(e) => {
         e.preventDefault();
         save();

@@ -45,7 +45,7 @@ export function DeploymentRuntime({ deploymentId }: { deploymentId: string }) {
   const candidates = (data?.releases ?? []).filter((release) => release.id !== current?.id);
 
   return (
-    <section aria-label="Runtime base" className="rounded-lg border border-border p-4">
+    <section aria-label="Runtime base" className="well rounded-xl bg-muted/40 p-4">
       <p className="label-mono text-muted-foreground">Runtime base</p>
       {phase !== 'ready' || !data ? (
         <div className="mt-3">

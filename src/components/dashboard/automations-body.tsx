@@ -25,6 +25,7 @@ import {
   type Automation,
 } from '@/lib/api/automations';
 import type { JobsSelectionProps } from './jobs-search';
+import { Timestamp } from '@/components/ui/timestamp';
 
 function LastRun({
   account,
@@ -58,7 +59,7 @@ function LastRun({
     >
       <AutomationStatus status={q.data.last_run.status} />
       <time className="text-xs text-muted-foreground" dateTime={q.data.last_run.created_at}>
-        {new Date(q.data.last_run.created_at).toLocaleString()}
+        <Timestamp value={q.data.last_run.created_at} mode="absolute" />
       </time>
     </button>
   ) : (
@@ -705,9 +706,10 @@ function RevisionHistory({
       <div className="flex flex-col gap-3">
         {!q.error &&
           q.data?.revisions.map((revision) => (
-            <details key={revision.version} className="rounded-lg border border-border p-4">
+            <details key={revision.version} className="well rounded-xl bg-muted/40 p-4">
               <summary className="cursor-pointer text-sm">
-                Revision {revision.version} · {new Date(revision.recorded_at).toLocaleString()}
+                Revision {revision.version} ·{' '}
+                <Timestamp value={revision.recorded_at} mode="absolute" />
                 {revision.legacy_snapshot && ' · Legacy snapshot'}
               </summary>
               <div className="mt-4 flex flex-col gap-3">
@@ -822,7 +824,7 @@ function RunAutomationDialog({
         </>
       }
     >
-      <details className="rounded-md border border-border p-3" open={input !== '{}'}>
+      <details className="well rounded-xl bg-muted/40 p-3" open={input !== '{}'}>
         <summary className="cursor-pointer text-sm text-muted-foreground">
           Run input {input.trim() === '{}' ? '· empty object' : '· custom'}
         </summary>

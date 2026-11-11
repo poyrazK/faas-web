@@ -391,7 +391,7 @@ function AddChannel({ existing, onDone }: { existing: NotificationChannel[]; onD
       noValidate
       autoComplete="off"
       onSubmit={(e) => void submit(e)}
-      className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2"
+      className="grid grid-cols-1 gap-4 well rounded-xl bg-muted/40 p-4 sm:grid-cols-2"
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <span className="label-mono text-muted-foreground">Kind</span>

@@ -31,11 +31,11 @@ export function StatusChip({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs',
         className
       )}
       style={{
-        borderColor: `color-mix(in oklab, ${TONE[tone]} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${TONE[tone]} 14%, transparent)`,
         color: TONE[tone],
       }}
     >

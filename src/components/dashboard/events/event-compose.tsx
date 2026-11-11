@@ -255,7 +255,7 @@ function PreviewList({ title, items }: { title: string; items: PreviewSubscripti
   return (
     <div>
       <h3 className="label-mono text-muted-foreground">{title}</h3>
-      <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+      <ul className="mt-2 divide-y divide-border well rounded-xl bg-muted/40">
         {items.map((item) => (
           <li
             key={`${item.subscription_id}:${item.workflow_name ?? ''}`}

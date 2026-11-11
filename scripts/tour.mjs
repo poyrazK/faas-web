@@ -148,99 +148,42 @@ async function visit(url, name) {
  * in the layout the customer actually receives.
  */
 async function exerciseOverviewControls() {
-  const section = page.getByRole('region', { name: 'Analytics', exact: true });
-  const scope = section.getByRole('combobox', { name: 'Analytics scope' });
-  const app = await scope
-    .locator('option')
-    .evaluateAll((options) => options.map((option) => option.value).find(Boolean));
-  if (!app) return;
-  await scope.selectOption(app);
-  await section.scrollIntoViewIfNeeded();
+  const timeseries = (since) => (request) => {
+    const url = new URL(request.url());
+    return (
+      request.method() === 'GET' &&
+      url.pathname.endsWith('/analytics/timeseries') &&
+      url.searchParams.get('since') === since
+    );
+  };
+  const windowGroup = page.getByRole('group', { name: 'Time window', exact: true });
+  await windowGroup.scrollIntoViewIfNeeded();
 
-  const range = section.getByRole('button', { name: /Time range: Last 24 hours/i });
-  await range.click();
-  await page.getByRole('button', { name: 'Last 1 hour', exact: true }).waitFor();
-  await page.keyboard.press('Escape');
-
-  const addButtons = section.getByRole('button', { name: 'Add a metric', exact: true });
-  if ((await addButtons.count()) !== 2) throw new Error('expected header and grid add controls');
-
-  for (const index of [0, 1]) {
-    await addButtons.nth(index).click();
-    const cancel = section.getByRole('button', { name: 'Cancel adding a metric' });
-    await cancel.waitFor();
-    await cancel.click();
-  }
-
-  const refresh = section.getByRole('button', { name: 'Refresh analytics', exact: true });
+  // Pointer: the window drives every tile's series and is kept in the URL.
   await Promise.all([
-    page.waitForRequest(
-      (request) =>
-        request.method() === 'GET' &&
-        new URL(request.url()).pathname.endsWith('/analytics/timeseries')
-    ),
-    refresh.click(),
+    page.waitForRequest(timeseries('7d')),
+    windowGroup.getByRole('button', { name: '7d', exact: true }).click(),
   ]);
+  if (new URL(page.url()).searchParams.get('range') !== '7d')
+    throw new Error('the 7d window is not in the URL');
 
-  await range.focus();
+  // Keyboard: back to 24 hours.
+  await windowGroup.getByRole('button', { name: '24h', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: 'Last 1 hour', exact: true }).waitFor();
-  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('range'));
 
-  for (const [index, key] of [
-    [0, 'Enter'],
-    [1, 'Space'],
-  ]) {
-    await addButtons.nth(index).focus();
-    await page.keyboard.press(key);
-    const cancel = section.getByRole('button', { name: 'Cancel adding a metric' });
-    await cancel.waitFor();
-    await cancel.focus();
-    await page.keyboard.press('Enter');
-  }
-
-  await page.waitForFunction(
-    () => document.querySelector('button[aria-label="Refresh analytics"]')?.disabled === false
-  );
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
+  await Promise.all([page.waitForRequest(timeseries('24h')), refresh.click()]);
   await refresh.focus();
-  await Promise.all([
-    page.waitForRequest(
-      (request) =>
-        request.method() === 'GET' &&
-        new URL(request.url()).pathname.endsWith('/analytics/timeseries')
-    ),
-    page.keyboard.press('Enter'),
-  ]);
-
-  // Use real pointer movement and check before release: the cards must reflow
-  // while dragging, without opening the detail panel.
-  const cards = section.locator('[data-metric-id]');
-  const before = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
-  if (before.length >= 2) {
-    const source = cards.first().getByRole('button', { name: /^View .* details$/ });
-    const target = cards.nth(1);
-    await source.scrollIntoViewIfNeeded();
-    const from = await source.boundingBox();
-    const to = await target.boundingBox();
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 20 });
-    await page.waitForTimeout(150);
-    const after = await cards.evaluateAll((nodes) => nodes.map((node) => node.dataset.metricId));
-    if (after[0] !== before[1] || after[1] !== before[0])
-      throw new Error('cards did not reorder while the pointer was held down');
-    await page.mouse.up();
-    if (new URL(page.url()).searchParams.has('inspect'))
-      throw new Error('dragging a chart opened its detail panel');
-  }
+  await Promise.all([page.waitForRequest(timeseries('24h')), page.keyboard.press('Enter')]);
 }
 
 const tourPages = OVERVIEW_ONLY ? [''] : PAGES;
 for (const p of tourPages) {
   const ready = await visit(`${BASE}/dashboard/${p}`, p || 'index');
-  const hasAnalytics =
-    p === '' && (await page.getByRole('region', { name: 'Analytics', exact: true }).count()) > 0;
-  if (p === '' && ready && (OVERVIEW_ONLY || hasAnalytics)) {
+  const hasControls =
+    p === '' && (await page.getByRole('group', { name: 'Time window', exact: true }).count()) > 0;
+  if (p === '' && ready && (OVERVIEW_ONLY || hasControls)) {
     try {
       await exerciseOverviewControls();
     } catch (error) {

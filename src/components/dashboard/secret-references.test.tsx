@@ -62,7 +62,9 @@ it('lists production references, removed keys and the shared quota', async () =>
   const row = (await screen.findByText('DATABASE_URL')).closest('li')!;
   expect(within(row).getByText('DATABASE_PRIMARY')).toBeInTheDocument();
   expect(screen.getByText('LEGACY_TOKEN')).toBeInTheDocument();
-  expect(screen.getByText(/5 of 128 variables and references/i)).toBeInTheDocument();
+  expect(screen.getByText(/5 of 128 variable and reference slots used/i)).toBeInTheDocument();
+  expect(screen.getByText(/isn’t delivered in production any more/)).toBeInTheDocument();
+  expect(screen.getByText(/under another variable name/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'About Secret references' }));
   expect(screen.getByText(/next cold wake/i)).toBeInTheDocument();
   expect(spies.GET).toHaveBeenCalledWith(
@@ -150,7 +152,12 @@ it('rejects a destination that is not UPPER_SNAKE_CASE before asking', async () 
 it('confirms a removal by naming what stops receiving the key, then deletes it', async () => {
   const user = userEvent.setup();
   renderWithProviders(<SecretReferences slug="api" />);
-  await user.click(await screen.findByRole('button', { name: 'Remove reference DATABASE_URL' }));
+  await user.click(
+    await screen.findByRole('button', { name: 'Actions for reference DATABASE_URL' })
+  );
+  await user.click(
+    within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Remove reference' })
+  );
   const dialog = await screen.findByRole('dialog');
   expect(
     within(dialog).getByText(/stop delivering DATABASE_URL in production/i)

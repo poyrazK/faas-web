@@ -1,0 +1,261 @@
+/* Console materials and shared pieces — console only: the lit surface and
+   recessed well, the mono label voice, app tiles and the resource table.
+   Every colour is composed from tokens in index.css, so no new literal
+   enters the system. */
+
+/* --- Light ------------------------------------------------------------- 
+   Depth from light, not lines: a raised surface catches light on its top
+   edge and keeps a faint rim; a well is recessed into the card it sits in. */
+
+.console .surface,
+.console .app-tile:not([data-state='undeployed']),
+.console .rt:not([data-flush]) {
+  box-shadow:
+    inset 0 1px 0 var(--surface-highlight),
+    0 0 0 1px var(--surface-rim);
+}
+.console .well {
+  box-shadow: inset 0 1px 2px var(--well-shade);
+}
+
+/* --- Label voice -------------------------------------------------------- */
+
+.console .bento-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* --- App tiles ----------------------------------------------------------
+   An app is a tile, not a table row. A running app carries a mint glow from
+   the top-right, a failing one a rose glow, a deploying one amber; an app
+   never deployed is a hollow outline. The app's name is the link, stretched over the whole tile. */
+
+.console .app-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.console .app-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 11rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-radius: 1.25rem;
+  background: var(--card);
+  padding: 1.125rem 1.25rem;
+}
+
+.console .app-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--foreground);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast, 150ms) var(--motion-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .console .app-tile:hover::before {
+    opacity: 0.035;
+  }
+}
+.console .app-tile:has(.app-tile__link:focus-visible) {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.console .app-tile[data-state='running'] {
+  background:
+    radial-gradient(
+      90% 80% at 100% 0%,
+      color-mix(in oklch, var(--brand) 14%, transparent) 0%,
+      transparent 65%
+    ),
+    var(--card);
+}
+.console .app-tile[data-state='error'] {
+  background:
+    radial-gradient(
+      90% 80% at 100% 0%,
+      color-mix(in oklch, var(--status-critical) 18%, transparent) 0%,
+      transparent 65%
+    ),
+    var(--card);
+}
+.console .app-tile[data-state='deploying'] {
+  background:
+    radial-gradient(
+      90% 80% at 100% 0%,
+      color-mix(in oklch, var(--status-warning) 14%, transparent) 0%,
+      transparent 65%
+    ),
+    var(--card);
+}
+.console .app-tile[data-state='undeployed'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border);
+}
+
+.console .app-tile__link {
+  outline: none;
+}
+.console .app-tile__link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.console .app-tile__figure[data-hot] {
+  color: var(--status-critical);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console .app-tile::before {
+    transition: none;
+  }
+}
+
+/* --- Motion -------------------------------------------------------------
+   The bento is read daily, so nothing moves for style and nothing enters on
+   page load. Motion only acknowledges a real event the polls deliver: a
+   figure changing, an instance waking, a build finishing, a window switched.
+   Tokens are the console's own (index.css § Motion). */
+
+@media (prefers-reduced-motion: no-preference) {
+  .console .app-tile {
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+  .console .app-tile:has(.app-tile__link:active) {
+    transform: scale(0.99);
+  }
+}
+
+/* --- Resource table -----------------------------------------------------
+   The console's list of things, in the bento's material: a soft rounded card
+   rather than a bordered box with a grey header band, the mono label voice
+   for column names, roomy 14px rows divided by a faint line, and states as a
+   dot and a word. Inside a flush panel it drops its own card. */
+
+.console .rt {
+  overflow: hidden;
+  border-radius: 1.25rem;
+  background: var(--card);
+}
+.console .rt[data-flush] {
+  border-radius: 0;
+  background: transparent;
+}
+
+.console .rt th {
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.console .rt th button {
+  letter-spacing: inherit;
+}
+
+.console .rt td {
+  height: 3.25rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+.console .rt tbody tr + tr td {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+.console .rt th:first-child,
+.console .rt td:first-child {
+  padding-left: 1.25rem;
+}
+.console .rt th:last-child,
+.console .rt td:last-child {
+  padding-right: 1.25rem;
+}
+
+.console .rt tbody tr {
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .console .rt tbody tr:hover {
+    background-color: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  }
+}
+.console .rt tbody tr[data-clickable] {
+  cursor: pointer;
+  outline: none;
+}
+.console .rt tbody tr[data-clickable]:focus-visible {
+  background-color: color-mix(in oklch, var(--foreground) 3.5%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
+.console .rt-sort-arrow {
+  transition: transform 120ms var(--motion-ease);
+}
+.console .rt-sort-arrow[data-dir='asc'] {
+  transform: rotate(180deg);
+}
+
+/* Row actions wait until the row is pointed at or focused — with a mouse.
+   Touch and keyboard users always see them. */
+@media (hover: hover) and (pointer: fine) {
+  .console .rt td[data-actions] > span {
+    opacity: 0.35;
+    transition: opacity var(--motion-fast) var(--motion-ease);
+  }
+  .console .rt tr:hover td[data-actions] > span,
+  .console .rt tr:focus-within td[data-actions] > span {
+    opacity: 1;
+  }
+}
+
+.console .rt-search:focus {
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--brand) 45%, transparent);
+}
+
+.console .rt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+.console .rt-pill::before {
+  content: '';
+  width: 0.4375rem;
+  height: 0.4375rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: currentColor;
+}
+.console .rt-pill[data-neutral]::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console .rt tbody tr,
+  .console .rt-sort-arrow {
+    transition: none;
+  }
+}

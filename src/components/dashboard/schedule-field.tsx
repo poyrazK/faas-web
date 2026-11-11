@@ -80,7 +80,7 @@ export function ScheduleField({
         Schedules use {zone}. Five fields: minute, hour, day of month, month, day of week.
       </p>
       {!utc && isCronSchedule(value) && (
-        <div className="rounded-lg border border-border p-3" aria-label="Schedule summary">
+        <div className="well rounded-xl bg-muted/40 p-3" aria-label="Schedule summary">
           <p className="text-sm font-medium">{inZone(describeCronSchedule(value))}</p>
           <p className="mt-2 text-xs text-muted-foreground">
             Next-run previews are available for UTC schedules. Validate to get the next start in{' '}

@@ -148,7 +148,7 @@ function CountryChoice({ value, onChange, errors }: ActionFormProps<ActionMap['g
           {selected.map((code) => (
             <li
               key={code}
-              className="flex items-center gap-1 rounded-md border border-border bg-card py-1 pl-3 pr-1 text-sm"
+              className="flex items-center gap-1 surface rounded-[1.25rem] bg-card py-1 pl-3 pr-1 text-sm"
             >
               {countryName(code)}
               <button

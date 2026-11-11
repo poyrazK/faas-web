@@ -209,7 +209,7 @@ export function RouteCustomersPanel({ slug }: { slug: string }) {
 function RouteDetail({ route, limit }: { route: Row; limit: number }) {
   const label = `Customers on ${route.method} ${route.route}`;
   return (
-    <section aria-label={label} className="rounded-lg border border-border">
+    <section aria-label={label} className="well rounded-xl bg-muted/40">
       <h3 className="border-b border-border px-4 py-2.5 font-mono text-xs">{label}</h3>
       {route.customers.length === 0 ? (
         <p className="px-4 py-3 text-muted-foreground">No identified customers on this route.</p>

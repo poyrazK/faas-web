@@ -21,8 +21,8 @@
 }
 .console .console-segment-indicator {
   z-index: -1;
-  background: var(--muted);
-  border-radius: 4px;
+  background: var(--accent);
+  border-radius: 999px;
 }
 .console .console-tab {
   font-weight: 500;

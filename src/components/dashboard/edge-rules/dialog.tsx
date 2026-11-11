@@ -697,7 +697,7 @@ export function EdgeRuleDialog({
                 </div>
               )}
               <div
-                className="rounded-lg border border-border bg-card p-4"
+                className="surface rounded-[1.25rem] bg-card p-4"
                 role="region"
                 aria-label="Rule preview"
                 aria-live="polite"
@@ -946,7 +946,7 @@ function ThrottleSuggest({
   }
 
   return (
-    <div className="rounded-md border border-border bg-card p-3">
+    <div className="surface rounded-[1.25rem] bg-card p-3">
       {q.isPending || q.error ? (
         <div className="text-xs">
           <InlinePhase

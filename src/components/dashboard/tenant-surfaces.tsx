@@ -250,7 +250,7 @@ function SurfaceCard({ surface, slug }: { surface: TenantSurface; slug: string }
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium">{surface.name}</span>
         <Pill label={surface.status} color={SURFACE_STATUS_COLOR[surface.status]} />

@@ -98,7 +98,7 @@ export function SecretRevocationStatus({
   return (
     <section
       aria-label={`Removing ${r.key} from running instances`}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-sm"
+      className="flex flex-col gap-3 surface rounded-[1.25rem] bg-card p-4 text-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

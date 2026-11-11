@@ -65,11 +65,7 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
         </details>
         {!data.workloads.length && <p>No workloads in this environment.</p>}
         {data.workloads.map((workload) => (
-          <details
-            key={workload.workload_slug}
-            className="rounded-md border border-border p-3"
-            open
-          >
+          <details key={workload.workload_slug} className="well rounded-xl bg-muted/40 p-3" open>
             <summary className="cursor-pointer font-medium">
               {workload.workload_name}{' '}
               <span className="text-muted-foreground">({workload.release.status})</span>

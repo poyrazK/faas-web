@@ -104,7 +104,7 @@ export function FirstDeploymentRecovery({
           hideRetryOptions
         />
       ) : (
-        <div className="rounded-lg border border-border bg-card p-5">
+        <div className="surface rounded-[1.25rem] bg-card p-5">
           <h2 className="text-lg font-medium">
             {uncertain ? 'Check whether the deployment started' : 'Deployment was not submitted'}
           </h2>

@@ -395,7 +395,7 @@ function RecentRuns({ runs }: { runs: SyntheticRun[] }) {
           No runs yet. A new check runs within one interval.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-md border border-border">
+        <ul className="divide-y divide-border well rounded-xl bg-muted/40">
           {runs.map((run) => (
             <li
               key={run.started_at}
@@ -468,7 +468,7 @@ function CheckAlerts({ slug, check }: { slug: string; check: SyntheticCheck }) {
         />
       )}
       {adding && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
           <p className="text-xs text-muted-foreground">
             Starts as two failed runs in a row, which ignores a single blip; the window is ignored.
             For slowness, pick the p95 latency metric and set it above the app’s wake time, since

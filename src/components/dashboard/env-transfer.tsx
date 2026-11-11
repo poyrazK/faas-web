@@ -227,7 +227,7 @@ function EnvTransferBody({
         <div
           role="region"
           aria-label="Import dry run"
-          className="flex flex-col gap-2 rounded-lg border border-border p-4"
+          className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-4"
         >
           <p className="text-sm">
             {additions} additions · {overwrites} overwrites · {parsed.diagnostics.length} issues

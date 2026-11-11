@@ -479,7 +479,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
               </p>
             )}
             {suggestion && advice && (
-              <div className="flex flex-col gap-1.5 rounded-md border border-border p-3 text-sm">
+              <div className="flex flex-col gap-1.5 well rounded-xl bg-muted/40 p-3 text-sm">
                 <div>
                   <Pill label={advice.title} color={advice.color} />
                 </div>

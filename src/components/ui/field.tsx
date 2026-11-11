@@ -15,7 +15,10 @@ import { cn } from '@/lib/utils';
  * Keyboard users additionally get the global `:focus-visible` ring.
  */
 export const FIELD =
-  'h-8 rounded-md border border-border bg-background px-2.5 text-sm outline-none transition-[border-color] duration-150 ease-console placeholder:text-muted-foreground focus:border-brand/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[color:var(--status-critical)]';
+  'h-8 rounded-md border border-border bg-background px-2.5 text-sm outline-none transition-[border-color,box-shadow] duration-150 ease-console placeholder:text-muted-foreground focus:border-brand/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[color:var(--status-critical)] ' +
+  // In the console a field is a tonal well, not an outlined box; the auth and
+  // marketing pages keep the outline.
+  'in-[.console]:border-transparent in-[.console]:bg-muted in-[.console]:focus:border-brand/50 in-[.console]:focus:shadow-[0_0_0_3px_color-mix(in_oklch,var(--brand)_22%,transparent)] in-[.console]:aria-invalid:border-[color:var(--status-critical)]';
 
 export function Select({ className, ...props }: React.ComponentProps<'select'>) {
   // A styled native <select>: the console keeps native popup semantics (and

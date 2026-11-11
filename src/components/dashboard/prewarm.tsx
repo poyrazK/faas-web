@@ -7,6 +7,7 @@ import { useCancelPrewarm, usePrewarms, useSchedulePrewarm } from '@/lib/api/pre
 import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { Pill } from './resource-table';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /** `datetime-local` speaks local wall time; the API wants an instant. */
 export function localInputToIso(value: string): string | null {
@@ -142,8 +143,8 @@ export function PrewarmPanel({ slug }: { slug: string }) {
                   instances
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(item.wake_at).toLocaleString()} →{' '}
-                  {new Date(item.expires_at).toLocaleString()}
+                  <Timestamp value={item.wake_at} mode="absolute" /> →{' '}
+                  <Timestamp value={item.expires_at} mode="absolute" />
                 </span>
                 {item.last_error && (
                   <span className="text-xs text-[color:var(--status-critical)]">

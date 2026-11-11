@@ -141,7 +141,7 @@ function Measured({ learned }: { learned: NonNullable<WakeAhead['learned']> }) {
       </p>
       <ul
         aria-label="Measured services"
-        className="divide-y divide-border rounded-lg border border-border"
+        className="divide-y divide-border well rounded-xl bg-muted/40"
       >
         {learned.targets.map((target) => (
           <Target key={target.app_id} target={target} />

@@ -44,11 +44,7 @@ function Workflows({
   return (
     <div className="flex flex-col gap-5">
       <p className="text-sm text-muted-foreground">
-        {stage && (
-          <span className="mr-2 rounded-full border border-border px-2 py-0.5 text-xs">
-            {stage}
-          </span>
-        )}
+        {stage && <span className="mr-2 rounded-full bg-muted px-2 py-0.5 text-xs">{stage}</span>}
         Multi-step work that survives restarts and deploys: each step runs at least once and its
         result is kept, and waits park the run without keeping a VM awake. Declare workflows in
         gregale.yaml as YAML steps or as code with the SDK.

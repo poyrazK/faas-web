@@ -154,7 +154,7 @@ export function RangePicker({
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger
-        className="pressable flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="pressable flex h-9 items-center gap-2 well rounded-xl bg-muted/40 px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         aria-label={`Time range: ${rangeLabel(range)}`}
       >
         <Calendar aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
@@ -295,7 +295,7 @@ function CalendarNav({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="pressable rounded-md border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      className="pressable well rounded-xl bg-muted/40 p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       {children}
     </button>

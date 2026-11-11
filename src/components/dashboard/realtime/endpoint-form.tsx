@@ -349,7 +349,7 @@ export function EndpointForm({
       noValidate
       onSubmit={(e) => void submit(e)}
       aria-label={editing ? 'Edit endpoint' : 'New endpoint'}
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField

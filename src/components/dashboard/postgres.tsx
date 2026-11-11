@@ -9,6 +9,7 @@ import {
   queryPhase,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { CopyableId } from '@/components/ui/copyable-id';
@@ -35,17 +36,26 @@ import {
   type PostgresBinding,
   type PostgresDatabase,
 } from '@/lib/api/queries';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
-import { formatRelative } from '@/lib/mock-data';
 import { absoluteTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { Clock, Database, Pause, Plus, Trash, Undo } from 'iconoir-react';
+import { Link } from '@tanstack/react-router';
+import { Clock, Pause, Plus, Trash, Undo } from 'iconoir-react';
+import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sheet } from './kit/sheet';
 import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
 import { ConnectionBudget, DatabaseConditions } from './postgres-health';
-import { StatusTag, TONE, explainPostgres } from './postgres-shared';
+import { TONE, explainPostgres } from './postgres-shared';
+import {
+  SERVICE_CLASS_NAMES,
+  describeDatabase,
+  regionName,
+  spelledAgo,
+  type DatabaseWords,
+} from './postgres-words';
 import { PostgresUsage } from './postgres-usage';
 import { LiveQueries } from './postgres-live-queries';
 
@@ -106,15 +116,13 @@ function scheduledDelete(database: PostgresDatabase): boolean {
 /** apid's own wording for each plan-excess suspension (pkg/dashboard/templates/postgres.html). */
 const PLAN_EXCESS: Record<
   NonNullable<PostgresDatabase['plan_excess']>,
-  { tag: string; explain: (whose: string, database: PostgresDatabase) => string }
+  { explain: (whose: string, database: PostgresDatabase) => string }
 > = {
   database_limit: {
-    tag: 'over the database limit',
     explain: (whose) =>
       `${whose} plan allows fewer databases than there are, so this one, among the newest, is suspended. Its data, credentials and bindings are kept. Upgrade, or delete a database, to resume it; the next usage sweep, within minutes, does.`,
   },
   service_class: {
-    tag: 'class not in plan',
     explain: (whose, database) =>
       `${whose} plan does not include the ${database.service_class} class, so this database is suspended. Its data, credentials and bindings are kept. Upgrade, or resize it to a class the plan includes, to resume it.`,
   },
@@ -130,18 +138,22 @@ function hours(seconds: number): string {
   return h >= 48 ? `${Math.round(h / 24)} days` : `${Math.round(h)} h`;
 }
 
-function when(value: string | null | undefined): string {
-  if (!value) return '—';
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? value : formatRelative(ms);
-}
-
 export function PostgresDatabases() {
   const databases = usePostgresDatabases();
   // The same read as the usage panel's: the cap holds every database at once.
   const capSuspended = usePostgresUsage().data?.compute_cap_state === 'suspended';
+  const { org, label } = useWorkspaceTarget();
+  // Resize lives in the detail, behind its capability; offer it only where it is.
+  const canResize = useCapabilityAccess('postgres-compute-policy').access === 'on';
+  const reduce = useReducedMotion();
+  // Read once: tiles count days, and a stale "3 more days" is corrected by the
+  // next poll or render long before it matters.
+  const [now] = useState(() => Date.now());
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // A fix that lives in the detail opens it and brings it into view.
+  const [reveal, setReveal] = useState(0);
+  const detail = useRef<HTMLDivElement>(null);
   // The resize or policy change started for each database, kept here so it is
   // still followed after its detail is closed and opened again: the API has no
   // list of a database's changes to find it by.
@@ -149,55 +161,84 @@ export function PostgresDatabases() {
   const phase = queryPhase({ error: databases.error, loading: databases.isPending });
   const items = databases.data?.items ?? [];
   const open = items.find((d) => d.id === selected);
+  const context = { capSuspended, whose: org ? `${label}’s` : 'your', canResize, now };
+
+  useEffect(() => {
+    if (reveal === 0) return;
+    detail.current?.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [reveal, reduce]);
+
+  const create = (
+    <Button size="sm" onClick={() => setCreating(true)}>
+      <Plus className="h-3.5 w-3.5" />
+      Create database
+    </Button>
+  );
 
   return (
     <PlanGated error={databases.error} feature="Managed PostgreSQL">
       <div className="flex flex-col gap-6">
         <PostgresUsage />
-        <Panel
-          title="Databases"
-          help="Connection details reach your apps as secrets, never this page."
-          actions={
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Create database
-            </Button>
-          }
-        >
-          {phase === 'unreachable' ? (
-            <UnreachableState onRetry={() => void databases.refetch()} />
-          ) : phase === 'loading' ? (
-            <LoadingState message="Loading databases…" />
-          ) : phase === 'error' ? (
-            <ErrorState error={databases.error} onRetry={() => void databases.refetch()} />
-          ) : (
-            <div className="flex flex-col gap-5">
-              {items.length === 0 ? (
-                <EmptyState
-                  message="No managed databases yet."
-                  action={
-                    <Button size="sm" onClick={() => setCreating(true)}>
-                      Create database
-                    </Button>
-                  }
-                />
-              ) : (
-                <ul className="flex flex-col divide-y divide-border">
-                  {items.map((database) => (
-                    <li key={database.id}>
-                      <DatabaseRow
-                        database={database}
-                        capSuspended={capSuspended}
-                        open={database.id === selected}
-                        onToggle={() => setSelected(database.id === selected ? null : database.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
+        <section aria-labelledby="databases-title" className="flex flex-col gap-4">
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex items-center gap-1">
+                <h2 id="databases-title" className="text-xl font-bold tracking-[-0.01em]">
+                  Databases
+                </h2>
+                <HelpTip label="About Databases">
+                  Connection details reach your apps as secrets, never this page.
+                </HelpTip>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Managed PostgreSQL your apps connect to. You don&apos;t run or patch it.
+              </p>
             </div>
+            <div className="shrink-0">{create}</div>
+          </header>
+          {phase === 'unreachable' ? (
+            <div className="surface rounded-[1.25rem] bg-card p-5">
+              <UnreachableState onRetry={() => void databases.refetch()} />
+            </div>
+          ) : phase === 'loading' ? (
+            <div className="surface rounded-[1.25rem] bg-card p-5">
+              <LoadingState message="Loading databases…" />
+            </div>
+          ) : phase === 'error' ? (
+            <div className="surface rounded-[1.25rem] bg-card p-5">
+              <ErrorState error={databases.error} onRetry={() => void databases.refetch()} />
+            </div>
+          ) : items.length === 0 ? (
+            <div className="surface rounded-[1.25rem] bg-card p-5">
+              <EmptyState
+                message="No managed databases yet."
+                action={
+                  <Button size="sm" onClick={() => setCreating(true)}>
+                    Create database
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <ul className="grid gap-3 md:grid-cols-2">
+              {items.map((database) => (
+                <li key={database.id} className="flex">
+                  <DatabaseTile
+                    database={database}
+                    words={describeDatabase(database, context)}
+                    now={now}
+                    open={database.id === selected}
+                    onToggle={() => setSelected(database.id === selected ? null : database.id)}
+                    onReveal={() => {
+                      setSelected(database.id);
+                      setReveal((n) => n + 1);
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
           )}
-        </Panel>
+        </section>
         <Sheet open={creating} onClose={() => setCreating(false)} title="Create database">
           <CreateDatabase onDone={() => setCreating(false)} />
         </Sheet>
@@ -205,70 +246,196 @@ export function PostgresDatabases() {
         {/* Keyed on the database: the restore and binding forms belong to the
             one that is open, and must not carry over to the next. */}
         {open && (
-          <DatabaseDetail
-            key={open.id}
-            database={open}
-            capSuspended={capSuspended}
-            operation={operations[open.id]}
-            onOperation={(operation) => setOperations((all) => ({ ...all, [open.id]: operation }))}
-          />
+          <div ref={detail} className="scroll-mt-6">
+            <DatabaseDetail
+              key={open.id}
+              database={open}
+              capSuspended={capSuspended}
+              operation={operations[open.id]}
+              onOperation={(operation) =>
+                setOperations((all) => ({ ...all, [open.id]: operation }))
+              }
+            />
+          </div>
         )}
       </div>
     </PlanGated>
   );
 }
 
-function DatabaseRow({
+/** One status word with its dot: filled while it runs, a hollow ring when it does not. */
+function StatusWord({ words }: { words: DatabaseWords }) {
+  const colour = TONE[words.tone];
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px]"
+      style={{ color: words.gone ? 'var(--muted-foreground)' : colour }}
+    >
+      <span
+        aria-hidden
+        className="size-[7px] rounded-full"
+        style={
+          words.ring ? { boxShadow: `inset 0 0 0 1.5px ${colour}` } : { backgroundColor: colour }
+        }
+      />
+      {words.word}
+    </span>
+  );
+}
+
+/** The sentence, with its time left (or other key value) set apart. */
+function Sentence({ words }: { words: DatabaseWords }) {
+  const at = words.emphasis ? words.sentence.indexOf(words.emphasis) : -1;
+  if (at < 0 || !words.emphasis) return <>{words.sentence}</>;
+  return (
+    <>
+      {words.sentence.slice(0, at)}
+      <span className="font-medium text-foreground">{words.emphasis}</span>
+      {words.sentence.slice(at + words.emphasis.length)}
+    </>
+  );
+}
+
+const CHIP =
+  'inline-flex h-6 items-center rounded-full bg-muted px-2.5 text-[13px] text-muted-foreground';
+
+/**
+ * A database as a tile: its name, one status word, one sentence saying what
+ * that means for its apps, the fixes that exist for it, then the facts. The
+ * name is the tile's button: its hit area covers the tile, and the fixes sit
+ * above it, so a click anywhere else opens the detail.
+ */
+function DatabaseTile({
   database,
-  capSuspended,
+  words,
+  now,
   open,
   onToggle,
+  onReveal,
 }: {
   database: PostgresDatabase;
-  capSuspended: boolean;
+  words: DatabaseWords;
+  now: number;
   open: boolean;
   onToggle: () => void;
+  onReveal: () => void;
 }) {
+  const recover = useRecover(database);
+  const created = Date.parse(database.created_at);
+  const nameId = `database-${database.id}`;
+  const tint =
+    words.tone === 'critical' || words.tone === 'warning'
+      ? {
+          background: `radial-gradient(90% 80% at 100% 0%, color-mix(in oklab, ${TONE[words.tone]} ${words.tone === 'critical' ? 12 : 8}%, transparent), transparent 65%), var(--card)`,
+        }
+      : undefined;
+  const fixes = words.fixes.map((fix, i) => {
+    const variant = i === 0 && fix !== 'restore' ? 'default' : 'outline';
+    switch (fix) {
+      case 'upgrade':
+        return (
+          <Button key={fix} asChild variant={variant}>
+            <Link to="/dashboard/plans">Upgrade plan</Link>
+          </Button>
+        );
+      case 'resize':
+        return (
+          <Button key={fix} variant={variant} onClick={onReveal}>
+            Choose another size
+          </Button>
+        );
+      case 'restore':
+        return (
+          <Button
+            key={fix}
+            variant={variant}
+            busy={recover.pending}
+            onClick={() => void recover.run()}
+          >
+            <Undo className="h-3.5 w-3.5" />
+            Restore database
+          </Button>
+        );
+      case 'open':
+        return (
+          <Button key={fix} variant={variant} onClick={onReveal}>
+            See details
+          </Button>
+        );
+    }
+  });
+
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="flex w-full flex-wrap items-center gap-3 py-3 text-left text-xs transition-colors first:pt-0 last:pb-0 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
+    <section
+      aria-labelledby={nameId}
+      className={cn(
+        'relative flex w-full flex-col gap-4 rounded-[1.25rem] p-5 transition-shadow sm:p-6',
+        words.gone ? 'border-[1.5px] border-border bg-transparent' : 'surface bg-card',
+        open && 'outline-2 outline-offset-2 outline-brand/60'
+      )}
+      style={tint}
     >
-      <Database className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="text-sm font-medium">{database.name}</span>
-      <Pill label={database.state} color={STATE_COLOR[database.state]} />
-      <span className="text-muted-foreground">
-        PostgreSQL {database.postgres_major} · {database.service_class} · {database.region}
-      </span>
-      {database.availability === 'high_availability' && (
-        <Pill label="HA" color="var(--status-good)" />
-      )}
-      {database.scale_to_zero && <Pill label="scales to zero" color="var(--chart-muted)" />}
-      <span className="text-muted-foreground">{gb(database.storage_limit_bytes)}</span>
-      {database.last_error_code && (
-        <span style={{ color: 'var(--status-critical)' }}>{database.last_error_code}</span>
-      )}
-      {scheduledDelete(database) && (
-        <span className="text-muted-foreground">
-          recoverable until <Timestamp value={database.restorable_until} />
+      <div className="flex items-start justify-between gap-3">
+        <h3
+          id={nameId}
+          className={cn(
+            'min-w-0 text-lg leading-7 font-bold tracking-[-0.01em] break-words',
+            words.gone && 'text-muted-foreground'
+          )}
+        >
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className="text-left outline-none after:absolute after:inset-0 after:rounded-[1.25rem] focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-brand hover:underline hover:decoration-muted-foreground/50 hover:underline-offset-4"
+          >
+            {database.name}
+          </button>
+        </h3>
+        <span className="pt-1">
+          <StatusWord words={words} />
         </span>
-      )}
-      {database.plan_excess ? (
-        <StatusTag tone="critical" icon={Pause}>
-          suspended · {PLAN_EXCESS[database.plan_excess].tag}
-        </StatusTag>
-      ) : (
-        capSuspended &&
-        database.state === 'ready' && (
-          <StatusTag tone="critical" icon={Pause}>
-            suspended · compute cap
-          </StatusTag>
-        )
-      )}
-      <span className="ml-auto text-muted-foreground">created {when(database.created_at)}</span>
-    </button>
+      </div>
+      <p
+        className={cn('text-[15px] leading-6', words.gone && 'text-muted-foreground')}
+        title={words.term}
+      >
+        <Sentence words={words} />
+      </p>
+      {fixes.length > 0 && <div className="relative z-10 flex flex-wrap gap-2">{fixes}</div>}
+      <ul aria-label="Details" className="mt-auto flex flex-wrap gap-1.5">
+        <li className={CHIP}>PostgreSQL {database.postgres_major}</li>
+        <li className={CHIP} title={`Service class: ${database.service_class}`}>
+          {SERVICE_CLASS_NAMES[database.service_class] ?? database.service_class}
+        </li>
+        <li className={CHIP} title={`Region: ${database.region}`}>
+          {regionName(database.region)}
+        </li>
+        <li className={cn(CHIP, 'tabular-nums')} title="Storage limit">
+          {gb(database.storage_limit_bytes)}
+        </li>
+        {database.availability === 'high_availability' && (
+          <li className={CHIP} title="High availability">
+            Two zones
+          </li>
+        )}
+        {database.scale_to_zero && (
+          <li className={CHIP} title="Scales to zero">
+            Sleeps when idle
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground tabular-nums">
+        Created{' '}
+        {Number.isNaN(created) ? (
+          'at an unknown time'
+        ) : (
+          <time dateTime={database.created_at} title={absoluteTime(created)}>
+            {spelledAgo(created, now)}
+          </time>
+        )}
+      </p>
+    </section>
   );
 }
 
@@ -445,7 +612,7 @@ function DatabaseDetail({
 
         {scheduled ? (
           <p className="text-sm text-muted-foreground">
-            Recover it to bind apps to it or restore from it.
+            Restore it to bind apps to it or make a copy from it.
           </p>
         ) : (
           <>
@@ -516,7 +683,7 @@ function Suspension({ children }: { children: ReactNode }) {
   return (
     <p
       className="flex items-start gap-2 rounded-lg border p-3 text-sm text-muted-foreground"
-      style={{ borderColor: `color-mix(in oklab, ${TONE.critical} 35%, transparent)` }}
+      style={{ backgroundColor: `color-mix(in oklab, ${TONE.critical} 14%, transparent)` }}
     >
       <Pause aria-hidden className="mt-0.5 h-4 w-4 shrink-0" style={{ color: TONE.critical }} />
       <span>
@@ -561,26 +728,16 @@ function explainRecover(err: unknown): ReturnType<typeof explainPostgres> {
 }
 
 /**
- * A database whose delete is scheduled: recover it while the window is open,
- * or purge it now. Recovery is not destructive, so it does not ask; purging
- * is final, so it asks for the name.
+ * Recovering a scheduled delete, from its tile or its detail. One key per
+ * recovery intent, as for rotation: a retry after an unknown outcome replays
+ * the first answer (a second undelete of a ready database would answer 404);
+ * after an ApiError the answer is known and the key goes.
  */
-function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
+function useRecover(database: PostgresDatabase) {
   const { toast } = useToast();
-  const confirm = useConfirm();
   const undelete = useUndeletePostgresDatabase();
-  const purge = usePurgePostgresDatabase();
-  // One key per recovery intent, as for rotation: a retry after an unknown
-  // outcome replays the first answer (a second undelete of a ready database
-  // would answer 404); after an ApiError the answer is known and the key goes.
   const intent = useRef<string | null>(null);
-  const until = database.restorable_until ?? '';
-  // Read once: the window is days long, and a recovery after it ends is
-  // answered 404 and explained, so a stale "open" costs nothing.
-  const [now] = useState(() => Date.now());
-  const open = Date.parse(until) > now;
-
-  const onRecover = async () => {
+  const run = async () => {
     const key = intent.current ?? crypto.randomUUID();
     intent.current = key;
     try {
@@ -597,6 +754,24 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
       toast(explainRecover(err));
     }
   };
+  return { run, pending: undelete.isPending };
+}
+
+/**
+ * A database whose delete is scheduled: recover it while the window is open,
+ * or purge it now. Recovery is not destructive, so it does not ask; purging
+ * is final, so it asks for the name.
+ */
+function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const recover = useRecover(database);
+  const purge = usePurgePostgresDatabase();
+  const until = database.restorable_until ?? '';
+  // Read once: the window is days long, and a recovery after it ends is
+  // answered 404 and explained, so a stale "open" costs nothing.
+  const [now] = useState(() => Date.now());
+  const open = Date.parse(until) > now;
 
   const onPurge = async () => {
     if (
@@ -622,7 +797,7 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
     <div
       role="status"
       className="flex flex-col gap-3 rounded-lg border p-4"
-      style={{ borderColor: `color-mix(in oklab, ${TONE.warning} 35%, transparent)` }}
+      style={{ backgroundColor: `color-mix(in oklab, ${TONE.warning} 14%, transparent)` }}
     >
       <p className="flex items-center gap-2 text-sm font-medium" style={{ color: TONE.warning }}>
         <Clock aria-hidden className="h-4 w-4 shrink-0" />
@@ -630,7 +805,7 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
       </p>
       {open ? (
         <p className="text-sm text-muted-foreground">
-          Its compute is stopped and it refuses connections. Recover it before{' '}
+          Its compute is stopped and it refuses connections. Restore it before{' '}
           <Timestamp value={until} mode="absolute" /> to return it to ready with its data and
           restore history; after that it is deleted for good. Until then it counts toward the
           plan&apos;s database limit and keeps its name.
@@ -642,9 +817,9 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
       )}
       <div className="flex flex-wrap gap-2">
         {open && (
-          <Button size="sm" busy={undelete.isPending} onClick={() => void onRecover()}>
+          <Button size="sm" busy={recover.pending} onClick={() => void recover.run()}>
             <Undo className="h-3.5 w-3.5" />
-            Recover database
+            Restore database
           </Button>
         )}
         <Button size="sm" variant="ghost" disabled={purge.isPending} onClick={() => void onPurge()}>

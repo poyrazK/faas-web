@@ -1,22 +1,17 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { Upload } from 'iconoir-react';
+import { ArrowUpRight, Search, Upload } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
 import { useProjectMembership, type ProjectDetail } from '@/lib/api/projects';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { WorkspaceAppInventory } from '@/components/dashboard/workspace-app-inventory';
-import type { Workflow } from '@/lib/mock-data';
+import type { Deployment, Workflow } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  PageHeader,
-  Panel,
-  StateBadge,
-} from '@/components/dashboard/primitives';
+import { EmptyState, ErrorState, LoadingState } from '@/components/dashboard/primitives';
+import { AppTile, AppTiles, byState } from '@/components/dashboard/app-tile';
+import { latestDeployNote, projectsSummary } from '@/components/dashboard/app-tile-words';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import { Route as ProjectsRoute } from '@/routes/dashboard.projects';
 
 const PAGE = 10;
@@ -26,41 +21,51 @@ function matches(q: string, ...values: (string | undefined)[]) {
   return !needle || values.some((value) => value?.toLowerCase().includes(needle));
 }
 
-/** One app inside a project or in the standalone group. */
-function AppLine({
-  slug,
-  label,
-  app,
-  detail,
+/** A heading, its context and a grid of app tiles — no frame around the tiles. */
+function AppGroup({
+  title,
+  meta,
+  help,
+  action,
+  children,
 }: {
-  slug: string;
-  label?: string;
-  app?: Workflow;
-  detail?: string;
+  title: string;
+  meta?: ReactNode;
+  help?: string;
+  action?: ReactNode;
+  children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3">
-      <div className="min-w-0">
-        <Link
-          to="/dashboard/apps/$appSlug"
-          params={{ appSlug: slug }}
-          className="font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          {app?.name ?? slug}
-        </Link>
-        {(label || app?.runtime) && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {[label, app?.runtime].filter(Boolean).join(' · ')}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {detail && <span>{detail}</span>}
-        {app ? <StateBadge state={app.state} /> : <span>State not loaded</span>}
-      </div>
-    </li>
+    // A faint tray holds the group together, so its tiles read as one
+    // project rather than loose cards.
+    <section
+      aria-labelledby={id}
+      className="flex flex-col gap-4 rounded-[1.75rem] bg-muted/25 p-4 sm:p-5"
+    >
+      <header className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 id={id} className="flex items-center gap-1 text-lg font-semibold tracking-[-0.01em]">
+            {title}
+            {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
+          </h2>
+          {meta && <p className="text-[13px] text-muted-foreground">{meta}</p>}
+        </div>
+        {action}
+      </header>
+      {children}
+    </section>
   );
 }
+
+const appCount = (n: number | undefined) =>
+  n == null ? 'Apps loading' : `${n} ${n === 1 ? 'app' : 'apps'}`;
+
+const GroupNote = ({ children, status }: { children: ReactNode; status?: boolean }) => (
+  <p role={status ? 'status' : undefined} className="text-sm text-muted-foreground">
+    {children}
+  </p>
+);
 
 function ProjectCard({
   slug,
@@ -70,6 +75,7 @@ function ProjectCard({
   loading,
   failed,
   apps,
+  deployments,
   q,
 }: {
   slug: string;
@@ -79,61 +85,63 @@ function ProjectCard({
   loading: boolean;
   failed: boolean;
   apps: Map<string, Workflow>;
+  deployments: Deployment[];
   q: string;
 }) {
   const shown = (workloads ?? []).filter((w) =>
     matches(q, slug, repo, w.slug, w.workload_name, apps.get(w.slug)?.name)
   );
   return (
-    <Panel
+    <AppGroup
       title={slug}
-      actions={
+      meta={
         <>
-          <span className="text-xs text-muted-foreground">
-            {[repo || 'No repository connected', branch && `deploys ${branch}`]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
-          <Button asChild size="xs" variant="ghost">
-            <Link
-              to="/dashboard/projects/$projectSlug"
-              params={{ projectSlug: slug }}
-              search={{ q: q || undefined }}
-              aria-label={`Open project ${slug}`}
-            >
-              Open project
-            </Link>
-          </Button>
+          {appCount(workloads?.length)}
+          {repo ? (
+            <>
+              {' · '}deploys {branch ? <span className="font-mono">{branch}</span> : 'pushes'} from{' '}
+              <span className="font-mono">{repo}</span>
+            </>
+          ) : (
+            ' · not connected to a repository'
+          )}
         </>
       }
-      padded={false}
+      action={
+        <Link
+          to="/dashboard/projects/$projectSlug"
+          params={{ projectSlug: slug }}
+          search={{ q: q || undefined }}
+          aria-label={`Open project ${slug}`}
+          className="pressable inline-flex h-8 items-center gap-1 rounded-full bg-muted px-3 text-[13px] text-foreground"
+        >
+          Open project
+          <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
+        </Link>
+      }
     >
       {failed ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">
-          This project's apps could not be read.
-        </p>
+        <GroupNote>This project's apps could not be read.</GroupNote>
       ) : loading ? (
-        <p role="status" className="px-5 py-4 text-sm text-muted-foreground">
-          Loading apps…
-        </p>
+        <GroupNote status>Loading apps…</GroupNote>
       ) : !shown.length ? (
-        <p className="px-5 py-4 text-sm text-muted-foreground">
+        <GroupNote>
           {workloads?.length ? 'No apps match the search.' : 'This project has no apps yet.'}
-        </p>
+        </GroupNote>
       ) : (
-        <ul aria-label={`Apps in ${slug}`} className="divide-y divide-border">
+        <AppTiles label={`Apps in ${slug}`}>
           {shown.map((w) => (
-            <AppLine
+            <AppTile
               key={w.slug}
               slug={w.slug}
               label={w.workload_name !== w.slug ? w.workload_name : undefined}
               app={apps.get(w.slug)}
-              detail={w.deployment_status}
+              deploy={latestDeployNote(w.slug, deployments)}
             />
           ))}
-        </ul>
+        </AppTiles>
       )}
-    </Panel>
+    </AppGroup>
   );
 }
 
@@ -149,7 +157,14 @@ function ProjectCard({
 export function ProjectInventory() {
   const { account } = useAuth();
   const membership = useProjectMembership(account?.id ?? '');
-  const { workflows, loading: appsLoading, error: appsError, refresh } = useData();
+  const {
+    workflows,
+    deployments: storeDeployments,
+    loading: appsLoading,
+    error: appsError,
+    refresh,
+  } = useData();
+  const deployments = storeDeployments ?? [];
   const workspace = useWorkspaceTarget();
   const { q = '' } = ProjectsRoute.useSearch();
   const navigate = ProjectsRoute.useNavigate();
@@ -169,22 +184,64 @@ export function ProjectInventory() {
   );
   const nothingYet =
     membership.state === 'ready' && !membership.projects.length && !workflows.length;
+  const summary =
+    membership.state === 'ready' && !appsLoading && !appsError
+      ? projectsSummary({
+          apps: workflows,
+          projectCount: membership.projects.length,
+          standaloneCount: workflows.filter((app) => !membership.projectOfApp.has(app.id)).length,
+          deployments,
+        })
+      : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Projects"
-        actions={
-          <>
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <Link to="/dashboard/apps/new" search={{ source: 'import' }}>
-                <Upload className="h-3.5 w-3.5" />
-                Import a repository
-              </Link>
-            </Button>
-          </>
-        }
-      />
+    <div className="flex flex-col gap-10">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <h1 className="text-[28px] leading-[34px] font-semibold tracking-[-0.02em]">Projects</h1>
+          {/* The answer first: what there is, then what needs a look. */}
+          {summary && (
+            <p className="max-w-2xl text-[15px] text-muted-foreground">
+              <span className="text-foreground">{summary.what}</span>{' '}
+              {summary.problems.length === 0 ? (
+                'Everything is running normally.'
+              ) : (
+                <span className="text-status-warning">
+                  {summary.problems.join('; ')}
+                  {summary.extra > 0 ? `; ${summary.extra} more.` : '.'}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {!nothingYet && (
+            <label className="flex h-9 min-w-56 items-center gap-2 rounded-full bg-muted px-3.5 text-muted-foreground">
+              <Search aria-hidden className="h-3.5 w-3.5 shrink-0" />
+              <input
+                type="search"
+                aria-label="Search projects and apps"
+                value={q}
+                placeholder="Find a project or app"
+                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                onChange={(event) =>
+                  void navigate({
+                    search: (current) => ({ ...current, q: event.target.value || undefined }),
+                    replace: true,
+                    resetScroll: false,
+                  })
+                }
+              />
+            </label>
+          )}
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <Link to="/dashboard/apps/new" search={{ source: 'import' }}>
+              <Upload className="h-3.5 w-3.5" />
+              Import a repository
+            </Link>
+          </Button>
+        </div>
+      </header>
 
       {/* A shared workspace was chosen in the switcher, so its own inventory
           comes first; projects and standalone apps below stay the signed-in
@@ -204,21 +261,6 @@ export function ProjectInventory() {
         <EmptyState message="Nothing deployed yet." />
       ) : (
         <>
-          <label className="flex max-w-sm flex-col gap-2 text-sm">
-            Search projects and apps
-            <Input
-              value={q}
-              placeholder="Project, repository, or app"
-              onChange={(event) =>
-                void navigate({
-                  search: (current) => ({ ...current, q: event.target.value || undefined }),
-                  replace: true,
-                  resetScroll: false,
-                })
-              }
-            />
-          </label>
-
           {projects.slice(0, limit).map((project) => {
             const index = membership.projects.indexOf(project);
             const detail = membership.details[index];
@@ -232,6 +274,7 @@ export function ProjectInventory() {
                 loading={Boolean(detail?.isPending)}
                 failed={Boolean(detail?.isError)}
                 apps={apps}
+                deployments={deployments}
                 q={q}
               />
             );
@@ -250,36 +293,38 @@ export function ProjectInventory() {
             <p className="text-sm text-muted-foreground">No projects match the search.</p>
           )}
 
-          <Panel
+          <AppGroup
             title="Standalone apps"
             help="Apps deployed from a folder, an image, or a template belong to no project."
-            padded={false}
           >
             {appsError ? (
               <ErrorState error={appsError} onRetry={refresh} />
             ) : appsLoading || membership.state === 'pending' ? (
-              <p role="status" className="px-5 py-4 text-sm text-muted-foreground">
-                Checking which apps belong to projects…
-              </p>
+              <GroupNote status>Checking which apps belong to projects…</GroupNote>
             ) : membership.state === 'error' ? (
-              <div className="flex flex-wrap items-center gap-3 px-5 py-4 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 Some projects could not be read, so standalone apps cannot be told apart yet.
                 <Button size="xs" variant="outline" onClick={membership.retry}>
                   Retry
                 </Button>
               </div>
             ) : !standalone.length ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
+              <GroupNote>
                 {q ? 'No standalone apps match the search.' : 'Every app belongs to a project.'}
-              </p>
+              </GroupNote>
             ) : (
-              <ul aria-label="Standalone apps" className="divide-y divide-border">
-                {standalone.map((app) => (
-                  <AppLine key={app.id} slug={app.id} app={app} />
+              <AppTiles label="Standalone apps">
+                {[...standalone].sort(byState).map((app) => (
+                  <AppTile
+                    key={app.id}
+                    slug={app.id}
+                    app={app}
+                    deploy={latestDeployNote(app.id, deployments)}
+                  />
                 ))}
-              </ul>
+              </AppTiles>
             )}
-          </Panel>
+          </AppGroup>
         </>
       )}
     </div>

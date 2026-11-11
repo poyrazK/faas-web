@@ -33,6 +33,45 @@ export function absoluteTime(
 }
 
 /**
+ * The short form a person reads at a glance: "Today 14:03", "Yesterday 09:41",
+ * "Oct 20, 14:03" this year, "Oct 20, 2025" before it. No seconds, no zone —
+ * the exact instant stays one hover away (`absoluteTime`).
+ */
+export function compactTime(
+  ms: number,
+  opts: { locale?: string; timeZone?: string; now?: number } = {}
+): string {
+  const { locale, timeZone } = opts;
+  const now = opts.now ?? Date.now();
+  const day = (t: number) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(t);
+  const clock = new Intl.DateTimeFormat(locale, {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(ms);
+  if (day(ms) === day(now)) return `Today ${clock}`;
+  if (day(ms) === day(now - DAY)) return `Yesterday ${clock}`;
+  const year = (t: number) =>
+    new Intl.DateTimeFormat('en', { timeZone, year: 'numeric' }).format(t);
+  if (year(ms) === year(now)) {
+    const date = new Intl.DateTimeFormat(locale, {
+      timeZone,
+      month: 'short',
+      day: 'numeric',
+    }).format(ms);
+    return `${date}, ${clock}`;
+  }
+  return new Intl.DateTimeFormat(locale, { timeZone, dateStyle: 'medium' }).format(ms);
+}
+
+/**
  * Epoch milliseconds for an API timestamp, or `undefined` when there is
  * nothing real to show. A zero or negative time is the API's "never", not 1970.
  */
@@ -41,4 +80,10 @@ export function parseTime(value: string | number | Date | null | undefined): num
   const ms =
     value instanceof Date ? value.getTime() : typeof value === 'number' ? value : Date.parse(value);
   return Number.isFinite(ms) && ms > 0 ? ms : undefined;
+}
+
+/** `compactTime` for any API timestamp, or a dash when there is nothing real to show. */
+export function shortTime(value: string | number | Date | null | undefined): string {
+  const ms = parseTime(value);
+  return ms === undefined ? '—' : compactTime(ms);
 }

@@ -48,14 +48,18 @@ beforeEach(() => {
 });
 
 describe('ReleaseGates', () => {
-  it('says the app still stops on platform signals without gates, labelled preview', () => {
+  it('says rollouts still stop on built-in signals without checks, labelled preview', async () => {
     render(<ReleaseGates slug="shop" />);
-    const panel = screen.getByRole('region', { name: 'Release gates' });
-    expect(panel).toHaveTextContent('Preview');
-    expect(panel).toHaveTextContent(/shop has no release gates.*5xx/);
+    const card = screen.getByRole('region', { name: 'Rollout checks' });
+    expect(card).toHaveTextContent('Preview');
+    expect(card).toHaveTextContent('Built-in only');
+    expect(card).toHaveTextContent(/Rollouts stop on server errors, slow responses, crashes/);
+    expect(screen.queryByRole('form', { name: 'New release gate' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'About rollout checks' }));
+    expect(await screen.findByText(/Also called release gates/)).toBeInTheDocument();
   });
 
-  it('lists each gate with what it fails on', () => {
+  it('lists each check with what it stops on, the name and kind quieter', () => {
     m.gates = [
       gate(),
       gate({
@@ -67,19 +71,40 @@ describe('ReleaseGates', () => {
       }),
     ];
     render(<ReleaseGates slug="shop" />);
-    expect(screen.getByText('Fails on: SLO checkout burning faster than 10×')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Rollout checks' })).toHaveTextContent(
+      'Rollouts also stop when any of your 2 checks fails.'
+    );
+    expect(screen.getByText('Stops on SLO checkout burning faster than 10×')).toBeInTheDocument();
     expect(
-      screen.getByText('Fails on: orders drops more than 30% from before the rollout')
+      screen.getByText('Stops on orders drops more than 30% from before the rollout')
     ).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Rollout checks' })).toHaveTextContent(
+      'orders-drop · Metric change'
+    );
+  });
+
+  it('keeps minimum samples under Advanced', async () => {
+    render(<ReleaseGates slug="shop" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
+    const form = screen.getByRole('form', { name: 'New release gate' });
+    expect(within(form).getByLabelText('Minimum samples')).not.toBeVisible();
+    await userEvent.type(within(form).getByLabelText('Name'), 'checkout-slo');
+    await userEvent.type(within(form).getByLabelText('SLO'), 'checkout');
+    await userEvent.click(within(form).getByText('Advanced'));
+    await userEvent.type(within(form).getByLabelText('Minimum samples'), '50');
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
+    await waitFor(() =>
+      expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ min_samples: 50 }))
+    );
   });
 
   it('adds an SLO gate with only its own fields', async () => {
     render(<ReleaseGates slug="shop" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
     const form = screen.getByRole('form', { name: 'New release gate' });
     await userEvent.type(within(form).getByLabelText('Name'), 'checkout-slo');
     await userEvent.type(within(form).getByLabelText('SLO'), 'checkout');
-    await userEvent.click(within(form).getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
     await waitFor(() =>
       expect(m.create).toHaveBeenCalledWith({
         name: 'checkout-slo',
@@ -92,12 +117,12 @@ describe('ReleaseGates', () => {
 
   it('adds a metric-change gate and a synthetic gate with their defaults', async () => {
     render(<ReleaseGates slug="shop" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
     let form = screen.getByRole('form', { name: 'New release gate' });
     await userEvent.type(within(form).getByLabelText('Name'), 'orders-drop');
     await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'metric_change');
     await userEvent.type(within(form).getByLabelText('Custom metric'), 'orders_per_minute');
-    await userEvent.click(within(form).getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
     await waitFor(() =>
       expect(m.create).toHaveBeenLastCalledWith({
         name: 'orders-drop',
@@ -107,12 +132,16 @@ describe('ReleaseGates', () => {
         max_change_percent: 30,
       })
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Add gate' }));
-    form = screen.getByRole('form', { name: 'New release gate' });
+    // The sheet closes on success; the next check opens a fresh one.
+    await waitFor(() =>
+      expect(screen.queryByRole('form', { name: 'New release gate' })).not.toBeInTheDocument()
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
+    form = await screen.findByRole('form', { name: 'New release gate' });
     await userEvent.type(within(form).getByLabelText('Name'), 'probe');
     await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'synthetic');
     await userEvent.type(within(form).getByLabelText('Synthetic check'), 'health');
-    await userEvent.click(within(form).getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
     await waitFor(() =>
       expect(m.create).toHaveBeenLastCalledWith({
         name: 'probe',
@@ -125,10 +154,10 @@ describe('ReleaseGates', () => {
 
   it('refuses a name apid would refuse before sending', async () => {
     render(<ReleaseGates slug="shop" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
     const form = screen.getByRole('form', { name: 'New release gate' });
     await userEvent.type(within(form).getByLabelText('Name'), 'Bad Name');
-    await userEvent.click(within(form).getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
     expect(within(form).getByText(/Lowercase letters/)).toBeInTheDocument();
     expect(m.create).not.toHaveBeenCalled();
   });
@@ -138,19 +167,19 @@ describe('ReleaseGates', () => {
       new ApiError({ status: 409, code: 'release_gate_limit', title: 'x' })
     );
     render(<ReleaseGates slug="shop" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Add gate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a check' }));
     const form = screen.getByRole('form', { name: 'New release gate' });
     await userEvent.type(within(form).getByLabelText('Name'), 'one-more');
     await userEvent.type(within(form).getByLabelText('SLO'), 'checkout');
-    await userEvent.click(within(form).getByRole('button', { name: 'Add gate' }));
-    expect(await within(form).findByRole('alert')).toHaveTextContent(/at most 10 gates/);
+    await userEvent.click(within(form).getByRole('button', { name: 'Add check' }));
+    expect(await within(form).findByRole('alert')).toHaveTextContent(/at most 10 checks/);
   });
 
   it('removes a gate only after saying rollouts stop judging it', async () => {
     m.gates = [gate()];
     render(<ReleaseGates slug="shop" />);
     m.confirm.mockResolvedValueOnce(false);
-    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove checkout-slo' }));
     expect(m.remove).not.toHaveBeenCalled();
     expect(m.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,7 +187,7 @@ describe('ReleaseGates', () => {
         description: expect.stringMatching(/stop judging it/),
       })
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove checkout-slo' }));
     await waitFor(() => expect(m.remove).toHaveBeenCalledWith('checkout-slo'));
   });
 });

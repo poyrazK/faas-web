@@ -278,7 +278,7 @@ function ConsumerDetailBody({
         onRetry={() => void recipients.refetch()}
       />
       {list.length > 0 && (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-border well rounded-xl bg-muted/40">
           {list.map((r) => {
             const key = `${r.event_source}\u0000${r.event_id}`;
             const expanded = open?.event_source === r.event_source && open.event_id === r.event_id;

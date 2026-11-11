@@ -53,7 +53,7 @@ function LogTextFilter({ value, onApply }: { value: string; onApply: (value: str
         onChange={(e) => setDraft(e.target.value)}
         maxLength={2048}
         placeholder="grep… (press Enter)"
-        className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50"
+        className="h-9 w-full surface rounded-[1.25rem] bg-card pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50"
       />
     </form>
   );
@@ -160,11 +160,7 @@ export function LogsBody({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div
-          role="group"
-          aria-label="Source"
-          className="flex rounded-md border border-border p-0.5"
-        >
+        <div role="group" aria-label="Source" className="flex well rounded-xl bg-muted/40 p-0.5">
           {(['live', 'archive'] as const).map((m) => (
             <button
               key={m}
@@ -187,7 +183,7 @@ export function LogsBody({
 
         {/* Filtered server-side, so a narrower level is less traffic, not just
             less on screen. */}
-        <div role="group" aria-label="Level" className="flex rounded-md border border-border p-0.5">
+        <div role="group" aria-label="Level" className="flex well rounded-xl bg-muted/40 p-0.5">
           {(['', ...LOG_LEVELS] as const).map((value) => (
             <button
               key={value || 'all'}
@@ -224,7 +220,7 @@ export function LogsBody({
                 value={chosenInstance}
                 onChange={(e) => update({ instance: e.target.value })}
                 aria-label="Instance to read"
-                className="h-9 max-w-44 rounded-md border border-border bg-card px-2.5 font-mono text-xs outline-none focus:border-brand/50"
+                className="h-9 max-w-44 surface rounded-[1.25rem] bg-card px-2.5 font-mono text-xs outline-none focus:border-brand/50"
               >
                 {instance && !instances.data?.some((i) => i.id === instance) && (
                   <option value={instance}>{instance.slice(0, 12)}… · historical instance</option>
@@ -252,7 +248,7 @@ export function LogsBody({
                   if (e.target.value) update({ date: e.target.value });
                 }}
                 aria-label="Archive date"
-                className="h-9 rounded-md border border-border bg-card px-2.5 text-sm outline-none focus:border-brand/50"
+                className="h-9 surface rounded-[1.25rem] bg-card px-2.5 text-sm outline-none focus:border-brand/50"
               />
             </label>
           </>
@@ -337,7 +333,7 @@ export function LogsBody({
       )}
 
       {mode === 'archive' && !archiveAllowed ? (
-        <div className="rounded-xl border border-border bg-card p-6">
+        <div className="surface rounded-[1.25rem] bg-card p-6">
           <p className="text-sm font-medium">Log archive is not on the free plan</p>
           <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
             Past days need Hobby or above: 7 days on Hobby, 30 on Pro, 90 on Scale.
@@ -368,7 +364,7 @@ export function LogsBody({
           }
         />
       ) : (
-        <div className="relative overflow-hidden rounded-xl border border-border bg-card">
+        <div className="relative overflow-hidden surface rounded-[1.25rem] bg-card">
           <div
             ref={viewportRef}
             onScroll={onScroll}
@@ -407,7 +403,7 @@ export function LogsBody({
             <button
               type="button"
               onClick={jumpToLive}
-              className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-popover px-3 py-1.5 text-xs shadow-lg transition-colors hover:border-border-secondary"
+              className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-popover px-3 py-1.5 text-xs shadow-lg transition-colors hover:border-border-secondary"
             >
               <ArrowDown className="h-3.5 w-3.5" />
               {unseen > 0 ? `${unseen} new ${unseen === 1 ? 'line' : 'lines'}` : 'Jump to live'}

@@ -92,7 +92,7 @@ export function NewAppChooser({
     );
   };
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:p-6">
+    <div className="flex flex-col gap-2 surface rounded-[1.25rem] bg-card p-4 sm:p-6">
       <div className="mb-3">
         <h2 className="text-base font-semibold">What are you starting with?</h2>
         <p className="mt-1 text-sm leading-relaxed text-muted-foreground">

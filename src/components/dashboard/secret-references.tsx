@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/lib/auth';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useProjectEnvironments, useProjectMembership, validEnvironment } from '@/lib/api/projects';
@@ -16,6 +17,8 @@ import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { Sheet } from './kit/sheet';
+import { HelpTip } from './kit/help-tip';
+import { DANGER_ITEM, Lead, RowMenu } from './environment-parts';
 
 /** ValidateEnvKey in faas pkg/api/env.go. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
@@ -65,9 +68,10 @@ export function SecretReferences({ slug }: { slug: string }) {
   return (
     <Panel
       title="Secret references"
-      help="Changes apply on the next cold wake; running instances keep what they booted with."
+      help="A reference delivers one of this app's sealed secrets in one environment under another variable name. It never reaches another app, the project's shared secrets, or an outside store. Changes apply on the next cold wake; running instances keep what they booted with."
     >
       <div className="flex flex-col gap-4 text-sm">
+        <Lead>Deliver one of this app’s secrets under another variable name, per environment.</Lead>
         <InlinePhase
           phase={phase}
           error={membership.list.error ?? membership.details.find((d) => d.error)?.error}
@@ -317,22 +321,28 @@ function EnvironmentReferences({
   return (
     <>
       {entries.length ? (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {entries.map(([destination, reference]) => (
-            <li key={destination} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
-              <span className="font-mono text-xs">{destination}</span>
-              <span className="text-xs text-muted-foreground">from</span>
-              <span className="font-mono text-xs text-muted-foreground">
-                {reference.replace(/^secret:/, '')}
+            <li key={destination} className="flex items-center gap-2 py-1 pr-1.5 pl-3">
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="font-mono text-xs [overflow-wrap:anywhere]">{destination}</span>
+                <span aria-hidden="true" className="text-muted-foreground">
+                  ←
+                </span>
+                <span className="sr-only">from</span>
+                <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                  {reference.replace(/^secret:/, '')}
+                </span>
               </span>
-              <button
-                type="button"
-                aria-label={`Remove reference ${destination}`}
-                onClick={() => void removeReference(destination, reference)}
-                className="ml-auto text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <Trash className="h-3.5 w-3.5" />
-              </button>
+              <RowMenu label={`Actions for reference ${destination}`}>
+                <DropdownMenuItem
+                  className={DANGER_ITEM}
+                  onSelect={() => void removeReference(destination, reference)}
+                >
+                  <Trash aria-hidden="true" className="size-4" />
+                  Remove reference
+                </DropdownMenuItem>
+              </RowMenu>
             </li>
           ))}
         </ul>
@@ -341,43 +351,48 @@ function EnvironmentReferences({
       )}
 
       {suppressed.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground">
-            Not delivered in {environment}: these were removed, so the main workload no longer
-            receives them, even under their own names. Sidecars keep their own grants.
+        <div className="flex flex-col gap-1.5">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            <span>
+              {suppressed.map((name, i) => (
+                <span key={name}>
+                  {i > 0 && (i === suppressed.length - 1 ? ' and ' : ', ')}
+                  <span className="font-mono text-xs">{name}</span>
+                </span>
+              ))}{' '}
+              {suppressed.length === 1 ? 'isn’t' : 'aren’t'} delivered in {environment} any more.
+            </span>
+            <HelpTip label="About keys that are no longer delivered">
+              Removing a reference stops the main workload receiving that name, even from a secret
+              with the same name. Sidecars keep their own grants. Deliver it again to restore it.
+            </HelpTip>
           </p>
-          <ul className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
             {suppressed.map((name) => (
-              <li
+              <button
                 key={name}
-                className="flex items-center gap-2 rounded-md border border-border px-2 py-1"
+                type="button"
+                aria-label={`Deliver ${name} again`}
+                onClick={() => deliverAgain(name)}
+                className="pressable w-fit rounded text-[13px] text-brand underline underline-offset-4"
               >
-                <span className="font-mono text-xs">{name}</span>
-                <button
-                  type="button"
-                  aria-label={`Deliver ${name} again`}
-                  onClick={() => deliverAgain(name)}
-                  className="text-xs text-brand underline underline-offset-4"
-                >
-                  Deliver again
-                </button>
-              </li>
+                {suppressed.length === 1 ? 'Deliver again' : `Deliver ${name} again`}
+              </button>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
       {data && (
         <p className="text-xs text-muted-foreground">
-          {data.count} of {data.quota} variables and references used across all environments.
+          {data.count} of {data.quota} variable and reference slots used across environments.
         </p>
       )}
 
       {sheet}
       {sources.isSuccess && names.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No secrets are set in {environment} yet. A reference can only name one, so set it there
-          first:{' '}
+          {environment} has no secrets yet, and a reference needs one. Set it first:{' '}
           <code className="font-mono text-foreground">
             gregale env set --app {slug} --env {environment} NAME=value
           </code>

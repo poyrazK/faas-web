@@ -10,6 +10,8 @@ import {
   useAutomationSteps,
   useAutomationAttempts,
 } from '@/lib/api/automations';
+import { Timestamp } from '@/components/ui/timestamp';
+import { shortTime } from '@/lib/time';
 
 export function AutomationRuns({
   account,
@@ -52,7 +54,7 @@ export function AutomationRuns({
     {
       key: 'created_at',
       label: 'Created',
-      render: (run) => new Date(run.created_at).toLocaleString(),
+      render: (run) => shortTime(run.created_at),
     },
   ];
   return (
@@ -128,15 +130,23 @@ function RunDetail({
             <div className="flex flex-wrap gap-5 text-sm">
               <AutomationStatus status={run.cancelled_at ? 'cancelled' : run.status} />
               <span className="font-mono text-xs">{id}</span>
-              <span>Created: {new Date(run.created_at).toLocaleString()}</span>
-              {run.started_at && <span>Started: {new Date(run.started_at).toLocaleString()}</span>}
+              <span>
+                Created: <Timestamp value={run.created_at} mode="absolute" />
+              </span>
+              {run.started_at && (
+                <span>
+                  Started: <Timestamp value={run.started_at} mode="absolute" />
+                </span>
+              )}
               {run.finished_at && (
-                <span>Finished: {new Date(run.finished_at).toLocaleString()}</span>
+                <span>
+                  Finished: <Timestamp value={run.finished_at} mode="absolute" />
+                </span>
               )}
             </div>
             {run.last_error && (
               <p
-                className="rounded-md border border-border p-3 text-sm"
+                className="well rounded-xl bg-muted/40 p-3 text-sm"
                 style={{ color: 'var(--status-critical)' }}
               >
                 {run.last_error}
@@ -204,7 +214,7 @@ function StepDetails({
   const attempts = useAutomationAttempts(account, slug, open ? id : '', open ? step.step_name : '');
   return (
     <details
-      className="rounded-lg border border-border p-4"
+      className="well rounded-xl bg-muted/40 p-4"
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
@@ -253,12 +263,14 @@ function StepDetails({
           />
           {!attempts.error &&
             attempts.data?.attempts.map((attempt) => (
-              <div key={attempt.attempt} className="rounded-md border border-border p-3 text-xs">
+              <div key={attempt.attempt} className="well rounded-xl bg-muted/40 p-3 text-xs">
                 <p className="flex flex-wrap items-center gap-3">
                   <span>Attempt {attempt.attempt}</span>
                   <AutomationStatus status={attempt.status} />
                   {attempt.http_status && <span>HTTP {attempt.http_status}</span>}
-                  <time>{new Date(attempt.started_at).toLocaleString()}</time>
+                  <time>
+                    <Timestamp value={attempt.started_at} mode="absolute" />
+                  </time>
                 </p>
                 {attempt.error && (
                   <p className="mt-2" style={{ color: 'var(--status-critical)' }}>

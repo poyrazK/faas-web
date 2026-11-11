@@ -33,6 +33,12 @@ vi.mock('@/lib/api/notification-channels', () => ({
   }),
 }));
 vi.mock('@/lib/api/capabilities', () => ({ useCapabilityStage: () => 'Preview' }));
+vi.mock('@/lib/api/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/queries')>()),
+  useAppDeployments: () => ({
+    data: { pages: [{ items: [{ id: 'd'.repeat(32), revision: 44 }] }] },
+  }),
+}));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: m.toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => m.confirm }));
 
@@ -162,17 +168,21 @@ describe('ReleaseApproval', () => {
 });
 
 describe('ReleaseApprovals (policy)', () => {
-  it('requires approvals after a confirmation that names the stage, approvers and timeout', async () => {
+  it('requires approvals from a sheet, after a confirmation that names the stage, approvers and timeout', async () => {
     render(<ReleaseApprovals slug="shop" />);
-    expect(screen.getByText('shop does not require approvals.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Require approvals' }));
-    const form = screen.getByRole('form', { name: 'Approval policy' });
-    await userEvent.click(within(form).getByRole('button', { name: 'Require approvals' }));
+    expect(screen.getByText('New versions don’t wait for anyone’s approval.')).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Approval policy' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Require approval' }));
+    const sheet = screen.getByRole('dialog', { name: 'Require approval for shop' });
+    const form = within(sheet).getByRole('form', { name: 'Approval policy' });
+    // Where the rollout pauses and the timeout sit under Advanced.
+    expect(within(form).getByLabelText('Wait at canary stage')).not.toBeVisible();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Require approvals' }));
     expect(within(form).getByText(/Name at least one channel/)).toBeInTheDocument();
     await userEvent.click(within(form).getByLabelText(/releases/));
     await userEvent.clear(within(form).getByLabelText('People who must approve'));
     await userEvent.type(within(form).getByLabelText('People who must approve'), '2');
-    await userEvent.click(within(form).getByRole('button', { name: 'Require approvals' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Require approvals' }));
     expect(m.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Require release approvals for shop?',
@@ -193,17 +203,33 @@ describe('ReleaseApprovals (policy)', () => {
     );
   });
 
+  it('opens Advanced when one of its fields is refused', async () => {
+    render(<ReleaseApprovals slug="shop" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Require approval' }));
+    const sheet = screen.getByRole('dialog');
+    await userEvent.click(within(sheet).getByLabelText(/releases/));
+    const stage = within(sheet).getByLabelText('Wait at canary stage');
+    await userEvent.click(within(sheet).getByText('Advanced'));
+    await userEvent.clear(stage);
+    await userEvent.type(stage, '11');
+    await userEvent.click(within(sheet).getByText('Advanced'));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Require approvals' }));
+    expect(stage).toBeVisible();
+    expect(within(sheet).getByText('A stage from 1 to 10.')).toBeInTheDocument();
+    expect(m.confirm).not.toHaveBeenCalled();
+  });
+
   it('explains a plan without canaries', async () => {
     m.save.mockRejectedValueOnce(problem(403, 'plan_traffic_split_not_allowed'));
     render(<ReleaseApprovals slug="shop" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Require approvals' }));
-    const form = screen.getByRole('form', { name: 'Approval policy' });
-    await userEvent.click(within(form).getByLabelText(/releases/));
-    await userEvent.click(within(form).getByRole('button', { name: 'Require approvals' }));
-    expect(await within(form).findByRole('alert')).toHaveTextContent(/Pro or Scale/);
+    await userEvent.click(screen.getByRole('button', { name: 'Require approval' }));
+    const sheet = screen.getByRole('dialog');
+    await userEvent.click(within(sheet).getByLabelText(/releases/));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Require approvals' }));
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(/Pro or Scale/);
   });
 
-  it('removes a policy after saying waiting releases continue', async () => {
+  it('says what the policy does, lists waiting versions by name, and removes it from the sheet', async () => {
     m.policy = {
       app: 'shop',
       required_approvals: 1,
@@ -218,12 +244,22 @@ describe('ReleaseApprovals (policy)', () => {
     };
     m.waiting = [waiting()];
     render(<ReleaseApprovals slug="shop" />);
-    expect(screen.getByText(/1 from owners, admins and developers/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review and decide' })).toHaveAttribute(
+    const card = screen.getByRole('region', { name: 'Approvals' });
+    expect(card).toHaveTextContent(
+      'New versions pause partway through their rollout until an owner, admin or developer approves them.'
+    );
+    expect(card).toHaveTextContent('Waiting');
+    // The stage, timeout and channels are one click away.
+    expect(screen.getByText('Canary stage 2')).not.toBeVisible();
+    await userEvent.click(screen.getByText('Show details'));
+    expect(screen.getByText('Canary stage 2')).toBeVisible();
+    expect(screen.getByText('4 h, then the version is rolled back')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Review v44' })).toHaveAttribute(
       'href',
       `/dashboard/releases/${'d'.repeat(32)}/approval`
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Change approval' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Stop requiring approval' }));
     expect(m.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         destructive: true,

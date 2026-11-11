@@ -125,7 +125,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
         onRetry={() => void cards.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {cards.data?.map((c) => (
             <li key={c.id} className="flex flex-col gap-1 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -160,7 +160,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
         </ul>
       )}
       <form
-        className="flex flex-col gap-3 rounded-lg border border-border p-4"
+        className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
         onSubmit={(e) => void submit(e)}
         noValidate
       >
@@ -514,7 +514,7 @@ function TenantStatementDetail({
   const appNames = useAppNames();
   const notRecorded = handoff.error instanceof ApiError && handoff.error.code === 'not_found';
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <p className="text-sm font-medium">
         Revision {statement.revision} · {formatPeriod(statement.period_start, statement.period_end)}
       </p>

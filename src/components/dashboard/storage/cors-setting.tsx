@@ -211,7 +211,7 @@ function CorsRuleFields({
   return (
     <fieldset
       aria-describedby={problems.length ? errorId : undefined}
-      className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-4"
+      className="flex min-w-0 flex-col gap-3 well rounded-xl bg-muted/40 p-4"
     >
       <legend className="px-1 text-xs font-medium">{name}</legend>
       <div className="flex flex-wrap items-end gap-3">

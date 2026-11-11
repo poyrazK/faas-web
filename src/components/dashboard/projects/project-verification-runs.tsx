@@ -81,7 +81,7 @@ export function ProjectVerificationRuns({ accountId, project, environment }: Pro
           <>
             <ul
               aria-label="Graph verification runs"
-              className="divide-y divide-border rounded-lg border border-border"
+              className="divide-y divide-border well rounded-xl bg-muted/40"
             >
               {rows.map((row) => (
                 <li
@@ -233,7 +233,7 @@ function GraphRunDetail({ accountId, project, environment, runId }: Props & { ru
   return (
     <section
       aria-label={`Graph run ${short(runId)}`}
-      className="space-y-4 rounded-lg border border-border p-4"
+      className="space-y-4 well rounded-xl bg-muted/40 p-4"
     >
       <InlinePhase
         phase={phase}
@@ -367,7 +367,7 @@ function MemberRun({
       </div>
       <ol
         aria-label={`${app} steps`}
-        className="divide-y divide-border rounded-lg border border-border"
+        className="divide-y divide-border well rounded-xl bg-muted/40"
       >
         {member.steps.map((step: VerificationRunStep, index) => (
           <StepRow

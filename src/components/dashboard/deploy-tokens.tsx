@@ -323,7 +323,7 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
           </ul>
         )}
 
-        <div className="flex flex-col gap-2 rounded-lg border border-border p-4">
+        <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-4">
           <p className="text-sm font-medium">Use it in CI</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Store the token as <code className="font-mono">FAAS_TOKEN</code> in the CI secret store;

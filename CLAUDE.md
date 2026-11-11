@@ -128,7 +128,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   not mean `npm run check` passes — run the latter before claiming done.
 - **Sign in with a real email and password.** The `123456` demo code is gone —
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
-- **Use concise, plain English.** Show essential scope and effects in place;
+- **Use concise, plain English** — and follow `docs/console-plain-english.md`
+  (answer first, one obvious action, plain words before technical terms, detail
+  on request, change over time as a picture). Show essential scope and effects in place;
   secondary technical details can go in `help` or an expandable section. Edge
   rule rows lead with their saved outcome and values, including paused and log-only
   states. Open the row for technical settings; keep generic kind descriptions inside
@@ -140,8 +142,12 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   discard invalid JSON on collapse or silently save its last valid value. Creation
   defaults to every path on the selected app; the preview must show custom scope,
   paused/log-only behavior and the effective validation mode.
-  Preserve the seven-source New app wizard and its deployment recovery. Overview
-  and app Metrics use the customizable `AnalyticsGrid`. Metric cards open the
+  Preserve the seven-source New app wizard and its deployment recovery. App
+  Metrics uses the customizable `AnalyticsGrid`; the Overview keeps its greeting,
+  search and columns, and its Analytics section is six number cards
+  (`components/dashboard/overview-analytics/`): requests, error rate and wake
+  p95 from `/v1/apps/metrics` under one range, memory now from instances, and
+  GB-hours and CPU from the usage summary. Scalars stay numbers, never lines. Metric cards open the
   URL-backed `MetricInspectorProvider` without changing the underlying route.
   Drag handles and menus remain separate from the card's detail button. Sidebar
   disclosures, the foil New app control, and profile rim retain main's motion

@@ -347,7 +347,7 @@ function ImportFlow({ slug }: { slug: string }) {
         </div>
 
         {preview && (
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
             <p className="text-sm">
               OpenAPI {preview.version}, {preview.endpoints} endpoint
               {preview.endpoints === 1 ? '' : 's'}.{' '}

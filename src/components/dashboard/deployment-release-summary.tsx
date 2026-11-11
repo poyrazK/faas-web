@@ -57,7 +57,7 @@ export function DeploymentReleaseSummary({
   }
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="label-mono text-muted-foreground">Release summary</p>
@@ -111,7 +111,7 @@ function SummaryBody({ summary }: { summary: DeploymentSummary }) {
       {summary.changes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No non-secret release fields changed.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="overflow-x-auto well rounded-xl bg-muted/40">
           <table className="w-full min-w-[34rem] text-left text-xs">
             <thead className="bg-muted text-muted-foreground">
               <tr>

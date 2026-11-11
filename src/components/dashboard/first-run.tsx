@@ -74,7 +74,7 @@ export function FirstRun() {
             >
               <span
                 aria-hidden
-                className="label-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground"
+                className="label-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
               >
                 {i + 1}
               </span>

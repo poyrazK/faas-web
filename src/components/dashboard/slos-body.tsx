@@ -438,7 +438,7 @@ function SloAlerts({ slug, slo }: { slug: string; slo: SLO }) {
         />
       )}
       {adding && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
           <p className="text-xs text-muted-foreground">
             Starts as the fast-burn page: it fires only when both the last hour and the last six
             hours burn at more than 14.4× the sustainable rate. For a slow leak, pick “SLO budget

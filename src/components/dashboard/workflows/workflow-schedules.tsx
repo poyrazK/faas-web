@@ -185,7 +185,7 @@ function Schedules({ slug, onOpenRun }: { slug: string; onOpenRun: (id: string) 
         {reason && (
           <p
             role="status"
-            className="mb-4 rounded-md border border-border p-3 text-sm"
+            className="mb-4 well rounded-xl bg-muted/40 p-3 text-sm"
             style={{ color: 'var(--status-warning)' }}
           >
             {UNAVAILABLE[reason]}
@@ -247,7 +247,7 @@ function SchedulePreview({
       />
       {p && (
         <>
-          <ol className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+          <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
             {p.upcoming.map((f) => (
               <li
                 key={f.scheduled_for}

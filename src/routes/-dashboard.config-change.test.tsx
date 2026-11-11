@@ -32,7 +32,7 @@ function mount(children: ReactNode) {
 
 async function fill(name: string, value: string) {
   await userEvent.click(
-    screen.getByRole('button', { name: name === 'env' ? 'Set variable' : 'Set secret' })
+    screen.getByRole('button', { name: name === 'env' ? 'Add variable' : 'Add secret' })
   );
   const sheet = await screen.findByRole('dialog');
   await userEvent.type(

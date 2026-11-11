@@ -76,7 +76,7 @@ import { McpGuidance } from '@/components/dashboard/mcp-guidance';
 import { Swap } from '@/components/dashboard/motion';
 import { AlertsBody } from '@/components/dashboard/pages/alerts';
 import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
-import { EnvBody } from '@/components/dashboard/pages/env';
+import { EnvBody, EnvironmentSummary } from '@/components/dashboard/pages/env';
 import { LogsBody } from '@/components/dashboard/pages/logs';
 import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
 import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
@@ -494,6 +494,7 @@ function FunctionDetailPage() {
                     paidAccess ? (
                       <AppAnalyticsPreview
                         slug={fn.id}
+                        heading="Traffic"
                         since={search.analyticsSince ?? '24h'}
                         onSinceChange={(value) =>
                           void navigate({
@@ -509,6 +510,8 @@ function FunctionDetailPage() {
                     ) : undefined
                   }
                   app={fn}
+                  slug={fn.id}
+                  analyticsSince={search.analyticsSince ?? '24h'}
                   releases={releases}
                   metrics={metrics}
                   metricsAccess={
@@ -612,7 +615,7 @@ function FunctionDetailPage() {
                         resetScroll: false,
                       })
                     }
-                    actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                    cleanup={<ClearObsoleteDeploymentsButton slug={fn.id} />}
                   />
                   <DeploymentAliasesPanel
                     slug={fn.id}
@@ -749,13 +752,14 @@ function FunctionDetailPage() {
               )}
               {tab === 'Environment' && (
                 <>
+                  <EnvironmentSummary slug={fn.id} />
                   <EnvironmentSection title="Variables">
                     <EnvBody
                       slug={fn.id}
                       header={(actions) => (
                         <SectionHeading
                           title="Variables"
-                          help="Read at start. Values are visible to anyone with access to this app."
+                          help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
                           actions={actions}
                         />
                       )}
@@ -767,7 +771,7 @@ function FunctionDetailPage() {
                       header={(actions) => (
                         <SectionHeading
                           title="Secrets"
-                          help="Sealed and write-only: a value can be replaced or rotated, never read back."
+                          help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
                           actions={actions}
                         />
                       )}
@@ -776,7 +780,7 @@ function FunctionDetailPage() {
                   <EnvironmentSection title="History">
                     <SectionHeading
                       title="History"
-                      help="Every change is a revision you can roll back to. The config guard undoes a change that breaks the app."
+                      help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
                     />
                     <ConfigHistory slug={fn.id} />
                   </EnvironmentSection>

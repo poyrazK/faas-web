@@ -7,6 +7,7 @@ import { IssueReportingSetup } from './issue-reporting-setup';
 import { HelpTip } from './kit/help-tip';
 import type { IssueSearch } from './issues-search';
 import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
 
 type Props = {
   accountId: string;
@@ -165,7 +166,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               and a valid reporting token.
             </p>
           ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
+            <ul className="divide-y divide-border well rounded-xl bg-muted/40">
               {items.map((item) => (
                 <li
                   key={item.id}
@@ -191,7 +192,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                     )}
                   </div>
                   <time className="text-xs text-muted-foreground" dateTime={item.last_seen_at}>
-                    {new Date(item.last_seen_at).toLocaleString()}
+                    <Timestamp value={item.last_seen_at} mode="absolute" />
                   </time>
                 </li>
               ))}

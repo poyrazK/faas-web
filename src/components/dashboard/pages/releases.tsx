@@ -317,7 +317,7 @@ export function DeploymentsPage() {
                 aria-label="Status filter"
                 value={search.status ?? ''}
                 onChange={(event) => select({ status: event.target.value || undefined }, true)}
-                className="h-9 max-w-full rounded-md border border-border bg-card px-3 text-xs"
+                className="h-9 max-w-full surface rounded-[1.25rem] bg-card px-3 text-xs"
               >
                 <option value="">
                   {view === 'builds' ? 'All build states' : 'All deployment states'}
@@ -341,7 +341,7 @@ export function DeploymentsPage() {
                 aria-label="Source filter"
                 value={search.kind ?? ''}
                 onChange={(event) => select({ kind: event.target.value || undefined }, true)}
-                className="h-9 rounded-md border border-border bg-card px-3 text-xs"
+                className="h-9 surface rounded-[1.25rem] bg-card px-3 text-xs"
               >
                 <option value="">All sources</option>
                 {['github', 'tarball', 'railpack', 'dockerfile'].map((kind) => (

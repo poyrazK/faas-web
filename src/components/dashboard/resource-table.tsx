@@ -1,5 +1,5 @@
 import { useContext, useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, NavArrowDown, Search, Xmark } from 'iconoir-react';
+import { ArrowDown, NavArrowDown, Search, Xmark } from 'iconoir-react';
 import {
   EmptyState,
   ErrorState,
@@ -9,6 +9,7 @@ import {
   queryPhase,
 } from './primitives';
 import { cn } from '@/lib/utils';
+import './bento.css';
 import { IconButton } from '@/components/ui/icon-button';
 
 /** Enough to fill the fold without pretending to know the row count. */
@@ -183,7 +184,7 @@ export function ResourceTable<T extends { id: string }>({
         >
           {searchKeys?.length ? (
             <label className="relative flex min-w-56 flex-1 items-center sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3.5 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="search"
                 aria-label="Filter resources"
@@ -199,14 +200,14 @@ export function ResourceTable<T extends { id: string }>({
                   }
                 }}
                 placeholder={searchPlaceholder}
-                className="h-8 w-full rounded-md border border-border bg-card pl-8 pr-8 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-brand/50 [&::-webkit-search-cancel-button]:appearance-none"
+                className="rt-search h-9 w-full rounded-full bg-muted pl-9 pr-9 text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
               />
               {query && (
                 <IconButton
                   type="button"
                   aria-label="Clear filter"
                   onClick={() => setQuery('')}
-                  className="pressable absolute right-2 rounded p-1 text-muted-foreground hover:text-foreground"
+                  className="pressable absolute right-2.5 rounded-full p-1 text-muted-foreground hover:text-foreground"
                 >
                   <Xmark className="h-3.5 w-3.5" />
                 </IconButton>
@@ -218,7 +219,7 @@ export function ResourceTable<T extends { id: string }>({
               result count change instead of typing into silence. */}
           <span
             aria-live="polite"
-            className="ml-auto text-xs text-muted-foreground [font-variant-numeric:tabular-nums]"
+            className="ml-auto font-mono text-xs text-muted-foreground [font-variant-numeric:tabular-nums]"
           >
             {/* "0 of 0" while the read is still out states a count nobody has. */}
             {phase === 'loading' || phase === 'unreachable'
@@ -261,9 +262,7 @@ export function ResourceTable<T extends { id: string }>({
             }
           />
         ) : (
-          <div
-            className={cn('overflow-hidden bg-card', !flush && 'rounded-lg border border-border')}
-          >
+          <div className="rt" data-flush={flush || undefined}>
             {/* relative: the sr-only (absolute) header text is positioned inside
                 this box, so it is clipped with the table instead of widening the page. */}
             <div className="relative overflow-x-auto">
@@ -276,7 +275,7 @@ export function ResourceTable<T extends { id: string }>({
                 )}
               >
                 <thead>
-                  <tr className="border-b border-border bg-muted/30 text-left">
+                  <tr className="text-left">
                     {columns.map((col, index) => {
                       const isSorted = sort?.key === col.key;
                       return (
@@ -287,7 +286,7 @@ export function ResourceTable<T extends { id: string }>({
                             isSorted ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : 'none'
                           }
                           className={cn(
-                            'h-8 px-3 py-0 align-middle font-normal',
+                            'align-middle font-normal',
                             col.numeric && 'text-right',
                             col.width,
                             col.priority === 'secondary' && 'hidden md:table-cell'
@@ -296,24 +295,25 @@ export function ResourceTable<T extends { id: string }>({
                           {!col.label ? (
                             <span className="sr-only">Actions</span>
                           ) : col.sortable === false ? (
-                            <span className="label-mono text-muted-foreground">{col.label}</span>
+                            <span>{col.label}</span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => toggleSort(col)}
                               className={cn(
-                                'pressable label-mono inline-flex items-center gap-1 hover:text-foreground',
+                                'pressable inline-flex items-center gap-1 uppercase hover:text-foreground',
                                 col.numeric && 'flex-row-reverse',
                                 isSorted ? 'text-foreground' : 'text-muted-foreground'
                               )}
                             >
                               {col.label}
-                              {isSorted &&
-                                (sort!.dir === 'asc' ? (
-                                  <ArrowUp className="h-3 w-3" />
-                                ) : (
-                                  <ArrowDown className="h-3 w-3" />
-                                ))}
+                              {isSorted && (
+                                <ArrowDown
+                                  aria-hidden
+                                  className="rt-sort-arrow h-3 w-3"
+                                  data-dir={sort!.dir}
+                                />
+                              )}
                             </button>
                           )}
                         </th>
@@ -326,24 +326,21 @@ export function ResourceTable<T extends { id: string }>({
                     )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {phase === 'loading'
                     ? Array.from({ length: SKELETON_ROWS }, (_, i) => (
                         <tr key={`skeleton-${i}`} aria-hidden>
                           {columns.map((col, index) => (
                             <td
                               key={`${col.key}:${index}`}
-                              className={cn(
-                                'h-8 px-3 py-1.5',
-                                col.priority === 'secondary' && 'hidden md:table-cell'
-                              )}
+                              className={cn(col.priority === 'secondary' && 'hidden md:table-cell')}
                             >
                               <Skeleton
                                 className={cn('h-3.5', col.numeric ? 'ml-auto w-10' : 'w-24')}
                               />
                             </td>
                           ))}
-                          {rowActions && <td className="px-3 py-1.5" />}
+                          {rowActions && <td />}
                         </tr>
                       ))
                     : null}
@@ -371,22 +368,31 @@ export function ResourceTable<T extends { id: string }>({
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   onRowClick(row);
+                                  return;
+                                }
+                                // j/k or the arrows walk the rows; no motion on a
+                                // keyboard move, focus just lands.
+                                const step =
+                                  e.key === 'j' || e.key === 'ArrowDown'
+                                    ? 'nextElementSibling'
+                                    : e.key === 'k' || e.key === 'ArrowUp'
+                                      ? 'previousElementSibling'
+                                      : null;
+                                const next = step && e.currentTarget[step];
+                                if (next instanceof HTMLElement && next.dataset.clickable) {
+                                  e.preventDefault();
+                                  next.focus();
                                 }
                               }
                             : undefined
                         }
-                        className={cn(
-                          'hover:bg-muted/40',
-                          isNew && 'animate-row-arrive',
-                          onRowClick &&
-                            'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
-                        )}
+                        data-clickable={onRowClick ? true : undefined}
+                        className={cn(isNew && 'animate-row-arrive')}
                       >
                         {columns.map((col, index) => (
                           <td
                             key={`${col.key}:${index}`}
                             className={cn(
-                              'h-8 px-3 py-1.5',
                               secondary.length > 0 && '[overflow-wrap:anywhere]',
                               col.priority === 'secondary' && 'hidden md:table-cell',
                               col.numeric && 'text-right [font-variant-numeric:tabular-nums]'
@@ -444,7 +450,7 @@ export function ResourceTable<T extends { id: string }>({
                           </td>
                         ))}
                         {rowActions && (
-                          <td className="w-0 whitespace-nowrap px-3 py-1 text-right">
+                          <td className="w-0 whitespace-nowrap text-right" data-actions>
                             {/* The shield: controls in here act on the row's
                                 data, never as a click on the row. */}
                             <span
@@ -465,7 +471,7 @@ export function ResourceTable<T extends { id: string }>({
                         <button
                           type="button"
                           onClick={() => setShownCount((n) => n + PAGE_SIZE)}
-                          className="pressable w-full px-3 py-2 text-center text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                          className="pressable w-full px-3 py-3 text-center text-xs text-muted-foreground hover:text-foreground"
                         >
                           Show {Math.min(PAGE_SIZE, visible.length - shown.length)} more —{' '}
                           {visible.length - shown.length} not shown
@@ -483,17 +489,17 @@ export function ResourceTable<T extends { id: string }>({
   );
 }
 
-/** Small pill for enum-ish cells, coloured by a caller-supplied token. */
+/**
+ * A state for enum-ish cells: a dot and a word, coloured by a caller-supplied
+ * token. With no colour the dot is hollow — a neutral state (parked, pending)
+ * reads as present but quiet, the way a parked instance does on the Overview.
+ */
 export function Pill({ label, color }: { label: string; color?: string }) {
   return (
     <span
-      className={cn(
-        'inline-flex h-5 items-center whitespace-nowrap rounded border px-1.5 text-xs',
-        !color && 'border-border text-muted-foreground'
-      )}
-      style={
-        color ? { borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color } : undefined
-      }
+      className="rt-pill"
+      data-neutral={color ? undefined : true}
+      style={color ? { color } : undefined}
     >
       {label}
     </span>

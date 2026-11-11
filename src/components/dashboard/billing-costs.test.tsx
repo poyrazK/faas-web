@@ -193,8 +193,13 @@ describe('known usage cost', () => {
     expect(compute).toHaveTextContent('132 GB-hours');
     expect(compute).toHaveTextContent('$0.32');
     expect(compute).toHaveTextContent('Complete');
+    expect(screen.getByText(/November 2026 · as of/)).toBeVisible();
+    // The scope and the not-an-invoice caveat are one hover away.
+    await userEvent.click(screen.getByRole('button', { name: 'About known usage cost' }));
     expect(
-      screen.getByText(/Priced usage of compute and interface egress for November 2026 \(UTC\)/)
+      await screen.findByText(
+        /Priced usage of compute and interface egress for November 2026 \(UTC\)/
+      )
     ).toBeVisible();
     // The current month is read without a month, so the server decides it.
     expect(costCalls()[0][1]).toMatchObject({ params: { query: {} } });
@@ -218,7 +223,7 @@ describe('coverage gaps', () => {
     expect(gaps).toHaveTextContent('Missing minutes are not counted as zero usage');
     expect(within(gaps).queryByText(/Compute/)).toBeNull();
     // The headline says it is incomplete rather than presenting a whole figure.
-    expect(screen.getByText(/1 meter has a coverage gap/)).toBeVisible();
+    expect(screen.getByText('1 meter incomplete')).toBeVisible();
   });
 
   it('names unpriced usage and the retention start, and keeps the reported amount', async () => {
@@ -300,9 +305,9 @@ describe('month selector', () => {
     await waitFor(() =>
       expect(costCalls().at(-1)?.[1]).toMatchObject({ params: { query: { month: '2026-10' } } })
     );
-    expect(await screen.findByText(/for October 2026 \(UTC\)/)).toBeVisible();
+    expect(await screen.findByText(/October 2026 · as of/)).toBeVisible();
     await userEvent.selectOptions(select, 'November 2026 (current)');
-    expect(await screen.findByText(/for November 2026 \(UTC\)/)).toBeVisible();
+    expect(await screen.findByText(/November 2026 · as of/)).toBeVisible();
   });
 });
 

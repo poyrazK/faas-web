@@ -123,7 +123,7 @@ export function BindingsGateNotice({
   action: GatedAction;
 }) {
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+    <div role="alert" className="flex flex-col gap-2 well rounded-xl bg-muted/40 px-3 py-2">
       <p
         className="flex items-start gap-1.5 text-xs font-medium"
         style={{ color: 'var(--status-critical)' }}

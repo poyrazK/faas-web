@@ -282,7 +282,7 @@ function TaskArtifacts({
   };
 
   return (
-    <div className="mt-1 rounded-md border border-border">
+    <div className="mt-1 well rounded-xl bg-muted/40">
       <p className="label-mono border-b border-border px-3 py-1.5 text-muted-foreground">
         Artifacts
       </p>

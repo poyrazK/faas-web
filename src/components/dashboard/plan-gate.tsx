@@ -3,7 +3,7 @@ import { ArrowRight } from 'iconoir-react';
 
 export function PlanGate({ feature, description }: { feature: string; description: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6">
+    <div className="surface rounded-[1.25rem] bg-card p-6">
       <p className="text-sm font-medium">{feature} is available on Hobby and above</p>
       <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">{description}</p>
       <Link

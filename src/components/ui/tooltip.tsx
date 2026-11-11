@@ -34,7 +34,7 @@ export function Tooltip({
           side={side}
           sideOffset={sideOffset}
           className={cn(
-            'animate-pop-in z-[110] max-w-64 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-elevation-3'
+            'animate-pop-in origin-[var(--radix-tooltip-content-transform-origin)] data-[state=instant-open]:animate-none z-[110] max-w-64 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-elevation-3'
           )}
         >
           {content}

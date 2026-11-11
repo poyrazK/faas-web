@@ -8,6 +8,7 @@ import { CapabilityNotice } from './capability-notice';
 import { Panel } from './primitives';
 import { ServicePolicyEditor } from './service-policy-editor';
 import { ServiceWakeAhead } from './service-wake-ahead';
+import { Timestamp } from '@/components/ui/timestamp';
 
 export function ServiceBindings({ slug }: { slug: string }) {
   const { account } = useAuth();
@@ -148,7 +149,8 @@ export function ServiceBindings({ slug }: { slug: string }) {
           ) : inventory.data ? (
             <>
               <p>
-                Inventory collected {new Date(inventory.data.generated_at).toLocaleString()}.{' '}
+                Inventory collected{' '}
+                <Timestamp value={inventory.data.generated_at} mode="absolute" />.{' '}
                 {inventory.data.complete
                   ? 'All inventory sections were read.'
                   : 'Inventory is partial; some resource sections could not be read.'}

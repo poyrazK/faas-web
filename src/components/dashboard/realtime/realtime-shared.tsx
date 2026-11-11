@@ -36,9 +36,9 @@ export function StatusTag({ tone, label }: { tone: Tone; label: string }) {
   const Icon = ICON[tone];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${TONE[tone]} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${TONE[tone]} 14%, transparent)`,
         color: TONE[tone],
       }}
     >

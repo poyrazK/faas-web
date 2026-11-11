@@ -433,7 +433,7 @@ function EditRule({
     <form
       noValidate
       aria-label="Edit rule"
-      className="grid grid-cols-1 gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-4 well rounded-xl bg-muted/40 p-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
         save();

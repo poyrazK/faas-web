@@ -101,12 +101,12 @@ function OutcomeBadge({ outcome }: { outcome: EdgeRuleEventOutcome }) {
     <span
       title={o.hint}
       className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs',
         !o.color && 'border-border text-muted-foreground'
       )}
       style={
         o.color
-          ? { borderColor: `color-mix(in oklab, ${o.color} 35%, transparent)`, color: o.color }
+          ? { backgroundColor: `color-mix(in oklab, ${o.color} 14%, transparent)`, color: o.color }
           : undefined
       }
     >

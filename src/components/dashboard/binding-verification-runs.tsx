@@ -85,9 +85,9 @@ export function StatusBadge({ status }: { status: string }) {
   const Icon = cfg.icon;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${cfg.color} 14%, transparent)`,
         color: cfg.color,
       }}
     >
@@ -204,7 +204,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
           <>
             <ul
               aria-label="Verification runs"
-              className="divide-y divide-border rounded-lg border border-border"
+              className="divide-y divide-border well rounded-xl bg-muted/40"
             >
               {rows.map((row) => (
                 <li
@@ -365,7 +365,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
   return (
     <section
       aria-label={`Run ${short(runId)}`}
-      className="space-y-4 rounded-lg border border-border p-4"
+      className="space-y-4 well rounded-xl bg-muted/40 p-4"
     >
       <InlinePhase
         phase={phase}
@@ -381,7 +381,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
               Passing moves no traffic; promotion still rechecks the policy when traffic changes.
             </p>
           )}
-          <ol aria-label="Steps" className="divide-y divide-border rounded-lg border border-border">
+          <ol aria-label="Steps" className="divide-y divide-border well rounded-xl bg-muted/40">
             {data.steps.map((step, index) => (
               <StepRow
                 key={index}
@@ -645,7 +645,7 @@ function ReviewNewRun({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
+    <div className="space-y-3 well rounded-xl bg-muted/40 p-4">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs text-muted-foreground">

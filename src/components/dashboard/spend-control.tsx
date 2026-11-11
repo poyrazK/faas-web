@@ -5,6 +5,8 @@ import { useBillingForecast, useOverageCap, useSpendCapHistory } from '@/lib/api
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { SpendCapEditor } from './spend-cap';
 import { formatCents, formatMillicents } from '@/lib/money';
+import { Timestamp } from '@/components/ui/timestamp';
+import { HelpTip } from './kit/help-tip';
 
 const METER_NAMES: Record<string, string> = {
   gb_hours: 'compute',
@@ -99,15 +101,18 @@ function ForecastLine() {
     );
   const projected = ready.reduce((sum, m) => sum + (m.forecast.projected_net_millicents ?? 0), 0);
   return (
-    <p className="text-xs text-muted-foreground">
+    <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
       {/* period_end is exclusive: the last day of the period is the day before. */}
       Projected usage charges by{' '}
       {new Date(Date.parse(forecast.data.period_end) - 1).toLocaleDateString()}:{' '}
       <span className="font-medium text-foreground">{formatMillicents(projected)}</span>
-      {missing.length > 0 &&
-        ` (excludes ${missing.map((m) => meterName(m.meter)).join(', ')}, which cannot be forecast yet)`}
-      {!forecast.data.bill_estimate_available &&
-        '. Not an invoice estimate: some bill components are not covered.'}
+      {missing.length > 0 && ` · excludes ${missing.map((m) => meterName(m.meter)).join(', ')}`}
+      {!forecast.data.bill_estimate_available && (
+        <HelpTip label="About this forecast">
+          Not an invoice estimate: some bill components are not covered
+          {missing.length > 0 ? ', and the excluded meters cannot be forecast yet' : ''}.
+        </HelpTip>
+      )}
     </p>
   );
 }
@@ -135,7 +140,7 @@ function CapHistory() {
         <li key={event.id} className="flex flex-wrap justify-between gap-x-4 gap-y-0.5 py-2">
           <span>{describeCapEvent(event)}</span>
           <time dateTime={event.at} className="text-xs text-muted-foreground">
-            {new Date(event.at).toLocaleString()}
+            <Timestamp value={event.at} mode="absolute" />
           </time>
         </li>
       ))}

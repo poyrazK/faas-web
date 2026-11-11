@@ -564,10 +564,7 @@ export function BudgetForm({
       )}
 
       {failure && (
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm"
-        >
+        <div role="alert" className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3 text-sm">
           <span style={{ color: 'var(--status-critical)' }}>{failure.message}</span>
           <ProblemHelp error={failure.error} className="[&_code]:break-all" />
           {failure.strictNotReleased && (

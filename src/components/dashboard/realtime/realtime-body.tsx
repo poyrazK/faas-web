@@ -157,7 +157,7 @@ export function RealtimeBody({ slug, appUrl }: { slug: string; appUrl?: string }
           {phase === 'ready' && (
             <ul
               aria-label="Realtime endpoints"
-              className="flex flex-col divide-y divide-border rounded-lg border border-border"
+              className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
             >
               {list.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">

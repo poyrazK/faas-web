@@ -82,7 +82,7 @@ function PreviewRow({ preview }: { preview: Preview }) {
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
           {preview.label}
           {preview.joined && (
-            <span className="rounded-full border border-border px-2 py-0.5 text-xs font-normal text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
               Joined
             </span>
           )}

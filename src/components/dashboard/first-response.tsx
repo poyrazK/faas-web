@@ -112,7 +112,7 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
       <h2 id={`${pathId}-title`} className="text-sm font-medium text-muted-foreground">
         {successful ? 'First response received' : 'Verify your API'}
       </h2>
-      <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         <form
           onSubmit={(event) => {
             event.preventDefault();

@@ -156,7 +156,7 @@ function DependencyPicker({
         {options.map((name) => (
           <label
             key={name}
-            className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
+            className="flex items-center gap-2 well rounded-xl bg-muted/40 px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
           >
             <input
               type="checkbox"
@@ -299,7 +299,7 @@ function StepFields({
         />
       </div>
       <details
-        className="mt-4 rounded-md border border-border p-3"
+        className="mt-4 well rounded-xl bg-muted/40 p-3"
         open={Boolean(step.input || step.spec.timeout || step.spec.retry)}
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -794,7 +794,7 @@ export function AutomationEditor({
                   )}
                 </div>
                 <details
-                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -854,7 +854,7 @@ export function AutomationEditor({
                   }
                 />
                 <details
-                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.eventFilter !== '{}'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -1055,7 +1055,7 @@ export function AutomationEditor({
           </Button>
         )}
         {validation && (
-          <div role="status" className="mt-4 rounded-lg border border-border p-4">
+          <div role="status" className="mt-4 well rounded-xl bg-muted/40 p-4">
             <p className="flex items-center gap-2 text-sm font-medium">
               {validation.valid ? (
                 <CheckCircle className="h-4 w-4 text-brand" />
@@ -1082,7 +1082,7 @@ export function AutomationEditor({
           </div>
         )}
       </Panel>
-      <details className="rounded-lg border border-border p-4">
+      <details className="well rounded-xl bg-muted/40 p-4">
         <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
         <div className="mt-4">
           <Panel>
@@ -1148,7 +1148,7 @@ export function AutomationEditor({
                   </p>
                 ))}
                 {simulation.trace.map((step, i) => (
-                  <details key={i} className="rounded-md border border-border p-3">
+                  <details key={i} className="well rounded-xl bg-muted/40 p-3">
                     <summary className="cursor-pointer text-sm">
                       <span className="font-mono">{step.step_name}</span> ·{' '}
                       {step.state.replaceAll('_', ' ')}

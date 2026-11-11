@@ -6,6 +6,7 @@ import { useJob, useJobRun } from '@/lib/api/queries';
 import { Calendar } from 'iconoir-react';
 import { useState } from 'react';
 import { JobScheduleDialog, jobScheduleRows } from './job-schedule';
+import { shortTime } from '@/lib/time';
 
 /**
  * The two job reads the list cannot carry: what a job is defined to do, and
@@ -68,7 +69,7 @@ export function JobDefinition({ name }: { name: string }) {
           ['Task timeout', seconds(data.task_timeout_sec)],
           ['Max parallelism', String(data.max_parallelism)],
           ['Retries per task', String(data.retry_max)],
-          ['Updated', new Date(data.updated_at).toLocaleString()],
+          ['Updated', shortTime(data.updated_at)],
         ].map(([label, value]) => (
           <div key={label} className="flex min-w-0 flex-col gap-0.5">
             <dt className="label-mono text-muted-foreground">{label}</dt>
