@@ -89,7 +89,12 @@ vi.mock('@/lib/api/queries', async (importOriginal) => {
       refetch: vi.fn(),
     }),
     useInstances: () => ({
-      data: { instances: [] },
+      data: {
+        instances: [
+          { state: 'running', ram_mb: 256 },
+          { state: 'parked', ram_mb: 512 },
+        ],
+      },
       isPending: false,
       isRefetching: false,
       error: null,
@@ -215,13 +220,12 @@ function renderOverview(withReleases = false) {
 }
 
 describe('overview time window', () => {
-  it('charts the summed hourly series and keeps the chosen window in the URL', async () => {
+  it('shows the range’s requests and error rate and keeps the range in the URL', async () => {
     const router = renderOverview();
-    expect(await screen.findByRole('img', { name: '600 requests' })).toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith(
-      '/v1/apps/{slug}/analytics/timeseries',
-      expect.objectContaining({ params: { path: { slug: 'api' }, query: { since: '24h' } } })
-    );
+    const requests = await screen.findByRole('region', { name: 'Total requests' });
+    expect(requests).toHaveTextContent('100');
+    expect(requests).toHaveTextContent('Across 1 app, last 24 hours');
+    expect(screen.getByRole('region', { name: 'Error rate' })).toHaveTextContent('1.00%');
 
     await userEvent.click(
       within(screen.getByRole('group', { name: 'Time window' })).getByRole('button', {
@@ -229,18 +233,32 @@ describe('overview time window', () => {
       })
     );
 
-    expect(await screen.findByRole('img', { name: '1,400 requests' })).toBeInTheDocument();
+    expect(await screen.findByText('Across 1 app, last 7 days')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Total requests' })).toHaveTextContent('700');
     await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
     expect(useAppsMetrics).toHaveBeenLastCalledWith('7d', { enabled: true });
+    expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute(
+      'href',
+      '/dashboard/analytics?window=7d'
+    );
   });
 
   it('labels wake p95 as the fleet-wide figure it is', async () => {
     renderOverview();
-    expect(await screen.findByText('wake p95 80 ms · fleet-wide')).toBeInTheDocument();
+    const card = await screen.findByRole('region', { name: 'Wake p95' });
+    expect(card).toHaveTextContent('80ms');
+    expect(card).toHaveTextContent('Cold start, fleet-wide');
+  });
+
+  it('counts only memory held by running instances', async () => {
+    renderOverview();
+    const memory = await screen.findByRole('region', { name: 'Memory now' });
+    expect(memory).toHaveTextContent('256MB');
+    expect(memory).toHaveTextContent('1 running instance');
   });
 });
 
-it('gates Free metrics and the window while keeping usage and instance reads', async () => {
+it('gates Free metrics and the range while keeping memory and compute', async () => {
   plan = 'free';
   renderOverview();
   expect(await screen.findByText('Metrics is available on Hobby and above')).toBeInTheDocument();
@@ -249,9 +267,11 @@ it('gates Free metrics and the window while keeping usage and instance reads', a
     '/dashboard/plans'
   );
   expect(screen.queryByRole('group', { name: 'Time window' })).not.toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Instances now' })).toBeInTheDocument();
-  expect(await screen.findByText('20 GB-h used')).toBeInTheDocument();
-  expect(get).not.toHaveBeenCalledWith('/v1/apps/{slug}/analytics/timeseries', expect.anything());
+  expect(screen.queryByRole('region', { name: 'Total requests' })).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Memory now' })).toBeInTheDocument();
+  const left = await screen.findByRole('region', { name: 'GB-h left' });
+  expect(left).toHaveTextContent('80');
+  expect(left).toHaveTextContent('of 100 this period');
   expect(useAppsMetrics).toHaveBeenLastCalledWith('24h', { enabled: false });
   await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(metricsRefetch).not.toHaveBeenCalled();
@@ -278,11 +298,10 @@ it("shows the company's compute allowance in a company workspace, not the signed
   try {
     renderOverview();
     // Personal: 20 of 100 GB-h. Company: 2 of 1,000.
-    expect(await screen.findByText('1,000 GB-h included')).toBeInTheDocument();
-    expect(screen.getByText('2 GB-h used')).toBeInTheDocument();
-    expect(screen.queryByText('100 GB-h included')).not.toBeInTheDocument();
+    expect(await screen.findByText('of 1,000 this period')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'GB-h left' })).toHaveTextContent('998');
+    expect(screen.queryByText('of 100 this period')).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
-    // The personal per-app breakdown is never read for a company.
     expect(get).not.toHaveBeenCalledWith('/v1/usage', expect.anything());
   } finally {
     workspace.org = null;

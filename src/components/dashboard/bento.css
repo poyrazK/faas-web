@@ -1,70 +1,13 @@
-/* Bento — console only. Shared by the Overview tiles and the app tiles.
-
-   Tiles of different sizes, each with its own material: a field of the
-   brand ramp for traffic, a compute-amber glow for the allowance and a rose
-   field for errors. Every colour is composed
-   from tokens in index.css (mint ramp, category and status colours), so
-   no new literal enters the system. Glows rise from the top-right: the
-   gregale is a north-easterly.
-
-   The 12-column grid steps down to two columns, then one. */
-
-.console .bento {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.console .bento-tile {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 1.5rem;
-  background: var(--card);
-  padding: 1.375rem 1.5rem;
-}
-
-.console .bento-tile[data-span='12'] {
-  grid-column: 1 / -1;
-}
-.console .bento-tile[data-span='8'] {
-  grid-column: span 8;
-}
-.console .bento-tile[data-span='4'] {
-  grid-column: span 4;
-}
-.console .bento-tile[data-span='3'] {
-  grid-column: span 3;
-}
-
-@media (max-width: 1180px) {
-  .console .bento-tile[data-span='8'],
-  .console .bento-tile[data-span='4'] {
-    grid-column: 1 / -1;
-  }
-  .console .bento-tile[data-span='3'] {
-    grid-column: span 6;
-  }
-}
-
-@media (max-width: 640px) {
-  .console .bento-tile[data-span='3'] {
-    grid-column: 1 / -1;
-  }
-  .console .bento-tile {
-    border-radius: 1.25rem;
-    padding: 1.125rem 1.25rem;
-  }
-}
+/* Console materials and shared pieces — console only: the lit surface and
+   recessed well, the mono label voice, app tiles and the resource table.
+   Every colour is composed from tokens in index.css, so no new literal
+   enters the system. */
 
 /* --- Light ------------------------------------------------------------- 
    Depth from light, not lines: a raised surface catches light on its top
    edge and keeps a faint rim; a well is recessed into the card it sits in. */
 
 .console .surface,
-.console .bento-tile,
 .console .app-tile:not([data-state='undeployed']),
 .console .rt:not([data-flush]) {
   box-shadow:
@@ -73,47 +16,6 @@
 }
 .console .well {
   box-shadow: inset 0 1px 2px var(--well-shade);
-}
-
-/* --- Materials ---------------------------------------------------------- */
-
-.console .bento-tile[data-tone='traffic'] {
-  background: radial-gradient(
-    120% 150% at 92% -10%,
-    var(--mint-8) 0%,
-    var(--mint-11) 30%,
-    color-mix(in oklch, var(--mint-12) 55%, var(--background)) 62%,
-    color-mix(in oklch, var(--mint-12) 12%, var(--background)) 100%
-  );
-}
-
-.console .bento-tile[data-tone='compute'] {
-  background:
-    radial-gradient(
-      90% 70% at 50% 0%,
-      color-mix(in oklch, var(--cat-compute) 22%, transparent) 0%,
-      transparent 70%
-    ),
-    var(--card);
-}
-
-.console .bento-tile[data-tone='errors'] {
-  background: radial-gradient(
-    120% 130% at 100% 0%,
-    color-mix(in oklch, var(--status-critical) 42%, var(--background)) 0%,
-    color-mix(in oklch, var(--status-critical) 12%, var(--background)) 55%,
-    color-mix(in oklch, var(--status-critical) 5%, var(--card)) 100%
-  );
-}
-
-.console .bento-tile[data-tone='field'] {
-  background:
-    radial-gradient(
-      80% 90% at 100% 0%,
-      color-mix(in oklch, var(--brand) 10%, transparent) 0%,
-      transparent 60%
-    ),
-    var(--card);
 }
 
 /* --- Label voice -------------------------------------------------------- */
@@ -127,220 +29,10 @@
   color: var(--muted-foreground);
 }
 
-.console .bento-chip {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.125rem;
-  padding: 0.1875rem 0.5625rem;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--background) 62%, transparent);
-  color: var(--foreground);
-  white-space: nowrap;
-}
-
-/* --- Dot numeral -------------------------------------------------------- */
-
-.console .dot-numeral {
-  --dot: 6px;
-  --dot-gap: 3px;
-  display: inline-flex;
-  align-items: flex-end;
-  gap: calc(var(--dot) * 2.5);
-}
-
-.console .dot-numeral__glyph {
-  display: grid;
-  grid-auto-rows: var(--dot);
-  gap: var(--dot-gap);
-}
-
-.console .dot-numeral__dot {
-  width: var(--dot);
-  height: var(--dot);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
-}
-
-.console .dot-numeral__dot[data-on] {
-  background: var(--foreground);
-}
-
-@media (max-width: 640px) {
-  .console .dot-numeral {
-    --dot: 4px;
-    --dot-gap: 2px;
-  }
-}
-
-/* --- Stream ------------------------------------------------------------- */
-
-.console .bento-stream [data-band='0'] {
-  fill: var(--mint-1);
-  fill-opacity: 0.92;
-}
-.console .bento-stream [data-band='1'] {
-  fill: var(--mint-7);
-}
-.console .bento-stream [data-band='2'] {
-  fill: var(--mint-10);
-}
-.console .bento-stream [data-band='3'] {
-  fill: var(--mint-4);
-  fill-opacity: 0.8;
-}
-.console .bento-stream [data-band='4'] {
-  fill: var(--mint-11);
-}
-.console .bento-stream [data-band='5'] {
-  fill: var(--mint-5);
-  fill-opacity: 0.7;
-}
-.console .bento-stream [data-band='6'] {
-  fill: var(--mint-9);
-}
-.console .bento-stream [data-band='7'] {
-  fill: var(--mint-3);
-  fill-opacity: 0.6;
-}
-
-.console .bento-swatch[data-band='0'] {
-  background: var(--mint-1);
-}
-.console .bento-swatch[data-band='1'] {
-  background: var(--mint-7);
-}
-.console .bento-swatch[data-band='2'] {
-  background: var(--mint-10);
-}
-.console .bento-swatch[data-band='3'] {
-  background: var(--mint-4);
-}
-.console .bento-swatch[data-band='4'] {
-  background: var(--mint-11);
-}
-.console .bento-swatch[data-band='5'] {
-  background: var(--mint-5);
-}
-.console .bento-swatch[data-band='6'] {
-  background: var(--mint-9);
-}
-.console .bento-swatch[data-band='7'] {
-  background: var(--mint-3);
-}
-
-.console .bento-pin-line {
-  background: color-mix(in oklch, var(--background) 62%, transparent);
-}
-
-/* --- Ticks -------------------------------------------------------------- */
-
-.console .bento-ticks {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 2.5rem;
-}
-
-.console .bento-tick {
-  flex: 1;
-  min-width: 2px;
-  border-radius: 2px;
-  background: color-mix(in oklch, var(--foreground) 22%, transparent);
-}
-
-/* An hour with no reading keeps its slot as a hairline stub. */
-.console .bento-tick[data-empty] {
-  height: 2px !important;
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-}
-
-.console .bento-tile[data-tone='errors'] .bento-tick {
-  background: color-mix(in oklch, var(--status-critical) 40%, var(--foreground) 10%);
-}
-.console .bento-tile[data-tone='errors'] .bento-tick[data-hot] {
-  background: var(--status-critical);
-}
-.console .bento-tick[data-hot] {
-  background: var(--brand);
-}
-
-/* --- Gauge -------------------------------------------------------------- */
-
-.console .bento-gauge line {
-  stroke: var(--muted);
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-.console .bento-gauge line[data-lit] {
-  stroke: var(--cat-compute);
-}
-.console .bento-gauge[data-over] line[data-lit] {
-  stroke: var(--status-critical);
-}
-
-.console .bento-share[data-rank='0'] {
-  background: var(--cat-compute);
-}
-.console .bento-share[data-rank='1'] {
-  background: color-mix(in oklch, var(--cat-compute) 70%, var(--background));
-}
-.console .bento-share[data-rank='2'] {
-  background: color-mix(in oklch, var(--cat-compute) 42%, var(--background));
-}
-
-/* --- Instances ---------------------------------------------------------- */
-
-.console .bento-instance {
-  width: 1.125rem;
-  height: 1.75rem;
-  border-radius: 0.375rem;
-  background: var(--brand);
-}
-.console .bento-instance[data-state='parked'] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--border-secondary);
-}
-
-/* --- Hour field --------------------------------------------------------- */
-
-.console .bento-field {
-  display: grid;
-  align-items: center;
-  column-gap: 1rem;
-  row-gap: 0.5rem;
-}
-
-.console .bento-field__cells {
-  display: grid;
-  gap: var(--cell-gap, 3px);
-}
-
-.console .bento-cell {
-  aspect-ratio: 1;
-  width: 100%;
-  max-width: 0.875rem;
-  border-radius: 999px;
-}
-.console .bento-cell[data-kind='empty'] {
-  box-shadow: inset 0 0 0 1.5px var(--border);
-}
-.console .bento-cell[data-kind='errors'] {
-  background: var(--status-warning);
-}
-
-.console .bento-legend-ramp {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklch, var(--brand) 16%, transparent),
-    var(--brand)
-  );
-}
-
 /* --- App tiles ----------------------------------------------------------
    An app is a tile, not a table row. A running app carries a mint glow from
    the top-right, a failing one a rose glow, a deploying one amber; an app
-   never deployed is a hollow outline, the same as a parked instance on the
-   Overview. The app's name is the link, stretched over the whole tile. */
+   never deployed is a hollow outline. The app's name is the link, stretched over the whole tile. */
 
 .console .app-tiles {
   display: grid;
@@ -441,53 +133,12 @@
    figure changing, an instance waking, a build finishing, a window switched.
    Tokens are the console's own (index.css § Motion). */
 
-.console .dot-numeral__dot {
-  transition: background-color var(--motion-fast) var(--motion-ease);
-}
-
-.console .bento-instance {
-  transition:
-    background-color var(--motion-base) var(--motion-ease),
-    box-shadow var(--motion-base) var(--motion-ease),
-    opacity var(--motion-base) var(--motion-ease),
-    transform var(--motion-base) var(--motion-ease);
-}
-
-/* A block added after the first paint (an instance woke) drifts in from the
-   north-east; the first paint itself never animates. */
-@media (prefers-reduced-motion: no-preference) {
-  @starting-style {
-    .console .bento-instances[data-settled] .bento-instance {
-      opacity: 0;
-      transform: translate(3px, -3px) scale(0.92);
-    }
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  @starting-style {
-    .console .bento-instances[data-settled] .bento-instance {
-      opacity: 0;
-    }
-  }
-}
-
-/* A figure that replaces its loading line settles in place; it never slides. */
-.console .bento-arrive {
-  animation: console-feedback-in var(--motion-fast) var(--motion-ease);
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .console .app-tile {
     transition: transform var(--motion-fast) var(--motion-ease);
   }
   .console .app-tile:has(.app-tile__link:active) {
     transform: scale(0.99);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .console .bento-arrive {
-    animation: none;
   }
 }
 

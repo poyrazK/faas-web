@@ -144,9 +144,10 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   paused/log-only behavior and the effective validation mode.
   Preserve the seven-source New app wizard and its deployment recovery. App
   Metrics uses the customizable `AnalyticsGrid`; the Overview keeps its greeting,
-  search and columns, and its Analytics section is fixed bento cards
-  (`components/dashboard/overview/`) that share one time window and draw only
-  summed `/analytics/timeseries` counts. Metric cards open the
+  search and columns, and its Analytics section is six number cards
+  (`components/dashboard/overview-analytics/`): requests, error rate and wake
+  p95 from `/v1/apps/metrics` under one range, memory now from instances, and
+  GB-hours and CPU from the usage summary. Scalars stay numbers, never lines. Metric cards open the
   URL-backed `MetricInspectorProvider` without changing the underlying route.
   Drag handles and menus remain separate from the card's detail button. Sidebar
   disclosures, the foil New app control, and profile rim retain main's motion

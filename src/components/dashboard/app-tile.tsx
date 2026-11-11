@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { formatRelative, type RunState, type Workflow } from '@/lib/mock-data';
 import { StateBadge } from './primitives';
-import { compactFigure } from './overview/dot-numeral';
+import { compactFigure } from './compact-figure';
 import { failingShare, runtimeLabel, type DeployNote } from './app-tile-words';
 
 /** 512 MB stays in megabytes; 2048 MB reads as 2 GB. */

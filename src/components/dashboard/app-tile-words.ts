@@ -1,5 +1,5 @@
 import type { Deployment, Workflow } from '@/lib/mock-data';
-import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './overview/overview-data';
+import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './error-threshold';
 
 /** An error share at or above this reads as trouble — the console's one threshold. */
 export const HOT_ERROR_PCT = FIELD_ERROR_PCT;

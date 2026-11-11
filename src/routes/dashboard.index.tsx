@@ -2,7 +2,7 @@ import { featureFlags } from '@/lib/feature-flags';
 import { OnboardingChecklist } from '@/components/onboarding/onboarding-checklist';
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ClockRotateRight, NavArrowRight, Plus, Refresh } from 'iconoir-react';
+import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, Refresh } from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
@@ -17,31 +17,13 @@ import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
 import { SegmentedControl } from '@/components/dashboard/tabs';
-import {
-  AllowanceTile,
-  ColdBootsTile,
-  CpuTile,
-  ErrorsTile,
-  HourFieldTile,
-  InstancesTile,
-  RequestsTile,
-  type AllowanceState,
-  type SeriesState,
-} from '@/components/dashboard/overview/bento-tiles';
-import { useOverviewSeries } from '@/components/dashboard/overview/use-overview-series';
-import { slugIndex } from '@/lib/api/adapters';
-import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { OverviewStats } from '@/components/dashboard/overview-analytics/overview-stats';
+import { fleetMetrics } from '@/components/dashboard/overview-analytics/overview-stats-data';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import {
-  useApps,
-  useAppsMetrics,
-  useDeployments,
-  useInstances,
-  usePerAppUsage,
-} from '@/lib/api/queries';
+import { useAppsMetrics, useDeployments, useInstances, type MetricsRange } from '@/lib/api/queries';
 import { formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
 import { FlowDotsField } from '@/components/dashboard/shapes';
@@ -49,7 +31,6 @@ import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
-import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -69,18 +50,32 @@ export const Route = createFileRoute('/dashboard/')({
  * top bar no longer carries one), three resource columns (Apps,
  * Deployments, Recents), and an analytics grid below.
  *
- * The analytics below the columns are bento cards governed by one window:
- * request history is each app's `/analytics/timeseries`, summed hour by hour
- * (counts add across apps, percentiles never do); wake p95 is the fleet-wide
- * figure `/v1/apps/metrics` reports. A degraded read is unknown, never zero.
+ * The analytics cards carry numbers, not charts: `/v1/apps/metrics`,
+ * `/v1/instances` and the usage summary return scalars, and this console
+ * does not draw series it does not have. One range governs every metrics
+ * figure. A degraded rollup reads as unknown, never as zero.
  */
 
-/** Analytics windows: whole hours, inside every paid plan's retention. */
 const OVERVIEW_RANGES = [
+  { key: '5m', label: '5m' },
+  { key: '15m', label: '15m' },
+  { key: '1h', label: '1h' },
+  { key: '6h', label: '6h' },
   { key: '24h', label: '24h' },
   { key: '7d', label: '7d' },
-] as const;
+  { key: '15d', label: '15d' },
+] as const satisfies readonly { key: MetricsRange; label: string }[];
 type OverviewRange = (typeof OVERVIEW_RANGES)[number]['key'];
+
+const RANGE_DESCRIPTION: Record<OverviewRange, string> = {
+  '5m': 'last 5 minutes',
+  '15m': 'last 15 minutes',
+  '1h': 'last hour',
+  '6h': 'last 6 hours',
+  '24h': 'last 24 hours',
+  '7d': 'last 7 days',
+  '15d': 'last 15 days',
+};
 
 /* ------------------------------------------------------------------ *
  * Verdict pill
@@ -293,46 +288,22 @@ function OverviewPage() {
   );
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // Resident RAM right now: non-parked instances only — a parked instance's
-  // cgroup is gone, so it holds nothing.
-  // `/v1/instances` is cursor-paginated. Never present a partial page as an
-  // exact fleet total; the Workers view can load the remaining pages.
+  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
+  const figures = useMemo(
+    () => fleetMetrics(Object.values(metrics.data?.apps ?? {})),
+    [metrics.data]
+  );
+
+  // Memory held right now: non-parked instances only — a parked instance's
+  // cgroup is gone, so it holds nothing. `/v1/instances` is cursor-paginated;
+  // a partial page is never presented as an exact total.
   const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
-  const residentPartial = Boolean(instances.data?.next_before);
-  const { residentMb, residentCount } = useMemo(() => {
-    const resident = (instances.data?.instances ?? []).filter(
+  const resident = useMemo(() => {
+    const rows = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
     );
-    return {
-      residentMb: resident.reduce((sum, row) => sum + row.ram_mb, 0),
-      residentCount: resident.length,
-    };
+    return { mb: rows.reduce((sum, row) => sum + row.ram_mb, 0), count: rows.length };
   }, [instances.data]);
-
-  const { org, ready: workspaceReady } = useWorkspaceTarget();
-  const apps = useApps({ refetchInterval: 15_000 });
-  const perApp = usePerAppUsage({ enabled: workspaceReady && !org });
-  const chartable = useMemo(
-    () =>
-      workflows.map((w) => ({
-        slug: w.id,
-        name: w.name,
-        weight: w.metricsUnavailable ? 0 : w.invocations24h,
-      })),
-    [workflows]
-  );
-  const series: SeriesState = {
-    paid: paidAccess,
-    ...useOverviewSeries(chartable, range, paidAccess),
-  };
-  const wakeP95 = metricsDegraded
-    ? null
-    : (Object.values(metrics.data?.apps ?? {}).find(
-        (row) => row.wake_p95_ms > 0 && (row.wake_samples === undefined || row.wake_samples >= 20)
-      )?.wake_p95_ms ?? null);
-  const parkedCount = (instances.data?.instances ?? []).filter(
-    (row) => row.state.toLowerCase() === 'parked'
-  ).length;
 
   const setRange = (next: OverviewRange) =>
     void navigate({
@@ -341,31 +312,7 @@ function OverviewPage() {
       resetScroll: false,
     });
 
-  const usageData = usage.data;
-  const byApp = useMemo(() => {
-    if (org || !perApp.data) return null;
-    const slugs = slugIndex(apps.data ?? []);
-    return perApp.data
-      .map((row) => ({
-        slug: slugs.get(row.app_id) ?? row.app_id.slice(0, 8),
-        gbHours: (row.mb_seconds ?? 0) / 1024 / 3600,
-      }))
-      .filter((row) => row.gbHours > 0)
-      .sort((a, b) => b.gbHours - a.gbHours);
-  }, [org, perApp.data, apps.data]);
-  const allowance: AllowanceState = {
-    phase: queryPhase({ error: usage.error, loading: usage.isPending }),
-    error: usage.error,
-    usedGbHours: usageData?.used_gb_hours ?? 0,
-    // null: a company with no usage this month carries no allowance yet.
-    includedGbHours: usageData?.included_gb_hours ?? null,
-    overGbHours: usageData?.overage_gb_hours ?? 0,
-    overageLabel:
-      usageData?.overage_cents !== undefined && (usageData?.overage_gb_hours ?? 0) > 0
-        ? `${formatCents(usageData.overage_cents)} overage`
-        : undefined,
-    byApp,
-  };
+  const usagePhase = queryPhase({ error: usage.error, loading: usage.isPending });
 
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4),
@@ -382,13 +329,11 @@ function OverviewPage() {
     await Promise.allSettled([
       usage.refetch(),
       instances.refetch(),
-      ...(paidAccess ? [metrics.refetch(), series.refetch()] : []),
+      ...(paidAccess ? [metrics.refetch()] : []),
       new Promise((done) => setTimeout(done, 400)),
     ]);
     setRefreshing(false);
   };
-  const windowLabel = range === '7d' ? 'last 7 days · UTC' : 'last 24 hours · UTC';
-
   const verdict = verdictOf(account?.status, failing.length, metricsDegraded);
   const firstName = user?.name.split(' ')[0];
   // Nothing deployed and the read succeeded: a page of zeroes is accurate
@@ -511,7 +456,14 @@ function OverviewPage() {
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 id="overview-analytics" className="text-lg font-semibold">
-              Analytics
+              <Link
+                to="/dashboard/analytics"
+                search={range === '7d' ? { window: '7d' } : {}}
+                className="pressable inline-flex items-center gap-1.5 rounded hover:text-brand"
+              >
+                Analytics
+                <ArrowRight aria-hidden className="h-4 w-4" />
+              </Link>
             </h2>
             {metricsDegraded && (
               <p role="status" className="text-xs text-status-warning">
@@ -544,27 +496,27 @@ function OverviewPage() {
             </button>
           </div>
         </header>
-        <div className="bento">
-          <RequestsTile state={series} windowLabel={windowLabel} />
-          <AllowanceTile state={allowance} />
-          <ErrorsTile state={series} />
-          <ColdBootsTile state={series} wakeP95Ms={wakeP95} />
-          <InstancesTile
-            state={{
-              known: residentKnown,
-              partial: residentPartial,
-              failed: Boolean(instances.error),
-              residentCount,
-              residentMb,
-              parkedCount,
-            }}
-          />
-          <CpuTile
-            cpuHours={usageData?.used_cpu_hours ?? null}
-            phase={queryPhase({ error: usage.error, loading: usage.isPending })}
-          />
-          <HourFieldTile state={series} windowLabel={windowLabel} />
-        </div>
+        <OverviewStats
+          paid={paidAccess}
+          showPlanGate={Boolean(account) && !paidAccess}
+          appCount={workflows.length}
+          rangeDescription={RANGE_DESCRIPTION[range]}
+          metrics={{ unavailable: metricsUnavailable, degraded: metricsDegraded, figures }}
+          resident={{
+            known: residentKnown,
+            partial: Boolean(instances.data?.next_before),
+            ...resident,
+          }}
+          usage={{
+            phase: usagePhase,
+            usedGbHours: usage.data?.used_gb_hours ?? 0,
+            // null: a company with no usage this month carries no allowance yet.
+            includedGbHours: usage.data?.included_gb_hours ?? null,
+            overGbHours: usage.data?.overage_gb_hours ?? 0,
+            overageCents: usage.data?.overage_cents,
+            cpuHours: usage.data?.used_cpu_hours ?? null,
+          }}
+        />
       </section>
     </div>
   );

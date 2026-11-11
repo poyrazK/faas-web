@@ -8,7 +8,7 @@ import {
 } from '@/lib/deployment-history-view';
 import { deploymentLabel } from './deployment-promote';
 import { failureSummary } from './failure-summary';
-import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './overview/overview-data';
+import { FIELD_ERROR_MIN_REQUESTS, FIELD_ERROR_PCT } from './error-threshold';
 
 /**
  * The app Overview's answer, in plain English (docs/console-plain-english.md):
