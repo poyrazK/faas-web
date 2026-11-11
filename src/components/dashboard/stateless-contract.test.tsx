@@ -56,8 +56,13 @@ describe('StatelessContract', () => {
     expect(useApp).toHaveBeenCalledWith('search-indexer');
     expect(useStatelessAdvisories).toHaveBeenLastCalledWith('app-uuid');
     const region = screen.getByRole('region', { name: 'Local disk' });
+    expect(region).toHaveTextContent('2 folders on local disk were written to.');
     const rows = within(region).getAllByRole('listitem');
     expect(rows).toHaveLength(2);
+    // Paths, operations and instances are one click away on each row.
+    expect(rows[0]).not.toHaveTextContent('inst-7f2c');
+    for (const button of within(region).getAllByRole('button', { name: 'Show details' }))
+      fireEvent.click(button);
     expect(rows[0]).toHaveTextContent('/data');
     expect(rows[0]).toHaveTextContent(/high/i);
     expect(rows[0]).toHaveTextContent('/data/index/seg-1');
@@ -79,7 +84,7 @@ describe('StatelessContract', () => {
     useStatelessAdvisories.mockReturnValue(read({ events: [], limit: 100 }));
     render(<StatelessContract slug="search-indexer" />);
     const region = screen.getByRole('region', { name: 'Local disk' });
-    expect(region).toHaveTextContent(/no writes to watched paths/i);
+    expect(region).toHaveTextContent(/nothing has been seen writing to the watched folders/i);
     expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   });
 
