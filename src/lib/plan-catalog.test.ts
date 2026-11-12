@@ -10,7 +10,7 @@ describe('plan catalog presentation', () => {
       '$30',
       '$99',
     ]);
-    expect(formatPlanPrice(PLAN_CATALOG.overagePerGbHour)).toBe('$0.01');
+    expect(formatPlanPrice(PLAN_CATALOG.overagePerGbHour)).toBe('$0.05');
   });
   it('derives the signup allowance line from the Free plan', () => {
     expect(FREE_ALLOWANCE).toBe('20 GB-RAM-hours included per month on Free');

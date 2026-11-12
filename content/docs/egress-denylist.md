@@ -1,58 +1,64 @@
-# Tenant egress denylist
+# Blocked outbound destinations
 
 <!-- GENERATED — do not edit by hand; regenerate with `make denylist-md`. -->
 
-Single source of truth: [`pkg/netns/denylist.go::NewDefaultDenySet()`](pkg/netns/denylist.go).
-The OCI-only section is the typed `ociOnlyDenyCIDRsV4` array in [`pkg/oci/egress.go`](pkg/oci/egress.go).
+Apps can't open connections to the addresses and ports on this page. The
+rules apply to every app on every plan, and an egress allowlist entry does not
+open them. See [Networking](networking.md#outbound-connections) for what an app
+can reach.
 
-## Platform-wide catalog
+## Blocked address ranges
 
-Enforced by all three sinks: per-netns nftables (table `ip faas` / `ip6 faas`, chain `forward`), host nftables (table `inet faas`, chain `forward`), and the OCI user-space dialer. Cross-renderer invariant pinned by `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet`.
+### IPv4
 
-### IPv4 CIDRs
+| Range | What it is |
+|---|---|
+| `10.0.0.0/8` | RFC1918 — private network |
+| `100.64.0.0/10` | Carrier-grade NAT |
+| `169.254.0.0/16` | Link-local, including the cloud metadata address `169.254.169.254` |
+| `172.16.0.0/12` | RFC1918 — private network |
+| `192.168.0.0/16` | RFC1918 — private network |
 
-| CIDR | Source | Rationale | Test pin |
-|------|--------|-----------|----------|
-| `10.0.0.0/8` | spec-§11 | RFC1918 — private network | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `100.64.0.0/10` | RFC6598 | carrier-grade NAT | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `169.254.0.0/16` | spec-§11 | link-local; 169.254.169.254 = cloud metadata IMDS | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `172.16.0.0/12` | spec-§11 | RFC1918 — private network | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `192.168.0.0/16` | spec-§11 | RFC1918 — private network | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
+### IPv6
 
-### IPv6 CIDRs
+| Range | What it is |
+|---|---|
+| `2001::/32` | Teredo (RFC4380) |
+| `2002::/16` | 6to4 (RFC3056) |
+| `64:ff9b:1::/48` | NAT64 local-use prefix (RFC8215) |
+| `64:ff9b::/96` | NAT64 well-known prefix (RFC6052) |
+| `::/128` | IPv6 unspecified |
+| `::1/128` | IPv6 loopback |
+| `fc00::/7` | IPv6 ULA (RFC4193) |
+| `fe80::/10` | IPv6 link-local |
+| `ff00::/8` | IPv6 multicast |
 
-| CIDR | Source | Rationale | Test pin |
-|------|--------|-----------|----------|
-| `2001::/32` | ADR-034 | Teredo (RFC4380); tunnels IPv6 over UDP/3544 — same lateral-movement risk as 6to4 | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `2002::/16` | ADR-034 | 6to4 (RFC3056); tunnels IPv6 over IPv4 — lateral movement into 10/8 etc. | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `64:ff9b:1::/48` | ADR-20261018194214 | NAT64 local-use prefix (RFC8215); may embed a private IPv4 destination | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `64:ff9b::/96` | ADR-20261018194214 | NAT64 well-known prefix (RFC6052); embeds an IPv4 destination — lateral movement through a translator | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `::/128` | ADR-023 | IPv6 unspecified; misconfigured or malicious | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `::1/128` | ADR-023 | IPv6 loopback | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `fc00::/7` | ADR-023 | IPv6 ULA (RFC4193); control-plane lateral movement | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `fe80::/10` | ADR-023 | IPv6 link-local; neighbor-table exposure to guests | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
-| `ff00::/8` | ADR-023 | IPv6 multicast; no use case in this model | `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnDenySet` |
+## Blocked ports
 
-### SMTP TCP ports
+These TCP ports stay closed, also to destinations on an app's egress
+allowlist, and `gregale app egress-ports add` refuses them.
 
-| Port | Source | Rationale | Test pin |
-|------|--------|-----------|----------|
-| `25` | `spec-§11` | spam = Hetzner abuse desk = existential (spec §7 founding doc R6) | `pkg/netns/denylist_test.go::TestNewDefaultDenySet_SMTPPortsAreComplete`, `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnSMTPPorts` |
-| `465` | `spec-§11` | spam = Hetzner abuse desk = existential (spec §7 founding doc R6) | `pkg/netns/denylist_test.go::TestNewDefaultDenySet_SMTPPortsAreComplete`, `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnSMTPPorts` |
-| `587` | `spec-§11` | spam = Hetzner abuse desk = existential (spec §7 founding doc R6) | `pkg/netns/denylist_test.go::TestNewDefaultDenySet_SMTPPortsAreComplete`, `pkg/netns/denylist_external_test.go::TestAllThreeConsumersAgreeOnSMTPPorts` |
+| Ports | What they are |
+|---|---|
+| `22`, `23`, `3389`, `5900` | Remote administration (SSH, Telnet, RDP, VNC) |
+| `25`, `2525` | Outbound mail (SMTP). Send mail through your provider's HTTPS API instead. |
+| `53`, `853` | DNS and DNS over TLS. Name lookups always go to Gregale's resolver. |
+| `135`, `137`, `138`, `139`, `445` | Windows RPC and file sharing (SMB) |
+| `3333`, `4444`, `5555`, `7777`, `14433`, `14444`, `45700` | Cryptocurrency mining pools |
+| `6660`, `6661`, `6662`, `6663`, `6664`, `6665`, `6666`, `6667`, `6668`, `6669`, `6697` | IRC |
 
-## OCI-only client hardening
+Mail submission ports `465` and `587` are open only to destinations on the app's egress
+allowlist, so an app can send through a mail provider it lists explicitly.
 
-These ranges are enforced by the OCI user-space dialer ONLY. They are intentionally NOT in the shared catalog because the host firewall does not need them (no tenant process binds to loopback from the OCI puller, etc.). They are process-level defence-in-depth: if the firewall ever regresses, the user-space check still refuses the dial. Pinned by `pkg/oci/egress_test.go`.
+## Image pulls
 
-Note: the `0.0.0.0/8` and `127.0.0.0/8` entries are also denied by the `IsLoopback` / `IsUnspecified` predicate in `pkg/oci/egress.go::ipAllowed` (the address-class layer). They are restated here as explicit ranges so the user-space check remains a deny even if the predicate is ever refactored. `192.0.0.0/24`, `198.18.0.0/15`, and `240.0.0.0/4` are NOT covered by the predicate and rely on these entries alone.
+When Gregale pulls a container image for a deployment, it also refuses a
+registry that resolves to one of these ranges:
 
-### IPv4 CIDRs (OCI-only)
-
-| CIDR | Source | Rationale | Test pin |
-|------|--------|-----------|----------|
-| `0.0.0.0/8` | ADR-034 | unspecified IPv4 source range (defence-in-depth) | `pkg/oci/egress_test.go::TestIPAllowed_OCIOnlyEntriesDenied` |
-| `127.0.0.0/8` | ADR-034 | loopback range; OCI puller runs outside tenant netns | `pkg/oci/egress_test.go::TestIPAllowed_OCIOnlyEntriesDenied` |
-| `192.0.0.0/24` | ADR-034 | IETF protocol assignments | `pkg/oci/egress_test.go::TestIPAllowed_OCIOnlyEntriesDenied` |
-| `198.18.0.0/15` | ADR-034 | benchmarking range | `pkg/oci/egress_test.go::TestIPAllowed_OCIOnlyEntriesDenied` |
-| `240.0.0.0/4` | ADR-034 | reserved IPv4 range | `pkg/oci/egress_test.go::TestIPAllowed_OCIOnlyEntriesDenied` |
+| Range | What it is |
+|---|---|
+| `0.0.0.0/8` | Unspecified IPv4 source range |
+| `127.0.0.0/8` | Loopback range |
+| `192.0.0.0/24` | IETF protocol assignments |
+| `198.18.0.0/15` | Benchmarking range |
+| `240.0.0.0/4` | Reserved IPv4 range |

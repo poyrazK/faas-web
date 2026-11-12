@@ -8,7 +8,7 @@ describe('generated API plan catalog', () => {
   it('reads every price and hard quota from the generated platform table', () => {
     expect(parsePlanCatalog(source)).toEqual({
       currency: 'USD',
-      overagePerGbHour: 0.01,
+      overagePerGbHour: 0.05,
       plans: [
         {
           name: 'Free',
@@ -19,6 +19,7 @@ describe('generated API plan catalog', () => {
           concurrentInstances: 1,
           ramMb: 256,
           includedGbHours: 20,
+          appEgressGib: 10,
           appLayerMb: 256,
           idleTimeout: '1m',
           maxRequestTimeout: '30s',
@@ -32,6 +33,7 @@ describe('generated API plan catalog', () => {
           concurrentInstances: 2,
           ramMb: 512,
           includedGbHours: 200,
+          appEgressGib: 100,
           appLayerMb: 512,
           idleTimeout: '1m',
           maxRequestTimeout: '1m',
@@ -45,6 +47,7 @@ describe('generated API plan catalog', () => {
           concurrentInstances: 5,
           ramMb: 1024,
           includedGbHours: 1000,
+          appEgressGib: 500,
           appLayerMb: 1024,
           idleTimeout: '5m',
           maxRequestTimeout: '5m',
@@ -58,6 +61,7 @@ describe('generated API plan catalog', () => {
           concurrentInstances: 20,
           ramMb: 2048,
           includedGbHours: 3000,
+          appEgressGib: 2000,
           appLayerMb: 2048,
           idleTimeout: '10m',
           maxRequestTimeout: '15m',
@@ -73,7 +77,7 @@ describe('generated API plan catalog', () => {
   it.each([
     ['', 'empty source'],
     [source.replace('$30', '€30'), 'different currency'],
-    [source.replace('billed at $0.01', 'billed at €0.01'), 'different overage currency'],
+    [source.replace('billed at $0.05', 'billed at €0.05'), 'different overage currency'],
     [source.replace('1024 MB | 1000', 'unknown MB | 1000'), 'malformed quota'],
     [source.replace('Deployed apps', 'Unrecognised column'), 'changed schema'],
     [source.replace('| Max request timeout |', '|'), 'dropped column'],

@@ -96,7 +96,7 @@ describe('beta pricing', () => {
         );
       });
     });
-    expect(pricing).toHaveTextContent('$0.01 per GB-RAM-hour');
+    expect(pricing).toHaveTextContent('$0.05 per GB-RAM-hour');
     expect(pricing).not.toHaveTextContent(/1M invocations|€|US\$|Enterprise/);
   });
 });
