@@ -176,7 +176,7 @@
       }
     },
     {
-      "src": "^/docs/([^/]+)/.+$",
+      "src": "^/docs/(account|agents|alerts|api-hosting-openapi|apps|auth|billing|build|builds|cache|cli|cli-command-tree|code-workflows|companions|compliance|container-compatibility|crons|custom-domains|deploy-from-github|deploy-from-source|deploy-overrides|deployments|deploys|dev|domains|dpa|edge-rule-trace|edge-rules|egress-denylist|env|errors|event-driven|faas_openapi_spec|functions|gdpr|getting-started|handler-api|inbound-webhooks|install|jobs|logs|managed-postgres|multi-service|networking|orgs|plans|postgres|preview-environments|queue-pull-leases|quickstart|registry-credentials|responsible-disclosure|runtime-node|runtime-python|scale-to-zero|scaling-policy|sdks|secrets|security|sidecars|static-egress-ip|storage|subprocessors|synthetic-checks|trace-propagation|tracing)/.+$",
       "status": 308,
       "headers": {
         "Location": "/docs/$1"

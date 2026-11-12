@@ -20,7 +20,75 @@
 /docs/managed-postgres    /docs/postgres   301
 /docs/orgs    /docs/account   301
 /docs/sidecars    /docs/companions   301
-/docs/:parent/*    /docs/:parent   301
+# Only guide namespaces have legacy child paths. Never collapse /docs/api/*
+# (or a future documentation namespace) onto its index. Kept in sync with the
+# manifest and aliases by hosting-contract.test.ts.
+/docs/account/*    /docs/account   301
+/docs/agents/*    /docs/agents   301
+/docs/alerts/*    /docs/alerts   301
+/docs/api-hosting-openapi/*    /docs/api-hosting-openapi   301
+/docs/apps/*    /docs/apps   301
+/docs/auth/*    /docs/auth   301
+/docs/billing/*    /docs/billing   301
+/docs/build/*    /docs/build   301
+/docs/builds/*    /docs/builds   301
+/docs/cache/*    /docs/cache   301
+/docs/cli/*    /docs/cli   301
+/docs/cli-command-tree/*    /docs/cli-command-tree   301
+/docs/code-workflows/*    /docs/code-workflows   301
+/docs/companions/*    /docs/companions   301
+/docs/compliance/*    /docs/compliance   301
+/docs/container-compatibility/*    /docs/container-compatibility   301
+/docs/crons/*    /docs/crons   301
+/docs/custom-domains/*    /docs/custom-domains   301
+/docs/deploy-from-github/*    /docs/deploy-from-github   301
+/docs/deploy-from-source/*    /docs/deploy-from-source   301
+/docs/deploy-overrides/*    /docs/deploy-overrides   301
+/docs/deployments/*    /docs/deployments   301
+/docs/deploys/*    /docs/deploys   301
+/docs/dev/*    /docs/dev   301
+/docs/domains/*    /docs/domains   301
+/docs/dpa/*    /docs/dpa   301
+/docs/edge-rule-trace/*    /docs/edge-rule-trace   301
+/docs/edge-rules/*    /docs/edge-rules   301
+/docs/egress-denylist/*    /docs/egress-denylist   301
+/docs/env/*    /docs/env   301
+/docs/errors/*    /docs/errors   301
+/docs/event-driven/*    /docs/event-driven   301
+/docs/faas_openapi_spec/*    /docs/faas_openapi_spec   301
+/docs/functions/*    /docs/functions   301
+/docs/gdpr/*    /docs/gdpr   301
+/docs/getting-started/*    /docs/getting-started   301
+/docs/handler-api/*    /docs/handler-api   301
+/docs/inbound-webhooks/*    /docs/inbound-webhooks   301
+/docs/install/*    /docs/install   301
+/docs/jobs/*    /docs/jobs   301
+/docs/logs/*    /docs/logs   301
+/docs/managed-postgres/*    /docs/managed-postgres   301
+/docs/multi-service/*    /docs/multi-service   301
+/docs/networking/*    /docs/networking   301
+/docs/orgs/*    /docs/orgs   301
+/docs/plans/*    /docs/plans   301
+/docs/postgres/*    /docs/postgres   301
+/docs/preview-environments/*    /docs/preview-environments   301
+/docs/queue-pull-leases/*    /docs/queue-pull-leases   301
+/docs/quickstart/*    /docs/quickstart   301
+/docs/registry-credentials/*    /docs/registry-credentials   301
+/docs/responsible-disclosure/*    /docs/responsible-disclosure   301
+/docs/runtime-node/*    /docs/runtime-node   301
+/docs/runtime-python/*    /docs/runtime-python   301
+/docs/scale-to-zero/*    /docs/scale-to-zero   301
+/docs/scaling-policy/*    /docs/scaling-policy   301
+/docs/sdks/*    /docs/sdks   301
+/docs/secrets/*    /docs/secrets   301
+/docs/security/*    /docs/security   301
+/docs/sidecars/*    /docs/sidecars   301
+/docs/static-egress-ip/*    /docs/static-egress-ip   301
+/docs/storage/*    /docs/storage   301
+/docs/subprocessors/*    /docs/subprocessors   301
+/docs/synthetic-checks/*    /docs/synthetic-checks   301
+/docs/trace-propagation/*    /docs/trace-propagation   301
+/docs/tracing/*    /docs/tracing   301
 
 # Only registered client routes receive the app shell.
 # The built 404.html handles every unmatched URL on Netlify and Cloudflare Pages.

@@ -141,9 +141,10 @@ for (const route of ROUTES) {
       perRoute.push(`<meta name="twitter:image" content="${attr(image)}" />`);
     }
   }
-  // Points agents at the page's Markdown copy, written below.
+  // Only manifest guides have Markdown copies written below. The API
+  // reference comes from OpenAPI and has no corresponding .md output.
   const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
-  if (docSlug) {
+  if (DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
   }
   // Keeps a non-indexable page out of results without hiding it from the
