@@ -200,8 +200,20 @@ afterEach(() => {
   workspace.label = 'Personal';
 });
 
+/** The create form waits behind the page's primary action. */
+async function openForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'New budget' }));
+  return screen.getByRole('form', { name: 'New budget' });
+}
+
+/** Opens a row's ⋯ menu and picks an item. */
+async function pick(user: ReturnType<typeof userEvent.setup>, budget: string, item: string) {
+  await user.click(await screen.findByRole('button', { name: `Actions for ${budget}` }));
+  await user.click(await screen.findByRole('menuitem', { name: item }));
+}
+
 async function fillNew(user: ReturnType<typeof userEvent.setup>, name: string, limit: string) {
-  const form = screen.getByRole('form', { name: 'New budget' });
+  const form = await openForm(user);
   await user.type(within(form).getByLabelText('Name'), name);
   await user.type(within(form).getByLabelText('Limit (USD a month)'), limit);
   return form;
@@ -223,6 +235,31 @@ describe('BudgetsPage in a company workspace', () => {
 });
 
 describe('BudgetsPage', () => {
+  it('opens with what the budgets are doing now, most urgent first', async () => {
+    api();
+    renderWithProviders(<BudgetsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Budgets status' })).toHaveTextContent(
+        '“Preview spending” is stopping previews. Production keeps running.'
+      )
+    );
+    // The long create form waits behind the primary action.
+    expect(screen.queryByRole('form', { name: 'New budget' })).not.toBeInTheDocument();
+    await openForm(userEvent.setup());
+    expect(screen.queryByRole('button', { name: 'New budget' })).not.toBeInTheDocument();
+  });
+
+  it('says there are none yet when the account has no budgets', async () => {
+    budgets = [];
+    api();
+    renderWithProviders(<BudgetsPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Budgets status' })).toHaveTextContent(
+        /^You have no budgets yet\./
+      )
+    );
+  });
+
   it('lists budgets with their response and status, labelled beta', async () => {
     api();
     renderWithProviders(<BudgetsPage />);
@@ -347,7 +384,7 @@ describe('BudgetsPage', () => {
     await waitFor(() => expect(created).toHaveLength(2));
     expect(created[1].body.spec.enabled).toBe(false);
     // From here on the page does not offer what apid refused.
-    const again = screen.getByRole('form', { name: 'New budget' });
+    const again = await openForm(user);
     await user.click(within(again).getByRole('radio', { name: /Strict cap/ }));
     expect(within(again).getByRole('checkbox', { name: /Turn on now/ })).toBeDisabled();
     expect(within(again).getByText(/Not released to this account: draft only/)).toBeInTheDocument();
@@ -364,13 +401,13 @@ describe('BudgetsPage', () => {
     });
     const user = userEvent.setup();
     renderWithProviders(<BudgetsPage />);
-    await user.click(await screen.findByRole('button', { name: 'Details for Preview spending' }));
+    await pick(user, 'Preview spending', 'Show details');
     const stop = await screen.findByRole('region', { name: 'Automatic stop' });
     expect(within(stop).getByText('pr-42-api')).toBeInTheDocument();
     expect(within(stop).getByText('Stopped')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Close budget details' }));
 
-    await user.click(screen.getByRole('button', { name: 'Details for Monthly compute' }));
+    await pick(user, 'Monthly compute', 'Show details');
     const channels = await screen.findByRole('region', { name: 'Alert channels' });
     expect(within(channels).getByText(/Only the account email/)).toBeInTheDocument();
     await user.click(within(channels).getByRole('button', { name: 'Add channels' }));
@@ -396,7 +433,7 @@ describe('BudgetsPage', () => {
     });
     const user = userEvent.setup();
     renderWithProviders(<BudgetsPage />);
-    await user.click(await screen.findByRole('button', { name: 'Delete budget Preview spending' }));
+    await pick(user, 'Preview spending', 'Delete budget');
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/stop it placed on previews is released/);
     expect(dialog).toHaveTextContent(/history stays readable/);
