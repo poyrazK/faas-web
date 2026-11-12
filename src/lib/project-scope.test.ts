@@ -31,6 +31,10 @@ describe('project scope', () => {
       '/dashboard/projects',
       '/dashboard/usage',
       '/dashboard/settings',
+      '/dashboard/support',
+      '/dashboard/support/ticket',
+      '/dashboard/orgs/acme-corp/support',
+      '/dashboard/orgs/acme-corp/support/ticket',
     ])
       expect(isAccountPath(path), path).toBe(true);
     for (const path of [

@@ -4,6 +4,350 @@
  */
 
 export interface paths {
+    "/v1/orgs/{org}/support/tickets/{ticket}/satisfaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Survey organization support case workflow
+         * @description Organization support survey operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["organizationSupportSurvey"];
+        put?: never;
+        /**
+         * Rate organization support case workflow
+         * @description Organization support rate operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["organizationSupportRate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets/{ticket}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen organization support case workflow
+         * @description Organization support reopen operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["organizationSupportReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets/{ticket}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close organization support case workflow
+         * @description Organization support close operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["organizationSupportClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets/{ticket}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Messages organization support case workflow
+         * @description Organization support messages operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["organizationSupportMessages"];
+        put?: never;
+        /**
+         * Reply organization support case workflow
+         * @description Organization support reply operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["organizationSupportReply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets/{ticket}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get organization support case workflow
+         * @description Organization support get operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["organizationSupportGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List organization support cases
+         * @description Organization support list operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["organizationSupportList"];
+        put?: never;
+        /**
+         * Create organization support case workflow
+         * @description Organization support create operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["organizationSupportCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}/satisfaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Survey personal support case workflow
+         * @description Personal support survey operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["personalSupportSurvey"];
+        put?: never;
+        /**
+         * Rate personal support case workflow
+         * @description Personal support rate operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["personalSupportRate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen personal support case workflow
+         * @description Personal support reopen operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["personalSupportReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close personal support case workflow
+         * @description Personal support close operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["personalSupportClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Messages personal support case workflow
+         * @description Personal support messages operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["personalSupportMessages"];
+        put?: never;
+        /**
+         * Reply personal support case workflow
+         * @description Personal support reply operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["personalSupportReply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get personal support case workflow
+         * @description Personal support get operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["personalSupportGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List personal support cases
+         * @description Personal support list operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        get: operations["personalSupportList"];
+        put?: never;
+        /**
+         * Create personal support case workflow
+         * @description Personal support create operation. Responses omit private notes, staff queues and engineering details. Writes require current verified access, the expected revision where applicable, and a UUID idempotency key.
+         */
+        post: operations["personalSupportCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/tickets/{ticket}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark organization support updates read
+         * @description Organization support. Marks only this caller's existing ticket notifications through the observed sequence. Later updates stay unread. Repeating the request is intrinsically idempotent; no permanent receipt or expected ticket revision is required.
+         */
+        post: operations["organizationSupportMarkNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org}/support/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List organization support notifications
+         * @description Organization support. Metadata-only updates for the current caller. Read state is personal to this account and support audience. Private notes never create customer notifications.
+         */
+        get: operations["organizationSupportNotificationsFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticket}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark personal support updates read
+         * @description Personal support. Marks only this caller's existing ticket notifications through the observed sequence. Later updates stay unread. Repeating the request is intrinsically idempotent; no permanent receipt or expected ticket revision is required.
+         */
+        post: operations["personalSupportMarkNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List personal support notifications
+         * @description Personal support. Metadata-only updates for the current caller. Read state is personal to this account and support audience. Private notes never create customer notifications.
+         */
+        get: operations["personalSupportNotificationsFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/project-migrations": {
         parameters: {
             query?: never;
@@ -39985,6 +40329,163 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Current resolution survey eligibility and any previously submitted score. */
+        SupportSatisfaction: {
+            /** Format: uuid */
+            episode_id: string;
+            eligible: boolean;
+            /** Format: int32 */
+            rating?: number;
+        };
+        /** @description Recorded satisfaction score for a resolution episode; retries return the same result. */
+        SupportSatisfactionSubmission: {
+            /** Format: uuid */
+            episode_id: string;
+            /** Format: int32 */
+            rating: number;
+        };
+        /** @description One satisfaction rating for the currently resolved episode. */
+        SupportSatisfactionRequest: {
+            /** Format: uuid */
+            episode_id: string;
+            /** Format: int32 */
+            rating: number;
+        };
+        /** @description Durable transaction receipt; UUID idempotency keys replay indefinitely while current scope access remains valid. */
+        SupportSubmission: {
+            /** Format: uuid */
+            ticket_id: string;
+            /** Format: uuid */
+            submission_id: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        /** @description Sequence-ordered page of at most fifty public messages; use next_cursor as after. */
+        SupportMessagePage: {
+            items: components["schemas"]["SupportMessage"][];
+            /** Format: int64 */
+            next_cursor?: number;
+        };
+        /** @description One public conversation message, with a marker in place of redacted content. */
+        SupportMessage: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            sequence: number;
+            /** @enum {string} */
+            author: "customer" | "staff";
+            body: string;
+            redacted: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Creation-ordered page of at most fifty cases; pass next_cursor as cursor. */
+        SupportTicketPage: {
+            items: components["schemas"]["SupportTicket"][];
+            /** Format: uuid */
+            next_cursor?: string;
+        };
+        /** @description Customer-visible case metadata; staff assignments, targets, notes and engineering records stay private. */
+        SupportTicket: {
+            /** Format: uuid */
+            id: string;
+            subject: string;
+            category: string;
+            /** @enum {string} */
+            status: "open" | "pending" | "resolved";
+            /** Format: int64 */
+            revision: number;
+            context: components["schemas"]["SupportContext"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            resolved_at?: string;
+            /**
+             * Format: int64
+             * @description Unread support updates for the current caller and audience.
+             */
+            unread_count?: number;
+            can_reopen: boolean;
+            /** Format: date-time */
+            reopen_until?: string;
+        };
+        /** @description Remaining unread counts for the ticket and current support scope. */
+        SupportReadResult: {
+            /** Format: uuid */
+            ticket_id: string;
+            /** Format: int64 */
+            unread_count: number;
+            /** Format: int64 */
+            unread_total: number;
+        };
+        /** @description Observed notification boundary; future rows are never acknowledged. */
+        SupportReadRequest: {
+            /** Format: int64 */
+            through_sequence: number;
+        };
+        /** @description Sequence-ordered page of at most fifty updates in the authorized scope. */
+        SupportNotificationPage: {
+            items: components["schemas"]["SupportNotification"][];
+            /** Format: int64 */
+            next_cursor?: number;
+            /** Format: int64 */
+            unread_count: number;
+        };
+        /** @description An actor-specific support update containing metadata only. */
+        SupportNotification: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            sequence: number;
+            /** Format: uuid */
+            ticket_id: string;
+            /** @enum {string} */
+            kind: "staff_reply" | "customer_reply" | "ticket_created" | "assigned";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            read_at?: string;
+        };
+        /** @description Reopen within the saved policy window and count; starts a fresh episode using that policy snapshot. */
+        ReopenSupportTicketRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            body: string;
+        };
+        /** @description Close the current support resolution episode without extending a previous resolution timestamp. */
+        CloseSupportTicketRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        /** @description Append one customer reply to an unresolved case at the expected revision. */
+        SupportMessageRequest: {
+            /** Format: int64 */
+            expected_revision: number;
+            body: string;
+        };
+        /** @description Submit a support request within the authenticated personal or organization scope. */
+        CreateSupportTicketRequest: {
+            subject: string;
+            /** @enum {string} */
+            category: "deployment" | "billing" | "account" | "incident" | "other";
+            body: string;
+            /**
+             * @default normal
+             * @enum {string}
+             */
+            priority?: "low" | "normal" | "high" | "urgent";
+            context?: components["schemas"]["SupportContext"];
+        };
+        /** @description Optional identifiers supplied by the customer; no automatic log, secret or source-code collection. */
+        SupportContext: {
+            /** Format: uuid */
+            app_id?: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            request_id?: string;
+        };
         /** @description Start one durable migration of selected reviewed services with request-only configuration. */
         CreateProjectMigrationRequest: {
             /**
@@ -94937,6 +95438,78 @@ export interface components {
         };
     };
     responses: {
+        /** @description Customer assistance storage is temporarily unavailable; retry the same request key. */
+        SupportUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The rolling assistance submission or mutation allowance is exhausted. */
+        SupportLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The customer assistance JSON request exceeds its byte limit. */
+        SupportTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The assistance revision, reopening allowance or request receipt conflicts with this command. */
+        SupportConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description The requested assistance record is unavailable in the current scope. */
+        SupportMissing: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Current verified account or organization support access is required. */
+        SupportForbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Authentication is required to access customer assistance records. */
+        SupportUnauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Support request fields do not satisfy the customer assistance contract. */
+        SupportInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description If-Match no longer names the app's latest edge-rule set version (edge_rules_version_mismatch). The response ETag carries the current version. */
         EdgeRulesVersionMismatch: {
             headers: {
@@ -96140,6 +96713,803 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    organizationSupportSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportSurvey. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportSurvey. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of organizationSupportSurvey. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSatisfaction"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportRate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to organizationSupportRate. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportRate. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportRate. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportSatisfactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of organizationSupportRate. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSatisfactionSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportReopen: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to organizationSupportReopen. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportReopen. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportReopen. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of organizationSupportReopen. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to organizationSupportClose. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportClose. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportClose. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of organizationSupportClose. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportMessages: {
+        parameters: {
+            query?: {
+                /** @description Return messages after this global message sequence. This parameter belongs to organizationSupportMessages. */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportMessages. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportMessages. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of organizationSupportMessages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportMessagePage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportReply: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to organizationSupportReply. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportReply. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportReply. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of organizationSupportReply. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportGet. */
+                org: string;
+                /** @description Support case UUID in this scope. This parameter belongs to organizationSupportGet. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of organizationSupportGet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportList: {
+        parameters: {
+            query?: {
+                /** @description Last ticket UUID from the preceding page. This parameter belongs to organizationSupportList. */
+                cursor?: string;
+                /** @description Filter case status. This parameter belongs to organizationSupportList. */
+                status?: "open" | "pending" | "resolved";
+                /** @description Search subject and currently visible public conversation text. This parameter belongs to organizationSupportList. */
+                search?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportList. */
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of organizationSupportList. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketPage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportCreate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to organizationSupportCreate. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. This parameter belongs to organizationSupportCreate. */
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of organizationSupportCreate. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportSurvey. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of personalSupportSurvey. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSatisfaction"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportRate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to personalSupportRate. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportRate. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportSatisfactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of personalSupportRate. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSatisfactionSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportReopen: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to personalSupportReopen. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportReopen. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of personalSupportReopen. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to personalSupportClose. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportClose. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of personalSupportClose. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportMessages: {
+        parameters: {
+            query?: {
+                /** @description Return messages after this global message sequence. This parameter belongs to personalSupportMessages. */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportMessages. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of personalSupportMessages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportMessagePage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportReply: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to personalSupportReply. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportReply. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of personalSupportReply. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Support case UUID in this scope. This parameter belongs to personalSupportGet. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of personalSupportGet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportList: {
+        parameters: {
+            query?: {
+                /** @description Last ticket UUID from the preceding page. This parameter belongs to personalSupportList. */
+                cursor?: string;
+                /** @description Filter case status. This parameter belongs to personalSupportList. */
+                status?: "open" | "pending" | "resolved";
+                /** @description Search subject and currently visible public conversation text. This parameter belongs to personalSupportList. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scoped support records. Result of personalSupportList. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketPage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportCreate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUID bound permanently to the actor, operation, resource and JSON request. Reuse it for retries. This parameter belongs to personalSupportCreate. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Support transaction accepted. Result of personalSupportCreate. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSubmission"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportMarkNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. Applies to organizationSupportMarkNotificationsRead. */
+                org: string;
+                /** @description Support ticket UUID in this scope. Applies to organizationSupportMarkNotificationsRead. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Read state committed without changing the ticket revision. Applies to organizationSupportMarkNotificationsRead. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportReadResult"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    organizationSupportNotificationsFeed: {
+        parameters: {
+            query?: {
+                /** @description Sequence from the previous notification page. Applies to organizationSupportNotificationsFeed. */
+                before?: number;
+                /** @description Return only unread updates. Applies to organizationSupportNotificationsFeed. */
+                unread?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Organization slug; current owner or administrator membership is required. Applies to organizationSupportNotificationsFeed. */
+                org: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current caller notification feed and scoped unread count. Applies to organizationSupportNotificationsFeed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportNotificationPage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportMarkNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Support ticket UUID in this scope. Applies to personalSupportMarkNotificationsRead. */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Read state committed without changing the ticket revision. Applies to personalSupportMarkNotificationsRead. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportReadResult"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
+    personalSupportNotificationsFeed: {
+        parameters: {
+            query?: {
+                /** @description Sequence from the previous notification page. Applies to personalSupportNotificationsFeed. */
+                before?: number;
+                /** @description Return only unread updates. Applies to personalSupportNotificationsFeed. */
+                unread?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current caller notification feed and scoped unread count. Applies to personalSupportNotificationsFeed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportNotificationPage"];
+                };
+            };
+            400: components["responses"]["SupportInvalid"];
+            401: components["responses"]["SupportUnauthenticated"];
+            403: components["responses"]["SupportForbidden"];
+            404: components["responses"]["SupportMissing"];
+            409: components["responses"]["SupportConflict"];
+            413: components["responses"]["SupportTooLarge"];
+            429: components["responses"]["SupportLimited"];
+            503: components["responses"]["SupportUnavailable"];
+        };
+    };
     listProjectMigrations: {
         parameters: {
             query?: {

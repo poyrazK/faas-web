@@ -50,7 +50,8 @@ export const projectLabel = (slug: string) => (slug === STANDALONE ? 'Standalone
 const ACCOUNT_PATHS = [
   /^\/dashboard\/?$/,
   /^\/dashboard\/projects\/?$/,
-  /^\/dashboard\/(usage|budgets|invoices|plans|audit|settings|account)(\/|$)/,
+  /^\/dashboard\/(usage|budgets|invoices|plans|audit|settings|account|support)(\/|$)/,
+  /^\/dashboard\/orgs\/[^/]+\/support(\/|$)/,
   /^\/dashboard\/apps\/new(\/|$)/,
 ];
 
