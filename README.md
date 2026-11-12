@@ -501,7 +501,15 @@ sidebar, the index, prev/next, the prerender list, and the sitemap.
 
 ```bash
 npm run docs:pull      # refresh the vendored copies
+npm run capabilities:pull # refresh the capability catalog and inventory
 ```
+
+Use `DOCS_REF=<faas commit>` and `CAPABILITIES_REF=<same commit>` to pin a
+coordinated refresh, including the customer-page catalog pulled by `docs:pull`.
+The full `api:pull` is currently blocked by the console's Automations → Workflows
+migration: upstream removed contracts still used by the console. Until that
+migration lands, preserve the working API snapshot and use scoped upstream
+refreshes where needed (as in `scripts/pull-support-api.mjs`).
 
 Content is committed rather than fetched at runtime, for the same reason
 `api/openapi.yaml` is — the site prerenders, and docs that depend on GitHub
@@ -518,6 +526,14 @@ enforces it — a `docs/runbooks/…` or `docs/adr/…` source fails the suite.
 
 Adding a page means adding it to the manifest and running `docs:pull`. The
 tests will tell you if the two have drifted.
+
+Legacy child redirects are limited to the published guide slugs and aliases in
+`vercel.json` and `public/_redirects`; `hosting-contract.test.ts` checks their
+coverage. Keep `/docs/api/*` outside those redirects so each generated API group
+serves its own HTML. Markdown alternates are emitted only for manifest guides,
+which have matching `.md` output; the OpenAPI-derived reference has no Markdown
+copy. The hosting smoke checks direct responses, page titles, canonicals and a
+guide's Markdown alternate after deployment.
 
 ### Theming
 
