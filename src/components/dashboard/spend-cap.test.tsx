@@ -161,7 +161,7 @@ describe('SpendCap in a company workspace', () => {
     await mount();
     await setCap('7.50');
     await waitFor(() => expect(calls.filter((c) => c.method === 'POST')).toHaveLength(2));
-    expect(openMfa).toHaveBeenCalledWith('verify', expect.anything());
+    expect(openMfa).toHaveBeenCalledWith('choose', expect.anything());
     const [first, second] = calls.filter((c) => c.method === 'POST');
     expect(second.init?.headers?.['Idempotency-Key']).toBe(
       first.init?.headers?.['Idempotency-Key']

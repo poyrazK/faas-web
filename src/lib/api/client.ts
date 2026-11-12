@@ -55,10 +55,13 @@ const AUTH_ROUTES = ['/login', '/signup', '/v1/auth/'];
  */
 const OTHER_CREDENTIAL_CODES = new Set(['api_key_expired', 'api_key_revoked']);
 
-async function refusesOtherCredential(response: Response): Promise<boolean> {
+async function refusesOtherCredential(response: Response, path: string): Promise<boolean> {
   try {
     const body = (await response.clone().json()) as { code?: unknown };
-    return typeof body.code === 'string' && OTHER_CREDENTIAL_CODES.has(body.code);
+    if (typeof body.code !== 'string') return false;
+    if (OTHER_CREDENTIAL_CODES.has(body.code)) return true;
+    const proof = path.startsWith('/v1/account/mfa/') || path === '/dashboard/account/set-password';
+    return proof && ['mfa_invalid_code', 'invalid_credentials'].includes(body.code);
   } catch {
     return false;
   }
@@ -84,7 +87,7 @@ const sessionMiddleware: Middleware = {
     if (
       response.status === 401 &&
       !AUTH_ROUTES.some((p) => new URL(request.url).pathname.startsWith(p)) &&
-      !(await refusesOtherCredential(response))
+      !(await refusesOtherCredential(response, new URL(request.url).pathname))
     ) {
       onUnauthorized?.();
     }

@@ -962,7 +962,8 @@ export const LEDGER: LedgerEntry[] = [
     row: 142,
     name: 'Signup, login (password and magic link), MFA, password reset, email verification, CLI login',
     status: 'full',
-    surfaces: ['/login', '/dashboard/settings?section=security'],
+    // Password-confirmed enrollment, recent recovery proof and email fallback.
+    surfaces: ['/login', '/dashboard/settings?section=security', '/dashboard/security'],
   },
   // H143 · GA
   {

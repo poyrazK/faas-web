@@ -277,10 +277,8 @@ describe('Plan change', () => {
       await waitFor(() => expect(mocks.openMfa).toHaveBeenCalled());
       const [mode, opts] = mocks.openMfa.mock.calls[0];
       expect(mode).toBe('choose');
-      expect(opts.reason).toBe('Plan changes need multi-factor authentication.');
-      // Only an authenticator code stamps a step-up (apid handlers_mfa.go), so
-      // the recovery option would always be refused here.
-      expect(opts.allowRecovery).toBe(false);
+      expect(opts.reason).toBe('Verify to confirm this plan change.');
+      expect(opts.allowRecovery).not.toBe(false);
     });
 
     it('retries the change once an authenticator code is accepted', async () => {
@@ -298,21 +296,24 @@ describe('Plan change', () => {
       );
     });
 
-    it('asks for a fresh code after enrolment, which does not confirm the session, then retries', async () => {
+    it('retries after enrollment without demanding a second code', async () => {
       mocks.changePlan
         .mockRejectedValueOnce(stepUpRequired())
         .mockResolvedValueOnce({ account: { plan: 'pro' }, pending: false });
-      answerWith(
-        (o) => o.onVerified('enrolment'),
-        (o) => o.onVerified('authenticator')
-      );
+      answerWith((o) => o.onVerified('enrolment'));
       await switchToPro();
       await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
-      expect(mocks.openMfa).toHaveBeenCalledTimes(2);
-      const [mode, opts] = mocks.openMfa.mock.calls[1];
-      expect(mode).toBe('verify');
-      expect(opts.reason).toMatch(/new code from your authenticator/i);
-      expect(opts.allowRecovery).toBe(false);
+      expect(mocks.openMfa).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries after a recovery code without asking for the lost authenticator', async () => {
+      mocks.changePlan
+        .mockRejectedValueOnce(stepUpRequired())
+        .mockResolvedValueOnce({ account: { plan: 'pro' }, pending: false });
+      answerWith((o) => o.onVerified('recovery'));
+      await switchToPro();
+      await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
+      expect(mocks.openMfa).toHaveBeenCalledTimes(1);
     });
 
     it('explains what to do when the verification is dismissed', async () => {

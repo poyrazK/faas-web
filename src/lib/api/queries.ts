@@ -3216,9 +3216,11 @@ export function enrollMfa() {
   return unwrap(api.POST('/v1/account/mfa/enroll', {}));
 }
 
-export async function confirmMfa(totp: string) {
+export async function confirmMfa(totp: string, current_password?: string) {
   const csrf_token = await issueCSRF('mfa_confirm');
-  return unwrap(api.POST('/v1/account/mfa/confirm', { body: { totp, csrf_token } }));
+  return unwrap(
+    api.POST('/v1/account/mfa/confirm', { body: { totp, current_password, csrf_token } })
+  );
 }
 
 export function verifyMfa(totp: string) {
@@ -3233,6 +3235,11 @@ export async function recoverMfa(code: string) {
 export async function disableMfa(input: { password?: string; recovery_code?: string }) {
   const csrf_token = await issueCSRF('mfa_disable');
   return unwrap(api.POST('/v1/account/mfa/disable', { body: { ...input, csrf_token } }));
+}
+
+export async function requestMfaRecoveryEmail() {
+  const csrf_token = await issueCSRF('mfa_disable_email');
+  return unwrap(api.POST('/v1/account/mfa/disable-email', { body: { csrf_token } }));
 }
 
 /* ------------------------------------------------------------------ *

@@ -169,7 +169,7 @@ describe('DeployTokensPanel', () => {
     await screen.findByRole('listitem', { name: /github-actions/ });
     await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
     expect(await screen.findByRole('region', { name: 'New deploy token' })).toBeInTheDocument();
-    expect(mocks.openMfa).toHaveBeenCalledWith('verify', expect.anything());
+    expect(mocks.openMfa).toHaveBeenCalledWith('choose', expect.anything());
     expect(post).toHaveBeenCalledTimes(2);
   });
 

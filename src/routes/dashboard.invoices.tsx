@@ -1,3 +1,4 @@
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { OpenNewWindow } from 'iconoir-react';
@@ -69,6 +70,7 @@ function InvoicesPage() {
 }
 
 function InvoicesBody() {
+  const withMfa = useMfaAction();
   const { toast } = useToast();
   // A company workspace reads the organization's billing subject (same handler).
   const { org, label } = useWorkspaceTarget();
@@ -169,8 +171,7 @@ function InvoicesBody() {
               className="gap-1.5"
               disabled={portal.isPending}
               onClick={() => {
-                void portal
-                  .mutateAsync()
+                void withMfa(() => portal.mutateAsync(), 'Verify to open your billing settings.')
                   .then((result) => {
                     // A full-page navigation, not a fetch — it is another origin.
                     if (result.url) window.location.href = result.url;

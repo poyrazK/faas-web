@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { Timestamp } from '@/components/ui/timestamp';
 import { useToast } from '@/components/ui/toast';
+import { useMfaAction } from '@/components/auth/use-mfa-action';
 import {
   ErrorState,
   InlinePhase,
@@ -76,6 +77,7 @@ function nextMonth(periodStart: string): string | null {
 }
 
 export function PostgresUsage() {
+  const withMfa = useMfaAction();
   const { org, label } = useWorkspaceTarget();
   const { account } = useAuth();
   const usage = usePostgresUsage();
@@ -112,7 +114,7 @@ export function PostgresUsage() {
     );
     if (!ok) return;
     try {
-      await setOverage.mutateAsync(enabled);
+      await withMfa(() => setOverage.mutateAsync(enabled), 'Verify to change compute overage.');
       toast({
         kind: 'success',
         title: enabled ? 'Compute overage is on' : 'Compute overage is off',

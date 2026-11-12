@@ -87,10 +87,10 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   });
   const command = `gregale deploy --name ${slug}`;
 
-  const stepUp = (code: StepUpCode) =>
+  const stepUp = (_code: StepUpCode) =>
     new Promise<boolean>((resolve) => {
       // Enrolment also stamps the session, so both codes resolve the same way.
-      openMfa(code === 'mfa_required' ? 'choose' : 'verify', {
+      openMfa('choose', {
         onVerified: () => resolve(true),
         onDismissed: () => resolve(false),
       });

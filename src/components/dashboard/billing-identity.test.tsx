@@ -154,7 +154,7 @@ describe('BillingIdentityPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('DE123456789')).toBeInTheDocument();
-    expect(mocks.openMfa).toHaveBeenCalledWith('verify', expect.any(Object));
+    expect(mocks.openMfa).toHaveBeenCalledWith('choose', expect.any(Object));
     expect(patches).toHaveLength(2);
     expect(patches[1].init.headers['Idempotency-Key']).toBe(
       patches[0].init.headers['Idempotency-Key']
