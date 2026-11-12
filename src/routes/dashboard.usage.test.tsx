@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 
 const setCap = vi.fn();
@@ -10,6 +10,11 @@ const usage = vi.hoisted(() => ({
   projection: {} as Record<string, unknown>,
   breakdown: { isPending: false, error: null as unknown, refetch: (() => {}) as () => void },
   reads: 0,
+  cap: null as number | null,
+  forecast: { data: undefined, isPending: true, error: null, refetch: () => {} } as Record<
+    string,
+    unknown
+  >,
   compute: {
     month: '2026-08',
     used_gb_hours: 1,
@@ -18,9 +23,14 @@ const usage = vi.hoisted(() => ({
     overage_cents: 0,
   },
 }));
-const COMPUTE = usage.compute;
+const COMPUTE = { ...usage.compute };
 
-vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
+vi.mock('@tanstack/react-router', () => ({
+  createFileRoute: () => (options: unknown) => options,
+  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
+    <a href={to}>{children}</a>
+  ),
+}));
 vi.mock('@/lib/api/queries', () => ({
   // Compute stands on the usage summary; the account projection
   // (GET /v1/account/usage) only adds the daily and service breakdown.
@@ -37,8 +47,13 @@ vi.mock('@/lib/api/queries', () => ({
   useApps: () => ({ data: [] }),
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
   useSetOverageCap: () => ({ mutateAsync: setCap, isPending: false }),
-  useOverageCap: () => ({ data: { overage_cap_cents: null }, isPending: false, error: null }),
-  useBillingForecast: () => ({ data: undefined, isPending: true, error: null }),
+  useOverageCap: () => ({
+    data: { overage_cap_cents: usage.cap },
+    isPending: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useBillingForecast: () => usage.forecast,
   useSpendCapHistory: () => ({ data: { events: [] }, isPending: false, error: null }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'hobby', app_count: 1 } }) }));
@@ -75,6 +90,9 @@ const { Route } = await import('./dashboard.usage');
 const UsagePage = (Route as unknown as { component: React.ComponentType }).component;
 
 beforeEach(() => {
+  usage.cap = null;
+  usage.forecast = { data: undefined, isPending: true, error: null, refetch: vi.fn() };
+  usage.compute = { ...COMPUTE };
   usage.rows = [];
   usage.reads = 0;
   usage.projection = { month: '2026-08', compute: { ...COMPUTE } };
@@ -84,6 +102,67 @@ beforeEach(() => {
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue({ overage_cap_cents: 1250 });
   toast.mockReset();
+});
+
+describe('the answer first', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('opens with one plain sentence and no action when nothing needs doing', () => {
+    render(<UsagePage />);
+    expect(screen.getByRole('status', { name: 'Usage this month' })).toHaveTextContent(
+      "You've used 2% of this month's included compute. Nothing needs your attention."
+    );
+    expect(screen.queryByRole('link', { name: 'Upgrade plan' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Raise cap' })).toBeNull();
+  });
+
+  it('projects the month from the API, prices it from the forecast, and offers an upgrade', () => {
+    // Date only, so user-event's timers keep running.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-12T12:00:00Z'));
+    usage.compute = { ...COMPUTE, used_gb_hours: 36, included_gb_hours: 50 };
+    usage.forecast = {
+      data: {
+        period_end: '2026-09-01T00:00:00Z',
+        meters: [
+          { meter: 'compute', forecast: { available: true, projected_net_millicents: 4_000 } },
+        ],
+        bill_estimate_available: false,
+      },
+      isPending: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<UsagePage />);
+    // 36 GB-h on day 12 of 31 is about 93 by Aug 31: 43 over the 50 included.
+    expect(screen.getByRole('status', { name: 'Usage this month' })).toHaveTextContent(
+      "You've used 72% of this month's included compute. At this pace you'll be about 43 GB-hours over by Aug 31, around $0.04."
+    );
+    expect(screen.getByRole('link', { name: 'Upgrade plan' })).toHaveAttribute(
+      'href',
+      '/dashboard/plans'
+    );
+  });
+
+  it('asks to raise a reached cap, and the action opens the cap editor', async () => {
+    usage.cap = 500;
+    usage.compute = { ...COMPUTE, used_gb_hours: 120, overage_gb_hours: 70, overage_cents: 500 };
+    render(<UsagePage />);
+    expect(screen.getByRole('status', { name: 'Usage this month' })).toHaveTextContent(
+      /^You've reached your \$5\.00 spend cap\./
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Raise cap' }));
+    const dialog = screen.getByRole('dialog', { name: 'Spend cap' });
+    expect(within(dialog).getByRole('spinbutton', { name: 'Cap (USD)' })).toHaveValue(5);
+  });
+
+  it('keeps the cap history one click away', async () => {
+    render(<UsagePage />);
+    const toggle = screen.getByText('Show cap history');
+    expect(screen.getByText('No cap changes or cap-reached notices yet.')).not.toBeVisible();
+    await userEvent.click(toggle);
+    expect(screen.getByText('No cap changes or cap-reached notices yet.')).toBeVisible();
+  });
 });
 
 describe('cost breakdown', () => {
@@ -237,7 +316,7 @@ describe('spend-cap validation', () => {
 });
 
 describe('the account usage projection', () => {
-  it('draws one bar per day from the daily rollups and names the biggest day', () => {
+  it('draws one bar per day from the daily rollups and names the biggest day', async () => {
     usage.projection = {
       month: '2026-08',
       compute: {
@@ -253,8 +332,14 @@ describe('the account usage projection', () => {
     const chart = screen.getByRole('figure', { name: 'Daily compute usage in GB-hours' });
     expect(within(chart).getAllByRole('img')).toHaveLength(3);
     expect(within(chart).getByRole('img', { name: 'Aug 2: 0 GB-h' })).toBeInTheDocument();
-    expect(screen.getByText(/Biggest day: Aug 3, 0.5 GB-h, mostly api \(0.4 GB-h\)/)).toBeVisible();
-    expect(screen.getByText(/1 day has no rollup and is drawn at zero/)).toBeVisible();
+    expect(screen.getByText(/Your busiest day was/)).toHaveTextContent(
+      'Your busiest day was Aug 3, at 0.5 GB-hours, mostly api (0.4 GB-hours).'
+    );
+    // How the bars relate to the live total is honest, and on request.
+    const missing = screen.getByText(/1 day has no rollup and is drawn at zero/);
+    expect(missing).not.toBeVisible();
+    await userEvent.click(screen.getByText('About these bars'));
+    expect(missing).toBeVisible();
     expect(screen.getByText(/Daily rollups: 0.75 GB-h · live total: 1 GB-h/)).toBeVisible();
   });
 
@@ -268,6 +353,7 @@ describe('the account usage projection', () => {
     render(<UsagePage />);
     expect(screen.queryByRole('region', { name: 'Object storage' })).toBeNull();
     expect(screen.queryByText('Managed PostgreSQL')).toBeNull();
+    expect(screen.queryByText('Other services')).toBeNull();
   });
 
   it('shows managed PostgreSQL as figures with its cap state in words', () => {
@@ -295,6 +381,7 @@ describe('the account usage projection', () => {
     };
     render(<UsagePage />);
     expect(screen.getByRole('region', { name: 'Object storage' })).toBeInTheDocument();
+    expect(screen.getByText('Other services')).toBeInTheDocument();
     expect(screen.getByText('Managed PostgreSQL')).toBeInTheDocument();
     expect(screen.getByText('2 of 3')).toBeInTheDocument();
     expect(screen.getByText('10 CU-hours')).toBeInTheDocument();
@@ -320,8 +407,8 @@ describe('when the account usage projection fails', () => {
     fail('capacity_unavailable', 503);
     render(<UsagePage />);
     // Compute comes from the usage summary, unaffected.
-    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
-    expect(screen.getByText('Overage cost')).toBeInTheDocument();
+    expect(screen.getByText('Compute used')).toBeInTheDocument();
+    expect(screen.getByText('Overage so far')).toBeInTheDocument();
     expect(screen.getByRole('meter', { name: 'Included allowance used' })).toBeInTheDocument();
     expect(screen.getByText(/1 of 50 GB-hours/)).toBeInTheDocument();
     // The breakdown is replaced by a scoped notice, not a page error.
@@ -344,14 +431,14 @@ describe('when the account usage projection fails', () => {
     expect(
       screen.getByText(/Managed PostgreSQL usage is stale, so the daily breakdown/)
     ).toBeInTheDocument();
-    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
+    expect(screen.getByText('Compute used')).toBeInTheDocument();
   });
 
   it('says it is reading the breakdown while compute is already shown', () => {
     usage.projection = undefined as never;
     usage.breakdown = { isPending: true, error: null, refetch: vi.fn() };
     render(<UsagePage />);
-    expect(screen.getByText('GB-hours used')).toBeInTheDocument();
+    expect(screen.getByText('Compute used')).toBeInTheDocument();
     expect(screen.getByText('Reading the daily and service breakdown…')).toBeInTheDocument();
   });
 });

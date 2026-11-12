@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ListSelect, Trash } from 'iconoir-react';
+import { MoreHoriz, Plus } from 'iconoir-react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { useBudgets, useDeleteBudget, useOperationKey } from '@/lib/api/budgets';
@@ -20,6 +27,14 @@ import {
 } from './budget-bits';
 import { BudgetDetail } from './budget-detail';
 import { BudgetForm } from './budget-form';
+import { budgetsAnswer, type BudgetsTone } from './budget-words';
+
+const TONE_COLOR: Record<BudgetsTone, string> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  critical: 'var(--status-critical)',
+  none: 'var(--muted-foreground)',
+};
 
 interface Row {
   id: string;
@@ -87,6 +102,8 @@ function useDeleteFlow(accountId: string, onDeleted: (budget: Budget) => void) {
 export function BudgetsBody({ accountId }: { accountId: string }) {
   const budgets = useBudgets(accountId, true);
   const [selected, setSelected] = useState<string | null>(null);
+  // The create form is long, so it waits behind "New budget".
+  const [creating, setCreating] = useState(false);
   // apid's 422 is the only signal that strict caps are not released here
   // (the flag is not in /v1/capabilities); once seen, the page stops offering
   // to turn one on.
@@ -167,23 +184,69 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
     },
   ];
 
+  const answer = budgets.data ? budgetsAnswer(list) : null;
+
   return (
     <div className="flex flex-col gap-6">
-      <Panel title="New budget">
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          {
-            'Preview it against this month first. An alert never stops anything; stopping previews and strict caps do, and say exactly what before they turn on.'
-          }
+      <section
+        aria-label="Budgets now"
+        className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6"
+      >
+        <p
+          role="status"
+          aria-label="Budgets status"
+          className="flex max-w-[44rem] items-start gap-2.5 text-lg leading-7 font-semibold tracking-[-0.01em] text-balance"
+        >
+          {answer && (
+            <>
+              <span
+                aria-hidden
+                className="mt-2.5 inline-block size-2 shrink-0 rounded-full"
+                style={{ background: TONE_COLOR[answer.tone] }}
+              />
+              {answer.sentence}
+            </>
+          )}
         </p>
+        {!creating && (
+          <Button
+            size="sm"
+            className="shrink-0 gap-1.5 self-start"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New budget
+          </Button>
+        )}
+      </section>
 
-        <BudgetForm
-          accountId={accountId}
-          scopeLabel={scopeLabel}
-          strictRefused={strictRefused}
-          onStrictRefused={() => setStrictRefused(true)}
-          onSaved={(budget) => setSelected(budget.id)}
-        />
-      </Panel>
+      {creating && (
+        <Panel
+          title="New budget"
+          actions={
+            <Button size="xs" variant="ghost" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+          }
+        >
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+            {
+              'Preview it against this month first. An alert never stops anything; stopping previews and strict caps do, and say exactly what before they turn on.'
+            }
+          </p>
+
+          <BudgetForm
+            accountId={accountId}
+            scopeLabel={scopeLabel}
+            strictRefused={strictRefused}
+            onStrictRefused={() => setStrictRefused(true)}
+            onSaved={(budget) => {
+              setCreating(false);
+              setSelected(budget.id);
+            }}
+          />
+        </Panel>
+      )}
 
       <ResourceTable
         rows={rows}
@@ -198,25 +261,31 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
         onRetry={() => void budgets.refetch()}
         onRowClick={(row) => setSelected(row.id)}
         rowActions={(row) => (
-          <span className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label={`Details for ${row.name}`}
-              aria-pressed={selected === row.id}
-              onClick={() => setSelected((cur) => (cur === row.id ? null : row.id))}
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ListSelect className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={`Delete budget ${row.name}`}
-              onClick={() => void askDelete(row.budget)}
-              className="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Trash className="h-3.5 w-3.5" />
-            </button>
-          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="xs"
+                variant="ghost"
+                aria-label={`Actions for ${row.name}`}
+                className="px-1.5"
+              >
+                <MoreHoriz aria-hidden className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => setSelected((cur) => (cur === row.id ? null : row.id))}
+              >
+                {selected === row.id ? 'Hide details' : 'Show details'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => void askDelete(row.budget)}
+                className="text-[color:var(--status-critical)] data-[highlighted]:text-[color:var(--status-critical)]"
+              >
+                Delete budget
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       />
 
