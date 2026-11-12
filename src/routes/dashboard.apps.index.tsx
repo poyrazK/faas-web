@@ -16,6 +16,8 @@ import {
 } from '@/lib/mock-data';
 import { useData } from '@/lib/store';
 import { consoleHead } from '@/lib/seo';
+import { inScope, STANDALONE } from '@/lib/project-scope';
+import { accountWideNote, useScopeGate } from '@/components/dashboard/scope-gate';
 
 const STATE_FILTERS: { key: RunState | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -140,17 +142,27 @@ function FunctionsPage() {
       replace: true,
       hash: true,
     });
-  // Apps report no project (`AppResponse` has no project_id), so this list
-  // filters on what each row carries: the runtime. Grouping by project lives
-  // on the Projects page.
+  // Apps report no project (`AppResponse` has no project_id), so the filters
+  // are what each row carries: the runtime. The chosen project narrows the
+  // list by membership (`useProjectScope`), not by a filter.
   const setRuntime = (next: string) =>
     routeNavigate({
       search: (prev) => ({ ...prev, runtime: next === 'all' ? undefined : next }),
       replace: true,
       hash: true,
     });
-  const { workflows, loading, error, refresh } = useData();
+  const { workflows: allApps, loading, error, refresh } = useData();
   const navigate = useNavigate();
+  const gate = useScopeGate();
+  const { scope } = gate;
+  // Inside a project, only its apps — standalone apps when the scope is
+  // `_standalone`, which the standalone "Project overview" links to.
+  const workflows = useMemo(() => inScope(allApps, scope, (fn) => fn.id), [allApps, scope]);
+  const title = !scope.project
+    ? 'Apps'
+    : scope.project === STANDALONE
+      ? 'Standalone apps'
+      : `Apps in ${scope.label}`;
 
   // The chip and select filters apply here; the text query applies inside the
   // table, which also announces the result count.
@@ -178,7 +190,12 @@ function FunctionsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Apps"
+        title={title}
+        help={
+          scope.project === STANDALONE
+            ? 'Apps that belong to no project. Each project’s apps are on its own page.'
+            : undefined
+        }
         actions={
           <Button asChild size="sm" className="gap-1.5">
             <Link to="/dashboard/apps/new">
@@ -225,7 +242,13 @@ function FunctionsPage() {
           </>
         }
         emptyMessage={
-          workflows.length === 0 ? 'No apps on this account yet.' : 'No apps match these filters.'
+          workflows.length > 0
+            ? 'No apps match these filters.'
+            : !scope.project
+              ? 'No apps on this account yet.'
+              : scope.project === STANDALONE
+                ? 'No standalone apps — every app belongs to a project.'
+                : `No apps in ${scope.label} yet.`
         }
         emptyAction={
           workflows.length === 0 ? (
@@ -252,9 +275,12 @@ function FunctionsPage() {
             </Button>
           )
         }
-        loading={loading}
-        error={error}
-        onRetry={refresh}
+        loading={loading || (!error && !gate.error && gate.pending)}
+        error={error ?? gate.error}
+        onRetry={() => {
+          if (gate.error) gate.retry();
+          refresh();
+        }}
         onRowClick={(fn) =>
           navigate({ to: '/dashboard/apps/$appSlug', params: { appSlug: fn.id } })
         }
@@ -262,7 +288,7 @@ function FunctionsPage() {
 
       {/* Below the live inventory: deleted apps are the exception, and the
           table above is what the page is for. */}
-      <RecentlyDeletedApps />
+      <RecentlyDeletedApps note={accountWideNote(scope)} />
     </div>
   );
 }

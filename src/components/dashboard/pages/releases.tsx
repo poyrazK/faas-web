@@ -21,6 +21,8 @@ import {
 import type { components } from '@/lib/api/schema';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
 import { Link, getRouteApi } from '@tanstack/react-router';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, useScopeGate } from '@/components/dashboard/scope-gate';
 import { useMemo } from 'react';
 
 type Build = components['schemas']['BuildResponse'];
@@ -52,6 +54,9 @@ export function DeploymentsPage() {
   const apps = useApps();
   const deploymentsQuery = useInfiniteDeployments();
   const buildsQuery = useInfiniteBuilds();
+  const gate = useScopeGate();
+  const { scope } = gate;
+  const scoped = Boolean(scope.project);
   const view = search.view ?? (search.build && !search.deployment ? 'builds' : 'releases');
   const select = (patch: Partial<ReleasesSearch>, replace = false) => {
     void navigate({
@@ -61,14 +66,36 @@ export function DeploymentsPage() {
       resetScroll: false,
     });
   };
-  const builds = useMemo(
+  const appById = useMemo(
+    () => new Map((apps.data ?? []).map((app) => [app.id, app.slug])),
+    [apps.data]
+  );
+  const allBuilds = useMemo(
     () => buildsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [buildsQuery.data]
   );
-  const deployments = useMemo(
+  const allDeployments = useMemo(
     () => deploymentsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [deploymentsQuery.data]
   );
+  // Inside a project a deployment is placed by its app's slug, and a build by
+  // its deployment's (builds name no app). A build whose deployment has not
+  // loaded cannot be placed, so it is left out and counted, never guessed.
+  const appOfDeployment = useMemo(
+    () => new Map(allDeployments.map((d) => [d.id, appById.get(d.app_id) ?? ''])),
+    [allDeployments, appById]
+  );
+  const deployments = useMemo(
+    () => inScope(allDeployments, scope, (d) => appById.get(d.app_id) ?? ''),
+    [allDeployments, scope, appById]
+  );
+  const builds = useMemo(
+    () => inScope(allBuilds, scope, (b) => appOfDeployment.get(b.deployment_id) ?? ''),
+    [allBuilds, scope, appOfDeployment]
+  );
+  const unplacedBuilds = scoped
+    ? allBuilds.filter((b) => !appOfDeployment.get(b.deployment_id)).length
+    : 0;
   const missingBuilds = useBuildRecords(
     view === 'releases'
       ? deployments.flatMap((deployment) =>
@@ -94,10 +121,6 @@ export function DeploymentsPage() {
       ])
     );
   }, [builds, deployments, missingBuilds]);
-  const appById = useMemo(
-    () => new Map((apps.data ?? []).map((app) => [app.id, app.slug])),
-    [apps.data]
-  );
   const rows = useMemo<ReleaseRow[]>(() => {
     const row = (build?: Build, deployment?: Deployment): ReleaseRow => ({
       id: deployment?.id ?? build!.id,
@@ -127,16 +150,28 @@ export function DeploymentsPage() {
   }, [builds, deployments, joinedBuilds, appById, view, search.status, search.kind]);
   const currentQuery = view === 'builds' ? buildsQuery : deploymentsQuery;
   const loadedItems = view === 'builds' ? builds : deployments;
+  const allLoaded = view === 'builds' ? allBuilds : allDeployments;
+  // Scoped builds are placed through deployments and apps, so both must load.
+  const needsApps = view === 'releases' || scoped;
   const error =
-    view === 'releases'
-      ? (apps.error ?? (loadedItems.length === 0 ? currentQuery.error : undefined))
-      : loadedItems.length === 0
-        ? currentQuery.error
-        : undefined;
+    (needsApps ? apps.error : undefined) ??
+    (scoped ? gate.error : undefined) ??
+    (allLoaded.length === 0 ? currentQuery.error : undefined) ??
+    undefined;
   const retry = () => {
-    if (view === 'releases') void apps.refetch();
+    if (needsApps) void apps.refetch();
+    if (gate.error) gate.retry();
+    if (scoped && view === 'builds') void deploymentsQuery.refetch();
     void currentQuery.refetch();
   };
+  const noun = view === 'builds' ? 'builds' : 'releases';
+  const emptyMessage = loadedItems.length
+    ? `No ${noun} match these filters.`
+    : !scoped
+      ? `No ${noun} yet.`
+      : currentQuery.hasNextPage
+        ? `No ${noun} ${scopedIn(scope)} among the account’s latest. Load older ones below to look further back.`
+        : `No ${noun} ${scopedIn(scope)} yet.`;
   const commitColumn: Column<ReleaseRow> = {
     key: 'commit',
     label: 'Commit',
@@ -251,6 +286,7 @@ export function DeploymentsPage() {
       </TabNav>
       {view === 'releases' && (
         <DeployQueue
+          scope={gate}
           onOpen={(deployment) =>
             select({ deployment, build: undefined, releaseSection: 'lifecycle' })
           }
@@ -258,6 +294,7 @@ export function DeploymentsPage() {
       )}
       {view === 'releases' && (
         <WorkspaceReleaseGuards
+          scope={gate}
           onOpen={(deployment) =>
             select({ deployment, build: undefined, releaseSection: 'lifecycle' })
           }
@@ -282,13 +319,7 @@ export function DeploymentsPage() {
           'buildStatus',
         ]}
         searchPlaceholder="Filter by release, build, image or source…"
-        emptyMessage={
-          loadedItems.length
-            ? `No ${view === 'builds' ? 'builds' : 'releases'} match these filters.`
-            : view === 'builds'
-              ? 'No builds yet.'
-              : 'No releases yet.'
-        }
+        emptyMessage={emptyMessage}
         emptyAction={
           loadedItems.length ? (
             <Button
@@ -305,8 +336,12 @@ export function DeploymentsPage() {
           )
         }
         loading={
-          loadedItems.length === 0 &&
-          (currentQuery.isPending || (view === 'releases' && apps.isPending))
+          (allLoaded.length === 0 && (currentQuery.isPending || (needsApps && apps.isPending))) ||
+          (scoped &&
+            !error &&
+            (gate.pending ||
+              apps.isPending ||
+              (view === 'builds' && allDeployments.length === 0 && deploymentsQuery.isPending)))
         }
         error={error}
         onRetry={retry}
@@ -359,7 +394,25 @@ export function DeploymentsPage() {
           })
         }
       />
-      {loadedItems.length > 0 && Boolean(currentQuery.error) && (
+      {view === 'builds' && unplacedBuilds > 0 && (
+        <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-xs text-muted-foreground">
+          <span>
+            {unplacedBuilds === 1 ? '1 build' : `${unplacedBuilds} builds`} not shown: their release
+            hasn’t loaded, so it isn’t known whether they belong {scopedIn(scope)}.
+          </span>
+          {deploymentsQuery.hasNextPage && (
+            <Button
+              size="xs"
+              variant="ghost"
+              busy={deploymentsQuery.isFetchingNextPage}
+              onClick={() => void deploymentsQuery.fetchNextPage().catch(() => undefined)}
+            >
+              Load older releases
+            </Button>
+          )}
+        </p>
+      )}
+      {allLoaded.length > 0 && Boolean(currentQuery.error) && (
         <div className="flex flex-wrap items-center justify-center gap-3">
           <InlinePhase
             phase={queryPhase({ error: currentQuery.error })}
@@ -439,7 +492,7 @@ export function DeploymentsPage() {
           }
         />
       )}
-      {view === 'releases' && <ReleasePreviews />}
+      {view === 'releases' && <ReleasePreviews scope={gate} />}
     </div>
   );
 }
