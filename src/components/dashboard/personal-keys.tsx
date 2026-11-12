@@ -9,7 +9,9 @@ import {
   useKeyRotationPolicy,
 } from '@/components/dashboard/key-rotation-policy';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
-import { PageHeader, Panel } from '@/components/dashboard/primitives';
+import { Panel } from '@/components/dashboard/primitives';
+import { SettingsSummary } from '@/components/dashboard/settings-kit';
+import { keysSummary, scopeWords } from '@/components/dashboard/settings-words';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { useToast } from '@/components/ui/toast';
 import { Timestamp } from '@/components/ui/timestamp';
@@ -72,8 +74,8 @@ function GraceWindowPanel() {
   const shownDaysError = validation.submitAttempted ? daysError : undefined;
   return (
     <Panel
-      title="Rotation grace window"
-      help="Applies to future personal and organisation key rotations. Zero revokes the old key immediately."
+      title="After a rotation"
+      help="Rotation grace window: how many days a replaced key keeps working. Applies to future personal and organisation key rotations. Zero revokes the old key immediately."
     >
       <form
         noValidate
@@ -172,6 +174,10 @@ export function PersonalKeysBody({
   const labelError = label.length > 100 ? 'Use 100 characters or fewer.' : undefined;
   const shownLabelError = validation.submitAttempted ? labelError : undefined;
 
+  const summary = error
+    ? { sentence: "Your keys couldn't be read right now.", facts: [], tone: 'neutral' as const }
+    : keysSummary(data, 'personal');
+
   const rows = useMemo<KeyRow[]>(
     () =>
       (data ?? []).map((k) => ({
@@ -207,12 +213,16 @@ export function PersonalKeysBody({
     },
     {
       key: 'scopes',
-      label: 'Scopes',
+      label: 'Can',
       priority: 'secondary',
       render: (k) => (
         <span className="flex flex-wrap gap-1">
           {k.scopes ? (
-            k.scopes.split(', ').map((s) => <Pill key={s} label={s} />)
+            k.scopes.split(', ').map((s) => (
+              <span key={s} title={s}>
+                <Pill label={scopeWords(s)} />
+              </span>
+            ))
           ) : (
             <span className="text-xs text-muted-foreground">—</span>
           )}
@@ -313,10 +323,16 @@ export function PersonalKeysBody({
   return (
     <div className="flex flex-col gap-6">
       {selectedKeyId && <PersonalKeyDetail id={selectedKeyId} onClose={onCloseKey ?? (() => {})} />}
-      <PageHeader
-        title="Personal API keys"
-        help="Revoking is immediate; rotating leaves the old key valid for its grace window."
-      />
+      <SettingsSummary
+        label="Personal API keys"
+        ariaLabel="Your API keys"
+        tone={summary.tone}
+        facts={[
+          'Revoking stops a key at once; rotating keeps the old one working for a grace window',
+        ]}
+      >
+        {summary.sentence}
+      </SettingsSummary>
 
       {!creating && evidence.secret && (
         <OneTimeSecret
@@ -398,7 +414,7 @@ export function PersonalKeysBody({
                 {shownLabelError && <FieldError id="key-label-error">{shownLabelError}</FieldError>}
               </label>
               <fieldset className="flex basis-full flex-col gap-1.5">
-                <legend className="label-mono text-muted-foreground">Scopes</legend>
+                <legend className="label-mono text-muted-foreground">What it can do</legend>
                 <div className="flex flex-wrap gap-1.5 pt-1.5">
                   {SCOPES.map((scope) => {
                     const on = scopes.includes(scope);
@@ -419,13 +435,14 @@ export function PersonalKeysBody({
                                 )
                           )
                         }
-                        className={`pressable h-8 rounded-md border px-2.5 font-mono text-xs ${
+                        title={scope}
+                        className={`pressable h-8 rounded-md border px-2.5 text-xs ${
                           on
                             ? 'border-brand bg-brand/10 text-foreground'
                             : 'border-border text-muted-foreground hover:text-foreground'
                         }`}
                       >
-                        {scope}
+                        {scopeWords(scope)}
                       </button>
                     );
                   })}
@@ -435,7 +452,7 @@ export function PersonalKeysBody({
                     ? 'Admin can do everything this account can, including minting more keys.'
                     : scopes.length === 0
                       ? 'Pick at least one scope.'
-                      : 'Least privilege: a CI job needs deploy:write and apps:read, nothing more.'}
+                      : 'Give it only what it needs: a CI job needs Deploy and Read apps, nothing more.'}
                 </span>
               </fieldset>
               <Button
