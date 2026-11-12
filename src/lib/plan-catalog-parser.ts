@@ -8,13 +8,15 @@ export interface CatalogPlan {
   concurrentInstances: number;
   ramMb: number;
   includedGbHours: number;
+  /** Outbound traffic included per app each month, in GiB. */
+  appEgressGib: number;
   appLayerMb: number;
   idleTimeout: string;
   maxRequestTimeout: string;
 }
 
 const HEADER =
-  '| Plan | Monthly | Deployed apps | PR preview environments | Developer apps | Concurrent instances | RAM / app | Included GB-RAM-hours | App layer | Idle timeout | Max request timeout |';
+  '| Plan | Monthly | Deployed apps | PR preview environments | Developer apps | Concurrent instances | RAM / app | Included GB-RAM-hours | App egress / month | App layer | Idle timeout | Max request timeout |';
 
 const CELL_PATTERNS = [
   /^\*\*([A-Za-z]+)\*\*$/,
@@ -25,6 +27,7 @@ const CELL_PATTERNS = [
   /^(\d+)$/,
   /^(\d+) MB$/,
   /^(\d+)$/,
+  /^([\d,]+) GiB$/,
   /^(\d+) MB$/,
   /^(\d+[smh])$/,
   /^(\d+[smh])$/,
@@ -75,9 +78,10 @@ export function parsePlanCatalog(source: string): {
       concurrentInstances: Number(values[5]),
       ramMb: Number(values[6]),
       includedGbHours: Number(values[7]),
-      appLayerMb: Number(values[8]),
-      idleTimeout: values[9]!,
-      maxRequestTimeout: values[10]!,
+      appEgressGib: Number(values[8]!.replaceAll(',', '')),
+      appLayerMb: Number(values[9]),
+      idleTimeout: values[10]!,
+      maxRequestTimeout: values[11]!,
     };
   });
   if (plans.map((plan) => plan.name).join(',') !== 'Free,Hobby,Pro,Scale') {

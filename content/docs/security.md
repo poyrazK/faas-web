@@ -32,7 +32,7 @@ clean image cannot be promoted when its publisher provenance is unknown. This
 does not replace dependency patching or application review.
 
 When a trusted publisher is removed or its key no longer validates a live
-image, imaged rechecks the active deployment and quarantines the enforce-mode
+image, Gregale rechecks the active deployment and quarantines the enforce-mode
 app instead of grandfathering the old provenance. A fresh image signed by an
 active trusted publisher is required before recovery.
 
@@ -44,8 +44,7 @@ The gateway can rate-limit each client address after hostname routing and
 before consumer-key lookup, JWT verification, body admission, or VM wake.
 
 New apps start with this guard in `observe` mode at 10 requests/s and burst 20
-per source, clamped to the plan's request rate and burst
-([ADR-829](adr/829-default-pre-auth-observe.md)). Observe never rejects a
+per source, clamped to the plan's request rate and burst. Observe never rejects a
 request, so check the recorded would-block traffic before switching to
 `enforce`. `GET /v1/apps/{slug}/pre-auth-observations?range=24h` includes a
 `suggestion` (`ready`, `review`, or `insufficient_data`), also shown on the
@@ -68,8 +67,8 @@ To choose different values, or to opt out with `{"mode":"off"}`, set
 `observe` records requests that would exceed the source limit without
 rejecting them. Change `mode` to `enforce` to return `429` with
 `Retry-After: 1` and `x-faas-rate-limit-scope: pre-auth`. Set `mode` to `off`
-to disable the guard. Apps created before ADR-829 keep their stored setting;
-on those apps the field is absent and the guard is disabled until set.
+to disable the guard. Apps created before the guard existed keep their stored
+setting; on those apps the field is absent and the guard is disabled until set.
 The rate and burst must be positive and no greater than the app plan's
 request rate and burst.
 If the app moves to a lower plan, the gateway clamps an existing setting to
@@ -312,7 +311,15 @@ not affected.
 A check scores the whole URL and query, and up to 16 KiB of request headers:
 each header value up to 4 KiB, and headers in name order until the total is
 reached. Header content past that is not inspected, which keeps one client's
-oversized headers from slowing every other app's checks.
+oversized headers from slowing every other app's checks. Because a client
+could pad its headers to hide an attack past that point, a `warn` or `block`
+rule counts a request with a header value over 4 KiB, or more than 16 KiB of
+headers, as a detection (category `uninspected-headers`). Cookies are measured
+one by one, so a long `Cookie` header made of ordinary cookies is checked, not
+refused: `block` answers
+`403` and `warn` adds `X-WAF-Warning`. Such a request never puts the client in
+a penalty box. If your app legitimately receives larger headers (very large
+cookies or tokens), keep the rule in `observe` for those paths.
 
 Request bodies are never blocked: checking them costs tens to hundreds of
 milliseconds, so they are inspected off the request path, and only a sample
@@ -399,8 +406,17 @@ A matched request without a valid pass never reaches your app:
 - Requests with a verified API key, consumer key or JWT are never
   challenged, so API clients keep working.
 
-The pass lasts an hour by default and is tied to the browser's address
-range and User-Agent, so it cannot be copied to another machine. It covers
+The pass lasts an hour by default (`pass_ttl_seconds`, 5 minutes to 24
+hours) and is tied to the browser's address range (the IPv4 /24 or IPv6 /48
+it comes from) and its User-Agent. A pass copied out of the network it was
+earned on is refused, but the gateway keeps no record of passes: until it
+expires, a pass works for any client in the same address range that sends
+the same User-Agent, such as other machines behind one office or carrier
+NAT, or a bot farm in one hosting range that solved once. A challenge
+raises the cost of automation; it does not tell people apart. Keep
+`pass_ttl_seconds` short on paths under attack, and pair the rule with a
+`throttle` rule keyed by client address when one range keeps coming back.
+It covers
 the whole host: one pass lets the browser through every challenge rule on
 that host, including paths a route rule sends to another of your apps, but
 not on your other hosts.
@@ -468,7 +484,8 @@ gregale edge rule events --app my-site --outcome rejected
 
 Attack mode is one switch for when an app is flooded from too many
 addresses for rules to keep up. While it is on, every request to every host
-of the app is challenged the way a `kind=challenge` rule challenges it:
+of the app is challenged the way a `kind=challenge` rule challenges it,
+including requests a `route` rule serves on another app:
 
 - Browsers solve the short check once and continue for an hour.
 - Verified search crawlers and requests with a verified API key, consumer
@@ -639,7 +656,7 @@ unknown findings. The operation requires deploy-write scope and MFA and emits
 an audit event when the app returns to `active`.
 
 After recovery, enforce-mode apps keep a bounded security-evidence lease. A
-lightweight imaged sweep checks the live deployment between full rescans and
+lightweight sweep checks the live deployment between full rescans and
 parks the app if the evidence expires, the image digest changes, scanner
 metadata becomes invalid, or the result contains a blocking finding. The
 quarantine audit and notification include the specific evidence reason.
