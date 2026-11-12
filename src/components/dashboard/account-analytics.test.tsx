@@ -12,12 +12,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
 import { ApiError } from '@/lib/api/errors';
 import type { components } from '@/lib/api/schema';
+import type { ProjectScope } from '@/lib/project-scope';
 import { Route } from '@/routes/dashboard.analytics';
 import {
   AccountAnalytics,
   AnalyticsWindowSelector,
   type AccountAnalyticsSearch,
 } from './account-analytics';
+
+// No project chosen by default (lib/project-scope.ts); the scope cases set one.
+const NO_PROJECT: ProjectScope = {
+  project: null,
+  label: '',
+  appSlugs: null,
+  settled: true,
+  choices: [],
+};
+const scope = vi.hoisted(() => ({ current: null as unknown as ProjectScope }));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scope.current,
+}));
 
 const navigate = vi.hoisted(() => vi.fn());
 const inspect = vi.hoisted(() => vi.fn());
@@ -139,6 +154,7 @@ const appsRegion = () => screen.getByRole('region', { name: 'Apps' });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  scope.current = NO_PROJECT;
   hooks.useAccountSlo.mockReturnValue(ready(account));
   hooks.useAppsMetrics.mockReturnValue(ready(apps));
   hooks.useAppAnalytics.mockReturnValue(ready(analytics));
@@ -353,5 +369,56 @@ describe('AccountAnalytics', () => {
     );
     render(<Harness />);
     expect(within(appsRegion()).getByRole('alert')).toHaveTextContent('Invoice overdue');
+  });
+});
+
+describe('AccountAnalytics in a project', () => {
+  const project = (apps: string[] | null, settled = true): ProjectScope => ({
+    project: 'acme-shop',
+    label: 'acme-shop',
+    appSlugs: apps && new Set(apps),
+    settled,
+    choices: [],
+  });
+  const appRows = () =>
+    within(appsRegion())
+      .getAllByRole('button')
+      .filter((el) => el.tagName === 'TR');
+
+  it('ranks only the project’s apps and says the totals are account-wide', async () => {
+    scope.current = project(['alpha']);
+    render(<Harness />);
+    expect(appRows()).toHaveLength(1);
+    expect(appRows()[0]).toHaveTextContent('alpha');
+    expect(within(appsRegion()).queryByText('beta')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Top apps by requests' })).queryByText('beta')
+    ).not.toBeInTheDocument();
+    expect(
+      within(accountRegion()).getByText(/account-wide — not limited to acme-shop/)
+    ).toBeInTheDocument();
+    // The account rollup is shown as it is, never re-summed from the project's apps.
+    expect(await within(accountRegion()).findByText('10K')).toBeInTheDocument();
+  });
+
+  it('names the project when none of its apps has figures', () => {
+    scope.current = project(['gamma']);
+    render(<Harness />);
+    expect(within(appsRegion()).getByText('No acme-shop apps in this window.')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Top apps by requests' })).not.toBeInTheDocument();
+  });
+
+  it('keeps every app and no note without a project', () => {
+    render(<Harness />);
+    expect(appRows()).toHaveLength(2);
+    expect(screen.queryByText(/not limited to/)).not.toBeInTheDocument();
+  });
+
+  it('shows no app while membership loads', () => {
+    scope.current = project(null, false);
+    render(<Harness />);
+    expect(within(appsRegion()).queryByText('alpha')).not.toBeInTheDocument();
+    expect(within(appsRegion()).queryByText('beta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Top apps by requests' })).not.toBeInTheDocument();
   });
 });

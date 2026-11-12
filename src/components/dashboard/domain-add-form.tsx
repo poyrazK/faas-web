@@ -5,6 +5,7 @@ import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { ApiError } from '@/lib/api/errors';
 import { useProjectEnvironments, useProjectMembership, validEnvironment } from '@/lib/api/projects';
 import { useAddDomain, useApps } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { useAuth, type Plan } from '@/lib/auth';
 import type { CapabilityAccess } from '@/lib/capability-state';
 import { cn } from '@/lib/utils';
@@ -77,7 +78,9 @@ export function DomainAddForm({
   const { account } = useAuth();
   const accountId = account?.id ?? '';
   const appQuery = useApps();
-  const apps = appQuery.data;
+  // Inside a project a domain can route only to that project's apps.
+  const scope = useProjectScope();
+  const apps = appQuery.data && inScope(appQuery.data, scope, (app) => app.slug);
   const addDomain = useAddDomain();
   const membership = useProjectMembership(accountId);
   const gate = wildcardGate(account?.plan, useCapabilityAccess('wildcard-domains').access);
