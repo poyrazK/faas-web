@@ -26,11 +26,18 @@ export const DEBUG_VIEW_LABELS: Record<DebugView, string> = {
 };
 export const QUICK_FILTERS = [
   ['all', 'All requests'],
-  ['failed', 'Failed (4xx / 5xx)'],
-  ['slow', 'Slow'],
-  ['cold', 'Cold start'],
-  ['regressions', 'Linked regressions'],
+  ['failed', 'Failed requests'],
+  ['slow', 'Slow requests'],
+  ['cold', 'Requests that woke the app'],
+  ['regressions', 'Routes that got worse'],
 ] as const;
+/** The window choices in words; the URL keeps the short form. */
+export const WINDOW_LABELS: Record<(typeof WINDOWS)[number], string> = {
+  '1h': 'Last hour',
+  '6h': 'Last 6 hours',
+  '24h': 'Last 24 hours',
+  '72h': 'Last 3 days',
+};
 export const SLOW_MS = 1000;
 export interface DebugSearch extends Record<string, unknown> {
   app?: string;

@@ -381,6 +381,12 @@ it('rejects files above the single-PUT limit before requesting a signed URL', as
   });
   expect(mocks.sign).not.toHaveBeenCalled();
 });
+it('opens a bucket with what is in it and whether it is private, and Upload as the action', () => {
+  show();
+  expect(screen.getByText('It holds 1 file (3 B) and is private.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Upload files' })).toBeEnabled();
+});
+
 it('shows each bucket ID with a copy button that carries the full ID', () => {
   const id = '3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77';
   mocks.buckets.mockReturnValue({
@@ -389,6 +395,9 @@ it('shows each bucket ID with a copy button that carries the full ID', () => {
     error: null,
   });
   show();
+  // The address and ID sit behind one disclosure under the bucket's sentence.
+  expect(screen.queryByText('3f2b8c1e-5d4…')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /address and id/i }));
   expect(screen.getByText('3f2b8c1e-5d4…')).toHaveAttribute('title', id);
   expect(screen.getByRole('button', { name: `Copy: bucket ID ${id}` })).toBeInTheDocument();
 });
