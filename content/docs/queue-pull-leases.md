@@ -2,7 +2,7 @@
 
 A push binding delivers each message to the app over HTTP, so the app must
 listen for deliveries. A worker or job that runs its own loop with no HTTP
-listener consumes a queue by leasing its messages instead (ADR-1140): it asks
+listener consumes a queue by leasing its messages instead: it asks
 for messages when it has capacity, and acks or nacks each one.
 
 [Organization queues](organization-queues.md) use the same lease contract and
@@ -82,8 +82,10 @@ An empty `messages` list means nothing arrived during the wait; lease again.
 Each message is delivered at least once. A lease that is not acked, nacked or
 extended before its visibility timeout returns to the queue and is redelivered
 with a new attempt; the old receipt then reports `lease_expired`, so make
-handlers idempotent. The ack, nack and extend calls report each receipt
-separately in `succeeded` and `failed`.
+handlers idempotent. A lease that runs out on the message's last attempt moves
+the message to the dead-letter queue with outcome code
+`queue_lease_attempts_exhausted` as soon as it expires. The ack, nack and
+extend calls report each receipt separately in `succeeded` and `failed`.
 
 ## Authenticate
 

@@ -68032,6 +68032,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
 
+  /v1/referrals/checkout:
+    get:
+      x-internal: true
+      tags: [auth]
+      operationId: checkoutReferralStatus
+      security: [{ cookieAuth: [] }]
+      summary: Check whether the signed-in account can add a salesperson code
+      description: |
+        Requires a verified browser session and the sales feature flag. API keys
+        are rejected. Eligibility is a display hint; the plan mutation checks it
+        again atomically with referral selection before starting payment.
+      responses:
+        '200':
+          description: Current first-purchase referral eligibility
+          headers:
+            Cache-Control: { schema: { type: string }, description: Always no-store. }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eligible]
+                properties:
+                  eligible: { type: boolean }
+                  reason: { type: string, enum: [already_attributed, not_first_purchase, unavailable] }
+                  code: { type: string, description: The already saved referral code; no referrer contact details are returned. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
 components:
 
   securitySchemes:
@@ -86293,6 +86323,16 @@ components:
       required: [plan]
       properties:
         plan: { type: string, enum: [free, hobby, pro, scale] , example: "hobby"}
+        salesperson_code:
+          type: string
+          pattern: '^\s*([A-Za-z0-9]{6})?\s*$'
+          description: |
+            Optional salesperson code for a personal account's first paid purchase.
+            Letters are normalized to uppercase and surrounding spaces are removed.
+            Requires a live verified session. Only active sales codes are accepted;
+            existing referrals and prior payments cannot be reassigned. The choice
+            remains saved if checkout is retried or abandoned. Omit or leave empty
+            to keep ordinary billing behavior. Organization purchases are excluded.
 
     UpdateAccountBillingInfoRequest:
       description: "Partial legal billing identity update. Empty strings clear fields."

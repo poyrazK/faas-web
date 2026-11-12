@@ -40206,6 +40206,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/referrals/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether the signed-in account can add a salesperson code
+         * @description Requires a verified browser session and the sales feature flag. API keys
+         *     are rejected. Eligibility is a display hint; the plan mutation checks it
+         *     again atomically with referral selection before starting payment.
+         */
+        get: operations["checkoutReferralStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -55115,6 +55137,15 @@ export interface components {
              * @enum {string}
              */
             plan: "free" | "hobby" | "pro" | "scale";
+            /**
+             * @description Optional salesperson code for a personal account's first paid purchase.
+             *     Letters are normalized to uppercase and surrounding spaces are removed.
+             *     Requires a live verified session. Only active sales codes are accepted;
+             *     existing referrals and prior payments cannot be reassigned. The choice
+             *     remains saved if checkout is retried or abandoned. Omit or leave empty
+             *     to keep ordinary billing behavior. Organization purchases are excluded.
+             */
+            salesperson_code?: string;
         };
         /** @description Partial legal billing identity update. Empty strings clear fields. */
         UpdateAccountBillingInfoRequest: {
@@ -175025,6 +175056,38 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    checkoutReferralStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current first-purchase referral eligibility */
+            200: {
+                headers: {
+                    /** @description Always no-store. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        eligible: boolean;
+                        /** @enum {string} */
+                        reason?: "already_attributed" | "not_first_purchase" | "unavailable";
+                        /** @description The already saved referral code; no referrer contact details are returned. */
+                        code?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
 }
