@@ -27,6 +27,8 @@ import { ReleaseChannelPicker } from './release-channel-picker';
 import { FrozenRefusal, localInputToIso, localZone, zonedTime } from './release-freezes';
 import { SafetyCard } from './release-safety-card';
 import { scheduleCardWords, scheduleOutcome, spokenTime } from './release-safety-words';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, type ScopeGate } from './scope-gate';
 
 const STATE_STYLE: Record<ScheduledRelease['state'], { color: string; icon: typeof Clock }> = {
   scheduled: { color: 'var(--status-warning)', icon: Clock },
@@ -394,23 +396,34 @@ function ScheduleForm({
 export function ScheduledReleases({
   app,
   onOpen,
+  scope,
 }: {
   app?: string;
   onOpen?: (deploymentId: string) => void;
+  /** Inside a project: only its apps' schedules. */
+  scope?: ScopeGate;
 }) {
   const list = useScheduledReleases(app);
   const stage = useCapabilityStage('scheduled-releases');
   const cancel = useCancelWithConfirm();
-  const rows = list.data ?? [];
+  const scoped = scope?.scope.project ? scope : undefined;
+  const rows = scoped ? inScope(list.data ?? [], scoped.scope, (s) => s.app) : (list.data ?? []);
   const phase = queryPhase({
-    error: list.error,
-    loading: list.isPending,
+    error: list.error ?? scoped?.error,
+    loading: list.isPending || Boolean(scoped?.pending),
     isEmpty: rows.length === 0,
   });
-  const words =
+  const cardWords =
     phase === 'ready' || phase === 'empty'
       ? scheduleCardWords({ schedules: rows, app, version: ref, when: (iso) => spokenTime(iso) })
       : undefined;
+  const words =
+    cardWords && scoped && cardWords.word === 'None'
+      ? {
+          ...cardWords,
+          sentence: `Nothing ${scopedIn(scoped.scope)} is scheduled, so new versions start their rollout as soon as they’re ready.`,
+        }
+      : cardWords;
   return (
     <SafetyCard
       id="scheduled-releases"
@@ -431,9 +444,12 @@ export function ScheduledReleases({
         ) : (
           <InlinePhase
             phase={phase}
-            error={list.error}
+            error={list.error ?? scoped?.error}
             loadingMessage="Reading schedules…"
-            onRetry={() => void list.refetch()}
+            onRetry={() => {
+              void list.refetch();
+              if (scoped?.error) scoped.retry();
+            }}
           />
         )
       }

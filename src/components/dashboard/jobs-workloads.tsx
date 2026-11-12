@@ -15,6 +15,7 @@ import { useInfiniteJobs, useJobs } from '@/lib/api/queries';
 import { Plus } from 'iconoir-react';
 import { useMemo, useState } from 'react';
 import { JobCreateDialog } from './job-create-dialog';
+import { accountWideNote, useScopeGate } from './scope-gate';
 import type { JobsSelectionProps } from './jobs-search';
 
 /**
@@ -59,6 +60,8 @@ export function WorkloadsBody(props: JobsSelectionProps) {
 
 function Workloads({ search, onSelection }: JobsSelectionProps) {
   const stage = useCapabilityStage('workflows-and-jobs');
+  // `/v1/jobs` rows name no app, so workloads cannot be placed in a project.
+  const note = accountWideNote(useScopeGate().scope);
   const [creating, setCreating] = useState(false);
   // Browsing uses the paged query so a large account is not silently capped
   // at the first response. A selected URL keeps the older lookup query, which
@@ -211,6 +214,7 @@ function Workloads({ search, onSelection }: JobsSelectionProps) {
         />
       )}
 
+      {note && <p className="-mt-3 text-xs text-muted-foreground">{note}</p>}
       <PlanGated error={error} feature="Jobs">
         {search.job && data && !job && <p role="status">Workload not found</p>}
         <p className="hidden text-xs text-muted-foreground md:@max-[900px]:block">

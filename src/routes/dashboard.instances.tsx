@@ -6,6 +6,8 @@ import { Pill, ResourceTable, type Column } from '@/components/dashboard/resourc
 import { Button } from '@/components/ui/button';
 import { useApps, useInfiniteInstances } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, useScopeGate } from '@/components/dashboard/scope-gate';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
 
@@ -58,6 +60,8 @@ function WorkersPage() {
   const apps = appQuery.data;
   const { instance: selectedId, q = '' } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const gate = useScopeGate();
+  const { scope } = gate;
   const data = useMemo(
     () => instances.data?.pages.flatMap((page) => page.instances) ?? [],
     [instances.data]
@@ -66,6 +70,10 @@ function WorkersPage() {
   // failure should replace the table with its full-page error state.
   const listError = data.length === 0 ? instances.error : undefined;
   const listLoading = instances.isPending && !instances.error && data.length === 0;
+  // Inside a project an instance is placed by its app's slug, so the app list
+  // and project membership must both be known before any row is shown.
+  const scopeLoading = Boolean(scope.project) && (gate.pending || appQuery.isPending);
+  const scopeError = scope.project ? (gate.error ?? appQuery.error ?? undefined) : undefined;
   const select = (instance?: string) =>
     void navigate({
       search: (current) => ({ ...current, instance }),
@@ -77,7 +85,7 @@ function WorkersPage() {
 
   const rows = useMemo<InstanceRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return data.map((i) => ({
+    const all = data.map((i) => ({
       id: i.id,
       app: bySlug.get(i.app_id) ?? i.app_id,
       state: i.state,
@@ -85,7 +93,8 @@ function WorkersPage() {
       startedAt: i.started_at ?? '',
       lastRequestAt: i.last_request_at ?? '',
     }));
-  }, [data, apps]);
+    return inScope(all, scope, (row) => row.app);
+  }, [data, apps, scope]);
 
   const columns: Column<InstanceRow>[] = [
     {
@@ -156,16 +165,24 @@ function WorkersPage() {
             resetScroll: false,
           })
         }
-        emptyMessage="No instances running — everything is parked."
+        emptyMessage={
+          scope.project
+            ? `No instances running ${scopedIn(scope)} — every app is parked.`
+            : 'No instances running — everything is parked.'
+        }
         emptyAction={
           <Link to="/dashboard/apps" className="text-sm underline underline-offset-4">
             View apps
           </Link>
         }
         minWidth="min-w-[900px]"
-        loading={listLoading}
-        error={listError}
-        onRetry={() => void instances.refetch()}
+        loading={listLoading || (!listError && !scopeError && scopeLoading)}
+        error={listError ?? scopeError}
+        onRetry={() => {
+          if (gate.error) gate.retry();
+          if (appQuery.error) void appQuery.refetch();
+          void instances.refetch();
+        }}
         onRowClick={(instance) => select(instance.id)}
       />
       {data.length > 0 && Boolean(instances.error) && (

@@ -16,6 +16,18 @@ import { Route as App } from './dashboard.apps.$appSlug';
 import { api } from '@/lib/api/client';
 import { spyApi } from '@/test/api';
 
+// No project chosen: these pages behave as they did before project scoping.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({
+    project: null,
+    label: '',
+    appSlugs: null,
+    settled: true,
+    choices: [],
+  }),
+}));
+
 const fixtures = vi.hoisted(() => ({
   omitBuildFromHistory: false,
   deploymentRead: 'ready',
