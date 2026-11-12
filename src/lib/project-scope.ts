@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { createContext, createElement, useContext, useMemo, type ReactNode } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
@@ -68,7 +68,30 @@ export interface ProjectScope {
   choices: { slug: string; label: string }[];
 }
 
+const UNSCOPED: ProjectScope = {
+  project: null,
+  label: '',
+  appSlugs: null,
+  settled: true,
+  choices: [],
+};
+
+const ProjectScopeContext = createContext<ProjectScope>(UNSCOPED);
+
+/**
+ * Computes the scope once for the whole dashboard (one membership read) and
+ * shares it. Outside the shell there is no project: everything is in scope.
+ */
+export function ProjectScopeProvider({ children }: { children: ReactNode }) {
+  return createElement(ProjectScopeContext.Provider, { value: useComputedScope() }, children);
+}
+
+/** The project the console is looking at; account level outside the dashboard shell. */
 export function useProjectScope(): ProjectScope {
+  return useContext(ProjectScopeContext);
+}
+
+function useComputedScope(): ProjectScope {
   const { pathname, search } = useRouterState({
     select: (s) => ({ pathname: s.location.pathname, search: s.location.search }),
   });

@@ -87,6 +87,8 @@ export function AppScope({
     loading: state.loadingApps,
     isEmpty: state.apps.length === 0,
   });
+  const scope = useProjectScope();
+  const where = scope.project ? scope.label : 'this workspace';
 
   if (phase === 'unreachable') return <UnreachableState onRetry={() => void state.refetchApps()} />;
   if (phase === 'error')
@@ -95,7 +97,7 @@ export function AppScope({
   if (phase === 'empty')
     return (
       <EmptyState
-        message={`${resource[0].toUpperCase()}${resource.slice(1)} belong to an app, and this workspace has none yet.`}
+        message={`${resource[0].toUpperCase()}${resource.slice(1)} belong to an app, and ${where} has none yet.`}
         action={
           <Button asChild size="sm" variant="outline" className="gap-1.5">
             <Link to="/dashboard/apps/new">
