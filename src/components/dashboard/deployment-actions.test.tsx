@@ -162,20 +162,20 @@ describe('ReorderDeploymentControl', () => {
 describe('ClearObsoleteDeploymentsButton', () => {
   it('confirms, then reports how many rows the API removed', async () => {
     render(<ClearObsoleteDeploymentsButton slug="api" />);
-    await userEvent.click(screen.getByRole('button', { name: /clear obsolete/i }));
+    await userEvent.click(screen.getByRole('button', { name: /clean up old versions/i }));
     await waitFor(() =>
       expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ destructive: true }))
     );
     await waitFor(() => expect(clear).toHaveBeenCalledWith({ slug: 'api', older_than: '168h' }));
     expect(toast).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'success', title: 'Cleared 3 deployments' })
+      expect.objectContaining({ kind: 'success', title: 'Removed 3 old versions' })
     );
   });
 
   it('does nothing when the confirm is declined', async () => {
     confirm.mockResolvedValue(false);
     render(<ClearObsoleteDeploymentsButton slug="api" />);
-    await userEvent.click(screen.getByRole('button', { name: /clear obsolete/i }));
+    await userEvent.click(screen.getByRole('button', { name: /clean up old versions/i }));
     await waitFor(() => expect(confirm).toHaveBeenCalled());
     expect(clear).not.toHaveBeenCalled();
   });

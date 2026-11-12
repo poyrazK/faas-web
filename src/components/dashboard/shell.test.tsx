@@ -70,7 +70,7 @@ describe('DashboardShell', () => {
       'href',
       '/dashboard/apps/new'
     );
-    const attention = screen.getByRole('button', { name: 'Needs Attention' });
+    const attention = screen.getByRole('button', { name: 'Needs attention' });
     expect(attention.nextElementSibling).toBe(screen.getByRole('link', { name: 'New app' }));
     expect(attention).toHaveAttribute('aria-haspopup', 'dialog');
   });

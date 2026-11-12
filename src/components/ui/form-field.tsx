@@ -41,7 +41,11 @@ export function FormField({
         </p>
       )}
       {visibleError && (
-        <p id={`${id}-error`} role="alert" className="text-[13px] leading-5 text-destructive">
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="console-field-error text-[13px] leading-5 text-destructive"
+        >
           {visibleError}
         </p>
       )}

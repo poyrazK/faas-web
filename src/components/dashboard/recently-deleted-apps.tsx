@@ -165,7 +165,7 @@ export function RecentlyDeletedApps() {
   return (
     <Panel
       title="Recently deleted"
-      description={`Deleted apps can be restored for ${APP_DELETE_GRACE_DAYS} days. After that they are removed for good.`}
+      help={`Deleted apps can be restored for ${APP_DELETE_GRACE_DAYS} days, then are removed for good.`}
       padded={false}
     >
       {phase === 'ready' ? (

@@ -18,6 +18,7 @@ import {
   useIssueTokens,
   type IssueTokenMetadata,
 } from '@/lib/api/issues';
+import { Select } from '@/components/ui/field';
 
 type Props = { accountId: string; slug: string; onClose: () => void };
 type Disclosure = { token: string; id: string; context: string };
@@ -304,7 +305,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
     setCopyFailed(false);
   }
   return (
-    <section className="min-w-0 space-y-5 rounded-lg border border-border p-4">
+    <section className="min-w-0 space-y-5 well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Issue reporting setup</h3>
         <Button variant="outline" disabled={Boolean(secret)} onClick={onClose}>
@@ -312,8 +313,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">
-        Create a short lived credential for the exact deployment that reports exceptions. The token
-        is shown once; store it as an app secret. Rotate on deployment and revoke old credentials.
+        A token is shown once; store it as an app secret.
       </p>
       <Modal
         open={Boolean(secret)}
@@ -395,7 +395,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
           >
             <label className="flex flex-col gap-1">
               Deployment
-              <select
+              <Select
                 aria-label="Deployment"
                 required
                 value={deploymentId}
@@ -408,7 +408,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                     {row.id} · {row.status}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Token name
@@ -422,7 +422,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
             </label>
             <label className="flex flex-col gap-1">
               Project
-              <select
+              <Select
                 aria-label="Project"
                 value={projectSlug}
                 onChange={(event) => {
@@ -437,11 +437,11 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                     {item.slug}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Environment
-              <select
+              <Select
                 aria-label="Environment"
                 value={environment}
                 onChange={(event) => setEnvironment(event.target.value)}
@@ -454,7 +454,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
                       {item.slug}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1">
               Expires in hours
@@ -483,9 +483,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground">
-            “application” is the standalone namespace. Named environments require a project
-            containing this app and a deployment in its active recorded release. The server checks
-            that relationship again.
+            Named environments need a project containing this app.
           </p>
           {deployments.hasNextPage && (
             <Button variant="outline" onClick={() => void deployments.fetchNextPage()}>

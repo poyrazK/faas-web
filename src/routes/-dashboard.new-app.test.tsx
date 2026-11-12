@@ -290,7 +290,7 @@ describe('New App source flow', () => {
       expect(screen.getByRole('region', { name: 'Template' })).toBeInTheDocument();
       await user.click(await screen.findByRole('button', { name: 'Continue' }));
       expect(await screen.findByLabelText('App name')).toHaveValue(slug);
-      expect(screen.getByLabelText('Runtime')).toHaveValue(runtime);
+      expect(screen.getByLabelText('Runtime version')).toHaveValue(runtime);
       await user.click(screen.getByRole('button', { name: 'Review' }));
       expect(await screen.findByText(slug)).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Create app' }));
@@ -381,15 +381,15 @@ describe('New App source flow', () => {
     // Git's fields are on its own station: choosing its card goes there.
     await user.click(screen.getByRole('button', { name: 'Git repository' }));
     await user.type(await screen.findByLabelText('Repository'), 'acme/Checkout_Service');
-    await user.clear(screen.getByLabelText('Ref'));
-    await user.type(screen.getByLabelText('Ref'), 'develop');
+    await user.clear(screen.getByLabelText('Branch, tag or commit'));
+    await user.type(screen.getByLabelText('Branch, tag or commit'), 'develop');
     await user.click(screen.getByRole('button', { name: 'Import as a project' }));
     expect(router.state.location.search).toMatchObject({
       source: 'import',
       slug: 'checkout-service',
       branch: 'develop',
     });
-    expect(screen.getByLabelText('Project slug')).toHaveValue('checkout-service');
+    expect(screen.getByLabelText('Project name')).toHaveValue('checkout-service');
     expect(screen.getByLabelText('Branch')).toHaveValue('develop');
   });
 
@@ -398,15 +398,15 @@ describe('New App source flow', () => {
     const router = await mount('/dashboard/apps/new?source=import&slug=sample&branch=develop');
     // Import's own station.
     expect(screen.getByRole('region', { name: 'Import' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
+    expect(screen.getByLabelText('Project name')).toHaveValue('sample');
     expect(screen.getByLabelText('Branch')).toHaveValue('develop');
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
     const file = new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' });
     await user.upload(screen.getByLabelText('Choose a .tar.gz'), file);
-    await user.click(screen.getByRole('button', { name: 'Scan' }));
-    expect(await screen.findByText('Plan — sample')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Preview apps' }));
+    expect(await screen.findByText('Apps to create in sample')).toBeInTheDocument();
     expect(mocks.apply).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Apply plan' }));
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
     expect(await screen.findByRole('link', { name: 'sample-api' })).toHaveAttribute(
       'href',
       '/dashboard/apps/sample-api'
@@ -423,7 +423,7 @@ describe('New App source flow', () => {
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
 
-  it.each(['Project slug', 'Branch'])(
+  it.each(['Project name', 'Branch'])(
     'requires a fresh import scan after changing %s',
     async (field) => {
       const user = userEvent.setup();
@@ -432,10 +432,11 @@ describe('New App source flow', () => {
         screen.getByLabelText('Choose a .tar.gz'),
         new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
       );
-      await user.click(screen.getByRole('button', { name: 'Scan' }));
-      expect(await screen.findByRole('button', { name: 'Apply plan' })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'Preview apps' }));
+      expect(await screen.findByRole('button', { name: 'Create project' })).toBeEnabled();
+      if (field === 'Branch') await user.click(screen.getByText('Advanced settings'));
       await user.type(screen.getByLabelText(field), 'different');
-      expect(screen.queryByRole('button', { name: 'Apply plan' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Create project' })).not.toBeInTheDocument();
       expect(mocks.apply).not.toHaveBeenCalled();
     }
   );
@@ -447,13 +448,13 @@ describe('New App source flow', () => {
       screen.getByLabelText('Choose a .tar.gz'),
       new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' })
     );
-    await user.type(screen.getByLabelText('Project slug'), 'draft');
+    await user.type(screen.getByLabelText('Project name'), 'draft');
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     // Back over "Empty app" and "back to Sources" returns to Import's station.
     await act(async () => router.history.go(-2));
     expect(await screen.findByText('repo.tar.gz')).toBeVisible();
-    expect(screen.getByLabelText('Project slug')).toHaveValue('draft');
+    expect(screen.getByLabelText('Project name')).toHaveValue('draft');
     expect(window.confirm).not.toHaveBeenCalled();
   });
 
@@ -482,21 +483,18 @@ describe('New App source flow', () => {
     await mount('/dashboard/apps/new?source=import');
     const file = new File(['tarball'], 'repo.tar.gz', { type: 'application/gzip' });
     await user.upload(screen.getByLabelText('Choose a .tar.gz'), file);
-    await user.type(screen.getByLabelText('Project slug'), 'sample');
+    await user.type(screen.getByLabelText('Project name'), 'sample');
     await user.clear(screen.getByLabelText('Branch'));
     await user.type(screen.getByLabelText('Branch'), 'feature/import');
-    await user.click(screen.getByRole('button', { name: 'Scan' }));
-    expect(await screen.findByRole('button', { name: 'Apply plan' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Preview apps' }));
+    expect(await screen.findByRole('button', { name: 'Create project' })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     // Empty needs no setup: choosing it lands on Configure directly.
     await user.click(await screen.findByRole('button', { name: /^Empty app/ }));
     await user.type(await screen.findByLabelText('App name'), 'empty-attempt');
     await user.click(screen.getByRole('button', { name: 'Review' }));
     await user.click(await screen.findByRole('button', { name: 'Create app' }));
-    expect(
-      await screen.findByText('Track the app and its first deployment from the platform state.')
-    ).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Creating app' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Creating app' })).toBeVisible();
     expect(screen.queryByText('App ready')).not.toBeInTheDocument();
     await act(async () => rejectCreate(new Error('Creation unavailable')));
     expect(await screen.findByRole('button', { name: 'Create app' })).toBeEnabled();
@@ -505,10 +503,10 @@ describe('New App source flow', () => {
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('button', { name: /^Import/ }));
     expect(await screen.findByText('repo.tar.gz')).toBeVisible();
-    expect(screen.getByLabelText('Project slug')).toHaveValue('sample');
+    expect(screen.getByLabelText('Project name')).toHaveValue('sample');
     expect(screen.getByLabelText('Branch')).toHaveValue('feature/import');
-    expect(screen.getByRole('button', { name: 'Apply plan' })).toBeEnabled();
-    await user.click(screen.getByRole('button', { name: 'Apply plan' }));
+    expect(screen.getByRole('button', { name: 'Create project' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
     expect(await screen.findByRole('link', { name: 'sample-api' })).toBeInTheDocument();
     expect(mocks.scan).toHaveBeenCalledTimes(1);
     expect(mocks.apply).toHaveBeenCalledWith({

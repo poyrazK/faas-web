@@ -275,8 +275,7 @@ function JobRunDialog({
           />
           {error && <FieldError id="run-tasks-error">{error}</FieldError>}
           <p className="text-xs text-muted-foreground">
-            Plans cap a run at 100 (Hobby), 1,000 (Pro) or 5,000 (Scale) tasks. It runs on standard
-            capacity and carries on if a task fails.
+            Plans cap a run at 100 (Hobby), 1,000 (Pro) or 5,000 (Scale) tasks.
           </p>
         </div>
         {failure && (

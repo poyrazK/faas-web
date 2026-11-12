@@ -47,10 +47,7 @@ export function EventReceiptPanel({
   onLookup: (lookup: Lookup) => void;
 }) {
   return (
-    <Panel
-      title="Receipt lookup"
-      description="Acceptance, routing, and execution evidence for one retained event."
-    >
+    <Panel title="Receipt lookup">
       <div className="flex flex-col gap-5">
         <LookupForm key={lookupKey(lookup)} initial={lookup} onLookup={onLookup} />
         {lookup?.kind === 'event' && <EventReceiptResult accountId={accountId} lookup={lookup} />}
@@ -172,8 +169,7 @@ function EventReceiptResult({ accountId, lookup }: { accountId: string; lookup: 
     return (
       <p role="status" className="text-sm text-muted-foreground">
         No retained receipt for <span className="font-mono">{lookup.source}</span> /{' '}
-        <span className="font-mono">{lookup.id}</span>. It was never accepted under this source, or
-        it was pruned after its 30-day retention.
+        <span className="font-mono">{lookup.id}</span>.
       </p>
     );
   }
@@ -335,7 +331,7 @@ export function ReceiptEvidence({
 
   const summary = Object.entries(receipt.routing_summary).filter(([, n]) => n > 0);
   return (
-    <div className="flex flex-col gap-4" aria-label="Receipt evidence">
+    <div className="flex flex-col gap-4" aria-label="Receipt details">
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
         {(
           [

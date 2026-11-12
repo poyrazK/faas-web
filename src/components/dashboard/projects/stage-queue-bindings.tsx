@@ -14,6 +14,7 @@ import {
 import { stageQueueFingerprint, stageQueuePayload, type StageBinding } from '@/lib/stage-queue';
 import type { EnvironmentState } from '@/lib/api/projects';
 import { Panel } from '../primitives';
+import { Select } from '@/components/ui/field';
 
 const fieldClass =
   'w-full min-w-0 rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -55,7 +56,7 @@ function BindingRow({
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           Delivery mode {title}
-          <select
+          <Select
             className={fieldClass}
             value={binding.mode}
             disabled={disabled}
@@ -65,11 +66,11 @@ function BindingRow({
           >
             <option value="pull">External pull</option>
             <option value="push">Platform push</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           Workload class {title}
-          <select
+          <Select
             className={fieldClass}
             value={binding.workload_class}
             disabled={disabled}
@@ -83,7 +84,7 @@ function BindingRow({
             <option value="worker">Worker</option>
             <option value="job">Job</option>
             <option value="http">HTTP function</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1.5 text-sm">
           Max concurrency {title}
@@ -434,7 +435,7 @@ export function StageQueueBindings({
   return (
     <Panel
       title={`Stage queue definitions · ${selection.workload}`}
-      description="Desired settings for the selected project, environment and workload. Production consumers are managed on the app Queues tab."
+      help="Production consumers are managed on the app's Queues tab."
     >
       {query.isPending ? (
         <p role="status" className="p-4">
@@ -490,7 +491,7 @@ export function StageQueueOverview({
     <div className="space-y-3">
       <label className="block max-w-md text-sm">
         Stage workload
-        <select
+        <Select
           className={fieldClass}
           value={selectedWorkload ?? ''}
           onChange={(event) => onSelectWorkload(event.target.value || undefined)}
@@ -503,7 +504,7 @@ export function StageQueueOverview({
                 {item.workload_name} ({item.workload_slug})
               </option>
             ))}
-        </select>
+        </Select>
         {selectedWorkload && !selected && (
           <p role="alert">Selected stage workload is unavailable.</p>
         )}

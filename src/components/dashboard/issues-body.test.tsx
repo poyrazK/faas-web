@@ -83,11 +83,11 @@ function show(search: IssueSearch = {}) {
 
 it('shows instrumented Issues separately from automatic HTTP Errors and observed impact bounds', async () => {
   show();
-  expect(screen.getByText(/instrumented exceptions/i)).toBeInTheDocument();
-  expect(screen.getByText(/retained.*verified/i)).toBeInTheDocument();
   expect(screen.getByText('PaymentError')).toBeInTheDocument();
   expect(screen.getByText(/3 verified customers/i)).toBeInTheDocument();
   expect(screen.getByText(/2 recurrences/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Issues' }));
+  expect(await screen.findByText(/HTTP errors are in the Errors tab/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'PaymentError' }));
   expect(onSearch).toHaveBeenCalledWith(expect.objectContaining({ issue: 'issue-1' }));
 });

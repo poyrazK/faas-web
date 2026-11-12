@@ -177,9 +177,10 @@ it('explains a refused repository move on a project that turns out to be shared'
   expect(await screen.findByRole('alert')).toHaveTextContent(/belongs to a company/);
 });
 
-it('says which settings the repository owns', () => {
+it('says which settings the repository owns', async () => {
   mount();
-  expect(screen.getByText(/Workloads, their names and the services they call/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Source settings' }));
+  expect(screen.getByText(/Workloads and the services they call/)).toBeInTheDocument();
 });
 
 it("offers to disconnect a company project's repository, though not to change it", async () => {

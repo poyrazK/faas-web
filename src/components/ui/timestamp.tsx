@@ -1,8 +1,10 @@
-import { absoluteTime, parseTime, relativeTime } from '@/lib/time';
+import { absoluteTime, compactTime, parseTime, relativeTime } from '@/lib/time';
 
 /**
- * One way to show a time: "5m ago" (or "in 6d") with the exact date and zone on
- * hover. A missing or unparseable value is a dash, never a raw string or 1970.
+ * One way to show a time: "5m ago" (or "in 6d"), or with `mode="absolute"` the
+ * short form "Today 14:03" / "Oct 20, 14:03". The exact date, seconds and zone
+ * are always on hover. A missing or unparseable value is a dash, never a raw
+ * string or 1970.
  */
 export function Timestamp({
   value,
@@ -19,7 +21,7 @@ export function Timestamp({
   const exact = absoluteTime(ms);
   return (
     <time dateTime={new Date(ms).toISOString()} title={exact} className={className}>
-      {mode === 'absolute' ? exact : relativeTime(ms)}
+      {mode === 'absolute' ? compactTime(ms) : relativeTime(ms)}
     </time>
   );
 }

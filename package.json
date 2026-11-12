@@ -38,14 +38,19 @@
     "d3-scale": "^4.0.2",
     "d3-shape": "^3.2.0",
     "glimm": "^0.3.1",
+    "hast-util-to-jsx-runtime": "^2.3.6",
+    "hast-util-to-text": "^4.0.3",
+    "highlight.js": "~11.11.1",
     "iconoir-react": "^7.12.1",
+    "lowlight": "^3.3.0",
     "motion": "^14.7.1",
     "openapi-fetch": "^0.17.0",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

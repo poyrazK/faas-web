@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react';
 import { SendMail, Trash } from 'iconoir-react';
 import { ActionDisclosure } from '@/components/ui/action-disclosure';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
-import { FIELD, FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
+import {
+  FIELD,
+  FieldError,
+  fieldErrorProps,
+  useFormValidation,
+  Select,
+} from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Panel } from '@/components/dashboard/primitives';
@@ -139,7 +145,7 @@ export function TeamMembersBody({
         m.role === 'owner' || !canManage ? (
           <Pill label={m.role} color={ROLE_COLOR[m.role]} />
         ) : (
-          <select
+          <Select
             value={m.role}
             aria-label={`Role for ${m.email}`}
             onChange={async (e) => {
@@ -163,14 +169,14 @@ export function TeamMembersBody({
                   })
                 );
             }}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs outline-none focus:border-brand/50"
+            className="h-8 surface rounded-[1.25rem] bg-card px-2 text-xs outline-none focus:border-brand/50"
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
             ))}
-          </select>
+          </Select>
         ),
     },
     {
@@ -370,7 +376,7 @@ export function TeamMembersBody({
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Role</span>
-              <select
+              <Select
                 value={role}
                 onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
                 className={`${FIELD} min-w-36`}
@@ -380,7 +386,7 @@ export function TeamMembersBody({
                     {r}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <Button
               type="submit"

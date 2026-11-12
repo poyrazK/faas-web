@@ -45,7 +45,7 @@ export function DeploymentRuntime({ deploymentId }: { deploymentId: string }) {
   const candidates = (data?.releases ?? []).filter((release) => release.id !== current?.id);
 
   return (
-    <section aria-label="Runtime base" className="rounded-lg border border-border p-4">
+    <section aria-label="Runtime base" className="well rounded-xl bg-muted/40 p-4">
       <p className="label-mono text-muted-foreground">Runtime base</p>
       {phase !== 'ready' || !data ? (
         <div className="mt-3">
@@ -137,8 +137,7 @@ function PreviewBody({ preview }: { preview: RuntimeUpgradePreview }) {
       )}
       {(preview.rebuild_required || preview.cold_start_required) && (
         <p className="text-muted-foreground">
-          Moving to this base needs a rebuild and a cold start: existing snapshots cannot be reused
-          across different base bytes.
+          Moving to this base needs a rebuild and a cold start.
         </p>
       )}
       {preview.blockers.length > 0 && <List title="Blockers" items={preview.blockers} />}

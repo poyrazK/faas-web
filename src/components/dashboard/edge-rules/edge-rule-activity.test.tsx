@@ -22,7 +22,7 @@ vi.mock('@/lib/api/capabilities', () => ({
   }),
   useCapabilityStage: () => 'Beta',
 }));
-vi.mock('@/components/dither-kit/sparkline', () => ({
+vi.mock('@/components/dashboard/kit/chart', () => ({
   Sparkline: () => <div data-testid="sparkline" />,
 }));
 

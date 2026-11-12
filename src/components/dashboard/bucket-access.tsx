@@ -146,9 +146,7 @@ function AccessGrants({
       ) : grants.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(grants.error)}</p>
       ) : (grants.data?.items.length ?? 0) === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No API key can reach this bucket yet. The app itself always can.
-        </p>
+        <p className="text-sm text-muted-foreground">No API key can reach this bucket yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {grants.data?.items.map((grant) => (
@@ -317,9 +315,7 @@ function S3Credentials({
       ) : credentials.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(credentials.error)}</p>
       ) : (credentials.data?.items.length ?? 0) === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No S3 credentials yet. Create one for a tool that speaks S3 to s3.gregale.dev.
-        </p>
+        <p className="text-sm text-muted-foreground">No S3 credentials yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {credentials.data?.items.map((credential) => (

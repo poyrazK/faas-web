@@ -2,6 +2,7 @@ import { CheckCircle, HelpCircle, WarningTriangle } from 'iconoir-react';
 import { useRouteHealthHistory, useRouteHealthReport } from '@/lib/api/route-health';
 import { InlinePhase, queryPhase } from './primitives';
 import { PlanGated } from './plan-gated';
+import { Timestamp } from '@/components/ui/timestamp';
 
 function verdict(status: string | undefined) {
   const s = (status ?? '').toLowerCase();
@@ -142,7 +143,7 @@ export function CanaryHealth({ slug, deploymentId }: { slug: string; deploymentI
                   </span>
                   <span className="min-w-0 flex-1 text-xs">{entry.decision.reason}</span>
                   <time dateTime={entry.checked_at} className="text-xs text-muted-foreground">
-                    {new Date(entry.checked_at).toLocaleString()}
+                    <Timestamp value={entry.checked_at} mode="absolute" />
                   </time>
                 </li>
               ))}

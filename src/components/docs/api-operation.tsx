@@ -1,4 +1,5 @@
 import { CopyButton } from '@/components/docs/copy-button';
+import { HighlightedCode } from '@/components/docs/highlighted-code';
 import { Markdown } from '@/components/docs/markdown';
 import { curlFor, type ApiField, type ApiOperation } from '@/lib/api-reference/build';
 import { cn } from '@/lib/utils';
@@ -69,7 +70,7 @@ function Fields({ title, fields }: { title: string; fields: ApiField[] }) {
   );
 }
 
-function CodeBlock({ code, label }: { code: string; label: string }) {
+function CodeBlock({ code, label, language }: { code: string; label: string; language: string }) {
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-border bg-muted/40">
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
@@ -77,7 +78,7 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
         <CopyButton text={code} label="Copy" className="label-mono" />
       </div>
       <pre className="max-h-80 overflow-auto p-3 font-mono text-xs leading-relaxed">
-        <code>{code}</code>
+        <HighlightedCode code={code} language={language} />
       </pre>
     </div>
   );
@@ -129,7 +130,7 @@ export function ApiOperationSection({ operation }: { operation: ApiOperation }) 
         </>
       )}
 
-      <CodeBlock label="Request" code={curlFor(operation)} />
+      <CodeBlock label="Request" language="bash" code={curlFor(operation)} />
 
       <section className="mt-5">
         <h4 className="label-mono text-muted-foreground">Responses</h4>
@@ -151,7 +152,11 @@ export function ApiOperationSection({ operation }: { operation: ApiOperation }) 
           ))}
         </ul>
         {success?.example && (
-          <CodeBlock label={`Example ${success.status} response`} code={success.example} />
+          <CodeBlock
+            label={`Example ${success.status} response`}
+            language="json"
+            code={success.example}
+          />
         )}
       </section>
     </section>

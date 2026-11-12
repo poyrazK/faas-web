@@ -102,7 +102,7 @@ export function RecoverySourceForm({
         e.preventDefault();
         void submit();
       }}
-      className="space-y-4 rounded-lg border border-border bg-card p-5"
+      className="space-y-4 surface rounded-[1.25rem] bg-card p-5"
       aria-label="Deploy a fix"
     >
       <h3 className="font-medium">Deploy a fix to {recovery.app}</h3>

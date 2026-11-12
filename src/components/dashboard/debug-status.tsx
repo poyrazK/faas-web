@@ -55,7 +55,7 @@ export function DebugStatusPanel({
   const Glyph = verdict?.icon ?? HelpCircle;
 
   return (
-    <section aria-label="Debug status" className="rounded-lg border border-border p-4">
+    <section aria-label="Debug status" className="well rounded-xl bg-muted/40 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">Status</h3>
         <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function DebugStatusPanel({
                           onClick={() => onOpenRequest(req.id!)}
                           className="pressable rounded text-brand underline-offset-2 hover:underline"
                         >
-                          Open evidence
+                          Open request details
                         </button>
                       )}
                     </li>

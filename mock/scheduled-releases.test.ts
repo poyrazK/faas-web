@@ -63,6 +63,8 @@ describe('scheduled releases', () => {
         d.status === 'live' &&
         (d.traffic_percent ?? 0) > 0 &&
         !d.canary_total_steps &&
+        // A production release: another environment is refused earlier, as 400.
+        (!d.scope || d.scope === 'default') &&
         !db.apps.find((a) => a.id === d.app_id)?.preview_of_slug
     )!;
     const soon = new Date(Date.now() + H).toISOString();

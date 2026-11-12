@@ -17,6 +17,8 @@ import {
   type ProbeView,
 } from '@/lib/health-probes';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { FieldLabel } from './kit/field-label';
+import { HelpTip } from './kit/help-tip';
 
 /**
  * Health probes and the restart contract (ledger C47).
@@ -57,7 +59,10 @@ function Tag({ kind }: { kind: ProbeView['kind'] }) {
 function ProbeRow({ label, view, line }: { label: string; view: ProbeView; line: string }) {
   return (
     <li aria-label={label} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
-      <p className="label-mono text-muted-foreground">{label}</p>
+      <span className="flex items-center gap-1">
+        <span className="label-mono text-muted-foreground">{label}</span>
+        <HelpTip label={`About ${label}`}>{line}</HelpTip>
+      </span>
       <p className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm">{view.action}</span>
         <Tag kind={view.kind} />
@@ -67,7 +72,6 @@ function ProbeRow({ label, view, line }: { label: string; view: ProbeView; line:
           {view.timing}
         </p>
       )}
-      <p className="text-xs text-muted-foreground">{line}</p>
     </li>
   );
 }
@@ -84,9 +88,23 @@ function Probes({ app }: { app: App }) {
 
   return (
     <section aria-labelledby="health-probes-heading" className="flex flex-col gap-3">
-      <h3 id="health-probes-heading" className="text-sm font-medium">
-        Probes
-      </h3>
+      <div className="flex items-center gap-1">
+        <h3 id="health-probes-heading" className="text-sm font-medium">
+          Probes
+        </h3>
+        <HelpTip label="About probes">
+          Probes are fixed per deployment. Set the startup check with <Code>hosting.health</Code> in
+          gregale.yaml or <Code>gregale deploy --healthcheck-path</Code>, and readiness and liveness
+          with <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code>. See{' '}
+          <a
+            href="/docs/deploy-overrides"
+            className="text-brand underline-offset-2 hover:underline"
+          >
+            Deployment overrides
+          </a>
+          .
+        </HelpTip>
+      </div>
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
@@ -96,8 +114,7 @@ function Probes({ app }: { app: App }) {
         />
       ) : !probes ? (
         <p className="text-sm text-muted-foreground">
-          No production release is serving traffic, so there are no probes to show. They are set by
-          the deployment that does.
+          No production release is serving traffic, so there are no probes to show.
         </p>
       ) : (
         <ul aria-label="Probes" className="flex flex-col divide-y divide-border">
@@ -106,18 +123,6 @@ function Probes({ app }: { app: App }) {
           <ProbeRow label="Liveness probe" view={probes.liveness} line={PROBE_LINES.liveness} />
         </ul>
       )}
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Probes are fixed per deployment and change with the next one. Set the startup check with{' '}
-        <Code>hosting.health</Code> in gregale.yaml or{' '}
-        <Code>gregale deploy --healthcheck-path</Code>. Readiness and liveness probes are{' '}
-        <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code> on an image
-        deployment, or a <Code>healthcheck:</Code> on a Compose service. A Dockerfile{' '}
-        <Code>HEALTHCHECK</Code> replaces the default liveness probe. See{' '}
-        <a href="/docs/deploy-overrides" className="text-brand underline-offset-2 hover:underline">
-          Deployment overrides
-        </a>
-        .
-      </p>
     </section>
   );
 }
@@ -152,7 +157,8 @@ function NumberField({
   value,
   placeholder,
   error,
-  hint,
+  help,
+  range,
   onChange,
 }: {
   id: string;
@@ -160,14 +166,14 @@ function NumberField({
   value: string;
   placeholder: string;
   error?: string;
-  hint: string;
+  help: string;
+  /** The plan's default or limit, shown under the field. */
+  range?: string;
   onChange: (v: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="label-mono text-muted-foreground">
-        {label}
-      </label>
+      <FieldLabel label={label} help={help} htmlFor={id} />
       <input
         id={id}
         type="number"
@@ -180,7 +186,7 @@ function NumberField({
         className={`${FIELD} w-full [font-variant-numeric:tabular-nums]`}
       />
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
-      <span className="text-xs text-muted-foreground">{hint}</span>
+      {range && <span className="text-xs text-muted-foreground">{range}</span>}
     </div>
   );
 }
@@ -276,9 +282,11 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
       )}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="restart-policy" className="label-mono text-muted-foreground">
-            Restart policy
-          </label>
+          <FieldLabel
+            label="Restart policy"
+            htmlFor="restart-policy"
+            help={`When the main process exits: never restart, restart after a non-zero exit, always restart, or always unless it was stopped on purpose. The default follows the app’s ${eff.mode} mode.`}
+          />
           <Select
             id="restart-policy"
             value={draft.restart_policy}
@@ -292,11 +300,6 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
               </option>
             ))}
           </Select>
-          <span className="text-xs text-muted-foreground">
-            When the main process exits: never restart, restart after a non-zero exit, always
-            restart, or always unless it was stopped on purpose. The default follows the app’s{' '}
-            {eff.mode} mode.
-          </span>
         </div>
         <NumberField
           id="max-retries"
@@ -304,7 +307,8 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
           value={draft.max_retries}
           placeholder={placeholder(limits?.maxRetries)}
           error={errors.max_retries}
-          hint={`Restarts in a row before the instance is marked failed as a crash loop. Default and limit: ${onPlan(limits?.maxRetries)}.`}
+          help="Restarts in a row before the instance is marked failed as a crash loop."
+          range={`Default and limit: ${onPlan(limits?.maxRetries)}`}
           onChange={(v) => set('max_retries', v)}
         />
         <NumberField
@@ -313,13 +317,16 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
           value={draft.startup_deadline_s}
           placeholder={placeholder(limits?.startupDeadlineS)}
           error={errors.startup_deadline_s}
-          hint={`Time an instance has to pass its startup check before the start fails. Default and limit: ${onPlan(limits?.startupDeadlineS, ' s')}.`}
+          help="Time an instance has to pass its startup check before the start fails."
+          range={`Default and limit: ${onPlan(limits?.startupDeadlineS, ' s')}`}
           onChange={(v) => set('startup_deadline_s', v)}
         />
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="stop-signal" className="label-mono text-muted-foreground">
-            Stop signal
-          </label>
+          <FieldLabel
+            label="Stop signal"
+            htmlFor="stop-signal"
+            help="Sent to a worker or job when it is stopped, so it can finish its work. Request and service instances are snapshotted instead."
+          />
           <Select
             id="stop-signal"
             value={draft.stop_signal}
@@ -333,10 +340,6 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
               </option>
             ))}
           </Select>
-          <span className="text-xs text-muted-foreground">
-            Sent to a worker or job when it is stopped, so it can finish its work. Request and
-            service instances are snapshotted instead.
-          </span>
         </div>
         <NumberField
           id="stop-grace"
@@ -344,24 +347,30 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
           value={draft.stop_grace_period_s}
           placeholder={placeholder(30)}
           error={errors.stop_grace_period_s}
-          hint={`How long a stopping worker or job has after the signal before it is killed. Limit: ${onPlan(limits?.stopGraceS, ' s')}.${isWorker ? ' A worker’s drain_timeout in gregale.yaml sets the same value.' : ''}`}
+          help={`How long a stopping worker or job has after the signal before it is killed.${isWorker ? ' A worker’s drain_timeout in gregale.yaml sets the same value.' : ''}`}
+          range={`Limit: ${onPlan(limits?.stopGraceS, ' s')}`}
           onChange={(v) => set('stop_grace_period_s', v)}
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          The <Code>lifecycle:</Code> block in gregale.yaml takes <Code>restart_policy</Code>,{' '}
-          <Code>max_retries</Code>, <Code>startup_deadline_s</Code>, <Code>stop_signal</Code> and{' '}
-          <Code>stop_grace_period_s</Code>. Keys set there replace the values saved here on every
-          deploy; keys left out keep them
-          {isWorker ? (
+        <FieldLabel
+          label="As gregale.yaml"
+          help={
             <>
-              . A worker’s <Code>worker.drain_timeout</Code> and <Code>worker.stop_signal</Code>,
-              when set, do the same
+              The <Code>lifecycle:</Code> block in gregale.yaml takes <Code>restart_policy</Code>,{' '}
+              <Code>max_retries</Code>, <Code>startup_deadline_s</Code>, <Code>stop_signal</Code>{' '}
+              and <Code>stop_grace_period_s</Code>. Keys set there replace the values saved here on
+              every deploy; keys left out keep them
+              {isWorker ? (
+                <>
+                  . A worker’s <Code>worker.drain_timeout</Code> and <Code>worker.stop_signal</Code>
+                  , when set, do the same
+                </>
+              ) : null}
+              .
             </>
-          ) : null}
-          .{yaml ? ' What is set explicitly here, as gregale.yaml:' : ''}
-        </p>
+          }
+        />
         {yaml && (
           <pre
             aria-label="gregale.yaml lifecycle block"
@@ -377,10 +386,7 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
 
 export function HealthProbes({ app, plan }: { app: App; plan: Plan | undefined }) {
   return (
-    <Panel
-      title="Health and restarts"
-      description="How an instance is judged ready and alive, and how it restarts and stops."
-    >
+    <Panel title="Health and restarts">
       <div className="flex flex-col gap-8">
         <Probes app={app} />
         <RestartContract app={app} plan={plan} />

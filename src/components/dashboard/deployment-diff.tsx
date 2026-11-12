@@ -86,11 +86,11 @@ export function DeploymentDiff({
     : undefined;
 
   return (
-    <section aria-label="What changed" className="rounded-lg border border-border p-4">
+    <section aria-label="What changed" className="well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 label-mono text-muted-foreground">
           What changed
-          {stage && <span className="rounded-full border border-border px-2 py-0.5">{stage}</span>}
+          {stage && <span className="rounded-full bg-muted px-2 py-0.5">{stage}</span>}
         </p>
         {choices.length > 0 && (
           <SegmentedControl

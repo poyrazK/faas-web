@@ -150,7 +150,7 @@ function StopSection({ stop }: { stop: BudgetStop }) {
           : 'It stays until this budget is edited, turned off or deleted.'}
       </p>
       {stop.targets.length ? (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {stop.targets.map((target) => {
             const state = TARGET_STATE[target.state] ?? TARGET_STATE.unavailable;
             return (
@@ -308,7 +308,7 @@ function BudgetChannels({ accountId, budget }: { accountId: string; budget: Budg
         <>
           <ul
             aria-label="Budget alert channels"
-            className="flex flex-col divide-y divide-border rounded-md border border-border"
+            className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
           >
             {list.map((channel) => (
               <li
@@ -364,7 +364,7 @@ function BudgetHistory({ accountId, id }: { accountId: string; id: string }) {
         />
       ) : (
         <>
-          <ol className="flex flex-col divide-y divide-border rounded-md border border-border">
+          <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {rows.map((row) => {
               const level = budgetLevel(row.spec);
               return (
@@ -485,7 +485,6 @@ export function BudgetDetail({
   return (
     <Panel
       title={spec.name}
-      description={`${scopeLabel(spec.scope)} · revision ${budget.revision}`}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {!deleted && !editing && (
@@ -528,6 +527,8 @@ export function BudgetDetail({
         </div>
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${scopeLabel(spec.scope)} · revision ${budget.revision}`}</p>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <BudgetStatus budget={budget} />
@@ -590,7 +591,7 @@ export function BudgetDetail({
             )}
             {level === 'api' && (
               <CliCommand
-                label="This response is authored through the API or CLI, and apid keeps it as a draft."
+                label="This response is authored through the API or CLI, and Gregale keeps it as a draft."
                 command={`gregale billing budgets get ${budget.id}`}
                 copyLabel={`get command for ${spec.name}`}
               />
@@ -616,7 +617,7 @@ export function BudgetDetail({
                     {evaluation.coverage_complete
                       ? ''
                       : 'Coverage is partial, so the total may be higher. '}
-                    {evaluation.fresh ? '' : 'The evidence is stale. '}
+                    {evaluation.fresh ? '' : 'The saved measurements are out of date. '}
                     Evaluated <Timestamp value={evaluation.evaluated_at} />.
                   </p>
                 </>
@@ -657,7 +658,7 @@ export function BudgetDetail({
             {spec.mode !== 'strict' && (
               <Section title="Alerts this month">
                 {alerts.length ? (
-                  <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+                  <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
                     {alerts.map((alert) => (
                       <AlertRow key={alert.id} alert={alert} />
                     ))}

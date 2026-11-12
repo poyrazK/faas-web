@@ -52,18 +52,32 @@ beforeEach(() => {
 });
 
 describe('ReleaseFreezes', () => {
-  it('says whether the app is frozen now, labelled preview, and what a freeze blocks', () => {
+  it('says in one sentence that the app is frozen now, labelled preview, with what a freeze blocks behind its tip', async () => {
     m.freezes = [freeze()];
     m.status = { app: 'shop', frozen: true, active: [freeze()] };
     render(<ReleaseFreezes owner={{ kind: 'app', slug: 'shop' }} />);
-    const panel = screen.getByRole('region', { name: 'Deploy freezes' });
-    expect(panel).toHaveTextContent('Preview');
-    expect(panel).toHaveTextContent(/GitHub pushes/);
-    expect(panel).toHaveTextContent(/Rollbacks/);
-    expect(screen.getByRole('status', { name: 'Freeze status' })).toHaveTextContent(
-      'Production releases are frozen now (incident 4711)'
-    );
+    const card = screen.getByRole('region', { name: 'Freezes' });
+    expect(card).toHaveTextContent('Preview');
+    expect(card).toHaveTextContent('Releases are paused by “incident 4711”.');
+    expect(card).not.toHaveTextContent(/GitHub pushes/);
+    await userEvent.click(screen.getByRole('button', { name: 'About freezes' }));
+    expect(await screen.findByText(/GitHub pushes.*Rollbacks/s)).toBeInTheDocument();
     expect(within(screen.getByRole('list')).getByText('Frozen now')).toBeInTheDocument();
+  });
+
+  it('names when the next freeze starts, and offers one when there is none', () => {
+    m.freezes = [freeze({ active: false, next_starts_at: '2026-11-06T13:00:00Z' })];
+    m.status = { app: 'shop', frozen: false, active: [], next: m.freezes[0] };
+    const { unmount } = render(<ReleaseFreezes owner={{ kind: 'app', slug: 'shop' }} />);
+    expect(screen.getByRole('region', { name: 'Freezes' })).toHaveTextContent(
+      /One freeze can pause releases; the next starts .+ at \d\d:\d\d\./
+    );
+    unmount();
+    m.freezes = [];
+    m.status = { app: 'shop', frozen: false, active: [] };
+    render(<ReleaseFreezes owner={{ kind: 'app', slug: 'shop' }} />);
+    expect(screen.getByText(/No freeze is set/)).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'New freeze' })).not.toBeInTheDocument();
   });
 
   it('describes weekly and after-rollback freezes with their zone and length', () => {
@@ -98,7 +112,7 @@ describe('ReleaseFreezes', () => {
     m.freezes = [freeze({ app: undefined, org: 'acme' })];
     render(<ReleaseFreezes owner={{ kind: 'org', org: 'acme' }} />);
     m.confirm.mockResolvedValueOnce(false);
-    await userEvent.click(screen.getByRole('button', { name: 'Lift' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Lift/ }));
     expect(m.lift).not.toHaveBeenCalled();
     expect(m.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -106,7 +120,7 @@ describe('ReleaseFreezes', () => {
         description: expect.stringMatching(/audit log/),
       })
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Lift' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Lift/ }));
     await waitFor(() =>
       expect(m.lift).toHaveBeenCalledWith(expect.objectContaining({ id: 'f1', org: 'acme' }))
     );
@@ -116,14 +130,14 @@ describe('ReleaseFreezes', () => {
     m.freezes = [freeze()];
     m.lift.mockRejectedValueOnce(problem(404, 'release_freeze_not_found'));
     render(<ReleaseFreezes owner={{ kind: 'app', slug: 'shop' }} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Lift' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Lift/ }));
     await waitFor(() =>
       expect(m.toast).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'info', title: 'Already lifted' })
       )
     );
     m.lift.mockRejectedValueOnce(problem(403, 'org_role_forbidden'));
-    await userEvent.click(screen.getByRole('button', { name: 'Lift' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Lift/ }));
     await waitFor(() =>
       expect(m.toast).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Only an owner or admin can lift this freeze' })
@@ -133,7 +147,8 @@ describe('ReleaseFreezes', () => {
 
   it('freezes every app of an organization after a confirmation naming who it blocks', async () => {
     render(<ReleaseFreezes owner={{ kind: 'org', org: 'acme' }} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze every app of acme' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a freeze' }));
+    expect(screen.getByRole('dialog', { name: 'Freeze every app of acme' })).toBeInTheDocument();
     const form = screen.getByRole('form', { name: 'New freeze' });
     await userEvent.type(within(form).getByLabelText('Reason'), 'holiday freeze');
     await userEvent.click(within(form).getByRole('button', { name: 'Freeze releases' }));
@@ -157,7 +172,8 @@ describe('ReleaseFreezes', () => {
   it('sends a weekly window in its time zone, and explains a member’s role refusal', async () => {
     m.create.mockRejectedValueOnce(problem(403, 'org_role_forbidden'));
     render(<ReleaseFreezes owner={{ kind: 'org', org: 'acme' }} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze every app of acme' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a freeze' }));
+    expect(screen.getByRole('dialog', { name: 'Freeze every app of acme' })).toBeInTheDocument();
     const form = screen.getByRole('form', { name: 'New freeze' });
     await userEvent.click(within(form).getByRole('button', { name: 'Weekly' }));
     await userEvent.clear(within(form).getByLabelText('Time zone'));
@@ -186,7 +202,7 @@ describe('ReleaseFreezes', () => {
 
   it('refuses to send a freeze without a reason', async () => {
     render(<ReleaseFreezes owner={{ kind: 'app', slug: 'shop' }} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Freeze shop' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a freeze' }));
     await userEvent.click(screen.getByRole('button', { name: 'Freeze releases' }));
     expect(screen.getByText(/Give a reason/)).toBeInTheDocument();
     expect(m.confirm).not.toHaveBeenCalled();

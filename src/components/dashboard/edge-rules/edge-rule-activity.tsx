@@ -3,10 +3,11 @@ import { Check, Eye, Prohibition, ShieldAlert, WarningTriangle } from 'iconoir-r
 import { Button } from '@/components/ui/button';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { Timestamp } from '@/components/ui/timestamp';
-import { Sparkline } from '@/components/dither-kit/sparkline';
+import { Sparkline } from '@/components/dashboard/kit/chart';
 import { CliCommand } from '@/components/dashboard/cli-command';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { SegmentedControl } from '@/components/dashboard/tabs';
+import { Pill } from '@/components/dashboard/resource-table';
 import { useCapabilityAccess, useCapabilityStage } from '@/lib/api/capabilities';
 import {
   useEdgeRuleEvents,
@@ -100,12 +101,12 @@ function OutcomeBadge({ outcome }: { outcome: EdgeRuleEventOutcome }) {
     <span
       title={o.hint}
       className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs',
         !o.color && 'border-border text-muted-foreground'
       )}
       style={
         o.color
-          ? { borderColor: `color-mix(in oklab, ${o.color} 35%, transparent)`, color: o.color }
+          ? { backgroundColor: `color-mix(in oklab, ${o.color} 14%, transparent)`, color: o.color }
           : undefined
       }
     >
@@ -134,14 +135,17 @@ export function EdgeRuleActivity({ slug, rules }: { slug: string; rules: EdgeRul
     <div className="flex flex-col gap-6">
       <Panel
         title="Activity"
-        description={`${stage ? `${stage} · ` : ''}What each rule matched, and samples of the requests behind the counts.`}
+        help="What each rule matched, and samples of the requests behind the counts."
         actions={
-          <SegmentedControl
-            label="Activity window"
-            value={range}
-            options={WINDOWS}
-            onChange={setRange}
-          />
+          <div className="flex items-center gap-2">
+            {stage && <Pill label={stage} />}
+            <SegmentedControl
+              label="Activity window"
+              value={range}
+              options={WINDOWS}
+              onChange={setRange}
+            />
+          </div>
         }
         padded={false}
       >
@@ -466,7 +470,8 @@ function Trace({ slug }: { slug: string }) {
   return (
     <Panel
       title="Trace a request"
-      description={`${stage ? `${stage} · ` : ''}Which rules a request would match and what each would do, before it is sent. The CLI runs the gateway's own matching locally; the console has no trace of its own.`}
+      help="Which rules a request would match and what each would do, before it is sent. The CLI runs the gateway's own matching locally; the console has no trace of its own."
+      actions={stage && <Pill label={stage} />}
     >
       <div className="flex flex-col gap-3">
         <div className="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)]">

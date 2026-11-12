@@ -205,7 +205,7 @@ export function WorkflowRuns({ slug, onOpen }: { slug: string; onOpen: (id: stri
   return (
     <Panel
       title="Runs"
-      description="Newest first, across YAML and code-first workflows. Open a run for its steps and controls."
+      help="Newest first, across YAML and code-first workflows. Open a run for its steps and controls."
       actions={
         <div className="flex flex-wrap gap-2">
           {chosen.length > 0 && (

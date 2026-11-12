@@ -96,6 +96,7 @@ describe('SpendCap in a company workspace', () => {
     company();
     await mount();
     expect(await screen.findByText('$10.00')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: "About Acme's spend cap" }));
     expect(screen.getByText(/Acme's apps/)).toBeInTheDocument();
     await setCap('25');
     await waitFor(() => expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1));

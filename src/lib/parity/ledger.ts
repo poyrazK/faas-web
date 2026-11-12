@@ -66,7 +66,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'full',
     surfaces: [
       '/dashboard/settings?section=integrations',
-      '/dashboard/apps/$appSlug?tab=Configuration',
+      '/dashboard/apps/$appSlug?tab=Source+and+access',
     ],
   },
   // A6 · preview
@@ -102,7 +102,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 11,
     name: '`gregale.yaml` deploy overrides, app config',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // A12 · beta
   {
@@ -116,14 +116,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 13,
     name: 'Per-app deploy tokens for CI',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Source+and+access'],
   },
   // A15 · GA
   {
     row: 15,
     name: 'Private registry credentials',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Source+and+access'],
   },
   // A16 · GA
   {
@@ -140,7 +140,7 @@ export const LEDGER: LedgerEntry[] = [
     surfaces: [
       '/dashboard/projects',
       '/dashboard/releases',
-      '/dashboard/apps/$appSlug?tab=Configuration',
+      '/dashboard/apps/$appSlug?tab=Runtime',
     ],
     capability: 'deploy-diff',
   },
@@ -296,7 +296,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 38,
     name: 'Scale to zero: park idle, wake on request',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C39 · GA
   {
@@ -319,14 +319,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 42,
     name: 'Manual park / wake, prewarm',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C43 · GA
   {
     row: 43,
     name: 'Autoscaling and min instances (target RPS / CPU), scheduled scaling',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C44 · GA
   {
@@ -347,14 +347,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 47,
     name: 'Health probes and auto-restart: startup, readiness, liveness; restart policy, stop signal, grace period, drain timeout',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Health+and+releases'],
   },
   // C48 · beta
   {
     row: 48,
     name: 'Snapshot lifecycle hooks: run app code before checkpoint and after restore',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Health+and+releases'],
     capability: 'snapshot-lifecycle-hooks',
   },
   // C49 · GA
@@ -362,14 +362,14 @@ export const LEDGER: LedgerEntry[] = [
     row: 49,
     name: 'Resource sizing: RAM, CPU millicores, scratch disk, disk I/O profile, workload classes (http / worker / job), replicas',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // C50 · beta
   {
     row: 50,
     name: 'Warm pool and warm snapshots',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
     capability: 'warm-pool',
   },
   // C51 · preview
@@ -377,7 +377,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 51,
     name: 'Reserved concurrency and eviction priority',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
     capability: 'reserved-concurrency',
   },
   // C52 · preview
@@ -385,7 +385,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 52,
     name: 'Application companions (sidecars)',
     status: 'partial',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
     capability: 'companions',
     gap: 'Sidecar timeline',
     wave: 3,
@@ -493,7 +493,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 67,
     name: 'Private apps',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=General'],
   },
   // D68 · preview
   {
@@ -534,7 +534,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 72,
     name: 'Egress allowlist and extra egress ports',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // D74 · beta
   {
@@ -565,7 +565,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 77,
     name: 'App access control: per-app authentication (`require_authn`), public bearer / basic auth, IP allowlist',
     status: 'full',
-    surfaces: ['/dashboard/apps/$appSlug?tab=Configuration'],
+    surfaces: ['/dashboard/apps/$appSlug?tab=Runtime'],
   },
   // D79 · beta
   {
@@ -662,7 +662,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 96,
     name: 'Async invocations and results',
     status: 'full',
-    surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?tab=Invoke'],
+    surfaces: ['/dashboard/invocations', '/dashboard/apps/$appSlug?invoke=1'],
     capability: 'async-invocations',
   },
   // E97 · preview
@@ -886,18 +886,18 @@ export const LEDGER: LedgerEntry[] = [
   {
     row: 128,
     name: 'SLOs and error budgets',
-    status: 'none',
-    surfaces: [],
-    gap: 'SLOs and error budgets',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=SLOs'],
+    capability: 'custom-slos',
     wave: 3,
   },
   // G129 · preview
   {
     row: 129,
     name: 'Synthetic checks',
-    status: 'none',
-    surfaces: [],
-    gap: 'Synthetic checks',
+    status: 'full',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Synthetic checks'],
+    capability: 'synthetic-checks',
     wave: 3,
   },
   // G168 · preview
@@ -923,7 +923,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Debugger'],
     capability: 'production-debugger',
-    gap: 'Evidence capture and safe replay depth',
+    gap: 'No view yet for historical critical paths (/debug/critical-paths) or the rollout explanation (/debug/rollout)',
     wave: 3,
   },
   // G136 · GA

@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
 import { consoleHead } from '@/lib/seo';
 import {
   ObjectStorage,
@@ -31,20 +30,16 @@ function StoragePage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Object storage"
-        description="Private S3 buckets for your apps. Connect one to your code, or reach it from anywhere that speaks S3."
-      />
-      <ObjectStorage
-        selection={search}
-        // A choice someone makes is a Back step; only a change the page makes
-        // on its own replaces the entry, so Back never lands on a URL that
-        // immediately moves again.
-        onSelectionChange={(next, options) =>
-          void navigate({ search: next, replace: options?.replace ?? false, resetScroll: false })
-        }
-      />
-    </div>
+    // The page's intro (title, what storage is for, the app it is for) lives
+    // in ObjectStorage, beside the app picker it names.
+    <ObjectStorage
+      selection={search}
+      // A choice someone makes is a Back step; only a change the page makes
+      // on its own replaces the entry, so Back never lands on a URL that
+      // immediately moves again.
+      onSelectionChange={(next, options) =>
+        void navigate({ search: next, replace: options?.replace ?? false, resetScroll: false })
+      }
+    />
   );
 }

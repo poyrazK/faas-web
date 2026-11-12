@@ -16,7 +16,7 @@ import {
   type PlatformTenantDetail,
   type TenantStatement,
 } from '@/lib/api/monetization';
-import { InlinePhase, StatTile, queryPhase } from './primitives';
+import { InlinePhase, Stats, StatTile, queryPhase } from './primitives';
 import { Pill, ResourceTable, type Column } from './resource-table';
 import { SegmentedControl } from './tabs';
 import { finalizeCopy } from './api-consumer-statements';
@@ -125,7 +125,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
         onRetry={() => void cards.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {cards.data?.map((c) => (
             <li key={c.id} className="flex flex-col gap-1 px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -160,7 +160,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
         </ul>
       )}
       <form
-        className="flex flex-col gap-3 rounded-lg border border-border p-4"
+        className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
         onSubmit={(e) => void submit(e)}
         noValidate
       >
@@ -245,9 +245,7 @@ export function TenantRateCards({ tenantId }: { tenantId: string }) {
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Free requests are counted per customer per UTC month across every linked app; statements
-          for periods such a card prices must cover one calendar month. Graduated tiers are
-          published through the API.
+          Free requests count per customer per UTC month, across every linked app.
         </p>
       </form>
     </div>
@@ -298,7 +296,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           onRetry={() => void usage.refetch()}
         />
       )}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <Stats columns={3}>
         <StatTile
           label="Requests"
           state={state}
@@ -317,7 +315,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           value={usage.data?.billable_units}
           format={formatCount}
         />
-      </div>
+      </Stats>
       {byApp.length > 0 && (
         <table className="w-full text-sm">
           <caption className="sr-only">Usage by app</caption>
@@ -349,10 +347,7 @@ export function TenantUsage({ tenant }: { tenant: PlatformTenantDetail }) {
           </tbody>
         </table>
       )}
-      <p className="text-xs text-muted-foreground">
-        Raw usage of linked consumers and surfaces, by UTC day. App prices and invoices are not
-        aggregated here; statements price it.
-      </p>
+      <p className="text-xs text-muted-foreground">Unpriced usage by UTC day.</p>
     </div>
   );
 }
@@ -485,7 +480,7 @@ export function TenantStatements({ tenantId }: { tenantId: string }) {
           loading={statements.isPending}
           error={statements.error}
           onRetry={() => void statements.refetch()}
-          emptyMessage="No statement for this period yet. Snapshot it to create the first revision."
+          emptyMessage="No statement for this period yet."
           minWidth="min-w-[520px]"
           rowActions={(r) =>
             r.status === 'draft' && r.statement.unpriced_units === 0 ? (
@@ -519,7 +514,7 @@ function TenantStatementDetail({
   const appNames = useAppNames();
   const notRecorded = handoff.error instanceof ApiError && handoff.error.code === 'not_found';
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <p className="text-sm font-medium">
         Revision {statement.revision} · {formatPeriod(statement.period_start, statement.period_end)}
       </p>
@@ -553,10 +548,7 @@ function TenantStatementDetail({
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-medium">Billing handoff</p>
           {notRecorded ? (
-            <p className="text-sm text-muted-foreground">
-              No handoff recorded. Your billing system records one through the API when it invoices
-              this statement.
-            </p>
+            <p className="text-sm text-muted-foreground">No handoff recorded.</p>
           ) : (
             <>
               <InlinePhase

@@ -208,7 +208,7 @@ export function TicketsSection({ slug, endpointId }: { slug: string; endpointId:
         </Button>
       </form>
       {issued.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {issued.map((t) => (
             <li key={t.ticket_id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
               <CopyableId value={t.ticket_id} label="ticket ID" />
@@ -425,7 +425,7 @@ function PrincipalAccess({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3">
       <InlinePhase
         phase={phase}
         error={access.error}
@@ -453,7 +453,7 @@ function PrincipalAccess({
                 {data.denied_channels.map((ch) => (
                   <li
                     key={ch}
-                    className="flex items-center gap-1.5 rounded-full border border-border py-0.5 pl-2 pr-1"
+                    className="flex items-center gap-1.5 rounded-full bg-muted py-0.5 pl-2 pr-1"
                   >
                     <StatusTag tone="critical" label="Denied" />
                     <span className="font-mono text-xs">{ch}</span>
@@ -542,7 +542,7 @@ export function PushSection({ slug, endpointId }: { slug: string; endpointId: st
         onRetry={() => void providers.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {list.map((p) => (
             <li key={p.provider} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
               <span className="text-sm">{PROVIDER_LABEL[p.provider]}</span>

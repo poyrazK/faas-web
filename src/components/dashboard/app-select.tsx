@@ -5,6 +5,7 @@ import { Check, NavArrowDown, Plus } from 'iconoir-react';
 import { useApps } from '@/lib/api/queries';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } from './primitives';
+import { remembered, SELECTED_APP_KEY } from './selected-app';
 
 /**
  * Scope picker for the resources the API keys by app.
@@ -17,13 +18,6 @@ import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } fr
  * The choice is remembered across pages and reloads, so moving between Secrets
  * and Env Vars while debugging one app does not mean re-selecting it each time.
  */
-
-const STORAGE_KEY = 'gregale.selectedApp';
-
-function remembered(): string {
-  if (typeof window === 'undefined') return '';
-  return window.localStorage.getItem(STORAGE_KEY) ?? '';
-}
 
 /**
  * Returns the selected app slug, the setter, and the app list state.
@@ -46,7 +40,7 @@ export function useSelectedApp() {
 
   const select = (next: string) => {
     setChosen(next);
-    window.localStorage.setItem(STORAGE_KEY, next);
+    window.localStorage.setItem(SELECTED_APP_KEY, next);
   };
 
   return {
@@ -145,7 +139,7 @@ export function AppSelect({
         // kept through the change of primitive: the value is announced from the
         // trigger's own content, so the name says what the control is for.
         aria-label={label === 'App' ? 'Select an app' : `Select ${label.toLowerCase()}`}
-        className="pressable flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="pressable flex h-9 items-center gap-2 surface rounded-[1.25rem] bg-card px-3 text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <SelectPrimitive.Value />
         <SelectPrimitive.Icon>

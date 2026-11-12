@@ -576,12 +576,19 @@ apps.push({
     Object.assign(canary, {
       canary_preset: 'balanced',
       canary_step: 1,
-      canary_total_steps: 3,
+      // faas's balanced ladder is 1 → 10 → 50 → 100 (pkg/api/canary/preset.go).
+      canary_total_steps: 4,
       canary_step_started_at: iso(20 * 60 * 1000),
       rollout_state: 'rolling_out',
       rollout_started_at: iso(45 * 60 * 1000),
       traffic_percent: 10,
     } satisfies Partial<Deployment>);
+    // A canary takes its share from the release it replaces, which stays live
+    // serving the rest until the rollout completes or is rolled back.
+    const predecessor = deployments.find(
+      (d) => d.app_id === apps[0].id && d.status === 'superseded' && !d.scope
+    );
+    if (predecessor) Object.assign(predecessor, { status: 'live', traffic_percent: 90 });
   }
   const template = deployments.find((d) => d.app_id === apps[1].id);
   if (template) {
@@ -600,8 +607,27 @@ apps.push({
 // app carries a second live row: without it the create form is unreachable.
 {
   const first = deployments.find((d) => d.app_id === apps[0].id && d.status === 'live');
-  if (first)
-    deployments.push({ ...first, id: id(), scope: 'canary', created_at: iso(30 * 60 * 1000) });
+  // It is its own release in its own environment, serving all of that
+  // environment's traffic: copying the default environment's canary verbatim
+  // gave it the same image and a second "rolling out at 10%", which read as
+  // the same release twice.
+  if (first) {
+    const mirrorId = id();
+    deployments.push({
+      ...first,
+      id: mirrorId,
+      scope: 'canary',
+      created_at: iso(30 * 60 * 1000),
+      image_digest: `sha256:${createHash('sha256').update(mirrorId).digest('hex')}`,
+      canary_preset: 'none',
+      canary_step: 0,
+      canary_total_steps: 0,
+      canary_step_started_at: null,
+      rollout_state: 'complete',
+      rollout_started_at: null,
+      traffic_percent: 100,
+    });
+  }
 }
 builds.sort((a, b) => Date.parse(b.enqueued_at) - Date.parse(a.enqueued_at));
 
@@ -1083,9 +1109,9 @@ export const webhooks = new Map<string, S['AppWebhookResponse'][]>(
     [
       {
         url: 'https://ops.example.com/hooks/gregale',
-        filter: ['app.deployed', 'deployment.failed'],
+        filter: ['deployment.live', 'deployment.failed'],
       },
-      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['error.new'] },
+      { url: 'https://api.pagerduty.com/v2/enqueue', filter: ['issue.created'] },
     ].map((w): S['AppWebhookResponse'] => ({
       id: id(),
       app_id: a.id,

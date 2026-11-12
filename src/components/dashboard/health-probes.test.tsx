@@ -70,21 +70,28 @@ describe('HealthProbes', () => {
     const startup = within(probes).getByRole('listitem', { name: 'Startup check' });
     expect(startup).toHaveTextContent('TCP connect on port 8080');
     expect(startup).toHaveTextContent(/default/i);
-    expect(startup).toHaveTextContent(/no traffic until it passes/i);
+    expect(
+      within(startup).getByRole('button', { name: 'About Startup check' })
+    ).toBeInTheDocument();
 
     const readiness = within(probes).getByRole('listitem', { name: 'Readiness probe' });
     expect(readiness).toHaveTextContent('GET /readyz');
     expect(readiness).toHaveTextContent('out of routing after 4 failures');
     expect(readiness).not.toHaveTextContent(/default/i);
-    expect(readiness).toHaveTextContent(/without restarting/i);
+    expect(
+      within(readiness).getByRole('button', { name: 'About Readiness probe' })
+    ).toBeInTheDocument();
 
     const liveness = within(probes).getByRole('listitem', { name: 'Liveness probe' });
     expect(liveness).toHaveTextContent('GET /healthz');
     expect(liveness).toHaveTextContent(/default/i);
-    expect(liveness).toHaveTextContent(/destroyed and cold-booted/i);
+    expect(
+      within(liveness).getByRole('button', { name: 'About Liveness probe' })
+    ).toBeInTheDocument();
 
-    // Probes have no app-level write; the panel names where they are set.
-    expect(screen.getByText('gregale deploy --healthcheck-path')).toBeInTheDocument();
+    // Probes have no app-level write; the panel's tip names where they are set.
+    await userEvent.click(screen.getByRole('button', { name: 'About probes' }));
+    expect(await screen.findByText('gregale deploy --healthcheck-path')).toBeInTheDocument();
     expect(screen.getByText('overrides.liveness_probe')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /deployment overrides/i })).toHaveAttribute(
       'href',
@@ -143,13 +150,11 @@ describe('HealthProbes', () => {
       'placeholder',
       '30 (default)'
     );
-    expect(screen.getByText(/marked failed as a crash loop/i)).toBeInTheDocument();
-    expect(screen.getByText(/before it is killed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Max retries' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About Grace period (s)' })).toBeInTheDocument();
     // Nothing is set, so there is nothing to pin: defaults stay inherited.
     expect(screen.queryByLabelText('gregale.yaml lifecycle block')).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/keys set there replace the values saved here on every deploy/i)
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About As gregale.yaml' })).toBeInTheDocument();
   });
 
   it('never writes defaults into the gregale.yaml block, so Free gets no 30 s grace', async () => {
@@ -167,8 +172,9 @@ describe('HealthProbes', () => {
     expect(screen.getByLabelText('Restart policy')).toHaveDisplayValue('unless-stopped');
     expect(screen.getByLabelText('Stop signal')).toHaveDisplayValue('SIGINT');
     expect(screen.getByLabelText('Grace period (s)')).toHaveValue(45);
+    await userEvent.click(screen.getByRole('button', { name: 'About Grace period (s)' }));
     expect(
-      screen.getByText(/drain_timeout in gregale.yaml sets the same value/)
+      await screen.findByText(/drain_timeout in gregale.yaml sets the same value/)
     ).toBeInTheDocument();
     // Only the stored keys; the unset ones keep inheriting.
     expect(screen.getByLabelText('gregale.yaml lifecycle block').textContent).toBe(

@@ -10,6 +10,15 @@ import { safeDebugBundle, suggestedDebugChecks } from './debug-support';
 import { regressionKey } from './debug-search';
 import { DebugGate } from './debug-gate';
 import { DebugReplayAction } from './debug-replay';
+import {
+  EvidenceCorrelation,
+  EvidenceCriticalPath,
+  EvidenceDependencies,
+  EvidenceFindings,
+  EvidenceIdentity,
+  EvidenceLogs,
+  EvidenceTimeline,
+} from './debug-evidence-detail';
 import { RequestCaptureLink } from './request-capture-link';
 
 /**
@@ -20,8 +29,9 @@ import { RequestCaptureLink } from './request-capture-link';
  * matched this request to a known regression, `unobserved` when it has
  * nothing to compare against. The headline is the platform's sentence, shown
  * as written rather than re-worded, and `primary_span` is the span it blames.
- * The API returns durations and parent IDs, but no start offsets. Bars show
- * relative duration, never inferred chronology or overlap.
+ * Spans carry redacted start and end times when the API kept them; bars are
+ * placed by those, and otherwise show relative duration only, never inferred
+ * chronology or overlap.
  */
 
 function ms(nanos: number): string {
@@ -35,6 +45,7 @@ export function DebugRequestEvidence({
   onClose,
   onRegression,
   onOpenWake,
+  onCompare,
 }: {
   slug: string;
   reqId: string | null;
@@ -42,6 +53,8 @@ export function DebugRequestEvidence({
   onRegression?: (key: string) => void;
   /** Present when the host can open a wake; the row appears only for a request that admitted one. */
   onOpenWake?: (wakeId: string) => void;
+  /** Present when the host can compare a replay's source and mirror deployments. */
+  onCompare?: (source: string, mirror: string) => void;
 }) {
   const evidence = useDebugRequestEvidence(slug, reqId ?? '');
   const data = evidence.data;
@@ -58,12 +71,21 @@ export function DebugRequestEvidence({
       Number.isFinite(span.duration_nanos) ? Math.max(0, span.duration_nanos) : 0
     )
   );
+  const spanTimes = (data?.spans ?? []).map((span) => ({
+    start: Date.parse(span.start_time ?? ''),
+    end: Date.parse(span.end_time ?? ''),
+  }));
+  const timed =
+    spanTimes.length > 0 &&
+    spanTimes.every((t) => Number.isFinite(t.start) && Number.isFinite(t.end) && t.end >= t.start);
+  const origin = timed ? Math.min(...spanTimes.map((t) => t.start)) : 0;
+  const extent = timed ? Math.max(1, Math.max(...spanTimes.map((t) => t.end)) - origin) : 1;
 
   return (
     <Modal
       open={reqId !== null}
       onClose={onClose}
-      title={data ? `${data.request.method} ${data.request.route}` : 'Request evidence'}
+      title={data ? `${data.request.method} ${data.request.route}` : 'Request details'}
       description={
         data
           ? `${data.request.status} · ${data.request.latency_ms} ms · ${new Date(data.request.received_at).toLocaleString()}`
@@ -74,20 +96,20 @@ export function DebugRequestEvidence({
       <div className="max-h-[70vh] overflow-y-auto pr-1">
         <DebugGate error={evidence.error}>
           {evidence.isPending ? (
-            <p className="text-sm text-muted-foreground">Collecting the evidence…</p>
+            <p className="text-sm text-muted-foreground">Loading request details…</p>
           ) : missing ? (
             <p className="text-sm text-muted-foreground">
-              No telemetry is kept for this request any more.
+              No data is kept for this request any more.
             </p>
           ) : evidence.error || !data ? (
             <div className="flex flex-col items-start gap-3">
               <p className="text-sm text-muted-foreground">
                 {evidence.error
                   ? errorMessage(evidence.error)
-                  : 'No evidence was returned for this request.'}
+                  : 'No details were returned for this request.'}
               </p>
               <Button size="xs" variant="outline" onClick={() => void evidence.refetch()}>
-                Retry evidence
+                Retry
               </Button>
             </div>
           ) : (
@@ -158,9 +180,12 @@ export function DebugRequestEvidence({
                     </div>
                   )}
                 </dl>
-                <p className="text-xs text-muted-foreground">
-                  Wake and instance IDs were not returned for this request.
-                </p>
+                <EvidenceIdentity request={data.request} />
+                {!data.request.wake_id && !data.request.instance_id && (
+                  <p className="text-xs text-muted-foreground">
+                    Wake and instance IDs were not returned for this request.
+                  </p>
+                )}
                 <RequestCaptureLink slug={slug} captureId={data.request.profile_capture_id} />
               </section>
               <section className="flex flex-col gap-3">
@@ -188,13 +213,14 @@ export function DebugRequestEvidence({
                       'No deterministic explanation is available for this request.'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Explanation from recorded platform evidence. Unobserved means no comparison
-                    verdict is available.
+                    Explanation from saved request records. Unobserved means no comparison verdict
+                    is available.
                   </p>
+                  <EvidenceFindings explanation={data.explanation} />
                 </div>
 
                 {data.regression && (
-                  <div className="rounded-lg border border-border p-3 text-xs">
+                  <div className="well rounded-xl bg-muted/40 p-3 text-xs">
                     <p className="label-mono mb-1.5 text-muted-foreground">Matched regression</p>
                     <p className="[font-variant-numeric:tabular-nums]">
                       {data.regression.route}: p95 {data.regression.p95_ms} ms against a baseline of{' '}
@@ -218,8 +244,9 @@ export function DebugRequestEvidence({
                 <div>
                   <h4 className="label-mono mb-2 text-muted-foreground">Span duration waterfall</h4>
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Relative durations, in returned order. Start offsets and overlap are not
-                    returned; bars share a duration scale and do not show chronology.
+                    {timed
+                      ? 'In returned order; each bar is placed by the span’s recorded start and end time.'
+                      : 'Relative durations, in returned order. Start times were not returned for every span, so bars share a duration scale and do not show chronology.'}
                   </p>
                   {data.spans.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
@@ -227,7 +254,7 @@ export function DebugRequestEvidence({
                     </p>
                   ) : (
                     <ul className="flex flex-col divide-y divide-border">
-                      {data.spans.map((span) => (
+                      {data.spans.map((span, index) => (
                         <li
                           key={span.span_id}
                           className="flex flex-col gap-2 py-2 text-xs first:pt-0 last:pb-0"
@@ -238,6 +265,17 @@ export function DebugRequestEvidence({
                             )}
                             <span className="font-mono">{span.name}</span>
                             <span className="text-muted-foreground">{span.kind}</span>
+                            {span.dependency_name && (
+                              <span className="text-muted-foreground">
+                                {span.dependency_kind ?? span.dependency_type}{' '}
+                                {span.dependency_name}
+                              </span>
+                            )}
+                            {span.error_type && (
+                              <span style={{ color: 'var(--status-critical)' }}>
+                                {span.error_type}
+                              </span>
+                            )}
                             {span.status && span.status !== 'OK' && (
                               <span style={{ color: 'var(--status-warning)' }}>{span.status}</span>
                             )}
@@ -252,13 +290,22 @@ export function DebugRequestEvidence({
                               Parent span: {span.parent_span_id}
                             </span>
                           )}
-                          <div className="h-2 rounded bg-muted">
+                          <div className="relative h-2 rounded bg-muted">
                             <div
                               role="img"
-                              aria-label={`${span.name}: ${ms(span.duration_nanos)} relative duration`}
-                              className="h-full rounded"
+                              aria-label={
+                                timed
+                                  ? `${span.name}: starts at ${spanTimes[index].start - origin} ms, lasts ${ms(span.duration_nanos)}`
+                                  : `${span.name}: ${ms(span.duration_nanos)} relative duration`
+                              }
+                              className="absolute inset-y-0 rounded"
                               style={{
-                                width: `${Number.isFinite(span.duration_nanos) ? (Math.max(0, span.duration_nanos) / maximum) * 100 : 0}%`,
+                                left: timed
+                                  ? `${((spanTimes[index].start - origin) / extent) * 100}%`
+                                  : 0,
+                                width: timed
+                                  ? `${Math.max(0.5, ((spanTimes[index].end - spanTimes[index].start) / extent) * 100)}%`
+                                  : `${Number.isFinite(span.duration_nanos) ? (Math.max(0, span.duration_nanos) / maximum) * 100 : 0}%`,
                                 backgroundColor:
                                   span.span_id === primaryId
                                     ? 'var(--status-serious)'
@@ -280,10 +327,19 @@ export function DebugRequestEvidence({
                   )}
                   {data.spans_truncated && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      The span list was cut; this is partial evidence.
+                      The span list was cut short.
                     </p>
                   )}
                 </div>
+              </section>
+              <section className="flex flex-col gap-4">
+                <h3 className="text-sm font-semibold">Where the time went</h3>
+                {data.critical_path && <EvidenceCriticalPath path={data.critical_path} />}
+                {/* Older servers may omit these; absent is "not returned", never empty. */}
+                {data.correlation && <EvidenceCorrelation correlation={data.correlation} />}
+                {data.timeline && <EvidenceTimeline timeline={data.timeline} />}
+                <EvidenceDependencies data={data} />
+                <EvidenceLogs data={data} />
               </section>
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">What to inspect next</h3>
@@ -315,10 +371,7 @@ export function DebugRequestEvidence({
                   <a href="/dashboard/invocations">Browse invocations</a>
                   <a href="/dashboard/instances">Browse instances</a>
                 </nav>
-                <p className="text-xs text-muted-foreground">
-                  Logs open for this app. Invocations and instances open their lists; request, trace
-                  and time filters are not supported by those links.
-                </p>
+
                 <Button
                   className="self-start"
                   size="sm"
@@ -331,8 +384,7 @@ export function DebugRequestEvidence({
                   Copy safe support bundle
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Copies bounded identifiers, status, timings and deterministic evidence. Excludes
-                  headers, bodies, credentials, SQL and free-form payloads.
+                  Excludes headers, bodies, credentials, SQL and payloads.
                 </p>
                 <p aria-live="polite" className="text-xs">
                   {copyError
@@ -347,11 +399,13 @@ export function DebugRequestEvidence({
                     reqId={(data.request.request_id ?? data.request.id)!}
                     method={data.request.method}
                     route={data.request.route}
+                    deploymentId={data.request.deployment_id}
+                    onCompare={onCompare}
                   />
                 )}
               </section>
               <p className="text-xs text-muted-foreground">
-                Evidence generated: {data.generated_at || 'Not reported'}
+                Generated: {data.generated_at || 'Not reported'}
               </p>
             </div>
           )}

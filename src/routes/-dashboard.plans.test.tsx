@@ -11,8 +11,14 @@ const mocks = vi.hoisted(() => ({
   goToExternal: vi.fn(),
   openMfa: vi.fn(),
   account: { id: 'account', plan: 'free', status: 'active', limits: {} } as Record<string, unknown>,
+  billingStatus: { data: undefined, isError: false } as { data?: unknown; isError: boolean },
 }));
 
+vi.mock('@/lib/api/billing-identity', () => ({
+  useBillingStatus: () => mocks.billingStatus,
+}));
+
+vi.mock('@/components/dashboard/app-capacity', () => ({ AppCapacity: () => null }));
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: mocks.account,
@@ -60,6 +66,60 @@ beforeEach(() => {
   mocks.goToExternal.mockReset();
   mocks.openMfa.mockReset();
   mocks.account = { id: 'account', plan: 'free', status: 'active', limits: {} };
+  mocks.billingStatus = { data: undefined, isError: false };
+});
+
+describe('Subscription controls', () => {
+  const status = (plan: string, subscription: boolean, enabled = true) => ({
+    data: {
+      mode: enabled ? 'live' : 'disabled',
+      enabled,
+      provider: 'polar',
+      plan,
+      account_status: 'active',
+      customer_configured: subscription,
+      subscription_configured: subscription,
+      usage_reconciliation_enabled: false,
+    },
+    isError: false,
+  });
+  const cancelButton = () => screen.queryByRole('button', { name: 'Cancel at period end' });
+
+  it('offers no cancellation on Free, which has no subscription', () => {
+    mocks.billingStatus = status('free', false);
+    render(<PlansPage />);
+    expect(cancelButton()).toBeNull();
+    expect(screen.queryByText('Subscription')).toBeNull();
+  });
+
+  it('offers cancellation on a paid plan with a subscription', () => {
+    mocks.account = { ...mocks.account, plan: 'pro' };
+    mocks.billingStatus = status('pro', true);
+    render(<PlansPage />);
+    expect(cancelButton()).toBeInTheDocument();
+  });
+
+  it('offers none while the billing status is still loading', () => {
+    mocks.account = { ...mocks.account, plan: 'pro' };
+    render(<PlansPage />);
+    expect(cancelButton()).toBeNull();
+  });
+
+  it('offers none when billing is disabled, since the provider would refuse', () => {
+    mocks.account = { ...mocks.account, plan: 'pro' };
+    mocks.billingStatus = status('pro', true, false);
+    render(<PlansPage />);
+    expect(cancelButton()).toBeNull();
+  });
+
+  it('falls back to the plan when the billing status cannot be read', () => {
+    mocks.billingStatus = { data: undefined, isError: true };
+    const view = render(<PlansPage />);
+    expect(cancelButton()).toBeNull();
+    mocks.account = { ...mocks.account, plan: 'hobby' };
+    view.rerender(<PlansPage />);
+    expect(cancelButton()).toBeInTheDocument();
+  });
 });
 
 describe('Plan change', () => {

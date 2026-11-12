@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   versions: vi.fn(),
   multipart: vi.fn(),
   receipts: vi.fn(),
+  grants: vi.fn(),
+  bindings: vi.fn(),
   selected: 'demo',
   appState: null as null | { slug: string; apps: { slug: string }[]; select: () => void },
 }));
@@ -48,8 +50,8 @@ vi.mock('@/lib/api/object-storage', async (original) => ({
   signStoredObject: mocks.sign,
   uploadSignedObject: mocks.upload,
   deleteObjectBucket: mocks.remove,
-  useBucketBindings: () => ({ data: { items: [] }, isPending: false, error: null }),
-  useBucketAccessGrants: () => ({ data: { items: [] }, isPending: false, error: null }),
+  useBucketBindings: mocks.bindings,
+  useBucketAccessGrants: mocks.grants,
   useBucketS3Credentials: () => ({ data: { items: [] }, isPending: false, error: null }),
   useBucketVersioning: mocks.versioning,
   useBucketLifecycle: mocks.lifecycle,
@@ -119,6 +121,20 @@ const capabilities = {
   max_upload_bytes: 104857600,
   max_buckets_per_app: 10,
 };
+/** The upload flow opens from the bucket's one primary action. */
+async function openUpload() {
+  await userEvent.click(screen.getByRole('button', { name: 'Upload files' }));
+  return screen.getByRole('form', { name: 'Upload to assets' });
+}
+/** Every per-file action sits behind the file's ⋯ menu. */
+async function fileAction(key: string, action: string) {
+  await userEvent.click(screen.getByRole('button', { name: `Actions for ${key}` }));
+  return within(await screen.findByRole('menu')).getByRole('menuitem', { name: action });
+}
+/** The preview's limits are in the page's "?". */
+async function limits() {
+  await userEvent.click(screen.getByRole('button', { name: 'About Object storage' }));
+}
 function show() {
   return render(
     <QueryClientProvider
@@ -136,6 +152,8 @@ beforeEach(() => {
   mocks.capability.mockReturnValue({ state: 'available', refresh: vi.fn() });
   mocks.access.mockReturnValue({ access: 'on', refresh: vi.fn() });
   mocks.multipart.mockResolvedValue({});
+  mocks.grants.mockReturnValue({ data: { items: [] }, isPending: false, error: null });
+  mocks.bindings.mockReturnValue({ data: { items: [] }, isPending: false, error: null });
   mocks.receipts.mockReturnValue({
     data: {
       items: [
@@ -228,10 +246,11 @@ it.each(['runtime-unavailable', 'registry-error', 'app-change', 'account-change'
       </QueryClientProvider>
     );
     await userEvent.click(screen.getByRole('button', { name: 'assets' }));
+    const form = await openUpload();
     fireEvent.change(screen.getByLabelText('File'), {
       target: { files: [new File(['x'], 'report.txt')] },
     });
-    fireEvent.submit(screen.getByRole('button', { name: 'Upload' }).closest('form')!);
+    fireEvent.submit(form);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
     if (reason === 'app-change') mocks.selected = 'other';
     else
@@ -293,17 +312,26 @@ it('keeps cleanup available when the operator disables storage', async () => {
   for (const button of screen.getAllByRole('button', { name: 'Delete bucket' }))
     expect(button).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Retry setup' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Upload files' })).toBeDisabled();
+  expect(await fileAction('file.txt', 'Delete')).not.toHaveAttribute('aria-disabled');
+  const menu = screen.getByRole('menu');
+  expect(within(menu).getByRole('menuitem', { name: 'Download' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  );
+  expect(within(menu).getByRole('menuitem', { name: 'Copy link' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  );
 });
-it('describes a custom direct-upload limit without rounding it upward', () => {
+it('describes a custom direct-upload limit without rounding it upward', async () => {
   mocks.buckets.mockReturnValue({
     data: { ...capabilities, max_upload_bytes: 1088 * 1024 ** 2 },
     isPending: false,
     error: null,
   });
   show();
+  await limits();
   expect(screen.getByText(/Direct uploads up to 1088 MiB\./)).toBeInTheDocument();
 });
 it('creates a bucket using the selected app, scope and region', async () => {
@@ -321,7 +349,7 @@ it('opens a ready bucket and exposes object actions', async () => {
   await user.click(screen.getByRole('button', { name: 'assets' }));
   expect(screen.getByRole('region', { name: 'Objects in assets' })).toBeInTheDocument();
   expect(screen.getByText('file.txt')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  expect(await fileAction('file.txt', 'Download')).toBeInTheDocument();
 });
 it('rejects files above the single-PUT limit before requesting a signed URL', async () => {
   const user = userEvent.setup();
@@ -336,15 +364,17 @@ it('rejects files above the single-PUT limit before requesting a signed URL', as
   });
   show();
   await user.click(screen.getByRole('button', { name: 'assets' }));
+  await limits();
   expect(screen.getByText(/Direct uploads up to 5 GiB\./)).toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  const form = await openUpload();
   const file = new File(['x'], 'large.img');
   Object.defineProperty(file, 'size', { value: 5 * 1024 ** 3 + 1 });
   const input = screen.getByLabelText('File') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [file] } });
   expect(input.files?.[0].size).toBe(5 * 1024 ** 3 + 1);
-  const upload = screen.getByRole('button', { name: 'Upload' });
-  expect(upload).toBeEnabled();
-  fireEvent.submit(upload.closest('form')!);
+  expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
+  fireEvent.submit(form);
   expect(mocks.toast).toHaveBeenCalledWith({
     kind: 'error',
     title: 'File exceeds the 5 GiB direct upload limit',
@@ -363,12 +393,12 @@ it('shows each bucket ID with a copy button that carries the full ID', () => {
   expect(screen.getByRole('button', { name: `Copy: bucket ID ${id}` })).toBeInTheDocument();
 });
 
-it('shows who can reach the open bucket above its objects, code access and settings', async () => {
+it('says who can reach the open bucket above its files, code access and settings', async () => {
   const user = userEvent.setup();
   show();
   await user.click(screen.getByRole('button', { name: 'assets' }));
-  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Objects' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText('Nothing can reach these files yet.')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
   await user.click(screen.getByRole('tab', { name: 'Use from code' }));
   expect(screen.getByRole('form', { name: 'Connect demo to assets' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'From outside Gregale' })).toBeInTheDocument();
@@ -426,6 +456,7 @@ it('makes a Back step for every folder opened, and one per typed prefix', async 
   expect(replaced(change)).toEqual([false]);
 
   change.mockClear();
+  await user.click(screen.getByRole('button', { name: 'Go to a key prefix' }));
   const field = screen.getByLabelText('Key prefix');
   await user.clear(field);
   await user.type(field, 'tmp/');
@@ -481,7 +512,7 @@ it('copies a share link that works for 15 minutes', async () => {
   });
   show();
   await user.click(screen.getByRole('button', { name: 'assets' }));
-  await user.click(screen.getByRole('button', { name: 'Copy link to file.txt' }));
+  await user.click(await fileAction('file.txt', 'Copy link'));
   await waitFor(() =>
     expect(mocks.sign).toHaveBeenCalledWith('demo', 'bucket-one', {
       method: 'GET',
@@ -541,7 +572,7 @@ it('lists a nested object inside its folder, named relative to it', async () => 
   expect(screen.queryByText('logo.svg')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Open folder images/' }));
   expect(screen.getByText('logo.svg')).toHaveAttribute('title', 'images/logo.svg');
-  expect(screen.getByRole('button', { name: 'Copy link to images/logo.svg' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Actions for images/logo.svg' })).toBeInTheDocument();
 });
 
 it('keeps deleting a bucket in its Settings, away from everyday tabs', async () => {
@@ -566,13 +597,16 @@ it('takes a dropped file and names it under the open folder', () => {
   );
   const file = new File(['png'], 'photo.png', { type: 'image/png' });
   fireEvent.drop(screen.getByText(/Drop a file here/), { dataTransfer: { files: [file] } });
+  // Dropping on the page opens the upload flow with the file already chosen.
+  expect(screen.getByRole('form', { name: 'Upload to assets' })).toBeInTheDocument();
   expect(screen.getByLabelText('Object key')).toHaveValue('images/photo.png');
   expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
 });
 
 it('opens the first ready bucket when none is chosen yet', () => {
   show();
-  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'assets' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'assets' })).toHaveAttribute('aria-current', 'true');
 });
 
 it('follows a linked app once the app list has loaded', () => {
@@ -617,7 +651,7 @@ it('says a delete is undoable when versioning keeps the versions', async () => {
   const user = userEvent.setup();
   mocks.confirm.mockResolvedValue(false);
   show();
-  await user.click(screen.getByRole('button', { name: 'Delete' }));
+  await user.click(await fileAction('file.txt', 'Delete'));
   expect(mocks.confirm).toHaveBeenCalledWith(
     expect.objectContaining({ description: expect.stringMatching(/a delete marker hides it/) })
   );
@@ -626,7 +660,7 @@ it('says a delete is undoable when versioning keeps the versions', async () => {
 it("opens an object's tags under its row", async () => {
   const user = userEvent.setup();
   show();
-  await user.click(screen.getByRole('button', { name: 'Tags on file.txt' }));
+  await user.click(await fileAction('file.txt', 'Tags'));
   const tags = screen.getByRole('group', { name: 'Tags on file.txt' });
   expect(within(tags).getByText('team=web')).toBeInTheDocument();
 });
@@ -658,14 +692,17 @@ it('uploads a file above the single-upload limit in parts', async () => {
     error: null,
   });
   show();
+  await limits();
   expect(
     screen.getByText(/Single uploads up to 64 MiB; larger files upload in parts, up to 5120 GiB\./)
   ).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  const form = await openUpload();
   const file = new File(['x'], 'video.mp4', { type: 'video/mp4' });
   Object.defineProperty(file, 'size', { value: 200 * 1024 ** 2 });
   fireEvent.change(screen.getByLabelText('File'), { target: { files: [file] } });
   // A file input cannot be filled by userEvent past `required`; submit the form itself.
-  fireEvent.submit(screen.getByRole('button', { name: 'Upload' }).closest('form')!);
+  fireEvent.submit(form);
   await waitFor(() =>
     expect(mocks.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ description: expect.stringMatching(/uploads in parts/) })
@@ -726,7 +763,7 @@ it('explains upload routes, and reads none, when signed URLs are off', async () 
   expect(screen.queryByRole('list', { name: 'Upload routes for assets' })).toBeNull();
 });
 
-it('lists uploads in parts only where multipart is released', () => {
+it('lists unfinished uploads in parts only where multipart is released', async () => {
   mocks.buckets.mockReturnValue({
     data: {
       ...capabilities,
@@ -737,13 +774,141 @@ it('lists uploads in parts only where multipart is released', () => {
     error: null,
   });
   const view = show();
-  expect(screen.getByRole('heading', { name: 'Uploads in parts' })).toBeInTheDocument();
+  expect(screen.getByText('Unfinished uploads (0)')).toBeInTheDocument();
   view.unmount();
   mocks.access.mockImplementation((id: string) => ({
     access: id === 'multipart-uploads' ? 'off' : 'on',
     refresh: vi.fn(),
   }));
   show();
-  expect(screen.queryByRole('heading', { name: 'Uploads in parts' })).toBeNull();
+  expect(screen.queryByText(/Unfinished uploads/)).toBeNull();
+  await limits();
   expect(screen.getByText(/Direct uploads up to 64 MiB\./)).toBeInTheDocument();
+});
+
+it('opens the upload flow from the one primary action, not the page', async () => {
+  show();
+  expect(screen.queryByLabelText('Object key')).not.toBeInTheDocument();
+  const form = await openUpload();
+  expect(within(form).getByLabelText('File')).toBeInTheDocument();
+  expect(within(form).getByLabelText('Object key')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('File'), {
+    target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] },
+  });
+  expect(screen.getByLabelText('Object key')).toHaveValue('notes.txt');
+  mocks.sign.mockResolvedValue({ url: 'https://s3.example/put', method: 'PUT' });
+  mocks.upload.mockResolvedValue(undefined);
+  fireEvent.submit(form);
+  await waitFor(() =>
+    expect(mocks.sign).toHaveBeenCalledWith(
+      'demo',
+      'bucket-one',
+      expect.objectContaining({ method: 'PUT', key: 'notes.txt', size_bytes: 1 })
+    )
+  );
+  await waitFor(() => expect(mocks.upload).toHaveBeenCalled());
+  expect(mocks.toast).toHaveBeenCalledWith({ kind: 'success', title: 'Object uploaded' });
+});
+
+it('says who can reach the bucket from its grants, keys and binding', () => {
+  mocks.bindings.mockReturnValue({
+    data: {
+      items: [
+        {
+          id: 'bind-1',
+          prefix: 'GREGALE_S3_ASSETS',
+          credential: { id: 'cred-1', label: 'app', permission: 'read', status: 'active' },
+        },
+      ],
+    },
+    isPending: false,
+    error: null,
+  });
+  mocks.grants.mockReturnValue({
+    data: {
+      items: [
+        { key_id: 'k1', key_label: 'CI deploy', key_status: 'active', permission: 'read' },
+        {
+          key_id: 'k2',
+          key_label: 'nightly-backup',
+          key_status: 'active',
+          permission: 'read_write',
+        },
+        { key_id: 'k3', key_label: 'old', key_status: 'revoked', permission: 'read_write' },
+      ],
+    },
+    isPending: false,
+    error: null,
+  });
+  show();
+  expect(
+    screen.getByText((_, node) =>
+      node?.tagName === 'P'
+        ? node.textContent ===
+          'Your app and two keys can read these files. One key can also change them.'
+        : false
+    )
+  ).toBeInTheDocument();
+  const chips = screen.getByRole('list', { name: 'What can reach assets' });
+  expect(within(chips).getByText("demo's code")).toBeInTheDocument();
+  expect(within(chips).getByText('nightly-backup')).toBeInTheDocument();
+  expect(within(chips).getByText('· reads and writes')).toBeInTheDocument();
+  expect(within(chips).queryByText('old')).not.toBeInTheDocument();
+});
+
+it('keeps the access map one click away and sends Manage access to the code tab', async () => {
+  const user = userEvent.setup();
+  const change = vi.fn();
+  mocks.grants.mockReturnValue({
+    data: {
+      items: [{ key_id: 'k1', key_label: 'CI deploy', key_status: 'active', permission: 'read' }],
+    },
+    isPending: false,
+    error: null,
+  });
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one' }} />);
+  expect(screen.queryByRole('figure', { name: 'Who can reach assets' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Show map' }));
+  expect(screen.getByRole('figure', { name: 'Who can reach assets' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hide map' })).toHaveAttribute('aria-expanded', 'true');
+  await user.click(screen.getByRole('button', { name: 'Manage access' }));
+  expect(change).toHaveBeenLastCalledWith(
+    { app: 'demo', bucket: 'bucket-one', tab: 'code' },
+    undefined
+  );
+});
+
+it('opens a file menu from the keyboard', async () => {
+  const user = userEvent.setup();
+  mocks.confirm.mockResolvedValue(false);
+  show();
+  screen.getByRole('button', { name: 'Actions for file.txt' }).focus();
+  await user.keyboard('{Enter}');
+  const menu = await screen.findByRole('menu');
+  expect(
+    within(menu)
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+  ).toEqual(['Copy link', 'Tags', 'Download', 'Delete']);
+});
+
+it('finds a file among the ones this page shows', async () => {
+  const user = userEvent.setup();
+  mocks.objects.mockReturnValue({
+    data: {
+      items: [
+        { key: 'robots.txt', size_bytes: 68 },
+        { key: 'manifest.json', size_bytes: 734 },
+      ],
+    },
+    isPending: false,
+    error: null,
+  });
+  show();
+  await user.type(screen.getByRole('textbox', { name: 'Find a file' }), 'robot');
+  expect(screen.getByText('robots.txt')).toBeInTheDocument();
+  expect(screen.queryByText('manifest.json')).not.toBeInTheDocument();
+  await user.clear(screen.getByRole('textbox', { name: 'Find a file' }));
+  await user.type(screen.getByRole('textbox', { name: 'Find a file' }), 'zzz');
+  expect(screen.getByText('Nothing on this page matches “zzz”.')).toBeInTheDocument();
 });

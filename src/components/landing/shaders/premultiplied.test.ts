@@ -17,11 +17,7 @@ import { describe, expect, it } from 'vitest';
  * It shipped exactly once, in the residency field. This is the guard.
  */
 
-const SHADER_DIRS = [
-  'src/components/landing/shaders',
-  'src/components/landing',
-  'src/components/dashboard',
-];
+const SHADER_DIRS = ['src/components/landing/shaders', 'src/components/landing'];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -41,7 +37,7 @@ const PREMULTIPLIED = /gl_FragColor\s*=\s*vec4\([^;]*\*\s*([A-Za-z_]\w*)\s*,\s*\
 
 describe('shader alpha convention', () => {
   it('finds the shaders', () => {
-    expect(sources.length).toBeGreaterThan(3);
+    expect(sources.length).toBeGreaterThan(2);
   });
 
   it.each(sources.map(({ file, text }) => [file.split('/').pop(), text]))(

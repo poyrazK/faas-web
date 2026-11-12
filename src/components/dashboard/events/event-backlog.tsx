@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InlinePhase, Panel, StatTile, queryPhase } from '@/components/dashboard/primitives';
+import { InlinePhase, Panel, Stats, StatTile, queryPhase } from '@/components/dashboard/primitives';
 import { ResourceTable, type Column } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -46,7 +46,7 @@ export function EventOverview({ accountId }: { accountId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Stats columns={4}>
         <StatTile
           label="Waiting recipients"
           state={tileState(backlog)}
@@ -83,7 +83,7 @@ export function EventOverview({ accountId }: { accountId: string }) {
           }
           note={usage ? `${formatNumber(usage.pending_events)} event(s) still routing` : undefined}
         />
-      </div>
+      </Stats>
       {r ? (
         <p className="text-xs text-muted-foreground">
           Receipts are kept for 30 days after routing settles. {formatNumber(r.held_receipts)} held
@@ -161,7 +161,7 @@ export function EventBacklogPanel({
   return (
     <Panel
       title="Waiting consumers"
-      description="Consumers with event recipients still pending or routing. Handler execution queues are separate and not counted here."
+      help="Handler execution queues are separate and not counted here."
     >
       <ResourceTable
         rows={rows}
@@ -171,7 +171,7 @@ export function EventBacklogPanel({
         loading={backlog.isPending}
         error={backlog.error}
         onRetry={() => void backlog.refetch()}
-        emptyMessage="Nothing is waiting. Every captured recipient has finished routing."
+        emptyMessage="Nothing is waiting."
         minWidth="min-w-[560px]"
       />
       {(backlog.data?.next_consumers_after || unattributed > 0) && (
@@ -179,7 +179,7 @@ export function EventBacklogPanel({
           {backlog.data?.next_consumers_after &&
             `Only the first ${BACKLOG_PAGE} consumers are listed. `}
           {unattributed > 0 &&
-            `${formatNumber(unattributed)} older receipt(s) were accepted before recipients were captured, so their consumers cannot be named.`}
+            `${formatNumber(unattributed)} older receipt(s) predate recipient capture, so their consumers cannot be named.`}
         </p>
       )}
       <ConsumerDetail
@@ -211,7 +211,6 @@ function ConsumerDetail({
       open={consumer !== null}
       onClose={onClose}
       title={consumer?.name ?? 'Consumer'}
-      description="Waiting recipients for this consumer, oldest first. Select one to read its current routing blocker."
       width="max-w-2xl"
     >
       {consumer && (
@@ -279,7 +278,7 @@ function ConsumerDetailBody({
         onRetry={() => void recipients.refetch()}
       />
       {list.length > 0 && (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-border well rounded-xl bg-muted/40">
           {list.map((r) => {
             const key = `${r.event_source}\u0000${r.event_id}`;
             const expanded = open?.event_source === r.event_source && open.event_id === r.event_id;
@@ -325,7 +324,7 @@ function ConsumerDetailBody({
 const BLOCKER_STATUS: Record<string, string> = {
   not_waiting:
     'No longer waiting — it has left pending routing. That does not mean the handler succeeded.',
-  unavailable: 'The retained evidence for this recipient is unavailable.',
+  unavailable: 'The record for this recipient is unavailable.',
   acceptance_replaced:
     'This event was accepted again since; the waiting entry belongs to an earlier acceptance.',
 };

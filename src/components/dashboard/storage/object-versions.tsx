@@ -208,7 +208,7 @@ export function ObjectVersions({
                     type="button"
                     aria-label={`Open folder ${folder.slice(prefix.length)}`}
                     onClick={() => onPrefix(folder)}
-                    className="storage-folder pressable flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 font-mono text-xs hover:border-[color:var(--brand)]"
+                    className="storage-folder pressable flex items-center gap-2 well rounded-xl bg-muted/40 px-3 py-1.5 font-mono text-xs hover:bg-muted/70"
                   >
                     {folder.slice(prefix.length)}
                   </button>
@@ -219,7 +219,7 @@ export function ObjectVersions({
           {groups.length > 0 && (
             <ul
               aria-label={`Versions in ${bucket.name}`}
-              className="flex flex-col divide-y divide-border rounded-xl border border-border"
+              className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
             >
               {groups.map(([key, versions]) => (
                 <li key={key} className="flex flex-col gap-2 px-4 py-3">

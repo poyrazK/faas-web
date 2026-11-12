@@ -102,7 +102,6 @@ export function RealtimeBody({ slug, appUrl }: { slug: string; appUrl?: string }
 
       <Panel
         title="Endpoints"
-        description="Each endpoint has its own client URL, authentication and callbacks to this app."
         actions={
           editing === null && (
             <Button size="sm" className="gap-1.5" onClick={() => setEditing('new')}>
@@ -112,6 +111,10 @@ export function RealtimeBody({ slug, appUrl }: { slug: string; appUrl?: string }
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          {'Each endpoint has its own client URL, authentication and callbacks to this app.'}
+        </p>
+
         <div className="flex flex-col gap-4">
           {secrets.map((s, i) => (
             <OneTimeSecret
@@ -154,7 +157,7 @@ export function RealtimeBody({ slug, appUrl }: { slug: string; appUrl?: string }
           {phase === 'ready' && (
             <ul
               aria-label="Realtime endpoints"
-              className="flex flex-col divide-y divide-border rounded-lg border border-border"
+              className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
             >
               {list.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5">
@@ -293,11 +296,11 @@ function EndpointDetail({
   const usage = useRealtimeUsage(account?.id ?? '');
   const own = usage.data?.endpoints.filter((h) => h.endpoint_id === endpoint.id) ?? [];
   return (
-    <Panel
-      title={`Endpoint ${endpointName(endpoint)}`}
-      description="Live reads ask every realtime node now; writes here reach real clients."
-      lit
-    >
+    <Panel title={`Endpoint ${endpointName(endpoint)}`}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {'Live reads ask every realtime node now; writes here reach real clients.'}
+      </p>
+
       <div className="flex flex-col gap-8">
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-1">

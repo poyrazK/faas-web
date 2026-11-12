@@ -381,7 +381,7 @@ describe('ReleasePreviews in a company workspace', () => {
     // The personal plan's allowance is not the company's.
     expect(form).not.toHaveTextContent('Your Pro plan allows');
     expect(form).toHaveTextContent(
-      'In Acme Corp, apid lets only the member who created an app create its previews'
+      'In Acme Corp, the API lets only the member who created an app create its previews'
     );
     expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/apps', expect.anything());
     expect(get).not.toHaveBeenCalledWith('/v1/apps', expect.anything());
@@ -422,7 +422,7 @@ describe('ReleasePreviews in a company workspace', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Create preview' }));
     const alert = await within(form).findByRole('alert');
     expect(alert).toHaveTextContent(
-      'apid lets only the member who created search-indexer create its previews, while they are an owner or admin of Acme Corp'
+      'The API lets only the member who created search-indexer create its previews, while they are an owner or admin of Acme Corp'
     );
     expect(alert).toHaveTextContent('org_role_forbidden');
   });

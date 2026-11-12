@@ -1,9 +1,7 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { CheckCircle, Clock, WarningTriangle, XmarkCircle } from 'iconoir-react';
-import { useAuth } from '@/lib/auth';
-import { useApp } from '@/lib/api/queries';
-import { ApiError, errorMessage } from '@/lib/api/errors';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
+import { Input } from '@/components/ui/input';
 import {
   CANONICAL_UUID,
   RUN_DEFAULT_CONCURRENCY,
@@ -12,12 +10,12 @@ import {
   RUN_MAX_TTL_SECONDS,
   RUN_STATUSES,
   admitStep,
+  completeBlocker,
   createVerificationRun,
   reviewVerification,
   runAction,
   stepAdmittable,
   stepExplanation,
-  completeBlocker,
   useRunDiagnostics,
   useRunWrites,
   useVerificationRun,
@@ -31,10 +29,12 @@ import {
   type VerificationRun,
   type VerificationRunStep,
 } from '@/lib/api/binding-verification';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useConfirm } from '@/components/ui/confirm';
+import { ApiError, errorMessage } from '@/lib/api/errors';
+import { useApp } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { useMutation } from '@tanstack/react-query';
+import { CheckCircle, Clock, WarningTriangle, XmarkCircle } from 'iconoir-react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { SegmentedControl } from './tabs';
 
@@ -54,7 +54,7 @@ export const RUN_STATUS_OPTIONS: readonly { key: RunStatusFilter; label: string 
 const ACTION: Record<string, string> = {
   probe: 'Probe',
   'queue-canary': 'Queue canary',
-  reuse: 'Reuse evidence',
+  reuse: 'Reuse results',
   wait: 'Observe pending probe',
   'wait-queue': 'Observe pending canary',
   observe: 'Observe consumer',
@@ -85,9 +85,9 @@ export function StatusBadge({ status }: { status: string }) {
   const Icon = cfg.icon;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${cfg.color} 14%, transparent)`,
         color: cfg.color,
       }}
     >
@@ -107,7 +107,7 @@ export function explain(error: unknown, context: 'review' | 'create' | 'run'): s
           // and the selected-deployment check in verification_reviews.go:62-67.
           return 'No plan could be reviewed. A run needs an enforced release policy (revision 1 or later) in the deployment’s scope, a complete binding inventory with no issues, the deployment you named to be the one under verification (leave the field empty for the live deployment), and an instance of that deployment started since its configuration last changed.';
         if (context === 'create') return 'The plan changed since you reviewed it. Review again.';
-        return 'The reviewed plan, policy, configuration, deadline or evidence changed. Check the diagnostics, then review a new run.';
+        return 'The reviewed plan, policy, configuration, deadline or results changed. Check the diagnostics, then review a new run.';
       case 'binding_verification_budget_full':
         return 'This run’s admission budget is full. Wait for an unfinished probe or canary to settle, then admit again.';
       case 'binding_verification_run_limit':
@@ -156,7 +156,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
   return (
     <Panel
       title="Binding verification runs"
-      description="A run freezes a reviewed plan for one deployment and records each probe and canary message it starts. The server never starts them on its own: admit each step, then complete the run. The CLI’s durable verify does the same."
+      help="The server never starts a step on its own: admit each step, then complete the run."
       actions={
         !reviewing && (
           <Button size="sm" variant="outline" onClick={() => setReviewing(true)}>
@@ -204,7 +204,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
           <>
             <ul
               aria-label="Verification runs"
-              className="divide-y divide-border rounded-lg border border-border"
+              className="divide-y divide-border well rounded-xl bg-muted/40"
             >
               {rows.map((row) => (
                 <li
@@ -247,7 +247,7 @@ export function BindingVerificationRuns({ slug }: { slug: string }) {
             )}
             <p className="text-xs text-muted-foreground">
               The list shows stored state; expired means past its deadline when the list was read.
-              Open a run to recheck it against current evidence.
+              Open a run to recheck it against current results.
             </p>
           </>
         )}
@@ -344,7 +344,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
     const ok = await confirm({
       title: 'Cancel this verification run?',
       description:
-        'Blocks further admissions and cancels the unfinished probes and canary messages this run started. A handler already running may still finish. Evidence that already succeeded is kept.',
+        'Blocks further admissions and cancels the unfinished probes and canary messages this run started. A handler already running may still finish. Checks that already succeeded are kept.',
       confirmLabel: 'Cancel run',
       destructive: true,
     });
@@ -365,12 +365,12 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
   return (
     <section
       aria-label={`Run ${short(runId)}`}
-      className="space-y-4 rounded-lg border border-border p-4"
+      className="space-y-4 well rounded-xl bg-muted/40 p-4"
     >
       <InlinePhase
         phase={phase}
         error={run.error}
-        loadingMessage="Checking the run against current evidence…"
+        loadingMessage="Checking the run…"
         onRetry={() => void run.refetch()}
       />
       {phase === 'ready' && data && (
@@ -378,11 +378,10 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
           <RunHeader run={data} />
           {data.status === 'passed' && (
             <p className="text-xs text-muted-foreground">
-              Passed is an observation at the last check. It moves no traffic: promotion still
-              rechecks policy and evidence when traffic changes.
+              Passing moves no traffic; promotion still rechecks the policy when traffic changes.
             </p>
           )}
-          <ol aria-label="Steps" className="divide-y divide-border rounded-lg border border-border">
+          <ol aria-label="Steps" className="divide-y divide-border well rounded-xl bg-muted/40">
             {data.steps.map((step, index) => (
               <StepRow
                 key={index}
@@ -403,9 +402,8 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
           )}
           {data.status === 'pending' && completeConflict && !blocker && (
             <p role="alert">
-              Every step succeeded, but the final policy check is blocked: the policy, configuration
-              or evidence may have changed since the review. Check the diagnostics below; if they
-              show the review changed, review a new run.
+              Every step succeeded, but the final policy check is blocked. Check the diagnostics; if
+              they show the review changed, review a new run.
             </p>
           )}
           {data.status === 'pending' && (
@@ -430,13 +428,7 @@ function RunDetail({ slug, runId }: { slug: string; runId: string }) {
               </Button>
             </div>
           )}
-          {data.status === 'pending' && (
-            <p className="text-xs text-muted-foreground">
-              Complete passes only when every step this run admitted succeeded and a fresh policy
-              check passes. Recheck confirms the original review still holds; neither extends the
-              deadline.
-            </p>
-          )}
+
           <Diagnostics
             phase={queryPhase({ error: diagnostics.error, loading: diagnostics.isLoading })}
             error={diagnostics.error}
@@ -566,8 +558,8 @@ export function Diagnostics({
               : data.check_passed === undefined
                 ? 'The current policy check was not evaluated.'
                 : data.check_passed
-                  ? 'Current evidence satisfies the current policy.'
-                  : 'Current evidence does not yet satisfy the current policy.'}{' '}
+                  ? 'Current results satisfy the current policy.'
+                  : 'Current results do not yet satisfy the current policy.'}{' '}
             {!data.complete && 'Some reads failed; retry for a full picture.'}
           </p>
           {data.budget && (
@@ -603,9 +595,7 @@ export function Diagnostics({
           )}
           {data.recovery.length > 0 && (
             <div>
-              <p className="text-muted-foreground">
-                Suggested next steps (nothing runs on its own):
-              </p>
+              <p className="text-muted-foreground">Suggested next steps:</p>
               <ul className="list-disc space-y-1 pl-5">
                 {data.recovery.map((r, i) => (
                   <li key={i}>{r.message}</li>
@@ -655,7 +645,7 @@ function ReviewNewRun({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
+    <div className="space-y-3 well rounded-xl bg-muted/40 p-4">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-col gap-1">
           <span className="text-xs text-muted-foreground">

@@ -39,7 +39,7 @@ export function DebugCoverage({ slug, since }: { slug: string; since: string }) 
           phase={phase}
           error={coverage.error}
           loadingMessage="Reading signal coverage…"
-          emptyMessage="No request telemetry was retained in this window."
+          emptyMessage="No request details were saved in this window."
           onRetry={() => void coverage.refetch()}
         />
       ) : (
@@ -234,7 +234,7 @@ export function DebugRunningView({ slug, since }: { slug: string; since: string 
           </section>
           <p className="text-xs text-muted-foreground">
             {data.retention_clamped && 'Plan retention shortened this window. '}
-            Observed scheduler evidence only: no saving is estimated and no protocol is inferred.
+            Recorded scheduling decisions only: no saving is estimated and no protocol is inferred.
           </p>
         </div>
       )}

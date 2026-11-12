@@ -4,7 +4,10 @@ import { useIssues, type IssueFilters } from '@/lib/api/issues';
 import { CapabilityNotice } from './capability-notice';
 import { IssueDetail } from './issue-detail';
 import { IssueReportingSetup } from './issue-reporting-setup';
+import { HelpTip } from './kit/help-tip';
 import type { IssueSearch } from './issues-search';
+import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
 
 type Props = {
   accountId: string;
@@ -31,13 +34,12 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
   return (
     <section className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-1">
           <h2 className="text-lg font-semibold">Issues</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Instrumented exceptions reported by your app or SDK. Automatic HTTP Errors are shown in
-            their separate tab. Counts and impact cover retained, verified reports only; they do not
-            establish complete coverage.
-          </p>
+          <HelpTip label="About Issues">
+            Exceptions your app or SDK reports; HTTP errors are in the Errors tab. Counts cover
+            retained, verified reports only.
+          </HelpTip>
         </div>
         <Button
           variant="outline"
@@ -71,7 +73,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
           <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Issue state
-              <select
+              <Select
                 aria-label="Issue state"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueState ?? ''}
@@ -85,11 +87,11 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                 <option value="open">Open</option>
                 <option value="resolved">Resolved</option>
                 <option value="ignored">Ignored</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Assignee
-              <select
+              <Select
                 aria-label="Assignee"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueAssignee ?? ''}
@@ -103,11 +105,11 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                 <option value="">Everyone</option>
                 <option value="me">Mine</option>
                 <option value="unassigned">Unassigned</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Order
-              <select
+              <Select
                 aria-label="Issue order"
                 className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 value={search.issueSort ?? 'recent'}
@@ -117,7 +119,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               >
                 <option value="recent">Most recent</option>
                 <option value="impact">Observed impact</option>
-              </select>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               Environment
@@ -164,7 +166,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
               and a valid reporting token.
             </p>
           ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
+            <ul className="divide-y divide-border well rounded-xl bg-muted/40">
               {items.map((item) => (
                 <li
                   key={item.id}
@@ -190,7 +192,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
                     )}
                   </div>
                   <time className="text-xs text-muted-foreground" dateTime={item.last_seen_at}>
-                    {new Date(item.last_seen_at).toLocaleString()}
+                    <Timestamp value={item.last_seen_at} mode="absolute" />
                   </time>
                 </li>
               ))}

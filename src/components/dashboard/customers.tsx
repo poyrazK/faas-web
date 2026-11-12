@@ -91,7 +91,6 @@ function CustomersBody() {
     <div className="flex flex-col gap-6">
       <Panel
         title="Customers"
-        description="Each customer groups the consumers and hostnames of one end customer across your apps."
         actions={
           <Button size="sm" className="gap-1.5" onClick={() => setRegistering(true)}>
             <Plus className="h-3.5 w-3.5" />
@@ -109,7 +108,7 @@ function CustomersBody() {
             loading={tenants.isPending}
             error={tenants.error}
             onRetry={() => void tenants.refetch()}
-            emptyMessage="No customers yet. Register one with the reference your own systems use."
+            emptyMessage="No customers yet."
             minWidth="min-w-[480px]"
           />
           {tenants.hasNextPage && (
@@ -211,6 +210,8 @@ function RegisterCustomer({
       onClose={close}
       title="Register customer"
       description="Registering the same external reference and name again returns the existing customer."
+      placement="right"
+      width="sm:max-w-[420px]"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         <FormField
@@ -313,7 +314,6 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
   return (
     <Panel
       title={tenant?.name ?? 'Customer'}
-      description={tenant ? `External reference ${tenant.external_ref}` : undefined}
       actions={
         <div className="flex items-center gap-2">
           {tenant && (
@@ -352,6 +352,7 @@ function CustomerDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   {tenant.id}
                 </span>,
               ],
+              ['External reference', tenant.external_ref],
               ['Registered', formatUtc(tenant.created_at)],
               ['Updated', formatUtc(tenant.updated_at)],
             ]}
@@ -389,7 +390,7 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
         {tenant.consumers.length === 0 ? (
           <p className="text-sm text-muted-foreground">No app consumers linked.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {tenant.consumers.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
                 <span className="text-sm font-medium">{c.name}</span>
@@ -413,7 +414,7 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
         {tenant.surfaces.length === 0 ? (
           <p className="text-sm text-muted-foreground">No tenant surfaces linked.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {tenant.surfaces.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
                 <span className="text-sm font-medium">{s.name}</span>
@@ -425,9 +426,6 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground">
-          Hostnames live on each app&rsquo;s Tenant surfaces tab.
-        </p>
       </div>
       {linking ? (
         <LinkExisting tenantId={tenant.id} onDone={() => setLinking(false)} />
@@ -480,7 +478,7 @@ function LinkExisting({ tenantId, onDone }: { tenantId: string; onDone: () => vo
 
   return (
     <form
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4"
       onSubmit={(e) => void submit(e)}
     >
       <SegmentedControl
@@ -564,10 +562,6 @@ function CustomerCredentials({ tenant }: { tenant: PlatformTenantDetail }) {
   });
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground">
-        Metadata only; plaintext keys are never returned. Keys are issued per consumer on each
-        app&rsquo;s Consumers tab.
-      </p>
       <InlinePhase
         phase={phase}
         error={credentials.error}
@@ -576,7 +570,7 @@ function CustomerCredentials({ tenant }: { tenant: PlatformTenantDetail }) {
         onRetry={() => void credentials.refetch()}
       />
       {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
           {credentials.data?.map((k) => (
             <li
               key={k.id ?? `${k.consumer_id}:${k.prefix}`}

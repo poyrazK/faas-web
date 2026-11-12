@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useApp, type App } from '@/lib/api/queries';
 import {
   createQueueBinding,
@@ -359,7 +359,7 @@ function QueueConsumerControlsInner({
               </label>
               <label className="flex flex-col gap-1.5">
                 <span>Delivery mode</span>
-                <select
+                <Select
                   className={FIELD}
                   value={mode}
                   disabled={busy || Boolean(review)}
@@ -367,7 +367,7 @@ function QueueConsumerControlsInner({
                 >
                   <option value="pull">Pull</option>
                   <option value="push">Push</option>
-                </select>
+                </Select>
               </label>
               <label className="flex flex-col gap-1.5">
                 <span>Max concurrency</span>

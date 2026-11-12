@@ -168,7 +168,7 @@ function Overview({
             : []),
         ]}
       />
-      <div className="rounded-lg border border-border p-3">
+      <div className="well rounded-xl bg-muted/40 p-3">
         <p className="label-mono text-muted-foreground">Requests today (UTC)</p>
         {usage.data ? (
           <p className="mt-1">
@@ -204,8 +204,8 @@ function Overview({
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Operator-provisioned: its credential, budget, and policies are managed by the platform
-          operator and cannot be changed here.
+          Managed by the platform operator; its credential, budget, and policies cannot be changed
+          here.
         </p>
       )}
     </div>
@@ -490,8 +490,7 @@ function LimitsSection({
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          Every value must fit your plan&apos;s ceiling. Changes apply to new admissions; calls
-          already admitted keep their deadline.
+          Every value must fit your plan&apos;s ceiling. Changes apply to new calls only.
         </p>
         <Failure message={policyFailure} />
         <div>
@@ -583,7 +582,7 @@ function ProbeForm({
     setFailure(null);
     const ok = await confirm({
       title: 'Remove the probe?',
-      description: 'Prior probe evidence is invalidated. The provider credential is not affected.',
+      description: 'Prior probe results are invalidated. The provider credential is not affected.',
       confirmLabel: 'Remove probe',
       destructive: true,
     });

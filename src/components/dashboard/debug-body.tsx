@@ -50,11 +50,13 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
   const openRequest = previewOn ? (request: string) => onSelect({ request }) : undefined;
 
   return (
-    <Panel
-      title="Debugger"
-      description="Investigate gateway requests with recorded evidence. Routes are templates, not expanded URLs."
-      actions={<MaturityLabel capability={debug} />}
-    >
+    <Panel title="Debugger" actions={<MaturityLabel capability={debug} />}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Investigate gateway requests with recorded details. Routes are templates, not expanded URLs.'
+        }
+      </p>
+
       <div className="flex flex-col gap-4">
         {previewOn && (
           <DebugStatusPanel
@@ -152,6 +154,9 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
             onClose={() => onSelect({ request: undefined })}
             onRegression={(regression) =>
               onSelect({ debugView: 'regressions', regression, request: undefined })
+            }
+            onCompare={(debugSource, debugMirror) =>
+              onSelect({ debugView: 'compare', debugSource, debugMirror, request: undefined })
             }
           />
         )}

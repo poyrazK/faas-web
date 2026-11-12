@@ -51,7 +51,7 @@ function StepRail({ current }: { current: Step }) {
             <span
               aria-current={i === at ? 'step' : undefined}
               className={cn(
-                'flex h-5 min-w-5 items-center justify-center rounded-full border px-1 font-mono text-[10px] transition-colors ease-console',
+                'flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-[10px] transition-colors ease-console',
                 reached
                   ? 'border-brand/40 bg-brand/10 text-brand'
                   : 'border-border text-muted-foreground'
@@ -294,10 +294,7 @@ export function PasswordWizard({
       };
 
   return (
-    <Panel
-      title="Email sign-in"
-      description="Set a password to sign in with email, or replace the one you have. Google and GitHub keep working either way."
-    >
+    <Panel title="Email sign-in" help="Google and GitHub sign-in keep working either way.">
       <AnimatePresence mode="wait" initial={false}>
         {step === 'idle' && (
           <motion.div key="idle" {...slide} className="flex flex-col gap-4">

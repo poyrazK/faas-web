@@ -53,7 +53,7 @@ export function ReleaseChannelPicker({
             return (
               <label
                 key={channel.id}
-                className="pressable flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs has-[:checked]:border-brand has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
+                className="pressable flex cursor-pointer items-center gap-1.5 well rounded-xl bg-muted/40 px-2 py-1 text-xs has-[:checked]:border-brand has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
               >
                 <input
                   id={`${idPrefix}-${channel.id}`}

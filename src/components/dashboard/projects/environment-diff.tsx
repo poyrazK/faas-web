@@ -11,7 +11,8 @@ export function EnvironmentDiffView({ data }: { data: EnvironmentDiff }) {
   return (
     <Panel
       title={`${data.from_environment} compared with ${data.to_environment}`}
-      description={`Snapshot ${data.generated_at}. Server-reported differences; missing fingerprints are not equality.`}
+      help="A missing fingerprint does not mean the values are equal."
+      actions={<span className="text-xs text-muted-foreground">Snapshot {data.generated_at}</span>}
     >
       <div className="space-y-4 p-4 text-sm">
         <p>
@@ -36,11 +37,7 @@ export function EnvironmentDiffView({ data }: { data: EnvironmentDiff }) {
           </details>
         )}
         {data.workloads.map((workload) => (
-          <details
-            key={workload.workload_slug}
-            open
-            className="rounded-md border border-border p-3"
-          >
+          <details key={workload.workload_slug} open className="well rounded-xl bg-muted/40 p-3">
             <summary className="cursor-pointer font-medium">{workload.workload_name}</summary>
             <div className="mt-3 space-y-3">
               <p>

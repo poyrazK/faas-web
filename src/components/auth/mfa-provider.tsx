@@ -67,7 +67,15 @@ function digitsOnly(value: string): string {
 
 export function MfaProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  // Read by handleMfaRequired, which runs from fetch callbacks: a burst of
+  // refused requests lands before React re-renders, so it needs the value as
+  // of the last call, not of the last render.
+  const openRef = useRef(false);
+  const setOpen = useCallback((next: boolean) => {
+    openRef.current = next;
+    setOpenState(next);
+  }, []);
   const [mode, setMode] = useState<MfaMode>('choose');
   const [enrollment, setEnrollment] = useState<MFAEnrollment | null>(null);
   const [code, setCode] = useState('');
@@ -75,6 +83,10 @@ export function MfaProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [required, setRequired] = useState(false);
   const pending = useRef<MfaOpenOptions | null>(null);
+  // When the session last got through (`performance.now()`). Requests sent
+  // before then carried the pending cookie and are still being refused as
+  // they land; those refusals are stale and must not reopen the modal.
+  const verifiedAt = useRef(Number.NEGATIVE_INFINITY);
   const [reason, setReason] = useState<string | null>(null);
   const [allowRecovery, setAllowRecovery] = useState(true);
 
@@ -94,18 +106,39 @@ export function MfaProvider({ children }: { children: ReactNode }) {
       setMode(nextMode);
       setOpen(true);
     },
-    [resetTransient]
+    [resetTransient, setOpen]
   );
 
-  const handleMfaRequired = useCallback(() => {
-    pending.current = null;
-    setReason(null);
-    setAllowRecovery(true);
-    setError(null);
-    setRequired(true);
-    setMode('choose');
-    setOpen(true);
-  }, []);
+  /**
+   * An API answer of `mfa_required`. While the session is mfa_pending, every
+   * request gets one — each poll, each retry, and every query refetched when
+   * the window regains focus, which is the moment someone returns from their
+   * authenticator app with a code. Only the first may open the modal. Once it
+   * is open, a later one must not touch it: resetting it here wiped the code
+   * mid-typing, dropped the setup QR (whose secret the app had already
+   * scanned), and lost a step-up's reason and callback. Verifying clears the
+   * session gate whichever screen it is done from, so marking the session
+   * required is all that is left to do.
+   *
+   * The same burst outlives a successful verify: requests sent with the
+   * pending cookie keep landing after it is re-issued, and each would open the
+   * modal again the moment it closed. A refusal of a request that started
+   * before the last verification is ignored.
+   */
+  const handleMfaRequired = useCallback(
+    (requestStartedAt: number) => {
+      if (requestStartedAt < verifiedAt.current) return;
+      setRequired(true);
+      if (openRef.current) return;
+      pending.current = null;
+      setReason(null);
+      setAllowRecovery(true);
+      resetTransient();
+      setMode('choose');
+      setOpen(true);
+    },
+    [resetTransient, setOpen]
+  );
 
   useEffect(() => {
     setMfaRequiredHandler(handleMfaRequired);
@@ -118,7 +151,7 @@ export function MfaProvider({ children }: { children: ReactNode }) {
     const cb = pending.current;
     pending.current = null;
     cb?.onDismissed?.();
-  }, [busy]);
+  }, [busy, setOpen]);
 
   const startEnrollment = useCallback(async () => {
     setBusy(true);
@@ -145,19 +178,25 @@ export function MfaProvider({ children }: { children: ReactNode }) {
 
   const complete = useCallback(
     async (via: MfaMethod) => {
+      verifiedAt.current = performance.now();
       setBusy(false);
       setOpen(false);
       setRequired(false);
       resetTransient();
       // A blocked query remains cached as an error. Refetch every resource so
       // the page that triggered the gate recovers immediately after the cookie
-      // is re-issued without mfa_pending.
+      // is re-issued without mfa_pending. Cancel first: a poll sent just
+      // before the verify answer landed still carries the pending cookie and
+      // will be refused, and invalidating alone reuses that in-flight request
+      // for a query with no data yet — so the page would keep the refusal
+      // until its next poll, or for good on a query that does not poll.
+      await queryClient.cancelQueries();
       await queryClient.invalidateQueries();
       const cb = pending.current;
       pending.current = null;
       cb?.onVerified?.(via);
     },
-    [queryClient, resetTransient]
+    [queryClient, resetTransient, setOpen]
   );
 
   const submit = useCallback(

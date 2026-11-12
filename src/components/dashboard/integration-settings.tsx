@@ -65,9 +65,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
       )}
 
       <Panel
-        lit={!githubConnected}
         title="GitHub"
-        description="Connect GitHub once to let Gregale fetch repository refs for dashboard and CI deployments."
         actions={
           githubConnected ? (
             <Badge variant="outline" className="gap-1.5 border-brand/30 text-brand">
@@ -79,11 +77,6 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
       >
         {githubConnected ? (
           <div className="flex flex-col gap-4">
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Gregale has a durable GitHub App installation for this account. Repository access is
-              checked by GitHub for each deployment; the installation token is never shown to the
-              browser.
-            </p>
             <div className="flex flex-wrap gap-2">
               <GitHubConnectForm refresh disabled={!apiReachable} />
               <Button asChild size="sm" className="gap-1.5">
@@ -96,7 +89,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 href="https://github.com/settings/installations"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="inline-flex h-8 items-center gap-1.5 well rounded-xl bg-muted/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 Manage on GitHub
                 <OpenNewWindow className="h-3.5 w-3.5" />
@@ -110,9 +103,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
                 <Github className="h-4 w-4" />
               </span>
               <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Git deployments use the GitHub App installation belonging to your account. Connect
-                it to authorize repository access; Gregale will return here after GitHub confirms
-                the installation.
+                Connect GitHub to deploy from your repositories.
               </p>
             </div>
             <GitHubConnectForm disabled={!apiReachable} />
@@ -131,7 +122,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
 export function AccountDetails() {
   const { account } = useAuth();
   return (
-    <Panel title="Account details" description="The account data currently used by the console.">
+    <Panel title="Account details">
       <dl className="grid gap-4 sm:grid-cols-2">
         <div>
           <dt className="label-mono text-muted-foreground">Email</dt>

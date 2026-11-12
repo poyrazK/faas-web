@@ -120,13 +120,30 @@ export function useDebugRegressionAction(slug: string) {
  */
 export function useDebugReplay(slug: string) {
   return useMutation({
-    mutationFn: (reqId: string) =>
+    mutationFn: ({ reqId, mirrorDeploymentId }: { reqId: string; mirrorDeploymentId?: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/debug/requests/{req_id}/replay', {
           params: { path: { slug, req_id: reqId } },
-          body: {},
+          body: mirrorDeploymentId ? { mirror_deployment_id: mirrorDeploymentId } : {},
         })
       ),
+  });
+}
+
+/**
+ * The deployments a request can be replayed to: enabled mirror rules whose
+ * source is the deployment that served it (selectDebugReplayMirrorRule,
+ * handlers_debug_telemetry.go:2707-2716). Mirror rules belong to the
+ * `traffic-mirroring` capability, so callers enable this only while it is on.
+ */
+export function useReplayTargets(slug: string, deploymentId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['apps', slug, 'mirrors'],
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/mirrors', { params: { path: { slug } } })),
+    enabled: enabled && Boolean(slug && deploymentId),
+    retry: retryPolicy,
+    select: (data) =>
+      data.rules.filter((rule) => rule.enabled && rule.source_deployment_id === deploymentId),
   });
 }
 

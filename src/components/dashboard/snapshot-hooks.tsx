@@ -363,7 +363,7 @@ export function SnapshotHooks({ app }: { app: App }) {
   return (
     <Panel
       title="Snapshot hooks"
-      description="App code Gregale calls on loopback before it captures a snapshot and after it restores one: to close a database connection and reopen it, say."
+      help="App code Gregale calls on loopback before it captures a snapshot and after it restores one: to close a database connection and reopen it, say."
       actions={<MaturityLabel capability={capability} />}
     >
       {access !== 'on' ? (

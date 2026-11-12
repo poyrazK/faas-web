@@ -16,6 +16,7 @@ import { useMfa } from '@/components/auth/mfa-provider';
 import { formatRelative } from '@/lib/mock-data';
 import { PasswordPanel } from '@/components/dashboard/password-wizard';
 import { AuthEventDetail } from '@/components/dashboard/auth-event-detail';
+import { Timestamp } from '@/components/ui/timestamp';
 
 /**
  * Active dashboard sessions, from `/v1/auth/sessions`.
@@ -49,11 +50,7 @@ function AuthEventsPanel() {
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: events.length === 0 });
   const [openId, setOpenId] = useState<string | null>(null);
   return (
-    <Panel
-      title="Auth events"
-      description="Sign-ins, key mints, and MFA changes — the account's security timeline, distinct from the resource audit log."
-      padded={phase !== 'ready'}
-    >
+    <Panel title="Auth events" padded={phase !== 'ready'}>
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
@@ -76,7 +73,7 @@ function AuthEventsPanel() {
                   <span style={{ color: 'var(--status-warning)' }}>{e.severity}</span>
                 )}
                 <span className="ml-auto text-muted-foreground">
-                  {new Date(e.at).toLocaleString()}
+                  <Timestamp value={e.at} mode="absolute" />
                 </span>
               </button>
             </li>
@@ -95,11 +92,7 @@ function SecretsInventoryPanel() {
   const rows = q.data?.secrets ?? [];
   const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
   return (
-    <Panel
-      title="Sealed secrets"
-      description="Across every app. Values are sealed — this lists names and ages only."
-      padded={phase !== 'ready'}
-    >
+    <Panel title="Sealed secrets" padded={phase !== 'ready'}>
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
@@ -226,7 +219,6 @@ export function SecuritySettings() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Security"
-        description="Every browser signed in to this account. Revoke anything you do not recognise."
         actions={
           <Button
             size="sm"
@@ -270,7 +262,6 @@ export function SecuritySettings() {
 
       <Panel
         title="Multi-factor authentication"
-        description="Optional extra protection for your dashboard account."
         actions={
           <Button size="sm" variant="outline" onClick={() => openMfa('choose')}>
             Set up or verify
@@ -278,9 +269,7 @@ export function SecuritySettings() {
         }
       >
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Manage the authenticator step for this browser session. If MFA is already enabled, you can
-          verify it here; if it is not, Gregale will guide you through optional enrollment and
-          provide one-time recovery codes.
+          Set up an authenticator, or verify it for this browser session.
         </p>
       </Panel>
 

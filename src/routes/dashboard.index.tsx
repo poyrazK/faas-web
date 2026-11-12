@@ -1,11 +1,12 @@
+import { featureFlags } from '@/lib/feature-flags';
+import { OnboardingChecklist } from '@/components/onboarding/onboarding-checklist';
 import { useMemo, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, RefreshDouble } from 'iconoir-react';
+import { ArrowRight, ClockRotateRight, NavArrowRight, Plus, Refresh } from 'iconoir-react';
 import {
   ErrorState,
   LoadingState,
   PageHeader,
-  RangeSelector,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -15,39 +16,29 @@ import { Magnetic } from '@/components/amicro/magnetic';
 import { PointerGlow } from '@/components/amicro/pointer-glow';
 import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
-import { AnalyticsSection } from '@/components/dashboard/analytics-section';
-import { useSelectedApp } from '@/components/dashboard/app-select';
+import { SegmentedControl } from '@/components/dashboard/tabs';
+import { OverviewStats } from '@/components/dashboard/overview-analytics/overview-stats';
+import { fleetMetrics } from '@/components/dashboard/overview-analytics/overview-stats-data';
 import { WindFlow } from '@/components/dashboard/wind-flow';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Odometer } from '@/components/ui/odometer';
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
-import { PlanGate } from '@/components/dashboard/plan-gate';
-import {
-  useApps,
-  useAppsMetrics,
-  useDeployments,
-  useInstances,
-  type MetricsRange,
-} from '@/lib/api/queries';
-import { formatCompact, formatRelative, type Workflow } from '@/lib/mock-data';
+import { useAppsMetrics, useDeployments, useInstances, type MetricsRange } from '@/lib/api/queries';
+import { formatRelative, type Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/mock-data';
 import { FlowDotsField } from '@/components/dashboard/shapes';
 import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
-import { formatCents } from '@/lib/money';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
   head: () => consoleHead('overview'),
-  validateSearch: (search: Record<string, unknown>): { range?: MetricsRange } => ({
-    ...(OVERVIEW_RANGES.some(({ key }) => key === search.range)
-      ? { range: search.range as MetricsRange }
-      : {}),
-  }),
+  validateSearch: (search: Record<string, unknown>): { range?: OverviewRange } =>
+    OVERVIEW_RANGES.some(({ key }) => key === search.range)
+      ? { range: search.range as OverviewRange }
+      : {},
 });
 
 /**
@@ -59,21 +50,13 @@ export const Route = createFileRoute('/dashboard/')({
  * top bar no longer carries one), three resource columns (Apps,
  * Deployments, Recents), and an analytics grid below.
  *
- * The analytics cards carry numbers, not charts: the API returns scalars,
- * and this console does not draw series it does not have. A degraded
- * Prometheus rollup reads as unknown, never as zero.
+ * The analytics cards carry numbers, not charts: `/v1/apps/metrics`,
+ * `/v1/instances` and the usage summary return scalars, and this console
+ * does not draw series it does not have. One range governs every metrics
+ * figure. A degraded rollup reads as unknown, never as zero.
  */
 
-const formatGbHours = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-
-function formatMoney(cents: number | undefined): string {
-  if (cents == null) return '—';
-  return formatCents(cents);
-}
-
-const UNKNOWN = <span className="text-muted-foreground">—</span>;
-
-const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
+const OVERVIEW_RANGES = [
   { key: '5m', label: '5m' },
   { key: '15m', label: '15m' },
   { key: '1h', label: '1h' },
@@ -81,9 +64,10 @@ const OVERVIEW_RANGES: { key: MetricsRange; label: string }[] = [
   { key: '24h', label: '24h' },
   { key: '7d', label: '7d' },
   { key: '15d', label: '15d' },
-];
+] as const satisfies readonly { key: MetricsRange; label: string }[];
+type OverviewRange = (typeof OVERVIEW_RANGES)[number]['key'];
 
-const RANGE_DESCRIPTION: Record<MetricsRange, string> = {
+const RANGE_DESCRIPTION: Record<OverviewRange, string> = {
   '5m': 'last 5 minutes',
   '15m': 'last 15 minutes',
   '1h': 'last hour',
@@ -99,7 +83,11 @@ const RANGE_DESCRIPTION: Record<MetricsRange, string> = {
 
 type Verdict = { text: string; color: string; trouble: boolean };
 
-function verdictOf(accountStatus: string | undefined, failing: number, degraded: boolean): Verdict {
+function verdictOf(
+  accountStatus: string | undefined,
+  failing: number,
+  degraded: boolean
+): Verdict | null {
   if (accountStatus && accountStatus !== 'active')
     return {
       text: `Account ${accountStatus.replace(/_/g, ' ')}`,
@@ -113,7 +101,7 @@ function verdictOf(accountStatus: string | undefined, failing: number, degraded:
       trouble: true,
     };
   if (degraded) return { text: 'Metrics degraded', color: 'var(--status-warning)', trouble: false };
-  return { text: 'All systems normal', color: 'var(--status-good)', trouble: false };
+  return null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -121,15 +109,17 @@ function verdictOf(accountStatus: string | undefined, failing: number, degraded:
  * ------------------------------------------------------------------ */
 
 function ColumnHeader({ label, to }: { label: string; to?: string }) {
-  if (!to) return <p className="label-mono text-muted-foreground">{label}</p>;
+  if (!to) return <h2 className="label-mono text-muted-foreground">{label}</h2>;
   return (
-    <Link
-      to={to}
-      className="pressable label-mono inline-flex items-center gap-1 rounded text-muted-foreground hover:text-foreground"
-    >
-      {label}
-      <NavArrowRight className="h-3 w-3" />
-    </Link>
+    <h2>
+      <Link
+        to={to}
+        className="pressable label-mono inline-flex items-center gap-1 rounded text-muted-foreground hover:text-foreground"
+      >
+        {label}
+        <NavArrowRight className="h-3 w-3" />
+      </Link>
+    </h2>
   );
 }
 
@@ -146,7 +136,7 @@ function AppsColumn({ workflows }: { workflows: Workflow[] }) {
       <ColumnHeader label="Apps" to="/dashboard/apps" />
       <Link
         to="/dashboard/apps/new"
-        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border bg-card py-2 text-sm text-muted-foreground hover:border-border-secondary hover:text-foreground"
+        className="pressable relative mt-2 flex items-center justify-center gap-1.5 overflow-hidden surface rounded-[1.25rem] bg-card py-2 text-sm text-muted-foreground hover:text-foreground"
       >
         <PointerGlow />
         <Plus className="h-3.5 w-3.5" />
@@ -271,60 +261,6 @@ function RecentsColumn() {
 }
 
 /* ------------------------------------------------------------------ *
- * Analytics
- * ------------------------------------------------------------------ */
-
-function StatCard({
-  label,
-  hint,
-  sub,
-  large,
-  className,
-  children,
-}: {
-  label: string;
-  hint: string;
-  /** The quiet last line — real context, so the card ends composed instead
-   * of trailing off into empty surface. */
-  sub?: React.ReactNode;
-  large?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    // Five decorative layers used to sit between the reader and the figure:
-    // a cursor tilt, a cursor spotlight, a glass blur, a gradient border and a
-    // glow on the numerals themselves. Each was defensible alone; together they
-    // made a card that performs expense rather than having it, and a number you
-    // read *through* a glow is a number that is harder to read. What is left is
-    // the surface every other panel in the console already uses — one hairline,
-    // one fill — so the figure is the only thing on it competing for attention.
-    <div
-      className={cn(
-        'animate-item-enter flex h-full flex-col rounded-xl border border-border bg-card p-5',
-        large && 'min-h-36',
-        className
-      )}
-      title={hint}
-    >
-      <p className="text-xs text-muted-foreground">{label}</p>
-      {/* 34/26 rather than the old 48/24. A figure at twice its neighbour's
-          size stops being a hierarchy and becomes two unrelated rows; this
-          keeps the six readable as one set while the hero pair still leads. */}
-      <p
-        className={cn(
-          'mt-3 leading-none font-semibold tracking-tight [font-variant-numeric:tabular-nums]',
-          large ? 'text-[34px]' : 'text-[26px]'
-        )}
-      >
-        {children}
-      </p>
-      {sub != null && <p className="mt-auto pt-3 text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
  * Page
  * ------------------------------------------------------------------ */
 
@@ -344,78 +280,60 @@ function OverviewPage() {
   // among observers) and leaves with the page. Real reads on a cadence —
   // the spec has no general event stream to subscribe to instead.
   const instances = useInstances({ refetchInterval: 10_000 });
-  const analyticsApp = useSelectedApp();
   useDeployments(50, { refetchInterval: 10_000 });
-  useApps({ refetchInterval: 15_000 });
 
   const phase = queryPhase({ error, loading });
   const metricsDegraded = Boolean(
     paidAccess && metrics.data && metrics.data.source !== 'prometheus'
   );
-  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
   const failing = useMemo(() => workflows.filter((w) => w.state === 'error'), [workflows]);
 
-  // Resident RAM right now: non-parked instances only — a parked instance's
-  // cgroup is gone, so it holds nothing.
-  // `/v1/instances` is cursor-paginated. Never present a partial page as an
-  // exact fleet total; the Workers view can load the remaining pages.
+  const metricsUnavailable = metrics.isPending || Boolean(metrics.error) || metricsDegraded;
+  const figures = useMemo(
+    () => fleetMetrics(Object.values(metrics.data?.apps ?? {})),
+    [metrics.data]
+  );
+
+  // Memory held right now: non-parked instances only — a parked instance's
+  // cgroup is gone, so it holds nothing. `/v1/instances` is cursor-paginated;
+  // a partial page is never presented as an exact total.
   const residentKnown = !instances.isPending && !instances.error && !instances.data?.next_before;
-  const residentPartial = Boolean(instances.data?.next_before);
-  const { residentMb, residentCount } = useMemo(() => {
-    const resident = (instances.data?.instances ?? []).filter(
+  const resident = useMemo(() => {
+    const rows = (instances.data?.instances ?? []).filter(
       (row) => row.state.toLowerCase() !== 'parked'
     );
-    return {
-      residentMb: resident.reduce((sum, row) => sum + row.ram_mb, 0),
-      residentCount: resident.length,
-    };
+    return { mb: rows.reduce((sum, row) => sum + row.ram_mb, 0), count: rows.length };
   }, [instances.data]);
 
-  const { requests, errorPct, wakeP95 } = useMemo(() => {
-    const rows = Object.values(metrics.data?.apps ?? {});
-    const total = rows.reduce((sum, row) => sum + row.request_count, 0);
-    // Weighted by traffic, not a mean of percentages: one idle app at 100%
-    // must not outweigh a busy one at 0.01%.
-    const errored = rows.reduce(
-      (sum, row) => sum + row.request_count * (row.error_rate_pct / 100),
-      0
-    );
-    // The wake histogram is unlabelled upstream — every row carries the same
-    // fleet figure, so the first non-zero one is the figure.
-    const wake = rows.find((row) => row.wake_p95_ms > 0)?.wake_p95_ms ?? 0;
-    return { requests: total, errorPct: total > 0 ? (errored / total) * 100 : 0, wakeP95: wake };
-  }, [metrics.data]);
-
-  const setRange = (next: MetricsRange) =>
+  const setRange = (next: OverviewRange) =>
     void navigate({
       search: next === '24h' ? {} : { range: next },
       replace: true,
       resetScroll: false,
     });
-  const rangeDescription = RANGE_DESCRIPTION[range];
 
-  const usageData = usage.data;
-  // null: a company with no usage this month carries no allowance yet.
-  const includedKnown = usageData?.included_gb_hours ?? null;
-  const included = includedKnown ?? 0;
-  const usedGbh = usageData?.used_gb_hours ?? 0;
-  const remainingGbh = Math.max(0, included - usedGbh);
-  const overGbh = usageData?.overage_gb_hours ?? 0;
-  const usageFailed = Boolean(usage.error);
+  const usagePhase = queryPhase({ error: usage.error, loading: usage.isPending });
 
   const recent = useMemo(
     () => [...deployments].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4),
     [deployments]
   );
 
-  const refreshing = usage.isRefetching || metrics.isRefetching || instances.isRefetching;
-  const refreshAll = () => {
+  // A manual refresh shows it is working for at least 400ms, so a fast read
+  // still reads as done rather than as a click that did nothing.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
     refresh();
-    void usage.refetch();
-    if (paidAccess) void metrics.refetch();
-    void instances.refetch();
+    await Promise.allSettled([
+      usage.refetch(),
+      instances.refetch(),
+      ...(paidAccess ? [metrics.refetch()] : []),
+      new Promise((done) => setTimeout(done, 400)),
+    ]);
+    setRefreshing(false);
   };
-
   const verdict = verdictOf(account?.status, failing.length, metricsDegraded);
   const firstName = user?.name.split(' ')[0];
   // Nothing deployed and the read succeeded: a page of zeroes is accurate
@@ -425,9 +343,10 @@ function OverviewPage() {
   if (firstRun) {
     return (
       <div className="flex flex-col gap-6">
+        {featureFlags.onboardingV2 && <OnboardingChecklist />}
         <PageHeader
           title={firstName ? `Welcome, ${firstName}` : 'Overview'}
-          description="Your first app starts here. Choose a source and we’ll guide you through deployment."
+          help="Choose a source and we’ll guide you through your first deployment."
         />
         <FirstRun />
       </div>
@@ -437,7 +356,7 @@ function OverviewPage() {
   if (phase !== 'ready') {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Overview" description="Your account at a glance." />
+        <PageHeader title="Overview" />
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={refresh} />
         ) : phase === 'error' ? (
@@ -451,6 +370,7 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-10">
+      {featureFlags.onboardingV2 && <OnboardingChecklist />}
       {/* Keep the wind a faint accent so the charcoal canvas stays neutral. */}
       <div aria-hidden className="pointer-events-none fixed inset-0">
         <WindFlow intensity={0.06} />
@@ -471,17 +391,19 @@ function OverviewPage() {
         <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-2">
           {/* The verdict rides above the greeting as a pill; when something
               is wrong it is the page's alert and links to the trouble. */}
-          <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
-            <Magnetic range={60} strength={0.2}>
-              <Link
-                to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
-                className="glass pressable label-mono inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
-              >
-                <LiveDot color={verdict.color} />
-                {verdict.text}
-              </Link>
-            </Magnetic>
-          </p>
+          {verdict && (
+            <p role={verdict.trouble ? 'alert' : 'status'} className="contents">
+              <Magnetic range={60} strength={0.2}>
+                <Link
+                  to={verdict.trouble ? '/dashboard/apps' : '/dashboard/usage'}
+                  className="glass pressable label-mono inline-flex items-center gap-2 rounded-full bg-muted px-3.5 py-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                >
+                  <LiveDot color={verdict.color} />
+                  {verdict.text}
+                </Link>
+              </Magnetic>
+            </p>
+          )}
 
           <h1 className="text-center text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             <WordReveal
@@ -529,212 +451,73 @@ function OverviewPage() {
         <RecentsColumn />
       </div>
 
-      {/* --- Analytics --------------------------------------------- */}
-      <section className="animate-item-enter relative flex flex-col gap-4 [animation-delay:120ms]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">
-            <Link
-              to="/dashboard/analytics"
-              search={{ window: range === '7d' ? '7d' : '24h' }}
-              className="pressable inline-flex items-center gap-1.5 rounded hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              Analytics
-              <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
-            </Link>
-          </h2>
-          <div className="flex items-center gap-2">
+      {/* --- Analytics ------------------------------------------------ */}
+      <section aria-labelledby="overview-analytics" className="relative flex flex-col gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 id="overview-analytics" className="text-lg font-semibold">
+              <Link
+                to="/dashboard/analytics"
+                search={range === '7d' ? { window: '7d' } : {}}
+                className="pressable inline-flex items-center gap-1.5 rounded hover:text-brand"
+              >
+                Analytics
+                <ArrowRight aria-hidden className="h-4 w-4" />
+              </Link>
+            </h2>
             {metricsDegraded && (
-              <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
-                metrics degraded — unknowns read as —
-              </span>
+              <p role="status" className="text-xs text-status-warning">
+                Metrics degraded. Figures may be incomplete.
+              </p>
             )}
-            <RangeSelector
-              value={range}
-              options={OVERVIEW_RANGES}
-              onChange={setRange}
-              disabled={!paidAccess}
-            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {paidAccess && (
+              <SegmentedControl
+                label="Time window"
+                value={range}
+                options={OVERVIEW_RANGES}
+                onChange={setRange}
+              />
+            )}
             <button
               type="button"
-              onClick={refreshAll}
-              disabled={refreshing}
-              aria-label="Refresh analytics"
-              className="pressable rounded-lg border border-border p-1.5 text-muted-foreground hover:border-border-secondary hover:text-foreground disabled:opacity-50"
+              onClick={() => void refreshAll()}
+              aria-label="Refresh"
+              aria-busy={refreshing}
+              className="pressable inline-grid h-8 w-8 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
             >
-              <RefreshDouble className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+              <Refresh
+                className={cn(
+                  'h-4 w-4',
+                  refreshing && 'animate-spin motion-reduce:animate-none motion-reduce:opacity-50'
+                )}
+              />
             </button>
           </div>
-        </div>
-
-        {account && !paidAccess && (
-          <PlanGate
-            feature="Metrics"
-            description="Request counts, error rates, and wake metrics require a paid plan. Your compute usage and resident instances remain available below."
-          />
-        )}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {paidAccess && (
-            <>
-              <StatCard
-                label="Total requests"
-                large
-                className="col-span-2"
-                hint={`Requests served across the fleet over the ${rangeDescription}.`}
-                sub={
-                  metricsUnavailable
-                    ? metricsDegraded
-                      ? 'metrics degraded'
-                      : 'metrics unavailable'
-                    : `Across ${workflows.length} ${workflows.length === 1 ? 'app' : 'apps'}, ${rangeDescription}`
-                }
-              >
-                {metricsUnavailable ? (
-                  UNKNOWN
-                ) : (
-                  <Odometer value={requests} format={formatCompact} />
-                )}
-              </StatCard>
-              <StatCard
-                label="Error rate"
-                large
-                className="col-span-2"
-                hint="Errored share of served requests, weighted by traffic."
-                sub={
-                  metricsUnavailable
-                    ? metricsDegraded
-                      ? 'metrics degraded'
-                      : 'metrics unavailable'
-                    : `${formatCompact(Math.round((requests * errorPct) / 100))} errored, weighted by traffic`
-                }
-              >
-                {metricsUnavailable ? (
-                  UNKNOWN
-                ) : (
-                  <span style={errorPct > 1 ? { color: 'var(--status-critical)' } : undefined}>
-                    {errorPct.toFixed(2)}%
-                  </span>
-                )}
-              </StatCard>
-
-              <StatCard
-                label="Wake p95"
-                hint="95th-percentile cold-start time across the fleet."
-                sub="Cold start, fleet-wide"
-              >
-                {metricsUnavailable || !wakeP95 ? (
-                  UNKNOWN
-                ) : (
-                  <>
-                    {Math.round(wakeP95)}
-                    <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
-                  </>
-                )}
-              </StatCard>
-            </>
-          )}
-          <StatCard
-            label="Memory now"
-            hint="RAM held by resident instances at this moment."
-            sub={
-              residentKnown
-                ? `${residentCount} resident ${residentCount === 1 ? 'instance' : 'instances'}`
-                : residentPartial
-                  ? 'more instances available · open Instances'
-                  : 'instance read failed'
-            }
-          >
-            {residentKnown ? (
-              <>
-                <Odometer value={residentMb} />
-                <span className="ml-1 text-sm font-normal text-muted-foreground">MB</span>
-              </>
-            ) : (
-              UNKNOWN
-            )}
-          </StatCard>
-          <StatCard
-            label={
-              overGbh > 0
-                ? 'GB-h over'
-                : includedKnown === null && usageData
-                  ? 'GB-h used'
-                  : 'GB-h left'
-            }
-            hint="Compute allowance for this billing period."
-            sub={
-              usage.isPending || usageFailed
-                ? 'reading usage'
-                : overGbh > 0
-                  ? usageData?.overage_cents === undefined
-                    ? 'over the allowance this period'
-                    : `${formatMoney(usageData.overage_cents)} overage this period`
-                  : includedKnown === null
-                    ? 'this period'
-                    : `of ${formatGbHours(included)} this period`
-            }
-          >
-            {usage.isPending ? (
-              <Skeleton className="h-6 w-16" />
-            ) : usageFailed ? (
-              UNKNOWN
-            ) : overGbh > 0 ? (
-              <span style={{ color: 'var(--status-warning)' }}>
-                <Odometer value={overGbh} format={formatGbHours} />
-              </span>
-            ) : includedKnown === null ? (
-              <Odometer value={usedGbh} format={formatGbHours} />
-            ) : (
-              <Odometer value={remainingGbh} format={formatGbHours} />
-            )}
-          </StatCard>
-          <StatCard
-            label="CPU"
-            hint="CPU-hours consumed this billing period. Measured, not billed."
-            sub="Measured this period, not billed"
-          >
-            {usage.isPending ? (
-              <Skeleton className="h-6 w-16" />
-            ) : usageFailed || usageData?.used_cpu_hours == null ? (
-              UNKNOWN
-            ) : (
-              <>
-                <Odometer
-                  value={usageData.used_cpu_hours}
-                  format={(v) =>
-                    v.toLocaleString(undefined, {
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    })
-                  }
-                />
-                <span className="ml-1 text-sm font-normal text-muted-foreground">h</span>
-              </>
-            )}
-          </StatCard>
-        </div>
-
-        <div className="flex justify-end">
-          <Link
-            to="/dashboard/usage"
-            className="pressable inline-flex items-center gap-1 rounded font-mono text-xs text-muted-foreground hover:text-foreground"
-          >
-            Usage
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
-      </section>
-
-      {/* Its own band, not a section inside the one above. Scoped to one app
-          because the series is: the platform has no account-level rollup of
-          `/analytics/timeseries`, and summing apps with different retention
-          would thin out at the earlier end while looking like a total. */}
-      {paidAccess && analyticsApp.slug && (
-        <AnalyticsSection
-          apps={analyticsApp.apps}
-          slug={analyticsApp.slug}
-          onSelectApp={analyticsApp.select}
+        </header>
+        <OverviewStats
+          paid={paidAccess}
+          showPlanGate={Boolean(account) && !paidAccess}
+          appCount={workflows.length}
+          rangeDescription={RANGE_DESCRIPTION[range]}
+          metrics={{ unavailable: metricsUnavailable, degraded: metricsDegraded, figures }}
+          resident={{
+            known: residentKnown,
+            partial: Boolean(instances.data?.next_before),
+            ...resident,
+          }}
+          usage={{
+            phase: usagePhase,
+            usedGbHours: usage.data?.used_gb_hours ?? 0,
+            // null: a company with no usage this month carries no allowance yet.
+            includedGbHours: usage.data?.included_gb_hours ?? null,
+            overGbHours: usage.data?.overage_gb_hours ?? 0,
+            overageCents: usage.data?.overage_cents,
+            cpuHours: usage.data?.used_cpu_hours ?? null,
+          }}
         />
-      )}
+      </section>
     </div>
   );
 }

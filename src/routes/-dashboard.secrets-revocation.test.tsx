@@ -7,7 +7,7 @@ vi.mock('@/components/dashboard/secret-references', () => ({
   SecretReferences: ({ slug }: { slug: string }) => <p>references for {slug}</p>,
 }));
 
-const { SecretsBody } = await import('./dashboard.secrets');
+const { SecretsBody } = await import('@/components/dashboard/pages/secrets');
 
 const REVOCATION = {
   id: '7b0c2a52-4e7f-4c1e-9d3a-0d2f5e7a9c11',
@@ -57,7 +57,10 @@ it('shows the app’s secret references beside its secrets', async () => {
 it('after a delete, shows what it means for the instances still running with the secret', async () => {
   const user = userEvent.setup();
   renderWithProviders(<SecretsBody slug="api" />);
-  await user.click(await screen.findByRole('button', { name: 'Delete secret JWT_SIGNING_KEY' }));
+  await user.click(await screen.findByRole('button', { name: 'Actions for JWT_SIGNING_KEY' }));
+  await user.click(
+    within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Delete secret' })
+  );
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/until they restart/i)).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Delete secret' }));

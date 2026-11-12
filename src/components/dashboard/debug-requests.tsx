@@ -7,6 +7,7 @@ import {
 import { formatRelative } from '@/lib/mock-data';
 import { DebugGate } from './debug-gate';
 import { DebugExport } from './debug-export';
+import { DebugRequestLookup } from './debug-request-lookup';
 import {
   WINDOWS,
   QUICK_FILTERS,
@@ -14,6 +15,7 @@ import {
   matchesRegression,
   type DebugSelection,
 } from './debug-search';
+import { Select } from '@/components/ui/field';
 
 /**
  * One row per gateway-served request (ADR-127 PR-A).
@@ -151,7 +153,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Quick filter
-          <select
+          <Select
             aria-label="Quick filter"
             value={filter}
             onChange={(e) => onSelect({ debugFilter: e.target.value as typeof filter })}
@@ -162,20 +164,15 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <p className="text-xs text-muted-foreground">
-          Failed: HTTP 4xx / 5xx. Slow: latency ≥ 1,000 ms. Cold start: recorded cold boot only.
-          Regressions: matching release and route observations in this window.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent telemetry rows in the selected window
-          across all routes. Quick and text filters apply only to this loaded sample; other matching
-          requests may exist.
+          Slow: 1,000 ms or more. Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests in the
+          window.
         </p>
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
-          <select
+          <Select
             aria-label="Window"
             value={since}
             onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
@@ -186,7 +183,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
                 {w}
               </option>
             ))}
-          </select>
+          </Select>
           {data?.since && data.since !== since && (
             // The server clamps to the plan's retention. Say so rather than
             // labelling the table with a window it did not use.
@@ -195,6 +192,7 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
             </span>
           )}
         </label>
+        <DebugRequestLookup onOpen={(request) => onSelect({ request })} />
         <DebugExport slug={slug} since={since} />
 
         <ResourceTable
@@ -207,10 +205,10 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
           onQueryChange={(debugQuery) => onSelect({ debugQuery: debugQuery || undefined })}
           emptyMessage={
             data?.requests.length
-              ? `No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`
-              : 'No request rows were returned in this bounded sample.'
+              ? 'No requests match these filters in the loaded sample.'
+              : 'No requests in this window.'
           }
-          filteredEmptyMessage={`No requests match these filters in the loaded sample (up to ${DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).`}
+          filteredEmptyMessage="No requests match these filters in the loaded sample."
           minWidth="min-w-[760px]"
           loading={isPending || (filter === 'regressions' && regressions.isPending)}
           error={error ?? regressionError}

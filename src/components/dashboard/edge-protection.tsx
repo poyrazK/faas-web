@@ -1,11 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { CapabilityNotice } from '@/components/dashboard/capability-notice';
+import { MaturityLabel } from '@/components/dashboard/maturity-label';
+import { PreAuthGuardPanel } from '@/components/dashboard/pre-auth-guard';
+import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
+import { Pill } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
 import { useToast } from '@/components/ui/toast';
-import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
-import { Pill } from '@/components/dashboard/resource-table';
-import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { useCapability, useCapabilityAccess } from '@/lib/api/capabilities';
 import {
   EDGE_RANGES,
@@ -21,9 +23,7 @@ import {
 } from '@/lib/api/edge-protection';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { MaturityLabel } from '@/components/dashboard/maturity-label';
-import { PreAuthGuardPanel } from '@/components/dashboard/pre-auth-guard';
-import { Timestamp } from '@/components/ui/timestamp';
+import { useEffect, useState, type ReactNode } from 'react';
 
 /**
  * An app's edge protection: what the edge refused, the pre-auth guard and
@@ -238,7 +238,7 @@ function AttackModePanel({ slug }: { slug: string }) {
     <Region label="Attack mode">
       <Panel
         title="Attack mode"
-        description="One switch for a flood your rules cannot keep up with: every visitor is challenged until it ends on its own."
+        help="Every visitor is challenged until it ends on its own."
         actions={<MaturityLabel capability={capability} />}
       >
         {phase !== 'ready' ? (
@@ -271,9 +271,7 @@ function AttackModePanel({ slug }: { slug: string }) {
             </p>
             {active && (
               <p className="text-xs text-muted-foreground">
-                Clients that are not browsers and carry no verified credential get 403 while it is
-                on. Keep part of the app open with a challenge rule on the paths under attack
-                instead.
+                Non-browser clients without a verified credential get 403 while it is on.
               </p>
             )}
             {released ? (
@@ -361,10 +359,7 @@ function SummaryPanel({ slug, range }: { slug: string; range: EdgeRange }) {
 
   return (
     <Region label="What the edge refused">
-      <Panel
-        title="What the edge refused"
-        description={`Requests the gateway answered before they reached ${slug}, over the last ${range}.`}
-      >
+      <Panel title="What the edge refused">
         {phase !== 'ready' || !data ? (
           <InlinePhase
             phase={phase}
@@ -374,7 +369,7 @@ function SummaryPanel({ slug, range }: { slug: string; range: EdgeRange }) {
           />
         ) : degraded ? (
           <p className="text-sm text-muted-foreground" role="status">
-            Counts are unavailable: {degraded}. They are not zero; the metrics could not be read.
+            Counts are unavailable: {degraded}.
           </p>
         ) : (
           <div className="flex flex-col gap-5">
@@ -462,7 +457,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
     <Region label="Pre-auth observations">
       <Panel
         title="Pre-auth observations"
-        description="The per-source limit that runs before credentials are checked. In observe mode it never rejects; it records what it would have."
+        help="Runs before credentials are checked. In observe mode it never rejects; it records what it would have."
       >
         {phase !== 'ready' || !data ? (
           <InlinePhase
@@ -480,12 +475,11 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
           <div className="flex flex-col gap-4">
             {degraded && (
               <p className="text-sm text-muted-foreground" role="status">
-                Counts are unavailable: {degraded}. They are not zero; the metrics could not be
-                read.
+                Counts are unavailable: {degraded}.
               </p>
             )}
             {suggestion && advice && (
-              <div className="flex flex-col gap-1.5 rounded-md border border-border p-3 text-sm">
+              <div className="flex flex-col gap-1.5 well rounded-xl bg-muted/40 p-3 text-sm">
                 <div>
                   <Pill label={advice.title} color={advice.color} />
                 </div>
@@ -524,8 +518,7 @@ function PreAuthPanel({ slug, range }: { slug: string; range: EdgeRange }) {
                   </tbody>
                 </table>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  A 2xx on a request it would have blocked is a possible false positive, not proof
-                  the client was legitimate.
+                  A 2xx on a request it would have blocked is a possible false positive.
                 </p>
               </div>
             )}

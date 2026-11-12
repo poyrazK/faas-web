@@ -33,7 +33,7 @@ export function PreviewsSettings() {
   return (
     <Panel
       title={org ? `Previews for ${label}` : 'Previews'}
-      description="Features that are off by default. Joining one turns it on for this workspace; it may change before general availability."
+      help="Joining a preview turns it on for this workspace; it may change before general availability."
     >
       <InlinePhase
         phase={phase}
@@ -82,7 +82,7 @@ function PreviewRow({ preview }: { preview: Preview }) {
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
           {preview.label}
           {preview.joined && (
-            <span className="rounded-full border border-border px-2 py-0.5 text-xs font-normal text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
               Joined
             </span>
           )}

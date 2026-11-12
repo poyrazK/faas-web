@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
@@ -109,9 +109,11 @@ describe('TenantSurfaces', () => {
 
   it('creates a surface with the parsed seed hostnames and the app id', async () => {
     render(<TenantSurfaces slug="api" />);
-    await userEvent.type(screen.getByLabelText('Surface name'), 'eu');
-    await userEvent.type(screen.getByLabelText('Seed hostnames'), 'a.example, B.example');
     await userEvent.click(screen.getByRole('button', { name: /create surface/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Surface name'), 'eu');
+    await userEvent.type(within(sheet).getByLabelText('Seed hostnames'), 'a.example, B.example');
+    await userEvent.click(within(sheet).getByRole('button', { name: /create surface/i }));
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith({
         app_id: 'app1',

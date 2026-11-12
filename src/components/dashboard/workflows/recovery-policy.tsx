@@ -127,8 +127,8 @@ export function Badge({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       {Icon ? <Icon aria-hidden className="h-3 w-3" /> : null}
       {label}
@@ -153,7 +153,6 @@ function Recovery({ slug }: { slug: string }) {
     <div className="flex flex-col gap-5">
       <Panel
         title="Recovery policy"
-        description={`${stage ? `${stage} · ` : ''}What happens when a workflow run fails: prepare a recovery plan for review, or retry within budgets. Cancelling stays manual.`}
         actions={
           current && (
             <div className="flex flex-wrap gap-2">
@@ -173,6 +172,8 @@ function Recovery({ slug }: { slug: string }) {
           )
         }
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}What happens when a workflow run fails: prepare a recovery plan for review, or retry within budgets. Cancelling stays manual.`}</p>
+
         {!current || policy.error ? (
           <InlinePhase
             phase={queryPhase({ loading: policy.isPending, error: policy.error })}
@@ -292,10 +293,13 @@ function Health({ slug }: { slug: string }) {
   const h = q.data;
   const badge = h ? HEALTH[h.status] : undefined;
   return (
-    <Panel
-      title="Recovery health"
-      description="A snapshot of the automatic retry queue. Advisory: it never releases a slot or starts a retry."
-    >
+    <Panel title="Recovery health">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'A snapshot of the automatic retry queue. Advisory: it never releases a slot or starts a retry.'
+        }
+      </p>
+
       {!h ? (
         <InlinePhase
           phase={queryPhase({ loading: q.isPending, error: q.error })}
@@ -723,7 +727,7 @@ function ChangeImpact({ preview }: { preview: RecoveryPolicyChangePreview }) {
   return (
     <section
       aria-label="What saving changes"
-      className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm"
+      className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3 text-sm"
     >
       <h3 className="font-medium">Saving creates version {preview.next_version}</h3>
       <ul className="flex list-disc flex-col gap-1 pl-5 text-muted-foreground">

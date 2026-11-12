@@ -232,7 +232,8 @@ it('lists retained runs with their stored status and says who drives them', asyn
   expect(within(list).getAllByRole('listitem')).toHaveLength(2);
   expect(within(list).getByText('Pending')).toBeInTheDocument();
   expect(within(list).getByText('Passed')).toBeInTheDocument();
-  expect(screen.getByText(/never starts them on its own/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Binding verification runs' }));
+  expect(await screen.findByText(/never starts a step on its own/i)).toBeInTheDocument();
 });
 
 it('filters the list by effective status, resending the filter the API took', async () => {

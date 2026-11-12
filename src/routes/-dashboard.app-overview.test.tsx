@@ -24,6 +24,9 @@ const fixtures = vi.hoisted(() => ({
   metrics: undefined as AppMetrics | undefined,
   metricsLoading: false,
   metricsError: null as Error | null,
+  /** Request analytics, when it should differ from the platform metrics. */
+  analytics: undefined as { requests: number; error_rate_pct: number } | undefined,
+  analyticsError: null as Error | null,
   retry: vi.fn(),
   buildIds: [] as string[],
   stream: vi.fn(),
@@ -118,6 +121,46 @@ vi.mock('@/lib/api/queries', async (original) => ({
     fixtures.buildIds = ids;
     return [];
   },
+  useAppAnalytics: () => ({
+    data: fixtures.analyticsError
+      ? undefined
+      : fixtures.analytics
+        ? {
+            ...fixtures.analytics,
+            error_requests: Math.round(
+              (fixtures.analytics.requests * fixtures.analytics.error_rate_pct) / 100
+            ),
+            cold_boots: 0,
+            groups: [],
+            since: '24h',
+          }
+        : fixtures.metrics && fixtures.metrics.source === 'prometheus'
+          ? {
+              requests: fixtures.metrics.request_count,
+              error_requests: Math.round(
+                (fixtures.metrics.request_count * fixtures.metrics.error_rate_pct) / 100
+              ),
+              error_rate_pct: fixtures.metrics.error_rate_pct,
+              p50_ms: fixtures.metrics.latency_p50_ms,
+              p95_ms: fixtures.metrics.latency_p95_ms,
+              p99_ms: fixtures.metrics.latency_p99_ms,
+              cold_boots: 0,
+              groups: [],
+              since: '24h',
+              from: '2026-09-11T12:00:00Z',
+              until: '2026-09-12T12:00:00Z',
+            }
+          : undefined,
+    isPending: fixtures.metricsLoading,
+    error: fixtures.analyticsError ?? fixtures.metricsError,
+    refetch: fixtures.retry,
+  }),
+  useAppAnalyticsTimeseries: () => ({
+    data: { points: [] },
+    isPending: false,
+    error: null,
+    refetch: fixtures.retry,
+  }),
   useAppMetrics: () => ({
     data: fixtures.metrics,
     isPending: fixtures.metricsLoading,
@@ -161,6 +204,8 @@ beforeEach(() => {
   fixtures.metrics = undefined;
   fixtures.metricsError = null;
   fixtures.metricsLoading = false;
+  fixtures.analytics = undefined;
+  fixtures.analyticsError = null;
   fixtures.retry.mockReset();
   fixtures.buildIds = [];
   fixtures.stream.mockClear();
@@ -169,10 +214,20 @@ afterEach(cleanup);
 
 describe('App Overview', () => {
   it('opens a useful overview for Free accounts without fetching per-release builds', async () => {
+    fixtures.deployments = [deployment({ revision: 43, commit_sha: 'f'.repeat(40) })];
     await mount();
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Overview');
     expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
-    expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('release-new');
+    const release = screen.getByRole('region', { name: 'Latest release' });
+    expect(release).toHaveTextContent('v43 is live and serving all traffic.');
+    // Short digests in the meta line; the full values are on hover and in the menu.
+    expect(release).toHaveTextContent('commit fffffff · image abcdef1');
+    expect(release).not.toHaveTextContent('f'.repeat(40));
+    expect(within(release).getByText('fffffff')).toHaveAttribute('title', 'f'.repeat(40));
+    // Free has no request metrics, so the all-clear says only what it can.
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(attention).toHaveTextContent('Nothing flagged so far.');
+    expect(attention).toHaveTextContent('Request errors are tracked on Hobby and above.');
     expect(screen.getByRole('link', { name: 'Endpoint alpha.example.test' })).toHaveAttribute(
       'href',
       'https://alpha.example.test/'
@@ -181,17 +236,17 @@ describe('App Overview', () => {
     expect(fixtures.buildIds).toEqual([]);
   });
 
-  it("shows the app's stateless contract on Overview only", async () => {
+  it("shows the app's local disk watch under Runtime", async () => {
     const router = await mount();
-    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
+    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
     await act(async () => {
       await router.navigate({
         to: '/dashboard/apps/$appSlug',
         params: { appSlug: 'alpha' },
-        search: { tab: 'Logs' },
+        search: { tab: 'Runtime' },
       });
     });
-    expect(screen.queryByRole('region', { name: 'Stateless contract' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Stateless contract' })).toHaveTextContent('alpha');
   });
 
   it('offers to copy the live endpoint URL next to its link', async () => {
@@ -201,14 +256,57 @@ describe('App Overview', () => {
     ).toBeInTheDocument();
   });
 
+  it('opens the release and keeps history, configuration and ids in the release menu', async () => {
+    fixtures.deployments = [deployment({ revision: 43 })];
+    const router = await mount();
+    const release = screen.getByRole('region', { name: 'Latest release' });
+    await userEvent.click(within(release).getByRole('button', { name: 'More release actions' }));
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent)
+    ).toEqual([
+      'See all versions',
+      'View app configuration',
+      'Copy release ID',
+      'Copy image digest',
+    ]);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'See all versions' }));
+    expect(router.state.location.search.tab).toBe('Deployments');
+    expect(router.state.location.search.deployment).toBeUndefined();
+    await act(async () => {
+      router.history.back();
+    });
+    await userEvent.click(
+      within(await screen.findByRole('region', { name: 'Latest release' })).getByRole('button', {
+        name: /^Open release/,
+      })
+    );
+    expect(router.state.location.search).toMatchObject({
+      tab: 'Deployments',
+      deployment: 'release-new',
+      releaseSection: 'overview',
+    });
+  });
+
   it('keeps app state distinct from a failed latest release and opens that exact failure', async () => {
     fixtures.deployments = [
-      deployment({ status: 'failed', error_why: 'The start command was not found.' }),
-      deployment({ id: 'release-live', created_at: '2026-09-11T12:00:00Z' }),
+      deployment({
+        status: 'failed',
+        revision: 44,
+        error_why: 'The start command was not found.',
+      }),
+      deployment({ id: 'release-live', revision: 43, created_at: '2026-09-11T12:00:00Z' }),
     ];
     const router = await mount('/dashboard/apps/alpha?keep=yes#context');
     expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Running');
+    // What serves is the answer; the failed newer attempt is the attention item.
+    expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(
+      'v43 is live and serving all traffic.'
+    );
     const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(attention).toHaveTextContent('v44 failed to deploy. v43 is still serving.');
     expect(attention).toHaveTextContent('The start command was not found.');
     await userEvent.click(within(attention).getByRole('button', { name: 'Inspect failure' }));
     expect(router.state.location.search).toMatchObject({
@@ -227,9 +325,11 @@ describe('App Overview', () => {
   it.each(['cancelled', 'building'])(
     'does not turn a %s release into a failure',
     async (status) => {
-      fixtures.deployments = [deployment({ status })];
+      fixtures.deployments = [deployment({ status, revision: 7 })];
       await mount();
-      expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(status);
+      expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(
+        status === 'cancelled' ? 'The latest version, v7, was cancelled.' : 'v7 is building.'
+      );
       expect(screen.queryByRole('button', { name: 'Inspect failure' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^Copy: endpoint/ })).not.toBeInTheDocument();
@@ -240,6 +340,12 @@ describe('App Overview', () => {
     fixtures.deployments = [];
     await mount();
     expect(screen.getByRole('group', { name: 'App status' })).toHaveTextContent('Not deployed');
+    expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent(
+      'Nothing is deployed yet.'
+    );
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'No confirmed issues yet.'
+    );
     expect(screen.queryByRole('link', { name: /^Endpoint / })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Deploy your app' }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
@@ -283,17 +389,70 @@ describe('App Overview', () => {
     }
   );
 
-  it('links observed request errors to the app Errors tab', async () => {
+  it('links request errors over the bar to the app Errors tab', async () => {
     fixtures.plan = 'pro';
-    fixtures.metrics = metrics({ error_rate_pct: 2.5 });
+    fixtures.metrics = metrics({ error_rate_pct: 6.2 });
     const router = await mount();
-    expect(screen.getByRole('region', { name: 'Traffic snapshot' })).toHaveTextContent('2.50%');
-    await userEvent.click(
-      within(screen.getByRole('region', { name: 'Needs attention' })).getByRole('button', {
-        name: 'Inspect errors',
-      })
-    );
+    const traffic = screen.getByRole('region', { name: 'Traffic snapshot' });
+    expect(traffic).toHaveTextContent('1.2K requests in the last 24 hours; 6.20% returned errors.');
+    // Short card labels; what each figure means is behind the section's tip.
+    expect(traffic).toHaveTextContent('95th percentile');
+    expect(traffic).not.toHaveTextContent('Percentile of recorded responses');
+    await userEvent.click(within(traffic).getByRole('button', { name: 'About these figures' }));
+    expect(await screen.findByText(/not an average of hours/)).toBeInTheDocument();
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(attention).toHaveTextContent('Requests returned errors: 6.20% in the last 24 hours.');
+    await userEvent.click(within(attention).getByRole('button', { name: 'Inspect errors' }));
     expect(router.state.location.search.tab).toBe('Errors');
+  });
+
+  it('quotes one error rate: Needs attention reads the figures Traffic reads', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics({ error_rate_pct: 0.42 });
+    fixtures.analytics = { requests: 6700, error_rate_pct: 1 };
+    await mount();
+    expect(screen.getByRole('region', { name: 'Traffic snapshot' })).toHaveTextContent(
+      '1.00% returned errors'
+    );
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    // Under 5%: reported neutrally, not flagged.
+    expect(attention).toHaveTextContent('Nothing needs your attention.');
+    expect(attention).toHaveTextContent('1.00% of requests returned errors, under the 5%');
+    expect(within(attention).queryByRole('button', { name: 'Inspect errors' })).toBeNull();
+    expect(document.body).not.toHaveTextContent('0.42%');
+  });
+
+  it('follows the Traffic window', async () => {
+    fixtures.plan = 'pro';
+    fixtures.analytics = { requests: 400, error_rate_pct: 12.5 };
+    fixtures.metrics = metrics();
+    await mount('/dashboard/apps/alpha?analyticsSince=7d');
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'Requests returned errors: 12.50% in the last 7 days.'
+    );
+  });
+
+  it('does not flag a high rate over too few requests', async () => {
+    fixtures.plan = 'pro';
+    fixtures.analytics = { requests: 10, error_rate_pct: 50 };
+    fixtures.metrics = metrics();
+    await mount();
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(attention).toHaveTextContent('Nothing flagged so far.');
+    expect(attention).toHaveTextContent('too few to judge the error rate');
+  });
+
+  it('labels platform metrics as such when request analytics cannot be read', async () => {
+    fixtures.plan = 'pro';
+    fixtures.metrics = metrics({ error_rate_pct: 8 });
+    fixtures.analyticsError = new Error('Analytics unavailable');
+    await mount();
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'Platform metrics show 8.00% of requests failing in the last 24 hours.'
+    );
+    expect(screen.getByRole('region', { name: 'Traffic snapshot' })).toHaveTextContent(
+      'unavailable'
+    );
   });
 
   it('treats a zero-request window as no traffic, not proof of health', async () => {
@@ -301,9 +460,12 @@ describe('App Overview', () => {
     fixtures.metrics = metrics({ request_count: 0, latency_p95_ms: 0 });
     await mount();
     const activity = screen.getByRole('region', { name: 'Traffic snapshot' });
-    expect(activity).toHaveTextContent('No requests');
+    expect(activity).toHaveTextContent('No requests in the last 24 hours.');
     expect(activity).not.toHaveTextContent('0.00%');
     expect(activity).not.toHaveTextContent('0 ms');
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toHaveTextContent(
+      'can’t be judged'
+    );
   });
 
   it('preserves an unknown server status rather than claiming the app is idle', async () => {
@@ -326,15 +488,11 @@ describe('App Overview', () => {
     expect(screen.getByRole('region', { name: 'Latest release' })).toHaveTextContent('constructor');
   });
 
-  it('preserves explicit Metrics links and supports keyboard access to Overview', async () => {
+  it('preserves explicit Metrics links and switches back to Overview', async () => {
     await mount('/dashboard/apps/alpha?tab=Metrics');
-    const pages = screen.getByRole('group', { name: 'Overview pages' });
-    expect(within(pages).getByRole('button', { name: 'Metrics' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    );
-    within(pages).getByRole('button', { name: 'Overview' }).focus();
-    await userEvent.keyboard('{Enter}');
+    const section = screen.getByRole('combobox', { name: 'Section' });
+    expect(section).toHaveValue('Metrics');
+    await userEvent.selectOptions(section, 'Overview');
     expect(await screen.findByRole('region', { name: 'Latest release' })).toBeInTheDocument();
   });
 });
@@ -372,8 +530,8 @@ describe('App log investigation links', () => {
       router.history.back();
     });
     await waitFor(() => expect(screen.getByLabelText('Instance to read')).toHaveValue(instance));
-    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Overview');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
     expect(screen.getByLabelText('Archive date')).toHaveValue('2026-09-28');
   });
   it('rejects invalid log parameters even when another tab validator preserves unknown context', async () => {
@@ -436,4 +594,21 @@ describe('App header', () => {
         .map((item) => item.textContent)
     ).toEqual(['Park', 'Restart', 'Roll back']);
   });
+});
+
+describe('Invoke deep links', () => {
+  it.each(['invoke=1', 'invoke=true', 'tab=Invoke'])(
+    'opens the Invoke sheet from %s and preserves context when closed',
+    async (query) => {
+      const router = await mount(`/dashboard/apps/alpha?${query}&keep=yes#context`);
+      expect(await screen.findByRole('dialog', { name: 'Invoke' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Invoke' })).not.toBeInTheDocument()
+      );
+      expect(router.state.location.search.invoke).toBeUndefined();
+      expect(router.state.location.search.keep).toBe('yes');
+      expect(router.state.location.hash).toBe('context');
+    }
+  );
 });

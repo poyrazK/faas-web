@@ -6,6 +6,7 @@ import type { Workflow } from '@/lib/mock-data';
 import type { Deployment } from '@/lib/api/queries';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { publicAppUrl } from '@/lib/app-url';
+import { runtimeLabel } from './app-tile-words';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 
@@ -88,7 +89,7 @@ export function AppHeader({
         <Link
           to="/dashboard/projects/$projectSlug"
           params={{ projectSlug: project }}
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           <ArrowLeft className="h-3 w-3" />
           Project {project}
@@ -96,7 +97,7 @@ export function AppHeader({
       ) : (
         <Link
           to="/dashboard/projects"
-          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           <ArrowLeft className="h-3 w-3" />
           Projects
@@ -111,7 +112,7 @@ export function AppHeader({
             <span
               role="group"
               aria-label="App status"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
+              className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs"
             >
               <Circle
                 aria-hidden
@@ -122,7 +123,7 @@ export function AppHeader({
             </span>
           </div>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-            <span>{app.runtime}</span>
+            <span title={app.runtime}>{runtimeLabel(app.runtime)}</span>
             <span aria-hidden>·</span>
             <span>{app.memoryMb} MB</span>
             {endpoint.kind !== 'none' && <span aria-hidden>·</span>}

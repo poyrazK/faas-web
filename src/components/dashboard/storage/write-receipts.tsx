@@ -127,7 +127,7 @@ export function WriteReceipts({ slug, bucket }: { slug: string; bucket: ObjectBu
         </form>
       </div>
       {receiptId && (
-        <div className="rounded-xl border border-border">
+        <div className="well rounded-xl bg-muted/40">
           {onePhase !== 'ready' || !one.data ? (
             <div className="px-4 py-3">
               <InlinePhase phase={onePhase} error={one.error} onRetry={() => void one.refetch()} />
@@ -152,7 +152,7 @@ export function WriteReceipts({ slug, bucket }: { slug: string; bucket: ObjectBu
       ) : (
         <ul
           aria-label={`${STATUSES.find((s) => s.key === status)?.label} receipts`}
-          className="flex flex-col divide-y divide-border rounded-xl border border-border"
+          className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40"
         >
           {items.map((r) => (
             <ReceiptRow key={r.id} receipt={r} />

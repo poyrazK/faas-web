@@ -71,10 +71,9 @@ function Insights({ slug }: { slug: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <Panel
-        title="Workflow insights"
-        description={`${stage ? `${stage} · ` : ''}What your app reports about its business workflows through Operations: which need attention, how they ended and how long they take. Separate from the durable runs on the Workflows page.`}
-      >
+      <Panel title="Workflow insights">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`${stage ? `${stage} · ` : ''}What your app reports about its business workflows through Operations: which need attention, how they ended and how long they take. Separate from the durable runs on the Workflows page.`}</p>
+
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
@@ -165,9 +164,9 @@ function ReasonBadge({ reason }: { reason: AttentionReason }) {
   const Icon = cfg.icon;
   return (
     <span
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
       style={{
-        borderColor: `color-mix(in oklab, ${cfg.color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklab, ${cfg.color} 14%, transparent)`,
         color: cfg.color,
       }}
     >
@@ -187,10 +186,9 @@ function Attention({ slug, scope, workflow }: { slug: string; scope: string; wor
   const items = useMemo(() => queue.data?.pages.flatMap((p) => p.items) ?? [], [queue.data]);
   const t = summary.data?.totals;
   return (
-    <Panel
-      title="Needs attention"
-      description={`Workflows in ${scope} with blockers, stale or overdue states, or broken SLAs, as last reported. A live queue: entries move as reports arrive.`}
-    >
+    <Panel title="Needs attention">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{`Workflows in ${scope} with blockers, stale or overdue states, or broken SLAs, as last reported. A live queue: entries move as reports arrive.`}</p>
+
       <div className="flex flex-col gap-5">
         {!t ? (
           <InlinePhase
@@ -240,7 +238,7 @@ function Attention({ slug, scope, workflow }: { slug: string; scope: string; wor
           onRetry={() => void queue.refetch()}
         />
         {items.length > 0 && (
-          <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+          <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
             {items.map((e) => (
               <AttentionItem
                 key={`${e.operation_id}:${e.state.workflow}:${e.state.instance_id}`}
@@ -357,10 +355,13 @@ function Outcomes({ slug, scope, workflow }: { slug: string; scope: string; work
     { key: 'count', label: 'Workflows', numeric: true },
   ];
   return (
-    <Panel
-      title="Outcomes"
-      description="Finished workflows that reported a business result, each counted once by its latest report. Finishing alone is not an outcome."
-    >
+    <Panel title="Outcomes">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Finished workflows that reported a business result, each counted once by its latest report. Finishing alone is not an outcome.'
+        }
+      </p>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SegmentedControl
@@ -388,7 +389,7 @@ function Outcomes({ slug, scope, workflow }: { slug: string; scope: string; work
         {items.length > 0 && (
           <section aria-label="Latest outcomes" className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Latest outcomes</h3>
-            <ul className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+            <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
               {items.map((o) => (
                 <li
                   key={`${o.operation_id}:${o.state.workflow}:${o.state.instance_id}`}
@@ -458,10 +459,13 @@ const pct = (d: Duration | undefined) =>
 function Performance({ slug, scope, workflow }: { slug: string; scope: string; workflow: string }) {
   const q = usePerformanceSummary(slug, scope, workflow);
   return (
-    <Panel
-      title="Performance"
-      description="How long the latest 100 finished and 100 ongoing instances spend in each state and blocked, as p50 · p95. Instances with gaps in their history are left out and counted."
-    >
+    <Panel title="Performance">
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'How long the latest 100 finished and 100 ongoing instances spend in each state and blocked, as p50 · p95. Instances with gaps in their history are left out and counted.'
+        }
+      </p>
+
       {!workflow ? (
         <p className="text-sm text-muted-foreground">
           Name a workflow above to compare its instances.
@@ -668,7 +672,7 @@ function Slowest({
         ) : q.data.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No measured instance contributes to this.</p>
         ) : (
-          <ol className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+          <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
             {q.data.items.map((i) => (
               <li
                 key={`${i.operation_id}:${i.state.instance_id}`}

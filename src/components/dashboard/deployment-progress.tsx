@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useConsoleReducedMotion } from './use-console-reduced-motion';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Check, NavArrowDown, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -60,6 +62,7 @@ export function DeploymentProgress({
   onTerminal,
   hideRetryOptions = false,
   appSlug,
+  accountId,
 }: {
   appCreated: boolean;
   appName: string;
@@ -74,15 +77,21 @@ export function DeploymentProgress({
   hideRetryOptions?: boolean;
   /** Once live, shows how to call the app and tail its logs. */
   appSlug?: string;
+  accountId?: string;
 }) {
+  const reduce = useConsoleReducedMotion();
   const navigate = useNavigate();
   const outputRef = useRef<HTMLDetailsElement>(null);
-  const statusQuery = useDeployment(deploymentId ?? '', {
-    refetchInterval: (query) => {
-      if (!deploymentId || isDeploymentTerminal(query.state.data?.status)) return false;
-      return 2_500;
+  const statusQuery = useDeployment(
+    deploymentId ?? '',
+    {
+      refetchInterval: (query) => {
+        if (!deploymentId || isDeploymentTerminal(query.state.data?.status)) return false;
+        return 2_500;
+      },
     },
-  });
+    accountId
+  );
   const origin = source ?? { kind: 'git' as const, repo: repo ?? '', ref: sourceRef ?? 'main' };
   const image = origin.kind === 'image';
   const hasBuildOutput = Boolean(deploymentId && (!image || statusQuery.data?.build_id));
@@ -184,7 +193,7 @@ export function DeploymentProgress({
 
   return (
     <section aria-label="First deployment" className="flex flex-col gap-6">
-      <div className="@container flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="@container flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         <div className="flex items-start gap-3.5 px-4 py-4">
           <span
             aria-hidden
@@ -231,15 +240,33 @@ export function DeploymentProgress({
                   aria-current={state === 'current' ? 'step' : undefined}
                   className="flex items-center gap-2 text-[13px]"
                 >
-                  {i > 0 && <span aria-hidden className="h-px w-5 bg-border" />}
-                  <span aria-hidden className="flex h-4 w-4 items-center justify-center">
-                    {state === 'done' ? (
-                      <Check className="h-4 w-4 text-brand" />
-                    ) : state === 'current' ? (
-                      <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
-                    ) : (
-                      <span className="h-1.5 w-1.5 rounded-full bg-border-secondary" />
-                    )}
+                  {i > 0 && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'console-deploy-connector h-px w-5',
+                        state === 'upcoming' ? 'bg-border' : 'bg-brand/60'
+                      )}
+                    />
+                  )}
+                  <span aria-hidden className="relative flex h-4 w-4 items-center justify-center">
+                    <AnimatePresence initial={false}>
+                      <motion.span
+                        key={state}
+                        initial={reduce ? false : { opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: reduce ? 0 : 0.18 }}
+                        className="flex items-center justify-center"
+                      >
+                        {state === 'done' ? (
+                          <Check className="h-4 w-4 text-brand" />
+                        ) : state === 'current' ? (
+                          <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-border-secondary" />
+                        )}
+                      </motion.span>
+                    </AnimatePresence>
                   </span>
                   <span
                     className={cn(

@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Calendar } from 'iconoir-react';
+import { Stats, StatTile } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
-import { StatTile } from '@/components/dashboard/primitives';
 import { Button } from '@/components/ui/button';
-import { JobScheduleDialog, jobScheduleRows } from './job-schedule';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useJob, useJobRun } from '@/lib/api/queries';
+import { Calendar } from 'iconoir-react';
+import { useState } from 'react';
+import { JobScheduleDialog, jobScheduleRows } from './job-schedule';
+import { shortTime } from '@/lib/time';
 
 /**
  * The two job reads the list cannot carry: what a job is defined to do, and
@@ -68,7 +69,7 @@ export function JobDefinition({ name }: { name: string }) {
           ['Task timeout', seconds(data.task_timeout_sec)],
           ['Max parallelism', String(data.max_parallelism)],
           ['Retries per task', String(data.retry_max)],
-          ['Updated', new Date(data.updated_at).toLocaleString()],
+          ['Updated', shortTime(data.updated_at)],
         ].map(([label, value]) => (
           <div key={label} className="flex min-w-0 flex-col gap-0.5">
             <dt className="label-mono text-muted-foreground">{label}</dt>
@@ -148,7 +149,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
           <span className="text-muted-foreground">up to {data.retry_max} retries</span>
         )}
       </div>
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <Stats columns={6}>
         <StatTile label="Tasks" value={data.tasks} />
         <StatTile label="Succeeded" value={data.tasks_succeeded} />
         <StatTile label="Running" value={data.tasks_running} tone="orange" />
@@ -160,7 +161,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
           note={data.dead_letter_count > 0 ? 'exhausted every retry' : undefined}
           tone="red"
         />
-      </div>
+      </Stats>
     </div>
   );
 }

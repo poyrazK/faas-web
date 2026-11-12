@@ -9,6 +9,8 @@ import {
   useIssueHistory,
   type IssueHistoryKind,
 } from '@/lib/api/issues';
+import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
 
 type Props = { accountId: string; slug: string; issueId: string; onBack: () => void };
 
@@ -177,9 +179,9 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                 {detail.data.impact.unattributed_events} unattributed events
               </p>
               <p className="text-xs text-muted-foreground">
-                Observed from {new Date(detail.data.impact.window_start).toLocaleString()} to{' '}
-                {new Date(detail.data.impact.window_end).toLocaleString()}. Impact reflects
-                retained, verified attribution only and may omit unreported failures.
+                Observed from <Timestamp value={detail.data.impact.window_start} mode="absolute" />{' '}
+                to <Timestamp value={detail.data.impact.window_end} mode="absolute" />. Retained,
+                verified reports only.
               </p>
             </div>
           )}
@@ -237,7 +239,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
             <div className="flex flex-wrap items-end gap-2 text-xs">
               <label className="flex flex-col gap-1">
                 Deployment containing the fix
-                <select
+                <Select
                   aria-label="Fix deployment"
                   value={fixDeployment}
                   onChange={(event) => setFixDeployment(event.target.value)}
@@ -249,7 +251,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
                       {row.id} · {row.status}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <Button
                 variant="outline"

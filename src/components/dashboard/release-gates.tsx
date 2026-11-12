@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD, FieldError, Select } from '@/components/ui/field';
@@ -20,10 +21,16 @@ import {
   type GateKind,
 } from '@/lib/api/release-gates';
 import { cn } from '@/lib/utils';
-import { InlinePhase, Panel, queryPhase } from './primitives';
+import { Sheet } from './kit/sheet';
+import { InlinePhase, queryPhase } from './primitives';
+import { SafetyCard } from './release-safety-card';
+import { gateCardWords } from './release-safety-words';
 
 const METRIC = /^[a-z][a-z0-9_]{0,62}$/;
 const kindLabel = (k: GateKind) => GATE_KINDS.find((g) => g.key === k)?.label ?? k;
+/** "More than…" reads as "more than…" mid-sentence; "SLO…" and "AI…" keep their capitals. */
+const lowerFirst = (text: string) =>
+  /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
 const int = (v: string) => (v.trim() === '' ? undefined : Number(v));
 
 function Field({
@@ -92,70 +99,86 @@ export function ReleaseGates({ slug }: { slug: string }) {
     }
   };
 
+  const words = phase === 'ready' || phase === 'empty' ? gateCardWords(list) : undefined;
+  const full = list.length >= GATES_PER_APP;
+
   return (
-    <section aria-label="Release gates">
-      <Panel
-        title="Release gates"
-        description={`${stage ? `${stage} · ` : ''}Stop a rollout on your own signals. A failed gate aborts the canary, or rolls the release back within 30 minutes of reaching 100%. A gate without enough samples is listed as not judged and never holds a rollout.`}
-        actions={
-          !adding && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={list.length >= GATES_PER_APP}
-              title={
-                list.length >= GATES_PER_APP ? `At most ${GATES_PER_APP} gates per app.` : undefined
-              }
-              onClick={() => setAdding(true)}
+    <SafetyCard
+      id="release-gates"
+      title="Rollout checks"
+      term="Release gates"
+      stage={stage}
+      word={words?.word}
+      tone={words?.tone}
+      help={
+        <>
+          Also called release gates. Every rollout already stops on 5xx errors, latency, crashes and
+          memory. A check of your own is judged on every canary step and for 30 minutes after a
+          release reaches 100%: a failed check aborts the canary or rolls the release back. A check
+          without enough samples is not judged and never holds a rollout. At most {GATES_PER_APP}{' '}
+          per app.
+        </>
+      }
+      sentence={
+        words ? (
+          words.sentence
+        ) : (
+          <InlinePhase
+            phase={phase}
+            error={gates.error}
+            loadingMessage="Reading release gates…"
+            onRetry={() => void gates.refetch()}
+          />
+        )
+      }
+      action={
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={full}
+          title={full ? `At most ${GATES_PER_APP} checks per app.` : undefined}
+          onClick={() => setAdding(true)}
+        >
+          <Plus aria-hidden className="h-3.5 w-3.5" />
+          Add a check
+        </Button>
+      }
+    >
+      {phase === 'ready' && (
+        <ul aria-label="Rollout checks" className="flex flex-col divide-y divide-border/60">
+          {list.map((gate) => (
+            <li
+              key={gate.name}
+              className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2.5"
             >
-              Add gate
-            </Button>
-          )
-        }
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <p className="text-sm">Stops on {lowerFirst(gateRule(gate))}</p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono">{gate.name}</span> · {kindLabel(gate.kind)} · judged
+                  after {gate.min_samples} samples · added by {gate.created_by}{' '}
+                  <Timestamp value={gate.created_at} />
+                </p>
+              </div>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={remove.isPending}
+                onClick={() => void onRemove(gate.name)}
+              >
+                Remove <span className="sr-only">{gate.name}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Sheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        title={`Add a rollout check to ${slug}`}
       >
-        <div className="flex flex-col gap-4">
-          {adding && <NewGateForm slug={slug} onDone={() => setAdding(false)} />}
-          {phase !== 'ready' ? (
-            <InlinePhase
-              phase={phase}
-              error={gates.error}
-              loadingMessage="Reading release gates…"
-              emptyMessage={`${slug} has no release gates. Its rollouts still stop on 5xx, latency, crashes and memory.`}
-              onRetry={() => void gates.refetch()}
-            />
-          ) : (
-            <ul className="divide-y divide-border">
-              {list.map((gate) => (
-                <li
-                  key={gate.name}
-                  className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3"
-                >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="flex flex-wrap items-center gap-x-3 text-sm">
-                      <span className="font-mono font-medium">{gate.name}</span>
-                      <span className="text-xs text-muted-foreground">{kindLabel(gate.kind)}</span>
-                    </p>
-                    <p className="text-xs">Fails on: {gateRule(gate)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Judged after {gate.min_samples} samples · added by {gate.created_by}{' '}
-                      <Timestamp value={gate.created_at} />
-                    </p>
-                  </div>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={remove.isPending}
-                    onClick={() => void onRemove(gate.name)}
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Panel>
-    </section>
+        {adding && <NewGateForm slug={slug} onDone={() => setAdding(false)} />}
+      </Sheet>
+    </SafetyCard>
   );
 }
 
@@ -179,6 +202,7 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
   const [increase, setIncrease] = useState('50');
   const [samples, setSamples] = useState('');
   const [tried, setTried] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [refusal, setRefusal] = useState('');
   const slos = useAppSLOs(slug, kind === 'slo');
   const checks = useAppSyntheticChecks(slug, kind === 'synthetic');
@@ -248,14 +272,14 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
       const gate = await create.mutateAsync(body());
       toast({
         kind: 'success',
-        title: `Gate ${gate.name} added`,
+        title: `Check ${gate.name} added`,
         description: 'The next rollout judges it.',
       });
       onDone();
     } catch (err) {
       setRefusal(
         err instanceof ApiError && err.code === 'release_gate_limit'
-          ? `An app holds at most ${GATES_PER_APP} gates; remove one first.`
+          ? `An app holds at most ${GATES_PER_APP} checks; remove one first.`
           : errorMessage(err)
       );
     }
@@ -283,7 +307,7 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
     <form
       noValidate
       aria-label="New release gate"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -402,15 +426,24 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
             </Field>
           </>
         )}
-        <Field
-          id="gate-samples"
-          label="Minimum samples"
-          error={shown('samples')}
-          hint={kind === 'synthetic' ? 'Blank: 6 probes.' : 'Blank: 20.'}
-        >
-          {input('gate-samples', samples, setSamples, { type: 'number' })}
-        </Field>
       </div>
+      <details
+        open={advanced || Boolean(shown('samples'))}
+        onToggle={(e) => setAdvanced(e.currentTarget.open)}
+        className="border-t border-border pt-4"
+      >
+        <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+        <div className="grid gap-3 pt-4 sm:grid-cols-3">
+          <Field
+            id="gate-samples"
+            label="Minimum samples"
+            error={shown('samples')}
+            hint={kind === 'synthetic' ? 'Blank: 6 probes.' : 'Blank: 20.'}
+          >
+            {input('gate-samples', samples, setSamples, { type: 'number' })}
+          </Field>
+        </div>
+      </details>
       {refusal && (
         <p role="alert" className="text-xs text-[color:var(--status-critical)]">
           {refusal}
@@ -418,7 +451,7 @@ function NewGateForm({ slug, onDone }: { slug: string; onDone: () => void }) {
       )}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" busy={create.isPending}>
-          Add gate
+          Add check
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel

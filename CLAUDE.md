@@ -76,7 +76,11 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   `MOCK_HAS_PASSWORD=1` boots with a password already set
   (`mock-current-password`); `MOCK_MFA=1` boots MFA-enrolled so set-password
   demands a step-up (any six digits verify); `MOCK_MFA=required` boots with the
-  policy on and nothing enrolled, so it demands enrolment first.
+  policy on and nothing enrolled, so it demands enrolment first;
+  `MOCK_MFA=pending` boots an MFA user's fresh sign-in, where every request but
+  the account view and the MFA routes is refused `mfa_required` until a code
+  verifies — the state in which polls and focus refetches keep hitting the
+  session gate behind the MFA modal.
   `MOCK_EMPTY=1` also starts with GitHub disconnected; the "Connect GitHub" form
   post marks it connected and 303s back to the form's `return_to` with
   `?github=connected`, after which the repo picker lists seeded repos.
@@ -124,6 +128,36 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   not mean `npm run check` passes — run the latter before claiming done.
 - **Sign in with a real email and password.** The `123456` demo code is gone —
   the API has no one-time-code flow. Signup enforces a 12-character minimum.
+- **Use concise, plain English** — and follow `docs/console-plain-english.md`
+  (answer first, one obvious action, plain words before technical terms, detail
+  on request, change over time as a picture). Show essential scope and effects in place;
+  secondary technical details can go in `help` or an expandable section. Edge
+  rule rows lead with their saved outcome and values, including paused and log-only
+  states. Open the row for technical settings; keep generic kind descriptions inside
+  the editor. Country names, destinations and limits belong in the row summary.
+  Accent only the action and key values in brand green; keep connective prose
+  neutral, including on hover. Apply this to the creation preview as well.
+  Add rule starts with plain-English outcomes and essential inputs. Keep full
+  technical fields under Advanced settings, sharing the same action draft. Do not
+  discard invalid JSON on collapse or silently save its last valid value. Creation
+  defaults to every path on the selected app; the preview must show custom scope,
+  paused/log-only behavior and the effective validation mode.
+  Preserve the seven-source New app wizard and its deployment recovery. App
+  Metrics uses the customizable `AnalyticsGrid`; the Overview keeps its greeting,
+  search and columns, and its Analytics section is six number cards
+  (`components/dashboard/overview-analytics/`): requests, error rate and wake
+  p95 from `/v1/apps/metrics` under one range, memory now from instances, and
+  GB-hours and CPU from the usage summary. Scalars stay numbers, never lines. Metric cards open the
+  URL-backed `MetricInspectorProvider` without changing the underlying route.
+  Drag handles and menus remain separate from the card's detail button. Sidebar
+  disclosures, the foil New app control, and profile rim retain main's motion
+  and respect reduced-motion preferences.
+  Check `/dashboard/kit` (dev only) after changing a primitive. Analytics controls
+  must share one time window for every figure they govern; never chart account
+  scalars or average hourly percentiles into a window percentile. Request history
+  uses UTC and explicit retained bounds; comparisons use equal groups of complete
+  hours within that window, excluding partial hours. Account metrics are platform
+  snapshots (latency covers 2xx); request records include all response statuses.
 - **Do not add `dark:` variants or literal hex to components.** The two
   polarities are token-driven in `index.css`; a component that needs a new
   colour needs a new token defined in _both_ `:root` and `.console`.

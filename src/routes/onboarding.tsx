@@ -1,3 +1,7 @@
+import { hasOnboardingRecovery } from '@/lib/onboarding-draft';
+import { OnboardingResume } from '@/components/onboarding/onboarding-resume';
+import { featureFlags } from '@/lib/feature-flags';
+import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
@@ -14,8 +18,29 @@ export const Route = createFileRoute('/onboarding')({
   beforeLoad: ({ location }) => {
     if (!readSession()) throw redirect({ to: '/login', search: { next: location.href } });
   },
-  component: OnboardingPage,
+  component: OnboardingBoundary,
 });
+
+function OnboardingBoundary() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { account, user } = useAuth();
+  if (featureFlags.onboardingV2)
+    return (
+      <OnboardingFlow
+        search={search}
+        onSearchChange={(next, options) => void navigate({ search: next, ...options })}
+      />
+    );
+  if (search.recovery) return <OnboardingPage />;
+  if (
+    account?.id &&
+    user?.email?.toLowerCase() === account.email?.toLowerCase() &&
+    hasOnboardingRecovery(account.id)
+  )
+    return <OnboardingResume account={account.id} fallback={<OnboardingPage />} />;
+  return <OnboardingPage />;
+}
 
 function OnboardingPage() {
   const search = Route.useSearch();

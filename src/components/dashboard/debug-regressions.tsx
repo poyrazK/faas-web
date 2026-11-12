@@ -15,6 +15,7 @@ import {
   type Regression,
 } from './debug-search';
 import { InlinePhase, queryPhase } from './primitives';
+import { Select } from '@/components/ui/field';
 import { RegressionState } from './debug-regression-state';
 import { RegressionTriage } from './debug-triage';
 
@@ -145,7 +146,7 @@ export function DebugRegressions({
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
           Window
-          <select
+          <Select
             aria-label="Regression window"
             value={since}
             onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
@@ -156,7 +157,7 @@ export function DebugRegressions({
                 {w}
               </option>
             ))}
-          </select>
+          </Select>
           {data?.since && data.since !== since && (
             <span>Plan retention capped this to {data.since}.</span>
           )}
@@ -183,7 +184,7 @@ export function DebugRegressions({
           onRowClick={(row) => onSelect({ regression: row.id })}
         />
         {search.regression && !isPending && !error && (
-          <section aria-label="Regression details" className="rounded-lg border border-border p-4">
+          <section aria-label="Regression details" className="well rounded-xl bg-muted/40 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Regression details</h3>
               <Button size="xs" variant="ghost" onClick={() => onSelect({ regression: undefined })}>
@@ -346,10 +347,7 @@ function PreviewDetail({
       </a>
       <h4 className="text-sm font-medium">Requests on this release and route</h4>
       <p className="text-xs text-muted-foreground">
-        Sample: up to {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows for this exact route in the selected
-        window across all deployments, then filtered to this deployment. Individual regression
-        membership is confirmed in request evidence. Other matching requests may exist outside this
-        sample; it is not the aggregate count.
+        Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests on this route.
       </p>
       {requests.error || requests.isPending ? (
         <>
@@ -375,8 +373,7 @@ function PreviewDetail({
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No request rows for this deployment in the loaded route sample (up to{' '}
-          {DEBUG_REQUEST_SAMPLE_LIMIT} recent rows).
+          No request rows for this deployment in the loaded route sample.
         </p>
       )}
     </div>

@@ -74,7 +74,7 @@ it('distinguishes duplicate acceptance, pending routing and unverified run execu
   await userEvent.click(screen.getByRole('button', { name: 'Look up receipt' }));
   expect(screen.getByText(/duplicate/i)).toBeInTheDocument();
   expect(screen.getByText(/routing pending/i)).toBeInTheDocument();
-  expect(screen.getByText(/do not prove.*run succeeded/i)).toBeInTheDocument();
+  expect(screen.getByText(/does not mean.*run succeeded/i)).toBeInTheDocument();
 });
 
 it.each(['enqueued', 'failed', 'filtered', 'ignored'] as const)(

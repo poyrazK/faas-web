@@ -4,6 +4,7 @@ import { Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -20,6 +21,7 @@ import { goToExternal } from '@/lib/external-navigation';
 import { consoleHead } from '@/lib/seo';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useBillingStatus } from '@/lib/api/billing-identity';
 import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 
 export const Route = createFileRoute('/dashboard/plans')({
@@ -73,18 +75,30 @@ const PLANS: { id: Plan; name: string; blurb: string; includes: string[] }[] = [
 
 /** Subscription controls the billing portal buries: retry a failed charge
  * without leaving the console, or schedule a cancel that keeps the account
- * alive until the period ends. */
+ * alive until the period ends.
+ *
+ * Only an account with a provider subscription has anything to cancel. Free
+ * has none (apid answers `billing_already_cancelled`), and with billing
+ * disabled every provider operation answers 501, so the panel waits for
+ * `GET /v1/billing/status` and renders nothing in either case. If that read
+ * fails, the plan decides: a paid plan keeps its controls. */
 function BillingControlsPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { account } = useAuth();
+  const status = useBillingStatus();
   const cancel = useCancelBilling();
   const retry = useRetryBilling();
+
+  const hasSubscription = status.data
+    ? status.data.enabled && status.data.subscription_configured
+    : status.isError && account?.plan !== undefined && account.plan !== 'free';
+  if (!hasSubscription) return null;
 
   return (
     <Panel
       title="Subscription"
-      description="Cancelling takes effect at the end of the current period — nothing stops today."
+      help="Cancelling takes effect at the end of the current period. Nothing stops today."
     >
       <div className="flex flex-wrap items-center gap-3">
         {account?.status === 'past_due' && (
@@ -168,7 +182,7 @@ function PlansPage() {
   if (!org) return <PersonalPlans />;
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Plans" description={`The plan ${label} pays for.`} />
+      <PageHeader title="Plans" />
       <OrgPlanSummary org={org} label={label} />
       <SpendCap />
     </div>
@@ -313,7 +327,7 @@ function PersonalPlans() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Plans"
-        description="Quotas and features per plan. Pricing and payment methods live in the billing portal."
+        help="Pricing and payment methods live in the billing portal."
         actions={
           <Button
             size="sm"
@@ -340,12 +354,13 @@ function PersonalPlans() {
           </Button>
         }
       />
+      <AppCapacity />
 
       {awaiting && requested && (
         <div
           role="status"
           aria-label="Plan change pending"
-          className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"
+          className="surface rounded-[1.25rem] bg-card px-4 py-3 text-sm text-muted-foreground"
         >
           A change to the {planName(requested.plan)} plan was requested. You stay on{' '}
           {current ? planName(current) : 'your current plan'} until the billing provider confirms it
@@ -362,7 +377,7 @@ function PersonalPlans() {
           return (
             <div
               key={plan.id}
-              className="flex flex-col gap-4 rounded-xl border bg-card p-5 transition-colors"
+              className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-5 transition-colors"
               style={
                 isCurrent
                   ? { borderColor: 'color-mix(in oklab, var(--brand) 55%, transparent)' }

@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { FIELD } from '@/components/ui/field';
+import { FIELD, Select } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
@@ -34,7 +34,7 @@ function MaturityTag({ maturity }: { maturity?: string }) {
   const label = maturity === 'beta' ? 'Beta' : maturity === 'preview' ? 'Preview' : '';
   if (!label) return null;
   return (
-    <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+    <span className="label-mono rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
       {label}
     </span>
   );
@@ -240,16 +240,13 @@ function AliasesBody({
   return (
     <Panel
       title="Deployment aliases"
-      description="Stable URLs that each serve one exact release. Pointing, moving or removing one never changes production traffic."
+      help="Each alias serves one exact release. Pointing, moving or removing one never changes production traffic."
       actions={<MaturityTag maturity={capability?.maturity} />}
     >
       <div className="flex flex-col gap-4">
         {phase === 'empty' ? (
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <p>
-              No aliases yet. Point one at a release to give it a URL that stays put while newer
-              releases ship, for a reviewer, a partner, or a test suite.
-            </p>
+            <p>No aliases yet.</p>
             <span className="flex min-w-0 items-center gap-1 rounded-md bg-muted/40 px-3 py-1.5">
               <code className="min-w-0 truncate font-mono text-xs">{command}</code>
               <CopyIconButton text={command} label="alias set command" />
@@ -338,7 +335,7 @@ function AliasesBody({
                   }}
                   className={cn(FIELD, 'w-44 font-mono')}
                 />
-                <select
+                <Select
                   aria-label="Release"
                   value={target?.id ?? ''}
                   onChange={(event) => {
@@ -352,7 +349,7 @@ function AliasesBody({
                       {releaseOption(d)}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <Button type="submit" size="sm" variant="outline" busy={busy}>
                   {moving ? 'Move alias' : 'Set alias'}
                 </Button>
@@ -408,10 +405,7 @@ function HereBody({
   };
 
   return (
-    <section
-      aria-label="Aliases"
-      className="flex flex-col gap-3 rounded-lg border border-border p-4"
-    >
+    <section aria-label="Aliases" className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
       <div className="flex items-center gap-2">
         <h3 className="label-mono text-muted-foreground">Aliases</h3>
         <MaturityTag maturity={maturity} />
@@ -461,8 +455,7 @@ function HereBody({
           </form>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Only a live or in-progress release can take an alias. Roll back to this one or redeploy
-            it first.
+            Only a live or in-progress release can take an alias.
           </p>
         ))}
       {problem && <Problem text={problem} />}

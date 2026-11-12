@@ -94,13 +94,14 @@ beforeEach(() => {
 });
 
 describe('EdgeWAFReview', () => {
-  it('groups detections by rule, CRS rule and path, with the assessment and why', () => {
+  it('groups detections by rule, CRS rule and path, with the assessment and why', async () => {
     render(<EdgeWAFReview slug="api" rules={[waf]} />);
     const fp = screen.getByRole('group', { name: 'CRS 942100 on /api/search' });
     expect(within(fp).getByText('likely false positive')).toBeInTheDocument();
     expect(within(fp).getByText(/12 clients were flagged/)).toBeInTheDocument();
     expect(within(fp).getByText(/40 blocked/)).toBeInTheDocument();
-    expect(screen.getByText(/counts are lower bounds/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'About WAF review' }));
+    expect(await screen.findByText(/counts are lower bounds/)).toBeInTheDocument();
   });
 
   it('says exactly what an exclusion lets through before adding it', async () => {

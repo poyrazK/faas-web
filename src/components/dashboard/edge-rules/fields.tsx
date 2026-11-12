@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Plus, Xmark } from 'iconoir-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { Select } from '@/components/ui/field';
 
 /**
  * The controls the thirteen edge-rule forms are built from.
@@ -128,9 +129,11 @@ export function SelectField<T extends string>({
 }) {
   return (
     <Field label={label} hint={hint} error={error} className={className}>
-      <select
+      <Select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
+        aria-label={label}
+        aria-description={error ?? hint}
         aria-invalid={error ? true : undefined}
         className={INPUT}
       >
@@ -139,7 +142,7 @@ export function SelectField<T extends string>({
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
     </Field>
   );
 }
@@ -453,7 +456,7 @@ export function HeaderOpsField({
       <div className="flex flex-col gap-1.5">
         {value.map((op, i) => (
           <div key={i} className="flex items-center gap-2">
-            <select
+            <Select
               value={op.action}
               onChange={(e) =>
                 update(i, {
@@ -467,7 +470,7 @@ export function HeaderOpsField({
               <option value="set">set</option>
               <option value="add">add</option>
               <option value="remove">remove</option>
-            </select>
+            </Select>
             <input
               value={op.name}
               onChange={(e) => update(i, { name: e.target.value })}
@@ -557,6 +560,7 @@ export function JsonField({
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           onBlur={(e) => parse(e.target.value)}
+          data-invalid-json={parseError ? true : undefined}
           aria-invalid={parseError || error ? true : undefined}
           className={cn(INPUT, 'h-auto resize-y py-2 font-mono text-xs leading-relaxed')}
         />
@@ -629,6 +633,7 @@ export function JsonValueField({
         spellCheck={false}
         onChange={(e) => setText(e.target.value)}
         onBlur={(e) => parse(e.target.value)}
+        data-invalid-json={parseError ? true : undefined}
         aria-invalid={parseError || error ? true : undefined}
         className={cn(INPUT, 'h-auto resize-y py-2 font-mono text-xs leading-relaxed')}
       />

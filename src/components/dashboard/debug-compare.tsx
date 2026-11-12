@@ -12,6 +12,7 @@ import { useAppDeployments, useCompareDeployments } from '@/lib/api/queries';
 import { errorMessage } from '@/lib/api/errors';
 import { DebugGate, isPlanGated } from './debug-gate';
 import { WINDOWS, type DebugSelection } from './debug-search';
+import { Select } from '@/components/ui/field';
 
 /**
  * Per-route latency for two deployments over one window.
@@ -218,7 +219,7 @@ function AppDeploymentCompare({
             {[['A', setSource] as const, ['B', setMirror] as const].map(([label, set]) => (
               <label key={label} className="flex flex-col gap-1.5">
                 <span className="label-mono text-muted-foreground">Deployment {label}</span>
-                <select
+                <Select
                   aria-label={`Deployment ${label}`}
                   value={label === 'A' ? sourceId : mirrorId}
                   onChange={(e) =>
@@ -238,13 +239,13 @@ function AppDeploymentCompare({
                       {o.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             ))}
 
             <label className="flex flex-col gap-1.5">
               <span className="label-mono text-muted-foreground">Window</span>
-              <select
+              <Select
                 aria-label="Compare window"
                 value={since}
                 onChange={(e) => onSinceChange(e.target.value)}
@@ -255,7 +256,7 @@ function AppDeploymentCompare({
                     {w}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
 
             <label className="flex flex-col gap-1.5">
@@ -292,10 +293,6 @@ function AppDeploymentCompare({
               Compare
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            A is the baseline selection; B is the current selection. Git ref metadata is not
-            returned by deployment history.
-          </p>
           {route && (
             <div className="flex items-center gap-3 text-xs">
               <span>
@@ -317,7 +314,7 @@ function AppDeploymentCompare({
           {((source && !sourceId) || (mirror && !mirrorId)) && (
             <p className="text-xs text-muted-foreground">
               A selected deployment is not in the loaded history. Load older deployments or choose
-              another; the URL selection is preserved.
+              another.
             </p>
           )}
 

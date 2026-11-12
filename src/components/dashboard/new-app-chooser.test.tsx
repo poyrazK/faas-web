@@ -37,10 +37,10 @@ describe('NewAppChooser', () => {
   it('names each choice by its source and describes it in one line', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Git repository' })).toHaveAccessibleDescription(
-      'Build and deploy a function or an app from a branch, tag, or commit.'
+      'Choose a GitHub repository and branch. Gregale builds and deploys your code.'
     );
     expect(screen.getByRole('button', { name: 'Import' })).toHaveAccessibleDescription(
-      'Turn a repository with several services into a project.'
+      'Upload a repository archive. Preview and create its apps together.'
     );
   });
 

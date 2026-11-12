@@ -297,8 +297,7 @@ export const KINDS = {
         />
         {value.cors_preset_id ? (
           <p className="text-xs text-muted-foreground">
-            This rule serves the preset's policy. Clear the preset above to set origins and methods
-            on the rule itself.
+            This rule serves the preset's policy. Clear the preset to set origins and methods here.
           </p>
         ) : (
           <>

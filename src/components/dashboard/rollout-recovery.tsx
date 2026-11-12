@@ -5,6 +5,7 @@ import { FIELD } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useRecoverRollout, type Deployment } from '@/lib/api/queries';
+import { isRolloutInFlight } from '@/lib/deployment-history-view';
 import { cn } from '@/lib/utils';
 import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 
@@ -27,37 +28,42 @@ import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } fro
  * explained in place with what to do instead.
  */
 
-export function isRolloutInFlight(deployment: Deployment): boolean {
-  return deployment.rollout_state === 'pending' || deployment.rollout_state === 'rolling_out';
-}
+export { isRolloutInFlight } from '@/lib/deployment-history-view';
 
-export function RolloutRecovery({ slug, deployment }: { slug: string; deployment: Deployment }) {
+export type RecoverAction = 'advance' | 'promote' | 'abort';
+
+/**
+ * The recovery request with its confirmations and the refusals faas returns,
+ * shared by this panel and the rollout headline on the Deployments tab.
+ * `abort` zeroes the canary and hands its share back to the live release it
+ * was replacing in the same transaction (faas pgstore.go recoverRollout), so
+ * it reads as a roll back.
+ */
+export function useRolloutRecovery(slug: string) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const recover = useRecoverRollout(slug);
-  const [reason, setReason] = useState('');
   const [refusal, setRefusal] = useState<BindingsGateRefusal | null>(null);
-  if (!isRolloutInFlight(deployment)) return null;
 
-  const act = async (action: 'advance' | 'promote' | 'abort') => {
+  const act = async (action: RecoverAction, reason = ''): Promise<boolean> => {
     if (action !== 'advance') {
       const ok = await confirm(
         action === 'promote'
           ? {
-              title: 'Promote this deployment to all traffic?',
+              title: 'Send all traffic to the new version?',
               description:
-                'The rollout jumps to its final step: this deployment serves 100% and its siblings drop to zero. The remaining canary steps are skipped.',
-              confirmLabel: 'Promote',
+                'The remaining canary steps are skipped: this deployment serves 100% and the version it replaces drops to zero.',
+              confirmLabel: 'Send all traffic',
             }
           : {
-              title: 'Abort this rollout?',
+              title: 'Roll back this rollout?',
               description:
-                'The rollout stops where it is and is marked aborted. Traffic stays as it is now; roll back separately if the previous deployment should serve.',
-              confirmLabel: 'Abort rollout',
+                'The rollout stops and is marked aborted. The new version drops to zero traffic and the version it was replacing serves all of it again. The new version stays in history.',
+              confirmLabel: 'Roll back',
               destructive: true,
             }
       );
-      if (!ok) return;
+      if (!ok) return false;
     }
     setRefusal(null);
     try {
@@ -65,22 +71,22 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
         action,
         ...(action === 'abort' && reason.trim() ? { reason: reason.trim() } : {}),
       });
-      setReason('');
       toast({
         kind: 'success',
         title:
           action === 'advance'
             ? 'Rollout advanced'
             : action === 'promote'
-              ? 'Deployment promoted'
-              : 'Rollout aborted',
+              ? 'All traffic sent to the new version'
+              : 'Rolled back',
         description: `Recorded as audit ${result.audit_id.slice(0, 12)}.`,
       });
+      return true;
     } catch (err) {
       const gate = bindingsGateRefusal(err);
       if (gate) {
         setRefusal(gate);
-        return;
+        return false;
       }
       if (err instanceof ApiError && err.code === 'rollout_not_stuck') {
         toast({
@@ -88,7 +94,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           title: 'The rollout is still moving',
           error: err,
         });
-        return;
+        return false;
       }
       if (err instanceof ApiError && err.code === 'plan_traffic_split_not_allowed') {
         toast({
@@ -96,7 +102,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           title: 'Not on your plan',
           description: 'Canary rollouts and their recovery need the Pro or Scale plan.',
         });
-        return;
+        return false;
       }
       if (err instanceof ApiError && err.code === 'rollout_state_invalid') {
         toast({
@@ -104,18 +110,32 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           title: 'Not in that state any more',
           error: err,
         });
-        return;
+        return false;
       }
       toast({
         kind: 'error',
         title: 'Could not recover the rollout',
         error: err,
       });
+      return false;
     }
   };
 
+  return { act, refusal, isPending: recover.isPending };
+}
+
+export function RolloutRecovery({ slug, deployment }: { slug: string; deployment: Deployment }) {
+  const recovery = useRolloutRecovery(slug);
+  const [reason, setReason] = useState('');
+  if (!isRolloutInFlight(deployment)) return null;
+
+  const act = async (action: RecoverAction) => {
+    if (await recovery.act(action, reason)) setReason('');
+  };
+  const { refusal } = recovery;
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3">
       <p className="label-mono text-muted-foreground">Rollout recovery</p>
       <p className="text-xs text-muted-foreground">
         For a rollout that has stopped moving. Advancing is refused while the platform still sees
@@ -126,7 +146,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           size="xs"
           variant="outline"
           onClick={() => void act('advance')}
-          disabled={recover.isPending}
+          disabled={recovery.isPending}
         >
           Advance
         </Button>
@@ -134,7 +154,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           size="xs"
           variant="outline"
           onClick={() => void act('promote')}
-          disabled={recover.isPending}
+          disabled={recovery.isPending}
         >
           Promote to 100%
         </Button>
@@ -149,7 +169,7 @@ export function RolloutRecovery({ slug, deployment }: { slug: string; deployment
           size="xs"
           variant="ghost"
           onClick={() => void act('abort')}
-          disabled={recover.isPending}
+          disabled={recovery.isPending}
         >
           Abort
         </Button>

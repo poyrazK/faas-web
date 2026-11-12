@@ -41,7 +41,7 @@ export function EdgeRuleRecipes({ slug }: { slug: string }) {
     <div role="region" aria-label="Recipes">
       <Panel
         title="Recipes"
-        description={`${stage ? `${stage} · ` : ''}Ready-made protections. Each adds one rule on every host this app serves, counting what it would refuse until you enforce it.`}
+        help={`${stage ? `${stage} · ` : ''}Ready-made protections. Each adds one rule on every host this app serves, counting what it would refuse until you enforce it.`}
         padded={false}
       >
         <ul className="flex flex-col divide-y divide-border">

@@ -54,10 +54,7 @@ function WebhookReceiptContext({
   });
 
   return (
-    <Panel
-      title="Known event receipt"
-      description="Look up a Stripe event ID you already know. This is a single retained routing receipt, not an event inbox."
-    >
+    <Panel title="Known event receipt">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
         <label className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Stripe event ID</span>
@@ -102,8 +99,7 @@ function WebhookReceiptContext({
             {result.ignored_reason ? ` (${result.ignored_reason.replaceAll('_', ' ')})` : ''}
           </p>
           <p className="text-muted-foreground">
-            Acceptance and routing do not prove the automation run succeeded. Inspect run status
-            separately.
+            Routing does not mean the automation run succeeded.
           </p>
           {result.run_id && (
             <a

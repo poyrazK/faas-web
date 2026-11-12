@@ -6,6 +6,7 @@ const workspace = vi.hoisted(() => ({
   label: 'Personal',
   ready: true,
 }));
+vi.mock('@/components/dashboard/app-capacity', () => ({ AppCapacity: () => null }));
 vi.mock('@tanstack/react-router', () => ({ createFileRoute: () => (options: unknown) => options }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 vi.mock('@/components/dashboard/org-billing', () => ({
@@ -23,6 +24,9 @@ vi.mock('@/lib/api/queries', () => ({
   useBillingPortal: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCancelBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+vi.mock('@/lib/api/billing-identity', () => ({
+  useBillingStatus: () => ({ data: undefined, isError: false }),
 }));
 
 const { Route } = await import('./dashboard.plans');

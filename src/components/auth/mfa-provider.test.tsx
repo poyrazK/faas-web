@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MfaProvider, useMfa } from './mfa-provider';
 
 const api = vi.hoisted(() => ({
@@ -11,6 +11,20 @@ const api = vi.hoisted(() => ({
   verifyMfa: vi.fn(),
 }));
 vi.mock('@/lib/api/queries', () => api);
+
+// The handler the provider registers for an API answer of `mfa_required` —
+// captured so a test can play the background requests a pending session makes.
+const gate = vi.hoisted(() => ({ fire: null as null | ((startedAt: number) => void) }));
+vi.mock('@/lib/api/client', () => ({
+  setMfaRequiredHandler: (handler: ((startedAt: number) => void) | null) => {
+    gate.fire = handler;
+  },
+}));
+
+/** Another request failed with `mfa_required` (a poll, a focus refetch). */
+function mfaRequiredAgain(startedAt = performance.now()) {
+  act(() => gate.fire?.(startedAt));
+}
 
 function Opener({ onVerified, onDismissed }: { onVerified: () => void; onDismissed: () => void }) {
   const { openMfa } = useMfa();
@@ -205,5 +219,132 @@ describe('openMfa completion method and reason', () => {
       screen.getByRole('heading', { name: /multi-factor authentication/i })
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/two-factor/i);
+  });
+});
+
+describe('a session waiting on MFA', () => {
+  // While the session is mfa_pending every request fails with mfa_required —
+  // polls, retries, and the refetch of every query when the window regains
+  // focus, which is exactly when someone comes back from their authenticator
+  // app. Only the first may open the modal; the rest must leave it alone.
+
+  it('keeps the code being typed when more requests are refused', async () => {
+    renderWith(null);
+    const user = userEvent.setup();
+    mfaRequiredAgain();
+    await user.click(await screen.findByRole('button', { name: 'Enter authenticator code' }));
+    await user.type(screen.getByLabelText('Authenticator code'), '123');
+
+    mfaRequiredAgain();
+    mfaRequiredAgain();
+
+    expect(screen.getByLabelText('Authenticator code')).toHaveValue('123');
+    await user.type(screen.getByLabelText('Authenticator code'), '456');
+    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    expect(api.verifyMfa).toHaveBeenCalledWith('123456');
+  });
+
+  it('keeps the setup QR code, so the scanned secret stays the one being confirmed', async () => {
+    renderWith(null);
+    const user = userEvent.setup();
+    mfaRequiredAgain();
+    await user.click(await screen.findByRole('button', { name: 'Set up authenticator' }));
+    await screen.findByAltText('Authenticator setup QR code');
+    await user.type(screen.getByLabelText('Authenticator code'), '12');
+
+    mfaRequiredAgain();
+
+    expect(screen.getByAltText('Authenticator setup QR code')).toBeInTheDocument();
+    expect(screen.getByLabelText('Authenticator code')).toHaveValue('12');
+    expect(api.enrollMfa).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a step-up's reason and callback when the session gate also fires", async () => {
+    const onVerified = vi.fn();
+    renderWith(
+      <OpenerWith mode="verify" reason="Deleting needs a code." onVerified={onVerified} />
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    await user.type(await screen.findByLabelText('Authenticator code'), '123');
+
+    mfaRequiredAgain();
+
+    expect(screen.getByText('Deleting needs a code.')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Authenticator code'), '456');
+    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('authenticator'));
+  });
+
+  it('stays closed when requests sent before the code was verified are refused', async () => {
+    renderWith(null);
+    const user = userEvent.setup();
+    const sentWhilePending = performance.now();
+    mfaRequiredAgain(sentWhilePending);
+    await user.click(await screen.findByRole('button', { name: 'Enter authenticator code' }));
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // The rest of the burst, sent with the pending cookie, lands afterwards.
+    mfaRequiredAgain(sentWhilePending);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // A request sent after verifying that is still refused is a real one.
+    mfaRequiredAgain();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('refetches a read that was already in flight with the pending cookie', async () => {
+    // A poll that leaves just before the verify answer lands still carries the
+    // pending cookie and comes back refused. Invalidating alone reuses an
+    // in-flight request for a query with no data yet, so that refusal would
+    // become the page's state until its next poll — or for good.
+    let rejectStale: (error: Error) => void = () => {};
+    const reads = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error('mfa_required'))
+      .mockImplementationOnce(() => new Promise((_, reject) => (rejectStale = reject)))
+      .mockResolvedValue('fresh apps');
+    function Apps() {
+      const query = useQuery({ queryKey: ['apps'], queryFn: reads, retry: false });
+      return <p>{query.data ?? (query.error ? 'refused' : 'loading')}</p>;
+    }
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <MfaProvider>
+          <Apps />
+        </MfaProvider>
+      </QueryClientProvider>
+    );
+    expect(await screen.findByText('refused')).toBeInTheDocument();
+    mfaRequiredAgain();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Enter authenticator code' }));
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+
+    void client.refetchQueries({ queryKey: ['apps'] }); // the poll, sent while pending
+    await user.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    act(() => rejectStale(new Error('mfa_required'))); // its refusal lands late
+
+    expect(await screen.findByText('fresh apps')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByText('fresh apps')).toBeInTheDocument();
+  });
+
+  it('opens again on the next refusal after it was dismissed', async () => {
+    renderWith(null);
+    const user = userEvent.setup();
+    mfaRequiredAgain();
+    await user.click(await screen.findByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    mfaRequiredAgain();
+
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName(
+      'Additional verification required'
+    );
   });
 });

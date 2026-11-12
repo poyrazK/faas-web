@@ -29,14 +29,19 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? '';
  * there is exactly one session per document.
  */
 let onUnauthorized: (() => void) | null = null;
-let onMfaRequired: (() => void) | null = null;
+let onMfaRequired: ((requestStartedAt: number) => void) | null = null;
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-/** Called when an authenticated request is blocked by the session MFA gate. */
-export function setMfaRequiredHandler(handler: (() => void) | null) {
+/**
+ * Called when an authenticated request is blocked by the session MFA gate,
+ * with when that request started (`performance.now()`), so a refusal of a
+ * request sent before the session was verified can be told apart from a
+ * current one.
+ */
+export function setMfaRequiredHandler(handler: ((requestStartedAt: number) => void) | null) {
   onMfaRequired = handler;
 }
 
@@ -111,10 +116,12 @@ export type CSRFAction = NonNullable<
 export async function unwrap<T>(
   result: Promise<{ data?: T; error?: unknown; response: Response }>
 ): Promise<T> {
+  // Callers write `unwrap(api.GET(…))`, so this runs as the request is sent.
+  const startedAt = performance.now();
   const { data, error, response } = await result;
   if (error !== undefined || !response.ok) {
     const apiError = await toApiError(response, error);
-    if (apiError.code === 'mfa_required') onMfaRequired?.();
+    if (apiError.code === 'mfa_required') onMfaRequired?.(startedAt);
     throw apiError;
   }
   // A 204 has no body, and its callers want the absence, not a fabricated value.

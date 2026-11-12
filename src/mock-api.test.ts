@@ -557,6 +557,25 @@ describe('app release history mock contract', () => {
 });
 
 describe('analytics mock contracts', () => {
+  it('preserves exact bounds and request totals when opening a duration window as a shared detail URL', async () => {
+    const initial = await get('/v1/apps/api-gateway/analytics/timeseries?since=7d');
+    const bounds = new URLSearchParams({ since: initial.body.from, until: initial.body.until });
+    const detail = await get(`/v1/apps/api-gateway/analytics/timeseries?${bounds}`);
+    const summary = await get(`/v1/apps/api-gateway/analytics?${bounds}`);
+    expect(detail.body.points).toEqual(initial.body.points);
+    expect(summary.body.from).toBe(initial.body.from);
+    expect(summary.body.until).toBe(initial.body.until);
+    expect(detail.body.window_clamped).toBe(false);
+    expect(summary.body.requests).toBe(
+      initial.body.points.reduce(
+        (sum: number, point: { requests: number }) => sum + point.requests,
+        0
+      )
+    );
+    const short = await get('/v1/apps/api-gateway/analytics/timeseries?since=1h');
+    expect(short.body.points).toHaveLength(2);
+    expect(short.body.window_clamped).toBe(false);
+  });
   it.each([
     ['analytics', 'toString'],
     ['analytics', '__proto__'],
@@ -572,6 +591,10 @@ describe('analytics mock contracts', () => {
   it('returns complete deterministic account and app SLO panels for the selected window', async () => {
     const account = await get('/v1/account/slo?window=7d');
     const app = await get('/v1/apps/api-gateway/slo?window=1h');
+    const rollup = await get('/v1/apps/metrics?range=7d');
+    const requests = Object.values(
+      rollup.body.apps as Record<string, { request_count: number }>
+    ).reduce((sum, row) => sum + row.request_count, 0);
 
     expect(account.response.status).toBe(200);
     expect(account.body).toEqual({
@@ -579,13 +602,19 @@ describe('analytics mock contracts', () => {
       source: 'prometheus',
       as_of: '2026-09-05T13:00:00.123Z',
       request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
-      error_rate_pct: 0.55,
-      cold_boot_rate_pct: 4.2,
+      error_rate_pct:
+        Object.values(
+          rollup.body.apps as Record<string, { request_count: number; error_rate_pct: number }>
+        ).reduce((sum, row) => sum + row.request_count * row.error_rate_pct, 0) / requests,
+      cold_boot_rate_pct:
+        Object.values(
+          rollup.body.apps as Record<string, { request_count: number; cold_start_pct: number }>
+        ).reduce((sum, row) => sum + row.request_count * row.cold_start_pct, 0) / requests,
       instance_hours: 12,
       gb_hours: 3,
       wake_queue_p95_ms: null,
       wake_queue_sample_status: 'unavailable',
-      requests_total: 12000,
+      requests_total: requests,
       throttled_total: 23,
     });
     expect(app.response.status).toBe(200);
@@ -622,11 +651,11 @@ describe('analytics mock contracts', () => {
     });
     expect(filtered.body.points[0].requests).toBeLessThan(all.body.points[0].requests);
     expect(all.body).toMatchObject({
-      from: '2026-09-04T14:00:00.000Z',
+      from: '2026-09-04T13:00:00.123Z',
       until: '2026-09-05T13:00:00.123Z',
       as_of: '2026-09-05T13:00:00.123Z',
     });
-    expect(all.body.points[0]).toEqual({
+    expect(all.body.points[1]).toEqual({
       start: '2026-09-04T14:00:00.000Z',
       requests: 224,
       error_requests: 1,
@@ -636,7 +665,7 @@ describe('analytics mock contracts', () => {
       p95_ms: 144,
       p99_ms: 336,
     });
-    expect(filtered.body.points[0]).toEqual({
+    expect(filtered.body.points[1]).toEqual({
       start: '2026-09-04T14:00:00.000Z',
       requests: 99,
       error_requests: 0,
@@ -648,7 +677,7 @@ describe('analytics mock contracts', () => {
     });
     expect(filtered.body.series).toHaveLength(4);
     expect(filtered.body.series[0]).toMatchObject({ value: '/orders', method: 'GET' });
-    expect(filtered.body.series[0].points).toHaveLength(24);
+    expect(filtered.body.series[0].points).toHaveLength(25);
   });
 
   it('uses MOCK_PLAN=free for the documented analytics plan gate', async () => {

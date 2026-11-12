@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Plus, Trash } from 'iconoir-react';
-import { Area, AreaChart, Grid, Tooltip, XAxis, YAxis } from '@/components/dither-kit';
+import { TimeChart } from './kit/chart';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { CopyIconButton } from '@/components/ui/copy-button';
@@ -138,7 +138,6 @@ function CustomMetricsBody({ slug }: { slug: string }) {
   return (
     <Panel
       title="Custom metrics"
-      description="Numbers only your app knows, such as a queue backlog, pushed from anywhere and usable as a scaling signal."
       actions={
         <div className="flex items-center gap-2">
           {maturity && <span className="label-mono text-muted-foreground">{maturity}</span>}
@@ -153,9 +152,8 @@ function CustomMetricsBody({ slug }: { slug: string }) {
     >
       {notFound ? (
         <p role="status" className="text-sm text-muted-foreground">
-          Custom metrics for this app could not be found. The app may have been deleted, or it
-          belongs to a company workspace: only the account that created the app can read and push
-          its custom metrics.
+          Custom metrics for this app could not be found. The app may have been deleted, or only the
+          account that created the app can read them.
         </p>
       ) : (
         <div className="flex flex-col gap-5">
@@ -168,7 +166,7 @@ function CustomMetricsBody({ slug }: { slug: string }) {
           <ResourceTable
             rows={rows}
             columns={columns}
-            emptyMessage="No custom metrics yet. The first push of a name creates it."
+            emptyMessage="No custom metrics yet."
             loading={metrics.isPending}
             error={metrics.error}
             onRetry={() => void metrics.refetch()}
@@ -225,35 +223,27 @@ function MetricHistory({ slug, metric }: { slug: string; metric: CustomMetric })
       <p className="text-sm text-muted-foreground">
         {access === 'loading'
           ? 'Checking availability…'
-          : 'History is not enabled for this account; the latest value above is what scaling reads.'}
+          : 'History is not enabled for this account.'}
       </p>
     );
   } else if (off) {
     body = (
-      <p className="text-sm text-muted-foreground">
-        History is not recorded on this installation; the latest value above is what scaling reads.
-      </p>
+      <p className="text-sm text-muted-foreground">History is not recorded on this installation.</p>
     );
   } else if (degraded) {
     body = (
       <p role="status" className="text-sm text-muted-foreground">
-        History could not be read ({series.data?.source.replace(/^degraded:\s*/, '')}). Pushes are
-        still stored and still drive scaling.
+        History could not be read ({series.data?.source.replace(/^degraded:\s*/, '')}).
       </p>
     );
   } else if (points.length >= 2) {
     body = (
-      <AreaChart
+      <TimeChart
         data={points}
-        config={{ value: { label: counter ? 'per second' : metric.name, color: 'green' } }}
-        className="h-44 w-full"
-      >
-        <Grid />
-        <XAxis dataKey="at" />
-        <YAxis />
-        <Tooltip />
-        <Area dataKey="value" />
-      </AreaChart>
+        x="at"
+        series={{ value: { label: counter ? 'per second' : metric.name, color: 'green' } }}
+        className="h-44"
+      />
     );
   } else {
     body = (
@@ -261,7 +251,7 @@ function MetricHistory({ slug, metric }: { slug: string; metric: CustomMetric })
         phase={queryPhase({ error: series.error, loading: series.isPending, isEmpty: true })}
         error={series.error}
         loadingMessage="Reading history…"
-        emptyMessage="Not enough history in this window to draw. Only fresh pushes are recorded."
+        emptyMessage="Not enough history in this window to draw."
         onRetry={() => void series.refetch()}
       />
     );
@@ -285,8 +275,8 @@ function MetricHistory({ slug, metric }: { slug: string; metric: CustomMetric })
       {body}
       {access === 'on' && !off && !degraded && points.length >= 2 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {counter && 'A counter is drawn as its per-second rate over 5 minutes. '}
-          Only fresh pushes are recorded, for 15 days.
+          {counter && 'Drawn as a per-second rate. '}
+          Kept for 15 days.
         </p>
       )}
     </section>

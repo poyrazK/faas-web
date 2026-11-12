@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { SaveButton } from './save-button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { CapabilityGate } from '@/components/dashboard/capability-gate';
@@ -50,7 +51,7 @@ function RetryDefaultsPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Retry default"
-      description="How this app's async and sync invokes, delayed tasks, queue sends and inbound webhooks retry when they set no curve of their own. A queue binding's policy, or one sent with an invocation, replaces it."
+      help="How this app's async and sync invokes, delayed tasks, queue sends and inbound webhooks retry when they set no curve of their own. A queue binding's policy, or one sent with an invocation, replaces it."
       actions={<AsyncInvocationsMaturity />}
     >
       {phase !== 'ready' ? (
@@ -144,14 +145,15 @@ function RetryDefaultsForm({ slug, stored }: { slug: string; stored: RetryPolicy
             Use plan default
           </Button>
         )}
-        <Button
+        <SaveButton
+          saved={update.isSuccess && unchanged}
           type="submit"
           size="sm"
           disabled={invalid || unchanged || (isBlankRetryDraft(draft) && isEmptyPolicy(stored))}
           busy={update.isPending}
         >
           Save default
-        </Button>
+        </SaveButton>
       </div>
     </form>
   );

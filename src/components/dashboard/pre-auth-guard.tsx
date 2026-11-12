@@ -71,12 +71,12 @@ function ModeBadge({ mode }: { mode: PreAuthMode }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs',
         !s.color && 'border-border text-muted-foreground'
       )}
       style={
         s.color
-          ? { borderColor: `color-mix(in oklab, ${s.color} 35%, transparent)`, color: s.color }
+          ? { backgroundColor: `color-mix(in oklab, ${s.color} 14%, transparent)`, color: s.color }
           : undefined
       }
     >
@@ -113,7 +113,7 @@ export function PreAuthGuardPanel({ slug }: { slug: string }) {
     <div role="region" aria-label="Pre-auth guard">
       <Panel
         title="Pre-auth guard"
-        description="A limit on each client address that runs after the host is matched and before credentials are checked, a body is read or the app wakes."
+        help="A limit on each client address that runs after the host is matched and before credentials are checked, a body is read or the app wakes."
         actions={phase === 'ready' ? <ModeBadge mode={storedMode} /> : undefined}
       >
         {phase !== 'ready' ? (
@@ -385,7 +385,7 @@ function RouteEditor({
   const err = (field: string) => errors[`routes.${index}.${field}`];
   const where = `${r.method} ${r.path.trim() || '(no path)'}`;
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3">
       <div className="flex items-start gap-3">
         <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
           <Labeled label="Method" aria={`Route ${n} method`}>

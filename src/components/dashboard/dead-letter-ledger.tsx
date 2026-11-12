@@ -62,8 +62,8 @@ function LedgerStatus({ event }: { event: DeadLetterEvent }) {
       : (['Dead-lettered', 'var(--status-critical)', WarningTriangle] as const);
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="size-3" aria-hidden />
       {label}
@@ -327,7 +327,6 @@ function LedgerBody({ slug }: { slug: string }) {
   return (
     <Panel
       title="Dead-letter ledger"
-      description="Everything that failed on every attempt in this app — invocations, trigger records, webhook deliveries and event routing — kept for 30 days."
       actions={
         phase === 'ready' ? (
           <div className="flex flex-wrap gap-2">
@@ -348,6 +347,12 @@ function LedgerBody({ slug }: { slug: string }) {
         ) : undefined
       }
     >
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {
+          'Everything that failed on every attempt in this app — invocations, trigger records, webhook deliveries and event routing — kept for 30 days.'
+        }
+      </p>
+
       {phase === 'ready' ? (
         <div className="flex flex-col gap-3">
           <ul className="flex flex-col">

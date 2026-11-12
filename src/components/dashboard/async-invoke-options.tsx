@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
+import { FIELD as BASE_FIELD, Select } from '@/components/ui/field';
 import { AsyncInvocationsMaturity } from '@/components/dashboard/async-invocations';
 import { DurationField, RetryPolicyFields } from '@/components/dashboard/invocation-option-fields';
 import { useAppWorkPolicies, type AsyncInvokeOptions } from '@/lib/api/async-invocations';
@@ -32,7 +32,7 @@ export function AsyncInvokeOptionsFields({
   if (access !== 'on') return null;
   return (
     <details
-      className="rounded-md border border-border sm:col-span-2"
+      className="well rounded-xl bg-muted/40 sm:col-span-2"
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
@@ -75,7 +75,7 @@ export function InvocationEnvelopeFields({
   const destination = (label: string, field: 'onSuccess' | 'onFailure') => (
     <label className="flex min-w-0 flex-col gap-1.5">
       <span className="label-mono text-muted-foreground">{label}</span>
-      <select
+      <Select
         aria-label={label}
         value={value[field]}
         onChange={(e) => set({ [field]: e.target.value })}
@@ -88,7 +88,7 @@ export function InvocationEnvelopeFields({
             {hook.target_url}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 
@@ -117,7 +117,7 @@ export function InvocationEnvelopeFields({
       {policiesOn && (
         <label className="flex min-w-0 flex-col gap-1.5">
           <span className="label-mono text-muted-foreground">Work policy</span>
-          <select
+          <Select
             aria-label="Work policy"
             value={value.policy}
             onChange={(e) => set({ policy: e.target.value })}
@@ -130,7 +130,7 @@ export function InvocationEnvelopeFields({
                 {policy.name}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="text-xs text-muted-foreground">
             {policies.error
               ? errorMessage(policies.error)
@@ -188,8 +188,7 @@ export function InvocationEnvelopeFields({
       {destination('On success', 'onSuccess')}
       {destination('On failure', 'onFailure')}
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        Destinations are this app&apos;s webhooks; each gets a job.finished event when the work
-        completes, or fails for good.
+        Destinations are this app&apos;s webhooks.
         {hooks.error ? ` ${errorMessage(hooks.error)}` : ''}
       </p>
     </div>

@@ -88,7 +88,55 @@ inlines the value into the compiled client.
 | Environment variable           | Default | Effect                                                                                                                  |
 | ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `VITE_FEATURE_EXAMPLE`         | off     | Reference flag. Gates nothing; proves wiring.                                                                           |
+| `VITE_FEATURE_ONBOARDING_V2`   | off     | Sample/repository quickstart with account-scoped resume and API-confirmed live completion.                              |
 | `VITE_FEATURE_ERROR_REPORTING` | off     | Browser error capture and redaction (`lib/error-reporting.ts`). The transport is a no-op until a destination is chosen. |
+
+### First-signup onboarding preview
+
+`VITE_FEATURE_ONBOARDING_V2=1` enables the sample/repository quickstart. It is
+**off by default**. Existing app/deployment receipts remain readable when the
+flag is disabled, and their app pages remain accessible after authentication.
+
+The sample uses the packaged Node.js starter and needs no GitHub installation.
+The repository path preserves the selected repository/ref through the existing
+Settings installation return. Both paths reuse New app creation and deployment.
+Only a fresh, matching API deployment read reporting `live` opens the success
+screen. Free customers can open the assigned public URL or copy curl without a
+paid console invocation. Opening a URL is not recorded as a verified response.
+
+Dismissal and versioned drafts belong to the confirmed account and workspace.
+Saved descriptors include source/name and app/deployment pointers, never code or
+credentials. Interrupted submissions become unknown outcomes on reload. The
+customer must inspect actual history before explicitly preparing another
+submission; the browser never automatically replays a creation or source upload.
+Unsubmitted drafts remain local to the device; existing resources can be found
+from another device through the authenticated inventory.
+
+Run the focused browser acceptance against a **fresh** mock server:
+
+```bash
+VITE_FEATURE_ONBOARDING_V2=1 MOCK_EMPTY=1 npm run dev:mock
+BASE_URL=http://localhost:3000 node scripts/onboarding-tour.mjs
+```
+
+Playwright is installed separately as for `tour.mjs`. Optional `SHOTS` saves
+1440 px and 390 px screenshots; `CHROMIUM_EXECUTABLE_PATH` selects a system
+browser and `PLAYWRIGHT_MODULE` an external Playwright installation. Set
+`FAILURE_URL` to a second fresh mock server started with the same flag and
+`MOCK_BUILD_FAIL=1` to include build-failure and retained-source retry checks.
+
+Coarse funnel events use the existing Vercel Analytics SDK, only in production
+builds with the flag enabled. They send source kind and plan, never account IDs,
+app names, repository names, endpoints or code. Source/recovery/return queries
+are also removed from SDK URLs on onboarding, authentication, compatibility and
+New app pages. Live/failed receipts are
+locally deduplicated by account/workspace/app/deployment. Confirm custom-event
+availability in the hosting account before relying on rollout reporting.
+
+Keep production disabled until a real Free deployment and GitHub installation
+smoke pass. The reported Cloudflare challenge on the deployed same-origin auth/API
+path also needs an operator fix; frontend session recovery cannot remove that
+upstream challenge.
 
 ### Adding a flag
 
@@ -490,30 +538,65 @@ is the rule to preserve: if you find yourself writing a literal hex or a
 The colour ramp, contrast measurements, and chart tokens are documented inline
 at the top of `index.css`.
 
+The console is compact and flat (the `Console density` block in `index.css`):
+13px reading size, 12px labels, small radii, hairlines instead of shadows.
+Labels are sentence case in the sans face; mono is for identifiers and code.
+
 ### Motion
 
-One curve, a few speeds, everywhere. The vocabulary lives in two places that
-mirror each other — change one, change both:
+Pages, panels, tables and numbers arrive in place. Overview retains its greeting
+and subtle background from the main console; its Analytics section is six soft
+number cards (requests, error rate, wake p95, memory now, GB-hours, CPU) built
+from the materials in `components/dashboard/bento.css`. The foil New app button and profile rim respond
+to interaction. Metric cards animate their position when rearranged.
+Dialogs, sheets, the mobile drawer, toasts and menus retain their transitions.
+All of these respect reduced motion.
 
-- **TypeScript** — `components/dashboard/motion.tsx` exports `EASE`,
-  `DURATION`, and the components: `Stagger`/`Item` (an orchestrated entrance
-  for content that all mounts in the same commit — never for children that
-  can arrive late, which it strands at opacity 0), `CountUp` (a figure that
-  rolls to its new value), and `Swap` (a keyed cross-fade for a block whose
-  content is replaced, like a metrics window change). Page entrances are NOT
-  Stagger: `PageHeader`, `Panel`, `StatTile`, and `ResourceTable` carry the
-  CSS `animate-item-enter` mount animation, which replays whenever they
-  enter the DOM — including code-split routes and post-fetch panels.
-- **CSS** — `--motion-ease` / `--motion-fast|base|slow` tokens in `index.css`,
-  the `ease-console` Tailwind utility, and the `.pressable` class (the 0.97
-  press dip for anything button-shaped that is not a `<Button>`; use it
-  _instead of_ `transition-colors`, which it includes).
+Console microinteractions live in `components/dashboard/microinteractions.css`,
+loaded by the dashboard route and scoped to `.console`. Tabs and segments share
+an interruptible selection indicator; keyboard changes, wrapped-row changes and
+reduced-motion selection snap into place. Buttons give a small press response.
+Validation and disclosures reveal locally, and deployment stage icons transition
+only when their reported state changes. No page-wide content entrance is added.
 
-When to reach for which: an element **arriving** joins the page's `Stagger` or
-fades in; a value **updating in place** rolls with `CountUp`; a block being
-**replaced** cross-fades with `Swap`; never two of those at once. Everything
-honours `prefers-reduced-motion` — Framer components via `useReducedMotion()`,
-CSS via the blanket `[class*='animate-']` rule in `index.css`.
+`SaveButton` takes an explicit `saved` acknowledgement; an ended request is never
+enough to show success. Runtime, release and retry settings use it after an accepted save, while
+runtime application remains separately verified. Copy uses the existing
+clipboard-confirmed icon morph. The Overview search's third-party beam is static
+under reduced motion, including when the preference changes while it is open.
+
+With `npm run dev:mock` running, `node scripts/microinteractions-tour.mjs` checks
+selection travel, keyboard focus, button press, saved-state width, disclosures,
+mobile alignment and live reduced motion. As with the other tours, Playwright
+is installed separately. `BASE_URL`, `PLAYWRIGHT_MODULE`,
+`CHROMIUM_EXECUTABLE_PATH` and optional `SHOTS` configure the browser run.
+
+`components/dashboard/motion.tsx` exports the one curve (`EASE`, mirrored in
+CSS as `--motion-ease` / `ease-console`) and `Swap`, a keyed block for content
+that is replaced. Everything honours `prefers-reduced-motion`.
+
+### Analytics customization
+
+Overview has one Analytics board: All apps shows account totals, and selecting
+an app shows its real hourly history. Account totals never pretend to have a
+series. Resource cards explicitly say whether they describe now or the billing
+period. The range picker offers only windows the current source supports.
+
+`AnalyticsGrid` owns metric selection and ordering. Drag a handle, use its arrow
+keys, or choose Move earlier/later in the card menu. Add, remove, and Reset layout
+persist in browser storage; a deliberately empty layout stays empty. The app
+layout keeps the original `gregale.analytics.order` preference. Overview's account
+layout is separate. Browser storage failures affect persistence, not editing.
+
+App Metrics uses one URL-backed analytics window for summaries, charts and grouped
+requests. Window percentiles come from the API aggregate; hourly percentiles are
+never averaged. A route-filtered card explicitly reflects the selected series.
+
+### Component kit
+
+`/dashboard/kit` (dev only, never built for production) shows every console
+primitive in its ready, loading, empty, error and unreachable states. Review a
+component change there before clicking through pages.
 
 ## Deployment
 
@@ -700,18 +783,26 @@ calling a function with the wrong type.
   **Segments** (`SegmentedControl`, or `SegmentGroup` + `segmentClassName` for
   links) switch a view inside a panel: a direction, scope, filter, or range. Do
   not style a switcher with `Button` variants or a one-off class string.
-- **Reuse the shared primitives.** `PageHeader`, `Panel`, `StatTile`,
-  `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`) and
-  `ResourceTable` (`dashboard/resource-table.tsx`) already cover the shape
-  almost every console page needs.
+- **Reuse the shared primitives.** `PageHeader`, `Panel`, `Stats` +
+  `StatTile`, `EmptyState`, `RangeSelector` (`dashboard/primitives.tsx`),
+  `ResourceTable` (`dashboard/resource-table.tsx`), and the kit in
+  `dashboard/kit/`: `Sheet` for create and edit flows, `HelpTip` for
+  explanations, `TimeChart`/`Sparkline` for series. Figures go in a `Stats`
+  strip, not a grid of cards; a table in an unpadded `Panel` drops its own
+  frame.
+- **Say less.** A page has a title and no subtitle; a panel has a title and no
+  description. An explanation someone needs before acting goes in the `help`
+  prop (a "?" popover), short. Internal names (apid, microVM, evidence,
+  telemetry) never reach the UI; `src/lib/copy.test.ts` pins that.
 - **Adding a console page:** create the route file, then add it to
   `components/dashboard/nav-config.ts`. The sidebar, the breadcrumb, and the
   ⌘K palette are all driven from that one config, so the page becomes
   reachable everywhere at once. The sidebar lists account-wide pages only,
   grouped by resource category (Compute, Storage, Networking, Messaging,
-  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app tab
-  instead (`APP_TABS`). The reasoning is in
-  `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
+  Monetize, Observe, Account). A `/v1/apps/{slug}/…` resource is an app
+  section instead (`APP_TAB_GROUPS` in `app-tab-navigation.tsx`): opening an
+  app swaps the rail to that app's sections (`app-rail.tsx`). The reasoning
+  is in `docs/superpowers/specs/2026-10-20-sidebar-categories-design.md`.
 
 ## Keyboard
 
@@ -802,3 +893,29 @@ The sales workspace receives assignments and manager-review requests, with an
 initial follow-up task. A contact code routes the inquiry; referral credit still
 requires entering a code during account creation. No outbound message or payout
 is triggered by the form. Both website and public intake are off by default.
+
+### Console analytics and creation
+
+New app starts with seven compact source choices and keeps the existing wizard,
+source fields, OAuth handoffs and deployment recovery. Edge rules live under each
+app and describe each saved outcome, such as routing a path to a named app or
+blocking requests from a named country. Opening a row shows its technical settings.
+Add rule starts with searchable, plain-English outcomes and essential inputs, with
+country names and readable units. A live preview shows the effect, app scope and
+starting mode. Advanced settings exposes the full editor without losing the draft;
+hidden validation errors reopen it, and malformed JSON stays visible until corrected.
+Sidebar groups animate their expansion and respect reduced motion.
+
+Overview and app analytics cards retain add, remove and reorder controls. Select
+a card or the larger request chart to open an in-place detail dialog. Its metric,
+app, grouping, route and time bounds use the `inspect*` URL keys; closing preserves
+the page's existing filters. Drag handles use arrow keys independently of opening
+details. Charts support arrow-key readouts and the dialog offers hourly table data.
+
+Account Analytics presents platform totals, response times, ranked apps and a
+clearly labelled selected-app history. Account totals have no hourly series or
+previous-period comparison in the current API. Platform latency covers successful
+(2xx) responses; per-app request history includes all recorded statuses. Estimated
+error counts from platform rates are labelled. Request charts use UTC and the
+server's retained bounds; partial hours are excluded from within-window comparisons.
+Missing telemetry, empty windows, plan limits and failed reads have distinct states.

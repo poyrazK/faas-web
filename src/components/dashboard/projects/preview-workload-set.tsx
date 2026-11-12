@@ -1,17 +1,18 @@
-import { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { ApiError } from '@/lib/api/errors';
+import { parsePreviewSlug } from '@/lib/api/pr-previews';
 import {
-  usePreviewSet,
   usePreviewApp,
+  usePreviewSet,
   useProjectPreviewApps,
   type PreviewApp,
 } from '@/lib/api/preview-environments';
-import { useAuth } from '@/lib/auth';
-import { parsePreviewSlug } from '@/lib/api/pr-previews';
 import { useOrgApps, useWorkspaceTarget } from '@/lib/api/workspace-apps';
-import { ApiError } from '@/lib/api/errors';
 import { publicAppUrl } from '@/lib/app-url';
-import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth';
+import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
+import { Timestamp } from '@/components/ui/timestamp';
 import { ErrorState, LoadingState, Panel } from '../primitives';
 function evidenceHref(value: string) {
   if (value.startsWith('/v1/') && !value.includes('\\') && !/\s/.test(value)) return value;
@@ -50,7 +51,7 @@ export function PreviewWorkloadSet({
   return (
     <Panel
       title="PR preview workload set"
-      description="Current-head readiness for the recorded set. Production dependencies may be shared; this is not a complete isolated clone."
+      help="Production dependencies may be shared; a preview is not an isolated clone."
     >
       <div className="space-y-4 p-4 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -80,17 +81,13 @@ export function PreviewWorkloadSet({
         {unavailable ? (
           <div>
             <p className="font-medium">Workload set unavailable</p>
-            <p className="mt-1 text-muted-foreground">
-              App-level information only. This may be a developer preview, an unrecorded legacy
-              preview, or a sibling rather than the recorded root. No whole-set readiness is
-              inferred.
-            </p>
+            <p className="mt-1 text-muted-foreground">App-level information only.</p>
           </div>
         ) : refused ? (
           <p role="status" className="text-muted-foreground">
             Only the member who created {app.preview_of_slug ?? 'its app'}, while an owner or admin
-            of {organization}, can read this preview’s workload set: apid has not opened it to other
-            members yet. The app-level facts above come from the app itself.
+            of {organization}, can read this preview’s workload set: the API has not opened it to
+            other members yet. The app-level facts above come from the app itself.
           </p>
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -127,7 +124,7 @@ export function PreviewWorkloadSet({
                 {data.live_workloads}/{data.total_workloads} expected workloads live for this
                 commit.
               </p>
-              <ul className="divide-y divide-border rounded-md border border-border">
+              <ul className="divide-y divide-border well rounded-xl bg-muted/40">
                 {data.members.map((member) => (
                   <li key={member.app_id || member.workload_name} className="space-y-2 p-3">
                     <div className="flex flex-wrap justify-between gap-2">
@@ -194,23 +191,50 @@ export function PreviewWorkloadSet({
     </Panel>
   );
 }
+/**
+ * The Overview's first line on a preview app: what it previews, in one
+ * sentence, with the workload set one click away.
+ */
 function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: string }) {
   const query = usePreviewApp(accountId, slug);
   const [open, setOpen] = useState(false);
   // An app read failure is not evidence that this is a production app.
   if (query.isError)
-    return <p className="text-xs text-muted-foreground">Preview identity unavailable.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">Couldn’t check whether this app is a preview.</p>
+    );
   if (!query.data?.preview_of_slug) return null;
   const app = query.data;
+  const parent = (
+    <Link
+      to="/dashboard/apps/$appSlug"
+      params={{ appSlug: app.preview_of_slug! }}
+      className="font-medium text-brand underline-offset-4 hover:underline"
+    >
+      {app.preview_of_slug}
+    </Link>
+  );
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3 text-sm">
-        <p>
-          Preview of {app.preview_of_slug}
-          {app.preview_pr_number ? ` · PR #${app.preview_pr_number}` : ' · Developer preview'}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 well rounded-xl bg-muted/40 px-4 py-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-[15px] leading-6 [overflow-wrap:anywhere]">
+            {app.preview_pr_number ? (
+              <>
+                Preview of {parent} for pull request #{app.preview_pr_number}.
+              </>
+            ) : (
+              <>Developer preview of {parent}, not tied to a pull request.</>
+            )}
+          </p>
+          {app.preview_expires_at && (
+            <p className="text-[13px] text-muted-foreground">
+              Expires <Timestamp value={app.preview_expires_at} />
+            </p>
+          )}
+        </div>
         <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? 'Hide preview evidence' : 'Inspect preview workload set'}
+          {open ? 'Hide preview details' : 'Show what’s in this preview'}
         </Button>
       </div>
       {open &&
@@ -218,7 +242,7 @@ function PreviewAppDiscovery({ accountId, slug }: { accountId: string; slug: str
           <PreviewWorkloadSet accountId={accountId} app={app} />
         ) : (
           <p className="text-sm text-muted-foreground">
-            Workload set unavailable. Developer preview; app-level information only.
+            A developer preview has no workload set; only the app’s own details apply.
           </p>
         ))}
     </div>
@@ -282,7 +306,7 @@ function CompanyProjectPreviews({
   return (
     <Panel
       title="PR previews"
-      description={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
+      help={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
     >
       <div className="space-y-4 p-4">
         <Button
@@ -381,10 +405,7 @@ function PersonalProjectPreviews({
   ];
   const app = candidates.find((item) => item.slug === selected);
   return (
-    <Panel
-      title="PR previews"
-      description="App-backed preview discovery. Recorded roots are verified only when selected; this list does not claim complete project PR-set coverage."
-    >
+    <Panel title="PR previews">
       <div className="space-y-4 p-4">
         <Button
           size="sm"

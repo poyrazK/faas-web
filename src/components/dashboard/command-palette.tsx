@@ -154,17 +154,19 @@ export function CommandPalette({
     return [
       // Driven by the nav config, so a new page becomes reachable by ⌘K the
       // moment it appears in the sidebar.
-      ...visibleNavItems(NAV_ITEMS, isOff).map((item) => ({
-        // Keep existing recent page commands while giving hub aliases their own IDs.
-        id: item.search
-          ? `nav-${item.to}-${item.search.section}`
-          : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
-        label: item.label,
-        group: 'Go to',
-        keywords: railGroupFor(item),
-        icon: item.icon,
-        run: go(item.to, item.search),
-      })),
+      ...visibleNavItems(NAV_ITEMS, isOff)
+        .filter((item) => item.to !== '/dashboard/edge-rules')
+        .map((item) => ({
+          // Keep existing recent page commands while giving hub aliases their own IDs.
+          id: item.search
+            ? `nav-${item.to}-${item.search.section}`
+            : `${item.to !== '/dashboard' && item.label !== SECTION_LABELS[item.to.split('/').pop()!] ? 'hub' : 'nav'}-${item.to}`,
+          label: item.label,
+          group: 'Go to',
+          keywords: railGroupFor(item),
+          icon: item.icon,
+          run: go(item.to, item.search),
+        })),
       {
         id: 'act-new',
         label: 'New app',
@@ -237,7 +239,7 @@ export function CommandPalette({
         (
           [
             { tab: 'Logs', verb: 'Tail logs' },
-            { tab: 'Configuration', verb: 'Configure' },
+            { tab: 'General', verb: 'Configure' },
           ] as const
         ).map(({ tab, verb }) => ({
           id: `act-${tab.toLowerCase()}-${fn.id}`,
@@ -555,7 +557,7 @@ export function CommandPalette({
                     close();
                     navigate({ to: '/dashboard/apps/new' });
                   }}
-                  className="pressable inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border-secondary hover:text-foreground"
+                  className="pressable inline-flex items-center gap-1.5 well rounded-xl bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 >
                   <Plus className="h-3 w-3" />
                   Create a new app instead

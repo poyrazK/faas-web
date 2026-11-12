@@ -48,7 +48,6 @@ export function EventsBody({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Events"
-        description="Waiting consumers, retained storage, and per-event evidence for your account's event router."
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setDialog('preview')}>

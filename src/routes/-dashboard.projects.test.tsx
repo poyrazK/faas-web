@@ -148,7 +148,7 @@ it('lists each project with its apps, without GitHub or a paid capability gate',
     '/dashboard/apps/api'
   );
   expect(screen.getByText(/team\/shop/)).toBeInTheDocument();
-  expect(screen.getByText(/No repository connected/)).toBeInTheDocument();
+  expect(screen.getByText(/not connected to a repository/)).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Open project shop' })).toHaveAttribute(
     'href',
     '/dashboard/projects/shop'
@@ -305,6 +305,7 @@ describe('the selected shared workspace', () => {
       'href',
       '/dashboard/apps/mine'
     );
+    await userEvent.click(screen.getByRole('button', { name: 'About In this workspace' }));
     expect(screen.getByText(/stay with each app's creator/)).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
       '/v1/orgs/{slug}/apps',

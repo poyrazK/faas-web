@@ -21,11 +21,14 @@ import * as edgeRuleActivity from './edge-rule-activity';
 import * as asyncMock from './async-invocations';
 import * as customMetricMock from './custom-metrics';
 import * as channelMock from './notification-channels';
+import * as syntheticMock from './synthetics';
 import * as releaseMock from './release-webhooks';
 import * as appHealthMock from './app-health';
 import * as debugMock from './debug';
+import * as debugEvidence from './debug-evidence';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
+import * as sloMock from './slos';
 import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
 import * as approvalMock from './release-approvals';
@@ -681,6 +684,17 @@ const SLO_WINDOWS = new Set(['1h', '24h', '7d']);
 // Keep analytics screenshots stable without aging unrelated lifecycle fixtures.
 const ANALYTICS_NOW = Date.parse('2026-09-05T13:00:00.123Z');
 const analyticsIso = (msAgo: number) => new Date(ANALYTICS_NOW - msAgo).toISOString();
+// Reuse each seeded platform snapshot across account totals and app rankings.
+const metricsSnapshots = new Map<string, ReturnType<typeof db.metricsFor>>();
+function mockAppMetrics(app: db.App, range: string) {
+  const key = `${app.id}:${app.status}:${range}`;
+  let value = metricsSnapshots.get(key);
+  if (!value) {
+    value = db.metricsFor(app, range);
+    metricsSnapshots.set(key, value);
+  }
+  return value;
+}
 
 function sloWindow(query: URLSearchParams) {
   const window = query.get('window') ?? '24h';
@@ -692,18 +706,24 @@ function sloWindow(query: URLSearchParams) {
 function accountSlo(
   window: ReturnType<typeof sloWindow>
 ): components['schemas']['AccountSLOResponse'] {
+  // Use the same fixture volumes as app rankings; an account cannot have fewer
+  // requests than one of its apps. This is mock data, never a client aggregation.
+  const rows = db.apps.map((app) => mockAppMetrics(app, window));
+  const total = rows.reduce((sum, row) => sum + row.request_count, 0);
+  const weighted = (key: 'error_rate_pct' | 'cold_start_pct') =>
+    total ? rows.reduce((sum, row) => sum + row.request_count * row[key], 0) / total : 0;
   return {
     window,
     source: 'prometheus',
     as_of: analyticsIso(0),
     request_duration: { p50_ms: 22.1, p95_ms: 91, p99_ms: 410 },
-    error_rate_pct: 0.55,
-    cold_boot_rate_pct: 4.2,
+    error_rate_pct: weighted('error_rate_pct'),
+    cold_boot_rate_pct: weighted('cold_start_pct'),
     instance_hours: 12,
     gb_hours: 3,
     wake_queue_p95_ms: null,
     wake_queue_sample_status: 'unavailable',
-    requests_total: 12000,
+    requests_total: total,
     throttled_total: 23,
   };
 }
@@ -950,7 +970,7 @@ route('GET', '/v1/apps/metrics', ({ query }) => {
     range,
     source: 'prometheus',
     as_of: db.iso(0),
-    apps: Object.fromEntries(db.apps.map((a) => [a.slug, db.metricsFor(a, range)])),
+    apps: Object.fromEntries(db.apps.map((a) => [a.slug, mockAppMetrics(a, range)])),
   };
 });
 const imageAppReceipts = new Map<string, { body: string; app: db.App; at: number }>();
@@ -1752,7 +1772,7 @@ route('GET', '/v1/apps/{slug}/deployments/{id}/summary', ({ params }) => {
   } satisfies components['schemas']['DeploymentSummaryResponse'];
 });
 route('GET', '/v1/apps/{slug}/metrics', ({ params, query }) =>
-  db.metricsFor(app(params.slug), query.get('range') ?? '24h')
+  mockAppMetrics(app(params.slug), query.get('range') ?? '24h')
 );
 route('GET', '/v1/apps/{slug}/slo', ({ params, query }) =>
   appSlo(app(params.slug), sloWindow(query))
@@ -2354,16 +2374,62 @@ route('DELETE', '/v1/notification-channels/{id}', ({ params }) => {
 route('POST', '/v1/notification-channels/{id}/test', ({ params }) =>
   channelMock.testChannel(channelById(params.id))
 );
-route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+// Customer-defined SLOs (mock/slos.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function sloGate() {
   if (hiddenCapabilities.has('custom-slos'))
     throw new Problem(404, 'not_found', 'SLOs are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function slo(answer: sloMock.Answer) {
+  sloGate();
+  if (sloMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/slos', ({ params, body }) => slo(sloMock.createSLO(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.getSLO(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/slos/{id}', ({ params }) => slo(sloMock.deleteSLO(app(params.slug).slug, params.id)));
+route('GET', '/v1/apps/{slug}/slos', ({ params }) => {
+  sloGate();
   return channelMock.slos.get(app(params.slug).slug) ?? [];
 });
 route('GET', '/v1/apps/{slug}/synthetics', ({ params }) => {
-  if (hiddenCapabilities.has('synthetic-checks'))
-    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  checkGate();
   return channelMock.checks.get(app(params.slug).slug) ?? [];
 });
+// Synthetic checks (mock/synthetics.ts). apid answers 404 for a hidden
+// capability and 402 before the store on a plan without per-app metrics.
+function checkGate() {
+  if (hiddenCapabilities.has('synthetic-checks'))
+    throw new Problem(404, 'not_found', 'synthetic checks are not released to this account');
+  if (process.env.MOCK_PLAN === 'free')
+    throw new Problem(
+      402,
+      'plan_per_app_metrics_not_allowed',
+      'the free plan does not include per-app metrics; upgrade to Hobby or above.'
+    );
+}
+function synthetic(answer: syntheticMock.Answer) {
+  checkGate();
+  if (syntheticMock.isProblem(answer)) throw new Problem(answer.status, answer.code, answer.detail);
+  return answer.status === 204 ? NO_CONTENT : status(answer.status, answer.body ?? null);
+}
+// prettier-ignore
+route('POST', '/v1/apps/{slug}/synthetics', ({ params, body }) => synthetic(syntheticMock.createCheck(app(params.slug).slug, body)));
+// prettier-ignore
+route('GET', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.getCheck(app(params.slug).slug, params.id)));
+// prettier-ignore
+route('PATCH', '/v1/apps/{slug}/synthetics/{id}', ({ params, body }) => synthetic(syntheticMock.setEnabled(app(params.slug).slug, params.id, body.enabled)));
+// prettier-ignore
+route('DELETE', '/v1/apps/{slug}/synthetics/{id}', ({ params }) => synthetic(syntheticMock.deleteCheck(app(params.slug).slug, params.id)));
 // Traffic mirroring (ADR-124 / ADR-125). MOCK_PLAN=free reproduces the
 // create-time plan gate; the list is never gated, as in apid.
 // Pro allows one mirror rule per app, Scale three.
@@ -3399,7 +3465,6 @@ type AnalyticsTimeseries = components['schemas']['RequestAnalyticsTimeseriesResp
 type AnalyticsGroupBy = NonNullable<AnalyticsTimeseries['group_by']>;
 type AnalyticsMethod = NonNullable<AnalyticsTimeseries['method']>;
 
-const ANALYTICS_WINDOW_HOURS: Record<string, number> = { '24h': 24, '3d': 72, '7d': 168 };
 const ANALYTICS_GROUPS: Record<AnalyticsGroupBy, string[]> = {
   route: ['/orders', '/orders/{id}', '/health', '/search'],
   country: ['DE', 'TR', 'US', 'FR'],
@@ -3426,9 +3491,52 @@ const isAnalyticsGroupBy = (value: string): value is AnalyticsGroupBy =>
 
 function analyticsWindow(query: URLSearchParams) {
   const since = query.get('since') ?? '24h';
-  const hours = ANALYTICS_WINDOW_HOURS[since];
-  // Anything longer than a week is clamped, as the retention does upstream.
-  return { since, hours: hours ?? 24, clamped: hours === undefined };
+  const until = query.has('until') ? Date.parse(query.get('until')!) : ANALYTICS_NOW;
+  const duration = /^(\d+(?:\.\d+)?)(m|h|d)$/.exec(since);
+  const length = duration
+    ? Number(duration[1]) * ({ m: 60_000, h: 3_600_000, d: 86_400_000 }[duration[2]] ?? 0)
+    : 0;
+  const requestedFrom = duration ? until - length : Date.parse(since);
+  const minimum = ANALYTICS_NOW - 7 * 86_400_000;
+  if (
+    !Number.isFinite(until) ||
+    until > ANALYTICS_NOW ||
+    until <= minimum ||
+    !Number.isFinite(requestedFrom) ||
+    requestedFrom >= until
+  )
+    throw new Problem(
+      400,
+      'validation_failed',
+      'Use a positive duration or a timestamp before until, within the retained telemetry.'
+    );
+  const from = Math.max(minimum, requestedFrom);
+  return { since, from, until, clamped: from !== requestedFrom };
+}
+
+/** Deterministic hourly records, shared by summaries and exact-range drilldowns. */
+function analyticsPoints(from: number, until: number) {
+  const first = Math.floor(from / 3_600_000) * 3_600_000;
+  const count = Math.ceil((until - first) / 3_600_000);
+  return Array.from({ length: count }, (_, i) => {
+    const start = first + i * 3_600_000;
+    const at = new Date(start);
+    const share =
+      Math.max(0, Math.min(until, start + 3_600_000) - Math.max(from, start)) / 3_600_000;
+    const wave = Math.sin((at.getUTCHours() / 24) * Math.PI * 2) * 0.4 + 1;
+    const requests = Math.round(280 * wave * share);
+    const errors = Math.round(requests * (at.getUTCHours() === 3 ? 0.11 : 0.004));
+    return {
+      start: at.toISOString(),
+      requests,
+      error_requests: errors,
+      error_rate_pct: requests ? Math.round((errors / requests) * 10000) / 100 : 0,
+      cold_boots: Math.round((at.getUTCHours() % 6 === 0 ? 2 : 0) * share),
+      p50_ms: requests ? Math.round(42 * wave) : 0,
+      p95_ms: requests ? Math.round(180 * wave) : 0,
+      p99_ms: requests ? Math.round(420 * wave) : 0,
+    };
+  });
 }
 
 route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
@@ -3439,13 +3547,14 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
       'plan_per_app_metrics_not_allowed',
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
-  const { since, hours, clamped } = analyticsWindow(query);
+  const { since, from, until, clamped } = analyticsWindow(query);
   const groupBy = query.get('group_by') ?? 'route';
   if (!isAnalyticsGroupBy(groupBy))
     throw new Problem(400, 'validation_failed', `unknown group_by "${groupBy}".`);
   const values = ANALYTICS_GROUPS[groupBy];
-  const requests = hours * 351;
-  const errors = Math.round(requests * 0.0044);
+  const points = analyticsPoints(from, until).map(appTrafficProfile(a.slug));
+  const requests = points.reduce((sum, point) => sum + point.requests, 0);
+  const errors = points.reduce((sum, point) => sum + point.error_requests, 0);
   const group = (value: string, i: number) => {
     const share = [0.44, 0.3, 0.18, 0.08][i] ?? 0.05;
     const rq = Math.round(requests * share);
@@ -3456,7 +3565,7 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
       requests: rq,
       error_requests: err,
       error_rate_pct: rq === 0 ? 0 : Math.round((err / rq) * 10000) / 100,
-      cold_boots: Math.round(rq * 0.0017),
+      cold_boots: Math.round(points.reduce((sum, point) => sum + point.cold_boots, 0) * share),
       p50_ms: 42 + i * 9,
       p95_ms: 180 + i * 40,
       p99_ms: 420 + i * 90,
@@ -3465,13 +3574,13 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   return {
     slug: a.slug,
     since,
-    from: analyticsIso(hours * 3_600_000),
-    until: analyticsIso(0),
+    from: new Date(from).toISOString(),
+    until: new Date(until).toISOString(),
     window_clamped: clamped,
     requests,
     error_requests: errors,
-    error_rate_pct: Math.round((errors / requests) * 10000) / 100,
-    cold_boots: Math.round(requests * 0.0017),
+    error_rate_pct: requests ? Math.round((errors / requests) * 10000) / 100 : 0,
+    cold_boots: points.reduce((sum, point) => sum + point.cold_boots, 0),
     p50_ms: 42,
     p95_ms: 180,
     p99_ms: 420,
@@ -3487,6 +3596,39 @@ route('GET', '/v1/apps/{slug}/analytics', ({ params, query }) => {
   };
 });
 
+/**
+ * Each app's own traffic, so an account-wide view has something to compare:
+ * a stable per-slug volume, batch-shaped apps busy overnight, and one app
+ * (`webhook-router`) erroring above the console's threshold. Deterministic.
+ */
+function appTrafficProfile(slug: string) {
+  let hash = 0;
+  for (const ch of slug) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  // api-gateway stays the 1× baseline the analytics contract tests pin.
+  const volumes = [0.62, 0.38, 0.21, 0.11, 0.05, 0.02];
+  const volume = slug === 'api-gateway' ? 1 : volumes[hash % volumes.length];
+  const batch = /etl|nightly|cron|batch/.test(slug);
+  const errorRate = slug === 'webhook-router' ? 0.08 : undefined;
+  return (point: ReturnType<typeof analyticsPoints>[number]) => {
+    const hour = new Date(point.start).getUTCHours();
+    const shape = batch ? (hour >= 1 && hour <= 4 ? 5 : 0.08) : 1;
+    const requests = Math.round(point.requests * volume * shape);
+    const errorRequests = Math.min(
+      requests,
+      errorRate === undefined
+        ? Math.round(point.error_requests * volume * shape)
+        : Math.round(requests * errorRate)
+    );
+    return {
+      ...point,
+      requests,
+      error_requests: errorRequests,
+      error_rate_pct: requests === 0 ? 0 : Math.round((errorRequests / requests) * 10000) / 100,
+      cold_boots: Math.round(point.cold_boots * Math.max(1, shape)),
+    };
+  };
+}
+
 function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): AnalyticsTimeseries {
   const a = app(params.slug);
   if (process.env.MOCK_PLAN === 'free')
@@ -3495,27 +3637,8 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
       'plan_per_app_metrics_not_allowed',
       'the free plan does not include per-app metrics; upgrade to Hobby or above.'
     );
-  const { since, hours, clamped } = analyticsWindow(query);
-  const now = ANALYTICS_NOW;
-  const unfilteredPoints = Array.from({ length: hours }, (_, i) => {
-    const hour = hours - 1 - i;
-    // A diurnal shape, so the line is a shape rather than a flat run.
-    const at = new Date(now - hour * 3_600_000);
-    const wave = Math.sin((at.getUTCHours() / 24) * Math.PI * 2) * 0.4 + 1;
-    const requests = Math.round(280 * wave);
-    const errors =
-      at.getUTCHours() === 3 ? Math.round(requests * 0.11) : Math.round(requests * 0.004);
-    return {
-      start: new Date(at.setMinutes(0, 0, 0)).toISOString(),
-      requests,
-      error_requests: errors,
-      error_rate_pct: Math.round((errors / requests) * 10000) / 100,
-      cold_boots: at.getUTCHours() % 6 === 0 ? 2 : 0,
-      p50_ms: Math.round(42 * wave),
-      p95_ms: Math.round(180 * wave),
-      p99_ms: Math.round(420 * wave),
-    };
-  });
+  const { since, from, until, clamped } = analyticsWindow(query);
+  const unfilteredPoints = analyticsPoints(from, until).map(appTrafficProfile(a.slug));
   const requestedRoute = query.get('route');
   const requestedMethod = query.get('method');
   let routeMethodFilter: { route: string; method: AnalyticsMethod } | undefined;
@@ -3560,8 +3683,8 @@ function analyticsTimeseries({ params, query }: Parameters<Handler>[0]): Analyti
     slug: a.slug,
     ...routeMethodFilter,
     since,
-    from: points[0]?.start ?? analyticsIso(hours * 3_600_000),
-    until: analyticsIso(0),
+    from: new Date(from).toISOString(),
+    until: new Date(until).toISOString(),
     window_clamped: clamped,
     bucket: '1h',
     points,
@@ -3629,7 +3752,7 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}', ({ params }) => {
 
 route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) => {
   gateDebug();
-  app(params.slug);
+  const a = app(params.slug);
   if (!/^[0-9a-f]{8,}$/.test(params.req_id))
     throw new Problem(404, 'not_found', 'no telemetry for that request id');
   const traceId = db.id() + db.id();
@@ -3660,22 +3783,25 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       status: 'OK',
     },
   ];
+  const receivedAt = db.iso(120_000);
+  const woke = parseInt(params.req_id[0], 16) % 2 === 0;
+  const timed = debugEvidence.timeSpans(spans, receivedAt);
+  const extras = debugEvidence.evidenceExtras(a, params.req_id, timed, receivedAt, woke);
   return {
     request: {
+      ...extras.request,
       id: params.req_id,
-      deployment_id: db.deployments[0].id,
+      deployment_id: debugEvidence.evidenceDeployment(a),
       route: '/orders/{id}',
       method: 'GET',
       status: 500,
       latency_ms: 2400,
       count: 1,
       // Even-led request ids woke the app, so the debugger can open a wake.
-      cold_boot: parseInt(params.req_id[0], 16) % 2 === 0,
-      ...(parseInt(params.req_id[0], 16) % 2 === 0
-        ? { wake_id: `wk-${params.req_id.slice(0, 12)}` }
-        : {}),
+      cold_boot: woke,
+      ...(woke ? { wake_id: `wk-${params.req_id.slice(0, 12)}` } : {}),
       trace_id: traceId,
-      received_at: db.iso(120_000),
+      received_at: receivedAt,
     },
     regression: {
       deployment_id: db.deployments[0].id,
@@ -3687,13 +3813,22 @@ route('GET', '/v1/apps/{slug}/debug/requests/{req_id}/evidence', ({ params }) =>
       first_detected_at: db.iso(5_400_000),
       last_detected_at: db.iso(120_000),
     },
-    spans,
+    spans: timed,
     spans_truncated: false,
+    timeline: extras.timeline,
+    correlation: extras.correlation,
+    critical_path: extras.critical_path,
+    dependency_latency: extras.dependency_latency,
+    dependency_latency_truncated: extras.dependency_latency_truncated,
+    dependency_comparison: extras.dependency_comparison,
+    logs: extras.logs,
+    logs_truncated: extras.logs_truncated,
     explanation: {
+      ...extras.explanation,
       status: 'regression_detected',
       headline:
         'A database query on this route takes 7× longer than it did before the current deployment.',
-      primary_span: spans[1],
+      primary_span: timed[1],
     },
     generated_at: db.iso(0),
   };
@@ -7846,16 +7981,30 @@ route('GET', '/v1/apps/{slug}/debug/running', ({ params, query }) => {
   return debugMock.runningFor(app(params.slug), query.get('since') || '24h');
 });
 
-route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params }) => {
+route('POST', '/v1/apps/{slug}/debug/requests/{req_id}/replay', ({ params, body }) => {
   gateDebug('production-debugger');
-  const replay = debugMock.replayFor(app(params.slug));
-  if (!replay)
-    throw new Problem(
-      409,
-      'debug_replay_unsupported',
-      "the request's serving deployment has no enabled mirror rule; enable a mirror rule for that deployment before replaying"
-    );
-  return status(202, replay);
+  const a = app(params.slug);
+  const target = debugEvidence.replayTarget(a, String(body.mirror_deployment_id ?? ''));
+  if ('problem' in target) throw new Problem(409, 'debug_replay_unsupported', target.problem);
+  // A real invocation the console can follow until it settles, as apid enqueues one.
+  const inv: S_['Invocation'] = {
+    id: db.id(),
+    app_id: a.id,
+    account_id: db.ACCOUNT_ID,
+    source: 'replay',
+    state: 'pending',
+    method: 'GET',
+    path: '/orders/4211',
+    created_at: new Date().toISOString(),
+  };
+  db.invocations.unshift(inv);
+  asyncInvocations.settleAt.set(inv.id, Date.now() + 4_000);
+  return status(202, {
+    mirror_invocation_id: inv.id,
+    status: 'queued',
+    source_deployment_id: target.rule.source_deployment_id,
+    mirror_deployment_id: target.rule.mirror_deployment_id,
+  });
 });
 
 route('POST', '/v1/apps/{slug}/debug/compare', ({ body }) => {
@@ -10690,16 +10839,28 @@ route('GET', '/v1/auth/csrf', ({ query, res }) => {
 // mock keeps just enough state to show each branch on demand.
 const mockAuth = {
   password: process.env.MOCK_HAS_PASSWORD === '1' ? 'mock-current-password' : null,
-  mfaEnrolled: process.env.MOCK_MFA === '1',
+  mfaEnrolled: process.env.MOCK_MFA === '1' || process.env.MOCK_MFA === 'pending',
   mfaRequired: process.env.MOCK_MFA === 'required',
+  // MOCK_MFA=pending: an MFA user's fresh dashboard sign-in. apid's requireMFA
+  // refuses every request but the account view and the MFA and auth routes
+  // with 403 mfa_required until /verify or /recover clears the session.
+  sessionPending: process.env.MOCK_MFA === 'pending',
   steppedUpAt: 0,
 };
 const STEP_UP_TTL_MS = 5 * 60_000;
+
+/** Whether apid's session MFA gate refuses this request while pending. */
+function refusedWhileMfaPending(method: string, path: string): boolean {
+  if (!mockAuth.sessionPending || !path.startsWith('/v1/')) return false;
+  if (method === 'GET' && path === '/v1/account') return false;
+  return !path.startsWith('/v1/account/mfa/') && !path.startsWith('/v1/auth/');
+}
 
 route('POST', '/v1/account/mfa/verify', ({ body }) => {
   if (!/^\d{6}$/.test(String(body.totp ?? '')))
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.steppedUpAt = Date.now();
+  mockAuth.sessionPending = false;
   return { account_id: db.ACCOUNT_ID, mfa_pending: false };
 });
 route('POST', '/v1/account/mfa/enroll', () => ({
@@ -10725,6 +10886,7 @@ route('POST', '/v1/account/mfa/confirm', ({ body }) => {
     throw new Problem(401, 'mfa_invalid_code', 'the TOTP code did not match');
   mockAuth.mfaEnrolled = true;
   mockAuth.mfaRequired = false;
+  mockAuth.sessionPending = false;
   mockAuth.steppedUpAt = Date.now();
   return {};
 });
@@ -11168,10 +11330,19 @@ route('GET', '/v1/billing/focus', ({ query }) => {
     invoices_excluded_draft_or_void: 0,
   };
 });
-route('POST', '/v1/billing/cancel', () => ({
-  cancel_scheduled: true,
-  effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
-}));
+route('POST', '/v1/billing/cancel', () => {
+  // Free has no provider subscription (faas handlers_billing_cancel.go).
+  if (db.account.plan === 'free')
+    throw new Problem(
+      409,
+      'billing_already_cancelled',
+      'this account has no active subscription to cancel'
+    );
+  return {
+    cancel_scheduled: true,
+    effective_at: new Date(Date.now() + 19 * 86400e3).toISOString(),
+  };
+});
 route('POST', '/v1/billing/retry', () => ({
   attempt_id: `att_${hex(8)}`,
   provider_ref_id: `txn_${hex(8)}`,
@@ -12656,6 +12827,14 @@ export function mockApi(): Plugin {
         (method !== 'GET' &&
           MOCKED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/')));
       if (!isApi) return next();
+
+      if (refusedWhileMfaPending(method, url.pathname)) {
+        setTimeout(
+          () => problem(res, new Problem(403, 'mfa_required', 'complete MFA to use the dashboard')),
+          latency()
+        );
+        return;
+      }
 
       const match = routes.find((r) => r.method === method && r.pattern.test(url.pathname));
       if (!match) {

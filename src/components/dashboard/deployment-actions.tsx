@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
+import { Select } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import {
@@ -9,6 +9,7 @@ import {
   useReorderDeployment,
   type Deployment,
 } from '@/lib/api/queries';
+import { useState } from 'react';
 import { BindingsGateNotice, bindingsGateRefusal, type BindingsGateRefusal } from './bindings-gate';
 
 /**
@@ -168,7 +169,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
       <label className="text-xs text-muted-foreground" htmlFor={`priority-${deployment.id}`}>
         Queue position
       </label>
-      <select
+      <Select
         id={`priority-${deployment.id}`}
         className="h-6 rounded-md border border-border bg-background px-2 text-xs"
         value={priority}
@@ -179,7 +180,7 @@ export function ReorderDeploymentControl({ deployment }: { deployment: Deploymen
             {p.label}
           </option>
         ))}
-      </select>
+      </Select>
       <Button
         size="xs"
         variant="outline"
@@ -200,10 +201,10 @@ export function ClearObsoleteDeploymentsButton({ slug }: { slug: string }) {
   const onClear = async () => {
     if (
       !(await confirm({
-        title: 'Clear obsolete deployments?',
+        title: 'Clean up old versions?',
         description:
-          'Removes superseded, failed and cancelled deployments older than 7 days from this app’s history. The current deployment and anything newer stay.',
-        confirmLabel: 'Clear',
+          'Removes replaced, failed and cancelled versions older than 7 days from this app’s history. The current version and anything newer stay.',
+        confirmLabel: 'Clean up',
         destructive: true,
       }))
     )
@@ -212,7 +213,7 @@ export function ClearObsoleteDeploymentsButton({ slug }: { slug: string }) {
       const report = await clear.mutateAsync({ slug, older_than: '168h' });
       toast({
         kind: report.count === 0 ? 'info' : 'success',
-        title: report.count === 0 ? 'Nothing to clear' : `Cleared ${report.count} deployments`,
+        title: report.count === 0 ? 'Nothing to clean up' : `Removed ${report.count} old versions`,
         description: `Older than ${report.older_than}.`,
       });
     } catch (err) {
@@ -229,8 +230,15 @@ export function ClearObsoleteDeploymentsButton({ slug }: { slug: string }) {
   };
 
   return (
-    <Button size="xs" variant="ghost" onClick={() => void onClear()} disabled={clear.isPending}>
-      Clear obsolete
+    <Button
+      size="xs"
+      variant="ghost"
+      className="text-muted-foreground"
+      title="Clear obsolete deployments"
+      onClick={() => void onClear()}
+      disabled={clear.isPending}
+    >
+      Clean up old versions
     </Button>
   );
 }

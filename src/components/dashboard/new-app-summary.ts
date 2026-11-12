@@ -50,19 +50,26 @@ export function summaryRows(i: SummaryInput): SummaryRow[] {
   if (i.workspaceIsOrg || i.step >= 2)
     rows.push({ key: 'workspace', label: 'Workspace', value: i.workspaceLabel });
   if (i.step >= 1) {
-    rows.push({ key: 'type', label: 'Type', value: i.appType === 'app' ? 'App' : 'Function' });
+    rows.push({
+      key: 'type',
+      label: 'How it runs',
+      value: i.appType === 'app' ? 'Web app or API' : 'Function handler',
+    });
     if (i.appType === 'function' && i.runtimeLabel)
       rows.push({ key: 'runtime', label: 'Runtime', value: i.runtimeLabel });
     rows.push({ key: 'memory', label: 'Memory', value: `${i.memoryMb} MB`, mono: true });
     rows.push({
       key: 'scale',
-      label: 'Scale to zero',
-      value: i.scaleToZero ? 'Parks when idle' : 'One instance kept resident',
+      label: 'When idle',
+      value: i.scaleToZero ? 'Sleeps until the next request' : 'Keeps one instance running',
     });
     rows.push({
       key: 'visibility',
-      label: 'Visibility',
-      value: i.visibility === 'internal' ? 'Internal service only' : 'Public edge',
+      label: 'Access',
+      value:
+        i.visibility === 'internal'
+          ? 'Internal only. No public URL.'
+          : 'Public URL. Your app controls authentication.',
     });
   }
   if (i.step >= 2) {

@@ -126,7 +126,7 @@ export function ServingChanged({
   onRefresh: () => void;
 }) {
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-md border border-border px-3 py-2">
+    <div role="alert" className="flex flex-col gap-2 well rounded-xl bg-muted/40 px-3 py-2">
       <p className="flex items-start gap-1.5 text-xs" style={{ color: 'var(--status-critical)' }}>
         <WarningTriangle aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
@@ -265,7 +265,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3">
       <p className="label-mono text-muted-foreground">Promote</p>
       {capability.state !== 'available' ? (
         <CapabilityNotice
@@ -276,8 +276,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            Send all of this app&apos;s traffic to {label}, after a bindings check. A failed check
-            leaves traffic as it is.
+            A bindings check runs first; if it fails, traffic stays as it is.
           </p>
           <ServingNote serving={serving} action="promotion" />
           <label className="flex items-start gap-2 text-xs">

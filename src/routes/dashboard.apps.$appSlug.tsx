@@ -1,47 +1,55 @@
+import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
+import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
+import { ApiConsumers } from '@/components/dashboard/api-consumers';
+import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
+import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
+import {
+  validateAppAnalyticsSearch,
+  type AppAnalyticsSearch,
+} from '@/components/dashboard/app-analytics-search';
+import { AppConfiguration } from '@/components/dashboard/app-configuration';
+import { InvokePanel } from '@/components/dashboard/app-core-panels';
+import { AppHeader } from '@/components/dashboard/app-header';
+import { AppHealthPanel } from '@/components/dashboard/app-health';
+import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
+import { AwakeRoutesPanel, DependencyLatencyPanel } from '@/components/dashboard/app-observability';
+import { AppOverview } from '@/components/dashboard/app-overview';
+import { AppRetryDefaults } from '@/components/dashboard/app-retry-defaults';
 import {
   APP_TAB_CAPABILITY,
-  AppTabNavigation,
-  appTabPanelLabel,
+  APP_TAB_GROUPS,
   resolveAppTab,
   visibleAppTabs,
   type AppTab,
 } from '@/components/dashboard/app-tab-navigation';
-import { CapabilityGate } from '@/components/dashboard/capability-gate';
-import { useCapabilityRegistry } from '@/lib/api/capabilities';
-import { capabilityAccess } from '@/lib/capability-state';
 import { AutomationsBody } from '@/components/dashboard/automations-body';
+import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
+import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
+import { ConfigHistory } from '@/components/dashboard/config-history';
+import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
+import { DebugBody } from '@/components/dashboard/debug-body';
+import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
+import { DeployFromGitModal } from '@/components/dashboard/deploy-from-git-modal';
+import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
+import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
+import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
+import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
+import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
+import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
+import { ErrorsBody } from '@/components/dashboard/errors-body';
+import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
+import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
+import { IssuesBody } from '@/components/dashboard/issues-body';
+import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
 import { WorkflowsBody } from '@/components/dashboard/workflows/workflows-body';
 import { WorkflowSchedulesBody } from '@/components/dashboard/workflows/workflow-schedules';
 import { RecoveryPolicyBody } from '@/components/dashboard/workflows/recovery-policy';
 import { WorkflowInsightsBody } from '@/components/dashboard/workflows/workflow-insights';
 import { automationSearchPatch, validateJobsSearch } from '@/components/dashboard/jobs-search';
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
-import { createFileRoute, useParams } from '@tanstack/react-router';
-import { Rocket } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  PageHeader,
-  Panel,
-  RangeSelector,
-  StatTile,
-  UnreachableState,
-  queryPhase,
-} from '@/components/dashboard/primitives';
-import { formatCompact, formatMs } from '@/lib/mock-data';
-import {
-  useAppDeployments,
-  useAppMetrics,
-  useBuildRecords,
-  type MetricsRange,
-} from '@/lib/api/queries';
-import { toDeployment } from '@/lib/api/adapters';
-import { useData } from '@/lib/store';
-import { useAuth } from '@/lib/auth';
-import { isPaidPlan } from '@/lib/plan';
-import { LogsBody } from './dashboard.logs';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
+import { Sheet } from '@/components/dashboard/kit/sheet';
+import { LogDrainsBody } from '@/components/dashboard/log-drains';
 import {
   logFilters,
   logsSearch,
@@ -49,15 +57,9 @@ import {
   validateLogsSearch,
   type LogsSearch,
 } from '@/components/dashboard/logs-search';
-import { RoutesBody } from './dashboard.routes';
-import { SecretsBody } from './dashboard.secrets';
-import { EnvBody } from './dashboard.env';
-import { ConfigHistory } from '@/components/dashboard/config-history';
-import { QueuesBody } from './dashboard.queues';
+import { SyntheticsBody } from '@/components/dashboard/synthetics-body';
 import { RealtimeBody } from '@/components/dashboard/realtime/realtime-body';
-import { UpstreamsBody } from './dashboard.upstreams';
-import { AlertsBody } from './dashboard.alerts';
-import { DebugBody } from '@/components/dashboard/debug-body';
+import { SlosBody } from '@/components/dashboard/slos-body';
 import { ForksBody } from '@/components/dashboard/app-forks';
 import { ProfileCapturesBody } from '@/components/dashboard/profile-captures';
 import {
@@ -65,64 +67,61 @@ import {
   type ProfileCaptureSearch,
 } from '@/components/dashboard/profile-captures-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
-import { validateDebugSearch, type DebugSearch } from '@/components/dashboard/debug-search';
 import { RequestAuditBody } from '@/components/dashboard/request-audit';
-import { MirrorsBody } from './dashboard.mirrors';
-import { TenantSurfacesBody } from './dashboard.tenant-surfaces';
 import { TcpListeners, UdpListeners } from '@/components/dashboard/listeners';
-import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
-import { OpenAPIBody } from './dashboard.openapi';
-import { WebhooksHub } from './dashboard.webhooks';
-import { EdgeRulesBody } from './dashboard.edge-rules';
-import { EdgeProtectionBody } from '@/components/dashboard/edge-protection';
-import { ErrorsBody } from '@/components/dashboard/errors-body';
-import { LogDrainsBody } from '@/components/dashboard/log-drains';
-import { IssuesBody } from '@/components/dashboard/issues-body';
 import { ServiceBindings } from '@/components/dashboard/service-bindings';
 import { AppOutboundBindings } from '@/components/dashboard/outbound/app-outbound-bindings';
-import { BindingReleasePolicy } from '@/components/dashboard/binding-release-policy';
-import { BindingVerificationRuns } from '@/components/dashboard/binding-verification-runs';
 import { QueueCanaries } from '@/components/dashboard/queue-canaries';
 import { McpGuidance } from '@/components/dashboard/mcp-guidance';
-import { validateIssueSearch, type IssueSearch } from '@/components/dashboard/issues-search';
-import { AppConfiguration } from '@/components/dashboard/app-configuration';
-import { PrewarmPanel } from '@/components/dashboard/prewarm';
-import { GitHubConnectionPanel } from '@/components/dashboard/github-connection';
-import { InvokePanel, SloPanel } from '@/components/dashboard/app-core-panels';
-import { AppRetryDefaults } from '@/components/dashboard/app-retry-defaults';
-import { AppUsagePanel, WakeTimelinePanel } from '@/components/dashboard/app-insights';
-import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
-import { CustomMetricsPanel } from '@/components/dashboard/custom-metrics';
-import { AppHealthPanel } from '@/components/dashboard/app-health';
-import { AwakeRoutesPanel, DependencyLatencyPanel } from '@/components/dashboard/app-observability';
-import { AppOverview } from '@/components/dashboard/app-overview';
-import { StatelessContract } from '@/components/dashboard/stateless-contract';
-import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { AppHeader } from '@/components/dashboard/app-header';
-import { useProjectMembership } from '@/lib/api/projects';
-import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
-import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
-import { ImageDeploymentPanel } from '@/components/dashboard/image-deploy-form';
 import { Swap } from '@/components/dashboard/motion';
-import { DeployFromGitModal } from '@/components/dashboard/deploy-from-git-modal';
-import { DeploymentProgress } from '@/components/dashboard/deployment-progress';
+import { AlertsBody } from '@/components/dashboard/pages/alerts';
+import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
+import { EnvBody, EnvironmentSummary } from '@/components/dashboard/pages/env';
+import { LogsBody } from '@/components/dashboard/pages/logs';
+import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
+import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
+import { QueuesBody } from '@/components/dashboard/pages/queues';
+import { RoutesBody } from '@/components/dashboard/pages/routes';
+import { SecretsBody } from '@/components/dashboard/pages/secrets';
+import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
+import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
+import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
+import { PlanGate } from '@/components/dashboard/plan-gate';
+import { PrewarmPanel } from '@/components/dashboard/prewarm';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Panel,
+  queryPhase,
+  UnreachableState,
+} from '@/components/dashboard/primitives';
+import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
 import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
 import {
   validateReleasesSearch,
   type ReleaseSection,
 } from '@/components/dashboard/releases-search';
 import { AppActivityTimeline } from '@/components/dashboard/resource-activity';
+import { StatelessContract } from '@/components/dashboard/stateless-contract';
+import { TarballDeploy } from '@/components/dashboard/tarball-deploy';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/field';
+import { toDeployment } from '@/lib/api/adapters';
+import { useCapabilityRegistry } from '@/lib/api/capabilities';
+import { useProjectMembership } from '@/lib/api/projects';
+import { useAppDeployments, useAppMetrics, useBuildRecords } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth';
+import { capabilityAccess } from '@/lib/capability-state';
 import { ReleaseSafety } from '@/components/dashboard/release-safety';
-import { DeploymentHistoryPanel } from '@/components/dashboard/deployment-history';
-import { ClearObsoleteDeploymentsButton } from '@/components/dashboard/deployment-actions';
-import { DeploymentAliasesPanel } from '@/components/dashboard/deployment-aliases';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
-import { PlanGate } from '@/components/dashboard/plan-gate';
-import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
 import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
-
-const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
+import { isPaidPlan } from '@/lib/plan';
+import { useData } from '@/lib/store';
+import { createFileRoute, useParams } from '@tanstack/react-router';
+import { Play, Rocket } from 'iconoir-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -136,21 +135,30 @@ const METRIC_RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15
 type Tab = AppTab;
 
 /** One half of the Environment page — env vars and secrets share it. */
-function EnvironmentSection({
+/** A section heading with its help tip, and the section's actions on the right. */
+function SectionHeading({
   title,
-  description,
-  children,
+  help,
+  actions,
 }: {
   title: string;
-  description: string;
-  children: ReactNode;
+  help: string;
+  actions?: ReactNode;
 }) {
   return (
-    <section aria-label={title} className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-medium">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-1">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <HelpTip label={`About ${title}`}>{help}</HelpTip>
       </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+function EnvironmentSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-3">
       {children}
     </section>
   );
@@ -191,8 +199,11 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     ProfileCaptureSearch &
     LogsSearch &
     IssueSearch &
+    AppAnalyticsSearch &
     ReturnType<typeof automationSearchPatch> & {
       tab?: Tab;
+      /** The Invoke sheet is open. `?tab=Invoke` from before it moved opens it too. */
+      invoke?: true;
       deployment?: string;
       releaseSection?: ReleaseSection;
       webhookDirection?: 'inbound' | 'outbound';
@@ -203,7 +214,15 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     ...automationSearchPatch(validateJobsSearch(search)),
     ...logsSearchPatch(validateLogsSearch(search)),
     ...validateIssueSearch(search),
+    ...validateAppAnalyticsSearch(search),
     tab: resolveAppTab(search.tab),
+    invoke:
+      search.invoke === true ||
+      search.invoke === 1 ||
+      search.invoke === '1' ||
+      search.tab === 'Invoke'
+        ? true
+        : undefined,
     deployment:
       typeof search.deployment === 'string' && search.deployment ? search.deployment : undefined,
     releaseSection: validateReleasesSearch({ ...search, build: undefined }).releaseSection,
@@ -228,6 +247,8 @@ function FunctionDetailPage() {
   // Preserve nested investigations when the operator leaves and returns to a tab.
   const setTab = (next: Tab) =>
     navigate({ search: (current) => ({ ...current, tab: next }), hash: true });
+  const setInvoke = (open: boolean) =>
+    navigate({ search: (current) => ({ ...current, invoke: open || undefined }), hash: true });
   useEffect(() => {
     if (search.tab === 'Logs' && search.mode === 'archive' && !search.date) {
       void navigate({
@@ -237,8 +258,6 @@ function FunctionDetailPage() {
       });
     }
   }, [search, navigate]);
-  const tabsId = useId();
-  const [range, setRange] = useState<MetricsRange>('24h');
   const { getWorkflow, loading, error, refresh } = useData();
   const { account, loading: authLoading } = useAuth();
   const membership = useProjectMembership(account?.id ?? '');
@@ -259,16 +278,9 @@ function FunctionDetailPage() {
   // Real per-app aggregates for the Metrics tab. Called with the slug, which is
   // what `appSlug` is.
   const paidAccess = account !== null && isPaidPlan(account.plan);
-  const metrics = useAppMetrics(appSlug, tab === 'Overview' ? '24h' : range, {
-    enabled: paidAccess && (tab === 'Overview' || tab === 'Metrics'),
+  const metrics = useAppMetrics(appSlug, '24h', {
+    enabled: paidAccess && tab === 'Overview',
   });
-  const metricsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
-  const metricsTileState = metrics.isPending
-    ? ('loading' as const)
-    : metrics.error || metricsDegraded
-      ? ('unavailable' as const)
-      : ('ready' as const);
-  const metricsPhase = queryPhase({ error: metrics.error, loading: metrics.isPending });
   // The deployment history is app-scoped and paged, so resolve build records
   // for the rows that are actually visible instead of joining against the
   // account-wide first build page. This keeps older app releases from losing
@@ -379,6 +391,10 @@ function FunctionDetailPage() {
         project={membership.projectOfApp.get(appSlug)}
         actions={
           <>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setInvoke(true)}>
+              <Play className="h-3.5 w-3.5" />
+              Invoke
+            </Button>
             <Button
               size="sm"
               className="gap-1.5"
@@ -406,20 +422,28 @@ function FunctionDetailPage() {
         />
       )}
 
-      <AppTabNavigation
-        tab={tab}
-        onSelect={(next) => void setTab(next)}
-        panelId={`${tabsId}-panel`}
-        visible={visibleTabs}
-      />
-
-      <div
-        role="tabpanel"
-        id={`${tabsId}-panel`}
-        aria-labelledby={appTabPanelLabel(`${tabsId}-panel`, tab)}
+      {/* The rail lists this app's sections; small screens get the same list
+          here, since the rail is behind the menu button there. */}
+      <Select
+        aria-label="Section"
+        value={tab}
+        onChange={(e) => void setTab(e.target.value as Tab)}
+        className="w-full lg:hidden"
       >
-        {/* Keyed by tab, so switching cross-fades the panel in rather than
-            hard-swapping — the tab strip above stays put either way. */}
+        {APP_TAB_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {(group.tabs as readonly Tab[])
+              .filter((name) => name === tab || visibleTabs.includes(name))
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </Select>
+
+      <section aria-label={tab}>
         <Swap id={tab}>
           <TabCapabilityGate capability={tabCapability} title={tab}>
             <div className="flex flex-col gap-6">
@@ -464,10 +488,30 @@ function FunctionDetailPage() {
               {tab === 'Workflow insights' && <WorkflowInsightsBody slug={fn.id} />}
               {tab === 'Recovery policy' && <RecoveryPolicyBody slug={fn.id} />}
               {tab === 'Overview' && <PreviewDiscovery slug={appSlug} />}
-              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Overview' && (
                 <AppOverview
+                  analytics={
+                    paidAccess ? (
+                      <AppAnalyticsPreview
+                        slug={fn.id}
+                        heading="Traffic"
+                        since={search.analyticsSince ?? '24h'}
+                        onSinceChange={(value) =>
+                          void navigate({
+                            search: (previous) => ({
+                              ...previous,
+                              analyticsSince: value as AppAnalyticsSearch['analyticsSince'],
+                            }),
+                            replace: true,
+                            resetScroll: false,
+                          })
+                        }
+                      />
+                    ) : undefined
+                  }
                   app={fn}
+                  slug={fn.id}
+                  analyticsSince={search.analyticsSince ?? '24h'}
                   releases={releases}
                   metrics={metrics}
                   metricsAccess={
@@ -496,7 +540,6 @@ function FunctionDetailPage() {
                   onRetryMetrics={() => void metrics.refetch()}
                 />
               )}
-              {tab === 'Overview' && <StatelessContract slug={appSlug} />}
               {tab === 'Metrics' &&
                 (authLoading || account === null ? (
                   <LoadingState message="Checking plan access…" />
@@ -507,89 +550,38 @@ function FunctionDetailPage() {
                   />
                 ) : (
                   <div className="flex flex-col gap-6">
-                    <div className="flex justify-end">
-                      <RangeSelector
-                        value={range}
-                        onChange={setRange}
-                        options={METRIC_RANGES.map((r) => ({ key: r, label: r }))}
-                      />
-                    </div>
-
-                    {/* Scalars, not a series: `/v1/apps/{slug}/metrics` returns one
-                aggregate per window. The sparkline charts that used to sit here
-                were drawn from a seeded PRNG and are gone with it. */}
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                      {metricsDegraded && (
-                        <p
-                          className="text-xs text-muted-foreground sm:col-span-2 xl:col-span-4"
-                          role="status"
-                        >
-                          Metrics are degraded ({metrics.data?.source}), so no figures can be read
-                          for this window.
-                        </p>
-                      )}
-                      <StatTile
-                        label="Requests"
-                        value={metrics.data ? formatCompact(metrics.data.request_count) : '—'}
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Error rate"
-                        value={metrics.data ? metrics.data.error_rate_pct.toFixed(2) : '—'}
-                        unit="%"
-                        deltaGood={false}
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Cold starts"
-                        value={metrics.data ? metrics.data.cold_start_pct.toFixed(2) : '—'}
-                        unit="%"
-                        state={metricsTileState}
-                      />
-                      <StatTile
-                        label="Wake p95 (fleet)"
-                        value={metrics.data ? formatMs(metrics.data.wake_p95_ms) : '—'}
-                        state={metricsTileState}
-                      />
-                    </div>
-
-                    <Panel
-                      title="Response latency"
-                      description="2xx traffic over the selected window"
-                    >
-                      {metricsPhase === 'unreachable' ? (
-                        <UnreachableState onRetry={() => void metrics.refetch()} />
-                      ) : metricsPhase === 'error' ? (
-                        <ErrorState error={metrics.error} onRetry={() => void metrics.refetch()} />
-                      ) : metricsPhase === 'loading' ? (
-                        <LoadingState message="Querying metrics…" />
-                      ) : (
-                        <div className="grid gap-4 p-5 sm:grid-cols-3">
-                          <StatTile
-                            label="p50"
-                            value={formatMs(metrics.data?.latency_p50_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                          <StatTile
-                            label="p95"
-                            value={formatMs(metrics.data?.latency_p95_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                          <StatTile
-                            label="p99"
-                            value={formatMs(metrics.data?.latency_p99_ms ?? 0)}
-                            state={metricsTileState}
-                          />
-                        </div>
-                      )}
-                    </Panel>
-                    <SloPanel slug={fn.id} />
-                    <AppAnalyticsPanel slug={fn.id} />
+                    <AppAnalyticsPanel
+                      slug={fn.id}
+                      search={search}
+                      onSearchChange={(patch) =>
+                        void navigate({
+                          search: (current) => ({ ...current, ...patch }),
+                          replace: true,
+                          hash: true,
+                          resetScroll: false,
+                        })
+                      }
+                    />
+                    <AppHealthPanel slug={fn.id} />
                     <CustomMetricsPanel slug={fn.id} />
-                    <div className="grid gap-4 xl:grid-cols-2">
-                      <AwakeRoutesPanel slug={fn.id} since="7d" />
-                      <DependencyLatencyPanel slug={fn.id} since="24h" />
-                    </div>
+                    <DependencyLatencyPanel slug={fn.id} since={search.analyticsSince ?? '24h'} />
+                    <AppUsagePanel slug={fn.id} />
+                  </div>
+                ))}
+
+              {/* Why the app wakes and how each wake went: its own section, so
+                  Metrics ends with the traffic it describes. */}
+              {tab === 'Wakes' &&
+                (authLoading || account === null ? (
+                  <LoadingState message="Checking plan access…" />
+                ) : !paidAccess ? (
+                  <PlanGate
+                    feature="Wake analysis"
+                    description="What keeps an app awake, and each wake's timing, are available on Hobby and above."
+                  />
+                ) : (
+                  <div className="flex flex-col gap-5">
+                    <AwakeRoutesPanel slug={fn.id} since="7d" />
                     <WakeTimelinePanel
                       slug={fn.id}
                       onOpenWake={(wake) =>
@@ -600,27 +592,10 @@ function FunctionDetailPage() {
                         })
                       }
                     />
-                    <AppUsagePanel slug={fn.id} />
                   </div>
                 ))}
 
-              {tab === 'Invoke' && (
-                <>
-                  <DeploymentCapability
-                    slug={fn.id}
-                    resource="Invoke"
-                    phase={deploymentPhase}
-                    error={deploymentError}
-                    hasRunnable={hasRunnable}
-                    onRetry={() => void appDeploymentQuery.refetch()}
-                  >
-                    <InvokePanel slug={fn.id} />
-                  </DeploymentCapability>
-                  {/* An app setting, not a deployment's, so it stays editable before a deploy. */}
-                  <AppRetryDefaults slug={fn.id} />
-                </>
-              )}
-
+              {tab === 'Overview' && <AppHealthPanel slug={fn.id} />}
               {tab === 'Deployments' && (
                 <>
                   <ImageDeploymentPanel key={appSlug} slug={appSlug} />
@@ -640,7 +615,7 @@ function FunctionDetailPage() {
                         resetScroll: false,
                       })
                     }
-                    actions={<ClearObsoleteDeploymentsButton slug={fn.id} />}
+                    cleanup={<ClearObsoleteDeploymentsButton slug={fn.id} />}
                   />
                   <DeploymentAliasesPanel
                     slug={fn.id}
@@ -659,7 +634,7 @@ function FunctionDetailPage() {
                   />
                   <Panel
                     title="Deploy an archive"
-                    description="For source that is not in a connected repository — the console's half of `gregale deploy --tarball`."
+                    help="For source that is not in a connected repository. The console's half of `gregale deploy --tarball`."
                   >
                     <TarballDeploy
                       slug={fn.id}
@@ -777,22 +752,36 @@ function FunctionDetailPage() {
               )}
               {tab === 'Environment' && (
                 <>
-                  <EnvironmentSection
-                    title="Variables"
-                    description="Plain configuration the app reads at start. Values are visible to anyone with access to this app."
-                  >
-                    <EnvBody slug={fn.id} />
+                  <EnvironmentSummary slug={fn.id} />
+                  <EnvironmentSection title="Variables">
+                    <EnvBody
+                      slug={fn.id}
+                      header={(actions) => (
+                        <SectionHeading
+                          title="Variables"
+                          help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
+                          actions={actions}
+                        />
+                      )}
+                    />
                   </EnvironmentSection>
-                  <EnvironmentSection
-                    title="Secrets"
-                    description="Sealed at rest and write-only: once saved, a value can be replaced or rotated but never read back."
-                  >
-                    <SecretsBody slug={fn.id} />
+                  <EnvironmentSection title="Secrets">
+                    <SecretsBody
+                      slug={fn.id}
+                      header={(actions) => (
+                        <SectionHeading
+                          title="Secrets"
+                          help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
+                          actions={actions}
+                        />
+                      )}
+                    />
                   </EnvironmentSection>
-                  <EnvironmentSection
-                    title="History"
-                    description="Every change to variables and secrets is a revision you can roll back to, and the config guard undoes a change that breaks the app."
-                  >
+                  <EnvironmentSection title="History">
+                    <SectionHeading
+                      title="History"
+                      help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
+                    />
                     <ConfigHistory slug={fn.id} />
                   </EnvironmentSection>
                 </>
@@ -816,6 +805,7 @@ function FunctionDetailPage() {
               )}
               {tab === 'MCP' && <McpGuidance key={appSlug} slug={appSlug} />}
               {tab === 'Alerts' && <AlertsBody slug={fn.id} />}
+              {tab === 'SLOs' && <SlosBody slug={fn.id} />}
               {tab === 'Webhooks' && (
                 <WebhooksHub
                   accountId={account?.id ?? ''}
@@ -862,6 +852,7 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Request audit' && <RequestAuditBody slug={fn.id} />}
+              {tab === 'Synthetic checks' && <SyntheticsBody slug={fn.id} />}
               {tab === 'Mirrors' && <MirrorsBody slug={fn.id} />}
               {tab === 'Tenant surfaces' && <TenantSurfacesBody slug={fn.id} />}
               {tab === 'TCP listeners' && <TcpListeners slug={fn.id} />}
@@ -870,19 +861,44 @@ function FunctionDetailPage() {
               {tab === 'Consumers' && <ApiConsumers slug={fn.id} />}
               {tab === 'Consumer plans' && <ApiConsumerPlans slug={fn.id} />}
 
-              {tab === 'Configuration' && (
+              {tab === 'General' && <AppConfiguration slug={fn.id} section="general" />}
+              {tab === 'Runtime' && (
                 <>
-                  {/* Source first: AppConfiguration ends in the danger zone. */}
-                  <GitHubConnectionPanel slug={fn.id} />
-                  <AppConfiguration slug={fn.id} />
+                  <AppConfiguration slug={fn.id} section="runtime" />
                   <PrewarmPanel slug={fn.id} />
+                  <StatelessContract slug={appSlug} />
+                </>
+              )}
+              {tab === 'Health and releases' && <AppConfiguration slug={fn.id} section="health" />}
+              {tab === 'Source and access' && (
+                <>
+                  <GitHubConnectionPanel slug={fn.id} />
+                  <AppConfiguration slug={fn.id} section="source" />
                 </>
               )}
             </div>
           </TabCapabilityGate>
         </Swap>
-      </div>
+      </section>
 
+      <Sheet
+        open={Boolean(search.invoke)}
+        onClose={() => void setInvoke(false)}
+        title="Invoke"
+        size="lg"
+      >
+        <DeploymentCapability
+          slug={fn.id}
+          resource="Invoke"
+          phase={deploymentPhase}
+          error={deploymentError}
+          hasRunnable={hasRunnable}
+          onRetry={() => void appDeploymentQuery.refetch()}
+        >
+          <InvokePanel slug={fn.id} />
+          <AppRetryDefaults slug={fn.id} />
+        </DeploymentCapability>
+      </Sheet>
       <WakeDrawer
         slug={fn.id}
         wakeId={search.wake}

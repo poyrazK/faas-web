@@ -154,11 +154,7 @@ function InvoicesBody() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Invoices"
-        description={
-          org
-            ? `${label}'s billing history. Payment methods and PDFs live in the provider's portal.`
-            : "Billing history. Payment methods and PDFs live in the provider's portal."
-        }
+        help="Payment methods and PDFs live in the provider's portal."
         actions={
           org ? (
             // The company portal needs the owner and a fresh step-up (faas

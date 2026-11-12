@@ -1,16 +1,18 @@
-import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError } from '@/lib/api/errors';
 import { useDomainDoctor } from '@/lib/api/queries';
 import { CapabilityGate } from './capability-gate';
+import { Reveal, StatusWord } from './domain-records';
+import { CHECK_ABOUT, DOMAIN_TONE, describeCheck, summarizeDoctor } from './domain-words';
+import { HelpTip } from './kit/help-tip';
 import { InlinePhase, queryPhase } from './primitives';
+import { shortTime } from '@/lib/time';
 
 /**
- * The five-check domain doctor (ADR-120), displayed in the diagnostics dialog.
- *
- * The page already prints the TXT record and tells the customer to publish it;
- * this is the other half — what the platform actually observes once they have.
- * `remediation` is the field that earns the panel: it is the exact record to
- * change, so it is given its own line rather than folded into the detail text.
+ * The five-check domain doctor (ADR-120), in the diagnostics dialog, in plain
+ * words: the first thing to fix (or that nothing is wrong), then each check
+ * as one sentence. `remediation` is the field that earns the panel — the exact
+ * record to change — so a failing check shows it in place; the API's own
+ * detail, the observed value and the check's token sit behind "Show details".
  *
  * Two states the contract makes explicit and this therefore does not flatten
  * into a generic error. `doctor_disabled` means the operator has not turned the
@@ -20,26 +22,10 @@ import { InlinePhase, queryPhase } from './primitives';
  * fresh-looking timestamp.
  */
 
-const STATUS_COLOR: Record<string, string> = {
-  ok: 'var(--status-good)',
-  fail: 'var(--status-critical)',
-  pending: 'var(--status-warning)',
-  na: 'var(--status-idle)',
-};
-
-/** Stable tokens from the API, spelled for people. */
-const CHECK_LABEL: Record<string, string> = {
-  dns_record: 'DNS record',
-  points_to_gregale: 'Points to Gregale',
-  tls_certificate: 'TLS certificate',
-  caa_permits: 'CAA permits issuance',
-  ipv6_conflict: 'IPv6 conflict',
-};
-
 function formatWhen(value: string | undefined): string {
   if (!value) return '';
   const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '' : new Date(ms).toLocaleString();
+  return Number.isNaN(ms) ? '' : shortTime(ms);
 }
 
 /** The doctor is a preview capability (faas catalog `domain-doctor`); off, it is not probed. */
@@ -55,7 +41,7 @@ function DomainDoctorReport({ domain }: { domain: string }) {
   const { data, isPending, error, refetch } = useDomainDoctor(domain);
 
   if (isPending) {
-    return <p className="text-sm text-muted-foreground">Probing {domain}…</p>;
+    return <p className="text-sm text-muted-foreground">Checking {domain}’s DNS and HTTPS…</p>;
   }
 
   // Dark-launched or mid-outage: the probe is the thing that is missing, not
@@ -66,8 +52,7 @@ function DomainDoctorReport({ domain }: { domain: string }) {
   ) {
     return (
       <p className="text-sm text-muted-foreground">
-        The domain doctor is not enabled on this deployment. DNS status is still available in the
-        domains table.
+        The domain doctor is not enabled on this installation.
       </p>
     );
   }
@@ -82,40 +67,85 @@ function DomainDoctorReport({ domain }: { domain: string }) {
     );
   }
 
+  const answer = summarizeDoctor(data);
+
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted-foreground">
-        {data.stale
-          ? 'Cached reading was stale, so this was re-probed just now.'
-          : `Observed ${formatWhen(data.observed_at)}`}
-      </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <p className="text-lg leading-7 font-medium tracking-[-0.01em]">{answer.lead}</p>
+        {answer.rest && <p className="text-sm text-muted-foreground">{answer.rest}</p>}
+        <p className="text-xs text-muted-foreground">
+          {data.stale
+            ? 'Cached reading was stale, so this was re-probed just now.'
+            : `Checked ${formatWhen(data.observed_at)}`}
+        </p>
+      </div>
 
-      <ul className="flex flex-col divide-y divide-border">
-        {data.checks.map((check) => (
-          <li key={check.name} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Pill label={check.status} color={STATUS_COLOR[check.status]} />
-              <span className="font-mono text-xs">{check.name}</span>
-              <span className="text-sm">{CHECK_LABEL[check.name] ?? check.name}</span>
-            </div>
+      <ul aria-label="Checks" className="flex flex-col divide-y divide-border">
+        {data.checks.map((check) => {
+          const words = describeCheck(check);
+          return (
+            <li key={check.name} className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span className="flex items-center gap-1 text-sm font-medium">
+                  {words.label}
+                  <HelpTip label={`About ${words.label}`}>
+                    {CHECK_ABOUT[check.name] ?? check.detail}
+                  </HelpTip>
+                </span>
+                <StatusWord word={words.word} tone={words.tone} title={check.status} />
+              </div>
 
-            <p className="text-sm text-muted-foreground">{check.detail}</p>
+              <p className="text-sm text-muted-foreground">{words.sentence}</p>
 
-            {check.observed && (
-              <p className="text-xs text-muted-foreground">
-                Observed: <code className="select-all break-all">{check.observed}</code>
-              </p>
-            )}
-
-            {check.remediation && (
-              <p className="text-xs text-foreground">
-                <span className="label-mono text-muted-foreground">Fix </span>
-                <code className="select-all break-all">{check.remediation}</code>
-              </p>
-            )}
-          </li>
-        ))}
+              {check.remediation && check.status !== 'ok' && (
+                <p
+                  className="rounded-lg px-3 py-2 text-xs text-foreground"
+                  style={{
+                    background: `color-mix(in oklab, ${DOMAIN_TONE[words.tone]} 8%, transparent)`,
+                  }}
+                >
+                  <span className="text-muted-foreground">To fix: </span>
+                  <code className="select-all [overflow-wrap:anywhere]">{check.remediation}</code>
+                </p>
+              )}
+            </li>
+          );
+        })}
       </ul>
+
+      <Reveal show="Show what each check found" hide="Hide what each check found">
+        <ul aria-label="What each check found" className="flex flex-col gap-3">
+          {data.checks.map((check) => (
+            <li key={check.name}>
+              <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Check</dt>
+                <dd className="font-mono">
+                  {check.name} · {check.status}
+                </dd>
+                <dt className="text-muted-foreground">Found</dt>
+                <dd>{check.detail}</dd>
+                {check.observed && (
+                  <>
+                    <dt className="text-muted-foreground">Observed</dt>
+                    <dd>
+                      <code className="select-all break-all">{check.observed}</code>
+                    </dd>
+                  </>
+                )}
+                {check.remediation && check.status === 'ok' && (
+                  <>
+                    <dt className="text-muted-foreground">Note</dt>
+                    <dd>
+                      <code className="break-all">{check.remediation}</code>
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      </Reveal>
     </div>
   );
 }

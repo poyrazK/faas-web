@@ -83,7 +83,7 @@ beforeEach(() => {
 
 it('creates a cache rule matched only on GET and HEAD with the reviewed action', async () => {
   mount();
-  await userEvent.click(screen.getByRole('button', { name: /Response cache/ }));
+  await userEvent.click(screen.getByRole('button', { name: /Reuse recent responses/ }));
   expect(screen.queryByRole('button', { name: 'POST' })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Create rule' }));
   await waitFor(() => expect(state.create).toHaveBeenCalledTimes(1));
@@ -105,11 +105,11 @@ it('creates a cache rule matched only on GET and HEAD with the reviewed action',
 it('disables cache selection after registry failure while keeping other rule kinds usable', async () => {
   state.capability = 'registry-error';
   mount();
-  const cache = screen.getByRole('button', { name: /Response cache/ });
+  const cache = screen.getByRole('button', { name: /Reuse recent responses/ });
   expect(cache).toHaveAttribute('aria-disabled', 'true');
   await userEvent.click(cache);
   expect(state.create).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: /Route to an app/ })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: /Send requests to another app/ })).toHaveAttribute(
     'aria-disabled',
     'false'
   );
@@ -118,11 +118,11 @@ it('disables cache selection after registry failure while keeping other rule kin
 it('keeps cache unavailable on Free without blocking an unrelated rule kind', async () => {
   state.plan = 'free';
   mount();
-  const cache = screen.getByRole('button', { name: /Response cache/ });
+  const cache = screen.getByRole('button', { name: /Reuse recent responses/ });
   expect(cache).toHaveAttribute('aria-disabled', 'true');
   await userEvent.click(cache);
   expect(state.create).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: /Route to an app/ })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: /Send requests to another app/ })).toHaveAttribute(
     'aria-disabled',
     'false'
   );
@@ -211,7 +211,7 @@ it('shows a permission rejection instead of silently closing a cache form', asyn
     new ApiError({ status: 403, code: 'forbidden', title: 'Access denied' })
   );
   mount();
-  await userEvent.click(screen.getByRole('button', { name: /Response cache/ }));
+  await userEvent.click(screen.getByRole('button', { name: /Reuse recent responses/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Create rule' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/Access denied/);
 });

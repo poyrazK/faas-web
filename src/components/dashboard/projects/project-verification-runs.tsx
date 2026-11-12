@@ -57,7 +57,7 @@ export function ProjectVerificationRuns({ accountId, project, environment }: Pro
   return (
     <Panel
       title="Graph verification runs"
-      description={`Binding verification across every member of a release set in ${environment}. Each member is an app run; they share one admission budget and deadline. Nothing runs on its own: admit each member’s steps, then complete the graph.`}
+      help={`Binding verification across every member of a release set in ${environment}. Each member is an app run; they share one admission budget and deadline. Nothing runs on its own: admit each member’s steps, then complete the graph.`}
     >
       <div className="space-y-4 text-sm">
         <SegmentedControl
@@ -81,7 +81,7 @@ export function ProjectVerificationRuns({ accountId, project, environment }: Pro
           <>
             <ul
               aria-label="Graph verification runs"
-              className="divide-y divide-border rounded-lg border border-border"
+              className="divide-y divide-border well rounded-xl bg-muted/40"
             >
               {rows.map((row) => (
                 <li
@@ -120,7 +120,7 @@ export function ProjectVerificationRuns({ accountId, project, environment }: Pro
             )}
             <p className="text-xs text-muted-foreground">
               The list shows stored state; expired means past its deadline when the list was read.
-              Open a run to recheck it against current evidence.
+              Open a run to recheck it against current results.
             </p>
           </>
         )}
@@ -215,7 +215,7 @@ function GraphRunDetail({ accountId, project, environment, runId }: Props & { ru
     const ok = await confirm({
       title: 'Cancel this graph verification run?',
       description:
-        'Blocks further admissions in every member and cancels the unfinished probes and canary messages the graph started. A handler already running may still finish. Evidence that already succeeded is kept.',
+        'Blocks further admissions in every member and cancels the unfinished probes and canary messages the graph started. A handler already running may still finish. Results that already succeeded are kept.',
       confirmLabel: 'Cancel graph run',
       destructive: true,
     });
@@ -233,12 +233,12 @@ function GraphRunDetail({ accountId, project, environment, runId }: Props & { ru
   return (
     <section
       aria-label={`Graph run ${short(runId)}`}
-      className="space-y-4 rounded-lg border border-border p-4"
+      className="space-y-4 well rounded-xl bg-muted/40 p-4"
     >
       <InlinePhase
         phase={phase}
         error={run.error}
-        loadingMessage="Checking the graph against current evidence…"
+        loadingMessage="Checking the graph against current results…"
         onRetry={() => void run.refetch()}
       />
       {phase === 'ready' && data && (
@@ -361,13 +361,13 @@ function MemberRun({
           {checkPassed === undefined
             ? ''
             : checkPassed
-              ? ' · current evidence satisfies its policy'
-              : ' · current evidence does not yet satisfy its policy'}
+              ? ' · current results satisfy its policy'
+              : ' · current results do not yet satisfy its policy'}
         </span>
       </div>
       <ol
         aria-label={`${app} steps`}
-        className="divide-y divide-border rounded-lg border border-border"
+        className="divide-y divide-border well rounded-xl bg-muted/40"
       >
         {member.steps.map((step: VerificationRunStep, index) => (
           <StepRow

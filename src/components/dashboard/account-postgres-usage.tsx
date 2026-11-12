@@ -58,7 +58,7 @@ export function ManagedPostgresUsagePanel({ data }: { data: ManagedPostgresUsage
   return (
     <Panel
       title="Managed PostgreSQL"
-      description={`Since ${new Date(data.period_start).toLocaleDateString()}.${data.fresh ? '' : ' The last observation is stale; these figures lag behind.'}`}
+      help={`Since ${new Date(data.period_start).toLocaleDateString()}.${data.fresh ? '' : ' The last observation is stale; these figures lag behind.'}`}
       actions={
         <span className="inline-flex items-center gap-1.5 text-xs" style={{ color }}>
           <Icon aria-hidden className="h-3.5 w-3.5" />

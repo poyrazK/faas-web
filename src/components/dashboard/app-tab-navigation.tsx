@@ -1,27 +1,25 @@
-import { useState } from 'react';
 import type { CapabilityAccess } from '@/lib/capability-state';
-import { SegmentedControl, Tabs, tabId } from './tabs';
 
 /**
- * The app page's pages, in seven groups.
- *
- * The groups are the tabs; a group's pages are a segmented control beneath
- * them, shown only when the group has more than one. It used to be the other
- * way round — the groups as a boxed pill bar and every page as an underline tab
- * — so the strip that changed least looked heaviest, and the eye landed on a
- * row of up to eight peers before it knew which group it was in.
+ * The app page's sections, grouped as the rail shows them while the app is
+ * open (`app-rail.tsx`). The group is a heading, the section a row; the
+ * section lives in `?tab=`.
  */
 export const APP_TAB_GROUPS = [
-  { label: 'Overview', tabs: ['Overview', 'Metrics', 'Invoke'] },
+  { label: 'Overview', tabs: ['Overview'] },
   { label: 'Delivery', tabs: ['Deployments', 'Release safety', 'Activity'] },
   {
     label: 'Observe',
     tabs: [
+      'Metrics',
+      'Wakes',
       'Logs',
       'Log drains',
       'Errors',
       'Issues',
       'Alerts',
+      'SLOs',
+      'Synthetic checks',
       'Debugger',
       'Forks',
       'Profile captures',
@@ -62,11 +60,13 @@ export const APP_TAB_GROUPS = [
       'Webhooks',
     ],
   },
-  { label: 'Configure', tabs: ['Environment', 'Configuration'] },
+  {
+    label: 'Configure',
+    tabs: ['Environment', 'General', 'Runtime', 'Health and releases', 'Source and access'],
+  },
 ] as const;
 export type AppTab = (typeof APP_TAB_GROUPS)[number]['tabs'][number];
 type AppTabGroup = (typeof APP_TAB_GROUPS)[number];
-type AppTabGroupLabel = AppTabGroup['label'];
 export const APP_DETAIL_TABS: readonly AppTab[] = APP_TAB_GROUPS.flatMap((g) => [...g.tabs]);
 
 /** Catalog ids (faas pkg/productcap/catalog.json) for tabs whose routes apid can gate off. */
@@ -86,6 +86,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   Forks: 'production-forks',
   Issues: 'issues',
   Errors: 'issues',
+  SLOs: 'custom-slos',
   MCP: 'mcp-hosting',
   OpenAPI: 'openapi-contract-preview',
   Consumers: 'api-consumers',
@@ -97,6 +98,7 @@ export const APP_TAB_CAPABILITY: Partial<Record<AppTab, string>> = {
   'Workflow insights': 'workflow-insights',
   Queues: 'queues',
   Realtime: 'realtime',
+  'Synthetic checks': 'synthetic-checks',
   'Edge protection': 'edge-protection',
   Outbound: 'outbound-integrations',
   'Profile captures': 'profile-captures',
@@ -123,11 +125,14 @@ export function visibleAppTabs(access: (id: string) => CapabilityAccess): AppTab
 /**
  * Tabs that were merged away. Env vars and secrets are one question — what
  * does this app's environment contain — so they are one page now; links that
- * still name either land on it.
+ * still name either land on it. Invoke is a header action on Overview now
+ * (`?invoke=1`), and Configuration's first screen is General.
  */
 const LEGACY_APP_TABS: Record<string, AppTab> = {
   Secrets: 'Environment',
   'Env vars': 'Environment',
+  Invoke: 'Overview',
+  Configuration: 'General',
 };
 
 /** The tab a `?tab=` value names, including retired names; undefined if none. */
@@ -139,63 +144,4 @@ export function resolveAppTab(value: unknown): AppTab | undefined {
 
 export function appTabGroup(tab: AppTab): AppTabGroup {
   return APP_TAB_GROUPS.find((g) => (g.tabs as readonly string[]).includes(tab))!;
-}
-
-/** The id of the group tab that labels the panel showing `tab`. */
-export function appTabPanelLabel(panelId: string, tab: AppTab) {
-  return tabId(panelId, appTabGroup(tab).label);
-}
-
-export function AppTabNavigation({
-  tab,
-  onSelect,
-  panelId,
-  visible = APP_DETAIL_TABS,
-}: {
-  tab: AppTab;
-  onSelect: (tab: AppTab) => void;
-  panelId: string;
-  /** Tabs the account can use; the selected tab always shows, so a deep link explains itself. */
-  visible?: readonly AppTab[];
-}) {
-  const shown = (name: AppTab) => name === tab || visible.includes(name);
-  const groups = APP_TAB_GROUPS.map((group) => ({
-    label: group.label,
-    tabs: (group.tabs as readonly AppTab[]).filter(shown),
-  })).filter((group) => group.tabs.length > 0);
-  const [remembered, setRemembered] = useState<Partial<Record<AppTabGroupLabel, AppTab>>>({});
-  const active = appTabGroup(tab);
-  const select = (next: AppTab) => {
-    setRemembered((current) => ({
-      ...current,
-      [active.label]: tab,
-      [appTabGroup(next).label]: next,
-    }));
-    onSelect(next);
-  };
-  const activeTabs = groups.find((g) => g.label === active.label)?.tabs ?? [tab];
-  const pages = activeTabs.map((name) => ({ key: name, label: name }));
-  return (
-    <div className="flex flex-col gap-3">
-      <Tabs
-        label="App sections"
-        value={active.label}
-        options={groups.map((group) => ({ key: group.label, label: group.label }))}
-        onChange={(label) => {
-          const group = groups.find((g) => g.label === label)!;
-          const last = remembered[group.label];
-          select(last && group.tabs.includes(last) ? last : group.tabs[0]);
-        }}
-        panelId={panelId}
-      />
-      {pages.length > 1 && (
-        <SegmentedControl
-          label={`${active.label} pages`}
-          value={tab}
-          options={pages}
-          onChange={select}
-        />
-      )}
-    </div>
-  );
 }

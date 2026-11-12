@@ -8,6 +8,7 @@ import { CapabilityNotice } from './capability-notice';
 import { Panel } from './primitives';
 import { ServicePolicyEditor } from './service-policy-editor';
 import { ServiceWakeAhead } from './service-wake-ahead';
+import { Timestamp } from '@/components/ui/timestamp';
 
 export function ServiceBindings({ slug }: { slug: string }) {
   const { account } = useAuth();
@@ -32,10 +33,7 @@ export function ServiceBindings({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-5">
-      <Panel
-        title="Internal services"
-        description="Declared bindings and caller policies. Verification is a separate platform observation."
-      >
+      <Panel title="Internal services">
         <div className="space-y-4 p-4 text-sm">
           <CapabilityNotice
             capability={capability.capability}
@@ -137,10 +135,7 @@ export function ServiceBindings({ slug }: { slug: string }) {
           It waits for the app only to know whether it is a preview. */}
       {data && <ServiceWakeAhead slug={slug} previewOf={data.preview_of_slug || undefined} />}
 
-      <Panel
-        title="Binding inventory"
-        description="Read-only configuration and independent evidence, collected without a workload probe."
-      >
+      <Panel title="Binding inventory">
         <div className="space-y-3 p-4 text-sm">
           {inventory.isPending ? (
             <p role="status">Loading binding inventory…</p>
@@ -154,7 +149,8 @@ export function ServiceBindings({ slug }: { slug: string }) {
           ) : inventory.data ? (
             <>
               <p>
-                Inventory collected {new Date(inventory.data.generated_at).toLocaleString()}.{' '}
+                Inventory collected{' '}
+                <Timestamp value={inventory.data.generated_at} mode="absolute" />.{' '}
                 {inventory.data.complete
                   ? 'All inventory sections were read.'
                   : 'Inventory is partial; some resource sections could not be read.'}

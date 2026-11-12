@@ -1,11 +1,8 @@
-import { useState } from 'react';
-import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { useConfirm } from '@/components/ui/confirm';
+import { FIELD as BASE_FIELD } from '@/components/ui/field';
 import { Timestamp } from '@/components/ui/timestamp';
 import { useToast } from '@/components/ui/toast';
-import { InlinePhase, Panel, queryPhase } from './primitives';
 import {
   useDeleteJobRegistryCredential,
   useJobRegistryCredentials,
@@ -16,6 +13,10 @@ import {
   useDeleteAppRegistryCredential,
   useSetAppRegistryCredential,
 } from '@/lib/api/queries';
+import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Sheet } from './kit/sheet';
+import { InlinePhase, Panel, queryPhase } from './primitives';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -65,6 +66,7 @@ export function RegistryCredentialsEditor({
     isEmpty: rows.length === 0,
   });
   const quota = credentials.data?.quota_max;
+  const [creating, setCreating] = useState(false);
   const [registry, setRegistry] = useState('https://');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +76,7 @@ export function RegistryCredentialsEditor({
       .mutateAsync({ registry: registry.trim(), username: username.trim(), password })
       .then(() => {
         setPassword('');
+        setCreating(false);
         toast({ kind: 'success', title: 'Registry credential saved' });
       })
       .catch((error: unknown) =>
@@ -82,60 +85,74 @@ export function RegistryCredentialsEditor({
   };
 
   return (
-    <Panel title={title} description={description}>
+    <Panel
+      title={title}
+      help={description}
+      actions={
+        <Button size="sm" onClick={() => setCreating(true)}>
+          Add registry
+        </Button>
+      }
+    >
       <div className="flex flex-col gap-5">
-        <form
-          className="grid gap-3 sm:grid-cols-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (registry.trim() && username.trim() && password && !save.isPending) submit();
-          }}
-        >
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Registry URL</span>
-            <input
-              value={registry}
-              onChange={(e) => setRegistry(e.target.value)}
-              placeholder="https://registry.example.com"
-              spellCheck={false}
-              className={CODE_FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Username</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              className={FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              className={FIELD}
-            />
-          </label>
-          <div className="flex items-center justify-between gap-3 sm:col-span-3">
-            <p className="text-xs text-muted-foreground">
-              Use an explicit https:// registry URL.
-              {quota ? ` Up to ${quota} registries; replacing one does not use another.` : ''}
-            </p>
-            <Button
-              size="sm"
-              type="submit"
-              disabled={!registry.trim() || !username.trim() || !password}
-              busy={save.isPending}
-            >
-              Save credential
-            </Button>
-          </div>
-        </form>
+        <Sheet open={creating} onClose={() => setCreating(false)} title="Registry credential">
+          <form
+            className="grid gap-3 sm:grid-cols-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (registry.trim() && username.trim() && password && !save.isPending) submit();
+            }}
+          >
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Registry URL</span>
+              <input
+                value={registry}
+                onChange={(e) => setRegistry(e.target.value)}
+                placeholder="https://registry.example.com"
+                spellCheck={false}
+                className={CODE_FIELD}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Username</span>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                className={FIELD}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                className={FIELD}
+              />
+            </label>
+            <div className="flex items-center justify-between gap-3 sm:col-span-3">
+              <p className="text-xs text-muted-foreground">
+                Use an explicit https:// registry URL.
+              </p>
+              <Button
+                size="sm"
+                type="submit"
+                disabled={!registry.trim() || !username.trim() || !password}
+                busy={save.isPending}
+              >
+                Save credential
+              </Button>
+            </div>
+          </form>
+        </Sheet>
 
+        {quota ? (
+          <p className="text-xs text-muted-foreground">
+            Up to {quota} registries; replacing one does not use another.
+          </p>
+        ) : null}
         {phase !== 'ready' ? (
           <InlinePhase
             phase={phase}

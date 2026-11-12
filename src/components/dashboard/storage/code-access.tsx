@@ -319,7 +319,7 @@ function BindingList({
   return (
     <section aria-label="Connections from the app's code" className="flex flex-col gap-2">
       <h3 className="text-sm font-medium">Connected</h3>
-      <ul className="flex flex-col divide-y divide-border rounded-xl border border-border">
+      <ul className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40">
         {items.map((b) => (
           <li key={b.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
             {/* The prefix is what code reads, so it claims its full width first

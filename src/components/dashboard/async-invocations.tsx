@@ -103,11 +103,6 @@ export function ReplayInvocationButton({
       <Button size="sm" variant="outline" busy={busy} onClick={() => void replay()}>
         {path.kind === 'keyed' ? 'Replay in lane' : 'Replay'}
       </Button>
-      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-        {path.kind === 'keyed'
-          ? 'Keyed replay joins its work-policy lane, so per-key order holds; unkeyed work replays on its own.'
-          : 'Runs again on its own; keyed work would instead rejoin its work-policy lane.'}
-      </p>
     </div>
   );
 }

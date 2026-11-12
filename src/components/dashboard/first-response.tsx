@@ -112,7 +112,7 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
       <h2 id={`${pathId}-title`} className="text-sm font-medium text-muted-foreground">
         {successful ? 'First response received' : 'Verify your API'}
       </h2>
-      <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -122,8 +122,8 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
         >
           <p className="text-[13px] leading-5 text-muted-foreground">
             {canSend
-              ? 'Send a GET request through the platform to a read-only route, such as a health check. It reaches your app the way an invocation does rather than over its public URL, and can wake it and use compute allowance.'
-              : 'Sending a request from the console needs a paid plan. Open the request URL to see your app answer, or run the request under Call it.'}
+              ? 'Sends a GET to a read-only route, such as a health check. It can wake your app and use compute allowance.'
+              : 'Sending a request from the console needs a paid plan.'}
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5">

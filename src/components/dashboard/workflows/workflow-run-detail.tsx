@@ -124,7 +124,7 @@ function RunBody({ slug, run }: { slug: string; run: WorkflowRun }) {
     <>
       <Panel
         title={run.workflow_name}
-        description="One durable run. It survives restarts and deploys, and stays pinned to the deployment that started it."
+        help="One durable run. It survives restarts and deploys, and stays pinned to the deployment that started it."
         actions={<RunActions slug={slug} run={run} diagnostics={diagnostics.data} />}
       >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -155,7 +155,7 @@ function RunBody({ slug, run }: { slug: string; run: WorkflowRun }) {
         </dl>
         {run.last_error && (
           <p
-            className="mt-4 rounded-md border border-border p-3 font-mono text-xs [overflow-wrap:anywhere]"
+            className="mt-4 well rounded-xl bg-muted/40 p-3 font-mono text-xs [overflow-wrap:anywhere]"
             style={{ color: 'var(--status-critical)' }}
           >
             {run.last_error}
@@ -366,7 +366,7 @@ function ResumePlan({
   return (
     <Panel
       title="Resume"
-      description="What resuming would do, from the same planner the resume request uses. Advisory: state and quota are checked again when you resume."
+      help="What resuming would do, from the same planner the resume request uses. Advisory: state and quota are checked again when you resume."
     >
       {resume.eligible ? (
         <div className="flex flex-col gap-2 text-sm">
@@ -507,7 +507,7 @@ function RunSteps({
   return (
     <Panel
       title="Steps"
-      description="Each step's latest state. Open a step for its attempts."
+      help="Each step's latest state. Open a step for its attempts."
       padded={false}
     >
       <div className="p-5 pt-3">
@@ -604,7 +604,7 @@ function StepAttempts({ runId, step }: { runId: string; step: string }) {
         onRetry={() => void q.refetch()}
       />
       {attempts.length > 0 && (
-        <ol className="flex flex-col divide-y divide-border rounded-md border border-border text-sm">
+        <ol className="flex flex-col divide-y divide-border well rounded-xl bg-muted/40 text-sm">
           {attempts.map((a) => (
             <li key={a.attempt} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2">
               <span className="font-mono text-xs">#{a.attempt}</span>
@@ -640,7 +640,7 @@ function ResumeHistory({ id, count }: { id: string; count: number }) {
   if (count === 0 && !q.data?.resumes.length) return null;
   const rows = q.data?.resumes ?? [];
   return (
-    <Panel title="Resume history" description="Every accepted resume, oldest first.">
+    <Panel title="Resume history" help="Every accepted resume, oldest first.">
       <InlinePhase
         phase={queryPhase({ loading: q.isPending, error: q.error, isEmpty: !rows.length })}
         error={q.error}

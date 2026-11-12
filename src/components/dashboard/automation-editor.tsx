@@ -156,7 +156,7 @@ function DependencyPicker({
         {options.map((name) => (
           <label
             key={name}
-            className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
+            className="flex items-center gap-2 well rounded-xl bg-muted/40 px-2.5 py-1.5 text-sm has-checked:border-brand/50 has-checked:bg-brand/5"
           >
             <input
               type="checkbox"
@@ -299,7 +299,7 @@ function StepFields({
         />
       </div>
       <details
-        className="mt-4 rounded-md border border-border p-3"
+        className="mt-4 well rounded-xl bg-muted/40 p-3"
         open={Boolean(step.input || step.spec.timeout || step.spec.retry)}
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -683,18 +683,15 @@ export function AutomationEditor({
     <div className="flex flex-col gap-5">
       <Panel
         title={onClose ? 'Definition' : savedName ? 'Draft definition' : 'New automation'}
-        description={
-          onClose
-            ? undefined
-            : `App: ${slug} · ${savedName ? `Editing revision ${version}` : 'Save a draft before publishing'}`
+        actions={
+          !onClose &&
+          savedName && <span className="text-xs text-muted-foreground">Revision {version}</span>
         }
       >
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
           {inDialog && !savedName && (
             <div>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Start with a template, then customize your handlers.
-              </p>
+              <p className="mb-2 text-xs text-muted-foreground">Start from a template.</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {AUTOMATION_TEMPLATES.map((item) => (
                   <button
@@ -797,7 +794,7 @@ export function AutomationEditor({
                   )}
                 </div>
                 <details
-                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -857,7 +854,7 @@ export function AutomationEditor({
                   }
                 />
                 <details
-                  className="rounded-md border border-border p-3 sm:col-span-2"
+                  className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.eventFilter !== '{}'}
                 >
                   <summary className="cursor-pointer text-sm text-muted-foreground">
@@ -1058,7 +1055,7 @@ export function AutomationEditor({
           </Button>
         )}
         {validation && (
-          <div role="status" className="mt-4 rounded-lg border border-border p-4">
+          <div role="status" className="mt-4 well rounded-xl bg-muted/40 p-4">
             <p className="flex items-center gap-2 text-sm font-medium">
               {validation.valid ? (
                 <CheckCircle className="h-4 w-4 text-brand" />
@@ -1085,10 +1082,10 @@ export function AutomationEditor({
           </div>
         )}
       </Panel>
-      <details className="rounded-lg border border-border p-4">
+      <details className="well rounded-xl bg-muted/40 p-4">
         <summary className="cursor-pointer text-sm font-medium">Simulate with sample data</summary>
         <div className="mt-4">
-          <Panel description="Test data flow with hypothetical handler outputs. Simulation does not invoke the app or create a run.">
+          <Panel>
             <div className="grid gap-4 sm:grid-cols-2">
               <JsonField
                 disabled={busy}
@@ -1151,7 +1148,7 @@ export function AutomationEditor({
                   </p>
                 ))}
                 {simulation.trace.map((step, i) => (
-                  <details key={i} className="rounded-md border border-border p-3">
+                  <details key={i} className="well rounded-xl bg-muted/40 p-3">
                     <summary className="cursor-pointer text-sm">
                       <span className="font-mono">{step.step_name}</span> ·{' '}
                       {step.state.replaceAll('_', ' ')}
@@ -1176,7 +1173,7 @@ export function AutomationEditor({
       open
       onClose={() => void close()}
       title="New automation"
-      description={`App: ${slug} · Publish now, or save a draft to publish later.`}
+      description={`App: ${slug}`}
       width="max-w-3xl"
       footer={
         <>

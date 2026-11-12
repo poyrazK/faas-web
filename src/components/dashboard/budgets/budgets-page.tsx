@@ -169,11 +169,13 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Panel
-        lit
-        title="New budget"
-        description="Preview it against this month first. An alert never stops anything; stopping previews and strict caps do, and say exactly what before they turn on."
-      >
+      <Panel title="New budget">
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          {
+            'Preview it against this month first. An alert never stops anything; stopping previews and strict caps do, and say exactly what before they turn on.'
+          }
+        </p>
+
         <BudgetForm
           accountId={accountId}
           scopeLabel={scopeLabel}
@@ -247,7 +249,7 @@ export function BudgetsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Budgets"
-        description="Limits on this month's usage that alert you, stop previews, or hold workloads at a funded cap."
+        help="Limits on this month's usage that alert you, stop previews, or hold workloads at a funded cap."
         actions={<MaturityLabel capability={capability} />}
       />
       {!workspace.ready ? null : workspace.org ? (

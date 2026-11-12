@@ -1,5 +1,5 @@
-import { WarningTriangle } from 'iconoir-react';
 import { useDependencyLatency, useRouteAwake } from '@/lib/api/queries';
+import { WarningTriangle } from 'iconoir-react';
 import { PlanGated } from './plan-gated';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 
@@ -26,10 +26,7 @@ export function AwakeRoutesPanel({ slug, since }: { slug: string; since: string 
   });
   const data = awake.data;
   return (
-    <Panel
-      title="What keeps it awake"
-      description="Routes whose requests restarted the idle timer, by share of awake time."
-    >
+    <Panel title="What keeps it awake">
       <PlanGated error={awake.error} feature="Awake-time analysis">
         {data && (
           <p className="mb-3 text-sm text-muted-foreground">
@@ -47,65 +44,72 @@ export function AwakeRoutesPanel({ slug, since }: { slug: string; since: string 
             onRetry={() => void awake.refetch()}
           />
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-muted-foreground">
-              <tr>
-                <th scope="col" className="py-2 font-medium">
-                  Route
-                </th>
-                <th scope="col" className="py-2 font-medium">
-                  Awake share
-                </th>
-                <th scope="col" className="py-2 text-right font-medium">
-                  Requests
-                </th>
-                <th scope="col" className="py-2 text-right font-medium">
-                  Cold starts
-                </th>
-                <th scope="col" className="py-2 text-right font-medium">
-                  GB-h
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.routes.map((route) => (
-                <tr key={`${route.method} ${route.route}`}>
-                  <th scope="row" className="py-2 pr-3 font-normal">
-                    <span className="font-mono text-xs">
-                      {route.method} {route.route}
-                    </span>
-                    {route.pattern === 'periodic' && route.interval_seconds ? (
-                      <span className="block text-xs text-muted-foreground">
-                        every ~{route.interval_seconds} s
-                      </span>
-                    ) : null}
-                    {route.suggestion && (
-                      <span className="block text-xs text-muted-foreground">
-                        {route.suggestion.message}
-                      </span>
-                    )}
+          <div
+            className="overflow-x-auto rounded focus-visible:outline-2 focus-visible:outline-brand"
+            role="region"
+            aria-label="Routes keeping this app awake"
+            tabIndex={0}
+          >
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th scope="col" className="py-2 font-medium">
+                    Route
                   </th>
-                  <td className="py-2 pr-3">
-                    <span className="flex items-center gap-2">
-                      <span
-                        aria-hidden
-                        className="h-1.5 w-16 overflow-hidden rounded-full bg-muted"
-                      >
-                        <span
-                          className="block h-full rounded-full bg-brand"
-                          style={{ width: pct(Math.min(1, route.awake_share)) }}
-                        />
-                      </span>
-                      <span className="text-xs tabular-nums">{pct(route.awake_share)}</span>
-                    </span>
-                  </td>
-                  <td className="py-2 text-right tabular-nums">{route.requests}</td>
-                  <td className="py-2 text-right tabular-nums">{route.wakes}</td>
-                  <td className="py-2 text-right tabular-nums">{route.gb_hours.toFixed(2)}</td>
+                  <th scope="col" className="py-2 font-medium">
+                    Awake share
+                  </th>
+                  <th scope="col" className="py-2 text-right font-medium">
+                    Requests
+                  </th>
+                  <th scope="col" className="py-2 text-right font-medium">
+                    Cold starts
+                  </th>
+                  <th scope="col" className="py-2 text-right font-medium">
+                    GB-h
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.routes.map((route) => (
+                  <tr key={`${route.method} ${route.route}`}>
+                    <th scope="row" className="w-2/5 py-2 pr-4 font-normal">
+                      <span className="font-mono text-xs">
+                        {route.method} {route.route}
+                      </span>
+                      {route.pattern === 'periodic' && route.interval_seconds ? (
+                        <span className="block text-xs text-muted-foreground">
+                          every ~{route.interval_seconds} s
+                        </span>
+                      ) : null}
+                      {route.suggestion && (
+                        <span className="block text-xs text-muted-foreground">
+                          {route.suggestion.message}
+                        </span>
+                      )}
+                    </th>
+                    <td className="py-2 pr-3">
+                      <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className="h-1.5 w-16 overflow-hidden rounded-full bg-muted"
+                        >
+                          <span
+                            className="block h-full rounded-full bg-brand"
+                            style={{ width: pct(Math.min(1, route.awake_share)) }}
+                          />
+                        </span>
+                        <span className="text-xs tabular-nums">{pct(route.awake_share)}</span>
+                      </span>
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{route.requests}</td>
+                    <td className="py-2 text-right tabular-nums">{route.wakes}</td>
+                    <td className="py-2 text-right tabular-nums">{route.gb_hours.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </PlanGated>
     </Panel>
@@ -122,10 +126,7 @@ export function DependencyLatencyPanel({ slug, since }: { slug: string; since: s
   });
   const data = deps.data;
   return (
-    <Panel
-      title="Dependencies"
-      description="Databases, caches and APIs this app calls, from traced spans."
-    >
+    <Panel title="Dependencies">
       <PlanGated error={deps.error} feature="Dependency latency">
         {phase !== 'ready' || !data ? (
           <InlinePhase

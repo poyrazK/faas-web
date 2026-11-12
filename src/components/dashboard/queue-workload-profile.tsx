@@ -53,7 +53,7 @@ function profilePolicyChanges(app: App, targetDepth: number): string[] {
     (policy.target.metric !== 'queue_depth' || policy.target.value !== targetDepth)
   )
     changes.push(
-      `This replaces the current ${policy.target.metric ?? 'unnamed'} target ${policy.target.value ?? 0} with queue_depth ${targetDepth}.`
+      `This replaces the current ${policy.target.metric ?? 'unnamed'} target ${policy.target.value ?? 0} with a queue-depth target of ${targetDepth}.`
     );
   if (policy?.targets?.length)
     changes.push(
@@ -312,7 +312,7 @@ function Profile({ accountId, plan, slug, bindings, app }: Props & { app?: App }
     <div className="space-y-2 rounded border border-border p-3 text-sm">
       <p>
         Simple profile: platform push consumer plus queue-depth scaling. Pull workers use explicit
-        bindings above.
+        bindings.
       </p>
       {attempt ? (
         <div className="space-y-2">

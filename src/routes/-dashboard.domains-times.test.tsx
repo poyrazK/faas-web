@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -58,15 +58,18 @@ vi.mock('@/lib/api/capabilities', () => ({
 const { Route } = await import('./dashboard.domains');
 const DomainsPage = (Route as unknown as { component: React.ComponentType }).component;
 
-describe('Domains table', () => {
-  it('shows when a domain was verified with the exact time on hover, and a dash when it was not', () => {
+describe('Domain cards', () => {
+  it('shows when a domain was verified with the exact time on hover, and nothing when it was not', () => {
     render(<DomainsPage />);
 
-    const when = screen.getByRole('time');
+    const verified = screen.getByRole('article', { name: 'api.example.com' });
+    const when = within(verified).getByRole('time');
     expect(when).toHaveAttribute('dateTime', '2026-09-11T00:00:00.000Z');
     expect(when).toHaveAttribute('title', expect.stringContaining('2026'));
     expect(when).toHaveTextContent(/ago$/);
 
-    expect(screen.getByText('new.example.com').closest('tr')).toHaveTextContent('—');
+    const pending = screen.getByRole('article', { name: 'new.example.com' });
+    expect(within(pending).queryByRole('time')).toBeNull();
+    expect(within(pending).queryByText(/^Verified/)).toBeNull();
   });
 });

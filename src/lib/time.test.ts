@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { absoluteTime, parseTime, relativeTime } from './time';
+import { absoluteTime, compactTime, parseTime, relativeTime } from './time';
 
 const NOW = Date.UTC(2026, 9, 20, 12, 0, 0);
 const MIN = 60_000;
@@ -54,6 +54,22 @@ describe('absoluteTime', () => {
         timeZone: 'Europe/Istanbul',
       })
     ).toContain('5:03:05 PM');
+  });
+});
+
+describe('compactTime', () => {
+  const now = Date.UTC(2026, 10, 9, 15, 0, 0);
+  const at = (d: number, h: number, m: number) => Date.UTC(2026, 10, d, h, m, 42);
+  const opts = { locale: 'en-GB', timeZone: 'UTC', now };
+
+  it('drops seconds and zone, naming today and yesterday', () => {
+    expect(compactTime(at(9, 14, 3), opts)).toBe('Today 14:03');
+    expect(compactTime(at(8, 9, 41), opts)).toBe('Yesterday 09:41');
+  });
+
+  it('drops the year this year and the clock before it', () => {
+    expect(compactTime(at(2, 8, 5), opts)).toBe('2 Nov, 08:05');
+    expect(compactTime(Date.UTC(2025, 2, 4, 8, 5), opts)).toBe('4 Mar 2025');
   });
 });
 

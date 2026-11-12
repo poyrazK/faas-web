@@ -39,9 +39,9 @@ export interface WorkspaceTarget {
  * it once the list says it is gone), so it is not silently swapped for
  * personal while `/v1/orgs` loads.
  */
-export function useWorkspaceTarget(): WorkspaceTarget {
+export function useWorkspaceTarget(accountId?: string): WorkspaceTarget {
   const active = useActiveOrg();
-  const ready = useWorkspaceBound();
+  const ready = useWorkspaceBound(accountId);
   const orgs = useOrgs({ enabled: Boolean(active) });
   const listed = active ? orgs.data?.orgs.find((org) => org.slug === active) : undefined;
   if (!active || listed?.personal) return { org: null, label: 'Personal', ready };
@@ -71,6 +71,7 @@ export function createWorkspaceApp(
 export function useCreateWorkspaceApp() {
   const qc = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: ({ org, body }: { org: string | null; body: CreateAppRequest }) =>
       createWorkspaceApp(org, body),
     onSuccess: (_app, { org }) => {

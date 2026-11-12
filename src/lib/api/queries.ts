@@ -444,11 +444,12 @@ export function useSetEgressExtra() {
 }
 
 /** Per-app monthly usage rows — the detail under the account roll-up. */
-export function usePerAppUsage() {
+export function usePerAppUsage(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['usage', 'per-app'],
     queryFn: () => unwrap(api.GET('/v1/usage', {})),
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1119,9 +1120,10 @@ export function useLatestAppDeployments() {
   });
 }
 
-export function useDeployment(id: string, options?: Options<Deployment>) {
+export function useDeployment(id: string, options?: Options<Deployment>, accountId?: string) {
   return useQuery({
-    queryKey: ['deployments', id],
+    queryKey:
+      accountId === undefined ? ['deployments', id] : ['deployments', 'account', accountId, id],
     queryFn: () => unwrap(api.GET('/v1/deployments/{id}', { params: { path: { id } } })),
     enabled: Boolean(id),
     ...options,
@@ -3132,9 +3134,10 @@ export function useChangePlan() {
   });
 }
 
-export function useAccountSlo(window: AppSLOWindow = '24h') {
+export function useAccountSlo(window: AppSLOWindow = '24h', options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: keys.accountSlo(window),
+    enabled: options.enabled ?? true,
     queryFn: () => unwrap(api.GET('/v1/account/slo', { params: { query: { window } } })),
   });
 }
@@ -3422,6 +3425,7 @@ export function useRevokeInvitation(org: string) {
 export function useDeployFromRefFor() {
   const qc = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: ({
       slug,
       ...body
@@ -3446,6 +3450,7 @@ export function useDeployFromRefFor() {
 export function useDeployFunctionSourceFor() {
   const qc = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: (input: { slug: string; archive: Blob; runtime: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/deployments', {
@@ -3586,7 +3591,7 @@ export type AuditEvent = components['schemas']['AuditEventResponse'];
 
 const corsPresetsKey = ['cors-presets'] as const;
 
-/** Account-wide presets plus, when `appId` is given, that app's scoped ones. */
+/** All account presets, or only app-scoped presets when `appId` is given. */
 export function useCorsPresets(appId?: string) {
   return useQuery({
     queryKey: [...corsPresetsKey, appId ?? 'all'],
@@ -3670,13 +3675,21 @@ export type DebugRequestEvidence = components['schemas']['DebugRequestEvidenceRe
 export type UpstreamHistory = components['schemas']['DataUpstreamHistoryResponse'];
 
 /** Aggregated request analytics; `402` on Free, like the rest of per-app metrics. */
-export function useAppAnalytics(slug: string, since: string, groupBy: AnalyticsGroupBy) {
+export function useAppAnalytics(
+  slug: string,
+  since: string,
+  groupBy: AnalyticsGroupBy,
+  until?: string
+) {
   return useQuery({
-    queryKey: ['apps', slug, 'analytics', since, groupBy],
+    queryKey: ['apps', slug, 'analytics', since, groupBy, ...(until ? [until] : [])],
     queryFn: () =>
       unwrap(
         api.GET('/v1/apps/{slug}/analytics', {
-          params: { path: { slug }, query: { since, group_by: groupBy } },
+          params: {
+            path: { slug },
+            query: { since, group_by: groupBy, ...(until ? { until } : {}) },
+          },
         })
       ),
     enabled: Boolean(slug),
@@ -3755,6 +3768,24 @@ export function useDependencyLatency(slug: string, since: string) {
     enabled: Boolean(slug),
     retry: retryPolicy,
   });
+}
+
+/**
+ * The unfiltered hourly series for one app, as a query definition — for pages
+ * that read several apps at once (`useQueries`). The key is the one
+ * `useAppAnalyticsTimeseries` uses with no filters, so both share a cache.
+ */
+export function appAnalyticsTimeseriesQuery(slug: string, since: string) {
+  return {
+    queryKey: ['apps', slug, 'analytics', 'timeseries', since, null, null, null, null] as const,
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/analytics/timeseries', {
+          params: { path: { slug }, query: { since } },
+        })
+      ),
+    retry: false,
+  };
 }
 
 /** Hourly buckets, zero-filled by the API — a real series, so a line is honest. */

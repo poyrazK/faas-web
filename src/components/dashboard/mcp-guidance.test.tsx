@@ -52,7 +52,7 @@ beforeEach(() => {
 it('provides client/auth/catalog guidance with explicit unverified protocol status and no diagnostic execution', () => {
   render(<McpGuidance slug="api-gateway" />);
   expect(screen.getByText('https://app.example.test/mcp', { exact: true })).toBeVisible();
-  expect(screen.getByText(/Protocol and catalog health remain unverified/)).toBeVisible();
+  expect(screen.getByText(/Protocol and tool-list health stay unverified/)).toBeVisible();
   expect(screen.getByText(/gregale mcp doctor --app api-gateway/)).toBeVisible();
   expect(screen.getAllByText(/MCP_TOKEN/).length).toBeGreaterThan(0);
   expect(

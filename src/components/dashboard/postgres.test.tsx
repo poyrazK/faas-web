@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
@@ -18,6 +18,7 @@ const confirm = vi.fn();
 const usePostgresUsage = vi.fn();
 const undeleteDb = vi.fn();
 const purgeDb = vi.fn();
+const computeAccess = vi.hoisted(() => ({ value: 'on' }));
 const workspace = vi.hoisted(() => ({
   org: null as string | null,
   label: 'Personal',
@@ -41,6 +42,9 @@ vi.mock('@/lib/api/postgres', () => ({
   usePurgePostgresDatabase: () => ({ mutateAsync: purgeDb, isPending: false }),
 }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: computeAccess.value }),
+}));
 // The usage panel and the conditions and connection planning sections have
 // their own tests; here they only need to be placed, or not.
 vi.mock('./postgres-usage', () => ({ PostgresUsage: () => <p>usage panel</p> }));
@@ -140,7 +144,15 @@ beforeEach(() => {
   purgeDb.mockReset().mockResolvedValue(database({ state: 'deleted' }));
   workspace.org = null;
   workspace.label = 'Personal';
+  computeAccess.value = 'on';
 });
+
+/** The tile for a database, found by its heading. */
+const tile = (name = 'orders') =>
+  screen.getByRole('heading', { name, level: 3 }).closest('section') as HTMLElement;
+/** The detail's scheduled-deletion notice, where its own restore button lives. */
+const notice = () =>
+  screen.getByText(/deletion scheduled/i).closest('[role="status"]') as HTMLElement;
 
 describe('explainPostgres', () => {
   it('separates a plan gate, a quota, a conflict and a provider outage', () => {
@@ -159,26 +171,70 @@ describe('explainPostgres', () => {
 });
 
 describe('PostgresDatabases', () => {
-  it('lists a database with the facts that decide whether it can serve', () => {
+  it('opens with what the page is and one way to add a database', () => {
     render(<PostgresDatabases />);
-    expect(screen.getByText('orders')).toBeInTheDocument();
-    expect(screen.getByText('ready')).toBeInTheDocument();
-    expect(screen.getByText('HA')).toBeInTheDocument();
-    expect(screen.getByText(/PostgreSQL 17 · production · fra/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Databases' })).toBeInTheDocument();
+    expect(screen.getByText(/managed postgresql your apps connect to/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /create database/i })).toHaveLength(1);
   });
 
-  it('shows a failed database’s own error code rather than just "failed"', () => {
+  it('shows a healthy database as Ready, in one sentence, with no fix to make', () => {
+    render(<PostgresDatabases />);
+    const card = within(tile());
+    expect(card.getByText('Ready')).toBeInTheDocument();
+    expect(card.getByText(/apps bound to it can connect/i)).toBeInTheDocument();
+    expect(card.queryByRole('button', { name: /upgrade|restore|size|details/i })).toBeNull();
+  });
+
+  it('lists the facts as plain chips, keeping the exact terms on hover', () => {
+    usePostgresDatabases.mockReturnValue(ready({ items: [database({ scale_to_zero: true })] }));
+    render(<PostgresDatabases />);
+    const card = within(tile());
+    expect(card.getByText('PostgreSQL 17')).toBeInTheDocument();
+    expect(card.getByText('Production')).toHaveAttribute('title', 'Service class: production');
+    expect(card.getByText('Frankfurt')).toHaveAttribute('title', 'Region: fra');
+    expect(card.getByText('10 GB')).toBeInTheDocument();
+    expect(card.getByText('Two zones')).toHaveAttribute('title', 'High availability');
+    expect(card.getByText('Sleeps when idle')).toHaveAttribute('title', 'Scales to zero');
+    expect(card.getByText(/^Created/)).toBeInTheDocument();
+  });
+
+  it('says a failed database failed, keeps its own error code on hover, and opens to fix it', async () => {
     usePostgresDatabases.mockReturnValue(
       ready({ items: [database({ state: 'failed', last_error_code: 'provider_capacity' })] })
     );
     render(<PostgresDatabases />);
-    expect(screen.getByText('provider_capacity')).toBeInTheDocument();
+    const card = within(tile());
+    expect(card.getByText('Failed')).toBeInTheDocument();
+    expect(card.getByText(/something went wrong setting it up/i)).toHaveAttribute(
+      'title',
+      'failed · provider_capacity'
+    );
+    await userEvent.click(card.getByRole('button', { name: 'See details' }));
+    expect(await screen.findByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+  });
+
+  it('names a known failure in words', () => {
+    usePostgresDatabases.mockReturnValue(
+      ready({ items: [database({ state: 'failed', last_error_code: 'provider_failed' })] })
+    );
+    render(<PostgresDatabases />);
+    expect(within(tile()).getByText(/provider reported a failure/i)).toBeInTheDocument();
+  });
+
+  it('says a database being set up is starting', () => {
+    usePostgresDatabases.mockReturnValue(ready({ items: [database({ state: 'provisioning' })] }));
+    render(<PostgresDatabases />);
+    expect(within(tile()).getByText('Starting')).toBeInTheDocument();
+    expect(within(tile()).getByText(/apps can connect once it’s ready/i)).toBeInTheDocument();
   });
 
   it('creates a database and says it is provisioning, not ready', async () => {
     render(<PostgresDatabases />);
-    await userEvent.type(screen.getByLabelText('Database name'), 'reports');
     await userEvent.click(screen.getByRole('button', { name: /create database/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Database name'), 'reports');
+    await userEvent.click(within(sheet).getByRole('button', { name: /create database/i }));
     await waitFor(() =>
       expect(createDb).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -195,8 +251,10 @@ describe('PostgresDatabases', () => {
 
   it('refuses a name the API would reject', async () => {
     render(<PostgresDatabases />);
-    await userEvent.type(screen.getByLabelText('Database name'), '9bad name');
-    expect(screen.getByRole('button', { name: /create database/i })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /create database/i }));
+    const sheet = await screen.findByRole('dialog');
+    await userEvent.type(within(sheet).getByLabelText('Database name'), '9bad name');
+    expect(within(sheet).getByRole('button', { name: /create database/i })).toBeDisabled();
   });
 
   it('opens a database to its bindings, which name the secret and never a credential', async () => {
@@ -204,16 +262,21 @@ describe('PostgresDatabases', () => {
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
     expect(await screen.findByText('DATABASE_URL')).toBeInTheDocument();
     expect(screen.getByText('credentials v2')).toBeInTheDocument();
-    expect(screen.getByText(/never shown in the console/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /bind app/i }));
+    expect(
+      within(await screen.findByRole('dialog')).getByText(/never shown in the console/i)
+    ).toBeInTheDocument();
   });
 
   it('binds an app under the chosen secret name', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
-    const key = await screen.findByLabelText('Environment key');
+    await userEvent.click(await screen.findByRole('button', { name: /bind app/i }));
+    const sheet = await screen.findByRole('dialog');
+    const key = within(sheet).getByLabelText('Environment key');
     await userEvent.clear(key);
     await userEvent.type(key, 'ORDERS_DB_URL');
-    await userEvent.click(screen.getByRole('button', { name: /bind app/i }));
+    await userEvent.click(within(sheet).getByRole('button', { name: /bind app/i }));
     await waitFor(() =>
       expect(createBinding).toHaveBeenCalledWith({
         app_id: 'app1',
@@ -325,11 +388,30 @@ describe('PostgresDatabases', () => {
       expect(asked.description).not.toMatch(/recovered/i);
     });
 
-    it('marks a scheduled delete in the list with how long it can be recovered', () => {
+    it('draws a scheduled delete as an outline that says how long it can come back', () => {
       usePostgresDatabases.mockReturnValue(ready({ items: [scheduled()] }));
       render(<PostgresDatabases />);
-      expect(screen.getByText(/recoverable until/i)).toBeInTheDocument();
-      expect(screen.getByText('in 6d')).toBeInTheDocument();
+      const card = within(tile());
+      expect(card.getByText('Being deleted')).toBeInTheDocument();
+      expect(card.getByText('6 more days')).toBeInTheDocument();
+      expect(card.getByText(/gone for good/i)).toBeInTheDocument();
+      expect(tile()).not.toHaveClass('surface');
+    });
+
+    it('restores a scheduled delete from its tile, without asking', async () => {
+      usePostgresDatabases.mockReturnValue(ready({ items: [scheduled()] }));
+      render(<PostgresDatabases />);
+      await userEvent.click(within(tile()).getByRole('button', { name: /restore database/i }));
+      await waitFor(() =>
+        expect(undeleteDb).toHaveBeenCalledWith({
+          id: 'db1',
+          idempotencyKey: expect.any(String) as string,
+        })
+      );
+      expect(confirm).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'success', title: 'orders is recovered' })
+      );
     });
 
     it('recovers a scheduled database without asking, and offers no bindings or restore', async () => {
@@ -337,7 +419,7 @@ describe('PostgresDatabases', () => {
       expect(screen.getByText(/deletion scheduled/i)).toBeInTheDocument();
       expect(screen.queryByLabelText('Environment key')).toBeNull();
       expect(screen.queryByLabelText('Restored database name')).toBeNull();
-      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await userEvent.click(within(notice()).getByRole('button', { name: /restore database/i }));
       await waitFor(() =>
         expect(undeleteDb).toHaveBeenCalledWith({
           id: 'db1',
@@ -355,7 +437,7 @@ describe('PostgresDatabases', () => {
         new ApiError({ status: 404, code: 'managed_postgres_not_found', title: 't', detail: 'd' })
       );
       await openScheduled();
-      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await userEvent.click(within(notice()).getByRole('button', { name: /restore database/i }));
       await waitFor(() =>
         expect(toast).toHaveBeenCalledWith(
           expect.objectContaining({ title: 'The recovery window has ended' })
@@ -368,7 +450,7 @@ describe('PostgresDatabases', () => {
         new ApiError({ status: 403, code: 'managed_postgres_not_in_plan', title: 't', detail: 'd' })
       );
       await openScheduled();
-      await userEvent.click(screen.getByRole('button', { name: /recover database/i }));
+      await userEvent.click(within(notice()).getByRole('button', { name: /restore database/i }));
       await waitFor(() =>
         expect(toast).toHaveBeenCalledWith(
           expect.objectContaining({ title: 'Your plan no longer allows this database' })
@@ -384,7 +466,7 @@ describe('PostgresDatabases', () => {
         )
         .mockResolvedValue(database());
       await openScheduled();
-      const recover = screen.getByRole('button', { name: /recover database/i });
+      const recover = within(notice()).getByRole('button', { name: /restore database/i });
       await userEvent.click(recover);
       await waitFor(() => expect(undeleteDb).toHaveBeenCalledTimes(1));
       await userEvent.click(recover);
@@ -421,49 +503,100 @@ describe('PostgresDatabases', () => {
 
     it('offers no recovery once the window has passed', async () => {
       await openScheduled({ restorable_until: inDays(-1) });
-      expect(screen.queryByRole('button', { name: /recover database/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /restore database/i })).toBeNull();
+      expect(within(tile()).getByText(/time to get it back has ended/i)).toBeInTheDocument();
       expect(screen.getByText(/recovery window has ended/i)).toBeInTheDocument();
     });
   });
 
   describe('suspended databases', () => {
-    it('marks ready databases suspended while the compute cap holds them', async () => {
+    it('reads Paused, not Ready, while the compute cap holds it, and offers the upgrade', async () => {
       usePostgresUsage.mockReturnValue(
         ready(
           usage({ compute_cap_state: 'suspended', compute_suspended_at: '2026-11-02T00:00:00Z' })
         )
       );
-      render(<PostgresDatabases />);
-      expect(screen.getByText(/suspended · compute cap/i)).toBeInTheDocument();
+      render(withRouter(<PostgresDatabases />));
+      await screen.findByRole('heading', { name: 'orders' });
+      const card = within(tile());
+      expect(card.getByText('Paused')).toBeInTheDocument();
+      expect(card.queryByText('Ready')).toBeNull();
+      expect(card.getByText(/compute allowance is used up/i)).toHaveAttribute(
+        'title',
+        'suspended · compute cap'
+      );
+      expect(card.getByRole('link', { name: 'Upgrade plan' })).toHaveAttribute(
+        'href',
+        '/dashboard/plans'
+      );
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
       expect(
         await screen.findByText(/refuses connections until the compute cap lifts/i)
       ).toBeInTheDocument();
     });
 
-    it('explains a database the plan no longer includes, and how to resume it', async () => {
+    it('says a size the plan leaves out pauses it, and offers both fixes', async () => {
       usePostgresDatabases.mockReturnValue(
         ready({ items: [database({ plan_excess: 'service_class' })] })
       );
-      render(<PostgresDatabases />);
-      expect(screen.getByText(/suspended · class not in plan/i)).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
-      expect(await screen.findByText(/does not include the production class/i)).toBeInTheDocument();
+      render(withRouter(<PostgresDatabases />));
+      await screen.findByRole('heading', { name: 'orders' });
+      const card = within(tile());
+      expect(card.getByText('Paused')).toBeInTheDocument();
+      expect(
+        card.getByText(/paused because its size isn’t included in your plan\. Your data is safe/i)
+      ).toBeInTheDocument();
+      expect(card.getByRole('link', { name: 'Upgrade plan' })).toHaveAttribute(
+        'href',
+        '/dashboard/plans'
+      );
+      // The resize lives in the detail: the button opens it there.
+      await userEvent.click(card.getByRole('button', { name: 'Choose another size' }));
+      expect(await screen.findByText('compute section following nothing')).toBeInTheDocument();
+      expect(screen.getByText(/does not include the production class/i)).toBeInTheDocument();
     });
 
-    it('explains a database past the plan’s database limit', () => {
+    it('offers no resize where resize is not available', async () => {
+      computeAccess.value = 'off';
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ plan_excess: 'service_class' })] })
+      );
+      render(withRouter(<PostgresDatabases />));
+      await screen.findByRole('heading', { name: 'orders' });
+      expect(within(tile()).queryByRole('button', { name: 'Choose another size' })).toBeNull();
+      expect(within(tile()).getByRole('link', { name: 'Upgrade plan' })).toBeInTheDocument();
+    });
+
+    it('names the company’s plan in a company workspace', async () => {
+      workspace.org = 'acme-corp';
+      workspace.label = 'Acme';
+      usePostgresDatabases.mockReturnValue(
+        ready({ items: [database({ plan_excess: 'service_class' })] })
+      );
+      render(withRouter(<PostgresDatabases />));
+      await screen.findByRole('heading', { name: 'orders' });
+      expect(within(tile()).getByText(/isn’t included in Acme’s plan/)).toBeInTheDocument();
+    });
+
+    it('explains a database past the plan’s database limit', async () => {
       usePostgresDatabases.mockReturnValue(
         ready({ items: [database({ plan_excess: 'database_limit' })] })
       );
-      render(<PostgresDatabases />);
-      expect(screen.getByText(/suspended · over the database limit/i)).toBeInTheDocument();
+      render(withRouter(<PostgresDatabases />));
+      await screen.findByRole('heading', { name: 'orders' });
+      expect(within(tile()).getByText('Paused')).toBeInTheDocument();
+      expect(within(tile()).getByText(/allows fewer databases than you have/i)).toBeInTheDocument();
     });
 
     it('says when a restored copy holds the slot past the database limit', async () => {
       usePostgresDatabases.mockReturnValue(
         ready({ items: [database({ restore_slot_until: inDays(5) })] })
       );
-      render(<PostgresDatabases />);
+      render(withRouter(<PostgresDatabases />));
+      expect(await screen.findByText('5 more days')).toBeInTheDocument();
+      expect(
+        within(tile()).getByText(/restored copy past your plan’s database limit/i)
+      ).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
       expect(await screen.findByText(/past your plan's database limit/i)).toBeInTheDocument();
     });

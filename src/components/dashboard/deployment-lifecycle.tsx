@@ -176,7 +176,7 @@ function RecoveryActions({
   };
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="well rounded-xl bg-muted/40 p-4">
       <p className="label-mono mb-3 text-muted-foreground">Lifecycle</p>
       <p className="mb-3 text-xs text-muted-foreground">{availability.explanation}</p>
       {availability.kind === 'cancel' && (
@@ -193,8 +193,7 @@ function RecoveryActions({
       {availability.kind === 'retry' && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Rebuild retained source or image using this release’s recorded inputs. All build and
-            security stages run again. Intermediate checkpoints are not retained.
+            Rebuilds from this release’s recorded inputs; every build stage runs again.
           </p>
           <Button
             size="xs"

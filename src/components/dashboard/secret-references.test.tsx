@@ -62,7 +62,10 @@ it('lists production references, removed keys and the shared quota', async () =>
   const row = (await screen.findByText('DATABASE_URL')).closest('li')!;
   expect(within(row).getByText('DATABASE_PRIMARY')).toBeInTheDocument();
   expect(screen.getByText('LEGACY_TOKEN')).toBeInTheDocument();
-  expect(screen.getByText(/5 of 128 variables and references/i)).toBeInTheDocument();
+  expect(screen.getByText(/5 of 128 variable and reference slots used/i)).toBeInTheDocument();
+  expect(screen.getByText(/isn’t delivered in production any more/)).toBeInTheDocument();
+  expect(screen.getByText(/under another variable name/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'About Secret references' }));
   expect(screen.getByText(/next cold wake/i)).toBeInTheDocument();
   expect(spies.GET).toHaveBeenCalledWith(
     '/v1/apps/{slug}/secret-references',
@@ -93,9 +96,11 @@ async function fillForm(destination: string, source = 'STRIPE_LIVE_KEY') {
   const user = userEvent.setup();
   renderWithProviders(<SecretReferences slug="api" />);
   await screen.findByText('DATABASE_URL');
-  await user.type(screen.getByLabelText('Variable'), destination);
-  await user.selectOptions(screen.getByLabelText('Source secret'), source);
-  await user.click(screen.getByRole('button', { name: /save reference/i }));
+  await user.click(screen.getByRole('button', { name: 'Add reference' }));
+  const sheet = await screen.findByRole('dialog');
+  await user.type(within(sheet).getByLabelText('Variable'), destination);
+  await user.selectOptions(within(sheet).getByLabelText('Source secret'), source);
+  await user.click(within(sheet).getByRole('button', { name: /save reference/i }));
   return user;
 }
 
@@ -136,16 +141,23 @@ it('rejects a destination that is not UPPER_SNAKE_CASE before asking', async () 
   const user = userEvent.setup();
   renderWithProviders(<SecretReferences slug="api" />);
   await screen.findByText('DATABASE_URL');
-  await user.type(screen.getByLabelText('Variable'), 'lower');
+  await user.click(screen.getByRole('button', { name: 'Add reference' }));
+  const sheet = await screen.findByRole('dialog');
+  await user.type(within(sheet).getByLabelText('Variable'), 'lower');
   await user.tab();
-  expect(screen.getByText(/UPPER_SNAKE_CASE/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /save reference/i })).toBeDisabled();
+  expect(within(sheet).getByText(/UPPER_SNAKE_CASE/)).toBeInTheDocument();
+  expect(within(sheet).getByRole('button', { name: /save reference/i })).toBeDisabled();
 });
 
 it('confirms a removal by naming what stops receiving the key, then deletes it', async () => {
   const user = userEvent.setup();
   renderWithProviders(<SecretReferences slug="api" />);
-  await user.click(await screen.findByRole('button', { name: 'Remove reference DATABASE_URL' }));
+  await user.click(
+    await screen.findByRole('button', { name: 'Actions for reference DATABASE_URL' })
+  );
+  await user.click(
+    within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Remove reference' })
+  );
   const dialog = await screen.findByRole('dialog');
   expect(
     within(dialog).getByText(/stop delivering DATABASE_URL in production/i)
@@ -165,5 +177,6 @@ it('offers to deliver a removed key again by filling the form', async () => {
   const user = userEvent.setup();
   renderWithProviders(<SecretReferences slug="api" />);
   await user.click(await screen.findByRole('button', { name: 'Deliver LEGACY_TOKEN again' }));
-  expect(screen.getByLabelText('Variable')).toHaveValue('LEGACY_TOKEN');
+  const sheet = await screen.findByRole('dialog');
+  expect(within(sheet).getByLabelText('Variable')).toHaveValue('LEGACY_TOKEN');
 });

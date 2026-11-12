@@ -33,6 +33,7 @@ import { useAuth } from '@/lib/auth';
 import { useCapability } from '@/lib/api/capabilities';
 import { MaturityLabel } from '@/components/dashboard/maturity-label';
 import { cn } from '@/lib/utils';
+import { Sheet } from './kit/sheet';
 
 /**
  * CORS presets (ADR-129): a named allow-list the account keeps once and
@@ -124,6 +125,7 @@ function AccountPresets({ slug }: { slug?: string }) {
   const app = useApp(slug ?? '');
   const appId = slug ? app.data?.id : undefined;
   const presets = useCorsPresets();
+  const [creating, setCreating] = useState(false);
   const { capability } = useCapability('cors-presets');
   // Every rule on the account, since an edit reaches all of them.
   const rules = useEdgeRules(true, accountId);
@@ -142,8 +144,16 @@ function AccountPresets({ slug }: { slug?: string }) {
     <PlanGated error={presets.error} feature="CORS presets">
       <Panel
         title="CORS presets"
-        description="Named allow-lists a CORS edge rule can reference, so origins are kept once and edited once."
-        actions={<MaturityLabel capability={capability} />}
+        help="Named allow-lists a CORS edge rule can reference, so origins are kept once and edited once."
+        actions={
+          <>
+            <MaturityLabel capability={capability} />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Create preset
+            </Button>
+          </>
+        }
       >
         {phase === 'unreachable' ? (
           <UnreachableState onRetry={() => void presets.refetch()} />
@@ -154,7 +164,14 @@ function AccountPresets({ slug }: { slug?: string }) {
         ) : (
           <div className="flex flex-col gap-5">
             {visible.length === 0 ? (
-              <EmptyState message="No presets yet. Create one below, then pick it in a CORS rule." />
+              <EmptyState
+                message="No presets yet. Create one, then pick it in a CORS rule."
+                action={
+                  <Button size="sm" onClick={() => setCreating(true)}>
+                    Create preset
+                  </Button>
+                }
+              />
             ) : (
               <ul className="flex flex-col divide-y divide-border">
                 {visible.map((p) => (
@@ -162,10 +179,12 @@ function AccountPresets({ slug }: { slug?: string }) {
                 ))}
               </ul>
             )}
-            <PresetForm appId={appId} />
           </div>
         )}
       </Panel>
+      <Sheet open={creating} onClose={() => setCreating(false)} title="Create preset">
+        <PresetForm appId={appId} onDone={() => setCreating(false)} />
+      </Sheet>
     </PlanGated>
   );
 }
@@ -240,7 +259,7 @@ function PresetRow({ preset, users }: { preset: CorsPreset; users: string[] | nu
         </span>
       </div>
       {editing && (
-        <div className="rounded-md border border-border p-4">
+        <div className="well rounded-xl bg-muted/40 p-4">
           <PresetForm preset={preset} users={users} onDone={() => setEditing(false)} />
         </div>
       )}
@@ -363,6 +382,7 @@ function PresetForm({
       setOrigins('');
       setHeaders('');
       setExposed('');
+      onDone?.();
       toast({ kind: 'success', title: `Preset "${created.name}" created` });
     } catch (err) {
       toast(explain(err));
@@ -371,16 +391,16 @@ function PresetForm({
 
   return (
     <form
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       aria-label={preset ? `Edit preset ${preset.name}` : 'New preset'}
       onSubmit={(e) => {
         e.preventDefault();
         if (ready && !pending) void submit();
       }}
     >
-      <p className="label-mono text-muted-foreground">{preset ? 'Edit preset' : 'New preset'}</p>
+      {preset && <p className="label-mono text-muted-foreground">Edit preset</p>}
       {preset && <p className="text-xs text-muted-foreground">{reach}</p>}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">Name</span>
           <input
@@ -497,16 +517,9 @@ function PresetForm({
           )}
         </label>
       </div>
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" className="gap-1.5" disabled={!ready} busy={pending}>
-          {preset ? (
-            'Save preset'
-          ) : (
-            <>
-              <Plus className="h-3.5 w-3.5" />
-              Create preset
-            </>
-          )}
+      <div className={cn('flex gap-2', !preset && 'justify-end')}>
+        <Button type="submit" size="sm" disabled={!ready} busy={pending}>
+          {preset ? 'Save preset' : 'Create preset'}
         </Button>
         {preset && (
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>

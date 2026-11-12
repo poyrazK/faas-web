@@ -222,11 +222,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
     <section aria-label="GitHub connection">
       <Panel
         title="GitHub"
-        description={
-          bound
-            ? 'Pushes to the production branch deploy this app, and each deployment reports back to GitHub as a check.'
-            : 'Bind a repository and pushes to its production branch deploy this app.'
-        }
+        help="Pushes to the bound repository's production branch deploy this app."
         actions={
           bound ? (
             <div className="flex flex-wrap gap-2">
@@ -256,7 +252,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
       >
         {notShared ? (
           <p role="status" className="text-sm text-muted-foreground">
-            GitHub connections are not shared through {workspace.label} yet: apid shows an app’s
+            GitHub connections are not shared through {workspace.label} yet: the API shows an app’s
             connection only to the account that bound it, so for you it reads as not found.
           </p>
         ) : phase !== 'ready' || !data ? (
@@ -354,7 +350,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
                   No pushes or check updates recorded yet.
                 </p>
               ) : (
-                <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+                <ul className="mt-2 divide-y divide-border well rounded-xl bg-muted/40">
                   {activity.map((item, i) => {
                     const shown = ACTIVITY_STATUS[item.status];
                     const Icon = shown.icon;

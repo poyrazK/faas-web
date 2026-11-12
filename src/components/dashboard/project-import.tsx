@@ -10,7 +10,7 @@ import { useProjectApply, useProjectScan, type ProjectPlan } from '@/lib/api/que
 import { cn } from '@/lib/utils';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { SCAN_SOURCE_LABEL } from './scan-source';
-import { SettingRow, SettingsSection } from './new-app-settings';
+import { AdvancedSettings, SettingRow, SettingsSection } from './new-app-settings';
 
 /**
  * Repository import — `/v1/projects/scan` + `/v1/projects`.
@@ -85,7 +85,7 @@ export function ProjectImport({
         });
         toast({
           kind: 'success',
-          title: 'Project applied',
+          title: 'Project created',
           description: `${result.apps?.length ?? 0} app${(result.apps?.length ?? 0) === 1 ? '' : 's'} created; builds are enqueued.`,
         });
       })
@@ -102,7 +102,10 @@ export function ProjectImport({
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection id="import-project" title="Project">
-        <SettingRow label="Archive" hint="A .tar.gz of the repo root. The scan is a dry run.">
+        <SettingRow
+          label="Repository archive"
+          hint="Upload the repository root as a .tar.gz file. Previewing it does not create any apps."
+        >
           <label
             className={cn(
               'flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm transition-colors has-focus-visible:ring-2 has-focus-visible:ring-brand',
@@ -130,9 +133,9 @@ export function ProjectImport({
           </label>
         </SettingRow>
         <SettingRow
-          label="Project slug"
+          label="Project name"
           htmlFor="import-slug"
-          hint="Lowercase letters, digits, and dashes; defaults to the repo name."
+          hint="Used in the project’s URL. Leave it blank to use the repository name."
         >
           <input
             id="import-slug"
@@ -157,7 +160,13 @@ export function ProjectImport({
             </FieldError>
           )}
         </SettingRow>
-        <SettingRow label="Branch" htmlFor="import-branch">
+      </SettingsSection>
+      <AdvancedSettings summary={`Production branch: ${branch.trim() || 'main'}`}>
+        <SettingRow
+          label="Branch"
+          hint="The production branch recorded for this uploaded repository."
+          htmlFor="import-branch"
+        >
           <input
             id="import-branch"
             value={branch}
@@ -168,7 +177,7 @@ export function ProjectImport({
             className={cn(FIELD, 'font-mono')}
           />
         </SettingRow>
-      </SettingsSection>
+      </AdvancedSettings>
 
       {!plan && !applied && (
         <div className="flex justify-end">
@@ -180,7 +189,7 @@ export function ProjectImport({
             className="h-10 gap-2 rounded-lg"
           >
             <Page className="h-4 w-4" />
-            Scan
+            Preview apps
           </Button>
         </div>
       )}
@@ -191,13 +200,13 @@ export function ProjectImport({
             <section aria-labelledby="import-plan" className="flex flex-col gap-3">
               <div className="flex flex-col gap-0.5">
                 <h2 id="import-plan" className="text-sm font-medium text-muted-foreground">
-                  Plan — {plan.project_slug}
+                  Apps to create in {plan.project_slug}
                 </h2>
                 <p className="text-[13px] text-muted-foreground">
                   Detected from {SCAN_SOURCE_LABEL[plan.scan_source]}.
                 </p>
               </div>
-              <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+              <ul className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
                 {(plan.workloads ?? []).map((w) => (
                   <li key={w.name} className="flex flex-col gap-1 px-4 py-3">
                     <span className="flex min-w-0 items-center gap-2">
@@ -243,14 +252,14 @@ export function ProjectImport({
                     id="import-unprovisioned"
                     className="text-sm font-medium text-muted-foreground"
                   >
-                    Not provisioned
+                    Connect these services separately
                   </h2>
                   <p className="text-[13px] text-muted-foreground">
-                    Services the repo declares that the platform will not create. Wire them in with
-                    the env hints.
+                    These services are declared in your repository. Gregale will not create them;
+                    use the environment variables below to connect your own.
                   </p>
                 </div>
-                <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+                <ul className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
                   {plan.managed?.map((m) => (
                     <li key={m.name} className="flex flex-col gap-0.5 px-4 py-3">
                       <span className="flex items-center gap-2">
@@ -291,7 +300,7 @@ export function ProjectImport({
                 busy={apply.isPending}
                 className="h-10 rounded-lg"
               >
-                Apply plan
+                Create project
               </Button>
             </div>
           </div>
@@ -301,9 +310,9 @@ export function ProjectImport({
       {applied && (
         <section aria-labelledby="import-applied" className="flex flex-col gap-3">
           <h2 id="import-applied" className="text-sm font-medium text-muted-foreground">
-            Applied
+            Project created
           </h2>
-          <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+          <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
             <div className="flex items-start gap-3.5 px-4 py-4">
               <span
                 aria-hidden

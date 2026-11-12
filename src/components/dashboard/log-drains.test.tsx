@@ -54,13 +54,8 @@ vi.mock('@/lib/api/log-drains', () => ({
 }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => state.confirm }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock('@/components/dither-kit', () => ({
-  Area: () => null,
-  AreaChart: () => <div data-testid="chart" />,
-  Grid: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
+vi.mock('@/components/dashboard/kit/chart', () => ({
+  TimeChart: () => <div data-testid="chart" />,
 }));
 
 const { LogDrainsBody } = await import('./log-drains');
@@ -88,9 +83,9 @@ beforeEach(() => {
 });
 
 describe('LogDrainsBody', () => {
-  it('says logs stay in the console when there is no destination', () => {
+  it('says when there is no destination', () => {
     render(<LogDrainsBody slug="api" />);
-    expect(screen.getByText(/Logs stay in the console until you add one/)).toBeInTheDocument();
+    expect(screen.getByText('No log destinations yet.')).toBeInTheDocument();
   });
 
   it('adds a destination and never sends an empty auth header', async () => {
@@ -132,10 +127,10 @@ describe('LogDrainsBody', () => {
 
   it("labels the surface with the log-drains capability's stage", () => {
     render(<LogDrainsBody slug="api" />);
-    expect(screen.getByText(/^Beta · Send this app's runtime logs/)).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
     state.stage = '';
     render(<LogDrainsBody slug="web" />);
-    expect(screen.getByText(/^Send this app's runtime logs/)).toBeInTheDocument();
+    expect(screen.getAllByText('Beta')).toHaveLength(1);
   });
 
   it('adds a Datadog destination from a site and an API key when Datadog is on', async () => {

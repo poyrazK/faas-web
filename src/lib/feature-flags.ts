@@ -56,6 +56,10 @@ export const featureFlags = {
   /** Reference flag. Gates nothing; proves the wiring and shows the shape. */
   example:
     import.meta.env.VITE_FEATURE_EXAMPLE === '1' || import.meta.env.VITE_FEATURE_EXAMPLE === 'true',
+  /** First signup: sample/repository quickstart. Existing recovery remains reachable. */
+  onboardingV2:
+    import.meta.env.VITE_FEATURE_ONBOARDING_V2 === '1' ||
+    import.meta.env.VITE_FEATURE_ONBOARDING_V2 === 'true',
   /**
    * Browser error capture (`lib/error-reporting.ts`). Its transport is a no-op
    * until the owner chooses where reports go, so turning this on today only

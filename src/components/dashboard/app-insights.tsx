@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { FIELD } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { Panel, StatTile } from '@/components/dashboard/primitives';
+import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
 import { PlanGated } from '@/components/dashboard/plan-gated';
 import { Pill } from '@/components/dashboard/resource-table';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -78,15 +78,12 @@ export function WakeTimelinePanel({
 
   return (
     <PlanGated error={timeline.error} feature="Wake timeline">
-      <Panel
-        title="Wake timeline"
-        description="Where each wake in the last 24 hours spent its time, as the platform measured it."
-      >
+      <Panel title="Wake timeline">
         {timeline.error ? (
           <p className="text-sm text-muted-foreground">{errorMessage(timeline.error)}</p>
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <Stats columns={3}>
               <StatTile label="Wakes (24h)" value={data?.wake_count_24h} state={state} />
               <StatTile
                 label="At capacity"
@@ -102,11 +99,11 @@ export function WakeTimelinePanel({
               <StatTile
                 label="With timing"
                 value={data?.wake_count_with_meta}
-                note="wakes that recorded ready_in_ms"
+                note="wakes with a recorded ready time"
                 state={state}
                 tone="grey"
               />
-            </div>
+            </Stats>
             {classes.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 By trigger class:{' '}
@@ -181,16 +178,19 @@ export function AppUsagePanel({ slug }: { slug: string }) {
     <PlanGated error={usage.error} feature="Per-app usage">
       <Panel
         title="Usage"
-        description={
-          data
-            ? `${new Date(data.period_start).toLocaleDateString()} – ${new Date(data.period_end).toLocaleDateString()}, from ${data.source.replace('_', ' ')}.`
-            : 'Trailing 30 days of billing usage for this app alone.'
+        actions={
+          data && (
+            <span className="text-xs text-muted-foreground">
+              {new Date(data.period_start).toLocaleDateString()} –{' '}
+              {new Date(data.period_end).toLocaleDateString()}
+            </span>
+          )
         }
       >
         {usage.error ? (
           <p className="text-sm text-muted-foreground">{errorMessage(usage.error)}</p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stats columns={6}>
             <StatTile
               label="GB-hours"
               value={data ? data.gb_hours.toFixed(2) : undefined}
@@ -227,7 +227,7 @@ export function AppUsagePanel({ slug }: { slug: string }) {
               state={state}
               tone="grey"
             />
-          </div>
+          </Stats>
         )}
       </Panel>
     </PlanGated>
@@ -241,7 +241,7 @@ export function EnvDiffPanel({ slug }: { slug: string }) {
   return (
     <Panel
       title="Across scopes"
-      description="Which keys exist in each scope and whether their values agree. Secrets compare by hash; their values never leave the server."
+      help="Secrets compare by hash; their values never leave the server."
     >
       {diff.isPending ? (
         <p className="text-sm text-muted-foreground">Comparing scopes…</p>

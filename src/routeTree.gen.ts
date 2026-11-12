@@ -42,6 +42,7 @@ import { Route as DashboardInvocationsRouteImport } from './routes/dashboard.inv
 import { Route as DashboardInvoicesRouteImport } from './routes/dashboard.invoices'
 import { Route as DashboardJobsRouteImport } from './routes/dashboard.jobs'
 import { Route as DashboardKeysRouteImport } from './routes/dashboard.keys'
+import { Route as DashboardKitRouteImport } from './routes/dashboard.kit'
 import { Route as DashboardLogsRouteImport } from './routes/dashboard.logs'
 import { Route as DashboardMetricsRouteImport } from './routes/dashboard.metrics'
 import { Route as DashboardMirrorsRouteImport } from './routes/dashboard.mirrors'
@@ -247,6 +248,11 @@ const DashboardJobsRoute = DashboardJobsRouteImport.update({
 const DashboardKeysRoute = DashboardKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardKitRoute = DashboardKitRouteImport.update({
+  id: '/kit',
+  path: '/kit',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardLogsRoute = DashboardLogsRouteImport.update({
@@ -491,6 +497,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
+  '/dashboard/kit': typeof DashboardKitRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
@@ -564,6 +571,7 @@ export interface FileRoutesByTo {
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
+  '/dashboard/kit': typeof DashboardKitRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
@@ -640,6 +648,7 @@ export interface FileRoutesById {
   '/dashboard/invoices': typeof DashboardInvoicesRoute
   '/dashboard/jobs': typeof DashboardJobsRoute
   '/dashboard/keys': typeof DashboardKeysRoute
+  '/dashboard/kit': typeof DashboardKitRoute
   '/dashboard/logs': typeof DashboardLogsRoute
   '/dashboard/metrics': typeof DashboardMetricsRoute
   '/dashboard/mirrors': typeof DashboardMirrorsRoute
@@ -718,6 +727,7 @@ export interface FileRouteTypes {
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
+    | '/dashboard/kit'
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
@@ -791,6 +801,7 @@ export interface FileRouteTypes {
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
+    | '/dashboard/kit'
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
@@ -866,6 +877,7 @@ export interface FileRouteTypes {
     | '/dashboard/invoices'
     | '/dashboard/jobs'
     | '/dashboard/keys'
+    | '/dashboard/kit'
     | '/dashboard/logs'
     | '/dashboard/metrics'
     | '/dashboard/mirrors'
@@ -1154,6 +1166,13 @@ declare module '@tanstack/react-router' {
       path: '/keys'
       fullPath: '/dashboard/keys'
       preLoaderRoute: typeof DashboardKeysRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/kit': {
+      id: '/dashboard/kit'
+      path: '/kit'
+      fullPath: '/dashboard/kit'
+      preLoaderRoute: typeof DashboardKitRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/dashboard/logs': {
@@ -1496,6 +1515,7 @@ interface DashboardRouteChildren {
   DashboardInvoicesRoute: typeof DashboardInvoicesRoute
   DashboardJobsRoute: typeof DashboardJobsRoute
   DashboardKeysRoute: typeof DashboardKeysRoute
+  DashboardKitRoute: typeof DashboardKitRoute
   DashboardLogsRoute: typeof DashboardLogsRoute
   DashboardMetricsRoute: typeof DashboardMetricsRoute
   DashboardMirrorsRoute: typeof DashboardMirrorsRoute
@@ -1552,6 +1572,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardInvoicesRoute: DashboardInvoicesRoute,
   DashboardJobsRoute: DashboardJobsRoute,
   DashboardKeysRoute: DashboardKeysRoute,
+  DashboardKitRoute: DashboardKitRoute,
   DashboardLogsRoute: DashboardLogsRoute,
   DashboardMetricsRoute: DashboardMetricsRoute,
   DashboardMirrorsRoute: DashboardMirrorsRoute,

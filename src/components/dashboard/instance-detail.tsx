@@ -45,13 +45,7 @@ export function InstanceDetail({
 }) {
   const phase = queryPhase({ error, loading, isEmpty: !instance });
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Instance details"
-      description="Runtime state, lifecycle evidence, and related app links."
-      width="max-w-4xl"
-    >
+    <Modal open onClose={onClose} title="Instance details" width="max-w-4xl">
       <section
         aria-label="Instance details"
         className="max-h-[calc(100dvh-13rem)] overflow-y-auto overscroll-contain p-1"
@@ -144,10 +138,7 @@ export function InstanceDetail({
                   )}
                 </>
               ) : !slug ? (
-                <p className="text-sm text-muted-foreground">
-                  The app could not be resolved. Refresh the app list to load app links and wake
-                  evidence.
-                </p>
+                <p className="text-sm text-muted-foreground">The app could not be resolved.</p>
               ) : null}
               {!slug && !appsLoading && !appsError && (
                 <Button size="xs" variant="outline" onClick={onRetryApps}>
@@ -159,8 +150,7 @@ export function InstanceDetail({
               <h3 className="text-sm font-medium">Wake timeline</h3>
               {!instance.wake_id ? (
                 <p className="text-sm text-muted-foreground">
-                  No wake ID was returned for this instance. Use app logs or the debugger for other
-                  evidence.
+                  No wake ID was returned for this instance.
                 </p>
               ) : slug && !appsLoading && !appsError ? (
                 <WakeWaterfall slug={slug} wakeId={instance.wake_id} />

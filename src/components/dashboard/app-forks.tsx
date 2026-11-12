@@ -147,16 +147,13 @@ function ForksPanel({ slug }: { slug: string }) {
   };
 
   return (
-    <Panel
-      title="Production forks"
-      description="A private copy of this running app to send requests to while you debug."
-      actions={<MaturityLabel capability={capability} />}
-    >
+    <Panel title="Production forks" actions={<MaturityLabel capability={capability} />}>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        {'A private copy of this running app to send requests to while you debug.'}
+      </p>
+
       <div className="flex flex-col gap-5">
-        <p
-          role="note"
-          className="rounded-lg border border-border px-3 py-2.5 text-xs leading-relaxed"
-        >
+        <p role="note" className="well rounded-xl bg-muted/40 px-3 py-2.5 text-xs leading-relaxed">
           <strong className="font-medium">A fork copies production data.</strong> It restores this
           app&apos;s memory and disk, secrets already in memory and your users&apos; data included,
           into a private VM with no network that never serves production traffic. Only requests
@@ -386,7 +383,7 @@ function ForkCommands({ slug, fork }: { slug: string; fork: AppFork }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className="flex flex-col gap-3 rounded-lg border border-border p-3"
+      className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-3"
     >
       <h3 id={`${id}-title`} className="text-sm font-medium">
         Commands in fork {fork.id.slice(0, 8)}

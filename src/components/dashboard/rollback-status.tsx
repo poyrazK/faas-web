@@ -27,7 +27,7 @@ function statusSentence(op: RollbackOperation, target: string): string {
     case 'ready':
       return `Ready: ${target} passed its checks and waits for the traffic switch.`;
     case 'blocked':
-      return 'Blocked: fresh evidence is missing. Gregale retries without choosing another release.';
+      return 'Blocked: fresh checks are missing. Gregale retries without choosing another release.';
     case 'routing':
       return `Moving traffic to ${target}.`;
     case 'complete':
@@ -226,7 +226,7 @@ export function RollbackToRelease({ slug, deployment }: { slug: string; deployme
   const label = deploymentLabel(deployment);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-3">
       <p className="label-mono text-muted-foreground">
         {eligible ? 'Roll back to this release' : 'Rollback'}
       </p>

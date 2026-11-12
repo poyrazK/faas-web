@@ -14,6 +14,7 @@ import {
 } from '@/lib/api/queries';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ReleaseStatusLabel } from './release-status-label';
+import { Pill } from './resource-table';
 
 /** The three points of faas's priority scale (ADR-124): 0 first, 100 FIFO, 1000 last. */
 const PRIORITY = {
@@ -127,7 +128,8 @@ export function DeployQueue({ onOpen }: { onOpen: (deploymentId: string) => void
     <section aria-label="Deploy queue">
       <Panel
         title="Deploy queue"
-        description={`${stage ? `${stage} · ` : ''}Waiting to build or building, oldest first. Deploy now moves a waiting release ahead; Background lets the rest go first.`}
+        help="Waiting to build or building, oldest first. Deploy now moves a waiting release ahead; Background lets the rest go first."
+        actions={stage && <Pill label={stage} />}
         padded={false}
       >
         {phase !== 'ready' ? (

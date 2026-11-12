@@ -29,6 +29,18 @@ const entries: Capability[] = [
     enabled: true,
   },
   {
+    key: 'custom-slos',
+    name: 'SLOs and error budgets',
+    category: 'observability',
+    description:
+      'Define availability and latency objectives per app and track how much of each error budget is left over a 7- or 30-day window, with live burn rates.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/slos',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'crash-snapshots',
     name: 'Crash snapshots',
     category: 'observability',
@@ -193,6 +205,18 @@ const entries: Capability[] = [
     maturity: 'beta',
     plans: PAID,
     docs_url: '/docs/runtime-node',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
+    key: 'synthetic-checks',
+    name: 'Synthetic checks',
+    category: 'observability',
+    description:
+      'Request a path on your app every 5, 15 or 60 minutes through the public edge and track uptime, latency and failures, even when no users are calling it.',
+    maturity: 'preview',
+    plans: PAID,
+    docs_url: '/docs/synthetic-checks',
     acceptance: 'mock-only',
     enabled: true,
   },

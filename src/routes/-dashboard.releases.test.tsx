@@ -259,11 +259,7 @@ describe('Releases hub', () => {
     const router = await mount('/dashboard/apps/alpha?tab=Activity');
     expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
     expect(router.state.location.search.tab).toBe('Activity');
-    await userEvent.click(
-      within(screen.getByRole('group', { name: 'Delivery pages' })).getByRole('button', {
-        name: 'Deployments',
-      })
-    );
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Deployments');
     await waitFor(() => expect(router.state.location.search.tab).toBe('Deployments'));
     act(() => router.history.back());
     expect(await screen.findByText('App activity for alpha')).toBeInTheDocument();
@@ -492,7 +488,7 @@ describe('Releases hub', () => {
         kind === 'build'
           ? listRow(/build-only/)
           : kind === 'app release'
-            ? screen.getByRole('button', { name: /image aaaa/ })
+            ? screen.getByRole('button', { name: /^Details of / })
             : listRow(/dep-1\b/);
       const select = async () => {
         if (input === 'pointer') await userEvent.click(row);
@@ -628,7 +624,7 @@ describe('Releases hub', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     expect(screen.queryByRole('combobox', { name: 'Resume from' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Intermediate checkpoints are not retained/)).toBeInTheDocument();
+    expect(screen.getByText(/every build stage runs again/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
     expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
@@ -708,7 +704,7 @@ describe('Releases hub', () => {
 
   it('restores app release sections and selection through Back, Forward and refresh', async () => {
     const router = await mount('/dashboard/apps/alpha?tab=Deployments#release');
-    await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     const copied = router.state.location.href;
     await act(async () => router.history.back());
@@ -737,7 +733,7 @@ describe('Releases hub', () => {
       debugRoute: '/checkout',
       campaign: 'handoff',
     };
-    await userEvent.click(screen.getByRole('button', { name: /image aaaa/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
     expect(router.state.location.search).toMatchObject({ ...investigation, deployment: 'dep-1' });
     await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
     await userEvent.click(
@@ -748,23 +744,15 @@ describe('Releases hub', () => {
     expect(router.state.location.search).toMatchObject(investigation);
     expect(router.state.location.search.deployment).toBeUndefined();
     expect(router.state.location.search.releaseSection).toBeUndefined();
-    await userEvent.click(screen.getByRole('tab', { name: 'Observe' }));
-    await userEvent.click(
-      within(screen.getByRole('group', { name: 'Observe pages' })).getByRole('button', {
-        name: 'Debugger',
-      })
-    );
-    expect(await screen.findByRole('dialog', { name: 'Request evidence' })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Debugger');
+    expect(await screen.findByRole('dialog', { name: 'Request details' })).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject(investigation);
     await act(async () => router.history.back());
     await waitFor(() => expect(router.state.location.search.tab).toBe('Logs'));
     await act(async () => router.history.back());
     await waitFor(() =>
-      expect(
-        within(screen.getByRole('group', { name: 'Delivery pages' })).getByRole('button', {
-          name: 'Deployments',
-        })
-      ).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Deployments')
     );
     await act(async () => router.history.back());
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();

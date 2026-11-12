@@ -53,6 +53,7 @@ it('saves a credential for the job', async () => {
   const put = spyApi('PUT').mockImplementation(() => ok(credential));
   mount(<JobRegistryCredentialsPanel name="nightly-export" />);
   expect(await screen.findByText(/No private registry credentials/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Add registry' }));
   const url = screen.getByPlaceholderText('https://registry.example.com');
   await userEvent.clear(url);
   await userEvent.type(url, 'https://ghcr.io');
@@ -66,6 +67,8 @@ it('saves a credential for the job', async () => {
     })
   );
   expect(await screen.findByText('Registry credential saved')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Add registry' }));
   expect(screen.getByLabelText('Password')).toHaveValue('');
 });
 
@@ -91,6 +94,7 @@ it('shows a refused save with its code', async () => {
   );
   mount(<JobRegistryCredentialsPanel name="nightly-export" />);
   await screen.findByText(/No private registry credentials/);
+  await userEvent.click(screen.getByRole('button', { name: 'Add registry' }));
   await userEvent.type(screen.getByLabelText('Username'), 'bot');
   await userEvent.type(screen.getByLabelText('Password'), 'pw');
   await userEvent.clear(screen.getByPlaceholderText('https://registry.example.com'));

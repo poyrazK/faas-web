@@ -43,7 +43,9 @@ export function EdgeRuleVersions({ slug }: { slug: string }) {
   return (
     <Panel
       title="Versions"
-      description={`${stage ? `${stage} · ` : ''}Every change to this app's rules records the whole set. Compare a version with the rules now, or roll back to it.`}
+      actions={
+        stage ? <span className="label-mono text-muted-foreground">{stage}</span> : undefined
+      }
       padded={false}
     >
       {phase !== 'ready' ? (
@@ -52,7 +54,7 @@ export function EdgeRuleVersions({ slug }: { slug: string }) {
             phase={phase}
             error={versions.error}
             loadingMessage="Reading versions…"
-            emptyMessage="No versions yet. The first change to this app's rules records one."
+            emptyMessage="No versions yet."
             onRetry={() => void versions.refetch()}
           />
         </div>
@@ -206,7 +208,7 @@ function VersionDialog({
               key={d.id}
               role="group"
               aria-label={`Rule ${d.id}: ${CHANGE_LABEL[d.change]}`}
-              className="rounded-lg border border-border"
+              className="well rounded-xl bg-muted/40"
             >
               <header className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
                 <span className="font-mono">{(d.after ?? d.before)?.name || d.id.slice(0, 8)}</span>

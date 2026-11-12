@@ -1,3 +1,7 @@
+import { MetricInspectorProvider } from '@/components/dashboard/metric-inspector';
+import '@/components/dashboard/microinteractions.css';
+import { validateMetricDetailSearch } from '@/components/dashboard/metric-detail-search';
+import { featureFlags } from '@/lib/feature-flags';
 import { useEffect } from 'react';
 import {
   createFileRoute,
@@ -13,6 +17,7 @@ import { validateSettingsSearch } from '@/components/dashboard/settings-search';
 import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/dashboard')({
+  validateSearch: validateMetricDetailSearch,
   // Guards run before the route loads, so a signed-out visitor never sees a
   // flash of the shell. Session lives in localStorage, so this stays sync.
   beforeLoad: ({ location }) => {
@@ -25,7 +30,17 @@ export const Route = createFileRoute('/dashboard')({
         (location.pathname === '/dashboard/settings' &&
           validateSettingsSearch(location.search).section === 'integrations')) &&
       hasOnboardingGitHubReturn();
-    if (!hasOnboarded() && !returningFromOnboardingGitHub) {
+    // A saved receipt must still open its app when the new entry flag is rolled back.
+    // The API continues to authorize the slug; this exception only skips setup presentation.
+    const inspectingApp = /^\/dashboard\/apps\/(?!new(?:\/|$))[^/]+(?:\/.*)?$/.test(
+      location.pathname
+    );
+    if (
+      !featureFlags.onboardingV2 &&
+      !hasOnboarded() &&
+      !returningFromOnboardingGitHub &&
+      !inspectingApp
+    ) {
       throw redirect({
         to: '/onboarding',
         search:
@@ -53,7 +68,9 @@ function DashboardLayout() {
   }, [sessionExpired]);
   return (
     <DashboardShell>
-      <Outlet />
+      <MetricInspectorProvider>
+        <Outlet />
+      </MetricInspectorProvider>
     </DashboardShell>
   );
 }

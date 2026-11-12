@@ -5,6 +5,7 @@ import {
   LoadingState,
   PageHeader,
   Panel,
+  Stats,
   StatTile,
   UnreachableState,
   queryPhase,
@@ -83,7 +84,6 @@ function MetricsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Metrics"
-        description="Aggregates over the selected window, straight from Prometheus."
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <AppSelect slug={slug} onSelect={select} apps={apps} />
@@ -142,7 +142,7 @@ function MetricsPage() {
           // separate PromQL queries do not have.
           <Swap id={`${slug ?? ''}:${range}`}>
             <div className="flex flex-col gap-6">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Stats columns={4}>
                 <StatTile label="Requests" value={formatCount(data?.request_count)} state={tile} />
                 <StatTile label="Error rate" value={formatPct(data?.error_rate_pct)} state={tile} />
                 <StatTile
@@ -155,20 +155,15 @@ function MetricsPage() {
                   value={formatMs(data?.wake_p95_ms)}
                   state={tile}
                 />
-              </div>
+              </Stats>
 
               <Panel title="Latency (2xx only)">
-                <div className="grid gap-4 sm:grid-cols-3">
+                <Stats columns={3}>
                   <StatTile label="p50" value={formatMs(data?.latency_p50_ms)} state={tile} />
                   <StatTile label="p95" value={formatMs(data?.latency_p95_ms)} state={tile} />
                   <StatTile label="p99" value={formatMs(data?.latency_p99_ms)} state={tile} />
-                </div>
+                </Stats>
               </Panel>
-
-              <p className="text-xs text-muted-foreground">
-                Window {data?.range}. Latency percentiles cover 2xx traffic only; wake p95 is the
-                fleet figure, not this app alone.
-              </p>
             </div>
           </Swap>
         ) : null}

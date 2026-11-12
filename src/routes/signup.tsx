@@ -1,3 +1,4 @@
+import { featureFlags } from '@/lib/feature-flags';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { PasswordFlow } from '@/components/auth/password-flow';
@@ -12,7 +13,14 @@ export const Route = createFileRoute('/signup')({
   }),
   beforeLoad: ({ search }) => {
     if (readSession() && search.next) throw redirect({ href: search.next, reloadDocument: true });
-    if (readSession()) throw redirect({ to: hasOnboarded() ? '/dashboard' : '/onboarding' });
+    if (readSession())
+      throw redirect({
+        to: featureFlags.onboardingV2
+          ? '/onboarding'
+          : hasOnboarded()
+            ? '/dashboard'
+            : '/onboarding',
+      });
   },
   component: SignupPage,
 });

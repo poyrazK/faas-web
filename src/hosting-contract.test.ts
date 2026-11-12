@@ -85,9 +85,11 @@ it.each([
 
 it('preserves every registered app route as a deep link', () => {
   const source = readFileSync('src/routeTree.gen.ts', 'utf8');
-  const paths = [
-    ...source.matchAll(/^ {2}'(\/(?:dashboard|onboarding|invite)[^']*)': typeof/gm),
-  ].map((match) => match[1]);
+  // The component gallery is dev-only and must 404 in production.
+  const devOnly = new Set(['/dashboard/kit']);
+  const paths = [...source.matchAll(/^ {2}'(\/(?:dashboard|onboarding|invite)[^']*)': typeof/gm)]
+    .map((match) => match[1])
+    .filter((path) => !devOnly.has(path));
   expect(paths.length).toBeGreaterThan(40);
   for (const path of paths) {
     // A route id's trailing `_` un-nests it from its parent's layout

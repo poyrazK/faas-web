@@ -158,7 +158,7 @@ export function ConsumerStatements({ slug, consumerId }: { slug: string; consume
         loading={statements.isPending}
         error={statements.error}
         onRetry={() => void statements.refetch()}
-        emptyMessage="No statements yet. Snapshot a period to create the first."
+        emptyMessage="No statements yet."
         minWidth="min-w-[640px]"
         rowActions={(r) =>
           r.status === 'draft' && r.statement.priced ? (
@@ -192,7 +192,7 @@ function StatementDetail({
   const handoff = useStatementHandoff(slug, consumerId, statement.id, finalized);
   const notRecorded = handoff.error instanceof ApiError && handoff.error.code === 'not_found';
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4">
       <p className="text-sm font-medium">
         Revision {statement.revision} · {formatPeriod(statement.period_start, statement.period_end)}
       </p>
@@ -214,18 +214,14 @@ function StatementDetail({
       />
       {!statement.priced && statement.status === 'draft' && (
         <p className="text-xs text-muted-foreground">
-          Some units have no effective rate card, so this draft cannot be finalized. Publish a rate
-          card covering the period, then snapshot again.
+          Some units have no rate card, so this draft cannot be finalized.
         </p>
       )}
       {finalized && (
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-medium">Billing handoff</p>
           {notRecorded ? (
-            <p className="text-sm text-muted-foreground">
-              No handoff recorded. Your billing system records one through the API when it invoices
-              this statement.
-            </p>
+            <p className="text-sm text-muted-foreground">No handoff recorded.</p>
           ) : (
             <>
               <InlinePhase

@@ -154,7 +154,6 @@ function ImportedDocument({ slug }: { slug: string }) {
   return (
     <Panel
       title="Imported document"
-      description="Your own description of the API, kept verbatim. The platform merges it with observed routes and edge rules."
       actions={
         <div className="flex items-center gap-2">
           <Select
@@ -183,10 +182,7 @@ function ImportedDocument({ slug }: { slug: string }) {
       {manual.isPending ? (
         <p className="text-sm text-muted-foreground">Reading the imported document…</p>
       ) : nothingImported && source === 'manual_import' ? (
-        <p className="text-sm text-muted-foreground">
-          No document has been imported for this app. Paste one below to preview what it would
-          change.
-        </p>
+        <p className="text-sm text-muted-foreground">No document imported yet.</p>
       ) : manual.error && source === 'manual_import' ? (
         <p className="text-sm text-muted-foreground">{errorMessage(manual.error)}</p>
       ) : source === 'auto' ? (
@@ -305,7 +301,7 @@ function ImportFlow({ slug }: { slug: string }) {
   return (
     <Panel
       title="Import a document"
-      description="Preview first: the API validates the document and lists the edge rules it would suggest, without storing anything."
+      help="Preview validates the document and suggests edge rules without storing anything."
     >
       <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
@@ -351,7 +347,7 @@ function ImportFlow({ slug }: { slug: string }) {
         </div>
 
         {preview && (
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <div className="flex flex-col gap-3 well rounded-xl bg-muted/40 p-4">
             <p className="text-sm">
               OpenAPI {preview.version}, {preview.endpoints} endpoint
               {preview.endpoints === 1 ? '' : 's'}.{' '}
@@ -418,7 +414,6 @@ function DeploymentDocument({ slug }: { slug: string }) {
   return (
     <Panel
       title="Captured from the app"
-      description="What the cold-boot probe read from the app's own /openapi.json for one deployment."
       actions={
         own.length > 0 || deployments.hasNextPage ? (
           <div className="flex items-center gap-2">
@@ -470,8 +465,7 @@ function DeploymentDocument({ slug }: { slug: string }) {
               <p className="text-sm text-muted-foreground">Reading the captured document…</p>
             ) : doc.error && isNotFound(doc.error) ? (
               <p className="text-sm text-muted-foreground">
-                No document was captured for this deployment. The probe reads /openapi.json during
-                cold boot; an app that does not serve one leaves nothing here.
+                No /openapi.json was captured for this deployment.
               </p>
             ) : doc.error ? (
               <p className="text-sm text-muted-foreground">{errorMessage(doc.error)}</p>

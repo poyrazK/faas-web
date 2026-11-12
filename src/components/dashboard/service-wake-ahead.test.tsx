@@ -66,6 +66,7 @@ const toggle = () => screen.findByRole('switch', { name: /wake services ahead/i 
 it('says what wake-ahead does and what it costs in GB-hours', async () => {
   renderWithProviders(<ServiceWakeAhead slug="api" />);
   await toggle();
+  await userEvent.click(screen.getByRole('button', { name: 'About Service wake-ahead' }));
   expect(screen.getByText(/restores overlap/i)).toBeInTheDocument();
   expect(screen.getByText(/GB-hours/)).toBeInTheDocument();
 });

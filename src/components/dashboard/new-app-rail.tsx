@@ -66,7 +66,7 @@ export function NewAppReviewGrid({ rows }: { rows: SummaryRow[] }) {
       </h2>
       {/* Two lists in one card: a dl takes only one wrapper level around each
           term, so the lead is a list of its own. */}
-      <div className="@container flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="@container flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         {hero.length > 0 && (
           // Side by side when the URL fits, stacked when it does not, so a long
           // URL never breaks mid-word.

@@ -1,6 +1,3 @@
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from '@tanstack/react-router';
-import { Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FieldError, Select } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -22,10 +19,13 @@ import { useApp, useApps } from '@/lib/api/queries';
 import { useOrgApps, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { publicAppUrl } from '@/lib/app-url';
 import { useAuth } from '@/lib/auth';
+import { Link } from '@tanstack/react-router';
+import { Plus } from 'iconoir-react';
+import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { CapabilityNotice } from './capability-notice';
+import { TearDownPreviewButton } from './preview-actions';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ProblemHelp } from './problem-help';
-import { TearDownPreviewButton } from './preview-actions';
 import { ReleaseStatusLabel } from './release-status-label';
 
 const HOUR = 3_600_000;
@@ -144,7 +144,7 @@ export function ReleasePreviews() {
   return (
     <Panel
       title="PR previews"
-      description="Each preview is its own app, pr-<number>-<app>, made from a production app's settings. It scales to zero and expires on its own."
+      help="Each preview is its own app, made from a production app's settings. It scales to zero and expires on its own."
       actions={
         canCreate && !creating ? (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCreating(true)}>
@@ -192,7 +192,7 @@ export function ReleasePreviews() {
           </p>
         )}
         {previews.length > 0 && (
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="divide-y divide-border well rounded-xl bg-muted/40">
             {previews.map((row) => (
               <li key={row.id}>
                 <button
@@ -238,7 +238,7 @@ export function ReleasePreviews() {
  * owner/admin"). Other members get 403 `org_role_forbidden`.
  */
 const creatorOnly = (parent: string, organization: string) =>
-  `apid lets only the member who created ${parent} create its previews, while they are an owner or admin of ${organization}. Other members cannot create them yet.`;
+  `The API lets only the member who created ${parent} create its previews, while they are an owner or admin of ${organization}. Other members cannot create them yet.`;
 
 function NewPreviewForm({
   parents,
@@ -297,7 +297,7 @@ function NewPreviewForm({
     <form
       aria-label="New preview"
       onSubmit={(event) => void submit(event)}
-      className="flex flex-col gap-4 rounded-md border border-border p-4"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4"
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1.5 text-sm">
@@ -374,8 +374,8 @@ function NewPreviewForm({
         )}
         {org && (
           <p>
-            In {label}, apid lets only the member who created an app create its previews, while they
-            are an owner or admin. Previews count against {label}’s plan.
+            In {label}, the API lets only the member who created an app create its previews, while
+            they are an owner or admin. Previews count against {label}’s plan.
           </p>
         )}
       </div>
@@ -502,7 +502,7 @@ function PreviewDetail({
   return (
     <section
       aria-label={`Preview ${slug}`}
-      className="flex flex-col gap-4 rounded-md border border-border p-4 text-sm"
+      className="flex flex-col gap-4 well rounded-xl bg-muted/40 p-4 text-sm"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="min-w-0 truncate font-mono font-medium">{slug}</h3>
@@ -599,7 +599,7 @@ function CompanyPreviewFacts({ slug, label }: { slug: string; label: string }) {
       )}
       <p role="status" className="text-muted-foreground">
         Only the member who created {parent}, while an owner or admin of {label}, can see this
-        preview’s latest deployment and changes from production, or tear it down: apid has not
+        preview’s latest deployment and changes from production, or tear it down: the API has not
         opened those to other members yet.
       </p>
       {app.data && (

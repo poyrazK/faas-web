@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pill } from '@/components/dashboard/resource-table';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useAlertDeliveries } from '@/lib/api/queries';
+import { shortTime } from '@/lib/time';
 
 /**
  * Did this rule actually reach its webhook?
@@ -25,7 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
 function formatWhen(value: string | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
-  return Number.isNaN(ms) ? '—' : new Date(ms).toLocaleString();
+  return Number.isNaN(ms) ? '—' : shortTime(ms);
 }
 
 export function AlertDeliveries({ slug, ruleId }: { slug: string; ruleId: string }) {

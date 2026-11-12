@@ -23,7 +23,7 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
   return (
     <Panel
       title="Effective environment state"
-      description={`Snapshot ${data.generated_at}. Read-only; this is not a clone-completeness report.`}
+      actions={<span className="text-xs text-muted-foreground">Snapshot {data.generated_at}</span>}
     >
       <div className="space-y-4 p-4 text-sm">
         <div>
@@ -41,7 +41,7 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
                 ))}
               </ul>
               <p className="mt-2 text-muted-foreground">
-                Selected graph members can differ from the per-workload live releases below.
+                Graph members can differ from each workload&apos;s live release.
               </p>
             </>
           ) : (
@@ -65,11 +65,7 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
         </details>
         {!data.workloads.length && <p>No workloads in this environment.</p>}
         {data.workloads.map((workload) => (
-          <details
-            key={workload.workload_slug}
-            className="rounded-md border border-border p-3"
-            open
-          >
+          <details key={workload.workload_slug} className="well rounded-xl bg-muted/40 p-3" open>
             <summary className="cursor-pointer font-medium">
               {workload.workload_name}{' '}
               <span className="text-muted-foreground">({workload.release.status})</span>

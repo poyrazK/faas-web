@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
@@ -96,7 +96,7 @@ beforeEach(() => {
   state.workspace.mockReset();
 });
 describe('resource activity timeline', () => {
-  it('shows deploy/config/domain/TLS events, captured actor, exact UTC time, outcome and affected links', () => {
+  it('shows deploy/config/domain/TLS events, captured actor, time, failures and affected links', () => {
     state.rows = [
       row('4', 'deploy.failed', { deployment_id: release }),
       row('3', 'app.config_updated'),
@@ -108,33 +108,73 @@ describe('resource activity timeline', () => {
     ];
     render(<ResourceActivityTimeline appId={app} appSlug="api" />);
     expect(screen.getByRole('region', { name: 'App activity' })).toBeInTheDocument();
-    expect(screen.getAllByText('2026-10-01 12:00:00 UTC')).toHaveLength(4);
-    expect(screen.getByText('Actor: Certificate manager (system)')).toBeInTheDocument();
-    expect(screen.getByText('Outcome: Failed')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View affected release' })).toHaveAttribute(
+    expect(screen.getAllByRole('time')).toHaveLength(4);
+    expect(screen.getAllByRole('time')[0]).toHaveAttribute('dateTime', '2026-10-01T12:00:00.000Z');
+    expect(screen.getByText('by Certificate manager (system)')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    // Completed is the norm and is not spelled out.
+    expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View release' })).toHaveAttribute(
       'href',
       `/dashboard/releases?deployment=${release}&releaseSection=audit`
     );
     expect(
-      screen
-        .getAllByRole('link', { name: 'View affected configuration' })
-        .map((link) => link.getAttribute('href'))
-    ).toEqual(['/dashboard/apps/api?tab=Configuration', '/dashboard/apps/api?tab=Environment']);
-    expect(screen.getByRole('link', { name: 'View affected domain' })).toHaveAttribute(
+      ['View settings', 'View environment'].map((name) =>
+        screen.getByRole('link', { name }).getAttribute('href')
+      )
+    ).toEqual(['/dashboard/apps/api?tab=Runtime', '/dashboard/apps/api?tab=Environment']);
+    expect(screen.getByRole('link', { name: 'View domain' })).toHaveAttribute(
       'href',
       '/dashboard/domains?q=api.example.com'
     );
-    expect(screen.getByText(/retention expiry/)).toBeInTheDocument();
-    expect(screen.getByText(/Historical coverage can be incomplete/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About activity' })).toBeInTheDocument();
   });
   it('keeps unknown outcomes and actor identities explicit', () => {
     state.rows = [
       row('1', 'future.unknown', { actor: { type: 'system', label: '' }, occurred_at: 'invalid' }),
     ];
     render(<ResourceActivityTimeline appId={app} />);
-    expect(screen.getByText('Outcome: Recorded — outcome not provided')).toBeInTheDocument();
-    expect(screen.getByText('Actor: Unknown actor (system)')).toBeInTheDocument();
-    expect(screen.getByText('Timestamp unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Outcome unknown')).toBeInTheDocument();
+    expect(screen.getByText('by Unknown actor (system)')).toBeInTheDocument();
+    expect(screen.getByText('Time unknown')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Date unknown' })).toBeInTheDocument();
+  });
+  it('groups events by day under one sentence, never repeating an actor the sentence names', () => {
+    const now = Date.now();
+    const at = (ms: number) => new Date(ms).toISOString();
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    const today = midnight.getTime();
+    state.rows = [
+      row('3', 'deploy.failed', {
+        occurred_at: at(Math.max(today, now - 60_000)),
+        summary: 'Deployment of api failed (requested by Developer)',
+      }),
+      row('2', 'app.deployed', {
+        occurred_at: at(Math.max(today, now - 120_000)),
+        summary: 'Developer deployed api',
+      }),
+      row('1', 'env.set', { occurred_at: at(today - 6 * 60 * 60 * 1000) }),
+    ];
+    render(<ResourceActivityTimeline appId={app} appSlug="api" />);
+    expect(screen.getByText('2 events today, 1 failed.')).toBeInTheDocument();
+    const todayGroup = screen.getByRole('region', { name: 'Today' });
+    expect(within(todayGroup).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(todayGroup).getByText('Failed')).toBeInTheDocument();
+    expect(within(todayGroup).queryByText(/^by /)).not.toBeInTheDocument();
+    const yesterday = screen.getByRole('region', { name: 'Yesterday' });
+    expect(within(yesterday).getByText('env.set summary')).toBeInTheDocument();
+    expect(within(yesterday).getByText('by Developer')).toBeInTheDocument();
+  });
+  it('keeps raw kinds, ids and data behind each event’s details', async () => {
+    state.rows = [row('9', 'env.set', { data: { key: 'LOG_LEVEL' } })];
+    render(<ResourceActivityTimeline appId={app} />);
+    const details = screen.getByText('Details').closest('details')!;
+    expect(details).not.toHaveAttribute('open');
+    await userEvent.click(screen.getByText('Details'));
+    expect(details).toHaveAttribute('open');
+    expect(details).toHaveTextContent('env.set · Developer · api · event 9');
+    expect(details).toHaveTextContent('LOG_LEVEL');
   });
   it('shows only the exact release while providing app-wide context navigation', () => {
     state.rows = [

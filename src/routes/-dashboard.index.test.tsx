@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useAppsMetrics = vi.fn();
 let plan = 'hobby';
@@ -89,7 +89,12 @@ vi.mock('@/lib/api/queries', async (importOriginal) => {
       refetch: vi.fn(),
     }),
     useInstances: () => ({
-      data: { instances: [] },
+      data: {
+        instances: [
+          { state: 'running', ram_mb: 256 },
+          { state: 'parked', ram_mb: 512 },
+        ],
+      },
       isPending: false,
       isRefetching: false,
       error: null,
@@ -99,24 +104,6 @@ vi.mock('@/lib/api/queries', async (importOriginal) => {
     useApps: () => ({}),
   };
 });
-
-vi.mock('@/components/dashboard/wind-flow', () => ({ WindFlow: () => null }));
-vi.mock('@/components/dashboard/shapes', () => ({ FlowDotsField: () => null }));
-vi.mock('@/components/amicro/magnetic', () => ({
-  Magnetic: ({ children }: { children: React.ReactNode }) => children,
-}));
-vi.mock('@/components/amicro/pointer-glow', () => ({ PointerGlow: () => null }));
-vi.mock('@/components/amicro/tilt', () => ({
-  Tilt: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <div className={className}>{children}</div>
-  ),
-}));
-vi.mock('@/components/amicro/word-reveal', () => ({
-  WordReveal: ({ text }: { text: string }) => <>{text}</>,
-}));
-vi.mock('@/components/ui/spotlight-card', () => ({
-  SpotlightCard: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
 
 const { Route } = await import('./dashboard.index');
 
@@ -150,101 +137,128 @@ function metrics(range: string, requestCount: number) {
   };
 }
 
+const hours = (requests: number[], since: string) => ({
+  slug: 'api',
+  since,
+  from: '2026-11-08T22:00:00Z',
+  until: '2026-11-09T01:00:00Z',
+  window_clamped: false,
+  bucket: '1h',
+  as_of: '2026-11-09T00:30:00Z',
+  points: requests.map((n, i) => ({
+    start: new Date(Date.parse('2026-11-08T22:00:00Z') + i * 3_600_000).toISOString(),
+    requests: n,
+    error_requests: Math.round(n / 100),
+    error_rate_pct: 1,
+    cold_boots: i,
+    p50_ms: 20,
+    p95_ms: 60,
+    p99_ms: 90,
+  })),
+});
+
+let get: ReturnType<typeof spyApi>;
+
 beforeEach(() => {
+  window.localStorage.clear();
   plan = 'hobby';
   deployments = [];
   metricsRefetch.mockReset();
   useAppsMetrics
     .mockReset()
     .mockImplementation((range: string) => metrics(range, range === '7d' ? 700 : 100));
-});
-
-describe('overview analytics window', () => {
-  it.each([
-    ['24h', '24h', 'pointer'],
-    ['7d', '7d', 'keyboard'],
-    ['1h', '24h', 'pointer'],
-  ])(
-    'opens Analytics from the heading with %s mapped to %s using %s',
-    async (range, window, input) => {
-      const root = createRootRoute();
-      const overview = Route.update({
-        id: '/dashboard/',
-        path: '/dashboard',
-        getParentRoute: () => root,
-      } as never);
-      const analytics = createRoute({
-        getParentRoute: () => root,
-        path: '/dashboard/analytics',
-        component: () => <h1>Account analytics</h1>,
-      });
-      const router = createRouter({
-        routeTree: root.addChildren([overview, analytics]),
-        history: createMemoryHistory({ initialEntries: [`/dashboard?range=${range}`] }),
-      });
-      render(
-        <QueryClientProvider client={new QueryClient()}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-      );
-      const link = await screen.findByRole('link', { name: 'Analytics' });
-      expect(link).toHaveAttribute('href', `/dashboard/analytics?window=${window}`);
-      if (input === 'keyboard') {
-        link.focus();
-        await userEvent.keyboard('{Enter}');
-      } else await userEvent.click(link);
-      expect(await screen.findByRole('heading', { name: 'Account analytics' })).toBeInTheDocument();
-      expect(router.state.location.search).toEqual({ window });
-    }
-  );
-
-  it('uses the selected range for the server rollup and preserves it in the URL', async () => {
-    const root = createRootRoute();
-    const overview = Route.update({
-      id: '/dashboard/',
-      path: '/dashboard',
-      getParentRoute: () => root,
-    } as never);
-    const router = createRouter({
-      routeTree: root.addChildren([overview]),
-      history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
-    });
-
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    );
-    expect(await screen.findByText('100')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: '7d' }));
-
-    expect(await screen.findByText('700')).toBeInTheDocument();
-    await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
+  get = spyApi('GET').mockImplementation(async (path: string, init?: unknown) => {
+    const since = (init as { params?: { query?: { since?: string } } })?.params?.query?.since;
+    const data =
+      path === '/v1/apps/{slug}/analytics/timeseries'
+        ? hours(since === '7d' ? [500, 600, 300] : [100, 300, 200], since ?? '24h')
+        : path === '/v1/orgs/{slug}/usage'
+          ? companyUsage.rows
+          : path === '/v1/usage'
+            ? [
+                {
+                  app_id: 'app-1',
+                  mb_seconds: 12 * 1024 * 3600,
+                  requests: 1,
+                  included_gb_hours: 100,
+                },
+              ]
+            : {};
+    return { data, response: new Response(null, { status: 200 }) };
   });
 });
 
-function renderOverview() {
+afterEach(() => get.mockRestore());
+
+function renderOverview(withReleases = false) {
   const root = createRootRoute();
+  const extra = withReleases
+    ? [
+        createRoute({
+          getParentRoute: () => root,
+          path: '/dashboard/releases',
+          component: () => <h1>Releases</h1>,
+        }),
+      ]
+    : [];
   const overview = Route.update({
     id: '/dashboard/',
     path: '/dashboard',
     getParentRoute: () => root,
   } as never);
   const router = createRouter({
-    routeTree: root.addChildren([overview]),
+    routeTree: root.addChildren([overview, ...extra]),
     history: createMemoryHistory({ initialEntries: ['/dashboard'] }),
   });
-  // The company allowance is a real query; personal reads are mocked above.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
+  return router;
 }
 
-it('gates Free metrics and range controls while preserving usage and instance reads', async () => {
+describe('overview time window', () => {
+  it('shows the range’s requests and error rate and keeps the range in the URL', async () => {
+    const router = renderOverview();
+    const requests = await screen.findByRole('region', { name: 'Total requests' });
+    expect(requests).toHaveTextContent('100');
+    expect(requests).toHaveTextContent('Across 1 app, last 24 hours');
+    expect(screen.getByRole('region', { name: 'Error rate' })).toHaveTextContent('1.00%');
+
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Time window' })).getByRole('button', {
+        name: '7d',
+      })
+    );
+
+    expect(await screen.findByText('Across 1 app, last 7 days')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Total requests' })).toHaveTextContent('700');
+    await waitFor(() => expect(router.state.location.search).toEqual({ range: '7d' }));
+    expect(useAppsMetrics).toHaveBeenLastCalledWith('7d', { enabled: true });
+    expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute(
+      'href',
+      '/dashboard/analytics?window=7d'
+    );
+  });
+
+  it('labels wake p95 as the fleet-wide figure it is', async () => {
+    renderOverview();
+    const card = await screen.findByRole('region', { name: 'Wake p95' });
+    expect(card).toHaveTextContent('80ms');
+    expect(card).toHaveTextContent('Cold start, fleet-wide');
+  });
+
+  it('counts only memory held by running instances', async () => {
+    renderOverview();
+    const memory = await screen.findByRole('region', { name: 'Memory now' });
+    expect(memory).toHaveTextContent('256MB');
+    expect(memory).toHaveTextContent('1 running instance');
+  });
+});
+
+it('gates Free metrics and the range while keeping memory and compute', async () => {
   plan = 'free';
   renderOverview();
   expect(await screen.findByText('Metrics is available on Hobby and above')).toBeInTheDocument();
@@ -252,14 +266,14 @@ it('gates Free metrics and range controls while preserving usage and instance re
     'href',
     '/dashboard/plans'
   );
-  expect(screen.getByRole('button', { name: '7d' })).toBeDisabled();
-  expect(screen.getByText('Memory now')).toBeInTheDocument();
-  expect(screen.getByText('GB-h left')).toBeInTheDocument();
-  expect(screen.queryByText('metrics unavailable')).not.toBeInTheDocument();
-  expect(screen.queryByText('Total requests')).not.toBeInTheDocument();
-  expect(screen.queryByText('1.00%')).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Time window' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Total requests' })).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Memory now' })).toBeInTheDocument();
+  const left = await screen.findByRole('region', { name: 'GB-h left' });
+  expect(left).toHaveTextContent('80');
+  expect(left).toHaveTextContent('of 100 this period');
   expect(useAppsMetrics).toHaveBeenLastCalledWith('24h', { enabled: false });
-  await userEvent.click(screen.getByRole('button', { name: 'Refresh analytics' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(metricsRefetch).not.toHaveBeenCalled();
 });
 
@@ -270,24 +284,25 @@ it('shows unknown paid metrics for a degraded rollup instead of measured zeroes'
     return result;
   });
   renderOverview();
-  expect(await screen.findByText('metrics degraded — unknowns read as —')).toBeInTheDocument();
+  expect(await screen.findByText(/^Metrics degraded\./)).toBeInTheDocument();
+  expect(screen.queryByText(/wake p95/)).not.toBeInTheDocument();
   expect(screen.queryByText('Metrics is available on Hobby and above')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '7d' })).toBeEnabled();
+  expect(
+    within(screen.getByRole('group', { name: 'Time window' })).getByRole('button', { name: '24h' })
+  ).toBeEnabled();
 });
 
 it("shows the company's compute allowance in a company workspace, not the signed-in account's", async () => {
   workspace.org = 'acme';
   workspace.label = 'Acme';
-  const get = spyApi('GET').mockImplementation(async (path: string) => ({
-    data: path === '/v1/orgs/{slug}/usage' ? companyUsage.rows : {},
-    response: new Response(null, { status: 200 }),
-  }));
   try {
     renderOverview();
-    // Personal: 80 of 100 GB-h left. Company: 998 of 1,000.
+    // Personal: 20 of 100 GB-h. Company: 2 of 1,000.
     expect(await screen.findByText('of 1,000 this period')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'GB-h left' })).toHaveTextContent('998');
     expect(screen.queryByText('of 100 this period')).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledWith('/v1/orgs/{slug}/usage', expect.anything());
+    expect(get).not.toHaveBeenCalledWith('/v1/usage', expect.anything());
   } finally {
     workspace.org = null;
     workspace.label = 'Personal';
@@ -331,7 +346,9 @@ describe('overview deployments column', () => {
           <RouterProvider router={router} />
         </QueryClientProvider>
       );
-      const column = (await screen.findByRole('link', { name: 'Deployments' })).closest('section')!;
+      const column = (await screen.findByRole('heading', { name: 'Deployments' })).closest(
+        'section'
+      )!;
       const row = within(column).getByRole('link', { name: /api.*failed/i });
       expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
       if (input === 'keyboard') {

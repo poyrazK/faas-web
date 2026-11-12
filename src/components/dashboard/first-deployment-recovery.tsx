@@ -14,21 +14,29 @@ import { resourceId } from '@/lib/resource-id';
 export function FirstDeploymentRecovery({
   recovery,
   onChange,
+  onLive,
+  accountId,
   submitting = false,
   submissionError,
 }: {
   recovery: DeploymentRecoveryContext;
   onChange: (next: DeploymentRecoveryContext) => void;
+  accountId?: string;
+  onLive?: (deployment: import('@/lib/api/queries').Deployment) => void;
   submitting?: boolean;
   submissionError?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [retryBusy, setRetryBusy] = useState(false);
   const [sourceBusy, setSourceBusy] = useState(false);
-  const app = useApp(recovery.app);
-  const attempt = useDeployment(recovery.deployment ?? '', {
-    refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2500),
-  });
+  const app = useApp(recovery.app, undefined, accountId);
+  const attempt = useDeployment(
+    recovery.deployment ?? '',
+    {
+      refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2500),
+    },
+    accountId
+  );
   if (app.isPending || (recovery.deployment && attempt.isPending))
     return <p role="status">Restoring your deployment…</p>;
   if (app.isError || !app.data || (recovery.deployment && (attempt.isError || !attempt.data)))
@@ -71,19 +79,21 @@ export function FirstDeploymentRecovery({
     code === 'env_var_missing'
       ? 'Environment'
       : code === 'app_runtime_oom' || code === 'app_startup_timeout' || code === 'app_not_listening'
-        ? 'Configuration'
+        ? 'Runtime'
         : undefined;
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
       <PageHeader
         title="Your first deployment"
-        description="Your app is saved. Recovery creates another attempt, not another app."
+        help="Your app is saved. Recovery creates another attempt, not another app."
       />
       <p className="text-sm text-muted-foreground">
         {app.data.slug} · {app.data.runtime ?? app.data.type} · {app.data.ram_mb} MB
       </p>
       {recovery.deployment || submitting ? (
         <DeploymentProgress
+          accountId={accountId}
+          onLive={onLive}
           appCreated
           appName={app.data.slug}
           deploymentId={recovery.deployment ?? null}
@@ -94,7 +104,7 @@ export function FirstDeploymentRecovery({
           hideRetryOptions
         />
       ) : (
-        <div className="rounded-lg border border-border bg-card p-5">
+        <div className="surface rounded-[1.25rem] bg-card p-5">
           <h2 className="text-lg font-medium">
             {uncertain ? 'Check whether the deployment started' : 'Deployment was not submitted'}
           </h2>

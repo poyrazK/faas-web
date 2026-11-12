@@ -62,7 +62,9 @@ describe('AlertPresets', () => {
   it('describes the preset and the condition it encodes', () => {
     render(<AlertPresets slug="api" />);
     expect(screen.getByText('Error rate exceeds 2%')).toBeInTheDocument();
-    expect(screen.getByText(/error_rate_pct > 2 over 15m/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Error rate is above 2% · 15 minutes evaluation window/)
+    ).toBeInTheDocument();
   });
 
   it('needs a webhook before it will enable', async () => {

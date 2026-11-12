@@ -14,7 +14,14 @@ vi.mock('@tanstack/react-router', async (original) => ({
   Outlet: () => null,
   useNavigate: () => mocks.navigate,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
-    select({ location: { href: '/dashboard/apps/alpha?tab=Logs' } }),
+    select({
+      location: {
+        href: '/dashboard/apps/alpha?tab=Logs',
+        pathname: '/dashboard/apps/alpha',
+        search: { tab: 'Logs' },
+        hash: '',
+      },
+    }),
 }));
 vi.mock('@/components/dashboard/shell', () => ({
   DashboardShell: ({ children }: { children: unknown }) => children,

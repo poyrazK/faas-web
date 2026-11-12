@@ -1,16 +1,16 @@
-import { useId, useState, type ReactNode, type RefObject } from 'react';
-import { Link } from '@tanstack/react-router';
-import { Plus, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FieldError, fieldErrorProps, useFormValidation } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { useAuth, type Plan } from '@/lib/auth';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
-import type { CapabilityAccess } from '@/lib/capability-state';
 import { ApiError } from '@/lib/api/errors';
 import { useProjectEnvironments, useProjectMembership, validEnvironment } from '@/lib/api/projects';
 import { useAddDomain, useApps } from '@/lib/api/queries';
+import { useAuth, type Plan } from '@/lib/auth';
+import type { CapabilityAccess } from '@/lib/capability-state';
 import { cn } from '@/lib/utils';
+import { Link } from '@tanstack/react-router';
+import { Plus, WarningTriangle } from 'iconoir-react';
+import { useId, useState, type ReactNode, type RefObject } from 'react';
 import { InlinePhase, queryPhase } from './primitives';
 import { ProblemHelp } from './problem-help';
 import { SegmentedControl } from './tabs';
@@ -66,7 +66,13 @@ const FIELD_CLASS =
  * environment's release set; only an app in a project has environments, and
  * membership comes from the project details, never a guess.
  */
-export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElement | null> }) {
+export function DomainAddForm({
+  hostRef,
+  onCreated,
+}: {
+  hostRef?: RefObject<HTMLInputElement | null>;
+  onCreated?: () => void;
+}) {
   const { toast } = useToast();
   const { account } = useAuth();
   const accountId = account?.id ?? '';
@@ -154,11 +160,12 @@ export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElemen
       .then((created) => {
         setHost('');
         validation.resetValidation();
+        onCreated?.();
         toast({
           kind: 'success',
           title: 'Domain added',
           description: created.txt_record
-            ? 'Publish the TXT record shown in the table to verify it.'
+            ? 'Publish the TXT record shown on its card to verify it.'
             : undefined,
         });
       })
@@ -187,7 +194,7 @@ export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElemen
       />
 
       <form
-        className="flex flex-wrap items-end gap-3"
+        className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (blocked) return;
@@ -196,7 +203,7 @@ export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElemen
           submit();
         }}
       >
-        <div className="flex min-w-56 flex-1 flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor={ids.host} className="label-mono text-muted-foreground">
             Hostname
           </label>
@@ -218,6 +225,7 @@ export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElemen
             <input
               id={ids.host}
               ref={hostRef}
+              autoFocus
               name="host"
               value={host}
               disabled={blocked}
@@ -297,7 +305,7 @@ export function DomainAddForm({ hostRef }: { hostRef?: RefObject<HTMLInputElemen
         <Button
           type="submit"
           size="sm"
-          className="gap-1.5"
+          className="self-end gap-1.5"
           busy={addDomain.isPending}
           disabled={!apps?.length || Boolean(appQuery.error) || blocked}
         >

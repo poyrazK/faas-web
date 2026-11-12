@@ -5,6 +5,7 @@ import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useToast } from '@/components/ui/toast';
 import { ApiError } from '@/lib/api/errors';
 import { useAlertPresets, useEnableAlertPreset, useTestAlertPreset } from '@/lib/api/queries';
+import { alertConditionParts, explainAlertCondition } from './alert-language';
 import { ChannelPicker } from './notification-channels';
 
 /**
@@ -19,8 +20,6 @@ import { ChannelPicker } from './notification-channels';
  * be a guess. The test action asks the server instead, and a 404 is the honest
  * answer that it was never enabled here.
  */
-
-const COMPARISON: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
 
 const CATEGORY_COLOR: Record<string, string> = {
   availability: 'var(--status-critical)',
@@ -52,7 +51,7 @@ function EnableForm({
   const ready = hasWebhook || (channelIds.length > 0 && !url.trim());
 
   return (
-    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-border p-3">
+    <div className="mt-3 flex flex-wrap items-end gap-3 well rounded-xl bg-muted/40 p-3">
       <div className="w-full">
         <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix={`preset-${name}`} />
       </div>
@@ -126,7 +125,7 @@ export function AlertPresets({ slug }: { slug: string }) {
       <InlinePhase
         phase={phase}
         error={error}
-        loadingMessage="Reading the catalog…"
+        loadingMessage="Reading presets…"
         emptyMessage="No presets are published."
       />
     );
@@ -171,8 +170,10 @@ export function AlertPresets({ slug }: { slug: string }) {
                 )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{p.description}</p>
-              <p className="mt-1 font-mono text-xs text-muted-foreground">
-                {`${p.metric} ${COMPARISON[p.comparison] ?? p.comparison} ${p.threshold} over ${p.window_spec}`}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {explainAlertCondition(p)}
+                {alertConditionParts(p).window &&
+                  ` · ${alertConditionParts(p).window} evaluation window`}
               </p>
             </div>
 

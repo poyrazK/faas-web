@@ -81,11 +81,11 @@ export function ReleaseCommand({ slug, deployment }: { slug?: string; deployment
   const failed = deployment.error_code === 'release_command_failed';
 
   return (
-    <section aria-label="Release command" className="rounded-lg border border-border p-4">
+    <section aria-label="Release command" className="well rounded-xl bg-muted/40 p-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="label-mono text-muted-foreground">Release command</p>
         {stage && (
-          <span className="label-mono rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+          <span className="label-mono rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
             {stage}
           </span>
         )}

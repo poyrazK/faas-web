@@ -292,7 +292,7 @@ describe('TCP listeners', () => {
     expect(tlsStatus).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: /certificate status/i }));
     expect(tlsStatus).toHaveBeenCalledWith('api', 'mqtts');
-    const list = screen.getByRole('list', { name: /certificate evidence/i });
+    const list = screen.getByRole('list', { name: /certificate reports by edge/i });
     expect(within(list).getByText('Ready')).toBeInTheDocument();
     expect(within(list).getByText('Unknown')).toBeInTheDocument();
   });

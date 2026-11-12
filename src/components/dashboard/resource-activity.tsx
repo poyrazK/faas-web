@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
+import { RefreshDouble } from 'iconoir-react';
 import {
-  activityOutcome,
   activityResourceId,
   scopedActivity,
   useActivityWorkspace,
@@ -13,6 +13,18 @@ import {
   type ActivityFilters,
   type ResourceActivity,
 } from '@/lib/api/resource-activity';
+import { Select } from '@/components/ui/field';
+import { Timestamp } from '@/components/ui/timestamp';
+import { HelpTip } from './kit/help-tip';
+import { parseTime } from '@/lib/time';
+import {
+  activityHeadline,
+  activitySentence,
+  actorWords,
+  groupByDay,
+  namesActor,
+  outcomeMark,
+} from './activity-words';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -82,30 +94,25 @@ function ActivityTimeline({
     if (workspace.error || !workspace.data) void workspace.refetch();
     else void (activity.isFetchNextPageError ? activity.fetchNextPage() : activity.refetch());
   };
+  const filtered = Boolean(filters.kind_prefix || filters.actor_type);
+  const headline = activityHeadline(rows, { hasOlder: Boolean(activity.hasNextPage), filtered });
+  const groups = groupByDay(rows);
   return (
     <section aria-label={deploymentId ? 'Release activity' : 'App activity'} className="space-y-4">
-      <div>
-        <p className="label-mono text-muted-foreground">
-          {deploymentId ? 'Release activity' : 'App activity'}
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Newest events first. {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}
-          Curated workspace activity is append-only; the API does not advertise a retention expiry.
-          Historical coverage can be incomplete for older or deleted resources. Only records visible
-          to your current workspace membership appear.
-        </p>
-        {deploymentId && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Only events identifying this release appear here. Older app pages may contain no
-            matching release; load more to continue. App-wide config and domain events are in the
-            app’s Activity tab.
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-3">
-        <label className="flex flex-col gap-1 text-xs">
-          Event category
-          <select
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h2 className="flex items-center gap-1 text-base font-medium">
+          {deploymentId ? 'Release activity' : 'Activity'}
+          <HelpTip label="About activity">
+            Newest first.{' '}
+            {deploymentId
+              ? 'Only events naming this release appear; app-wide events are on the app’s Activity tab. '
+              : ''}
+            {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}Coverage can be incomplete
+            for older or deleted resources.
+          </HelpTip>
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
             aria-label="Event category"
             value={filters.kind_prefix ?? ''}
             onChange={(event) =>
@@ -114,18 +121,15 @@ function ActivityTimeline({
                 kind_prefix: event.target.value || undefined,
               }))
             }
-            className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+            className="h-8 w-auto text-xs"
           >
             <option value="">All events</option>
-            <option value="deploy.">Deployment actions</option>
-            <option value="app.">App lifecycle and config</option>
-            <option value="env.">Environment changes</option>
+            <option value="deploy.">Deployments</option>
+            <option value="app.">App lifecycle and settings</option>
+            <option value="env.">Environment</option>
             <option value="domain.">Domains and TLS</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          Actor category
-          <select
+          </Select>
+          <Select
             aria-label="Actor category"
             value={filters.actor_type ?? ''}
             onChange={(event) =>
@@ -134,27 +138,37 @@ function ActivityTimeline({
                 actor_type: (event.target.value || undefined) as ActivityFilters['actor_type'],
               }))
             }
-            className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+            className="h-8 w-auto text-xs"
           >
-            <option value="">All actors</option>
-            <option value="user">User</option>
-            <option value="api_key">API key</option>
+            <option value="">Anyone</option>
+            <option value="user">People</option>
+            <option value="api_key">API keys</option>
             <option value="github">GitHub</option>
             <option value="system">System</option>
             <option value="operator">Operator</option>
-          </select>
-        </label>
-        {Boolean(workspace.data) && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={activity.isFetching}
-            onClick={() => void activity.refetch()}
-          >
-            Refresh activity
-          </Button>
-        )}
+          </Select>
+          {Boolean(workspace.data) && (
+            <Button
+              size="xs"
+              variant="ghost"
+              aria-label="Refresh activity"
+              disabled={activity.isFetching}
+              onClick={() => void activity.refetch()}
+            >
+              <RefreshDouble
+                aria-hidden
+                className={`size-3.5 ${activity.isFetching ? 'animate-spin motion-reduce:animate-none' : ''}`}
+              />
+              Refresh
+            </Button>
+          )}
+        </div>
       </div>
+      {headline && rows.length > 0 && (
+        <p className="text-xl leading-7 font-medium tracking-[-0.01em] tabular-nums text-balance">
+          {headline}
+        </p>
+      )}
       {!accountId ? (
         <p className="text-sm text-muted-foreground">Sign in to read resource activity.</p>
       ) : failure && rows.length === 0 ? (
@@ -163,8 +177,7 @@ function ActivityTimeline({
         </p>
       ) : !workspace.data && !workspace.isPending ? (
         <p className="text-sm text-muted-foreground">
-          This app’s persisted workspace could not be resolved from the accessible inventory. No
-          unscoped activity is shown.
+          This app’s workspace could not be found, so no activity is shown.
         </p>
       ) : workspace.isPending || activity.isPending ? (
         <p role="status" className="text-sm text-muted-foreground">
@@ -173,12 +186,19 @@ function ActivityTimeline({
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No matching events in the loaded history.</p>
       ) : null}
-      {rows.length > 0 && (
-        <ol className="divide-y divide-border">
-          {rows.map((row) => (
-            <ActivityRow key={row.id} row={row} appSlug={appSlug} />
+      {groups.length > 0 && (
+        <div className="flex flex-col gap-5">
+          {groups.map((group) => (
+            <section key={group.key} aria-label={group.label} className="flex flex-col">
+              <h3 className="bento-label pb-1">{group.label}</h3>
+              <ol className="flex flex-col divide-y divide-border/60">
+                {group.rows.map((row) => (
+                  <ActivityRow key={row.id} row={row} appSlug={appSlug} />
+                ))}
+              </ol>
+            </section>
           ))}
-        </ol>
+        </div>
       )}
       {failure && (
         <div className="flex flex-wrap items-center gap-3">
@@ -207,79 +227,108 @@ function ActivityTimeline({
           Load older activity
         </Button>
       )}
-      {appSlug && deploymentId && (
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        {appSlug && deploymentId && (
+          <Link
+            to="/dashboard/apps/$appSlug"
+            params={{ appSlug: appSlug }}
+            search={{ tab: 'Activity' }}
+            className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            View all app activity
+          </Link>
+        )}
         <Link
-          to="/dashboard/apps/$appSlug"
-          params={{ appSlug: appSlug }}
-          search={{ tab: 'Activity' }}
-          className="inline-block text-sm text-brand hover:underline"
+          to="/dashboard/audit"
+          className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
-          View all app activity
+          View account audit log
         </Link>
-      )}
-      <Link to="/dashboard/audit" className="block text-xs text-brand hover:underline">
-        View account audit log
-      </Link>
+      </div>
     </section>
   );
 }
 
+const QUIET_LINK =
+  'text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-brand';
+
+/** One event: the API's sentence and when, then who, its outcome and where it landed. */
 function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string }) {
   const release = activityResourceId(row.deployment_id);
-  const timestamp = Date.parse(row.occurred_at);
-  const when = Number.isFinite(timestamp)
-    ? new Date(timestamp).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
-    : 'Timestamp unavailable';
-  const outcome = activityOutcome(row.kind);
+  const mark = outcomeMark(row.kind);
+  const failed = mark?.tone === 'critical';
+  const sentence = activitySentence(row);
   return (
-    <li className="space-y-2 py-3 [overflow-wrap:anywhere]">
-      <p className="text-sm">{row.summary || row.kind}</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          Actor: {row.actor.label || 'Unknown actor'} ({row.actor.type || 'unknown'})
-        </span>
-        <time dateTime={Number.isFinite(timestamp) ? row.occurred_at : undefined}>{when}</time>
-        <span className={outcome === 'Failed' ? 'text-status-critical' : ''}>
-          Outcome: {outcome}
-        </span>
+    <li className="flex gap-3 py-2.5 [overflow-wrap:anywhere]">
+      <span
+        aria-hidden
+        className="mt-[7px] size-1.5 shrink-0 rounded-full"
+        style={{
+          background: failed
+            ? 'var(--status-critical)'
+            : 'color-mix(in oklch, var(--muted-foreground) 45%, transparent)',
+        }}
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-baseline justify-between gap-4">
+          <p className="text-sm" title={row.kind}>
+            {sentence}
+          </p>
+          {parseTime(row.occurred_at) === undefined ? (
+            <span className="shrink-0 text-xs text-muted-foreground">Time unknown</span>
+          ) : (
+            <Timestamp
+              value={row.occurred_at}
+              className="shrink-0 text-xs text-muted-foreground tabular-nums"
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {!namesActor(row) && <span>by {actorWords(row.actor)}</span>}
+          {mark && (
+            <span
+              className={failed ? 'font-medium' : undefined}
+              style={failed ? { color: 'var(--status-critical)' } : undefined}
+            >
+              {mark.word}
+            </span>
+          )}
+          {release ? (
+            <Link
+              to="/dashboard/releases"
+              search={{ deployment: row.deployment_id, releaseSection: 'audit' }}
+              className={QUIET_LINK}
+            >
+              View release
+            </Link>
+          ) : appSlug && row.kind.startsWith('domain.') ? (
+            <Link to="/dashboard/domains" search={{ q: row.resource.label }} className={QUIET_LINK}>
+              View domain
+            </Link>
+          ) : appSlug && (row.kind.startsWith('env.') || row.kind === 'app.config_updated') ? (
+            <Link
+              to="/dashboard/apps/$appSlug"
+              params={{ appSlug: appSlug }}
+              search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Runtime' }}
+              className={QUIET_LINK}
+            >
+              {row.kind.startsWith('env.') ? 'View environment' : 'View settings'}
+            </Link>
+          ) : null}
+          <details className="open:basis-full">
+            <summary className="cursor-pointer hover:text-foreground">Details</summary>
+            <p className="mt-2 font-mono">
+              {row.kind} · {actorWords(row.actor)} · {row.resource.label || row.resource.type} ·
+              event {row.id}
+            </p>
+            {Object.keys(row.data ?? {}).length > 0 && (
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2">
+                {JSON.stringify(row.data, null, 2)}
+              </pre>
+            )}
+          </details>
+        </div>
       </div>
-      <p className="font-mono text-xs text-muted-foreground">
-        {row.kind} · {row.resource.label || row.resource.type} · Event {row.id}
-      </p>
-      {release ? (
-        <Link
-          to="/dashboard/releases"
-          search={{ deployment: row.deployment_id, releaseSection: 'audit' }}
-          className="inline-block text-xs text-brand hover:underline"
-        >
-          View affected release
-        </Link>
-      ) : appSlug && row.kind.startsWith('domain.') ? (
-        <Link
-          to="/dashboard/domains"
-          search={{ q: row.resource.label }}
-          className="inline-block text-xs text-brand hover:underline"
-        >
-          View affected domain
-        </Link>
-      ) : appSlug && (row.kind.startsWith('env.') || row.kind === 'app.config_updated') ? (
-        <Link
-          to="/dashboard/apps/$appSlug"
-          params={{ appSlug: appSlug }}
-          search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Configuration' }}
-          className="inline-block text-xs text-brand hover:underline"
-        >
-          View affected configuration
-        </Link>
-      ) : null}
-      {Object.keys(row.data ?? {}).length > 0 && (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Event details</summary>
-          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2">
-            {JSON.stringify(row.data, null, 2)}
-          </pre>
-        </details>
-      )}
     </li>
   );
 }

@@ -13,6 +13,7 @@ import {
   type FinancialMeterCosts,
 } from '@/lib/api/billing-costs';
 import { formatMillicentRate, formatMillicents } from '@/lib/money';
+import { HelpTip } from './kit/help-tip';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ResourceTable, type Column } from './resource-table';
@@ -94,8 +95,8 @@ function reasonSentence(reason: string, m: FinancialMeterCosts, retainedFrom: st
     case 'retention_started_during_or_after_period':
       return (
         <>
-          Evidence retention started <Timestamp value={retainedFrom} mode="absolute" />, so usage
-          before then is not in this report.
+          Usage history starts <Timestamp value={retainedFrom} mode="absolute" />, so usage before
+          then is not in this report.
         </>
       );
     case 'missing_sampling_windows':
@@ -122,8 +123,8 @@ function CoverageBadge({ gap }: { gap: boolean }) {
   const color = gap ? 'var(--status-warning)' : 'var(--status-good)';
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="h-3 w-3" aria-hidden />
       {gap ? 'Coverage gap' : 'Complete'}
@@ -143,8 +144,8 @@ function InvoiceStatus({ status }: { status: string }) {
   const { color, icon: Icon } = INVOICE_STATUS[status] ?? INVOICE_STATUS.draft;
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs"
-      style={{ borderColor: `color-mix(in oklab, ${color} 35%, transparent)`, color }}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs"
+      style={{ backgroundColor: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
     >
       <Icon className="h-3 w-3" aria-hidden />
       {sentence(status)}
@@ -203,7 +204,7 @@ export function CostBreakdown() {
   return (
     <Panel
       title="Cost breakdown"
-      description="Usage costs for one UTC month, priced at the rate in force when the usage happened. Not an invoice."
+      help="Usage costs for one UTC month, priced at the rate in force when the usage happened. Not an invoice."
       actions={
         months.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -427,11 +428,19 @@ function CostReport({ report }: { report: FinancialCosts }) {
         >
           {formatMillicents(report.known_usage_millicents)}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Priced usage of {scope} for {month} (UTC), as of{' '}
-          <Timestamp value={report.as_of} mode="absolute" />. Not an invoice total.
-          {gaps.length > 0 &&
-            ` ${gaps.length} ${gaps.length === 1 ? 'meter has a coverage gap' : 'meters have coverage gaps'}, so this covers only what is known.`}
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            {month} · as of <Timestamp value={report.as_of} mode="absolute" />
+          </span>
+          {gaps.length > 0 && (
+            <span className="text-status-warning">
+              {gaps.length} {gaps.length === 1 ? 'meter' : 'meters'} incomplete
+            </span>
+          )}
+          <HelpTip label="About known usage cost">
+            Priced usage of {scope} for {month} (UTC). Not an invoice total
+            {gaps.length > 0 ? '; meters with coverage gaps count only what is known' : ''}.
+          </HelpTip>
         </p>
       </div>
 
@@ -533,7 +542,7 @@ function CostReport({ report }: { report: FinancialCosts }) {
         <h3 className="label-mono text-foreground">Invoices with a period ending in {month}</h3>
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-xs text-foreground"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
             title="invoice_reconciliation: not_reconciled"
           >
             <Circle className="h-3 w-3" aria-hidden />

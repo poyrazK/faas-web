@@ -219,7 +219,7 @@ export function VersionProtection({
     <div
       role="group"
       aria-label={`Protection for version ${id}`}
-      className="flex basis-full flex-col gap-4 rounded-xl border border-border p-4"
+      className="flex basis-full flex-col gap-4 well rounded-xl bg-muted/40 p-4"
     >
       {capabilities.version_legal_hold && (
         <div className="flex flex-wrap items-center gap-3">
