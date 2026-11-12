@@ -173,8 +173,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'container-compatibility',
         source: 'docs/container-compatibility.md',
         title: 'Container compatibility',
-        summary:
-          'Which image, Compose and listener features a container deployment supports.',
+        summary: 'Which image, Compose and listener features a container deployment supports.',
       },
       {
         slug: 'functions',
@@ -210,8 +209,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'inbound-webhooks',
         source: 'docs/inbound-webhooks.md',
         title: 'Inbound webhooks',
-        summary:
-          'Accept provider webhooks while the app is parked; verified, queued and retried.',
+        summary: 'Accept provider webhooks while the app is parked; verified, queued and retried.',
       },
       {
         slug: 'code-workflows',
@@ -299,8 +297,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'cache',
         source: 'docs/cache.md',
         title: 'Response caching',
-        summary:
-          'Cache public GET and HEAD responses at the edge, and purge them.',
+        summary: 'Cache public GET and HEAD responses at the edge, and purge them.',
       },
     ],
   },
@@ -352,8 +349,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'handler-api',
         source: 'docs/handler-api.md',
         title: 'Handler API',
-        summary:
-          'Everything a Node or Python function handler receives and can return.',
+        summary: 'Everything a Node or Python function handler receives and can return.',
       },
       {
         slug: 'runtime-node',
