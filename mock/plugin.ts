@@ -51,6 +51,7 @@ import { registerForkMocks } from './forks';
 import { registerEventConsumerMocks } from './event-consumers';
 import { registerProfileCaptureMocks } from './profile-captures';
 import { registerListenerMocks } from './listeners';
+import { registerSupportMocks } from './support';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -12696,6 +12697,7 @@ registerForkMocks(route, Problem, NO_CONTENT, {
 });
 registerEventConsumerMocks(route, Problem);
 registerListenerMocks(route, Problem, NO_CONTENT);
+registerSupportMocks(route, Problem);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------
 

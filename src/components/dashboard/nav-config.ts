@@ -18,6 +18,7 @@ import {
   GraphUp,
   Group,
   HardDrive,
+  Headset,
   Journal,
   Key,
   Network,
@@ -74,6 +75,12 @@ export interface NavHub extends NavItem {
 
 /** Existing pages anchor each hub until its feature composition is ready. */
 export const NAV_HUBS: NavHub[] = [
+  {
+    to: '/dashboard/support',
+    label: 'Support',
+    icon: Headset,
+    capability: 'customer-support',
+  },
   {
     to: '/dashboard',
     sidebarIconClassName: 'text-brand/80',
@@ -278,7 +285,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   // The Debugger is per app (the app's Observe section); its account route is
   // an app picker, reachable from ⌘K rather than a rail row of its own.
   { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
-  { title: 'Account', hubs: ['Billing', 'Settings'] },
+  { title: 'Account', hubs: ['Billing', 'Support', 'Settings'] },
 ];
 
 type GroupSpec = { title?: string; hubs: string[]; shared?: boolean; bottom?: boolean };
@@ -307,7 +314,7 @@ export const NAV_GROUPS: NavGroup[] = groupsOf(SIDEBAR_GROUPS);
  */
 export const ACCOUNT_NAV_GROUPS: NavGroup[] = groupsOf([
   { hubs: ['Overview', 'Projects'] },
-  { title: 'Account', hubs: ['Billing', 'Audit log', 'Settings'], bottom: true },
+  { title: 'Account', hubs: ['Billing', 'Audit log', 'Support', 'Settings'], bottom: true },
 ]);
 
 /**
@@ -466,6 +473,8 @@ export function matchesNavPath(pathname: string, item: Pick<NavItem, 'to' | 'exa
 
 /** Shared ownership for primary active states, breadcrumbs and section links. */
 export function findNavHub(pathname: string): NavHub | undefined {
+  if (/^\/dashboard\/orgs\/[^/]+\/support(?:\/|$)/.test(pathname))
+    return NAV_HUBS.find((hub) => hub.label === 'Support');
   if (
     ['/dashboard/team', '/dashboard/keys', '/dashboard/account', '/dashboard/security'].includes(
       pathname.replace(/\/$/, '')

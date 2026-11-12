@@ -35,6 +35,7 @@ import {
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { NewAppButton } from './new-app-button';
 import { NeedsAttentionButton } from './needs-attention';
+import { SupportNotificationsButton } from './support/support-notifications';
 import { CommandPalette } from './command-palette';
 import { DISCLOSURE_CLOSE, DISCLOSURE_OPEN, EASE } from './motion';
 import {
@@ -558,7 +559,7 @@ function Breadcrumbs() {
   const project = appPage && !scope.project ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
-  const trail: { label: string; to?: string }[] = [];
+  const trail: { label: string; to?: string; search?: { scope: 'personal' } }[] = [];
   const projectPage = section === 'projects' && Boolean(detail);
   if (hub && (hub.label !== pageLabel || detail) && !(scope.project && projectPage)) {
     trail.push({ label: hub.label, to: hub.to });
@@ -572,13 +573,29 @@ function Breadcrumbs() {
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
     });
   }
+  const orgSupport = section === 'orgs' && segments[2] === 'support';
+  if (section === 'support' || orgSupport) {
+    const conversation = orgSupport ? Boolean(segments[3]) : Boolean(detail);
+    trail.splice(0, trail.length, {
+      label: 'Support',
+      ...(conversation
+        ? {
+            to: orgSupport
+              ? `/dashboard/orgs/${encodeURIComponent(detail)}/support`
+              : '/dashboard/support',
+            ...(orgSupport ? {} : { search: { scope: 'personal' as const } }),
+          }
+        : {}),
+    });
+    if (conversation) trail.push({ label: 'Conversation' });
+  }
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <WorkspaceSwitcher />
       <ProjectSwitcher />
 
-      {trail.map(({ label, to }, i) => {
+      {trail.map(({ label, to, search }, i) => {
         const last = i === trail.length - 1;
         return (
           <span key={i} className="flex min-w-0 items-center gap-1.5">
@@ -588,6 +605,7 @@ function Breadcrumbs() {
             {to && !last && !matchesNavPath(pathname, { to, exact: true }) ? (
               <Link
                 to={to}
+                search={search}
                 activeOptions={{ exact: true }}
                 className="pressable truncate rounded-md px-1 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
@@ -1019,6 +1037,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
                   <div className="ml-auto flex items-center gap-1.5">
                     <NeedsAttentionButton />
+                    <SupportNotificationsButton />
                     <NewAppButton />
                     {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}

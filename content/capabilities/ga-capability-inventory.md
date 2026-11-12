@@ -312,3 +312,4 @@ internal hosting service and Gregale Agents are already unreachable.
 | 165 | Operator admin, compute nodes, `gregalectl` | `/v1/admin`, `/v1/compute-nodes` | n/a | admin auth | internal |
 | 166 | Platform OCI registry: internal snapshot and image storage backend | `pkg/oci/registry.go` (`/v2/`) | n/a | internal | internal |
 | 167 | Gregale Agents: agent runs, the automation agent step, agent triggers | `/v1/agents`, `/v1/agent-runs`, `/v1/agent-callbacks`, `/v1/agent-tools`, agentd | `agents` internal | `pf: agents` | internal |
+| 169 | Native customer support: portal, staff inbox, conversations, target policies, routing, reopening and reviewed staff operations | `/dashboard/support`, `/dashboard/orgs/{org}/support`, `/v1/support`, `/v1/orgs/{org}/support`, `pkg/apid/support` | `customer-support` preview | `pf: customer_support` | preview |
