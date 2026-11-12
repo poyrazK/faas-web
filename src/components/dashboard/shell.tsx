@@ -3,6 +3,7 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
+  ArrowLeft,
   CloudXmark,
   HomeSimpleDoor,
   LogOut,
@@ -392,6 +393,29 @@ function SidebarBody({
           aria-label="Main"
           className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
         >
+          {/* The way back out: inside a project the rail is that project's,
+              so it leads with a row that leaves it. */}
+          {!accountRail && (
+            <ul className="flex flex-col gap-px">
+              <li>
+                <NavRow
+                  item={{
+                    to: '/dashboard',
+                    label: 'Back to Overview',
+                    icon: ArrowLeft,
+                    exact: true,
+                  }}
+                  collapsed={collapsed}
+                  labelCls={labelCls}
+                  onNavigate={onNavigate}
+                  pathname={pathname}
+                  hash={hash}
+                  current={false}
+                  scope={{ project: undefined }}
+                />
+              </li>
+            </ul>
+          )}
           {home && (
             <ul className="flex flex-col gap-px">
               <li>
