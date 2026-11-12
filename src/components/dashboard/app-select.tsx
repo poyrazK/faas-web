@@ -6,6 +6,7 @@ import { useApps } from '@/lib/api/queries';
 import { Button } from '@/components/ui/button';
 import { EmptyState, ErrorState, LoadingState, UnreachableState, queryPhase } from './primitives';
 import { remembered, SELECTED_APP_KEY } from './selected-app';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 
 /**
  * Scope picker for the resources the API keys by app.
@@ -29,13 +30,17 @@ import { remembered, SELECTED_APP_KEY } from './selected-app';
 export function useSelectedApp() {
   const { data: apps, isPending, error, refetch } = useApps();
   const [chosen, setChosen] = useState<string>(remembered);
+  // Inside a project the picker offers only that project's apps; until its
+  // membership is known it waits rather than offering every app.
+  const scope = useProjectScope();
+  const scopePending = Boolean(scope.project) && scope.appSlugs === null && !scope.settled;
 
   // Derived, not synchronised. The default — the remembered app if it still
   // exists, otherwise the first one — falls out of a computation rather than an
   // effect that writes state, so there is no render where the selection is
   // briefly wrong and no cascading re-render to correct it. A remembered app
   // that has since been deleted simply stops matching.
-  const list = apps ?? [];
+  const list = inScope(apps ?? [], scope, (app) => app.slug);
   const slug = list.some((a) => a.slug === chosen) ? chosen : (list[0]?.slug ?? '');
 
   const select = (next: string) => {
@@ -47,7 +52,7 @@ export function useSelectedApp() {
     slug,
     select,
     apps: list,
-    loadingApps: isPending,
+    loadingApps: isPending || scopePending,
     appsError: error,
     refetchApps: refetch,
   };
