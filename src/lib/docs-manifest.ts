@@ -170,6 +170,12 @@ export const DOC_SECTIONS: DocSection[] = [
           'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
       },
       {
+        slug: 'container-compatibility',
+        source: 'docs/container-compatibility.md',
+        title: 'Container compatibility',
+        summary: 'Which image, Compose and listener features a container deployment supports.',
+      },
+      {
         slug: 'functions',
         source: 'docs/functions.md',
         title: 'Functions and runtimes',
@@ -198,6 +204,12 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/event-driven.md',
         title: 'Event-driven workloads',
         summary: 'Async invokes, workflows, delayed tasks and deployment webhooks.',
+      },
+      {
+        slug: 'inbound-webhooks',
+        source: 'docs/inbound-webhooks.md',
+        title: 'Inbound webhooks',
+        summary: 'Accept provider webhooks while the app is parked; verified, queued and retried.',
       },
       {
         slug: 'code-workflows',
@@ -281,6 +293,12 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Edge rules',
         summary: 'Redirects, headers, rate limits, IP and geo rules at the edge.',
       },
+      {
+        slug: 'cache',
+        source: 'docs/cache.md',
+        title: 'Response caching',
+        summary: 'Cache public GET and HEAD responses at the edge, and purge them.',
+      },
     ],
   },
   {
@@ -328,6 +346,12 @@ export const DOC_SECTIONS: DocSection[] = [
     blurb: 'The managed runtimes, and what each one gives you.',
     entries: [
       {
+        slug: 'handler-api',
+        source: 'docs/handler-api.md',
+        title: 'Handler API',
+        summary: 'Everything a Node or Python function handler receives and can return.',
+      },
+      {
         slug: 'runtime-node',
         source: 'docs/runtimes/node24.md',
         title: 'Node 24',
@@ -364,8 +388,8 @@ export const DOC_SECTIONS: DocSection[] = [
       },
       {
         slug: 'egress-denylist',
-        source: 'docs/denylist.md',
-        title: 'Egress denylist',
+        source: 'docs/egress-denylist.md',
+        title: 'Blocked outbound destinations',
         summary: 'Destinations outbound traffic cannot reach, and why.',
       },
       {
@@ -386,13 +410,6 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Account and organizations',
         summary:
           'Identity, organizations, members, feature availability, data export, and deletion.',
-      },
-      {
-        slug: 'api-monetization',
-        source: 'docs/api-monetization.md',
-        title: 'API monetization',
-        summary:
-          'Beta: meter, price, and invoice your API’s own customers with rate cards and statements.',
       },
       {
         slug: 'billing',
@@ -420,9 +437,9 @@ export const DOC_SECTIONS: DocSection[] = [
     entries: [
       {
         slug: 'compliance',
-        source: 'docs/compliance/README.md',
+        source: 'docs/compliance/overview.md',
         title: 'Compliance overview',
-        summary: 'The controls the platform operates under and how they are evidenced.',
+        summary: 'The DPA, sub-processors, your data rights and how to report a vulnerability.',
       },
       {
         slug: 'dpa',
