@@ -214,7 +214,7 @@ export function ContactSales() {
       </div>
       <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
         We’ll use these details to respond to your inquiry. A salesperson code routes your message;
-        enter a referral code separately when creating an account.
+        enter your code separately at signup or before your first paid personal purchase.
       </p>
     </form>
   );

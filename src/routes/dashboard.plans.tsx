@@ -448,8 +448,18 @@ function PersonalPlans() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            This updates your subscription straight away and may charge your payment method. Quotas
-            change immediately — moving down a plan can put existing apps over the new limits.
+            {current === 'free' && pending !== 'free' ? (
+              <>
+                Continue to payment to upgrade your personal account. Your plan changes only after
+                payment is confirmed.
+              </>
+            ) : (
+              <>
+                This updates your subscription straight away and may charge your payment method.
+                Quotas change immediately — moving down a plan can put existing apps over the new
+                limits.
+              </>
+            )}
           </p>
           {pending !== null && pending !== 'free' && current === 'free' && (
             <CheckoutSalespersonCode
