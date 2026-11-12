@@ -4,6 +4,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { EdgeRule } from '@/lib/api/queries';
 import { cacheEdgeRule } from '@/test/edge-rules';
 
+// No project chosen (lib/project-scope.ts): the page behaves as before.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({ project: null, label: '', appSlugs: null, settled: true, choices: [] }),
+}));
+
 const state = vi.hoisted(() => ({
   capability: 'available',
   accountId: 'account-a',

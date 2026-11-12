@@ -176,6 +176,16 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   compiling, and give every new ledger-test failure an entry (status `none`, a
   gap, its tier's wave). `content/capabilities/*` is vendored: never hand-edit
   it.
+- **Navigation is project-first, like Supabase.** Before a project is chosen
+  the rail is `ACCOUNT_NAV_GROUPS` (Overview, Projects; Billing, Audit log,
+  Settings at the foot). Inside a project it is `PROJECT_NAV_GROUPS`, led by
+  Back to Overview and Project overview, with a project switcher in the
+  breadcrumb. The project rides in the URL as `?project=<slug>` (retained by
+  the `/dashboard` route; `_standalone` for apps in no project). Read it with
+  `useProjectScope()` and filter with `inScope()`; while membership loads,
+  show the loading state, never the unscoped list. Postgres and Object storage
+  are account-wide and say so; anything a row can't tie to an app stays
+  account-wide with a quiet note. `isAccountPath()` lists the account pages.
 - **Adding a console page means touching `nav-config.ts` too**, or the page
   exists but is unreachable from the sidebar, breadcrumb, and ⌘K palette.
 - **Headers live in `src/lib/security-headers.ts`; `vercel.json` is a copy.**

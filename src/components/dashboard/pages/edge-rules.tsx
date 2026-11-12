@@ -27,6 +27,7 @@ import {
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { summariseMatch } from '@/lib/edge-rule-match';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { ArrowDown, ArrowUp, Eye, Plus, Trash } from 'iconoir-react';
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -97,7 +98,20 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const accountRules = useEdgeRules(!scoped, accountId);
   const appRules = useAppEdgeRules(scoped ?? '', accountId);
   const { data, isPending, error, refetch } = scoped ? appRules : accountRules;
-  const { data: apps } = useApps(undefined, accountId);
+  const appsQuery = useApps(undefined, accountId);
+  // On the account page inside a project, only rules on the project's apps,
+  // and new rules only on them. A rule names its app by id, so the apps must
+  // be known before a rule can be placed; until then (and until membership
+  // loads) the table keeps loading rather than flash every rule.
+  const scope = useProjectScope();
+  const projectScoped = !scoped && Boolean(scope.project);
+  const scopeLoading =
+    projectScoped && ((scope.appSlugs === null && !scope.settled) || appsQuery.isPending);
+  const apps = useMemo(
+    () =>
+      appsQuery.data && (scoped ? appsQuery.data : inScope(appsQuery.data, scope, (a) => a.slug)),
+    [appsQuery.data, scoped, scope]
+  );
   // The unfiltered endpoint includes account-wide policies referenced by app rules.
   const corsPresets = useCorsPresets();
   const deleteRule = useDeleteEdgeRule();
@@ -111,19 +125,28 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
   const [view, setView] = useState<'rules' | 'presets' | 'lists'>('rules');
   const viewPanelId = useId();
 
-  const rules = useMemo(
+  const ownRules = useMemo(
     () =>
       (data ?? [])
         .filter((rule) => accountId && rule.account_id === accountId)
         .sort((a, b) => a.priority - b.priority),
     [data, accountId]
   );
+  const rules = useMemo(() => {
+    if (scoped) return ownRules;
+    const bySlug = slugIndex(appsQuery.data ?? []);
+    return inScope(ownRules, scope, (rule) => bySlug.get(rule.app_id) ?? '');
+  }, [ownRules, scoped, appsQuery.data, scope]);
   const byId = useMemo(() => new Map(rules.map((r) => [r.id, r])), [rules]);
-  const nextPriority = rules.length ? Math.max(...rules.map((r) => r.priority)) + 10 : 10;
-  const slug = scoped ?? targetApp ?? apps?.[0]?.slug ?? '';
+  const nextPriority = ownRules.length ? Math.max(...ownRules.map((r) => r.priority)) + 10 : 10;
+  // A pick from another project no longer counts once the project changes.
+  const slug =
+    scoped ??
+    (targetApp && apps?.some((a) => a.slug === targetApp) ? targetApp : apps?.[0]?.slug) ??
+    '';
 
   const rows = useMemo<EdgeRuleRow[]>(() => {
-    const bySlug = slugIndex(apps ?? []);
+    const bySlug = slugIndex(appsQuery.data ?? []);
     return rules.map((r) => {
       const emphasis: string[] = [];
       return {
@@ -158,7 +181,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
     });
   }, [
     rules,
-    apps,
+    appsQuery.data,
     scoped,
     wafBlocking,
     corsPresets.data,
@@ -375,7 +398,7 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
               <Button
                 size="sm"
                 className="gap-1.5"
-                disabled={!slug || rulesOff || isPending || Boolean(error)}
+                disabled={!slug || rulesOff || isPending || scopeLoading || Boolean(error)}
                 onClick={() => {
                   setEditing(null);
                   setCreating(true);
@@ -410,9 +433,13 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
                 'scope',
               ]}
               searchPlaceholder="Find a rule by what it does…"
-              emptyMessage="No edge rules yet. Add a rule to change how matching requests are handled."
+              emptyMessage={
+                projectScoped
+                  ? `No edge rules on ${scope.label} apps yet. Add a rule to change how matching requests are handled.`
+                  : 'No edge rules yet. Add a rule to change how matching requests are handled.'
+              }
               minWidth={scoped ? 'min-w-[560px]' : 'min-w-[720px]'}
-              loading={isPending}
+              loading={isPending || scopeLoading}
               error={error}
               onRetry={() => void refetch()}
               rowActions={rowActionsFor}
@@ -420,6 +447,11 @@ export function EdgeRulesBody({ slug: scoped }: { slug?: string }) {
           </>
         )}
 
+        {projectScoped && view !== 'rules' && (
+          <p className="text-xs text-muted-foreground">
+            Account-wide — not limited to {scope.label}.
+          </p>
+        )}
         {view === 'presets' && <CorsPresetsPanel slug={scoped} />}
         {view === 'lists' && (
           <EdgeRulesExtras slug={scoped} rules={scoped ? (data ?? []) : rules} />

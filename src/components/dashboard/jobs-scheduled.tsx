@@ -22,6 +22,8 @@ import {
   useFireNowRequest,
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, useScopeGate } from './scope-gate';
 import type { components } from '@/lib/api/schema';
 import { errorMessage } from '@/lib/api/errors';
 import { formatRelative } from '@/lib/mock-data';
@@ -228,7 +230,18 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useCrons();
   const appQuery = useApps();
-  const apps = appQuery.data;
+  const gate = useScopeGate();
+  const { scope } = gate;
+  // Inside a project, a new schedule can target only the project's apps.
+  const apps = useMemo(
+    () => (appQuery.data ? inScope(appQuery.data, scope, (app) => app.slug) : undefined),
+    [appQuery.data, scope]
+  );
+  // A cron is placed by its app's slug, so a scoped list waits for the app
+  // list and project membership rather than showing every cron first.
+  const scopeLoading = Boolean(scope.project) && (gate.pending || appQuery.isPending);
+  const appsPending = appQuery.isPending || (Boolean(scope.project) && gate.pending);
+  const scopeError = scope.project ? (gate.error ?? appQuery.error ?? undefined) : undefined;
   const runCron = useRunCron();
   const deleteCron = useDeleteCron();
   const updateCron = useUpdateCron();
@@ -269,8 +282,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   };
 
   const rows = useMemo<CronRow[]>(() => {
-    const bySlug = slugIndex(apps ?? []);
-    return (data ?? []).map((c) => ({
+    const bySlug = slugIndex(appQuery.data ?? []);
+    const all = (data ?? []).map((c) => ({
       id: c.id,
       app: bySlug.get(c.app_id) ?? c.app_id,
       schedule: c.schedule,
@@ -287,7 +300,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           ? (upcomingCronRuns(c.schedule, new Date(now), 1)?.[0]?.toISOString() ?? null)
           : null,
     }));
-  }, [data, apps, now]);
+    return inScope(all, scope, (row) => row.app);
+  }, [data, appQuery.data, scope, now]);
   const history = rows.find((cron) => cron.id === search.schedule) ?? null;
   const editing = rows.find((cron) => cron.id === editingId) ?? null;
 
@@ -459,7 +473,9 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           </Button>
         }
       />
-      {search.schedule && data && !history && <p role="status">Scheduled request not found</p>}
+      {search.schedule && data && !scopeLoading && !history && (
+        <p role="status">Scheduled request not found</p>
+      )}
 
       {creating && (
         <Modal
@@ -478,7 +494,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               if (
                 !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
                 !targetApp ||
-                appQuery.isPending ||
+                appsPending ||
                 appQuery.error ||
                 createCron.isPending
               )
@@ -520,7 +536,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                     value={targetApp}
                     onChange={(e) => setAppId(e.target.value)}
                     className={`${FIELD} w-full`}
-                    disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                    disabled={!targetApp || appsPending || Boolean(appQuery.error)}
                   >
                     {!targetApp && <option value="">Select an app</option>}
                     {(apps ?? []).map((a) => (
@@ -558,7 +574,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   {creationError}
                 </p>
               )}
-              {!appQuery.isPending && !appQuery.error && !targetApp && (
+              {!appsPending && !appQuery.error && !targetApp && (
                 <p className="text-sm text-muted-foreground">
                   Create an app before scheduling requests.{' '}
                   <Link to="/dashboard/apps/new" className="underline underline-offset-4">
@@ -566,10 +582,10 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   </Link>
                 </p>
               )}
-              {(appQuery.isPending || appQuery.error) && (
+              {(appsPending || appQuery.error) && (
                 <div className="mt-3">
                   <InlinePhase
-                    phase={queryPhase({ loading: appQuery.isPending, error: appQuery.error })}
+                    phase={queryPhase({ loading: appsPending, error: appQuery.error })}
                     loadingMessage="Loading apps…"
                     error={appQuery.error}
                     onRetry={() => void appQuery.refetch()}
@@ -592,7 +608,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
               </Button>
               <Button
                 type="submit"
-                disabled={!targetApp || appQuery.isPending || Boolean(appQuery.error)}
+                disabled={!targetApp || appsPending || Boolean(appQuery.error)}
                 busy={createCron.isPending}
                 aria-label="Create scheduled request"
               >
@@ -609,9 +625,13 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         initialSort={{ key: 'schedule', dir: 'asc' }}
         searchKeys={rows.length ? ['schedule', 'description', 'target', 'app'] : undefined}
         searchPlaceholder="Filter by schedule, app, or path…"
-        emptyMessage="No scheduled requests yet."
+        emptyMessage={
+          scope.project
+            ? `No scheduled requests ${scopedIn(scope)} yet.`
+            : 'No scheduled requests yet.'
+        }
         emptyAction={
-          appQuery.isPending || appQuery.error ? undefined : targetApp ? (
+          appsPending || appQuery.error ? undefined : targetApp ? (
             <Button size="sm" onClick={() => setCreating(true)}>
               Create your first scheduled request
             </Button>
@@ -622,9 +642,13 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           )
         }
         minWidth="min-w-[960px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={isPending || (!error && !scopeError && scopeLoading)}
+        error={error ?? scopeError}
+        onRetry={() => {
+          if (gate.error) gate.retry();
+          if (appQuery.error) void appQuery.refetch();
+          void refetch();
+        }}
       />
 
       {editing && (

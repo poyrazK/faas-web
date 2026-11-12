@@ -2,6 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const noProject = { project: null, label: '', appSlugs: null, settled: true, choices: [] };
+const scoped = vi.hoisted(() => ({ scope: null as unknown }));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scoped.scope,
+}));
+
 const startRun = vi.fn();
 const deleteJob = vi.fn();
 const confirm = vi.fn();
@@ -61,6 +68,7 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
   readJobs.mockReset();
   cap.access = 'on';
+  scoped.scope = noProject;
 });
 
 function setup(selected = true) {
@@ -124,5 +132,25 @@ describe('Workloads capability', () => {
     expect(readJobs).not.toHaveBeenCalled();
     expect(screen.getByRole('status')).toHaveTextContent(/Not enabled for this account/);
     expect(screen.queryByRole('button', { name: /New workload/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Workloads inside a project', () => {
+  it('lists the account’s workloads, saying they are not limited to the project', () => {
+    scoped.scope = {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: new Set(['api-gateway']),
+      settled: true,
+      choices: [],
+    };
+    render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
+    expect(screen.getByText('Account-wide — not limited to acme-shop.')).toBeInTheDocument();
+    expect(screen.getByText('nightly-export')).toBeInTheDocument();
+  });
+
+  it('adds no note with no project chosen', () => {
+    render(<WorkloadsBody search={{}} onSelection={vi.fn()} />);
+    expect(screen.queryByText(/Account-wide/)).toBeNull();
   });
 });

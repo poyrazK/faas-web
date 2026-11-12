@@ -5,6 +5,7 @@ import { useMetricInspector } from './metric-inspector';
 import { METRIC_LABELS, type DetailMetric } from './metric-detail-search';
 import { Select } from '@/components/ui/field';
 import { useAccountSlo, useAppsMetrics, type AppsMetrics } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { PlanGated } from './plan-gated';
 import { InlinePhase, Panel, queryPhase, RangeSelector } from './primitives';
@@ -58,15 +59,21 @@ export function AccountAnalytics({
   });
   const accountDegraded = Boolean(data && data.source !== 'prometheus');
   const appsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  // Inside a project the per-app figures are its apps' only. The account
+  // rollup has no per-project form, and per-app scalars are never summed into
+  // one here, so the account tiles stay account-wide and say so.
+  const scope = useProjectScope();
+  const scopeLoading = Boolean(scope.project) && scope.appSlugs === null && !scope.settled;
+  const appEntries = inScope(Object.entries(metrics.data?.apps ?? {}), scope, ([slug]) => slug);
   const appsPhase = queryPhase({
     error: metrics.error,
-    loading: metrics.isPending,
-    isEmpty: !appsDegraded && Object.keys(metrics.data?.apps ?? {}).length === 0,
+    loading: metrics.isPending || scopeLoading,
+    isEmpty: !appsDegraded && appEntries.length === 0,
   });
   // Failed/degraded telemetry must not leave stale rows looking current.
   const rows: AppRow[] =
     appsPhase === 'ready' && !appsDegraded
-      ? Object.entries(metrics.data?.apps ?? {}).map(([slug, value]) => ({
+      ? appEntries.map(([slug, value]) => ({
           ...value,
           id: slug,
           slug,
@@ -216,6 +223,12 @@ export function AccountAnalytics({
     <div className="flex flex-col gap-6">
       <section aria-label="Account overview" className="flex flex-col gap-5">
         <PlanGated error={account.error} feature="Account analytics">
+          {scope.project && (
+            <p className="text-xs text-muted-foreground">
+              These totals are account-wide — not limited to {scope.label}. Its apps are ranked
+              below.
+            </p>
+          )}
           <InlinePhase
             phase={accountPhase}
             error={account.error}
@@ -326,7 +339,11 @@ export function AccountAnalytics({
                 initialSort={{ key: 'request_count', dir: 'desc' }}
                 searchKeys={['slug']}
                 searchPlaceholder="Filter apps…"
-                emptyMessage="No apps in this window."
+                emptyMessage={
+                  scope.project
+                    ? `No ${scope.label} apps in this window.`
+                    : 'No apps in this window.'
+                }
                 loading={appsPhase === 'loading'}
                 error={metrics.error}
                 onRetry={() => void metrics.refetch()}

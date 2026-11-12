@@ -43,6 +43,7 @@ import {
   useDomains,
   useRetryDomain,
 } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { createFileRoute, Link } from '@tanstack/react-router';
@@ -109,7 +110,14 @@ function DomainsPage() {
   const confirm = useConfirm();
   const { data, isPending, error, refetch } = useDomains();
   const appQuery = useApps();
-  const apps = appQuery.data;
+  // Inside a project, only the domains routing to its apps. A domain names its
+  // app by id, so the apps must be known before a row can be placed; until
+  // then (and until the project's membership loads) the page keeps loading
+  // rather than flash every domain on the account.
+  const scope = useProjectScope();
+  const scopeLoading =
+    Boolean(scope.project) && ((scope.appSlugs === null && !scope.settled) || appQuery.isPending);
+  const apps = appQuery.data && inScope(appQuery.data, scope, (app) => app.slug);
   const addDomain = useAddDomain();
   const deleteDomain = useDeleteDomain();
   const retryDomain = useRetryDomain();
@@ -151,8 +159,9 @@ function DomainsPage() {
   };
 
   const rows = useMemo<DomainRow[]>(() => {
-    const bySlug = slugIndex(apps ?? []);
-    return (data ?? []).map((d) => {
+    const bySlug = slugIndex(appQuery.data ?? []);
+    const scoped = inScope(data ?? [], scope, (d) => bySlug.get(d.app_id) ?? '');
+    return scoped.map((d) => {
       const app = bySlug.get(d.app_id) ?? d.app_id;
       return {
         // The API keys domains by hostname, not by a surrogate id.
@@ -169,7 +178,7 @@ function DomainsPage() {
         words: describeDomain(d, { app, expired: expired.has(d.domain) }),
       };
     });
-  }, [data, apps, expired]);
+  }, [data, appQuery.data, scope, expired]);
 
   // After a retry is queued the poller runs on its own schedule, so look again
   // a little later rather than leaving the card looking unchanged.
@@ -283,7 +292,7 @@ function DomainsPage() {
       );
   };
 
-  const phase = queryPhase({ error, loading: isPending });
+  const phase = queryPhase({ error, loading: isPending || scopeLoading });
   const canAdd = Boolean(apps?.length) && !appQuery.error;
   const query = search.q ?? '';
   const visible = rows
@@ -364,7 +373,11 @@ function DomainsPage() {
         <LoadingState message="Loading domains…" />
       ) : rows.length === 0 ? (
         <EmptyState
-          message="No custom domains yet. Add one to serve an app at your own address."
+          message={
+            scope.project
+              ? `No custom domains in ${scope.label} yet. Add one to serve one of its apps at your own address.`
+              : 'No custom domains yet. Add one to serve an app at your own address.'
+          }
           action={firstAction}
         />
       ) : visible.length === 0 ? (
