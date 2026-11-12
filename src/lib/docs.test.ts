@@ -27,7 +27,7 @@ describe('docs manifest', () => {
   it('publishes the capability-registry pages with their expected documents', () => {
     const expected = {
       'api-hosting-openapi': '# OpenAPI hosting',
-      faas_openapi_spec: '# OpenAPI spec + CI gate',
+      faas_openapi_spec: '# Gregale API specification',
       'custom-domains': '# Domains',
       'deploy-from-github': '# Deploys',
       security: '# Security',
