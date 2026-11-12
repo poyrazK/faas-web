@@ -62,8 +62,11 @@ describe('gateRule', () => {
     expect(gateRule({ ...base, kind: 'slo', slo: 'checkout', max_burn_rate: 10 })).toBe(
       'SLO checkout burning faster than 10×'
     );
-    expect(gateRule({ ...base, kind: 'new_errors', max_new_groups: 0, min_events: 3 })).toMatch(
-      /More than 0 new error group/
+    expect(gateRule({ ...base, kind: 'new_errors', max_new_groups: 0, min_events: 3 })).toBe(
+      'Any new kind of error seen 3+ times'
+    );
+    expect(gateRule({ ...base, kind: 'new_errors', max_new_groups: 2, min_events: 5 })).toBe(
+      'More than 2 new kinds of error, each seen 5+ times'
     );
     expect(
       gateRule({
