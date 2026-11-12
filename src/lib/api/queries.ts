@@ -3134,6 +3134,22 @@ export function useChangePlan() {
   });
 }
 
+/**
+ * Several apps' SLO summaries at once, one query each (shared cache with
+ * `useAppSlo`). For a project's throttled total; callers cap the app count.
+ */
+export function useAppsSlo(slugs: string[], window: AppSLOWindow = '24h', enabled = true) {
+  return useQueries({
+    queries: slugs.map((slug) => ({
+      queryKey: keys.appSlo(slug, window),
+      queryFn: () =>
+        unwrap(api.GET('/v1/apps/{slug}/slo', { params: { path: { slug }, query: { window } } })),
+      refetchOnWindowFocus: false,
+      enabled,
+    })),
+  });
+}
+
 export function useAccountSlo(window: AppSLOWindow = '24h', options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: keys.accountSlo(window),
