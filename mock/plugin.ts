@@ -7724,7 +7724,12 @@ function challengeExpiry(domain: string): number {
 const txtRecordFor = (domain: string) =>
   `_gregale-challenge.${domain.replace(/^\*\./, '')} TXT "${db.id()}"`;
 
-route('GET', '/v1/domains', () => db.domains);
+// The list carries each domain's TLS state as the API does (the detail route
+// derives the same in mock/domain-detail.ts), so certificate wording on the
+// Domains page has something to read.
+route('GET', '/v1/domains', () =>
+  db.domains.map((d) => ({ cert_status: d.verified ? 'issued' : 'pending', ...d }))
+);
 // Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
 // that is pending with an expired challenge re-arms it: a new token and a new
 // seven-day window. A verified domain or a live challenge is a 409. A wildcard
