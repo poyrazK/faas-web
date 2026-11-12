@@ -15,6 +15,7 @@ import { Timestamp } from '@/components/ui/timestamp';
 import { slugIndex } from '@/lib/api/adapters';
 import { formatRelative } from '@/lib/mock-data';
 import { resourceId } from '@/lib/resource-id';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { consoleHead } from '@/lib/seo';
 import type { Invocation } from '@/lib/api/async-invocations';
 
@@ -146,7 +147,15 @@ function InvocationDrawer({ id, onClose }: { id: string | null; onClose: () => v
 
 function InvocationsPage() {
   const invocations = useInfiniteInvocations();
-  const { data: apps } = useApps();
+  const appsQuery = useApps();
+  const apps = appsQuery.data;
+  // Inside a project, only its apps' invocations. An invocation names its app
+  // by id, so the apps must be known before a row can be placed; until then
+  // (and until membership loads) the table keeps loading rather than flash
+  // every invocation on the account.
+  const scope = useProjectScope();
+  const scopeLoading =
+    Boolean(scope.project) && ((scope.appSlugs === null && !scope.settled) || appsQuery.isPending);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const selected = search.invocation ?? null;
@@ -162,7 +171,7 @@ function InvocationsPage() {
 
   const rows = useMemo<InvocationRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return data.map((i) => ({
+    return inScope(data, scope, (i) => bySlug.get(i.app_id) ?? '').map((i) => ({
       id: i.id,
       app: bySlug.get(i.app_id) ?? i.app_id,
       state: i.state,
@@ -173,7 +182,7 @@ function InvocationsPage() {
       workPolicy: i.work_policy_name,
       queueName: i.queue_name,
     }));
-  }, [data, apps]);
+  }, [data, apps, scope]);
 
   const columns: Column<InvocationRow>[] = [
     {
@@ -250,9 +259,15 @@ function InvocationsPage() {
         initialSort={{ key: 'createdAt', dir: 'desc' }}
         searchKeys={['app', 'state', 'source', 'id']}
         searchPlaceholder="Filter by app, state, or source…"
-        emptyMessage="No invocations recorded yet."
+        emptyMessage={
+          !scope.project
+            ? 'No invocations recorded yet.'
+            : invocations.hasNextPage
+              ? `No ${scope.label} invocations among the latest ${data.length}. Load older ones to look further back.`
+              : `No invocations recorded for ${scope.label} yet.`
+        }
         minWidth="min-w-[900px]"
-        loading={invocations.isPending && data.length === 0}
+        loading={(invocations.isPending && data.length === 0) || scopeLoading}
         error={listError}
         onRetry={() => void invocations.refetch()}
         onRowClick={(i) => setSelected(i.id)}
