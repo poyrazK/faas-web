@@ -31,6 +31,20 @@ export interface LedgerEntry {
 }
 
 export const LEDGER: LedgerEntry[] = [
+  {
+    row: 169,
+    name: 'Native customer support: portal, staff inbox, conversations, target policies, routing, reopening and reviewed staff operations',
+    status: 'full',
+    surfaces: [
+      '/dashboard/support',
+      '/dashboard/support/$ticket',
+      '/dashboard/orgs/$org/support',
+      '/dashboard/orgs/$org/support/$ticket',
+    ],
+    capability: 'customer-support',
+    // Customer workflows are covered. Private staff operations stay in the
+    // backend's separately authorized staff portal, outside this console.
+  },
   // A1 · GA
   {
     row: 1,

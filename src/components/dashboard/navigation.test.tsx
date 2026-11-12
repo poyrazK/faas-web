@@ -258,6 +258,7 @@ const RAIL = [
   'Invoices',
   'Plans',
   'Audit log',
+  'Support',
   'Settings',
 ];
 
@@ -775,6 +776,13 @@ describe('dashboard navigation foundation', () => {
     ['/dashboard/apps/api', 'Projects', 'Public API', '/dashboard/projects'],
     ['/dashboard/apps/missing', 'Projects', 'App', '/dashboard/projects'],
     ['/dashboard/apps/new', 'Projects', 'New app', '/dashboard/projects'],
+    ['/dashboard/support/ticket', 'Support', 'Conversation', '/dashboard/support?scope=personal'],
+    [
+      '/dashboard/orgs/acme-corp/support/ticket',
+      'Support',
+      'Conversation',
+      '/dashboard/orgs/acme-corp/support',
+    ],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {
