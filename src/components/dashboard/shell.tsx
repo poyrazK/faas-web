@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   IconoirProvider,
   CloudXmark,
+  HomeSimpleDoor,
   LogOut,
   Menu,
   NavArrowDown,
@@ -16,6 +17,8 @@ import {
 import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
+import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
+import { isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { useToast } from '@/components/ui/toast';
@@ -37,7 +40,8 @@ import {
   findNavHub,
   isDisclosureHub,
   matchesNavPath,
-  NAV_GROUPS,
+  ACCOUNT_NAV_GROUPS,
+  PROJECT_NAV_GROUPS,
   visibleNavGroups,
   type NavHub,
   type NavItem,
@@ -114,6 +118,7 @@ function NavRow({
   pathname,
   hash,
   current,
+  scope,
 }: {
   item: NavItem;
   nested?: boolean;
@@ -123,13 +128,22 @@ function NavRow({
   pathname: string;
   hash: string;
   current: boolean;
+  /** The project the link should carry: a slug inside a project, undefined to leave one. */
+  scope?: { project?: string };
 }) {
   const { to, label, icon: Icon, exact } = item;
   const onThisPath = matchesNavPath(pathname, { to, exact: true });
+  const search = scope
+    ? onThisPath
+      ? (previous: Record<string, unknown>) => ({ ...previous, ...scope })
+      : scope
+    : onThisPath
+      ? true
+      : undefined;
   const link = (
     <Link
       to={to}
-      search={onThisPath ? true : undefined}
+      search={search as never}
       hash={onThisPath ? hash : undefined}
       activeOptions={{ exact: exact ?? false, includeSearch: false }}
       onClick={onNavigate}
@@ -294,7 +308,18 @@ function SidebarBody({
   const currentHub = findNavHub(pathname);
   const app = appOfPath(pathname);
   const isOff = useCapabilityOff();
-  const groups = useMemo(() => visibleNavGroups(NAV_GROUPS, isOff), [isOff]);
+  const scope = useProjectScope();
+  // Supabase-style: before a project is chosen the rail is the way in; inside
+  // one it is everything about that project.
+  const accountRail = !scope.project && isAccountPath(pathname);
+  const groups = useMemo(
+    () => visibleNavGroups(accountRail ? ACCOUNT_NAV_GROUPS : PROJECT_NAV_GROUPS, isOff),
+    [isOff, accountRail]
+  );
+  // Account links leave the project; project links carry it (or nothing,
+  // across all apps).
+  const linkScope = { project: scope.project ?? undefined };
+  const home = scope.project ? projectHome(scope.project) : null;
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -367,8 +392,29 @@ function SidebarBody({
           aria-label="Main"
           className="scrollbar-none mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto"
         >
+          {home && (
+            <ul className="flex flex-col gap-px">
+              <li>
+                <NavRow
+                  item={{
+                    to: home.to,
+                    label: 'Project overview',
+                    icon: HomeSimpleDoor,
+                    exact: true,
+                  }}
+                  collapsed={collapsed}
+                  labelCls={labelCls}
+                  onNavigate={onNavigate}
+                  pathname={pathname}
+                  hash={hash}
+                  current={matchesNavPath(pathname, { to: home.to, exact: true })}
+                  scope={home.search}
+                />
+              </li>
+            </ul>
+          )}
           {groups.map((group, gi) => (
-            <div key={group.title ?? `group-${gi}`}>
+            <div key={group.title ?? `group-${gi}`} className={cn(group.bottom && 'mt-auto')}>
               {/* One fixed-height slot per group header, whichever face it
                 wears — the heading when wide, a hairline when narrow — so
                 the rows below never shift vertically during the change. */}
@@ -381,6 +427,14 @@ function SidebarBody({
                     )}
                   >
                     {group.title}
+                    {group.shared && (
+                      <span
+                        className="ml-1.5 font-normal text-muted-foreground/60"
+                        title="Databases and buckets belong to your account, not to one project."
+                      >
+                        · shared
+                      </span>
+                    )}
                   </p>
                   <div
                     aria-hidden
@@ -409,6 +463,7 @@ function SidebarBody({
                           pathname={pathname}
                           hash={hash}
                           current={onBranch}
+                          scope={linkScope}
                         />
                       </li>
                     );
@@ -438,6 +493,7 @@ function SidebarBody({
                               pathname={pathname}
                               hash={hash}
                               current={!collapsed && matchesNavPath(pathname, section)}
+                              scope={linkScope}
                             />
                           </li>
                         ))}
@@ -473,15 +529,18 @@ function Breadcrumbs() {
   const appPage = section === 'apps' && Boolean(detail) && detail !== 'new';
   // Only an app page needs to know its project; elsewhere this stays idle.
   const membership = useProjectMembership(appPage ? (account?.id ?? '') : '');
-  const project = appPage ? membership.projectOfApp.get(detail) : undefined;
+  const scope = useProjectScope();
+  // Inside a project the switcher names it, so the trail doesn't again.
+  const project = appPage && !scope.project ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
   const trail: { label: string; to?: string }[] = [];
-  if (hub && (hub.label !== pageLabel || detail)) {
+  const projectPage = section === 'projects' && Boolean(detail);
+  if (hub && (hub.label !== pageLabel || detail) && !(scope.project && projectPage)) {
     trail.push({ label: hub.label, to: hub.to });
   }
   if (!(['apps', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });
-  if (section === 'projects' && detail) trail.push({ label: detail });
+  if (projectPage && !scope.project) trail.push({ label: detail });
   if (project)
     trail.push({ label: project, to: `/dashboard/projects/${encodeURIComponent(project)}` });
   if (section === 'apps' && detail) {
@@ -493,6 +552,7 @@ function Breadcrumbs() {
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <WorkspaceSwitcher />
+      <ProjectSwitcher />
 
       {trail.map(({ label, to }, i) => {
         const last = i === trail.length - 1;
