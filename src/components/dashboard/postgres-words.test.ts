@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostgresDatabase } from '@/lib/api/queries';
 import {
+  bindingsSentence,
   describeDatabase,
   regionName,
   spelledAgo,
@@ -273,5 +274,21 @@ describe('regionName', () => {
     expect(regionName('fra')).toBe('Frankfurt');
     expect(regionName('ams')).toBe('Amsterdam');
     expect(regionName('xyz')).toBe('xyz');
+  });
+});
+
+describe('bindingsSentence', () => {
+  const name = (id: string) => ({ a1: 'api-gateway', a2: 'worker', a3: 'cron' })[id] ?? id;
+  const b = (app_id: string, environment_key = 'DATABASE_URL') => ({ app_id, environment_key });
+
+  it('says which apps use a database, naming an app once', () => {
+    expect(bindingsSentence([], name)).toBe('No app uses it yet.');
+    expect(bindingsSentence([b('a1')], name)).toBe('api-gateway uses it as DATABASE_URL.');
+    expect(bindingsSentence([b('a1'), b('a1', 'READ_URL')], name)).toBe(
+      'api-gateway uses it, under 2 secrets.'
+    );
+    expect(bindingsSentence([b('a1'), b('a2'), b('a3')], name)).toBe(
+      '3 apps use it: api-gateway, worker and cron.'
+    );
   });
 });

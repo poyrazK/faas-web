@@ -322,3 +322,25 @@ export function spelledAgo(ms: number, now: number): string {
   if (diff < DAY) return unit(Math.floor(diff / HOUR), 'hour');
   return unit(Math.floor(diff / DAY), 'day');
 }
+
+/** "a and b", "a, b and c". */
+function list(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * Which apps use a database, in one line under its sentence: "No app uses it
+ * yet.", "api-gateway uses it as DATABASE_URL.", "3 apps use it: a, b and c."
+ * Built from the bindings; an app reached twice (two scopes) is named once.
+ */
+export function bindingsSentence(
+  bindings: { app_id: string; environment_key: string }[],
+  appName: (id: string) => string
+): string {
+  if (bindings.length === 0) return 'No app uses it yet.';
+  const apps = [...new Set(bindings.map((b) => b.app_id))].map(appName);
+  if (bindings.length === 1) return `${apps[0]} uses it as ${bindings[0].environment_key}.`;
+  if (apps.length === 1) return `${apps[0]} uses it, under ${bindings.length} secrets.`;
+  return `${apps.length} apps use it: ${list(apps)}.`;
+}
