@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/dashboard/primitives';
 import { consumeOnboardingGitHubReturn, useAuth } from '@/lib/auth';
 import { GitHubConnectForm } from './github-connect-form';
+import { GitHubConnectError } from './github-connect-error';
 import type { SettingsSearch } from './settings-search';
 import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 
@@ -22,7 +23,7 @@ import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
 export function IntegrationSettings({ search }: { search: SettingsSearch }) {
   const navigate = useNavigate();
   const { account, apiReachable } = useAuth();
-  const { github, default_branch } = search;
+  const { github, github_error, default_branch } = search;
   const githubConnected = Boolean(account?.github_install_id);
   const justConnected = github === 'connected' && githubConnected;
 
@@ -36,14 +37,11 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {github === 'connect-forbidden' && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          The GitHub connection request expired or could not be verified. Please try connecting
-          again.
-        </p>
+      {(github === 'connect-forbidden' || github === 'connect-failed') && (
+        <GitHubConnectError
+          code={github_error ?? (github === 'connect-forbidden' ? 'csrf_missing' : '')}
+          disabled={!apiReachable}
+        />
       )}
       {justConnected && (
         <div
