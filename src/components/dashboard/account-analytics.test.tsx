@@ -48,6 +48,7 @@ const hooks = vi.hoisted(() => ({
   useAppAnalytics: vi.fn(),
   useAppAnalyticsTimeseries: vi.fn(),
   useAppSlo: vi.fn(),
+  useAppsSlo: vi.fn(),
   useAppWakeTimeline: vi.fn(),
   // The awake-time and dependency panels are covered in their own tests.
   useRouteAwake: () => ({ isPending: true, error: null, refetch: vi.fn() }),
@@ -171,6 +172,11 @@ beforeEach(() => {
     })
   );
   hooks.useAppSlo.mockReturnValue(ready({ ...account, app_id: 'a', app_slug: 'alpha' }));
+  hooks.useAppsSlo.mockImplementation((slugs: string[]) =>
+    slugs.map((slug) =>
+      ready({ ...account, app_slug: slug, throttled_total: slug === 'alpha' ? 5 : 7 })
+    )
+  );
   hooks.useAppWakeTimeline.mockReturnValue(
     ready({
       app: { app_id: 'a', slug: 'alpha' },
@@ -270,7 +276,7 @@ describe('AccountAnalytics', () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole('button', { name: '7d' }));
     expect(searchState()).toEqual({ window: '7d' });
-    expect(hooks.useAccountSlo).toHaveBeenLastCalledWith('7d');
+    expect(hooks.useAccountSlo).toHaveBeenLastCalledWith('7d', { enabled: true });
     expect(hooks.useAppsMetrics).toHaveBeenLastCalledWith('7d');
   });
 
@@ -385,20 +391,62 @@ describe('AccountAnalytics in a project', () => {
       .getAllByRole('button')
       .filter((el) => el.tagName === 'TR');
 
-  it('ranks only the project’s apps and says the totals are account-wide', async () => {
+  const tile = (label: string) =>
+    within(accountRegion()).getByRole('button', { name: `View ${label} details` });
+
+  it('ranks only the project’s apps and totals them, weighted by traffic', () => {
     scope.current = project(['alpha']);
     render(<Harness />);
     expect(appRows()).toHaveLength(1);
     expect(appRows()[0]).toHaveTextContent('alpha');
-    expect(within(appsRegion()).queryByText('beta')).not.toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Top apps by requests' })).queryByText('beta')
     ).not.toBeInTheDocument();
+    expect(tile('Requests')).toHaveTextContent('40');
+    expect(tile('Requests')).toHaveTextContent('Across 1 app in acme-shop');
+    // The account summary is not read inside a project, and never shown as its totals.
+    expect(hooks.useAccountSlo).toHaveBeenLastCalledWith('24h', { enabled: false });
+    expect(within(accountRegion()).queryByText('10K')).not.toBeInTheDocument();
+    expect(screen.queryByText(/not limited to/)).not.toBeInTheDocument();
+  });
+
+  it('weights rates by each app’s traffic and names the slowest app instead of a p95', () => {
+    scope.current = project(['alpha', 'beta']);
+    render(<Harness />);
+    expect(tile('Requests')).toHaveTextContent('840');
+    expect(tile('Errors')).toHaveTextContent('20'); // 3.6 + 16
+    // An average of 9% and 2% would read 5.50%.
+    expect(tile('Error rate')).toHaveTextContent('2.33%');
+    const slowest = within(accountRegion()).getByRole('button', {
+      name: 'View response time details by app',
+    });
+    expect(slowest).toHaveTextContent('18 ms');
+    expect(slowest).toHaveTextContent('alpha');
+    expect(within(accountRegion()).getByText('Throttled requests').parentElement).toHaveTextContent(
+      '12'
+    );
+    expect(hooks.useAppsSlo).toHaveBeenLastCalledWith(['alpha', 'beta'], '24h', true);
+  });
+
+  it('opens the project’s add-up view from a tile', async () => {
+    scope.current = project(['alpha']);
+    render(<Harness />);
+    await userEvent.click(tile('Requests'));
+    expect(inspect).toHaveBeenCalledWith({ metric: 'requests', since: '24h', source: 'rollup' });
+  });
+
+  it('shows no totals when one of the project’s apps has no figures', () => {
+    hooks.useAppsMetrics.mockReturnValue(
+      ready({ ...apps, apps: { ...apps.apps, beta: { ...metric(0, 0), source: 'degraded: x' } } })
+    );
+    scope.current = project(['alpha', 'beta']);
+    render(<Harness />);
     expect(
-      within(accountRegion()).getByText(/account-wide — not limited to acme-shop/)
+      within(accountRegion()).getByText(
+        '1 app’s figures are unavailable, so acme-shop’s totals aren’t shown.'
+      )
     ).toBeInTheDocument();
-    // The account rollup is shown as it is, never re-summed from the project's apps.
-    expect(await within(accountRegion()).findByText('10K')).toBeInTheDocument();
+    expect(tile('Requests')).toHaveTextContent('—');
   });
 
   it('names the project when none of its apps has figures', () => {
@@ -408,10 +456,11 @@ describe('AccountAnalytics in a project', () => {
     expect(screen.queryByRole('region', { name: 'Top apps by requests' })).not.toBeInTheDocument();
   });
 
-  it('keeps every app and no note without a project', () => {
+  it('keeps every app and the account totals without a project', async () => {
     render(<Harness />);
     expect(appRows()).toHaveLength(2);
-    expect(screen.queryByText(/not limited to/)).not.toBeInTheDocument();
+    expect(await within(accountRegion()).findByText('10K')).toBeInTheDocument();
+    expect(hooks.useAppsSlo).toHaveBeenLastCalledWith([], '24h', false);
   });
 
   it('shows no app while membership loads', () => {

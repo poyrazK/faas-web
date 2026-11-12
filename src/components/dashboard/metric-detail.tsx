@@ -15,6 +15,7 @@ import { PlanGated } from './plan-gated';
 import { ANALYTICS_GROUPS } from './app-analytics-search';
 import { TimeChart } from './kit/chart';
 import { AnalyticsBreakdown } from './analytics-breakdown';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import {
   compareRequestHalves,
   appMetricNumber,
@@ -357,12 +358,17 @@ function AccountDetail({
     query.data?.source === 'prometheus' &&
     (request.source === 'slo' ||
       Object.values(rollup.data?.apps ?? {}).every((row) => row.source === 'prometheus'));
+  // Inside a project the add-up view covers only its apps.
+  const scope = useProjectScope();
   const rows =
     !rollup.error && !rollup.isPending && rollup.data?.source === 'prometheus'
-      ? Object.entries(rollup.data.apps ?? {}).filter(([, row]) => row.source === 'prometheus')
+      ? inScope(Object.entries(rollup.data.apps ?? {}), scope, ([slug]) => slug).filter(
+          ([, row]) => row.source === 'prometheus'
+        )
       : [];
   const requests = rows.reduce((n, [, row]) => n + row.request_count, 0);
   const errors = rows.reduce((n, [, row]) => n + (row.request_count * row.error_rate_pct) / 100, 0);
+  const cold = rows.reduce((n, [, row]) => n + (row.request_count * row.cold_start_pct) / 100, 0);
   const totals: Partial<Record<DetailMetric, number | null>> =
     request.source === 'slo' && slo.data
       ? {
@@ -379,6 +385,7 @@ function AccountDetail({
           requests,
           errors: Math.round(errors),
           error_rate: requests ? (errors / requests) * 100 : null,
+          cold_rate: requests ? (cold / requests) * 100 : null,
           wake_p95: rows.find(
             ([, row]) =>
               row.wake_p95_ms > 0 && (row.wake_samples === undefined || row.wake_samples >= 20)
@@ -401,7 +408,9 @@ function AccountDetail({
     <PlanGated error={query.error} feature="Account analytics">
       <div className="space-y-5">
         <div>
-          <p className="text-xs text-muted-foreground">All apps · Last {range}</p>
+          <p className="text-xs text-muted-foreground">
+            {scope.project && request.source !== 'slo' ? scope.label : 'All apps'} · Last {range}
+          </p>
           <p className="mt-2 text-3xl font-semibold tabular-nums">
             {known ? metricValue(metric, totals[metric]) : '—'}
           </p>
