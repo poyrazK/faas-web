@@ -308,7 +308,10 @@ describe('Debugger investigation navigation', () => {
       await mount(`/dashboard/debug?app=alpha&debugFilter=${filter}`);
       expect(screen.getByText(route)).toBeInTheDocument();
       expect(screen.getByRole('table').querySelectorAll('tbody tr')).toHaveLength(1);
-      expect(screen.getByText(/Slow:.*1,000 ms/)).toBeInTheDocument();
+      // The filter's definitions sit behind the list's "?" rather than on the page.
+      expect(screen.queryByText(/slow means 1,000 ms or more/i)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'About this list' }));
+      expect(await screen.findByText(/slow means 1,000 ms or more/i)).toBeInTheDocument();
     }
   );
 
@@ -666,8 +669,9 @@ describe('Debugger investigation navigation', () => {
     expect(
       screen.getByText(/No requests match these filters in the loaded sample/i)
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'About this list' }));
     expect(
-      screen.getByText(/up to the 20 most recent requests in the window/i)
+      await screen.findByText(/up to the 20 most recent requests in the window/i)
     ).toBeInTheDocument();
   });
 
@@ -769,6 +773,10 @@ describe('Debugger without the production-debugger preview', () => {
   it('shows the status summary and the export control when the preview is on', async () => {
     await mount('/dashboard/debug?app=alpha');
     expect(screen.getByRole('region', { name: 'Debug status' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Export format')).toBeInTheDocument();
+    // Export is a tool: one quiet menu, its format the choice inside.
+    const exportMenu = screen.getByRole('button', { name: 'Export…' });
+    await userEvent.click(exportMenu);
+    expect(await screen.findByRole('menuitem', { name: /as ndjson/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /as csv/i })).toBeInTheDocument();
   });
 });

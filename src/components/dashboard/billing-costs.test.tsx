@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
 import type { FinancialCosts, FinancialMeterCosts } from '@/lib/api/billing-costs';
-import { CostBreakdown, CostBreakdownPersonalOnly } from './billing-costs';
+import { CostBreakdown, CostBreakdownPersonalOnly, costSentence } from './billing-costs';
 
 const mfa = vi.hoisted(() => ({
   openMfa: vi.fn(),
@@ -180,6 +180,11 @@ async function mount(ui = <CostBreakdown />) {
   });
 }
 
+/** The meter table, coverage, omissions, prices and invoices sit behind one disclosure. */
+async function openDetails() {
+  await userEvent.click(await screen.findByText('Show cost details'));
+}
+
 const costCalls = () => get.mock.calls.filter(([path]) => path === '/v1/billing/costs');
 
 describe('known usage cost', () => {
@@ -194,6 +199,15 @@ describe('known usage cost', () => {
     expect(compute).toHaveTextContent('$0.32');
     expect(compute).toHaveTextContent('Complete');
     expect(screen.getByText(/November 2026 · as of/)).toBeVisible();
+    // The answer first, in words; the detail closed until asked for.
+    expect(
+      screen.getByText(
+        'What usage has cost, at the price in force when it happened. One meter has gaps, so it counts only what is known. It isn’t your bill: it leaves out the subscription, credits, tax and other services.'
+      )
+    ).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Cost by meter' })).not.toBeVisible();
+    await openDetails();
+    expect(screen.getByRole('region', { name: 'Cost by meter' })).toBeVisible();
     // The scope and the not-an-invoice caveat are one hover away.
     await userEvent.click(screen.getByRole('button', { name: 'About known usage cost' }));
     expect(
@@ -209,6 +223,7 @@ describe('known usage cost', () => {
 describe('coverage gaps', () => {
   it('states a gap as a gap and never fills it in', async () => {
     await mount();
+    await openDetails();
     const table = await screen.findByRole('region', { name: 'Cost by meter' });
     const egress = within(table).getByRole('row', { name: /Interface egress/ });
     // Colour, icon and a label: the status never rests on hue.
@@ -236,6 +251,7 @@ describe('coverage gaps', () => {
     };
     get.mockResolvedValue(ok(data));
     await mount();
+    await openDetails();
     const gaps = await screen.findByRole('list', { name: 'Coverage gaps' });
     expect(gaps).toHaveTextContent('Usage history starts');
     expect(gaps).toHaveTextContent('10 GB-hours is unpriced and not in the known cost');
@@ -248,6 +264,7 @@ describe('coverage gaps', () => {
     data.meters = [data.meters[0]];
     get.mockResolvedValue(ok(data));
     await mount();
+    await openDetails();
     expect(
       await screen.findByText('Every meter is fully sampled, fresh and priced for this month.')
     ).toBeVisible();
@@ -255,9 +272,21 @@ describe('coverage gaps', () => {
   });
 });
 
+describe('costSentence', () => {
+  it('names only what the report leaves out, and says nothing of gaps it does not have', () => {
+    expect(costSentence({ missing_bill_components: ['tax'] }, 0)).toBe(
+      'What usage has cost, at the price in force when it happened. It isn’t your bill: it leaves out tax.'
+    );
+    expect(costSentence({ missing_bill_components: [] }, 2)).toBe(
+      'What usage has cost, at the price in force when it happened. 2 meters have gaps, so it counts only what is known. It isn’t an invoice.'
+    );
+  });
+});
+
 describe('missing bill components', () => {
   it('names each part of the bill the report leaves out', async () => {
     await mount();
+    await openDetails();
     const missing = await screen.findByRole('list', { name: 'Not in this report' });
     for (const name of [
       'Subscription and add-ons',
@@ -273,6 +302,7 @@ describe('missing bill components', () => {
 describe('invoices', () => {
   it('lists invoices as separate, unreconciled facts and never adds them to usage', async () => {
     await mount();
+    await openDetails();
     const invoices = await screen.findByRole('region', { name: 'Invoices' });
     expect(within(invoices).getByText('GRG-202611-1042')).toBeInTheDocument();
     expect(within(invoices).getByText('€58.31')).toBeInTheDocument();
@@ -286,6 +316,7 @@ describe('invoices', () => {
   it('says when no invoice period ends in the month', async () => {
     get.mockResolvedValue(ok(report('2026-11', { invoices: [] })));
     await mount();
+    await openDetails();
     expect(
       await screen.findByText('No provider invoice has a period ending in this month.')
     ).toBeVisible();

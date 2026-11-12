@@ -164,29 +164,45 @@ describe('DebugStatusPanel', () => {
     generated_at: '2026-11-03T12:00:00Z',
   };
 
-  it('leads with apid’s verdict as icon and word, labelled preview', () => {
+  it('opens with one plain sentence under apid’s verdict, labelled preview', () => {
     hooks.useDebugStatus.mockReturnValue(ok(status));
     render(<DebugStatusPanel slug="api" since="1h" onOpenRequest={vi.fn()} />);
     const verdict = screen.getByRole('status', { name: 'Debug verdict' });
     expect(verdict).toHaveTextContent('Failing');
     expect(verdict.querySelector('svg')).not.toBeNull();
     expect(screen.getByText('Preview')).toBeInTheDocument();
-    expect(screen.getByText(status.headline)).toBeInTheDocument();
-    expect(screen.getByText('1,240')).toBeInTheDocument();
+    expect(
+      screen.getByText('23 of 1,240 requests failed with a server error in the last hour.')
+    ).toHaveAttribute('title', status.headline);
+    expect(screen.getByText('1,240 requests')).toBeInTheDocument();
   });
 
-  it('opens a recent failure’s evidence and lists the memory fix', () => {
+  it('makes the failed requests the one action', () => {
+    const look = vi.fn();
+    hooks.useDebugStatus.mockReturnValue(ok(status));
+    render(<DebugStatusPanel slug="api" since="1h" onOpenRequest={vi.fn()} onLook={look} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Look at the failed requests' }));
+    expect(look).toHaveBeenCalledWith(
+      expect.objectContaining({ debugView: 'requests', debugFilter: 'failed' })
+    );
+  });
+
+  it('keeps failures, the memory fix and ids behind “Show the details”', () => {
     const open = vi.fn();
     hooks.useDebugStatus.mockReturnValue(ok(status));
     render(<DebugStatusPanel slug="api" since="1h" onOpenRequest={open} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open request details' }));
-    expect(open).toHaveBeenCalledWith('req-1');
-    expect(screen.getByText('trim in-memory state')).toBeInTheDocument();
-    expect(screen.getByText(/peak 600 MB, plan\s+512 MB/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open request details' })).toBeNull();
+    // Tracing off is something to do, so it stays in view.
     expect(screen.getByRole('link', { name: 'Turn on request tracing' })).toHaveAttribute(
       'href',
       '/docs/tracing'
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Show the details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open request details' }));
+    expect(open).toHaveBeenCalledWith('req-1');
+    expect(screen.getByText('trim in-memory state')).toBeInTheDocument();
+    expect(screen.getByText(/peak 600 MB, plan\s+512 MB/)).toBeInTheDocument();
+    expect(screen.getByText(/Server summary: 20 of 21 requests/)).toBeInTheDocument();
   });
 });
 

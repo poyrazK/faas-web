@@ -96,7 +96,7 @@ function useComputedScope(): ProjectScope {
   const { pathname, search } = useRouterState({
     select: (s) => ({ pathname: s.location.pathname, search: s.location.search }),
   });
-  const project = projectOfLocation(pathname, (search ?? {}) as Record<string, unknown>);
+  const named = projectOfLocation(pathname, (search ?? {}) as Record<string, unknown>);
   const { account } = useAuth();
   const { workflows } = useData();
   const membership = useProjectMembership(account?.id ?? '');
@@ -104,6 +104,14 @@ function useComputedScope(): ProjectScope {
   return useMemo(() => {
     const standalone = workflows.filter((app) => !membership.projectOfApp.has(app.id));
     const ready = membership.state === 'ready';
+    // An app's page opened without a project (a bookmark, a link) belongs to
+    // the app's own project, which membership names once it has loaded.
+    const appPage = /^\/dashboard\/apps\/(?!new(?:\/|$))([^/]+)/.exec(pathname)?.[1];
+    const project =
+      named ??
+      (appPage && ready && workflows.some((app) => app.id === appPage)
+        ? (membership.projectOfApp.get(appPage) ?? STANDALONE)
+        : null);
     const choices = [
       ...membership.projects.map((p) => ({ slug: p.slug, label: p.slug })),
       ...(ready && standalone.length
@@ -123,7 +131,7 @@ function useComputedScope(): ProjectScope {
       settled: membership.state !== 'pending',
       choices,
     };
-  }, [project, workflows, membership]);
+  }, [named, pathname, workflows, membership]);
 }
 
 /** Keep only what belongs to the scoped project's apps; everything at account level. */

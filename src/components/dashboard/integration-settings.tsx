@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowRight, Check, Github, OpenNewWindow } from 'iconoir-react';
+import { ArrowRight, Check, OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Panel } from '@/components/dashboard/primitives';
@@ -9,6 +9,8 @@ import { GitHubConnectForm } from './github-connect-form';
 import { GitHubConnectError } from './github-connect-error';
 import type { SettingsSearch } from './settings-search';
 import { consumeGitHubDeployment } from '@/lib/deployment-handoff';
+import { SettingsSummary } from './settings-kit';
+import { accountSummary, githubSummary } from './settings-words';
 
 /**
  * Account-level GitHub connection.
@@ -26,6 +28,7 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
   const { github, github_error, default_branch } = search;
   const githubConnected = Boolean(account?.github_install_id);
   const justConnected = github === 'connected' && githubConnected;
+  const summary = githubSummary(githubConnected);
 
   useEffect(() => {
     if (!justConnected) return;
@@ -62,91 +65,100 @@ export function IntegrationSettings({ search }: { search: SettingsSearch }) {
         </div>
       )}
 
-      <Panel
-        title="GitHub"
+      <SettingsSummary
+        label="GitHub"
+        ariaLabel="GitHub connection"
+        tone={summary.tone}
         actions={
           githubConnected ? (
+            <Button asChild size="sm" className="gap-1.5">
+              <Link to="/dashboard/apps/new">
+                Deploy from a repository
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : (
+            <GitHubConnectForm disabled={!apiReachable} />
+          )
+        }
+      >
+        {summary.sentence}
+      </SettingsSummary>
+      {!githubConnected && !apiReachable && (
+        <p className="text-xs text-muted-foreground">
+          The API is currently unreachable. Check the connection and try again.
+        </p>
+      )}
+
+      {githubConnected && (
+        <Panel
+          title="GitHub"
+          help="Refreshing goes through GitHub again and re-reads your connection. To change which repositories Gregale can see, use Manage on GitHub."
+          actions={
             <Badge variant="outline" className="gap-1.5 border-brand/30 text-brand">
               <Check />
               Connected
             </Badge>
-          ) : undefined
-        }
-      >
-        {githubConnected ? (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-2">
-              <GitHubConnectForm refresh disabled={!apiReachable} />
-              <Button asChild size="sm" className="gap-1.5">
-                <Link to="/dashboard/apps/new">
-                  Deploy a function
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-              <a
-                href="https://github.com/settings/installations"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 well rounded-xl bg-muted/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                Manage on GitHub
-                <OpenNewWindow className="h-3.5 w-3.5" />
-              </a>
-            </div>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <GitHubConnectForm refresh disabled={!apiReachable} />
+            <a
+              href="https://github.com/settings/installations"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 well rounded-xl bg-muted/40 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Manage on GitHub
+              <OpenNewWindow className="h-3.5 w-3.5" />
+            </a>
           </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
-                <Github className="h-4 w-4" />
-              </span>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Connect GitHub to deploy from your repositories.
-              </p>
-            </div>
-            <GitHubConnectForm disabled={!apiReachable} />
-            {!apiReachable && (
-              <p className="text-xs text-muted-foreground">
-                The API is currently unreachable. Check the connection and try again.
-              </p>
-            )}
-          </div>
-        )}
-      </Panel>
+        </Panel>
+      )}
     </div>
   );
 }
 
 export function AccountDetails() {
   const { account } = useAuth();
+  const summary = accountSummary(account ?? undefined);
   return (
-    <Panel title="Account details">
-      <dl className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <dt className="label-mono text-muted-foreground">Email</dt>
-          <dd className="mt-1 text-sm">{account?.email ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="label-mono text-muted-foreground">Plan</dt>
-          <dd className="mt-1 text-sm capitalize">{account?.plan ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="label-mono text-muted-foreground">Apps</dt>
-          <dd className="mt-1 text-sm">{account ? `${account.app_count} deployed` : '—'}</dd>
-        </div>
-        <div>
-          <dt className="label-mono text-muted-foreground">Security</dt>
-          <dd className="mt-1 text-sm">
-            <Link
-              to="/dashboard/settings"
-              search={{ section: 'security' }}
-              className="text-brand hover:underline"
-            >
-              Manage sessions and MFA
+    <div className="flex flex-col gap-6">
+      <SettingsSummary
+        label="Account"
+        ariaLabel="Your account"
+        tone={summary.tone}
+        facts={summary.facts}
+        actions={
+          <Button asChild size="sm" variant="outline">
+            <Link to="/dashboard/settings" search={{ section: 'security' }}>
+              Review security
             </Link>
-          </dd>
-        </div>
-      </dl>
-    </Panel>
+          </Button>
+        }
+      >
+        {summary.sentence}
+      </SettingsSummary>
+      <Panel title="Account details">
+        <dl className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt className="label-mono text-muted-foreground">Email</dt>
+            <dd className="mt-1 text-sm [overflow-wrap:anywhere]">{account?.email ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="label-mono text-muted-foreground">Account ID</dt>
+            <dd className="mt-1 font-mono text-xs [overflow-wrap:anywhere]">
+              {account?.id ?? '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="label-mono text-muted-foreground">Dev environments</dt>
+            <dd className="mt-1 text-sm" title="Live `gregale dev` environments">
+              {account ? `${account.developer_app_count} running` : '—'}
+            </dd>
+          </div>
+        </dl>
+      </Panel>
+    </div>
   );
 }

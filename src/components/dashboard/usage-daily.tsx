@@ -55,27 +55,41 @@ export function DailyUsagePanel({
               <span>{dayLabel(days[days.length - 1].date)}</span>
             </figcaption>
           </figure>
-          <p className="font-mono text-xs text-muted-foreground">
-            Daily rollups: {formatUsageNumber(rolledUp)} GB-h · live total:{' '}
-            {formatUsageNumber(usedGbHours)} GB-h
-          </p>
           {peak && (
-            <p className="text-xs text-muted-foreground">
-              Biggest day: {dayLabel(peak.date)}, {formatUsageNumber(peak.gbHours)} GB-h
+            <p className="text-sm text-muted-foreground">
+              Your busiest day was{' '}
+              <span className="font-medium text-foreground">{dayLabel(peak.date)}</span>, at{' '}
+              {formatUsageNumber(peak.gbHours)} GB-hours
               {peak.topAppSlug && peak.topAppGbHours != null
-                ? `, mostly ${peak.topAppSlug} (${formatUsageNumber(peak.topAppGbHours)} GB-h)`
+                ? `, mostly ${peak.topAppSlug} (${formatUsageNumber(peak.topAppGbHours)} GB-hours)`
                 : ''}
               .
             </p>
           )}
-          {(missing > 0 || !fromFirst) && (
-            <p className="text-xs text-muted-foreground">
-              {missing > 0 &&
-                `${missing} ${missing === 1 ? 'day has' : 'days have'} no rollup and ${missing === 1 ? 'is' : 'are'} drawn at zero. `}
-              {!fromFirst &&
-                'Daily rollups reach back 30 days, so the 1st is not drawn; the totals above still count it.'}
-            </p>
-          )}
+          {/* How the bars relate to the total above: honest, and on request. */}
+          <details className="text-xs text-muted-foreground">
+            <summary className="w-fit cursor-pointer underline-offset-4 hover:underline">
+              About these bars
+            </summary>
+            <div className="mt-2 flex flex-col gap-1">
+              <p className="font-mono">
+                Daily rollups: {formatUsageNumber(rolledUp)} GB-h · live total:{' '}
+                {formatUsageNumber(usedGbHours)} GB-h
+              </p>
+              <p>Each bar is one UTC day&apos;s rollup. Rollups can trail the live total.</p>
+              {missing > 0 && (
+                <p>
+                  {`${missing} ${missing === 1 ? 'day has' : 'days have'} no rollup and ${missing === 1 ? 'is' : 'are'} drawn at zero.`}
+                </p>
+              )}
+              {!fromFirst && (
+                <p>
+                  Daily rollups reach back 30 days, so the 1st is not drawn; the totals above still
+                  count it.
+                </p>
+              )}
+            </div>
+          </details>
         </div>
       )}
     </Panel>

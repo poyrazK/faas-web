@@ -561,7 +561,8 @@ function Breadcrumbs() {
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
   const trail: { label: string; to?: string; search?: { scope: 'personal' } }[] = [];
   const projectPage = section === 'projects' && Boolean(detail);
-  if (hub && (hub.label !== pageLabel || detail) && !(scope.project && projectPage)) {
+  // Inside a project, its own page and its apps' pages hang off the switcher.
+  if (hub && (hub.label !== pageLabel || detail) && !(scope.project && (projectPage || appPage))) {
     trail.push({ label: hub.label, to: hub.to });
   }
   if (!(['apps', 'projects'].includes(section) && detail)) trail.push({ label: pageLabel });

@@ -21,23 +21,28 @@ export function DebugRequestLookup({ onOpen }: { onOpen: (requestId: string) => 
     <form
       aria-label="Open a request by ID"
       onSubmit={submit}
-      className="flex flex-wrap items-end gap-2 text-xs"
+      className="flex items-center gap-1.5 text-xs"
     >
-      <span className="flex min-w-0 flex-col gap-1">
-        <label htmlFor={id} className="text-muted-foreground">
-          Request ID (x-faas-request-id)
-        </label>
-        <Input
-          id={id}
-          value={value}
-          maxLength={128}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="from a response header or a log line"
-          className="h-8 w-80 max-w-full font-mono"
-        />
-      </span>
-      <Button type="submit" size="xs" variant="outline" disabled={!valid}>
-        Open request details
+      <label htmlFor={id} className="sr-only">
+        Request ID (x-faas-request-id)
+      </label>
+      <Input
+        id={id}
+        value={value}
+        maxLength={128}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Find a request by ID"
+        title="The x-faas-request-id from a response header or a log line"
+        className="h-8 w-48 max-w-full font-mono text-xs placeholder:font-sans"
+      />
+      <Button
+        type="submit"
+        size="xs"
+        variant="ghost"
+        disabled={!valid}
+        aria-label="Open request details"
+      >
+        Open
       </Button>
     </form>
   );
