@@ -11283,12 +11283,14 @@ route('GET', '/v1/billing/forecast', () => {
     period_end: end.toISOString(),
     as_of: now.toISOString(),
     currency: 'EUR',
+    // Meter and component names as faas sends them (pkg/financial,
+    // pkg/billing/financial_visibility.go).
     meters: [
-      meter('gb_hours', 1_480_000),
-      meter('egress_gb', undefined, 'egress has less than 7 days of complete history'),
+      meter('compute', 1_480_000),
+      meter('egress', undefined, 'egress has less than 7 days of complete history'),
     ],
     bill_estimate_available: false,
-    missing_bill_components: ['egress_gb', 'tax'],
+    missing_bill_components: ['subscription_and_addons', 'tax'],
   };
 });
 // The signed-in account's cost report (faas handlers_financial.go:15-80): one
