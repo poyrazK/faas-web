@@ -53,6 +53,18 @@ function mount(slug = 'alpha') {
   );
 }
 
+/** Opens a token's ⋯ menu and picks an item. */
+async function pick(token: string, item: string) {
+  await userEvent.click(await screen.findByRole('button', { name: `Actions for ${token}` }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: item }));
+}
+
+/** Opens the create form from the panel's primary action. */
+async function openCreate() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Create token' }));
+  return screen.getByRole('form', { name: 'Create a deploy token' });
+}
+
 let list: unknown[];
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -64,20 +76,35 @@ beforeEach(() => {
 });
 
 describe('DeployTokensPanel', () => {
-  it('lists label, status, created, last used and expiry; revoked rows have no actions', async () => {
+  it('opens with one sentence of state: active tokens and the last one used', async () => {
+    mount();
+    expect(
+      await screen.findByText(/^1 active token\. github-actions was last used/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows name, state and one quiet line; dates and prefix wait in the title', async () => {
     mount();
     const row = await screen.findByRole('listitem', { name: /github-actions/ });
-    expect(row).toHaveTextContent('fp_deploy_…');
     expect(row).toHaveTextContent('Active');
-    expect(row).toHaveTextContent(/Created/);
     expect(row).toHaveTextContent(/Last used/);
-    expect(row).toHaveTextContent(/Expires/);
-    expect(within(row).getByRole('button', { name: 'Rotate github-actions' })).toBeEnabled();
-    expect(within(row).getByRole('button', { name: 'Revoke github-actions' })).toBeEnabled();
+    expect(row).not.toHaveTextContent('fp_deploy_');
+    expect(row).not.toHaveTextContent(/Created/);
+    const quiet = within(row).getByText(/Last used/);
+    expect(quiet.getAttribute('title')).toMatch(/Created .*Starts fp_deploy_…/);
 
+    await userEvent.click(within(row).getByRole('button', { name: 'Actions for github-actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Rotate token' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Revoke token' })).toBeInTheDocument();
+  });
+
+  it('folds revoked tokens under "Show N revoked", with no actions', async () => {
+    mount();
+    await screen.findByRole('listitem', { name: /github-actions/ });
+    expect(screen.queryByRole('listitem', { name: /old-jenkins/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Show 1 revoked' }));
     const gone = screen.getByRole('listitem', { name: /old-jenkins/ });
     expect(gone).toHaveTextContent('Revoked');
-    expect(gone).toHaveTextContent(/Never used/);
     expect(within(gone).queryByRole('button')).toBeNull();
   });
 
@@ -86,14 +113,27 @@ describe('DeployTokensPanel', () => {
     mount();
     const row = await screen.findByRole('listitem', { name: /github-actions/ });
     expect(row).toHaveTextContent('Expired');
-    expect(within(row).queryByRole('button', { name: /Rotate/ })).toBeNull();
-    expect(within(row).getByRole('button', { name: 'Revoke github-actions' })).toBeEnabled();
+    expect(await screen.findByText(/No token can deploy alpha right now/)).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole('button', { name: 'Actions for github-actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Revoke token' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Rotate token' })).toBeNull();
   });
 
   it('says so when the app has no tokens', async () => {
     list = [];
     mount();
-    expect(await screen.findByText('No deploy tokens yet.')).toBeInTheDocument();
+    expect(await screen.findByText(/^No deploy tokens yet\./)).toBeInTheDocument();
+  });
+
+  it('keeps the create form closed until "Create token" is pressed', async () => {
+    mount();
+    await screen.findByRole('listitem', { name: /github-actions/ });
+    expect(screen.queryByLabelText('Label')).toBeNull();
+    await openCreate();
+    expect(screen.getByLabelText('Label')).toBeInTheDocument();
+    expect(screen.getByLabelText('Expires in')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Label')).toBeNull();
   });
 
   it('shows the CI command that picks the token up from FAAS_TOKEN', async () => {
@@ -111,8 +151,9 @@ describe('DeployTokensPanel', () => {
     );
     mount();
     await screen.findByRole('listitem', { name: /github-actions/ });
+    const form = await openCreate();
     await userEvent.type(screen.getByLabelText('Label'), 'ci');
-    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Create token' }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith('/v1/apps/{slug}/deploy-tokens', {
@@ -126,6 +167,7 @@ describe('DeployTokensPanel', () => {
     await userEvent.click(within(reveal).getByRole('button', { name: 'Reveal' }));
     expect(reveal).toHaveTextContent(SECRET);
     expect(within(reveal).getByRole('button', { name: /Copy/ })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Create a deploy token' })).toBeNull();
 
     await userEvent.click(within(reveal).getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByText(SECRET)).toBeNull();
@@ -138,9 +180,14 @@ describe('DeployTokensPanel', () => {
     spyApi('POST').mockImplementation(() => new Promise(() => {}));
     mount();
     await screen.findByRole('listitem', { name: /github-actions/ });
+    const form = await openCreate();
     await userEvent.type(screen.getByLabelText('Label'), 'ci');
-    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
-    expect(screen.getByRole('button', { name: /^Rotate github-actions/ })).toBeDisabled();
+    await userEvent.click(within(form).getByRole('button', { name: 'Create token' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for github-actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Rotate token' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
   });
 
   it('sends an explicit expiry when one other than the 90-day default is picked', async () => {
@@ -149,8 +196,9 @@ describe('DeployTokensPanel', () => {
     );
     mount();
     await screen.findByRole('listitem', { name: /github-actions/ });
+    const form = await openCreate();
     await userEvent.selectOptions(screen.getByLabelText('Expires in'), '30');
-    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    await userEvent.click(within(form).getByRole('button', { name: 'Create token' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
     const body = (post.mock.calls[0][1] as { body: { expires_at?: string } }).body;
     const days = (Date.parse(body.expires_at!) - Date.now()) / 86_400_000;
@@ -167,7 +215,8 @@ describe('DeployTokensPanel', () => {
     );
     mount();
     await screen.findByRole('listitem', { name: /github-actions/ });
-    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    const form = await openCreate();
+    await userEvent.click(within(form).getByRole('button', { name: 'Create token' }));
     expect(await screen.findByRole('region', { name: 'New deploy token' })).toBeInTheDocument();
     expect(mocks.openMfa).toHaveBeenCalledWith('verify', expect.anything());
     expect(post).toHaveBeenCalledTimes(2);
@@ -180,7 +229,8 @@ describe('DeployTokensPanel', () => {
     );
     mount();
     await screen.findByRole('listitem', { name: /github-actions/ });
-    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    const form = await openCreate();
+    await userEvent.click(within(form).getByRole('button', { name: 'Create token' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /verify with your authenticator.*last 5 minutes/i
     );
@@ -199,7 +249,7 @@ describe('DeployTokensPanel', () => {
       ) as never
     );
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Rotate github-actions' }));
+    await pick('github-actions', 'Rotate token');
     expect(mocks.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ description: expect.stringMatching(/stops working immediately/) })
     );
@@ -218,7 +268,7 @@ describe('DeployTokensPanel', () => {
     mocks.confirm.mockResolvedValue(false);
     const post = spyApi('POST');
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Rotate github-actions' }));
+    await pick('github-actions', 'Rotate token');
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
     expect(post).not.toHaveBeenCalled();
   });
@@ -226,7 +276,7 @@ describe('DeployTokensPanel', () => {
   it('revokes through a destructive confirm', async () => {
     const del = spyApi('DELETE').mockResolvedValue(ok(undefined, 204) as never);
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Revoke github-actions' }));
+    await pick('github-actions', 'Revoke token');
     expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ destructive: true }));
     await waitFor(() =>
       expect(del).toHaveBeenCalledWith('/v1/apps/{slug}/deploy-tokens/{id}', {
@@ -241,7 +291,7 @@ describe('DeployTokensPanel', () => {
   it('reports an expired token on rotate by its code', async () => {
     spyApi('POST').mockResolvedValue(problem(401, 'api_key_expired') as never);
     mount();
-    await userEvent.click(await screen.findByRole('button', { name: 'Rotate github-actions' }));
+    await pick('github-actions', 'Rotate token');
     await waitFor(() =>
       expect(mocks.toast).toHaveBeenCalledWith(
         expect.objectContaining({

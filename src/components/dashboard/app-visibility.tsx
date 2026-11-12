@@ -118,16 +118,23 @@ export function AppVisibility({
   }
 
   return (
-    <Panel title="App visibility">
-      <div className="space-y-3 p-4 text-sm">
-        <p>
-          Reported visibility: <strong>{app.visibility}</strong>.
-        </p>
+    <Panel
+      title="Who can reach it"
+      help="App visibility. Public: the platform URL and custom domains serve it, and other apps can call it. Internal: only the internal service answers, so public URLs stop serving it."
+    >
+      <div className="flex flex-col items-start gap-3 text-sm">
+        {app.visibility && (
+          <p className="text-muted-foreground" title={`visibility: ${app.visibility}`}>
+            {app.visibility === 'internal'
+              ? 'Now: internal only, so public URLs don’t serve it.'
+              : 'Now: public, and other apps can call it too.'}
+          </p>
+        )}
         {!available && (
           <p role="status">Visibility changes require confirmed private-app capability access.</p>
         )}
-        <label className="flex flex-col gap-1.5">
-          <span>Visibility</span>
+        <label className="flex w-full flex-col gap-1.5 sm:max-w-md">
+          <span className="label-mono text-muted-foreground">Visibility</span>
           <Select
             aria-label="App visibility"
             className={FIELD}
@@ -152,7 +159,7 @@ export function AppVisibility({
           Review visibility
         </Button>
         {review && (
-          <div className="space-y-2 rounded border border-border p-3">
+          <div className="well w-full space-y-2 rounded-xl bg-muted/40 p-4">
             {desired === 'internal' ? (
               <p>
                 Public platform URLs and custom domains will stop serving this app, and existing

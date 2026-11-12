@@ -57,7 +57,13 @@ function renderWith(app: App) {
   );
 }
 
+const AFTER = 'After waking from a snapshot';
+const BEFORE = 'Before taking a snapshot';
 const group = (name: string) => screen.getByRole('group', { name });
+const edit = (user: ReturnType<typeof userEvent.setup>, name: string, label = /^(Edit|Set up)$/) =>
+  user.click(within(group(name)).getByRole('button', { name: label }));
+const details = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole('button', { name: 'Show technical details' }));
 const body = (patch: ReturnType<typeof spyApi>, call = 0) =>
   (patch.mock.calls[call][1] as { body: object }).body;
 
@@ -70,31 +76,59 @@ beforeEach(() => {
 });
 
 describe('SnapshotHooks', () => {
-  it('is labelled beta and shows each stored hook with what calls it', () => {
+  it('is labelled beta, opens with what runs, and shows each hook as a compact row', async () => {
+    const user = userEvent.setup();
     renderWith(hooked);
     expect(screen.getByRole('heading', { name: 'Snapshot hooks' })).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'After a restore, Gregale calls /internal/after-restore before sending traffic. Nothing runs before a snapshot.'
+      )
+    ).toBeInTheDocument();
 
-    const after = group('After restore');
+    const after = group(AFTER);
+    expect(within(after).getByText('On')).toBeInTheDocument();
+    expect(after).toHaveTextContent('Calls /internal/after-restore and waits up to 1,500 ms');
+    expect(within(after).getByText(AFTER, { selector: 'span' })).toHaveAttribute(
+      'title',
+      'after_restore'
+    );
+    // Fields open on Edit; the header and failure detail is not on the row.
+    expect(within(after).queryByLabelText('Path')).not.toBeInTheDocument();
+    expect(after).not.toHaveTextContent('X-Faas-After-Restore');
+    await edit(user, AFTER, /^Edit$/);
     expect(within(after).getByLabelText('Path')).toHaveValue('/internal/after-restore');
     expect(within(after).getByLabelText('Timeout (ms)')).toHaveValue(1500);
-    expect(within(after).getByText('On')).toBeInTheDocument();
-    expect(after).toHaveTextContent('X-Faas-After-Restore: 1');
-    expect(after).toHaveTextContent(/not on a cold boot/i);
 
-    const before = group('Before checkpoint');
+    const before = group(BEFORE);
+    expect(within(before).getByText('Off')).toBeInTheDocument();
+    expect(before).toHaveTextContent('Use it to close connections before the app is frozen.');
+    await edit(user, BEFORE, /^Set up$/);
     expect(within(before).getByLabelText('Path')).toHaveValue('');
     expect(within(before).getByLabelText('Timeout (ms)')).toHaveAttribute(
       'placeholder',
       '500 (default)'
     );
-    expect(within(before).getByText('Off')).toBeInTheDocument();
-    expect(before).toHaveTextContent('before_checkpoint_failed');
-    expect(before).toHaveTextContent(/warm snapshots are not captured/i);
   });
 
-  it('says that a gregale.yaml lifecycle block replaces what is saved here on every deploy', () => {
+  it('keeps headers, failure codes and the idempotency rule behind Show technical details', async () => {
+    const user = userEvent.setup();
     renderWith(hooked);
+    expect(screen.queryByText(/must be idempotent/)).not.toBeInTheDocument();
+    await details(user);
+    expect(screen.getByText(/X-Faas-After-Restore: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/not on a cold boot/i)).toBeInTheDocument();
+    expect(screen.getByText('before_checkpoint_failed')).toBeInTheDocument();
+    expect(screen.getByText(/warm snapshots are not captured/i)).toBeInTheDocument();
+    expect(screen.getByText(/must be idempotent/)).toBeInTheDocument();
+  });
+
+  it('says that a gregale.yaml lifecycle block replaces what is saved here on every deploy', async () => {
+    const user = userEvent.setup();
+    renderWith(hooked);
+    expect(screen.queryByLabelText('gregale.yaml lifecycle hooks')).not.toBeInTheDocument();
+    await details(user);
     expect(
       screen.getByText(/a deploy whose gregale\.yaml declares one replaces the hook saved here/i)
     ).toBeInTheDocument();
@@ -103,16 +137,24 @@ describe('SnapshotHooks', () => {
     );
   });
 
+  it('says plainly when no hook is set', () => {
+    renderWith(bare);
+    expect(
+      screen.getByText(
+        'No hooks are set, so Gregale takes and restores snapshots without calling your app.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save hooks' })).not.toBeInTheDocument();
+  });
+
   it('saves only the hook that changed, and says it applies from the next deploy', async () => {
     const patch = spyApi('PATCH').mockResolvedValue(accepted(hooked));
     const user = userEvent.setup();
     renderWith(bare);
+    await edit(user, AFTER);
     expect(screen.getByRole('button', { name: 'Save hooks' })).toBeDisabled();
-    await user.type(
-      within(group('After restore')).getByLabelText('Path'),
-      '/internal/after-restore'
-    );
-    await user.type(within(group('After restore')).getByLabelText('Timeout (ms)'), '1500');
+    await user.type(within(group(AFTER)).getByLabelText('Path'), '/internal/after-restore');
+    await user.type(within(group(AFTER)).getByLabelText('Timeout (ms)'), '1500');
     await user.click(screen.getByRole('button', { name: 'Save hooks' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(patch.mock.calls[0][1]).toMatchObject({ params: { path: { slug: 'api-gateway' } } });
@@ -129,7 +171,8 @@ describe('SnapshotHooks', () => {
     const patch = spyApi('PATCH').mockResolvedValue(accepted(hooked));
     const user = userEvent.setup();
     renderWith(bare);
-    await user.type(within(group('Before checkpoint')).getByLabelText('Path'), '/flush');
+    await edit(user, BEFORE);
+    await user.type(within(group(BEFORE)).getByLabelText('Path'), '/flush');
     await user.click(screen.getByRole('button', { name: 'Save hooks' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(body(patch)).toEqual({ before_checkpoint: { path: '/flush' } });
@@ -141,13 +184,19 @@ describe('SnapshotHooks', () => {
     const patch = spyApi('PATCH').mockResolvedValue(accepted(bare));
     const user = userEvent.setup();
     renderWith(hooked);
-    await user.click(within(group('After restore')).getByRole('button', { name: 'Remove' }));
+    const remove = async () => {
+      await user.click(screen.getByRole('button', { name: `Actions for ${AFTER}` }));
+      await user.click(
+        within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Remove hook' })
+      );
+    };
+    await remove();
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('/internal/after-restore');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(patch).not.toHaveBeenCalled();
 
-    await user.click(within(group('After restore')).getByRole('button', { name: 'Remove' }));
+    await remove();
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove hook' })
     );
@@ -159,8 +208,9 @@ describe('SnapshotHooks', () => {
     const patch = spyApi('PATCH').mockResolvedValue(accepted(bare));
     const user = userEvent.setup();
     renderWith(hooked);
-    await user.clear(within(group('After restore')).getByLabelText('Path'));
-    await user.clear(within(group('After restore')).getByLabelText('Timeout (ms)'));
+    await edit(user, AFTER);
+    await user.clear(within(group(AFTER)).getByLabelText('Path'));
+    await user.clear(within(group(AFTER)).getByLabelText('Timeout (ms)'));
     await user.click(screen.getByRole('button', { name: 'Save hooks' }));
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove hook' })
@@ -173,10 +223,11 @@ describe('SnapshotHooks', () => {
     const patch = spyApi('PATCH');
     const user = userEvent.setup();
     renderWith(bare);
-    const path = within(group('After restore')).getByLabelText('Path');
+    await edit(user, AFTER);
+    const path = within(group(AFTER)).getByLabelText('Path');
     await user.type(path, 'internal?x=1');
     expect(path).toHaveAttribute('aria-invalid', 'true');
-    expect(within(group('After restore')).getByText(/absolute path/i)).toBeInTheDocument();
+    expect(within(group(AFTER)).getByText(/absolute path/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save hooks' })).toBeDisabled();
     expect(patch).not.toHaveBeenCalled();
   });
@@ -191,7 +242,8 @@ describe('SnapshotHooks', () => {
     );
     const user = userEvent.setup();
     renderWith(bare);
-    await user.type(within(group('After restore')).getByLabelText('Path'), '/x');
+    await edit(user, AFTER);
+    await user.type(within(group(AFTER)).getByLabelText('Path'), '/x');
     await user.click(screen.getByRole('button', { name: 'Save hooks' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/requires request or service/);
     expect(screen.getByText('validation_failed')).toBeInTheDocument();
@@ -208,7 +260,8 @@ describe('SnapshotHooks', () => {
     );
     const user = userEvent.setup();
     renderWith(bare);
-    await user.type(within(group('After restore')).getByLabelText('Path'), '/x');
+    await edit(user, AFTER);
+    await user.type(within(group(AFTER)).getByLabelText('Path'), '/x');
     await user.click(screen.getByRole('button', { name: 'Save hooks' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/not available to this account/);
     expect(mocks.refresh).toHaveBeenCalled();
@@ -221,7 +274,7 @@ describe('SnapshotHooks', () => {
       manifest: { ...bare.manifest, before_checkpoint: { path: '/flush' } },
     } as unknown as App);
     expect(screen.getByRole('note')).toHaveTextContent(
-      /warm snapshots are on for this app, but none is captured while before_checkpoint is set/i
+      /warm snapshots are on for this app, but none are taken while a before-snapshot hook is set/i
     );
   });
 
@@ -231,7 +284,7 @@ describe('SnapshotHooks', () => {
       manifest: { entrypoint: ['node', 'worker.js'], execution_mode: 'worker' },
     } as unknown as App);
     expect(screen.getByText(/this app runs in worker mode/i)).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'After restore' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: AFTER })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save hooks' })).not.toBeInTheDocument();
   });
 
