@@ -66,7 +66,7 @@ const failures: Record<string, { title: string; reason: string; recovery: string
     title: 'GitHub deployment connection could not be saved',
     reason: 'Gregale rejected a deployment connection that is already used by another account.',
     recovery:
-      'The same GitHub account can be used for deployments here. Contact support if this error continues.',
+      'Try connecting again. If it continues, contact support to check the existing deployment connection.',
   },
 };
 
