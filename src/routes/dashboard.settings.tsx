@@ -1,5 +1,4 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { PageHeader } from '@/components/dashboard/primitives';
 import { SegmentGroup, segmentClassName } from '@/components/dashboard/tabs';
 import { SettingsPanels } from '@/components/dashboard/settings-panels';
 import { IntegrationSettings } from '@/components/dashboard/integration-settings';
@@ -12,6 +11,7 @@ import {
   DeleteOrganization,
 } from '@/components/dashboard/organization-settings';
 import {
+  SETTINGS_SECTIONS,
   validateSettingsSearch,
   type SettingsSearch,
 } from '@/components/dashboard/settings-search';
@@ -76,7 +76,6 @@ function OrganizationScope({
           ))}
         </Select>
       </label>
-      {organization && <CreateOrganization onCreated={(org) => onSelection({ org })} />}
       {orgs.isPending ? (
         <p role="status">Loading organizations…</p>
       ) : orgs.error ? (
@@ -124,6 +123,7 @@ function OrganizationScope({
           )}
         </>
       )}
+      {organization && <CreateOrganization onCreated={(org) => onSelection({ org })} />}
     </div>
   );
 }
@@ -139,7 +139,11 @@ function SettingsPage() {
   };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Settings" />
+      {/* One visible heading per section: the tab names it and the section's
+          own sentence leads. The page heading stays for screen readers. */}
+      <h1 className="sr-only">
+        Settings: {SETTINGS_SECTIONS.find(([value]) => value === section)?.[1]}
+      </h1>
       <SettingsPanels section={section} />
       {(section === 'organization' || section === 'members') && (
         <OrganizationScope search={{ ...search, section }} onSelection={onSelection} />

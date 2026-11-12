@@ -18,6 +18,8 @@ import { errorMessage } from '@/lib/api/errors';
 import { useFocusTrap } from '@/lib/use-focus-trap';
 import { AccountDetails } from './integration-settings';
 import type { SettingsSection } from './settings-search';
+import { SettingsSummary } from './settings-kit';
+import { egressSummary, privacySummary } from './settings-words';
 
 /**
  * Where the settings people come here looking for actually live.
@@ -28,16 +30,25 @@ import type { SettingsSection } from './settings-search';
  * they are just per-app, because that is where the API keeps them — and the
  * third ("Agent API access") had no endpoint behind it at all.
  */
-const ELSEWHERE: { label: string; description: string; to: '/dashboard/apps'; cta: string }[] = [
+const ELSEWHERE: {
+  label: string;
+  term: string;
+  description: string;
+  to: '/dashboard/apps';
+  cta: string;
+}[] = [
   {
-    label: 'Scale to zero',
-    description: 'How long an app idles before it snapshots, and how many instances stay resident.',
+    label: 'Sleeping when idle',
+    term: 'Scale to zero',
+    description:
+      'How long an app waits with no traffic before it sleeps, and how many copies stay awake.',
     to: '/dashboard/apps',
     cta: 'Open an app',
   },
   {
-    label: 'Deployment alerts',
-    description: 'Webhook rules for when an app crosses a threshold, on its Alerts tab.',
+    label: 'Alerts',
+    term: 'Deployment alerts',
+    description: "A webhook when an app crosses a threshold you set, on each app's Alerts tab.",
     to: '/dashboard/apps',
     cta: 'Open an app',
   },
@@ -141,41 +152,33 @@ function DeleteAccountDialog({
 
 /** The GDPR bundle, downloaded as a file — every owned resource plus the
  * audit trail, straight from /v1/account/export. */
-function ExportPanel() {
+function ExportButton() {
   const { toast } = useToast();
   const exportAccount = useAccountExport();
   return (
-    <Panel
-      title="Export your data"
-      help="One JSON file with everything this account owns, including sealed secrets and the audit trail."
+    <Button
+      size="sm"
+      busy={exportAccount.isPending}
+      onClick={() =>
+        void exportAccount
+          .mutateAsync()
+          .then((bundle) => {
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+              type: 'application/json',
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gregale-export-${bundle.exported_at?.slice(0, 10) ?? 'now'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ kind: 'success', title: 'Export downloaded' });
+          })
+          .catch((err: unknown) => toast({ kind: 'error', title: 'Could not export', error: err }))
+      }
     >
-      <Button
-        size="sm"
-        variant="outline"
-        busy={exportAccount.isPending}
-        onClick={() =>
-          void exportAccount
-            .mutateAsync()
-            .then((bundle) => {
-              const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-                type: 'application/json',
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `gregale-export-${bundle.exported_at?.slice(0, 10) ?? 'now'}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-              toast({ kind: 'success', title: 'Export downloaded' });
-            })
-            .catch((err: unknown) =>
-              toast({ kind: 'error', title: 'Could not export', error: err })
-            )
-        }
-      >
-        Download export
-      </Button>
-    </Panel>
+      Download export
+    </Button>
   );
 }
 
@@ -243,8 +246,8 @@ function EgressExtraPanel() {
   const shownValueError = validation.submitAttempted ? valueError : undefined;
   return (
     <Panel
-      title="Egress allowlist budget"
-      help="Extra allowlist entries on top of the plan's cap, shared across apps."
+      title="Outside addresses"
+      help="Egress allowlist budget: extra CIDR entries on top of the plan's per-app cap on apps.egress_allowlist. An app with an allowlist can only connect out to the address ranges on it."
     >
       <form
         noValidate
@@ -265,7 +268,7 @@ function EgressExtraPanel() {
         }}
       >
         <label className="flex flex-col gap-1.5">
-          <span className="label-mono text-muted-foreground">Extra entries</span>
+          <span className="label-mono text-muted-foreground">Extra address ranges</span>
           <input
             name="extra"
             type="number"
@@ -285,11 +288,31 @@ function EgressExtraPanel() {
         </Button>
         {current && (
           <p className="text-xs text-muted-foreground">
-            Plan cap {current.plan_cap} per app · up to {current.max_extra} extra.
+            Your plan allows {current.plan_cap} per app. You can add up to {current.max_extra} more;
+            0 goes back to the plan.
           </p>
         )}
       </form>
     </Panel>
+  );
+}
+
+/** Rule 1 for Platform limits: what the limit means for an app, then the number. */
+function LimitsSummary() {
+  const q = useEgressExtra();
+  // A failed read says so instead of "Reading…" forever.
+  const summary = q.error
+    ? { sentence: "Your limits couldn't be read right now.", facts: [], tone: 'neutral' as const }
+    : egressSummary(q.data);
+  return (
+    <SettingsSummary
+      label="Platform limits"
+      ariaLabel="Your limits"
+      tone={summary.tone}
+      facts={summary.facts}
+    >
+      {summary.sentence}
+    </SettingsSummary>
   );
 }
 
@@ -301,6 +324,7 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
 
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deletionPending, setDeletionPending] = useState(account?.status === 'deleted_pending');
+  const privacy = privacySummary(deletionPending || account?.status === 'deleted_pending');
 
   const handleLocalReset = () => {
     setActiveOrg(null);
@@ -346,6 +370,17 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
     <div className="flex flex-col gap-6">
       {section === 'data-and-privacy' && (
         <>
+          <SettingsSummary
+            label="Data and privacy"
+            ariaLabel="Your data"
+            tone={privacy.tone}
+            facts={[
+              'The export is one JSON file: everything you own, sealed secrets and the audit trail',
+            ]}
+            actions={<ExportButton />}
+          >
+            {privacy.sentence}
+          </SettingsSummary>
           <RestoreBanner pending={deletionPending} onRestored={() => setDeletionPending(false)} />
         </>
       )}
@@ -358,7 +393,12 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
 
       {section === 'platform-limits' && (
         <>
-          <Panel title="Runtime behaviour" help="Set per app, not per account.">
+          <LimitsSummary />
+          <EgressExtraPanel />
+          <Panel
+            title="Set on each app"
+            help="These live on each app, not the account, because that is where the API keeps them."
+          >
             <ul className="flex flex-col divide-y divide-border">
               {ELSEWHERE.map((item) => (
                 <li
@@ -366,7 +406,9 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
                   className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-4 first:pt-0 last:pb-0"
                 >
                   <div>
-                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="text-sm font-medium" title={item.term}>
+                      {item.label}
+                    </p>
                     <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
                       {item.description}
                     </p>
@@ -382,7 +424,6 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
               ))}
             </ul>
           </Panel>
-          <EgressExtraPanel />
         </>
       )}
 
@@ -429,7 +470,6 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
               onConfirm={handleDeleteAccount}
             />
           )}
-          <ExportPanel />
         </>
       )}
     </div>
