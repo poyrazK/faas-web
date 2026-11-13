@@ -144,7 +144,9 @@ One entry in the registry, and read it from there:
 
 ```ts
 export const featureFlags = {
-  consoleQueuesV2: enabled(import.meta.env.VITE_FEATURE_CONSOLE_QUEUES_V2),
+  consoleQueuesV2:
+    import.meta.env.VITE_FEATURE_CONSOLE_QUEUES_V2 === '1' ||
+    import.meta.env.VITE_FEATURE_CONSOLE_QUEUES_V2 === 'true',
 } as const;
 ```
 
@@ -160,8 +162,8 @@ if (!featureFlags.consoleQueuesV2) return <QueuesCurrent />;
 different things and stay as they are.)
 
 **Keep the access literal, and do not freeze the registry.** Both a lookup
-table (`env[FLAGS[key]]`) and an `Object.freeze` wrapper stop Rollup folding the
-comparison, and the difference is not cosmetic: with either one the code behind
+table (`env[FLAGS[key]]`), shared helper calls and an `Object.freeze` wrapper stop
+Rollup folding the comparison, and the difference is not cosmetic: with either one the code behind
 a _disabled_ flag is still emitted into the production bundle, where anyone can
 read an unreleased feature in devtools. Written longhand it folds to `false` and
 the whole branch is eliminated. A test asserts this shape; the registry is
@@ -876,6 +878,21 @@ cursor. Its separate limits and permission failures are stated beside the feed.
 The account audit log remains linked for security/account events outside the
 resource timeline. Mock mode includes scoped inventory, curated actor categories,
 config/environment/domain/TLS events, and older pages.
+
+### Website sales inquiries
+
+After the matching apid intake release and migration, set
+`VITE_FEATURE_SALES_INTAKE=1` at build time to enable `/contact` and its footer
+and pricing links. Apid also requires `FAAS_SALES_ENABLED=1` and the separately
+opt-in `FAAS_SALES_INTAKE_ENABLED=1`. The same-origin typed API captures contact
+or demo requests, an optional six-character salesperson code and a signed form
+check. Retry an uncertain result with the same check to avoid duplicates. An
+expired check refreshes without clearing the message. Limits are UTF-8 bytes.
+
+The sales workspace receives assignments and manager-review requests, with an
+initial follow-up task. A contact code routes the inquiry; referral credit still
+requires entering a code during account creation. No outbound message or payout
+is triggered by the form. Both website and public intake are off by default.
 
 ### Console analytics and creation
 

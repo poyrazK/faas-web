@@ -11,8 +11,16 @@ const mocks = vi.hoisted(() => ({
   goToExternal: vi.fn(),
   openMfa: vi.fn(),
   account: { id: 'account', plan: 'free', status: 'active', limits: {} } as Record<string, unknown>,
+  checkoutReferral: {
+    data: null as { eligible: boolean; reason?: string; code?: string } | null,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  },
   billingStatus: { data: undefined, isError: false } as { data?: unknown; isError: boolean },
 }));
+
+vi.mock('@/lib/api/referrals', () => ({ useCheckoutReferral: () => mocks.checkoutReferral }));
 
 vi.mock('@/lib/api/billing-identity', () => ({
   useBillingStatus: () => mocks.billingStatus,
@@ -67,6 +75,7 @@ beforeEach(() => {
   mocks.openMfa.mockReset();
   mocks.account = { id: 'account', plan: 'free', status: 'active', limits: {} };
   mocks.billingStatus = { data: undefined, isError: false };
+  mocks.checkoutReferral = { data: null, isLoading: false, isError: false, refetch: vi.fn() };
 });
 
 describe('Subscription controls', () => {
@@ -348,5 +357,99 @@ describe('Plan change', () => {
         })
       );
     });
+  });
+});
+
+describe('Salesperson codes at first checkout', () => {
+  async function openCode() {
+    mocks.checkoutReferral.data = { eligible: true };
+    const user = userEvent.setup();
+    render(<PlansPage />);
+    await user.click(screen.getByRole('button', { name: 'Switch to Pro' }));
+    return user;
+  }
+
+  it('sends the normalized code with the plan before opening checkout', async () => {
+    mocks.changePlan.mockRejectedValue(
+      paymentRequired({ checkout_url: 'https://billing.example/new' })
+    );
+    const user = await openCode();
+    await user.type(screen.getByLabelText('Salesperson code (optional)'), 'poju43');
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await waitFor(() =>
+      expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/new')
+    );
+    expect(mocks.changePlan).toHaveBeenCalledWith({ plan: 'pro', salespersonCode: 'POJU43' });
+  });
+
+  it('validates an incomplete code and permits a purchase after clearing it', async () => {
+    mocks.changePlan.mockRejectedValue(
+      paymentRequired({ checkout_url: 'https://billing.example/new' })
+    );
+    const user = await openCode();
+    await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJ');
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    expect(mocks.changePlan).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('six-character');
+    await user.click(screen.getByRole('button', { name: 'Clear code' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledWith('pro'));
+  });
+
+  it('keeps a refused code editable and allows continuing without it', async () => {
+    mocks.changePlan
+      .mockRejectedValueOnce(
+        new ApiError({
+          status: 400,
+          code: 'referral_code_invalid',
+          title: 'Salesperson code unavailable',
+        })
+      )
+      .mockRejectedValue(paymentRequired({ checkout_url: 'https://billing.example/new' }));
+    const user = await openCode();
+    await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJU43');
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Salesperson code unavailable');
+    expect(screen.getByLabelText('Salesperson code (optional)')).toHaveValue('POJU43');
+    await user.click(screen.getByRole('button', { name: 'Clear code' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await waitFor(() =>
+      expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/new')
+    );
+    expect(mocks.changePlan).toHaveBeenLastCalledWith('pro');
+  });
+
+  it('retains the chosen code through authenticator step-up', async () => {
+    mocks.changePlan
+      .mockRejectedValueOnce(
+        new ApiError({ status: 403, code: 'step_up_required', title: 'Confirm identity' })
+      )
+      .mockRejectedValue(paymentRequired({ checkout_url: 'https://billing.example/new' }));
+    mocks.openMfa.mockImplementation(
+      (_mode: string, options: { onVerified: (via: string) => void }) =>
+        options.onVerified('authenticator')
+    );
+    const user = await openCode();
+    await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJU43');
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
+    expect(mocks.changePlan.mock.calls).toEqual([
+      [{ plan: 'pro', salespersonCode: 'POJU43' }],
+      [{ plan: 'pro', salespersonCode: 'POJU43' }],
+    ]);
+  });
+
+  it('preserves an existing referral without offering a replacement field', async () => {
+    mocks.checkoutReferral.data = { eligible: false, reason: 'already_attributed', code: 'SAVED1' };
+    mocks.changePlan.mockRejectedValue(
+      paymentRequired({ checkout_url: 'https://billing.example/new' })
+    );
+    const user = userEvent.setup();
+    render(<PlansPage />);
+    await user.click(screen.getByRole('button', { name: 'Switch to Pro' }));
+    expect(screen.getByText('Your existing referral will be kept.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Salesperson code (optional)')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    expect(mocks.changePlan).toHaveBeenCalledWith('pro');
   });
 });

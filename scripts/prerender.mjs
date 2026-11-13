@@ -45,6 +45,7 @@ const ROUTES = [
   '/signup',
   '/status',
   '/will-it-run',
+  '/contact',
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,

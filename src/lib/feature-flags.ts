@@ -22,14 +22,16 @@
  * Rollup's constant folding, and the difference is not cosmetic: with either
  * one, the code behind a disabled flag is still emitted into the production
  * bundle, where anyone can read an unreleased feature in devtools. Written as a
- * literal property over a literal `import.meta.env` access, the comparison
- * folds to `false` and the whole branch is eliminated. The registry is
- * immutable through its type instead — which is where mutation would be caught
+ * literal property with direct comparisons against `import.meta.env`, each
+ * comparison folds before the object is shared across chunks. Calling a helper
+ * for multiple flags prevents that folding and can retain disabled modules.
+ * The registry is immutable through its type instead — which is where mutation would be caught
  * anyway. Verified in both directions; see `feature-flags.test.ts`.
  */
 
 /**
- * The one place a flag string is interpreted.
+ * Flag interpretation for callers and tests. The registry repeats these simple
+ * comparisons so production builds can erase each disabled branch.
  *
  * Exported for its tests: this is the whole of the semantics, so it is what the
  * suite pins, rather than whichever flags happen to be live this week.
@@ -43,20 +45,29 @@ export function enabled(value: string | undefined): boolean {
  * `import.meta.env` directly (`feature-flags.test.ts` enforces that and names
  * the offending file).
  *
- * Keep the access literal. `enabled(import.meta.env.VITE_FEATURE_X)` folds at
- * build time; anything indirect does not.
+ * Keep the access and comparisons literal; helper calls shared by multiple
+ * flags survive minification and keep disabled modules in the bundle.
  */
 export const featureFlags = {
+  /** Website contact/demo intake; enable after the matching backend release. */
+  salesIntake:
+    import.meta.env.VITE_FEATURE_SALES_INTAKE === '1' ||
+    import.meta.env.VITE_FEATURE_SALES_INTAKE === 'true',
   /** Reference flag. Gates nothing; proves the wiring and shows the shape. */
-  example: enabled(import.meta.env.VITE_FEATURE_EXAMPLE),
+  example:
+    import.meta.env.VITE_FEATURE_EXAMPLE === '1' || import.meta.env.VITE_FEATURE_EXAMPLE === 'true',
   /** First signup: sample/repository quickstart. Existing recovery remains reachable. */
-  onboardingV2: enabled(import.meta.env.VITE_FEATURE_ONBOARDING_V2),
+  onboardingV2:
+    import.meta.env.VITE_FEATURE_ONBOARDING_V2 === '1' ||
+    import.meta.env.VITE_FEATURE_ONBOARDING_V2 === 'true',
   /**
    * Browser error capture (`lib/error-reporting.ts`). Its transport is a no-op
    * until the owner chooses where reports go, so turning this on today only
    * exercises capture and redaction.
    */
-  errorReporting: enabled(import.meta.env.VITE_FEATURE_ERROR_REPORTING),
+  errorReporting:
+    import.meta.env.VITE_FEATURE_ERROR_REPORTING === '1' ||
+    import.meta.env.VITE_FEATURE_ERROR_REPORTING === 'true',
 } as const;
 
 export type FeatureFlags = typeof featureFlags;

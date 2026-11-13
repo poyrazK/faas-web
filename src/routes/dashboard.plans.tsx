@@ -23,6 +23,7 @@ import { SpendCap } from '@/components/dashboard/spend-cap';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useBillingStatus } from '@/lib/api/billing-identity';
 import { OrgPlanSummary } from '@/components/dashboard/org-billing';
+import { CheckoutSalespersonCode } from '@/components/dashboard/checkout-salesperson-code';
 import { planAnswer } from '@/components/dashboard/plan-words';
 
 export const Route = createFileRoute('/dashboard/plans')({
@@ -203,6 +204,8 @@ function PersonalPlans() {
   const changePlan = useChangePlan();
   const portal = useBillingPortal();
   const [pending, setPending] = useState<Plan | null>(null);
+  const [salespersonCode, setSalespersonCode] = useState('');
+  const [salespersonError, setSalespersonError] = useState<string | null>(null);
   // A deferred change (202) leaves the account on its old plan, so the page
   // remembers what was asked for until the account catches up.
   const [requested, setRequested] = useState<{ plan: Plan; effectiveAt?: string } | null>(null);
@@ -257,9 +260,9 @@ function PersonalPlans() {
     return via === 'authenticator' ? 'confirmed' : 'dismissed';
   };
 
-  const apply = (plan: Plan, retried = false): Promise<void> =>
+  const apply = (plan: Plan, retried = false, code = ''): Promise<void> =>
     changePlan
-      .mutateAsync(plan)
+      .mutateAsync(code ? { plan, salespersonCode: code } : plan)
       .then(async (result) => {
         await refreshAccount().catch(() => {});
         if (result.pending) {
@@ -294,13 +297,18 @@ function PersonalPlans() {
             });
             return;
           }
-          if ((await stepUp()) === 'confirmed') return apply(plan, true);
+          if ((await stepUp()) === 'confirmed') return apply(plan, true, code);
           toast({
             kind: 'error',
             title: 'Could not change plan',
             description:
               "Confirm it's you with your authenticator code, then retry the change. Plan changes need a recent confirmation.",
           });
+          return;
+        }
+        if (err instanceof ApiError && err.code.startsWith('referral_')) {
+          setSalespersonError(err.message);
+          setPending(plan);
           return;
         }
         // An upgrade that needs payment answers 402 with the provider page
@@ -326,8 +334,14 @@ function PersonalPlans() {
   const confirm = () => {
     if (!pending) return;
     const plan = pending;
+    const code = current === 'free' && plan !== 'free' ? salespersonCode.trim().toUpperCase() : '';
+    if (code && !/^[A-Z0-9]{6}$/.test(code)) {
+      setSalespersonError('Enter a six-character salesperson code, or leave it blank.');
+      return;
+    }
+    setSalespersonError(null);
     setPending(null);
-    void apply(plan);
+    void apply(plan, false, code);
   };
 
   return (
@@ -433,7 +447,10 @@ function PersonalPlans() {
                   variant="outline"
                   className="w-full"
                   disabled={!current || changePlan.isPending}
-                  onClick={() => setPending(plan.id)}
+                  onClick={() => {
+                    setSalespersonError(null);
+                    setPending(plan.id);
+                  }}
                 >
                   Switch to {plan.name}
                 </Button>
@@ -452,9 +469,30 @@ function PersonalPlans() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            This updates your subscription straight away and may charge your payment method. Quotas
-            change immediately — moving down a plan can put existing apps over the new limits.
+            {current === 'free' && pending !== 'free' ? (
+              <>
+                Continue to payment to upgrade your personal account. Your plan changes only after
+                payment is confirmed.
+              </>
+            ) : (
+              <>
+                This updates your subscription straight away and may charge your payment method.
+                Quotas change immediately — moving down a plan can put existing apps over the new
+                limits.
+              </>
+            )}
           </p>
+          {pending !== null && pending !== 'free' && current === 'free' && (
+            <CheckoutSalespersonCode
+              accountId={account?.id ?? ''}
+              value={salespersonCode}
+              error={salespersonError}
+              onChange={(value) => {
+                setSalespersonCode(value);
+                setSalespersonError(null);
+              }}
+            />
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setPending(null)}>
               Cancel
