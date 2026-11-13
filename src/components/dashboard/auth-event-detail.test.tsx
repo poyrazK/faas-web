@@ -28,6 +28,7 @@ beforeEach(() => {
 describe('AuthEventDetail', () => {
   it('shows every field the API returned, payload included', () => {
     render(<AuthEventDetail id="1042" onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog', { name: 'Signed in to the dashboard' })).toBeInTheDocument();
     expect(screen.getByText('session.signed_in')).toBeInTheDocument();
     expect(screen.getByText('google-oauth')).toBeInTheDocument();
     expect(screen.getByText(/"ip": "203\.0\.113\.9"/)).toBeInTheDocument();

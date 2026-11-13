@@ -4,6 +4,20 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/ui/confirm';
 import { spyApi } from '@/test/api';
+import type { ProjectScope } from '@/lib/project-scope';
+
+const NO_PROJECT: ProjectScope = {
+  project: null,
+  label: '',
+  appSlugs: null,
+  settled: true,
+  choices: [],
+};
+const scope = vi.hoisted(() => ({ current: null as unknown as ProjectScope }));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scope.current,
+}));
 
 const toast = vi.fn();
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1', plan: 'pro' } }) }));
@@ -112,6 +126,7 @@ let get: ReturnType<typeof spyApi>;
 let post: ReturnType<typeof spyApi>;
 
 beforeEach(() => {
+  scope.current = NO_PROJECT;
   toast.mockReset();
   get = spyApi('GET').mockImplementation(async (path, init) => {
     const query = (init as Init | undefined)?.params?.query ?? {};
@@ -314,5 +329,47 @@ describe('Events page', () => {
     });
     expect(await screen.findByText(/Accepted for routing/)).toBeInTheDocument();
     expect(toast).toHaveBeenCalledWith({ kind: 'success', title: 'Event accepted' });
+  });
+});
+
+describe('Events in a project', () => {
+  const project = (slug: string, apps: string[] | null, settled = true): ProjectScope => ({
+    project: slug,
+    label: slug,
+    appSlugs: apps && new Set(apps),
+    settled,
+    choices: [],
+  });
+
+  it('lists only consumers on the project’s apps and says the storage is account-wide', async () => {
+    scope.current = project('internal-tools', ['search-indexer', 'nightly-etl']);
+    renderPage();
+    expect(await screen.findByText('search-indexer')).toBeInTheDocument();
+    expect(screen.getByText('1 consumer in internal-tools')).toBeInTheDocument();
+    expect(screen.getByText(/account-wide — not limited to internal-tools\./)).toBeInTheDocument();
+  });
+
+  it('names the project when none of its consumers is waiting', async () => {
+    scope.current = project('acme-shop', ['api-gateway']);
+    renderPage();
+    expect(await screen.findByText('Nothing is waiting for acme-shop apps.')).toBeInTheDocument();
+    expect(screen.queryByText('search-indexer')).toBeNull();
+    expect(screen.getByText('0 consumers in acme-shop')).toBeInTheDocument();
+  });
+
+  it('keeps every consumer without a project, with no account-wide note', async () => {
+    renderPage();
+    expect(await screen.findByText('search-indexer')).toBeInTheDocument();
+    expect(screen.getByText('1 consumer')).toBeInTheDocument();
+    expect(screen.queryByText(/not limited to/)).toBeNull();
+  });
+
+  it('shows no consumer while membership loads', async () => {
+    scope.current = project('internal-tools', null, false);
+    renderPage();
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/v1/events/backlog', expect.anything()));
+    expect(await screen.findByText(/of 16,384 allowed/)).toBeInTheDocument();
+    expect(screen.queryByText('search-indexer')).toBeNull();
+    expect(screen.queryByText('Nothing is waiting for internal-tools apps.')).toBeNull();
   });
 });

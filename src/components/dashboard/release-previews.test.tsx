@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
+import type { ScopeGate } from './scope-gate';
 
 const toast = vi.fn();
 const capability = vi.fn();
@@ -443,5 +444,54 @@ describe('ReleasePreviews in a company workspace', () => {
     );
     expect(within(detail).queryByRole('button', { name: 'Tear down preview' })).toBeNull();
     expect(within(detail).queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('ReleasePreviews inside a project', () => {
+  const gate = (appSlugs: string[] | null, settled = true): ScopeGate => ({
+    scope: {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: appSlugs ? new Set(appSlugs) : null,
+      settled,
+      choices: [],
+    },
+    pending: appSlugs === null && !settled,
+    error: undefined,
+    retry: vi.fn(),
+  });
+  const renderScoped = (scope: ScopeGate) =>
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ReleasePreviews scope={scope} />
+      </QueryClientProvider>
+    );
+
+  it('lists previews of the project’s apps, even a standalone preview, and starts new ones from its apps', async () => {
+    stubGets();
+    renderScoped(gate(['checkout']));
+    expect(await screen.findByText('pr-42-checkout')).toBeInTheDocument();
+    const form = await openForm();
+    const parents = within(form)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(parents.join(' ')).toContain('checkout');
+    expect(parents.join(' ')).not.toContain('billing');
+  });
+
+  it('names the project when none of its apps has a preview', async () => {
+    stubGets();
+    renderScoped(gate(['billing']));
+    expect(await screen.findByText(/No previews in acme-shop yet\./)).toBeInTheDocument();
+    expect(screen.queryByText('pr-42-checkout')).toBeNull();
+  });
+
+  it('keeps loading, rather than listing every preview, while membership loads', async () => {
+    stubGets();
+    renderScoped(gate(null, false));
+    expect(await screen.findByText('Loading previews…')).toBeInTheDocument();
+    expect(screen.queryByText('pr-42-checkout')).toBeNull();
   });
 });

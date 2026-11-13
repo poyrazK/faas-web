@@ -16,6 +16,7 @@ import {
   type PreviewSubscription,
 } from '@/lib/api/events';
 import { useApps } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { formatNumber } from '@/lib/mock-data';
 import { consumerName, parsePayload, type ReceiptLookup } from './event-format';
 
@@ -343,8 +344,11 @@ function PublishBody({
   const { toast } = useToast();
   const publish = usePublishEvent(accountId);
   const publishApp = usePublishAppEvent(accountId);
-  const apps = useApps({ enabled: mode === 'app' });
-  const chosenSlug = slug || apps.data?.[0]?.slug || '';
+  const appsQuery = useApps({ enabled: mode === 'app' });
+  // Inside a project, only its apps are offered.
+  const scope = useProjectScope();
+  const apps = appsQuery.data && inScope(appsQuery.data, scope, (a) => a.slug);
+  const chosenSlug = slug || apps?.[0]?.slug || '';
   const pending = publish.isPending || publishApp.isPending;
 
   const errors: Errors = {
@@ -479,9 +483,9 @@ function PublishBody({
                   {...props}
                   value={chosenSlug}
                   onChange={(e) => setSlug(e.target.value)}
-                  disabled={!apps.data?.length}
+                  disabled={!apps?.length}
                 >
-                  {(apps.data ?? []).map((a) => (
+                  {(apps ?? []).map((a) => (
                     <option key={a.slug} value={a.slug}>
                       {a.slug}
                     </option>

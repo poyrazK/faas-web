@@ -1,5 +1,6 @@
 import { ManagedPostgresUsagePanel } from '@/components/dashboard/account-postgres-usage';
 import { CostBreakdown, CostBreakdownPersonalOnly } from '@/components/dashboard/billing-costs';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
 import { ObjectStorageUsagePanel } from '@/components/dashboard/object-storage-usage';
 import { OrgUsage } from '@/components/dashboard/org-billing';
 import {
@@ -9,24 +10,40 @@ import {
   PageHeader,
   Panel,
   queryPhase,
-  Stats,
-  StatTile,
   UnreachableState,
   type QueryPhase,
 } from '@/components/dashboard/primitives';
 import { SpendCap } from '@/components/dashboard/spend-cap';
 import { SpendControl } from '@/components/dashboard/spend-control';
 import { DailyUsagePanel } from '@/components/dashboard/usage-daily';
+import {
+  computeForecastMillicents,
+  projectUsage,
+  usageAnswer,
+  type UsageTone,
+} from '@/components/dashboard/usage-words';
 import { Button } from '@/components/ui/button';
 import { slugIndex } from '@/lib/api/adapters';
+import { monthLabel } from '@/lib/api/billing-costs';
 import { ApiError } from '@/lib/api/errors';
-import { useAccountUsage, useApps, usePerAppUsage, useUsageSummary } from '@/lib/api/queries';
+import {
+  useAccountUsage,
+  useApps,
+  useBillingForecast,
+  useOverageCap,
+  usePerAppUsage,
+  useUsageSummary,
+} from '@/lib/api/queries';
+import type { components } from '@/lib/api/schema';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useAuth } from '@/lib/auth';
 import { formatCents } from '@/lib/money';
 import { consoleHead } from '@/lib/seo';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useId, useMemo, useState } from 'react';
+
+type UsageSummary = components['schemas']['UsageSummaryResponse'];
 
 export const Route = createFileRoute('/dashboard/usage')({
   component: UsagePage,
@@ -51,45 +68,104 @@ function formatMoney(cents: number | undefined): string {
   return formatCents(cents);
 }
 
+const TONE_COLOR: Record<UsageTone, string> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  critical: 'var(--status-critical)',
+};
+
+/** One small figure in the quiet strip under the answer. */
+function Figure({ label, value, title }: { label: string; value: string; title?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5" title={title}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-medium [font-variant-numeric:tabular-nums]">{value}</dd>
+    </div>
+  );
+}
+
 /**
- * Where the month ends up if the pace holds. A linear projection over the
- * metered figure — arithmetic, not a model, and labelled as such. Renders
- * nothing until the period is the current calendar month and at least a
- * full day has been metered; a projection from an hour of data is noise
- * wearing a number.
+ * The answer first (docs/console-plain-english.md): one sentence for the
+ * month, the allowance as a bar — solid for what has been used, faint for a
+ * straight-line projection to month end (current month only, from day 2) —
+ * the one action that fits, and the month's figures, smaller, under it.
+ * Wording lives in `usage-words.ts`.
  */
-/**
- * The allowance and where this month is heading: the solid bar is what has
- * been used, the faint one a straight-line projection to month end (current
- * month only, from day 2).
- */
-function AllowancePanel({
-  used,
-  included,
-  month,
-}: {
-  used: number;
-  included: number;
-  month: string | undefined;
-}) {
-  const now = new Date();
-  const [y, m] = (month ?? '').split('-').map(Number);
-  const dayOfMonth = now.getUTCDate();
-  const projecting =
-    y === now.getUTCFullYear() && m === now.getUTCMonth() + 1 && used > 0 && dayOfMonth >= 2;
-  const daysInMonth = projecting ? new Date(Date.UTC(y, m, 0)).getUTCDate() : 0;
-  const projected = projecting ? (used / dayOfMonth) * daysInMonth : used;
-  const over = used > included || projected > included;
+function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap: () => void }) {
+  const { account } = useAuth();
+  const cap = useOverageCap();
+  const forecast = useBillingForecast();
+  const used = data.used_gb_hours ?? 0;
+  const included = data.included_gb_hours ?? 0;
+  const facts = {
+    month: data.month,
+    used,
+    included,
+    overageGbHours: data.overage_gb_hours,
+    overageCents: data.overage_cents,
+  };
+  const answer = usageAnswer({
+    ...facts,
+    // Unread or failed reads leave their part out, never stand in as zero.
+    capCents: cap.data ? cap.data.overage_cap_cents : undefined,
+    forecastMillicents: computeForecastMillicents(forecast.data?.meters),
+    plan: account?.plan,
+  });
+  const { projecting, projected } = projectUsage(used, data.month);
+  const tone = TONE_COLOR[answer.tone];
   // Guard the divide: a plan with no included allowance would otherwise
   // render the bar as NaN% wide.
   const share = (v: number) => (included > 0 ? Math.min(100, (v / included) * 100) : 0);
-  const color = over ? 'var(--status-warning)' : 'var(--brand)';
+  const capLabel =
+    cap.data === undefined
+      ? undefined
+      : cap.data.overage_cap_cents === null
+        ? 'Set a cap'
+        : 'Raise cap';
 
   return (
-    <Panel title={`Allowance · ${month ?? 'this month'}`}>
+    <section
+      aria-label="This month"
+      className="surface flex flex-col gap-5 rounded-[1.25rem] bg-card p-5 sm:p-6"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="bento-label flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-block size-2 rounded-full"
+              style={{ background: tone }}
+            />
+            This month{data.month ? ` · ${monthLabel(data.month)}` : ''}
+          </p>
+          <p
+            role="status"
+            aria-label="Usage this month"
+            className="max-w-[46rem] text-xl leading-8 font-semibold tracking-[-0.015em] text-balance sm:text-2xl sm:leading-9"
+          >
+            {answer.sentence}
+          </p>
+        </div>
+        {answer.action && (
+          <div className="flex shrink-0 flex-wrap gap-2 lg:pt-7">
+            {answer.action === 'upgrade' ? (
+              <Button asChild size="sm">
+                <Link to="/dashboard/plans">Upgrade plan</Link>
+              </Button>
+            ) : (
+              capLabel && (
+                <Button size="sm" aria-haspopup="dialog" onClick={onRaiseCap}>
+                  {capLabel}
+                </Button>
+              )
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-col gap-2">
         <div
-          className="relative h-2 w-full overflow-hidden rounded-full bg-muted"
+          className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted"
           role="meter"
           aria-valuenow={Math.round(share(used))}
           aria-valuemin={0}
@@ -98,30 +174,60 @@ function AllowancePanel({
         >
           {projecting && (
             <div
-              className="absolute inset-y-0 left-0 rounded-full opacity-40"
-              style={{ width: `${share(projected)}%`, background: color }}
+              className="absolute inset-y-0 left-0 rounded-full opacity-35"
+              style={{ width: `${share(projected)}%`, background: tone }}
             />
           )}
           <div
             className="absolute inset-y-0 left-0 rounded-full"
-            style={{ width: `${share(used)}%`, background: color }}
+            style={{ width: `${share(used)}%`, background: tone }}
           />
         </div>
-        <p className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-          {formatUsageNumber(used)} of {formatUsageNumber(included)} GB-hours
-          {projecting && (
-            <>
-              {' · '}~{formatUsageNumber(projected)} by month end
-              {projected > included && (
-                <span style={{ color: 'var(--status-warning)' }}>
-                  , {formatUsageNumber(projected - included)} over
-                </span>
-              )}
-            </>
-          )}
+        <p className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+          <span>
+            {formatUsageNumber(used)} of {formatUsageNumber(included)} GB-hours included
+            {projecting && <> · ~{formatUsageNumber(projected)} by month end if the pace holds</>}
+          </span>
+          <HelpTip label="About GB-hours">
+            Compute is measured in GB-hours: memory multiplied by time. An app that is asleep uses
+            none. The faint bar is a straight line from the month so far, not a forecast model.
+          </HelpTip>
         </p>
       </div>
-    </Panel>
+
+      <dl className="well grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-muted/40 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Figure
+          label="Compute used"
+          value={`${formatUsageNumber(used)} GB-h`}
+          title="GB-hours used"
+        />
+        <Figure
+          label="Over the allowance"
+          value={`${formatUsageNumber(data.overage_gb_hours)} GB-h`}
+          title="Overage GB-hours"
+        />
+        <Figure
+          label="Overage so far"
+          value={formatMoney(data.overage_cents)}
+          title="Overage cost"
+        />
+        <Figure
+          label="CPU time"
+          value={`${formatUsageNumber(data.used_cpu_hours)} h`}
+          title="CPU hours (not billed)"
+        />
+        <Figure
+          label="Data out"
+          value={formatUsageBytes((data.used_egress_gb ?? 0) * 1024 ** 3)}
+          title="Compute egress"
+        />
+        <Figure
+          label="Data in"
+          value={formatUsageBytes((data.used_ingress_gb ?? 0) * 1024 ** 3)}
+          title="Ingress (not billed)"
+        />
+      </dl>
+    </section>
   );
 }
 
@@ -319,51 +425,33 @@ function PersonalUsage() {
   // The shared precedence: an unreachable API is an outage to wait out, not a
   // red error — and never a page of zeros.
   const phase = queryPhase({ error, loading: isPending });
+  // The headline's "Raise cap" and the spend control's own button open the
+  // same editor.
+  const [editingCap, setEditingCap] = useState(false);
 
   const used = data?.used_gb_hours ?? 0;
-  const included = data?.included_gb_hours ?? 0;
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Usage"
-        meta={data?.month && <span className="text-xs text-muted-foreground">{data.month}</span>}
-        help="GB-hours are memory × time. A parked app accrues none."
+        help="What this month has used so far. GB-hours are memory × time; an app that is asleep accrues none."
       />
 
       {phase === 'unreachable' ? (
         <UnreachableState onRetry={() => void refetch()} />
       ) : phase === 'error' ? (
         <ErrorState error={error} onRetry={() => void refetch()} />
-      ) : phase === 'loading' ? (
+      ) : phase === 'loading' || !data ? (
         <LoadingState message="Loading usage…" />
       ) : (
         <>
-          <Stats columns={6}>
-            <StatTile
-              label="GB-hours used"
-              value={formatUsageNumber(used)}
-              note={`of ${formatUsageNumber(included)} included`}
-            />
-            <StatTile
-              label="Overage"
-              value={formatUsageNumber(data?.overage_gb_hours)}
-              unit="GB-h"
-            />
-            <StatTile label="Overage cost" value={formatMoney(data?.overage_cents)} />
-            <StatTile label="CPU hours" value={formatUsageNumber(data?.used_cpu_hours)} />
-            <StatTile
-              label="Compute egress"
-              value={formatUsageBytes((data?.used_egress_gb ?? 0) * 1024 ** 3)}
-            />
-            <StatTile
-              label="Ingress"
-              value={formatUsageBytes((data?.used_ingress_gb ?? 0) * 1024 ** 3)}
-            />
-          </Stats>
-
-          <AllowancePanel used={used} included={included} month={data?.month} />
-          <SpendControl overageCents={data?.overage_cents} />
+          <UsageAnswerCard data={data} onRaiseCap={() => setEditingCap(true)} />
+          <SpendControl
+            overageCents={data.overage_cents}
+            editing={editingCap}
+            onEditingChange={setEditingCap}
+          />
           {projection ? (
             <DailyUsagePanel
               daily={projection.compute.daily}
@@ -379,12 +467,19 @@ function PersonalUsage() {
           )}
           <PerAppUsagePanel />
 
-          {/* Absent blocks mean the service is not enabled for the account. */}
-          {projection?.object_storage && (
-            <ObjectStorageUsagePanel data={projection.object_storage} />
-          )}
-          {projection?.managed_postgres && (
-            <ManagedPostgresUsagePanel data={projection.managed_postgres} />
+          {/* Secondary, so grouped and compact. Absent blocks mean the service
+              is not enabled for the account. */}
+          {(projection?.object_storage || projection?.managed_postgres) && (
+            <Panel title="Other services">
+              <div className="grid gap-3 md:grid-cols-2">
+                {projection.object_storage && (
+                  <ObjectStorageUsagePanel data={projection.object_storage} />
+                )}
+                {projection.managed_postgres && (
+                  <ManagedPostgresUsagePanel data={projection.managed_postgres} />
+                )}
+              </div>
+            </Panel>
           )}
 
           <CostBreakdown />

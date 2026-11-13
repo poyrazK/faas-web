@@ -7,9 +7,11 @@ import {
   createFileRoute,
   Outlet,
   redirect,
+  retainSearchParams,
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
+import { validateProjectSearch } from '@/lib/project-scope';
 import { DashboardShell } from '@/components/dashboard/shell';
 import { useToast } from '@/components/ui/toast';
 import { hasOnboarded, hasOnboardingGitHubReturn, readSession, useAuth } from '@/lib/auth';
@@ -17,7 +19,14 @@ import { validateSettingsSearch } from '@/components/dashboard/settings-search';
 import { validateNewAppSearch } from '@/components/dashboard/new-app-source';
 
 export const Route = createFileRoute('/dashboard')({
-  validateSearch: validateMetricDetailSearch,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...validateMetricDetailSearch(search),
+    ...validateProjectSearch(search),
+  }),
+  // The chosen project rides along as you move between pages, the way
+  // Supabase keeps you inside a project until you leave it. Links that
+  // leave (Overview, Projects, account pages) clear it explicitly.
+  search: { middlewares: [retainSearchParams(['project'])] },
   // Guards run before the route loads, so a signed-out visitor never sees a
   // flash of the shell. Session lives in localStorage, so this stays sync.
   beforeLoad: ({ location }) => {

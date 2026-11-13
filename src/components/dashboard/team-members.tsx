@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { SendMail, Trash } from 'iconoir-react';
 import { ActionDisclosure } from '@/components/ui/action-disclosure';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
@@ -26,6 +27,8 @@ import {
 } from '@/lib/api/queries';
 import { isValidEmail, useAuth } from '@/lib/auth';
 import { Timestamp } from '@/components/ui/timestamp';
+import { SettingsSummary } from './settings-kit';
+import { invitationWords, membersSummary, roleWords } from './settings-words';
 
 /**
  * Members and invitations of an organisation.
@@ -143,7 +146,15 @@ export function TeamMembersBody({
       width: 'w-40',
       render: (m) =>
         m.role === 'owner' || !canManage ? (
-          <Pill label={m.role} color={ROLE_COLOR[m.role]} />
+          <span
+            title={
+              m.role === 'owner'
+                ? 'Everything, including transferring ownership.'
+                : ROLE_HINT[m.role]
+            }
+          >
+            <Pill label={roleWords(m.role)} color={ROLE_COLOR[m.role]} />
+          </span>
         ) : (
           <Select
             value={m.role}
@@ -173,7 +184,7 @@ export function TeamMembersBody({
           >
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {roleWords(r)}
               </option>
             ))}
           </Select>
@@ -232,7 +243,7 @@ export function TeamMembersBody({
       label: 'Role',
       priority: 'secondary',
       width: 'w-28',
-      render: (i) => <Pill label={i.role} />,
+      render: (i) => <Pill label={roleWords(i.role)} />,
     },
     {
       key: 'status',
@@ -240,7 +251,7 @@ export function TeamMembersBody({
       width: 'w-28',
       render: (i) => (
         <Pill
-          label={i.status}
+          label={invitationWords(i.status)}
           color={
             i.status === 'pending'
               ? 'var(--status-warning)'
@@ -302,113 +313,143 @@ export function TeamMembersBody({
     },
   ];
 
+  const summary =
+    orgs.error || members.error
+      ? { sentence: "Members couldn't be read right now.", facts: [], tone: 'neutral' as const }
+      : membersSummary({
+          org: active,
+          personal,
+          members: members.data?.members,
+          invitations: invitations.data?.invitations,
+          role: memberRole,
+        });
+
   return (
     <div className="flex flex-col gap-6">
-      <ActionDisclosure
-        action="Invite member"
-        title="Invite a member"
-        open={inviting}
-        disabled={!active || !canInvite}
-        onOpenChange={(open) => {
-          evidence.clear();
-          setEmail('');
-          setRole('developer');
-          validation.resetValidation();
-          setInviting(open);
-        }}
-      >
-        {evidence.secret ? (
-          <OneTimeSecret
-            key={evidence.version}
-            value={evidence.secret.token}
-            title="Invitation created"
-            description={`Send this token to ${evidence.secret.email}. The server keeps only a hash.`}
-            onDismiss={evidence.clear}
-          />
-        ) : (
-          <form
-            noValidate
-            className="flex flex-wrap items-end gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (
-                !validation.validate({ email: emailError }, e.currentTarget) ||
-                !active ||
-                !canInvite ||
-                invite.isPending
-              )
-                return;
-              const receive = evidence.capture();
-              void invite
-                .mutateAsync({ email: email.trim(), role })
-                .then((result) => {
-                  if (receive({ email: result.email, token: result.token })) {
-                    setEmail('');
-                    validation.resetValidation();
-                  }
-                })
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not invite',
-                    error: err,
-                  })
-                )
-                .finally(() => invite.reset());
-            }}
-          >
-            <label className="flex min-w-64 flex-1 flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Email</span>
-              <input
-                autoFocus
-                name="email"
-                type="email"
-                maxLength={320}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                {...fieldErrorProps(shownEmailError, 'invite-email-error')}
-                placeholder="name@company.com"
-                className={FIELD}
-              />
-              {shownEmailError && (
-                <FieldError id="invite-email-error">{shownEmailError}</FieldError>
-              )}
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="label-mono text-muted-foreground">Role</span>
-              <Select
-                value={role}
-                onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
-                className={`${FIELD} min-w-36`}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <Button
-              type="submit"
-              size="sm"
-              className="gap-1.5"
-              disabled={!active || !canInvite}
-              busy={invite.isPending}
-            >
-              <SendMail className="h-3.5 w-3.5" />
-              Invite
+      <SettingsSummary
+        label="Members"
+        ariaLabel="Organization members"
+        tone={summary.tone}
+        facts={summary.facts}
+        actions={
+          personal ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/dashboard/settings" search={{ section: 'organization' }}>
+                Create an organization
+              </Link>
             </Button>
-            <p className="basis-full text-xs text-muted-foreground">{ROLE_HINT[role]}</p>
-          </form>
-        )}
-      </ActionDisclosure>
+          ) : undefined
+        }
+      >
+        {summary.sentence}
+      </SettingsSummary>
+      {!personal && (
+        <ActionDisclosure
+          action="Invite member"
+          title="Invite a member"
+          open={inviting}
+          disabled={!active || !canInvite}
+          onOpenChange={(open) => {
+            evidence.clear();
+            setEmail('');
+            setRole('developer');
+            validation.resetValidation();
+            setInviting(open);
+          }}
+        >
+          {evidence.secret ? (
+            <OneTimeSecret
+              key={evidence.version}
+              value={evidence.secret.token}
+              title="Invitation created"
+              description={`Send this token to ${evidence.secret.email}. The server keeps only a hash.`}
+              onDismiss={evidence.clear}
+            />
+          ) : (
+            <form
+              noValidate
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (
+                  !validation.validate({ email: emailError }, e.currentTarget) ||
+                  !active ||
+                  !canInvite ||
+                  invite.isPending
+                )
+                  return;
+                const receive = evidence.capture();
+                void invite
+                  .mutateAsync({ email: email.trim(), role })
+                  .then((result) => {
+                    if (receive({ email: result.email, token: result.token })) {
+                      setEmail('');
+                      validation.resetValidation();
+                    }
+                  })
+                  .catch((err: unknown) =>
+                    toast({
+                      kind: 'error',
+                      title: 'Could not invite',
+                      error: err,
+                    })
+                  )
+                  .finally(() => invite.reset());
+              }}
+            >
+              <label className="flex min-w-64 flex-1 flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Email</span>
+                <input
+                  autoFocus
+                  name="email"
+                  type="email"
+                  maxLength={320}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  {...fieldErrorProps(shownEmailError, 'invite-email-error')}
+                  placeholder="name@company.com"
+                  className={FIELD}
+                />
+                {shownEmailError && (
+                  <FieldError id="invite-email-error">{shownEmailError}</FieldError>
+                )}
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Role</span>
+                <Select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
+                  className={`${FIELD} min-w-36`}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleWords(r)}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <Button
+                type="submit"
+                size="sm"
+                className="gap-1.5"
+                disabled={!active || !canInvite}
+                busy={invite.isPending}
+              >
+                <SendMail className="h-3.5 w-3.5" />
+                Invite
+              </Button>
+              <p className="basis-full text-xs text-muted-foreground">{ROLE_HINT[role]}</p>
+            </form>
+          )}
+        </ActionDisclosure>
+      )}
       {!personal && !canInvite && members.data && !members.error && (
         <p className="text-sm text-muted-foreground">
           Only organization owners and admins can invite members.
         </p>
       )}
 
-      <Panel title="Members">
+      <Panel title="People">
         <ResourceTable
           rows={memberRows}
           columns={memberColumns}
@@ -426,27 +467,29 @@ export function TeamMembersBody({
         />
       </Panel>
 
-      <Panel title="Invitations">
-        <ResourceTable
-          rows={inviteRows}
-          columns={inviteColumns}
-          emptyMessage="No invitations."
-          emptyAction={
-            canInvite && !inviting ? (
-              <Button size="sm" onClick={() => setInviting(true)}>
-                Invite your first member
-              </Button>
-            ) : undefined
-          }
-          minWidth="min-w-[640px]"
-          loading={orgs.isPending || (Boolean(active) && invitations.isPending)}
-          error={orgs.error ?? invitations.error}
-          onRetry={() => {
-            void orgs.refetch();
-            void invitations.refetch();
-          }}
-        />
-      </Panel>
+      {!personal && (
+        <Panel title="Invitations">
+          <ResourceTable
+            rows={inviteRows}
+            columns={inviteColumns}
+            emptyMessage="No invitations."
+            emptyAction={
+              canInvite && !inviting ? (
+                <Button size="sm" onClick={() => setInviting(true)}>
+                  Invite your first member
+                </Button>
+              ) : undefined
+            }
+            minWidth="min-w-[640px]"
+            loading={orgs.isPending || (Boolean(active) && invitations.isPending)}
+            error={orgs.error ?? invitations.error}
+            onRetry={() => {
+              void orgs.refetch();
+              void invitations.refetch();
+            }}
+          />
+        </Panel>
+      )}
     </div>
   );
 }

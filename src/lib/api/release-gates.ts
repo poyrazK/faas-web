@@ -58,8 +58,14 @@ export function gateRule(gate: ReleaseGate): string {
   switch (gate.kind) {
     case 'slo':
       return `SLO ${gate.slo ?? '?'} burning faster than ${gate.max_burn_rate ?? 10}×`;
-    case 'new_errors':
-      return `More than ${gate.max_new_groups ?? 0} new error group(s) with ${gate.min_events ?? 3}+ events`;
+    case 'new_errors': {
+      const allowed = gate.max_new_groups ?? 0;
+      const events = gate.min_events ?? 3;
+      // "More than 0 new error group(s)" read as a riddle: say it as a person would.
+      return allowed === 0
+        ? `Any new kind of error seen ${events}+ times`
+        : `More than ${allowed} new ${allowed === 1 ? 'kind' : 'kinds'} of error, each seen ${events}+ times`;
+    }
     case 'custom_metric':
       return `${gate.metric} average ${gate.comparison === 'below' ? 'below' : 'above'} ${gate.threshold}`;
     case 'metric_change':

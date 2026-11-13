@@ -120,7 +120,7 @@ describe('Runtime change preview', () => {
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Max concurrency' }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Most copies at once' }), {
       target: { value: '30' },
     });
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
@@ -158,7 +158,7 @@ describe('App deletion contract copy', () => {
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Max concurrency' }), {
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Most copies at once' }), {
       target: { value: '2' },
     });
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -180,7 +180,7 @@ describe('App deletion contract copy', () => {
         </ConfirmProvider>
       </QueryClientProvider>
     );
-    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
+    const idle = screen.getByRole('spinbutton', { name: 'Sleeps after (seconds idle)' });
     await user.clear(idle);
     await user.type(idle, '30');
     expect(idle).toHaveValue(30);
@@ -196,7 +196,7 @@ describe('App deletion contract copy', () => {
         <AppConfiguration slug="alpha" section="runtime" />
       </ConfirmProvider>
     );
-    const idle = screen.getByRole('spinbutton', { name: 'Idle timeout (s)' });
+    const idle = screen.getByRole('spinbutton', { name: 'Sleeps after (seconds idle)' });
     await user.clear(idle);
     await user.type(idle, '2');
     expect(idle).toHaveValue(2);
@@ -210,7 +210,7 @@ describe('App deletion contract copy', () => {
         <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
-    const slug = screen.getByLabelText('Slug');
+    const slug = screen.getByLabelText('Name');
     await user.clear(slug);
     await user.type(slug, 'alpha-two');
     await user.click(screen.getByRole('button', { name: 'Rename' }));
@@ -225,7 +225,7 @@ describe('App deletion contract copy', () => {
         <AppConfiguration slug="alpha" section="general" />
       </ConfirmProvider>
     );
-    const slug = screen.getByLabelText('Slug');
+    const slug = screen.getByLabelText('Name');
     await user.clear(slug);
     await user.type(slug, 'tag-alpha');
     expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
@@ -237,7 +237,7 @@ describe('App deletion contract copy', () => {
       </ConfirmProvider>
     );
     expect(screen.queryByText(/Applied on the next wake/)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'About Runtime' }));
+    await userEvent.click(screen.getByRole('button', { name: 'About Size and sleep' }));
     expect(await screen.findByText(/Memory requires a fresh instance/)).toBeVisible();
   });
   it('disables memory sizes above the account limit in configuration', () => {
@@ -257,6 +257,58 @@ describe('App deletion contract copy', () => {
       </ConfirmProvider>
     );
     expect(screen.getByText('Health and restarts for alpha on scale')).toBeInTheDocument();
+  });
+  it('opens Runtime with what is set now, built from the app read', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" section="runtime" />
+      </ConfirmProvider>
+    );
+    expect(screen.getByRole('region', { name: 'What is set now' })).toHaveTextContent(
+      'alpha uses 256 MB and sleeps when idle.'
+    );
+    // Nothing to save until something changes.
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+  });
+  it('keeps technical runtime fields behind Advanced, one click away', async () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" section="runtime" />
+      </ConfirmProvider>
+    );
+    expect(screen.queryByLabelText('Overflow node')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced runtime settings' }));
+    expect(screen.getByLabelText('Overflow node')).toBeInTheDocument();
+    expect(screen.getByLabelText('Egress allowlist')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reserved' })).toHaveAttribute(
+      'title',
+      'eviction_priority: reserved'
+    );
+  });
+  it('names public URL access in plain words, keeping the mode in a title', async () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" section="runtime" />
+      </ConfirmProvider>
+    );
+    const group = screen.getByRole('group', { name: 'Public URL auth' });
+    expect(within(group).getByRole('button', { name: 'Anyone' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    await userEvent.click(within(group).getByRole('button', { name: 'Username and password' }));
+    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  });
+  it('opens Health and releases with how new versions go live', () => {
+    render(
+      <ConfirmProvider>
+        <AppConfiguration slug="alpha" section="health" />
+      </ConfirmProvider>
+    );
+    expect(screen.getByRole('region', { name: 'What is set now' })).toHaveTextContent(
+      /New versions of alpha are tried on a few requests first/
+    );
   });
   it('makes the API-assigned endpoint clickable in configuration', () => {
     render(

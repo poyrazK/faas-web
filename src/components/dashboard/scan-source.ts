@@ -9,6 +9,7 @@ export const SCAN_SOURCE_LABEL: Record<ProjectPlan['scan_source'], string> = {
   render: 'render.yaml',
   fly: 'fly.toml',
   serverless: 'serverless.yml',
+  functions: 'Functions',
   workspace: 'Workspace config',
   convention: 'Convention scan',
   single: 'Single service',

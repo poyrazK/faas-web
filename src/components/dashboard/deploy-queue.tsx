@@ -15,6 +15,8 @@ import {
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ReleaseStatusLabel } from './release-status-label';
 import { Pill } from './resource-table';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, type ScopeGate } from './scope-gate';
 
 /** The three points of faas's priority scale (ADR-124): 0 first, 100 FIFO, 1000 last. */
 const PRIORITY = {
@@ -43,7 +45,14 @@ const ref = (d: Deployment) => (d.revision ? `v${d.revision}` : d.id.slice(0, 8)
  * a deployment's priority on reads, so the list is in creation order and a
  * priority is shown only once this page has set it.
  */
-export function DeployQueue({ onOpen }: { onOpen: (deploymentId: string) => void }) {
+export function DeployQueue({
+  onOpen,
+  scope,
+}: {
+  onOpen: (deploymentId: string) => void;
+  /** Inside a project, only its apps' deployments; the queue is still the account's. */
+  scope?: ScopeGate;
+}) {
   const queue = useDeployQueue();
   const apps = useApps();
   const { access, refresh } = useCapabilityAccess('deploy-queue-controls');
@@ -54,11 +63,16 @@ export function DeployQueue({ onOpen }: { onOpen: (deploymentId: string) => void
   const { toast } = useToast();
   const [priorities, setPriorities] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const rows = queue.data ?? [];
   const slugOf = (d: Deployment) => apps.data?.find((a) => a.id === d.app_id)?.slug;
+  const scoped = scope?.scope.project ? scope : undefined;
+  // A queued deployment is placed by its app's slug, so a scoped queue waits
+  // for the app list and project membership rather than showing every app's.
+  const rows = scoped
+    ? inScope(queue.data ?? [], scoped.scope, (d) => slugOf(d) ?? '')
+    : (queue.data ?? []);
   const phase = queryPhase({
-    error: queue.error,
-    loading: queue.isPending,
+    error: queue.error ?? (scoped ? (scoped.error ?? apps.error) : undefined),
+    loading: queue.isPending || Boolean(scoped && (scoped.pending || apps.isPending)),
     isEmpty: rows.length === 0,
   });
 
@@ -138,8 +152,16 @@ export function DeployQueue({ onOpen }: { onOpen: (deploymentId: string) => void
               phase={phase}
               error={queue.error}
               loadingMessage="Reading the queue…"
-              emptyMessage="Nothing is waiting to deploy."
-              onRetry={() => void queue.refetch()}
+              emptyMessage={
+                scoped
+                  ? `Nothing ${scopedIn(scoped.scope)} is waiting to deploy.`
+                  : 'Nothing is waiting to deploy.'
+              }
+              onRetry={() => {
+                if (scoped?.error) scoped.retry();
+                if (scoped && apps.error) void apps.refetch();
+                void queue.refetch();
+              }}
             />
           </div>
         ) : (

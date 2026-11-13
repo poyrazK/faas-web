@@ -5,6 +5,21 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/ui/confirm';
 import { spyApi } from '@/test/api';
+import type { ProjectScope } from '@/lib/project-scope';
+
+// No project chosen by default (lib/project-scope.ts); the scope cases set one.
+const NO_PROJECT: ProjectScope = {
+  project: null,
+  label: '',
+  appSlugs: null,
+  settled: true,
+  choices: [],
+};
+const scope = vi.hoisted(() => ({ current: null as unknown as ProjectScope }));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scope.current,
+}));
 
 const toast = vi.fn();
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct-1', plan: 'pro' } }) }));
@@ -69,6 +84,7 @@ let put: ReturnType<typeof spyApi>;
 let del: ReturnType<typeof spyApi>;
 
 beforeEach(() => {
+  scope.current = NO_PROJECT;
   toast.mockReset();
   items = [OPENAI, GEOCODER];
   aiEnabled = true;
@@ -280,5 +296,40 @@ describe('Integrations page', () => {
     expect(screen.getByRole('link', { name: 'View plans' })).toBeInTheDocument();
     const paths = get.mock.calls.map(([path]) => path);
     expect(paths.filter((p) => /ai-|ai_/.test(p))).toEqual([]);
+  });
+});
+
+describe('Integrations in a project', () => {
+  it('keeps every integration and says they are account-wide', async () => {
+    scope.current = {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: new Set(['api-gateway']),
+      settled: true,
+      choices: [],
+    };
+    renderPage();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(screen.getByText('geocoder')).toBeInTheDocument();
+    expect(screen.getByText('Account-wide — not limited to acme-shop.')).toBeInTheDocument();
+  });
+
+  it('adds no note without a project', async () => {
+    renderPage();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(screen.queryByText(/not limited to/)).not.toBeInTheDocument();
+  });
+
+  it('lists the account’s integrations while membership loads, already marked account-wide', async () => {
+    scope.current = {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: null,
+      settled: false,
+      choices: [],
+    };
+    renderPage();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(screen.getByText('Account-wide — not limited to acme-shop.')).toBeInTheDocument();
   });
 });

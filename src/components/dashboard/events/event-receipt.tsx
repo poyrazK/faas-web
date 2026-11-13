@@ -15,6 +15,7 @@ import {
   type EventReceiptRecipient,
 } from '@/lib/api/events';
 import { useApps } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { formatNumber } from '@/lib/mock-data';
 import {
   EXECUTION_UNAVAILABLE_LABELS,
@@ -69,8 +70,11 @@ function LookupForm({
   const [id, setId] = useState(initial?.kind === 'event' ? initial.id : '');
   const [slug, setSlug] = useState(initial?.kind === 'producer' ? initial.slug : '');
   const [key, setKey] = useState(initial?.kind === 'producer' ? initial.key : '');
-  const apps = useApps({ enabled: mode === 'producer' });
-  const chosenSlug = slug || apps.data?.[0]?.slug || '';
+  const appsQuery = useApps({ enabled: mode === 'producer' });
+  // Inside a project, only its apps are offered.
+  const scope = useProjectScope();
+  const apps = appsQuery.data && inScope(appsQuery.data, scope, (a) => a.slug);
+  const chosenSlug = slug || apps?.[0]?.slug || '';
 
   const ready =
     mode === 'event' ? Boolean(source.trim() && id.trim()) : Boolean(chosenSlug && key.trim());
@@ -131,9 +135,9 @@ function LookupForm({
                   {...props}
                   value={chosenSlug}
                   onChange={(e) => setSlug(e.target.value)}
-                  disabled={!apps.data?.length}
+                  disabled={!apps?.length}
                 >
-                  {(apps.data ?? []).map((a) => (
+                  {(apps ?? []).map((a) => (
                     <option key={a.slug} value={a.slug}>
                       {a.slug}
                     </option>

@@ -5,6 +5,8 @@ import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
 import { AppScope, AppSelect, useSelectedApp } from './app-select';
+import { useProjectScope } from '@/lib/project-scope';
+import { scopedIn } from './scope-gate';
 import { InlinePhase, Panel, queryPhase, Stats, StatTile } from './primitives';
 import { Tabs, tabId } from './tabs';
 import { ResourceTable, type Column } from './resource-table';
@@ -73,6 +75,7 @@ export function AutomationsBody({
   fixedSlug,
 }: JobsSelectionProps & { fixedSlug?: string }) {
   const state = useSelectedApp();
+  const scope = useProjectScope();
   const requested = fixedSlug ?? search.app;
   const slug = requested ?? state.slug;
   const { account } = useAuth();
@@ -99,7 +102,9 @@ export function AutomationsBody({
         {unavailableApp ? (
           <Panel title="App unavailable">
             <p className="text-sm text-muted-foreground">
-              The app in this link is not in your app list.
+              {scope.project
+                ? `The app in this link is not ${scopedIn(scope)}.`
+                : 'The app in this link is not in your app list.'}
             </p>
           </Panel>
         ) : account ? (

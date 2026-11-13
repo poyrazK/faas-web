@@ -249,26 +249,34 @@ describe('global Needs attention dropdown', () => {
  * that exists only after guessing which hub owns it is a destination nobody
  * finds. This list is the contract that the second level stays visible.
  */
+/** The rail before a project is chosen: the way in, and the account's pages at its foot. */
 const RAIL = [
   'Overview',
   'Projects',
+  'Usage',
+  'Budgets',
+  'Invoices',
+  'Plans',
+  'Audit log',
+  'Support',
+  'Settings',
+];
+
+/** The rail on a project page (here across all apps): led by the way back out. */
+const PROJECT_RAIL = [
+  'Back to Overview',
   'Releases',
   'Jobs',
   'Instances',
   'Object storage',
   'Postgres',
   'Domains',
+  'Edge rules',
   'Events',
   'Integrations',
   'Customers',
   'Analytics',
   'Invocations',
-  'Audit log',
-  'Usage',
-  'Budgets',
-  'Invoices',
-  'Plans',
-  'Settings',
 ];
 
 /**
@@ -281,20 +289,20 @@ const RAIL = [
  */
 const RAIL_PARENTS = ['Billing'];
 
-/** The rail's headings and the links filed under each, in order. */
+/** The project rail's headings and the links filed under each, in order. */
 const RAIL_GROUP_ROWS: Record<string, string[]> = {
-  Compute: ['Projects', 'Releases', 'Jobs', 'Instances'],
+  Compute: ['Releases', 'Jobs', 'Instances'],
   Storage: ['Object storage', 'Postgres'],
-  Networking: ['Domains'],
+  Networking: ['Domains', 'Edge rules'],
   Messaging: ['Events', 'Integrations'],
   Monetize: ['Customers'],
-  Observe: ['Analytics', 'Invocations', 'Audit log'],
-  Account: ['Usage', 'Budgets', 'Invoices', 'Plans', 'Settings'],
+  Observe: ['Analytics', 'Invocations'],
 };
 
 /** The rows under one rail heading: the wrapper that holds the heading and its list. */
 function railGroup(main: HTMLElement, title: string) {
-  const heading = within(main).getByText(title, { selector: 'p' });
+  // A heading may carry a note after its name ("Storage · shared").
+  const heading = within(main).getByText(new RegExp(`^${title}`), { selector: 'p' });
   return within(heading.parentElement!.parentElement!);
 }
 
@@ -335,7 +343,28 @@ const GROUPS = [
 ];
 
 describe('dashboard navigation foundation', () => {
-  it('keeps every hub and section visible in desktop and mobile navigation', async () => {
+  it('shows the project menu on project pages, grouped, with a way back out', async () => {
+    await renderShell('/dashboard/releases');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(main)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('aria-label') ?? link.textContent)
+    ).toEqual(PROJECT_RAIL);
+    for (const [title, rows] of Object.entries(RAIL_GROUP_ROWS))
+      expect(
+        railGroup(main, title)
+          .getAllByRole('link')
+          .map((link) => link.textContent)
+      ).toEqual(rows);
+    expect(within(main).getByText(/^Storage/, { selector: 'p' })).toHaveTextContent('shared');
+    expect(within(main).getByRole('link', { name: 'Back to Overview' })).toHaveAttribute(
+      'href',
+      '/dashboard'
+    );
+  });
+
+  it('keeps every account destination visible before a project, desktop and mobile', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
     expect(
@@ -343,12 +372,6 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('link')
         .map((link) => link.getAttribute('aria-label') ?? link.textContent)
     ).toEqual(RAIL);
-    for (const [title, rows] of Object.entries(RAIL_GROUP_ROWS))
-      expect(
-        railGroup(main, title)
-          .getAllByRole('link')
-          .map((link) => link.textContent)
-      ).toEqual(rows);
     for (const parent of RAIL_PARENTS) {
       expect(within(main).queryByRole('link', { name: parent })).toBeNull();
       expect(within(main).getByRole('button', { name: parent })).toHaveAttribute(
@@ -370,11 +393,11 @@ describe('dashboard navigation foundation', () => {
         .getAllByRole('link')
         .map((link) => link.textContent)
     ).toEqual(RAIL);
-    await userEvent.click(within(mobile).getByRole('link', { name: 'Analytics' }));
+    await userEvent.click(within(mobile).getByRole('link', { name: 'Projects' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Navigation' })).not.toBeInTheDocument()
     );
-    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/analytics');
+    expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/projects');
   });
 
   it('marks Analytics as the sole active destination and names its breadcrumb', async () => {
@@ -481,7 +504,7 @@ describe('dashboard navigation foundation', () => {
     }
   );
 
-  it('keeps the app sections strip on per-app pages and lights Projects there', async () => {
+  it('keeps the app sections strip on per-app pages beside the project menu', async () => {
     await renderShell('/dashboard/logs');
     const sections = screen.getByRole('navigation', { name: 'App sections' });
     for (const [label, path] of [
@@ -497,18 +520,18 @@ describe('dashboard navigation foundation', () => {
       );
     }
     const main = screen.getByRole('navigation', { name: 'Main' });
-    // Logs has no rail row: the rail shows its branch, and says so only once.
-    expect(within(main).getByRole('link', { name: 'Projects' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    // Logs has no rail row, so nothing in the project menu claims the page.
+    expect(main.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
 
     await userEvent.click(within(sections).getByRole('link', { name: 'Edge rules' }));
     await waitFor(() =>
       expect(screen.getByTestId('page')).toHaveTextContent('/dashboard/edge-rules')
     );
-    expect(within(main).queryByRole('link', { name: 'Edge rules' })).not.toBeInTheDocument();
+    // Edge rules is a project menu row now, and it lights.
+    expect(within(main).getByRole('link', { name: 'Edge rules' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
   });
 
   it.each([
@@ -542,7 +565,7 @@ describe('dashboard navigation foundation', () => {
 
   it('keeps a primary link focused when focusing the collapsed rail expands it', async () => {
     window.localStorage.setItem('gregale.sidebar.collapsed', '1');
-    const router = await renderShell('/dashboard');
+    const router = await renderShell('/dashboard/releases');
     const main = screen.getByRole('navigation', { name: 'Main' });
     await act(async () => within(main).getByRole('link', { name: 'Jobs' }).focus());
     const jobs = within(main).getByRole('link', { name: 'Jobs' });
@@ -753,6 +776,13 @@ describe('dashboard navigation foundation', () => {
     ['/dashboard/apps/api', 'Projects', 'Public API', '/dashboard/projects'],
     ['/dashboard/apps/missing', 'Projects', 'App', '/dashboard/projects'],
     ['/dashboard/apps/new', 'Projects', 'New app', '/dashboard/projects'],
+    ['/dashboard/support/ticket', 'Support', 'Conversation', '/dashboard/support?scope=personal'],
+    [
+      '/dashboard/orgs/acme-corp/support/ticket',
+      'Support',
+      'Conversation',
+      '/dashboard/orgs/acme-corp/support',
+    ],
   ])(
     'shows a linked parent hub and meaningful current breadcrumb at %s',
     async (path, hub, current, anchor) => {

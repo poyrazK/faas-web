@@ -25,6 +25,11 @@ export const CHECK_NAMES: Record<Check['code'], string> = {
   maintenance: 'Maintenance',
   requests: 'Requests',
   collection: 'Health collection',
+  queue: 'Queue',
+  memory: 'Memory',
+  replicas: 'App copies',
+  backlog: 'Waiting work',
+  dead_letters: 'Failed messages',
 };
 
 /** How much a check's status weighs, as the API ranks it when it sets `status`. */

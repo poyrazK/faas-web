@@ -74,18 +74,41 @@ beforeEach(() => {
 });
 
 describe('WarmStarts', () => {
-  it('is labelled beta and shows the pool and warm snapshots on Pro', () => {
-    renderWith(web, 'pro');
+  it('is labelled beta, opens with what is set, and shows the pool and warm snapshots on Pro', async () => {
+    const user = userEvent.setup();
+    renderWith({ ...web, warm_pool_size: 1 } as App, 'pro');
     expect(screen.getByRole('heading', { name: 'Warm starts' })).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
-    const size = within(pool()).getByLabelText('Warm pool size');
-    expect(size).toHaveValue(0);
+    expect(
+      screen.getByText('1 copy is kept paused, ready to wake. Warm snapshots are on.')
+    ).toBeInTheDocument();
+    const size = within(pool()).getByLabelText('Ready-to-wake copies');
+    expect(size).toHaveValue(1);
     expect(size).toHaveAttribute('max', '4');
+    expect(size).toHaveAttribute('title', 'warm_pool_size');
     expect(pool()).toHaveTextContent(/billed while paused/i);
-    expect(pool()).toHaveTextContent(/at most 4, this app.s max concurrency/i);
+    expect(pool()).toHaveTextContent(/up to 4, this app.s most copies at once/i);
     expect(within(snapshots()).getByRole('switch', { name: 'Warm snapshots' })).toBeChecked();
+    // The capture thresholds sit behind Advanced.
+    expect(within(snapshots()).queryByLabelText('Capture after (ms)')).not.toBeInTheDocument();
+    await user.click(
+      within(snapshots()).getByRole('button', { name: 'Advanced snapshot settings' })
+    );
     expect(within(snapshots()).getByLabelText('Capture after (ms)')).toHaveValue(2000);
     expect(within(snapshots()).getByLabelText('Capture after (requests)')).toHaveValue(5);
+  });
+
+  it('offers Discard only once something changed, and puts the draft back', async () => {
+    const user = userEvent.setup();
+    renderWith(web, 'pro');
+    expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument();
+    const size = within(pool()).getByLabelText('Ready-to-wake copies');
+    await user.clear(size);
+    await user.type(size, '3');
+    expect(screen.getByRole('button', { name: 'Save warm settings' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(size).toHaveValue(0);
+    expect(screen.getByRole('button', { name: 'Save warm settings' })).toBeDisabled();
   });
 
   it('saves only what changed, and says when it applies', async () => {
@@ -93,7 +116,7 @@ describe('WarmStarts', () => {
     const user = userEvent.setup();
     renderWith(web, 'pro');
     expect(screen.getByRole('button', { name: 'Save warm settings' })).toBeDisabled();
-    const size = within(pool()).getByLabelText('Warm pool size');
+    const size = within(pool()).getByLabelText('Ready-to-wake copies');
     await user.clear(size);
     await user.type(size, '2');
     await user.click(screen.getByRole('button', { name: 'Save warm settings' }));
@@ -122,7 +145,7 @@ describe('WarmStarts', () => {
     const patch = spyApi('PATCH');
     const user = userEvent.setup();
     renderWith(web, 'pro');
-    const size = within(pool()).getByLabelText('Warm pool size');
+    const size = within(pool()).getByLabelText('Ready-to-wake copies');
     await user.clear(size);
     await user.type(size, '9');
     expect(size).toHaveAttribute('aria-invalid', 'true');
@@ -139,7 +162,7 @@ describe('WarmStarts', () => {
       'href',
       '/dashboard/plans'
     );
-    expect(within(pool()).queryByLabelText('Warm pool size')).not.toBeInTheDocument();
+    expect(within(pool()).queryByLabelText('Ready-to-wake copies')).not.toBeInTheDocument();
     expect(snapshots()).toHaveTextContent('Warm snapshots are available on Pro and Scale');
     expect(within(snapshots()).queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save warm settings' })).not.toBeInTheDocument();
@@ -147,7 +170,7 @@ describe('WarmStarts', () => {
 
   it('offers the pool on Hobby but explains that warm snapshots need Pro', () => {
     renderWith({ ...web, warm_snapshot_enabled: false } as App, 'hobby');
-    expect(within(pool()).getByLabelText('Warm pool size')).toBeInTheDocument();
+    expect(within(pool()).getByLabelText('Ready-to-wake copies')).toBeInTheDocument();
     expect(snapshots()).toHaveTextContent('Warm snapshots are available on Pro and Scale');
     expect(snapshots()).toHaveTextContent('This account is on Hobby');
     expect(within(snapshots()).getByRole('link', { name: 'Compare plans' })).toBeInTheDocument();
@@ -167,7 +190,9 @@ describe('WarmStarts', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Not enabled for this account');
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-    expect(screen.getByText(/warm pool size 2/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/saved settings still apply: 2 copies are kept paused/i)
+    ).toBeInTheDocument();
   });
 
   it('waits for the registry before offering anything to edit', () => {
@@ -188,7 +213,7 @@ describe('WarmStarts', () => {
     );
     const user = userEvent.setup();
     renderWith(web, 'hobby');
-    const size = within(pool()).getByLabelText('Warm pool size');
+    const size = within(pool()).getByLabelText('Ready-to-wake copies');
     await user.clear(size);
     await user.type(size, '1');
     await user.click(screen.getByRole('button', { name: 'Save warm settings' }));
@@ -210,7 +235,7 @@ describe('WarmStarts', () => {
     );
     const user = userEvent.setup();
     renderWith(web, 'pro');
-    await user.type(within(pool()).getByLabelText('Warm pool size'), '1');
+    await user.type(within(pool()).getByLabelText('Ready-to-wake copies'), '1');
     await user.click(screen.getByRole('button', { name: 'Save warm settings' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/not available to this account/);
     expect(mocks.refresh).toHaveBeenCalled();
@@ -229,15 +254,22 @@ describe('WarmStarts', () => {
 
   it('says why a pool can be empty, naming the organization’s spend cap in a company workspace', async () => {
     mocks.workspace = { org: 'acme', label: 'Acme Inc', ready: true };
+    const user = userEvent.setup();
     renderWith({ ...web, warm_pool_size: 2 } as App, 'pro');
     expect(await within(pool()).findByText('0 of 2 paused now')).toBeInTheDocument();
-    expect(pool()).toHaveTextContent(/Acme Inc reaches its spend cap/);
+    await user.click(screen.getByRole('button', { name: 'About Ready-to-wake copies' }));
+    expect(await screen.findByText(/Acme Inc reaches its/)).toHaveTextContent(
+      /capped by its organization/
+    );
   });
 
-  it('names the account’s own spend cap in the personal workspace', () => {
+  it('names the account’s own spend cap in the personal workspace, behind the tip', async () => {
+    const user = userEvent.setup();
     renderWith(web, 'pro');
-    expect(pool()).toHaveTextContent(/your account reaches its spend cap/i);
-    expect(within(pool()).getByRole('link', { name: 'spend cap' })).toHaveAttribute(
+    expect(pool()).not.toHaveTextContent(/spend cap/i);
+    await user.click(screen.getByRole('button', { name: 'About Ready-to-wake copies' }));
+    expect(await screen.findByText(/your account reaches its/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'spend cap' })).toHaveAttribute(
       'href',
       '/dashboard/usage'
     );
@@ -252,8 +284,11 @@ describe('WarmStarts', () => {
       'pro'
     );
     expect(within(snapshots()).getByRole('note')).toHaveTextContent(
-      /none is captured while the app has a before_checkpoint hook/i
+      /none is taken while the app has a before-snapshot hook \(before_checkpoint\)/i
     );
+    expect(
+      screen.getByText(/none are taken while a before-snapshot hook is set/i)
+    ).toBeInTheDocument();
   });
 
   it('explains that workers and jobs keep no pool and take no warm snapshots', () => {

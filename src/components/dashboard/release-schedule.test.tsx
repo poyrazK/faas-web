@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { Deployment } from '@/lib/api/queries';
 import type { ScheduledRelease } from '@/lib/api/scheduled-releases';
+import type { ScopeGate } from './scope-gate';
 
 const m = vi.hoisted(() => ({
   save: vi.fn(),
@@ -224,5 +225,52 @@ describe('ScheduledReleases', () => {
         'Nothing is scheduled, so new versions start their rollout as soon as they’re ready.'
       )
     ).toBeInTheDocument();
+  });
+});
+
+describe('ScheduledReleases inside a project', () => {
+  const gate = (appSlugs: string[] | null, settled = true): ScopeGate => ({
+    scope: {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: appSlugs ? new Set(appSlugs) : null,
+      settled,
+      choices: [],
+    },
+    pending: appSlugs === null && !settled,
+    error: undefined,
+    retry: vi.fn(),
+  });
+
+  beforeEach(() => {
+    m.list = [
+      pending({ id: 's1', app: 'api-gateway', revision: 7 }),
+      pending({ id: 's2', app: 'nightly-etl', revision: 9 }),
+    ];
+  });
+
+  it('lists only the project’s schedules', () => {
+    render(<ScheduledReleases scope={gate(['api-gateway'])} />);
+    const list = screen.getByRole('list', { name: 'Scheduled releases' });
+    expect(list).toHaveTextContent('api-gateway v7');
+    expect(list).not.toHaveTextContent('nightly-etl');
+  });
+
+  it('names the project when nothing in it is scheduled', () => {
+    render(<ScheduledReleases scope={gate(['image-resize'])} />);
+    expect(screen.getByText(/Nothing in acme-shop is scheduled/)).toBeInTheDocument();
+  });
+
+  it('reads schedules, rather than listing every app’s, while membership loads', () => {
+    render(<ScheduledReleases scope={gate(null, false)} />);
+    expect(screen.getByText('Reading schedules…')).toBeInTheDocument();
+    expect(screen.queryByText(/nightly-etl/)).toBeNull();
+  });
+
+  it('lists every schedule with no project chosen', () => {
+    render(<ScheduledReleases />);
+    expect(screen.getByRole('list', { name: 'Scheduled releases' })).toHaveTextContent(
+      'nightly-etl v9'
+    );
   });
 });

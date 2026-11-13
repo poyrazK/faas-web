@@ -24,6 +24,7 @@ import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useBillingStatus } from '@/lib/api/billing-identity';
 import { OrgPlanSummary } from '@/components/dashboard/org-billing';
 import { CheckoutSalespersonCode } from '@/components/dashboard/checkout-salesperson-code';
+import { planAnswer } from '@/components/dashboard/plan-words';
 
 export const Route = createFileRoute('/dashboard/plans')({
   component: PlansPage,
@@ -169,6 +170,12 @@ function BillingControlsPanel() {
  * reports the pending state, so the plan flipping is the only signal. */
 const PENDING_POLL_MS = 15_000;
 const PENDING_POLL_WINDOW_MS = 3 * 60_000;
+
+const PLAN_TONE = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  critical: 'var(--status-critical)',
+} as const;
 
 const planName = (id: Plan) => PLANS.find((p) => p.id === id)?.name ?? id;
 
@@ -368,6 +375,20 @@ function PersonalPlans() {
           </Button>
         }
       />
+      {account && (
+        <p
+          role="status"
+          aria-label="Plan status"
+          className="flex max-w-[44rem] items-start gap-2.5 text-lg leading-7 font-semibold tracking-[-0.01em] text-balance"
+        >
+          <span
+            aria-hidden
+            className="mt-2.5 inline-block size-2 shrink-0 rounded-full"
+            style={{ background: PLAN_TONE[planAnswer(account).tone] }}
+          />
+          {planAnswer(account).sentence}
+        </p>
+      )}
       <AppCapacity />
 
       {awaiting && requested && (

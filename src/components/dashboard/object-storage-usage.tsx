@@ -1,4 +1,5 @@
-import { Panel, Stats, StatTile } from '@/components/dashboard/primitives';
+import { HelpTip } from '@/components/dashboard/kit/help-tip';
+import { ServiceFigure } from '@/components/dashboard/service-figure';
 import type { components } from '@/lib/api/schema';
 import { ACCOUNT_CURRENCY } from '@/lib/money';
 
@@ -52,58 +53,66 @@ function pct(used: number, cap: number): string | undefined {
   return `${Math.round((used / cap) * 100)}% of ${bytes(cap)}`;
 }
 
+/**
+ * Object storage as a compact block for the Usage page's "Other services":
+ * secondary to compute, so four small figures, with the per-part charges one
+ * tip away.
+ */
 export function ObjectStorageUsagePanel({ data }: { data: ObjectStorageUsage }) {
   const { usage, policy, charges } = data;
+  const since = new Date(usage.period_start).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
 
   return (
-    <Panel
-      title="Object storage"
-      padded={false}
-      actions={
-        <span className="text-xs text-muted-foreground">
-          Since {new Date(usage.period_start).toLocaleDateString()}
-          {!usage.fresh && (
-            <span style={{ color: 'var(--status-warning)' }}>
-              {' '}
-              · The last report is stale; these figures lag behind.
-            </span>
-          )}
-        </span>
-      }
-      help={`Since ${new Date(usage.period_start).toLocaleDateString()}.${usage.fresh ? '' : ' The last report is stale; these figures lag behind.'}`}
+    <section
+      aria-label="Object storage"
+      className="well flex min-w-0 flex-col gap-3 rounded-xl bg-muted/40 p-4"
     >
-      <Stats columns={4}>
-        <StatTile
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-sm font-semibold">Object storage</h3>
+        <span className="text-xs text-muted-foreground">Since {since}</span>
+      </header>
+      {!usage.fresh && (
+        <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
+          The last report is stale; these figures lag behind.
+        </p>
+      )}
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <ServiceFigure
           label="Stored"
           value={bytes(usage.observed_bytes)}
           note={pct(usage.observed_bytes, policy.max_account_bytes)}
         />
-        <StatTile
-          label="Requests"
-          value={usage.request_count}
-          note={`cap ${policy.max_monthly_requests.toLocaleString()}/month`}
-          tone="grey"
-        />
-        <StatTile
-          label="Storage egress"
-          value={bytes(usage.egress_bytes)}
-          note={`cap ${bytes(policy.max_monthly_egress_bytes)}/month`}
-          tone="orange"
-        />
-        <StatTile
+        <ServiceFigure
           label="Cost so far"
           value={
             charges
               ? money(charges.total_millicents, charges.currency)
               : money(usage.cost_millicents)
           }
-          note={
-            charges
-              ? `storage ${money(charges.storage_millicents, charges.currency)} · requests ${money(charges.requests_millicents, charges.currency)} · egress ${money(charges.egress_millicents, charges.currency)}`
-              : undefined
+          extra={
+            charges && (
+              <HelpTip label="Object storage charges">
+                Storage {money(charges.storage_millicents, charges.currency)} · requests{' '}
+                {money(charges.requests_millicents, charges.currency)} · data out{' '}
+                {money(charges.egress_millicents, charges.currency)}
+              </HelpTip>
+            )
           }
         />
-      </Stats>
-    </Panel>
+        <ServiceFigure
+          label="Requests"
+          value={usage.request_count.toLocaleString()}
+          note={`of ${policy.max_monthly_requests.toLocaleString()} a month`}
+        />
+        <ServiceFigure
+          label="Data out"
+          value={bytes(usage.egress_bytes)}
+          note={`of ${bytes(policy.max_monthly_egress_bytes)} a month`}
+        />
+      </dl>
+    </section>
   );
 }

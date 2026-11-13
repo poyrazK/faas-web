@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { ReleaseFreeze } from '@/lib/api/release-freezes';
+import type { ScopeGate } from './scope-gate';
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
@@ -227,5 +228,58 @@ describe('FrozenRefusal', () => {
     await userEvent.type(within(alert).getByLabelText('Override reason'), 'hotfix');
     await userEvent.click(within(alert).getByRole('button', { name: 'Release anyway' }));
     expect(onOverride).toHaveBeenCalledWith('hotfix');
+  });
+});
+
+describe('ReleaseFreezes inside a project', () => {
+  const gate = (appSlugs: string[] | null, settled = true): ScopeGate => ({
+    scope: {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: appSlugs ? new Set(appSlugs) : null,
+      settled,
+      choices: [],
+    },
+    pending: appSlugs === null && !settled,
+    error:
+      appSlugs === null && settled
+        ? new Error('Couldn’t read which apps are in acme-shop')
+        : undefined,
+    retry: vi.fn(),
+  });
+
+  beforeEach(() => {
+    m.freezes = [
+      freeze({ id: 'mine', app: 'api-gateway', reason: 'gateway incident' }),
+      freeze({ id: 'other', app: 'nightly-etl', reason: 'etl migration' }),
+      freeze({ id: 'all', app: undefined, reason: 'holiday freeze', active: false }),
+    ];
+  });
+
+  it('keeps the project’s freezes and freezes on every app, and says the latter hold it too', () => {
+    render(<ReleaseFreezes owner={{ kind: 'account' }} scope={gate(['api-gateway'])} />);
+    const card = screen.getByRole('region', { name: 'Freezes' });
+    expect(card).toHaveTextContent('gateway incident');
+    expect(card).toHaveTextContent('holiday freeze');
+    expect(card).toHaveTextContent('Covers every personal app of your account');
+    expect(card).not.toHaveTextContent('etl migration');
+    expect(card).toHaveTextContent(
+      /they also hold the apps in acme-shop, and lifting one frees every app/
+    );
+  });
+
+  it('reads freezes, rather than listing every app’s, while membership loads', () => {
+    render(<ReleaseFreezes owner={{ kind: 'account' }} scope={gate(null, false)} />);
+    const card = screen.getByRole('region', { name: 'Freezes' });
+    expect(card).toHaveTextContent('Reading freezes…');
+    expect(card).not.toHaveTextContent('etl migration');
+    expect(card).not.toHaveTextContent('holiday freeze');
+  });
+
+  it('lists every freeze with no project chosen', () => {
+    render(<ReleaseFreezes owner={{ kind: 'account' }} />);
+    const card = screen.getByRole('region', { name: 'Freezes' });
+    expect(card).toHaveTextContent('etl migration');
+    expect(card).not.toHaveTextContent(/also hold/);
   });
 });

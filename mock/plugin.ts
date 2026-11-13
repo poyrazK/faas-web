@@ -51,6 +51,7 @@ import { registerForkMocks } from './forks';
 import { registerEventConsumerMocks } from './event-consumers';
 import { registerProfileCaptureMocks } from './profile-captures';
 import { registerListenerMocks } from './listeners';
+import { registerSupportMocks } from './support';
 import { mockOpenAPIPreview } from './openapi-preview';
 import { isDigestPinnedImage } from '../src/lib/oci-image';
 import { advancePolicy, mockRuntimePolicy } from './runtime-policy';
@@ -7723,7 +7724,12 @@ function challengeExpiry(domain: string): number {
 const txtRecordFor = (domain: string) =>
   `_gregale-challenge.${domain.replace(/^\*\./, '')} TXT "${db.id()}"`;
 
-route('GET', '/v1/domains', () => db.domains);
+// The list carries each domain's TLS state as the API does (the detail route
+// derives the same in mock/domain-detail.ts), so certificate wording on the
+// Domains page has something to read.
+route('GET', '/v1/domains', () =>
+  db.domains.map((d) => ({ cert_status: d.verified ? 'issued' : 'pending', ...d }))
+);
 // Binds by `app_id` (an id or, as the API also accepts, a slug). Adding a domain
 // that is pending with an expired challenge re-arms it: a new token and a new
 // seven-day window. A verified domain or a live challenge is a 409. A wildcard
@@ -11277,12 +11283,14 @@ route('GET', '/v1/billing/forecast', () => {
     period_end: end.toISOString(),
     as_of: now.toISOString(),
     currency: 'EUR',
+    // Meter and component names as faas sends them (pkg/financial,
+    // pkg/billing/financial_visibility.go).
     meters: [
-      meter('gb_hours', 1_480_000),
-      meter('egress_gb', undefined, 'egress has less than 7 days of complete history'),
+      meter('compute', 1_480_000),
+      meter('egress', undefined, 'egress has less than 7 days of complete history'),
     ],
     bill_estimate_available: false,
-    missing_bill_components: ['egress_gb', 'tax'],
+    missing_bill_components: ['subscription_and_addons', 'tax'],
   };
 });
 // The signed-in account's cost report (faas handlers_financial.go:15-80): one
@@ -12696,6 +12704,7 @@ registerForkMocks(route, Problem, NO_CONTENT, {
 });
 registerEventConsumerMocks(route, Problem);
 registerListenerMocks(route, Problem, NO_CONTENT);
+registerSupportMocks(route, Problem);
 
 // --- Managed realtime (mock/realtime.ts) ---------------------------------------
 

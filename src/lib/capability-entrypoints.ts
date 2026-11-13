@@ -16,6 +16,7 @@ interface Entrypoint {
   instruction?: string;
 }
 const TARGETS: Record<string, Entrypoint> = {
+  'customer-support': { href: '/dashboard/support', label: 'Open support' },
   'object-storage': { href: '/dashboard/storage', label: 'Open storage' },
   'github-deploys': { href: '/dashboard/apps/new?source=git', label: 'Deploy from Git' },
   'source-deploy': { href: '/dashboard/apps/new', label: 'Create an app' },

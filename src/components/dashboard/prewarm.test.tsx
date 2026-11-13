@@ -26,13 +26,27 @@ beforeEach(() => {
   state.confirm.mockReset().mockResolvedValue(true);
 });
 
+/** The form sits behind "Schedule a warm-up". */
+async function renderForm() {
+  render(<PrewarmPanel slug="api" />);
+  await userEvent.click(screen.getByRole('button', { name: 'Schedule a warm-up' }));
+}
+
 describe('PrewarmPanel', () => {
-  it('schedules a future window as instants', async () => {
+  it('says what is coming up, with the form behind one button', async () => {
     render(<PrewarmPanel slug="api" />);
-    const count = screen.getByLabelText('Instances');
+    expect(screen.getByText('No warm-ups are coming up.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Copies')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule a warm-up' }));
+    expect(screen.getByLabelText('Copies')).toBeInTheDocument();
+  });
+
+  it('schedules a future window as instants', async () => {
+    await renderForm();
+    const count = screen.getByLabelText('Copies');
     await userEvent.clear(count);
     await userEvent.type(count, '3');
-    await userEvent.click(screen.getByRole('button', { name: 'Schedule prewarm' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     await waitFor(() => expect(state.schedule).toHaveBeenCalled());
     const body = state.schedule.mock.calls[0][0];
     expect(body.count).toBe(3);
@@ -41,24 +55,24 @@ describe('PrewarmPanel', () => {
   });
 
   it('refuses a window that ends before it starts', async () => {
-    render(<PrewarmPanel slug="api" />);
+    await renderForm();
     const until = screen.getByLabelText('Until');
     await userEvent.clear(until);
     await userEvent.type(until, '2020-01-01T00:00');
-    await userEvent.click(screen.getByRole('button', { name: 'Schedule prewarm' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     expect(screen.getByText('The window must end after it starts.')).toBeInTheDocument();
     expect(state.schedule).not.toHaveBeenCalled();
   });
 
   it('refuses a window that has already started', async () => {
-    render(<PrewarmPanel slug="api" />);
+    await renderForm();
     const from = screen.getByLabelText('From');
     await userEvent.clear(from);
     await userEvent.type(from, '2020-01-01T00:00');
     const until = screen.getByLabelText('Until');
     await userEvent.clear(until);
     await userEvent.type(until, '2020-01-01T02:00');
-    await userEvent.click(screen.getByRole('button', { name: 'Schedule prewarm' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     expect(screen.getByText('The window must start in the future.')).toBeInTheDocument();
     expect(state.schedule).not.toHaveBeenCalled();
   });
@@ -88,8 +102,11 @@ describe('PrewarmPanel', () => {
       },
     ];
     render(<PrewarmPanel slug="api" />);
-    expect(screen.getByText('2 of 4 instances')).toBeInTheDocument();
-    const cancels = screen.getAllByRole('button', { name: 'Cancel' });
+    expect(screen.getByText('1 warm-up is scheduled.')).toBeInTheDocument();
+    expect(screen.getByText('2 of 4 copies')).toBeInTheDocument();
+    expect(screen.getByText('Scheduled')).toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    const cancels = screen.getAllByRole('button', { name: 'Cancel this warm-up' });
     expect(cancels).toHaveLength(1);
     await userEvent.click(cancels[0]);
     await waitFor(() => expect(state.cancel).toHaveBeenCalledWith('p1'));
