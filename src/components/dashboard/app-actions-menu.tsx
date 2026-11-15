@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { MoreHoriz, Pause, Play, Refresh, Trash, Undo } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import type { Workflow } from '@/lib/mock-data';
+import { formatRelative, type Deployment, type Workflow } from '@/lib/mock-data';
 import { useParkApp, useWakeApp } from '@/lib/api/queries';
 import { RESTORE_CONTEXT, RESTORE_TARGET } from '@/lib/platform-claims';
 import { useData } from '@/lib/store';
@@ -25,18 +25,91 @@ import { useTearDownPreview } from './preview-actions';
  * the ones they rarely want. Each item keeps the confirmation it had as a
  * button; destructive ones sit below a separator.
  */
-export function AppActionsMenu({
-  app,
-  canRollback,
-  isDeploying,
-}: {
-  app: Workflow;
-  canRollback: boolean;
-  isDeploying: boolean;
-}) {
+/**
+ * Rolling back: `POST /v1/apps/{slug}/rollback` with no body, which brings back
+ * the most recent superseded release. `target` names it when the deployments
+ * say which one it is.
+ */
+function useRollbackAction(
+  app: Workflow,
+  target: Pick<Deployment, 'version' | 'createdAt'> | null
+) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { redeploy } = useData();
+  const where = target ? `${target.version}, deployed ${formatRelative(target.createdAt)}` : null;
+  return async () => {
+    if (
+      !(await confirm({
+        title: `Roll back ${app.name}?`,
+        description: `${
+          where
+            ? `${app.name} goes back to ${where}.`
+            : 'The platform brings back the most recent replaced release.'
+        } The current release stays in history, so you can roll forward again.`,
+        confirmLabel: 'Roll back',
+        destructive: true,
+      }))
+    )
+      return;
+    // The 202 names the earlier deployment it re-activates (apid
+    // rollbackAppCore writes no new row); acceptance does not mean it is
+    // serving yet: a readiness check runs first.
+    try {
+      const deployment = await redeploy(app.id);
+      toast({
+        kind: 'success',
+        title: 'Rollback queued',
+        description: `Returning to deployment ${deployment.id.slice(0, 12)}. It serves once its readiness check passes.`,
+      });
+    } catch (err) {
+      toast({ kind: 'error', title: 'Rollback failed', error: err });
+    }
+  };
+}
+
+/**
+ * Roll back, in the header beside Deploy: the way out of a bad release
+ * should be one click away, not inside a menu. It names where it goes.
+ */
+export function RollbackButton({
+  app,
+  target,
+  isDeploying,
+}: {
+  app: Workflow;
+  target: Pick<Deployment, 'version' | 'createdAt'> | null;
+  isDeploying: boolean;
+}) {
+  const rollback = useRollbackAction(app, target);
+  const [pending, setPending] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="gap-1.5"
+      disabled={isDeploying || pending}
+      title={
+        isDeploying
+          ? 'Wait for the current deploy to finish'
+          : target
+            ? `Go back to ${target.version}, deployed ${formatRelative(target.createdAt)}`
+            : 'Go back to the previous release'
+      }
+      onClick={() => {
+        setPending(true);
+        void rollback().finally(() => setPending(false));
+      }}
+    >
+      <Undo aria-hidden className="h-4 w-4" />
+      Roll back
+    </Button>
+  );
+}
+
+export function AppActionsMenu({ app }: { app: Workflow }) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
   const park = useParkApp();
   const wake = useWakeApp();
   const restart = useRestartAction(app.id);
@@ -74,32 +147,6 @@ export function AppActionsMenu({
     }
   };
 
-  const onRollback = async () => {
-    if (
-      !(await confirm({
-        title: `Roll back ${app.name}?`,
-        description:
-          'The platform brings back the most recent superseded release. The current release remains in history to roll forward to.',
-        confirmLabel: 'Roll back',
-        destructive: true,
-      }))
-    )
-      return;
-    // `POST /v1/apps/{slug}/rollback` answers 202 with the earlier deployment
-    // it re-activates (apid rollbackAppCore writes no new row), and acceptance
-    // does not mean it is serving yet: a readiness check runs first.
-    try {
-      const deployment = await redeploy(app.id);
-      toast({
-        kind: 'success',
-        title: 'Rollback queued',
-        description: `Returning to deployment ${deployment.id.slice(0, 12)}. It serves once its readiness check passes.`,
-      });
-    } catch (err) {
-      toast({ kind: 'error', title: 'Rollback failed', error: err });
-    }
-  };
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild ref={trigger}>
@@ -126,12 +173,6 @@ export function AppActionsMenu({
           <Refresh aria-hidden className="h-3.5 w-3.5" />
           Restart
         </DropdownMenuItem>
-        {canRollback && (
-          <DropdownMenuItem disabled={isDeploying} onSelect={() => run(onRollback)}>
-            <Undo aria-hidden className="h-3.5 w-3.5" />
-            {isDeploying ? 'Roll back (deploying…)' : 'Roll back'}
-          </DropdownMenuItem>
-        )}
         {tearDown.available && (
           <>
             <DropdownMenuSeparator />

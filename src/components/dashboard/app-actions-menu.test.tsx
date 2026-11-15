@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workflow } from '@/lib/mock-data';
-import { AppActionsMenu } from './app-actions-menu';
+import { AppActionsMenu, RollbackButton } from './app-actions-menu';
 
 const mocks = vi.hoisted(() => ({
   redeploy: vi.fn(),
@@ -28,13 +28,24 @@ beforeEach(() => {
   mocks.toast.mockReset();
 });
 
-describe('App actions: roll back', () => {
-  it('reports a queued rollback, not a finished one', async () => {
+describe('Roll back, beside Deploy', () => {
+  it('names where it goes, confirms, and reports a queued rollback, not a finished one', async () => {
     const user = userEvent.setup();
-    render(<AppActionsMenu app={app} canRollback isDeploying={false} />);
-    await user.click(screen.getByRole('button', { name: 'More app actions' }));
-    await user.click(
-      within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Roll back' })
+    render(
+      <RollbackButton
+        app={app}
+        target={{ version: 'v42', createdAt: Date.now() - 2 * 3_600_000 }}
+        isDeploying={false}
+      />
+    );
+    const button = screen.getByRole('button', { name: 'Roll back' });
+    expect(button).toHaveAttribute('title', 'Go back to v42, deployed 2h ago');
+    await user.click(button);
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Roll back alpha?',
+        description: expect.stringMatching(/^alpha goes back to v42, deployed 2h ago\./),
+      })
     );
     await waitFor(() => expect(mocks.redeploy).toHaveBeenCalledWith('alpha'));
     await waitFor(() =>
@@ -46,9 +57,26 @@ describe('App actions: roll back', () => {
           'Returning to deployment 0123456789ab. It serves once its readiness check passes.',
       })
     );
-    expect(mocks.toast).not.toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringMatching(/new deployment/i) })
-    );
     expect(mocks.toast).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Rolled back' }));
+  });
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    mocks.confirm.mockResolvedValue(false);
+    render(<RollbackButton app={app} target={null} isDeploying={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Roll back' }));
+    expect(mocks.redeploy).not.toHaveBeenCalled();
+  });
+
+  it('waits while a deploy is running', () => {
+    render(<RollbackButton app={app} target={null} isDeploying />);
+    expect(screen.getByRole('button', { name: 'Roll back' })).toBeDisabled();
+  });
+
+  it('is no longer hidden in the actions menu', async () => {
+    render(<AppActionsMenu app={app} />);
+    await userEvent.click(screen.getByRole('button', { name: 'More app actions' }));
+    expect(
+      within(await screen.findByRole('menu')).queryByRole('menuitem', { name: /Roll back/ })
+    ).not.toBeInTheDocument();
   });
 });
