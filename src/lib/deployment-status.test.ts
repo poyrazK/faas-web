@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deploymentPhase,
   hasRollbackTarget,
+  rollbackTarget,
   hasLogSource,
   hasRunnableDeployment,
   isDeploymentTerminal,
@@ -79,5 +80,31 @@ describe('hasLogSource', () => {
     expect(hasLogSource([{ state: 'building' }])).toBe(false);
     expect(hasLogSource([{ state: 'failed' }])).toBe(true);
     expect(hasLogSource([{ state: 'succeeded' }])).toBe(true);
+  });
+});
+
+describe('rollbackTarget', () => {
+  const d = (id: string, state: string, status: string | undefined, createdAt: number) => ({
+    id,
+    state,
+    status,
+    createdAt,
+  });
+
+  it('names the most recent superseded release, the one a plain rollback returns to', () => {
+    expect(
+      rollbackTarget([
+        d('live', 'succeeded', 'live', 30),
+        d('older', 'succeeded', 'superseded', 10),
+        d('newer', 'succeeded', 'superseded', 20),
+        d('broken', 'failed', 'failed', 25),
+      ])?.id
+    ).toBe('newer');
+  });
+
+  it('names none when no release reports superseded', () => {
+    expect(
+      rollbackTarget([d('a', 'succeeded', undefined, 1), d('b', 'succeeded', 'live', 2)])
+    ).toBeNull();
   });
 });

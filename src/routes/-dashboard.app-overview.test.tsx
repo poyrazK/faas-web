@@ -577,14 +577,15 @@ describe('App header', () => {
       expect(link.getAttribute('href') ?? '').not.toMatch(/^javascript:/i);
   });
 
-  it('keeps Deploy as the one header button and the rest in the actions menu', async () => {
+  it('shows Roll back beside Deploy and keeps the rest in the actions menu', async () => {
     fixtures.deployments = [
       deployment(),
       deployment({ id: 'release-old', created_at: '2026-09-11T12:00:00Z' }),
     ];
     await mount();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
-    for (const name of ['Park', 'Restart', 'Roll back'])
+    expect(screen.getByRole('button', { name: 'Roll back' })).toBeInTheDocument();
+    for (const name of ['Park', 'Restart'])
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'More app actions' }));
     const menu = await screen.findByRole('menu');
@@ -592,7 +593,13 @@ describe('App header', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent)
-    ).toEqual(['Park', 'Restart', 'Roll back']);
+    ).toEqual(['Park', 'Restart']);
+  });
+
+  it('offers no Roll back with nothing to return to', async () => {
+    fixtures.deployments = [deployment()];
+    await mount();
+    expect(screen.queryByRole('button', { name: 'Roll back' })).not.toBeInTheDocument();
   });
 });
 
