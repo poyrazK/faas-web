@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DOC_ENTRIES } from './lib/docs-manifest';
 
 /**
  * Guards the prerendered output.
@@ -122,6 +123,49 @@ describeBuilt('prerendered pages', () => {
       expect(sitemap).toContain('<loc>https://gregale.dev/docs/api</loc>');
       expect(sitemap).toContain('<loc>https://gregale.dev/docs/api/deployments</loc>');
     });
+
+    it('keeps every API group addressable with its own content and canonical', () => {
+      const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+      const groups = [...sitemap.matchAll(/<loc>([^<]+\/docs\/api\/[^<]+)<\/loc>/g)];
+      expect(groups.length).toBeGreaterThan(10);
+      const hosting = JSON.parse(readFileSync('vercel.json', 'utf8')).routes as {
+        src?: string;
+        handle?: string;
+        continue?: boolean;
+      }[];
+      const beforeFiles = hosting.slice(
+        0,
+        hosting.findIndex((rule) => rule.handle === 'filesystem')
+      );
+      for (const [, url] of groups) {
+        const path = new URL(url).pathname;
+        expect(
+          beforeFiles.find((rule) => rule.src && !rule.continue && new RegExp(rule.src).test(path)),
+          path
+        ).toBeUndefined();
+        const html = readFileSync(`dist${path}/index.html`, 'utf8');
+        expect(html, path).toContain(`<link rel="canonical" href="${url}" />`);
+        expect(html, path).not.toContain('<title>API reference · Gregale</title>');
+        expect(html, path).not.toContain('rel="alternate" type="text/markdown"');
+      }
+    });
+
+    it('does not advertise an ungenerated Markdown copy of the API index', () => {
+      expect(readFileSync('dist/docs/api/index.html', 'utf8')).not.toContain(
+        'rel="alternate" type="text/markdown"'
+      );
+    });
+  });
+
+  it('keeps guide Markdown alternates linked to real Markdown output', () => {
+    for (const entry of DOC_ENTRIES) {
+      const path = `/docs/${entry.slug}.md`;
+      const html = readFileSync(`dist/docs/${entry.slug}/index.html`, 'utf8');
+      expect(html, entry.slug).toContain(
+        `<link rel="alternate" type="text/markdown" href="${path}" />`
+      );
+      expect(readFileSync(`dist${path}`, 'utf8'), path).toContain(`# ${entry.title}\n`);
+    }
   });
 
   describe('indexing directives', () => {

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { securityHeaders } from '@/lib/security-headers';
+import { DOC_ENTRIES } from '@/lib/docs-manifest';
+import { DOC_ALIASES } from '@/lib/docs-catalog';
 
 interface Route {
   src?: string;
@@ -14,7 +16,66 @@ const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
   routes: Route[];
 };
 
+function beforeFilesystem(path: string) {
+  const filesystem = config.routes.findIndex((route) => 'handle' in route);
+  return config.routes
+    .slice(0, filesystem)
+    .find((route) => route.src && !route.continue && new RegExp(route.src).test(path));
+}
+
+function alternateHostRule(path: string) {
+  return readFileSync('public/_redirects', 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() && !line.startsWith('#'))
+    .map((line) => line.trim().split(/\s+/))
+    .find(([source]) => {
+      const pattern = source
+        .split('/')
+        .map((segment) =>
+          segment === '*'
+            ? '.*'
+            : segment.startsWith(':')
+              ? '[^/]+'
+              : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        )
+        .join('/');
+      return new RegExp(`^${pattern}$`).test(path);
+    });
+}
+
 describe('public hosting contract', () => {
+  it.each([
+    '/docs/api',
+    '/docs/api/apps',
+    '/docs/api/apps/',
+    '/docs/api/deployments',
+    '/docs/api/not-a-group',
+    '/docs/api/apps.md',
+    '/docs/api/not-a-group/child',
+  ])('lets the filesystem resolve API reference path %s without a parent redirect', (path) => {
+    expect(beforeFilesystem(path)).toBeUndefined();
+    expect(alternateHostRule(path)).toBeUndefined();
+  });
+
+  it('preserves legacy child links for every published guide and alias', () => {
+    const parents = new Set([
+      ...DOC_ENTRIES.map((entry) => entry.slug),
+      ...Object.keys(DOC_ALIASES).filter((slug) => !slug.includes('/')),
+    ]);
+    for (const parent of parents) {
+      const path = `/docs/${parent}/legacy-section`;
+      expect(beforeFilesystem(path), path).toMatchObject({
+        status: 308,
+        headers: { Location: '/docs/$1' },
+      });
+      expect(alternateHostRule(path), path).toEqual([
+        `/docs/${parent}/*`,
+        `/docs/${parent}`,
+        '301',
+      ]);
+    }
+  });
+
   it('returns a host-level 404 for unknown documentation routes', () => {
     const filesystem = config.routes.findIndex((route) => 'handle' in route);
     const docs404 = config.routes.findIndex(
@@ -79,6 +140,9 @@ it.each([
   '/dashboard/not-a-page',
   '/assets/missing.js',
   '/docs/not-a-page',
+  '/docs/api/not-a-group',
+  '/docs/api.md',
+  '/docs/api/apps.md',
 ])('returns 404 for an unpublished URL %s', (path) => {
   expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
 });

@@ -682,7 +682,7 @@ export const LEDGER: LedgerEntry[] = [
   // E97 · preview
   {
     row: 97,
-    name: 'Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery',
+    name: 'Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery (broker semantics: [broker-triggers.md](broker-triggers.md))',
     status: 'full',
     surfaces: ['/dashboard/triggers'],
     capability: 'event-triggers',
@@ -1012,10 +1012,10 @@ export const LEDGER: LedgerEntry[] = [
     // The cost breakdown (GET /v1/billing/costs) is on personal Usage; apid
     // has no organization cost route, and a company's Usage page says so.
   },
-  // H152 · beta
+  // H152 · GA
   {
     row: 152,
-    name: 'Budgets: policies, projections, alerts and channels, automatic stops (strict budgets)',
+    name: 'Budgets: policies, projections, alerts and channels, preview stops (GA, ADR-20261107160000); strict budgets that stop workloads stay beta',
     // Alert, Stop previews and Strict cap over every scope, with preview,
     // revisions, channels and recorded stops. Strict caps show apid's "not
     // released" refusal and fall back to a draft; API-only responses
