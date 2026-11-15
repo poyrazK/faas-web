@@ -242,6 +242,8 @@ function PerAppUsagePanel() {
     return (q.data ?? [])
       .map((u) => ({
         slug: bySlug.get(u.app_id) ?? u.app_id.slice(0, 8),
+        // A deleted app still has usage this month but no page to open.
+        known: bySlug.has(u.app_id),
         gbHours: (u.mb_seconds ?? 0) / 1024 / 3600,
         requests: u.requests ?? 0,
         coldBoots: u.cold_boots ?? 0,
@@ -305,8 +307,22 @@ function PerAppUsagePanel() {
             </thead>
             <tbody className="divide-y divide-border">
               {(expanded ? rows : rows.slice(0, 5)).map((r) => (
-                <tr key={r.slug}>
-                  <td className="px-5 py-2.5 font-mono text-xs">{r.slug}</td>
+                <tr key={r.slug} className="transition-colors hover:bg-muted/40">
+                  <td className="px-5 py-2.5 font-mono text-xs">
+                    {r.known ? (
+                      <Link
+                        to="/dashboard/apps/$appSlug"
+                        params={{ appSlug: r.slug }}
+                        className="text-foreground underline-offset-4 hover:text-brand hover:underline"
+                      >
+                        {r.slug}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground" title="This app was deleted">
+                        {r.slug}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-2.5 text-right [font-variant-numeric:tabular-nums]">
                     {formatUsageNumber(r.gbHours)}
                   </td>

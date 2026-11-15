@@ -7,6 +7,7 @@ const setCap = vi.fn();
 const toast = vi.fn();
 const usage = vi.hoisted(() => ({
   rows: [] as { app_id: string; mb_seconds: number; requests: number; cold_boots: number }[],
+  apps: [] as { id: string; slug: string }[],
   projection: {} as Record<string, unknown>,
   breakdown: { isPending: false, error: null as unknown, refetch: (() => {}) as () => void },
   reads: 0,
@@ -44,7 +45,7 @@ vi.mock('@/lib/api/queries', () => ({
     usage.reads++;
     return { data: usage.projection, ...usage.breakdown };
   },
-  useApps: () => ({ data: [] }),
+  useApps: () => ({ data: usage.apps }),
   usePerAppUsage: () => ({ data: usage.rows, isPending: false, error: null }),
   useSetOverageCap: () => ({ mutateAsync: setCap, isPending: false }),
   useOverageCap: () => ({
@@ -242,6 +243,25 @@ describe('compact per-app usage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }));
     expect(within(table).getAllByRole('row')).toHaveLength(6);
     expect(toggle).toHaveFocus();
+  });
+  it('opens an app from its row, and leaves a deleted app as plain text', () => {
+    usage.apps = [{ id: 'app-1', slug: 'api-gateway' }];
+    usage.rows = [
+      { app_id: 'app-1', mb_seconds: 2 * 1024 * 3600, requests: 1, cold_boots: 0 },
+      { app_id: 'gone-0000-1111', mb_seconds: 1024 * 3600, requests: 1, cold_boots: 0 },
+    ];
+    try {
+      render(<UsagePage />);
+      const table = within(screen.getByRole('table'));
+      expect(table.getByRole('link', { name: 'api-gateway' })).toHaveAttribute(
+        'href',
+        '/dashboard/apps/$appSlug'
+      );
+      expect(table.queryByRole('link', { name: 'gone-000' })).not.toBeInTheDocument();
+      expect(table.getByText('gone-000')).toHaveAttribute('title', 'This app was deleted');
+    } finally {
+      usage.apps = [];
+    }
   });
   it.each([0, 3, 5])('does not offer expansion for %s apps', (count) => {
     usage.rows = Array.from({ length: count }, (_, i) => ({
