@@ -34,12 +34,15 @@ describe('Process', () => {
     expect(cards[0]).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('links beta hosting capabilities to their published guides', async () => {
+  it('links the first deployment and verification to one quickstart guide', async () => {
     render(withRouter(<Process />));
     await screen.findAllByRole('button');
     // jsdom reports no `min-width` match, so every card renders open here.
     const hrefs = new Set(screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? ''));
-    for (const slug of ['deploy-from-source', 'deploy-from-github', 'storage', 'runtime-node']) {
+    for (const label of ['Guided first deploy', 'Verify your first deployment']) {
+      expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', '/docs/quickstart');
+    }
+    for (const slug of ['storage', 'runtime-node']) {
       expect(hrefs).toContain(`/docs/${slug}`);
     }
   });
