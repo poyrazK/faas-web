@@ -141,9 +141,11 @@ function FormError({ message }: { message: string }) {
 export function PasswordFlow({
   mode,
   redirectTo,
+  description,
 }: {
   mode: 'signin' | 'signup';
   redirectTo?: string;
+  description?: string;
 }) {
   const copy = COPY[mode];
   const sweepNavigate = useSweepNavigate();
@@ -356,7 +358,7 @@ export function PasswordFlow({
   return (
     <motion.div key="credentials" {...enter(-12)}>
       <h1 className="text-2xl font-semibold tracking-tight">{copy.title}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{copy.subtitle}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{description ?? copy.subtitle}</p>
 
       <div className="mt-7 flex gap-2">
         <SsoButton

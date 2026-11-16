@@ -10,10 +10,15 @@ import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/login')({
   head: () => pageHead({ title: 'Sign in' }),
-  validateSearch: (search: Record<string, unknown>): { next?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { next?: string; reauth?: 1 } => ({
     next: safeInternalPath(search.next),
+    reauth: search.reauth === '1' || search.reauth === 1 || search.reauth === true ? 1 : undefined,
   }),
   beforeLoad: ({ search }) => {
+    // The server requires a fresh session before authorizing an agent. A
+    // stored session hint cannot satisfy that requirement: redirecting it
+    // straight back to `next` loops until the failed-auth limiter stops it.
+    if (search.reauth) return;
     // OAuth returns through a full-page provider redirect. There is no
     // reliable session hint yet. Restore the pending destination only after
     // AuthProvider verifies the cookie, even if an older hint is present.
@@ -32,10 +37,10 @@ export const Route = createFileRoute('/login')({
 });
 
 function LoginPage() {
-  const { next } = Route.useSearch();
+  const { next, reauth } = Route.useSearch();
   const [returning] = useState(hasOAuthPending);
   const { sessionError } = useAuth();
-  if (returning && (hasOAuthPending() || sessionError))
+  if (!reauth && returning && (hasOAuthPending() || sessionError))
     return (
       <AuthLayout>
         <OAuthHandoff />
@@ -44,7 +49,11 @@ function LoginPage() {
 
   return (
     <AuthLayout>
-      <PasswordFlow mode="signin" redirectTo={next} />
+      <PasswordFlow
+        mode="signin"
+        redirectTo={next}
+        description={reauth ? 'Sign in again to continue authorizing your connection.' : undefined}
+      />
     </AuthLayout>
   );
 }
