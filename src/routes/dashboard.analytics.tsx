@@ -6,6 +6,7 @@ import {
 } from '@/components/dashboard/account-analytics';
 import { validateAppAnalyticsSearch } from '@/components/dashboard/app-analytics-search';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { useProjectScope } from '@/lib/project-scope';
 import { consoleHead } from '@/lib/seo';
 
 /** A link from before one app's analytics moved to its Metrics section. */
@@ -73,10 +74,11 @@ function AnalyticsPage() {
     });
   };
 
+  const scope = useProjectScope();
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Account analytics"
+        title={scope.project ? `${scope.label} analytics` : 'Account analytics'}
         actions={<AnalyticsWindowSelector search={search} setSearch={setSearch} />}
       />
       <p className="-mt-2 max-w-3xl text-sm text-muted-foreground">

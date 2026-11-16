@@ -11,6 +11,19 @@ const mocks = vi.hoisted(() => ({
   rollup: vi.fn(),
   retry: vi.fn(),
 }));
+const scope = vi.hoisted(() => ({
+  current: { project: null, label: '', appSlugs: null, settled: true, choices: [] } as {
+    project: string | null;
+    label: string;
+    appSlugs: Set<string> | null;
+    settled: boolean;
+    choices: never[];
+  },
+}));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scope.current,
+}));
 vi.mock('@/lib/api/queries', () => ({
   useAppAnalytics: mocks.summary,
   useAppAnalyticsTimeseries: mocks.series,
@@ -44,6 +57,7 @@ const request: MetricDetailRequest = {
 const ready = (data: unknown) => ({ data, error: null, isPending: false, refetch: mocks.retry });
 beforeEach(() => {
   vi.clearAllMocks();
+  scope.current = { project: null, label: '', appSlugs: null, settled: true, choices: [] };
   mocks.summary.mockReturnValue(ready(summary));
   mocks.series.mockReturnValue(ready({ ...summary, points: [point] }));
 });
@@ -139,4 +153,36 @@ it('shows account scalars and app rankings without inventing an account time ser
     app: 'api',
     source: undefined,
   });
+});
+
+it('adds up only the project’s apps in the add-up view, rates weighted by traffic', () => {
+  scope.current = {
+    project: 'acme-shop',
+    label: 'acme-shop',
+    appSlugs: new Set(['api', 'img']),
+    settled: true,
+    choices: [],
+  };
+  const app = (request_count: number, rate: number) => ({
+    source: 'prometheus',
+    request_count,
+    error_rate_pct: rate,
+    cold_start_pct: rate,
+  });
+  mocks.rollup.mockReturnValue(
+    ready({
+      source: 'prometheus',
+      apps: { api: app(900, 1), img: app(100, 10), other: app(5_000, 50) },
+    })
+  );
+  render(
+    <MetricDetail
+      request={{ metric: 'cold_rate', since: '24h', source: 'rollup' }}
+      onChange={vi.fn()}
+    />
+  );
+  expect(screen.getByText(/^acme-shop · Last 24h/)).toBeInTheDocument();
+  // (9 + 10) / 1,000 requests — `other` is outside the project.
+  expect(screen.getByText('1.90%')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /other/ })).not.toBeInTheDocument();
 });

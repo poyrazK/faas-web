@@ -18,6 +18,7 @@ import {
   type SafetyAction,
 } from './release-safety-words';
 import { ScheduledReleases } from './release-schedule';
+import type { ScopeGate } from './scope-gate';
 
 /** The explanation each mechanism's `?` gives, also when the account does not have it. */
 const HELP = {
@@ -245,7 +246,14 @@ function AlsoHolding({
  * releases. A section the account does not have is left out rather than
  * explained, since the page is about releases, not previews.
  */
-export function WorkspaceReleaseGuards({ onOpen }: { onOpen: (deploymentId: string) => void }) {
+export function WorkspaceReleaseGuards({
+  onOpen,
+  scope,
+}: {
+  onOpen: (deploymentId: string) => void;
+  /** Inside a project: its apps' schedules and freezes, plus freezes on every app. */
+  scope?: ScopeGate;
+}) {
   const workspace = useWorkspaceTarget();
   return (
     <>
@@ -253,11 +261,12 @@ export function WorkspaceReleaseGuards({ onOpen }: { onOpen: (deploymentId: stri
         {workspace.ready && (
           <ReleaseFreezes
             owner={workspace.org ? { kind: 'org', org: workspace.org } : { kind: 'account' }}
+            scope={scope}
           />
         )}
       </WhenCapable>
       <WhenCapable capability="scheduled-releases">
-        <ScheduledReleases onOpen={onOpen} />
+        <ScheduledReleases onOpen={onOpen} scope={scope} />
       </WhenCapable>
     </>
   );

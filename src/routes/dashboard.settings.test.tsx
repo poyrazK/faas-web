@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('settings form trust and validation', () => {
   it('does not turn an empty egress-budget submission into zero', async () => {
     render(<SettingsPanels section="platform-limits" />);
-    const extra = screen.getByRole('spinbutton', { name: 'Extra entries' });
+    const extra = screen.getByRole('spinbutton', { name: 'Extra address ranges' });
     await userEvent.type(extra, '{Enter}');
 
     expect(extra).toHaveAccessibleDescription('Enter a whole number from 0 to 32.');
@@ -71,7 +71,7 @@ describe('settings form trust and validation', () => {
 
   it('blocks non-integer and over-limit egress budgets, then supports API retry and success', async () => {
     render(<SettingsPanels section="platform-limits" />);
-    const extra = screen.getByRole('spinbutton', { name: 'Extra entries' });
+    const extra = screen.getByRole('spinbutton', { name: 'Extra address ranges' });
 
     await userEvent.clear(extra);
     await userEvent.type(extra, '33');

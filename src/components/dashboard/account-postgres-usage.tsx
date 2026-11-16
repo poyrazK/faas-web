@@ -1,7 +1,7 @@
 import { CheckCircle, Circle, Pause, WarningTriangle } from 'iconoir-react';
 import type { components } from '@/lib/api/schema';
 import { formatUsageBytes, formatUsageNumber } from '@/lib/usage-format';
-import { Panel, StatTile } from './primitives';
+import { ServiceFigure } from './service-figure';
 
 type ManagedPostgresUsage = components['schemas']['ManagedPostgresUsageResponse'];
 
@@ -50,29 +50,35 @@ export function postgresStanding(usage: ManagedPostgresUsage): { tone: Tone; lab
 /**
  * Managed PostgreSQL this month, from the `managed_postgres` block of
  * `GET /v1/account/usage`: present only when the plan includes it. Every
- * field is a month-to-date scalar, so it is figures, not a chart.
+ * field is a month-to-date scalar, so it is figures, not a chart — compact,
+ * as one of the Usage page's "Other services".
  */
 export function ManagedPostgresUsagePanel({ data }: { data: ManagedPostgresUsage }) {
   const standing = postgresStanding(data);
   const { color, icon: Icon } = TONE[standing.tone];
   return (
-    <Panel
-      title="Managed PostgreSQL"
-      help={`Since ${new Date(data.period_start).toLocaleDateString()}.${data.fresh ? '' : ' The last observation is stale; these figures lag behind.'}`}
-      actions={
+    <section
+      aria-label="Managed PostgreSQL"
+      className="well flex min-w-0 flex-col gap-3 rounded-xl bg-muted/40 p-4"
+    >
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-sm font-semibold">Managed PostgreSQL</h3>
         <span className="inline-flex items-center gap-1.5 text-xs" style={{ color }}>
           <Icon aria-hidden className="h-3.5 w-3.5" />
           {standing.label}
         </span>
-      }
-    >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
+      </header>
+      {!data.fresh && (
+        <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
+          The last observation is stale; these figures lag behind.
+        </p>
+      )}
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <ServiceFigure
           label="Databases"
           value={`${data.ready_databases} of ${data.database_limit}`}
-          tone="grey"
         />
-        <StatTile
+        <ServiceFigure
           label="Compute"
           value={cuHours(data.compute_unit_seconds)}
           note={
@@ -81,14 +87,13 @@ export function ManagedPostgresUsagePanel({ data }: { data: ManagedPostgresUsage
               : undefined
           }
         />
-        <StatTile
+        <ServiceFigure
           label="Storage"
           value={gibMonths(data.storage_byte_seconds)}
           note={`of ${gibMonths(data.storage_byte_seconds_limit)}`}
-          tone="orange"
         />
-        <StatTile label="Egress" value={formatUsageBytes(data.egress_bytes)} tone="grey" />
-      </div>
-    </Panel>
+        <ServiceFigure label="Data out" value={formatUsageBytes(data.egress_bytes)} />
+      </dl>
+    </section>
   );
 }

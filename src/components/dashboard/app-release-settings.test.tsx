@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,13 +39,16 @@ const web = {
   function_concurrency: undefined,
 } as unknown as App;
 
-function renderWith(app: App) {
+/** Renders with "Advanced release settings" opened, unless asked not to. */
+function renderWith(app: App, { advanced = true } = {}) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <AppReleaseSettings app={app} />
     </QueryClientProvider>
   );
+  if (advanced) fireEvent.click(screen.getByRole('button', { name: 'Advanced release settings' }));
+  return view;
 }
 
 const accepted = (body: object) => ({ data: body, response: new Response() }) as never;
@@ -77,7 +80,7 @@ describe('AppReleaseSettings', () => {
     mocks.confirm.mockResolvedValue(false);
     const user = userEvent.setup();
     renderWith(web);
-    await user.click(screen.getByRole('button', { name: /immediate/i }));
+    await user.click(screen.getByRole('button', { name: /all at once/i }));
     await user.click(screen.getByRole('button', { name: 'Save release settings' }));
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
     expect(mocks.confirm.mock.calls[0][0].description).toMatch(/approval/i);
@@ -91,22 +94,33 @@ describe('AppReleaseSettings', () => {
     );
     const user = userEvent.setup();
     renderWith(web);
-    await user.click(screen.getByRole('button', { name: /immediate/i }));
+    await user.click(screen.getByRole('button', { name: /all at once/i }));
     await user.click(screen.getByRole('button', { name: 'Save release settings' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
 
-  it('shows the effective policy, what each one does, and where else it is set', () => {
+  it('keeps probe paths and function concurrency behind Advanced', () => {
+    renderWith(fn, { advanced: false });
+    expect(screen.queryByLabelText('Rollout probe paths')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Function concurrency')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced release settings' }));
+    expect(screen.getByLabelText('Function concurrency')).toBeInTheDocument();
+  });
+
+  it('shows the effective policy in plain words, with the exact preset in its title', () => {
     renderWith(web);
     const policy = screen.getByRole('group', { name: 'Release policy' });
-    expect(within(policy).getByRole('button', { name: /fast/i })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    const quick = within(policy).getByRole('button', { name: /quick/i });
+    expect(quick).toHaveAttribute('aria-pressed', 'true');
+    expect(quick).toHaveAttribute('title', expect.stringMatching(/^fast: .*5%, 50%, then 100%/));
+    const careful = within(policy).getByRole('button', { name: /careful \(recommended\)/i });
+    expect(careful).toHaveTextContent(/tries the new version on a few requests first/i);
+    expect(careful).toHaveAttribute('title', expect.stringMatching(/^safe: .*1%, 10%, 50%/));
+    expect(within(policy).getByRole('button', { name: /all at once/i })).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^immediate: all traffic moves at once/i)
     );
-    expect(within(policy).getByText(/1%, 10%, 50%, then 100%/)).toBeInTheDocument();
-    expect(within(policy).getByText(/5%, 50%, then 100%/)).toBeInTheDocument();
-    expect(within(policy).getByText(/all traffic moves at once/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Rollout probe paths')).toHaveValue('/healthz\n/api/orders');
     // Where else each is set lives behind its label's "?".
     expect(screen.getByRole('button', { name: 'About Release policy' })).toBeInTheDocument();
@@ -117,7 +131,10 @@ describe('AppReleaseSettings', () => {
 
   it('reads an app that never set a policy as safe', () => {
     renderWith({ ...fn, release_policy: undefined } as unknown as App);
-    expect(screen.getByRole('button', { name: /safe/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /careful/i })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
     expect(screen.getByLabelText('Rollout probe paths')).toHaveValue('');
   });
 
@@ -129,7 +146,7 @@ describe('AppReleaseSettings', () => {
     renderWith(web);
     const save = screen.getByRole('button', { name: 'Save release settings' });
     expect(save).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: /immediate/i }));
+    await user.click(screen.getByRole('button', { name: /all at once/i }));
     await user.click(save);
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(patch).toHaveBeenCalledWith('/v1/apps/{slug}', {
@@ -184,8 +201,8 @@ describe('AppReleaseSettings', () => {
   it('notes the probes are idle while the policy is immediate', async () => {
     const user = userEvent.setup();
     renderWith(web);
-    await user.click(screen.getByRole('button', { name: /immediate/i }));
-    expect(screen.getByText(/not used while the policy is immediate/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /all at once/i }));
+    expect(screen.getByText(/not used while the policy is all at once/i)).toBeInTheDocument();
   });
 
   it('edits function concurrency within the plan bound, from the next deploy', async () => {
@@ -235,15 +252,15 @@ describe('AppReleaseSettings', () => {
 
     it('keeps fast and immediate, but not newly choosing safe or probe paths', () => {
       renderWith(web);
-      expect(screen.getByRole('button', { name: /safe/i })).toBeDisabled();
-      expect(screen.getByRole('button', { name: /immediate/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /careful/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /all at once/i })).toBeEnabled();
       expect(screen.getByLabelText('Rollout probe paths')).toBeDisabled();
       expect(screen.getByText(/progressive rollouts/i)).toBeInTheDocument();
     });
 
     it('leaves safe selectable when it is already the policy', () => {
       renderWith(fn);
-      expect(screen.getByRole('button', { name: /safe/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /careful/i })).toBeEnabled();
     });
 
     it('still edits function concurrency, which autoscaling owns', () => {
@@ -258,7 +275,7 @@ describe('AppReleaseSettings', () => {
     );
     const user = userEvent.setup();
     renderWith(web);
-    await user.click(screen.getByRole('button', { name: /safe/i }));
+    await user.click(screen.getByRole('button', { name: /careful/i }));
     await user.click(screen.getByRole('button', { name: 'Save release settings' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/not released/i);
     expect(mocks.refresh).toHaveBeenCalled();

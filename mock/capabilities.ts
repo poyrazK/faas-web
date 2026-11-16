@@ -6,6 +6,17 @@ const PAID: Plan[] = ['hobby', 'pro', 'scale'];
 /** Synthetic account availability, not evidence of runtime qualification. */
 const entries: Capability[] = [
   {
+    key: 'customer-support',
+    name: 'Customer support',
+    category: 'account',
+    description: 'Private and organization support conversations.',
+    maturity: 'preview',
+    plans: ALL,
+    docs_url: '/docs/customer-support',
+    acceptance: 'mock-only',
+    enabled: true,
+  },
+  {
     key: 'ai-gateway',
     name: 'AI gateway',
     category: 'data',

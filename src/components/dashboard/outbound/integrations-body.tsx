@@ -13,6 +13,7 @@ import {
 } from '@/lib/api/outbound';
 import { useAuth } from '@/lib/auth';
 import { formatNumber } from '@/lib/mock-data';
+import { useProjectScope } from '@/lib/project-scope';
 import { AIGatewayView } from './ai-gateway';
 import { CreateIntegrationDialog } from './integration-create';
 import { IntegrationDetail, type DetailSection } from './integration-detail';
@@ -111,6 +112,8 @@ export function IntegrationsBody({
   onView: (view: IntegrationsView) => void;
 }) {
   const accountId = useAuth().account?.id ?? '';
+  // Integrations belong to the account; apps bind to them from their own page.
+  const scope = useProjectScope();
   const list = useOutboundIntegrations(accountId);
   const usages = useOutboundUsages(
     accountId,
@@ -163,6 +166,11 @@ export function IntegrationsBody({
           { key: 'ai', label: 'AI gateway' },
         ]}
       />
+      {scope.project && (
+        <p className="-mt-3 text-xs text-muted-foreground">
+          Account-wide — not limited to {scope.label}.
+        </p>
+      )}
       <div id="integrations-panel" role="tabpanel">
         {view === 'integrations' ? (
           <Panel>

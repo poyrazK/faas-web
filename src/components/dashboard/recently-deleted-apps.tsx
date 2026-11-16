@@ -117,7 +117,11 @@ function Row({
  * its window. Restoring by ID rather than slug means a reused name can never
  * redirect the restore to a different app.
  */
-export function RecentlyDeletedApps() {
+/**
+ * `note`: a quiet line under the list — inside a project, that deleted apps
+ * are the account's, since a deleted app no longer belongs to any project.
+ */
+export function RecentlyDeletedApps({ note }: { note?: string | null } = {}) {
   const { account } = useAuth();
   const accountId = account?.id ?? '';
   const inventory = useDeletedApps(accountId);
@@ -204,6 +208,9 @@ export function RecentlyDeletedApps() {
             onRetry={() => void inventory.refetch()}
           />
         </div>
+      )}
+      {note && (
+        <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">{note}</p>
       )}
     </Panel>
   );

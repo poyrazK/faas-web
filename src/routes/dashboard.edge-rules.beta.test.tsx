@@ -5,6 +5,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 /** The rules table as a beta surface: its label, log mode, conditions, and the off state. */
 
+// No project chosen (lib/project-scope.ts): the page behaves as before.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({ project: null, label: '', appSlugs: null, settled: true, choices: [] }),
+}));
+
 const state = vi.hoisted(() => ({
   access: 'on',
   rules: [] as unknown[],

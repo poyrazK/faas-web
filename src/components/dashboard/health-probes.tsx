@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, Select, fieldErrorProps } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
 import { errorMessage } from '@/lib/api/errors';
@@ -19,6 +18,9 @@ import {
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { FieldLabel } from './kit/field-label';
 import { HelpTip } from './kit/help-tip';
+import { SaveButton } from './save-button';
+import { RESTART_WORDS } from './app-settings-words';
+import { Disclosure } from './settings-kit';
 
 /**
  * Health probes and the restart contract (ledger C47).
@@ -40,38 +42,52 @@ const PLAN_NAMES: Record<Plan, string> = {
 };
 
 const PROBE_LINES: Record<'startup' | 'readiness' | 'liveness', string> = {
-  startup: 'Gates a new instance: no traffic until it passes, within the startup deadline below.',
+  startup:
+    'Startup check (healthcheck): gates a new instance. No traffic until it passes, within the startup deadline.',
   readiness:
-    'While running, an instance that fails it is taken out of routing without restarting, and comes back when it passes.',
+    'Readiness probe: while running, an instance that fails it is taken out of routing without restarting, and comes back when it passes.',
   liveness:
-    'While running, an instance that fails it repeatedly is destroyed and cold-booted. Three such restarts in five minutes park the app.',
+    'Liveness probe: while running, an instance that fails it repeatedly is destroyed and cold-booted. Three such restarts in five minutes park the app.',
 };
 
-function Tag({ kind }: { kind: ProbeView['kind'] }) {
-  if (kind === 'set') return null;
+/** Only a platform default is marked: an `off` probe already says so in its words. */
+function DefaultTag({ kind }: { kind: ProbeView['kind'] }) {
+  if (kind !== 'default') return null;
   return (
-    <span className="rounded border border-border px-1.5 py-px font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-      {kind === 'off' ? 'off' : 'default'}
+    <span
+      className="rounded border border-border px-1.5 py-px text-[11px] text-muted-foreground"
+      title="The platform default, not set by this deployment"
+    >
+      Default
     </span>
   );
 }
 
 function ProbeRow({ label, view, line }: { label: string; view: ProbeView; line: string }) {
+  const off = view.kind === 'off';
   return (
-    <li aria-label={label} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+    <li
+      aria-label={label}
+      className="grid gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0 sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-baseline"
+    >
       <span className="flex items-center gap-1">
-        <span className="label-mono text-muted-foreground">{label}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
         <HelpTip label={`About ${label}`}>{line}</HelpTip>
       </span>
-      <p className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm">{view.action}</span>
-        <Tag kind={view.kind} />
-      </p>
-      {view.timing && (
-        <p className="font-mono text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
-          {view.timing}
-        </p>
-      )}
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span
+          className={off ? 'text-sm text-muted-foreground' : 'font-mono text-sm'}
+          title={off ? 'off' : undefined}
+        >
+          {view.action}
+        </span>
+        <DefaultTag kind={view.kind} />
+        {view.timing && (
+          <span className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
+            {view.timing}
+          </span>
+        )}
+      </span>
     </li>
   );
 }
@@ -90,12 +106,13 @@ function Probes({ app }: { app: App }) {
     <section aria-labelledby="health-probes-heading" className="flex flex-col gap-3">
       <div className="flex items-center gap-1">
         <h3 id="health-probes-heading" className="text-sm font-medium">
-          Probes
+          Health checks
         </h3>
-        <HelpTip label="About probes">
-          Probes are fixed per deployment. Set the startup check with <Code>hosting.health</Code> in
-          gregale.yaml or <Code>gregale deploy --healthcheck-path</Code>, and readiness and liveness
-          with <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code>. See{' '}
+        <HelpTip label="About health checks">
+          Health checks (probes) are fixed per deployment. Set the startup check with{' '}
+          <Code>hosting.health</Code> in gregale.yaml or{' '}
+          <Code>gregale deploy --healthcheck-path</Code>, and readiness and liveness with{' '}
+          <Code>overrides.readiness_probe</Code> and <Code>overrides.liveness_probe</Code>. See{' '}
           <a
             href="/docs/deploy-overrides"
             className="text-brand underline-offset-2 hover:underline"
@@ -117,10 +134,14 @@ function Probes({ app }: { app: App }) {
           No production release is serving traffic, so there are no probes to show.
         </p>
       ) : (
-        <ul aria-label="Probes" className="flex flex-col divide-y divide-border">
-          <ProbeRow label="Startup check" view={probes.startup} line={PROBE_LINES.startup} />
-          <ProbeRow label="Readiness probe" view={probes.readiness} line={PROBE_LINES.readiness} />
-          <ProbeRow label="Liveness probe" view={probes.liveness} line={PROBE_LINES.liveness} />
+        <ul aria-label="Health checks" className="flex flex-col divide-y divide-border">
+          <ProbeRow
+            label="Before it takes traffic"
+            view={probes.startup}
+            line={PROBE_LINES.startup}
+          />
+          <ProbeRow label="Ready to serve" view={probes.readiness} line={PROBE_LINES.readiness} />
+          <ProbeRow label="Still alive" view={probes.liveness} line={PROBE_LINES.liveness} />
         </ul>
       )}
     </section>
@@ -269,124 +290,137 @@ function RestartContract({ app, plan }: { app: App; plan: Plan | undefined }) {
     <section aria-labelledby="restart-contract-heading" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 id="restart-contract-heading" className="text-sm font-medium">
-          Restarts and stopping
+          Restarts
         </h3>
-        <Button size="sm" disabled={!dirty || blocked} busy={update.isPending} onClick={save}>
+        <SaveButton
+          saved={update.isSuccess && !dirty}
+          size="sm"
+          disabled={!dirty || blocked}
+          busy={update.isPending}
+          onClick={save}
+        >
           Save restart settings
-        </Button>
+        </SaveButton>
       </div>
       {failure && (
         <p role="alert" className="text-xs" style={{ color: 'var(--status-critical)' }}>
           {failure}
         </p>
       )}
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            label="Restart policy"
-            htmlFor="restart-policy"
-            help={`When the main process exits: never restart, restart after a non-zero exit, always restart, or always unless it was stopped on purpose. The default follows the app’s ${eff.mode} mode.`}
-          />
-          <Select
-            id="restart-policy"
-            value={draft.restart_policy}
-            onChange={(e) => set('restart_policy', e.target.value)}
-            className="w-full font-mono"
-          >
-            <option value="">Default ({defaultRestartPolicy(eff.mode)})</option>
-            {policies.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <NumberField
-          id="max-retries"
-          label="Max retries"
-          value={draft.max_retries}
-          placeholder={placeholder(limits?.maxRetries)}
-          error={errors.max_retries}
-          help="Restarts in a row before the instance is marked failed as a crash loop."
-          range={`Default and limit: ${onPlan(limits?.maxRetries)}`}
-          onChange={(v) => set('max_retries', v)}
-        />
-        <NumberField
-          id="startup-deadline"
-          label="Startup deadline (s)"
-          value={draft.startup_deadline_s}
-          placeholder={placeholder(limits?.startupDeadlineS)}
-          error={errors.startup_deadline_s}
-          help="Time an instance has to pass its startup check before the start fails."
-          range={`Default and limit: ${onPlan(limits?.startupDeadlineS, ' s')}`}
-          onChange={(v) => set('startup_deadline_s', v)}
-        />
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            label="Stop signal"
-            htmlFor="stop-signal"
-            help="Sent to a worker or job when it is stopped, so it can finish its work. Request and service instances are snapshotted instead."
-          />
-          <Select
-            id="stop-signal"
-            value={draft.stop_signal}
-            onChange={(e) => set('stop_signal', e.target.value)}
-            className="w-full font-mono"
-          >
-            <option value="">Default (SIGTERM)</option>
-            {STOP_SIGNALS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <NumberField
-          id="stop-grace"
-          label="Grace period (s)"
-          value={draft.stop_grace_period_s}
-          placeholder={placeholder(30)}
-          error={errors.stop_grace_period_s}
-          help={`How long a stopping worker or job has after the signal before it is killed.${isWorker ? ' A worker’s drain_timeout in gregale.yaml sets the same value.' : ''}`}
-          range={`Limit: ${onPlan(limits?.stopGraceS, ' s')}`}
-          onChange={(v) => set('stop_grace_period_s', v)}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5 sm:max-w-md">
         <FieldLabel
-          label="As gregale.yaml"
-          help={
-            <>
-              The <Code>lifecycle:</Code> block in gregale.yaml takes <Code>restart_policy</Code>,{' '}
-              <Code>max_retries</Code>, <Code>startup_deadline_s</Code>, <Code>stop_signal</Code>{' '}
-              and <Code>stop_grace_period_s</Code>. Keys set there replace the values saved here on
-              every deploy; keys left out keep them
-              {isWorker ? (
-                <>
-                  . A worker’s <Code>worker.drain_timeout</Code> and <Code>worker.stop_signal</Code>
-                  , when set, do the same
-                </>
-              ) : null}
-              .
-            </>
-          }
+          label="When it exits"
+          htmlFor="restart-policy"
+          help={`Restart policy: when the main process exits, never restart (no), restart after a non-zero exit (on-failure), always restart (always), or always unless it was stopped on purpose (unless-stopped). The default follows the app’s ${eff.mode} mode.`}
         />
-        {yaml && (
-          <pre
-            aria-label="gregale.yaml lifecycle block"
-            className="overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed"
-          >
-            {yaml}
-          </pre>
-        )}
+        <Select
+          id="restart-policy"
+          value={draft.restart_policy}
+          onChange={(e) => set('restart_policy', e.target.value)}
+          className="w-full"
+        >
+          <option value="">
+            {RESTART_WORDS[defaultRestartPolicy(eff.mode)]} (default,{' '}
+            {defaultRestartPolicy(eff.mode)})
+          </option>
+          {policies.map((p) => (
+            <option key={p} value={p}>
+              {RESTART_WORDS[p]} ({p})
+            </option>
+          ))}
+        </Select>
       </div>
+      <Disclosure label="Advanced restart settings" forceOpen={blocked}>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <NumberField
+            id="max-retries"
+            label="Max retries"
+            value={draft.max_retries}
+            placeholder={placeholder(limits?.maxRetries)}
+            error={errors.max_retries}
+            help="Restarts in a row before the instance is marked failed as a crash loop."
+            range={`Default and limit: ${onPlan(limits?.maxRetries)}`}
+            onChange={(v) => set('max_retries', v)}
+          />
+          <NumberField
+            id="startup-deadline"
+            label="Startup deadline (s)"
+            value={draft.startup_deadline_s}
+            placeholder={placeholder(limits?.startupDeadlineS)}
+            error={errors.startup_deadline_s}
+            help="Time an instance has to pass its startup check before the start fails."
+            range={`Default and limit: ${onPlan(limits?.startupDeadlineS, ' s')}`}
+            onChange={(v) => set('startup_deadline_s', v)}
+          />
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel
+              label="Stop signal"
+              htmlFor="stop-signal"
+              help="Sent to a worker or job when it is stopped, so it can finish its work. Request and service instances are snapshotted instead."
+            />
+            <Select
+              id="stop-signal"
+              value={draft.stop_signal}
+              onChange={(e) => set('stop_signal', e.target.value)}
+              className="w-full font-mono"
+            >
+              <option value="">Default (SIGTERM)</option>
+              {STOP_SIGNALS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <NumberField
+            id="stop-grace"
+            label="Grace period (s)"
+            value={draft.stop_grace_period_s}
+            placeholder={placeholder(30)}
+            error={errors.stop_grace_period_s}
+            help={`How long a stopping worker or job has after the signal before it is killed.${isWorker ? ' A worker’s drain_timeout in gregale.yaml sets the same value.' : ''}`}
+            range={`Limit: ${onPlan(limits?.stopGraceS, ' s')}`}
+            onChange={(v) => set('stop_grace_period_s', v)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel
+            label="As gregale.yaml"
+            help={
+              <>
+                The <Code>lifecycle:</Code> block in gregale.yaml takes <Code>restart_policy</Code>,{' '}
+                <Code>max_retries</Code>, <Code>startup_deadline_s</Code>, <Code>stop_signal</Code>{' '}
+                and <Code>stop_grace_period_s</Code>. Keys set there replace the values saved here
+                on every deploy; keys left out keep them
+                {isWorker ? (
+                  <>
+                    . A worker’s <Code>worker.drain_timeout</Code> and{' '}
+                    <Code>worker.stop_signal</Code>, when set, do the same
+                  </>
+                ) : null}
+                .
+              </>
+            }
+          />
+          {yaml ? (
+            <pre
+              aria-label="gregale.yaml lifecycle block"
+              className="overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed"
+            >
+              {yaml}
+            </pre>
+          ) : (
+            <span className="text-xs text-muted-foreground">Nothing set here yet.</span>
+          )}
+        </div>
+      </Disclosure>
     </section>
   );
 }
 
 export function HealthProbes({ app, plan }: { app: App; plan: Plan | undefined }) {
   return (
-    <Panel title="Health and restarts">
+    <Panel title="Health checks and restarts">
       <div className="flex flex-col gap-8">
         <Probes app={app} />
         <RestartContract app={app} plan={plan} />

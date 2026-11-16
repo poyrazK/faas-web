@@ -1,7 +1,7 @@
 import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { AppActionsMenu } from '@/components/dashboard/app-actions-menu';
+import { AppActionsMenu, RollbackButton } from '@/components/dashboard/app-actions-menu';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
   validateAppAnalyticsSearch,
@@ -116,7 +116,12 @@ import { useAuth } from '@/lib/auth';
 import { capabilityAccess } from '@/lib/capability-state';
 import { ReleaseSafety } from '@/components/dashboard/release-safety';
 import { pageHead, useDocumentTitle } from '@/lib/seo';
-import { hasLogSource, hasRollbackTarget, hasRunnableDeployment } from '@/lib/deployment-status';
+import {
+  hasLogSource,
+  hasRollbackTarget,
+  hasRunnableDeployment,
+  rollbackTarget,
+} from '@/lib/deployment-status';
 import { isPaidPlan } from '@/lib/plan';
 import { useData } from '@/lib/store';
 import { createFileRoute, useParams } from '@tanstack/react-router';
@@ -395,6 +400,13 @@ function FunctionDetailPage() {
               <Play className="h-3.5 w-3.5" />
               Invoke
             </Button>
+            {canRollback && (
+              <RollbackButton
+                app={fn}
+                target={rollbackTarget(deployments)}
+                isDeploying={isDeploying}
+              />
+            )}
             <Button
               size="sm"
               className="gap-1.5"
@@ -407,7 +419,7 @@ function FunctionDetailPage() {
               <Rocket className="h-3.5 w-3.5" />
               {isDeploying ? 'Deploying…' : 'Deploy'}
             </Button>
-            <AppActionsMenu app={fn} canRollback={canRollback} isDeploying={isDeploying} />
+            <AppActionsMenu app={fn} />
           </>
         }
       />

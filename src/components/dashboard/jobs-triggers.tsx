@@ -17,6 +17,8 @@ import { TriggerDeadLetter } from '@/components/dashboard/trigger-dlq';
 import { useToast } from '@/components/ui/toast';
 import { useApps, useSetTriggerEnabled, useTriggerMetrics, useTriggers } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
+import { inScope } from '@/lib/project-scope';
+import { scopedIn, useScopeGate } from './scope-gate';
 import { useAuth } from '@/lib/auth';
 import type { JobsSelectionProps } from './jobs-search';
 import { TriggerConfiguration } from '@/components/dashboard/trigger-detail';
@@ -112,12 +114,19 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
   const { toast } = useToast();
   const auth = useAuth();
   const { data, isPending, error, refetch } = useTriggers();
-  const { data: apps } = useApps();
+  const appQuery = useApps();
+  const apps = appQuery.data;
   const setEnabled = useSetTriggerEnabled();
+  const gate = useScopeGate();
+  const { scope } = gate;
+  // A trigger is placed by the app it fires, so a scoped list waits for the
+  // app list and project membership rather than showing every trigger first.
+  const scopeLoading = Boolean(scope.project) && (gate.pending || appQuery.isPending);
+  const scopeError = scope.project ? (gate.error ?? appQuery.error ?? undefined) : undefined;
 
   const rows = useMemo<TriggerRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return (data ?? []).map((t) => ({
+    const all = (data ?? []).map((t) => ({
       id: t.id,
       kind: t.kind,
       slug: t.slug ?? t.kind,
@@ -126,7 +135,8 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
       batch: `${t.batch_size_max} / ${t.batch_window_ms}ms`,
       attempts: t.max_attempts,
     }));
-  }, [data, apps]);
+    return inScope(all, scope, (row) => row.app);
+  }, [data, apps, scope]);
   const selected = rows.find((trigger) => trigger.id === search.trigger);
 
   const toggle = (row: TriggerRow, enabled: boolean) =>
@@ -215,14 +225,16 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
     <div className="flex flex-col gap-6">
       <PageHeader title="Triggers" actions={action} />
 
-      {search.trigger && data && !selected && <p role="status">Trigger not found</p>}
+      {search.trigger && data && !scopeLoading && !selected && (
+        <p role="status">Trigger not found</p>
+      )}
       <ResourceTable
         rows={rows}
         columns={columns}
         initialSort={{ key: 'slug', dir: 'asc' }}
         searchKeys={['slug', 'app', 'kind']}
         searchPlaceholder="Filter by trigger, app, or kind…"
-        emptyMessage="No triggers yet."
+        emptyMessage={scope.project ? `No triggers ${scopedIn(scope)} yet.` : 'No triggers yet.'}
         emptyAction={
           <Link
             to="/docs/$slug"
@@ -233,9 +245,13 @@ export function TriggersBody({ search, onSelection }: JobsSelectionProps) {
           </Link>
         }
         minWidth="min-w-[880px]"
-        loading={isPending}
-        error={error}
-        onRetry={() => void refetch()}
+        loading={isPending || (!error && !scopeError && scopeLoading)}
+        error={error ?? scopeError}
+        onRetry={() => {
+          if (gate.error) gate.retry();
+          if (appQuery.error) void appQuery.refetch();
+          void refetch();
+        }}
       />
 
       {selected && (

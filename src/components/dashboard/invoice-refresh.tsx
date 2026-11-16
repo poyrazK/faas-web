@@ -70,7 +70,7 @@ export function InvoiceRefreshButton({ id, number }: { id: string; number: strin
     <Button
       size="xs"
       variant="ghost"
-      className="gap-1.5"
+      className="px-1.5 text-muted-foreground"
       busy={refresh.isPending}
       aria-label={`Refresh details for ${number}`}
       title="Re-read this invoice's line items from the billing provider"
@@ -93,8 +93,7 @@ export function InvoiceRefreshButton({ id, number }: { id: string; number: strin
           )
       }
     >
-      <Refresh className="h-3 w-3" />
-      Refresh
+      <Refresh aria-hidden className="h-3.5 w-3.5" />
     </Button>
   );
 }

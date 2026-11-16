@@ -13,6 +13,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Jobs } from './dashboard.jobs';
 import { ApiError } from '@/lib/api/errors';
 
+// No project chosen: these pages behave as they did before project scoping.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({
+    project: null,
+    label: '',
+    appSlugs: null,
+    settled: true,
+    choices: [],
+  }),
+}));
+
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }));
 vi.mock('@/lib/api/client', async (original) => ({ ...(await original<object>()), api }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));

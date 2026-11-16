@@ -37,6 +37,8 @@ import { capabilityStage } from '@/lib/capability-state';
 import { CapabilityNotice } from './capability-notice';
 import { SegmentedControl, Tabs, tabId } from './tabs';
 import { AccessSummary } from './storage/access-summary';
+import { bucketSentence } from './storage/bucket-words';
+import { DetailDisclosure } from './detail-disclosure';
 import { CodeAccess } from './storage/code-access';
 import { BucketSettings } from './storage/bucket-settings';
 import { ObjectVersions } from './storage/object-versions';
@@ -579,6 +581,8 @@ function BucketDetail({
     () => new Set((bindings.data?.items ?? []).map((b) => b.credential.id)),
     [bindings.data]
   );
+  // The first page of the root listing: the Files tab reads the same page by key.
+  const firstPage = useBucketObjects(slug, bucket.id, '', '');
   const openUpload = (file?: File) => {
     if (file) setDropped(file);
     setUploading(true);
@@ -591,20 +595,16 @@ function BucketDetail({
         className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-5 sm:p-6"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-2">
             <h2
               id={titleId}
               className="storage-address text-2xl font-semibold leading-tight [overflow-wrap:anywhere] sm:text-3xl"
             >
               {bucket.name}
             </h2>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-              <span className="inline-flex items-center gap-0.5">
-                <span className="font-mono text-xs">s3://{bucket.name}</span>
-                <CopyIconButton text={`s3://${bucket.name}`} label={`s3://${bucket.name}`} />
-              </span>
-              <CopyableId value={bucket.id} label="bucket ID" />
-            </div>
+            <p className="max-w-2xl text-lg leading-snug [overflow-wrap:anywhere]">
+              {bucketSentence(bucket, slug, firstPage.data)}
+            </p>
           </div>
           <Button
             onClick={() => openUpload()}
@@ -616,15 +616,42 @@ function BucketDetail({
             Upload files
           </Button>
         </div>
+        <AccessSummary
+          bucket={bucket.name}
+          app={slug}
+          connections={connections}
+          loading={bindings.isPending || grants.isPending || credentials.isPending}
+          failed={Boolean(bindings.error || grants.error || credentials.error)}
+          onManage={() => onChange({ tab: 'code' })}
+        />
         <div className="border-t border-border pt-4">
-          <AccessSummary
-            bucket={bucket.name}
-            app={slug}
-            connections={connections}
-            loading={bindings.isPending || grants.isPending || credentials.isPending}
-            failed={Boolean(bindings.error || grants.error || credentials.error)}
-            onManage={() => onChange({ tab: 'code' })}
-          />
+          <DetailDisclosure title="Address and ID" summary={`s3://${bucket.name}`}>
+            <dl className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-[max-content_minmax(0,1fr)]">
+              <dt className="text-muted-foreground">S3 address</dt>
+              <dd className="inline-flex items-center gap-0.5">
+                <span className="font-mono">s3://{bucket.name}</span>
+                <CopyIconButton text={`s3://${bucket.name}`} label={`s3://${bucket.name}`} />
+              </dd>
+              <dt className="text-muted-foreground">Bucket ID</dt>
+              <dd>
+                <CopyableId value={bucket.id} label="bucket ID" />
+              </dd>
+              <dt className="text-muted-foreground">Region</dt>
+              <dd>{bucket.region}</dd>
+              <dt className="text-muted-foreground">Environment scope</dt>
+              <dd>{bucket.scope}</dd>
+              {bucket.serve_at && (
+                <>
+                  <dt className="text-muted-foreground">Served at</dt>
+                  <dd className="font-mono">{bucket.serve_at}</dd>
+                </>
+              )}
+              <dt className="text-muted-foreground">Made</dt>
+              <dd>
+                <Timestamp value={bucket.created_at} />
+              </dd>
+            </dl>
+          </DetailDisclosure>
         </div>
       </section>
       <UploadSheet

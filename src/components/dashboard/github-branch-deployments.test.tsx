@@ -56,9 +56,9 @@ it('lists which branch deploys where: production first, then the mapped branches
   ]);
 });
 
-it('says the deployment policy is out of a browser session’s reach, not that previews are on', () => {
+it('leaves the deployment-policy caveat to the connection details, and never claims previews', () => {
   show();
-  expect(screen.getByText(/only to API keys with the github:manage scope/)).toBeInTheDocument();
+  expect(screen.queryByText(/github:manage/)).not.toBeInTheDocument();
   const list = screen.getByRole('list', { name: 'Branch deployments' });
   expect(within(list).queryByText(/pull request|preview/i)).not.toBeInTheDocument();
 });

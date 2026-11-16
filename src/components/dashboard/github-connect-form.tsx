@@ -10,11 +10,14 @@ const SETTINGS_RETURN = '/dashboard/settings?section=integrations';
 export function GitHubConnectForm({
   disabled = false,
   refresh = false,
+  install = false,
   onConnect,
   returnTo = SETTINGS_RETURN,
 }: {
   disabled?: boolean;
   refresh?: boolean;
+  /** Start the state-protected GitHub installation flow instead of discovery. */
+  install?: boolean;
   onConnect?: () => void;
   /** A `/dashboard/…` path apid returns to after GitHub; others fall back to the account page. */
   returnTo?: string;
@@ -56,6 +59,7 @@ export function GitHubConnectForm({
     >
       <input ref={tokenInput} type="hidden" name="csrf_token" defaultValue="" />
       <input type="hidden" name="return_to" value={returnTo} />
+      {install && <input type="hidden" name="intent" value="install" />}
       <Button
         type="submit"
         size="sm"
@@ -65,7 +69,7 @@ export function GitHubConnectForm({
         busy={pending}
       >
         <Github className="h-3.5 w-3.5" />
-        {refresh ? 'Refresh GitHub connection' : 'Connect GitHub'}
+        {install ? 'Install on GitHub' : refresh ? 'Refresh GitHub connection' : 'Connect GitHub'}
       </Button>
       {error && (
         <p role="alert" className="max-w-md text-sm text-destructive">

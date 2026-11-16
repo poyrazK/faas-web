@@ -4,7 +4,9 @@ import { appMetricNumber, metricValue, utcLabel } from './analytics-data';
 import { useMetricInspector } from './metric-inspector';
 import { METRIC_LABELS, type DetailMetric } from './metric-detail-search';
 import { Select } from '@/components/ui/field';
-import { useAccountSlo, useAppsMetrics, type AppsMetrics } from '@/lib/api/queries';
+import { useAccountSlo, useAppsMetrics, useAppsSlo, type AppsMetrics } from '@/lib/api/queries';
+import { MAX_THROTTLE_APPS, projectThrottled, projectTotals } from './project-analytics';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { PlanGated } from './plan-gated';
 import { InlinePhase, Panel, queryPhase, RangeSelector } from './primitives';
@@ -48,7 +50,11 @@ export function AccountAnalytics({
   const window = search.window ?? '24h';
   const inspect = useMetricInspector();
   const [trendDraft, setTrendDraft] = useState('');
-  const account = useAccountSlo(window);
+  const scope = useProjectScope();
+  const scoped = Boolean(scope.project);
+  // Inside a project the account summary is not read: its totals are built
+  // from the project's apps instead (project-analytics.ts).
+  const account = useAccountSlo(window, { enabled: !scoped });
   const metrics = useAppsMetrics(window);
   const data = account.data;
   const accountPhase = queryPhase({
@@ -58,15 +64,17 @@ export function AccountAnalytics({
   });
   const accountDegraded = Boolean(data && data.source !== 'prometheus');
   const appsDegraded = Boolean(metrics.data && metrics.data.source !== 'prometheus');
+  const scopeLoading = Boolean(scope.project) && scope.appSlugs === null && !scope.settled;
+  const appEntries = inScope(Object.entries(metrics.data?.apps ?? {}), scope, ([slug]) => slug);
   const appsPhase = queryPhase({
     error: metrics.error,
-    loading: metrics.isPending,
-    isEmpty: !appsDegraded && Object.keys(metrics.data?.apps ?? {}).length === 0,
+    loading: metrics.isPending || scopeLoading,
+    isEmpty: !appsDegraded && appEntries.length === 0,
   });
   // Failed/degraded telemetry must not leave stale rows looking current.
   const rows: AppRow[] =
     appsPhase === 'ready' && !appsDegraded
-      ? Object.entries(metrics.data?.apps ?? {}).map(([slug, value]) => ({
+      ? appEntries.map(([slug, value]) => ({
           ...value,
           id: slug,
           slug,
@@ -136,29 +144,57 @@ export function AccountAnalytics({
     },
   ];
 
-  const accountKnown = accountPhase === 'ready' && !accountDegraded;
+  // A project's totals: counts added across its apps, rates weighted by
+  // traffic, the slowest app instead of a combined percentile.
+  const totals = projectTotals(appEntries);
+  const throttleSlugs =
+    scoped && appEntries.length <= MAX_THROTTLE_APPS ? appEntries.map(([slug]) => slug) : [];
+  const throttle = projectThrottled(appEntries.length, useAppsSlo(throttleSlugs, window, scoped));
+  const projectKnown = appsPhase === 'ready' && !appsDegraded && totals.known;
+  const tilePhase = scoped ? appsPhase : accountPhase;
+  const accountKnown = scoped ? projectKnown : accountPhase === 'ready' && !accountDegraded;
   const sorted = [...rows].sort((a, b) => b.request_count - a.request_count);
   const trend = sorted.some((row) => row.slug === (search.trendApp ?? trendDraft))
     ? (search.trendApp ?? trendDraft)
     : (sorted[0]?.slug ?? '');
-  const traffic: { id: DetailMetric; value: number | undefined; note: string }[] = [
-    { id: 'requests', value: data?.requests_total, note: 'Across all apps' },
-    {
-      id: 'errors',
-      value: data ? Math.round((data.requests_total * data.error_rate_pct) / 100) : undefined,
-      note: 'Estimated from the 5xx rate',
-    },
-    {
-      id: 'error_rate',
-      value: data?.requests_total ? data.error_rate_pct : undefined,
-      note: 'Share of requests returning 5xx',
-    },
-    {
-      id: 'cold_rate',
-      value: data?.requests_total ? data.cold_boot_rate_pct : undefined,
-      note: 'Requests that started an instance',
-    },
-  ];
+  const appWord = (n: number) => `${n} ${n === 1 ? 'app' : 'apps'}`;
+  const traffic: { id: DetailMetric; value: number | undefined; note: string }[] = scoped
+    ? [
+        {
+          id: 'requests',
+          value: totals.requests,
+          note: `Across ${appWord(totals.apps)} in ${scope.label}`,
+        },
+        { id: 'errors', value: totals.errors, note: 'Estimated from each app’s 5xx rate' },
+        {
+          id: 'error_rate',
+          value: totals.errorRatePct ?? undefined,
+          note: `Share of ${scope.label}’s requests returning 5xx`,
+        },
+        {
+          id: 'cold_rate',
+          value: totals.coldRatePct ?? undefined,
+          note: 'Requests that started an instance',
+        },
+      ]
+    : [
+        { id: 'requests', value: data?.requests_total, note: 'Across all apps' },
+        {
+          id: 'errors',
+          value: data ? Math.round((data.requests_total * data.error_rate_pct) / 100) : undefined,
+          note: 'Estimated from the 5xx rate',
+        },
+        {
+          id: 'error_rate',
+          value: data?.requests_total ? data.error_rate_pct : undefined,
+          note: 'Share of requests returning 5xx',
+        },
+        {
+          id: 'cold_rate',
+          value: data?.requests_total ? data.cold_boot_rate_pct : undefined,
+          note: 'Requests that started an instance',
+        },
+      ];
   const latency: typeof traffic = [
     {
       id: 'p50',
@@ -184,12 +220,14 @@ export function AccountAnalytics({
           key={item.id}
           type="button"
           aria-label={`View ${METRIC_LABELS[item.id]} details`}
-          onClick={() => inspect({ metric: item.id, since: window, source: 'slo' })}
+          onClick={() =>
+            inspect({ metric: item.id, since: window, source: scoped ? 'rollup' : 'slo' })
+          }
           className="group surface rounded-[1.25rem] bg-card p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand"
         >
           <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS[item.id]}</p>
           <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
-            {accountPhase === 'loading'
+            {tilePhase === 'loading'
               ? 'Loading…'
               : accountKnown
                 ? metricValue(item.id, item.value, true)
@@ -198,6 +236,47 @@ export function AccountAnalytics({
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{item.note}</p>
         </button>
       ))}
+    </div>
+  );
+  const projectLimits = (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <button
+        type="button"
+        aria-label="View response time details by app"
+        onClick={() => inspect({ metric: 'p95', since: window, source: 'rollup' })}
+        className="group surface rounded-[1.25rem] bg-card p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        <p className="text-xs font-medium text-muted-foreground">Slowest app · p95</p>
+        <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+          {tilePhase === 'loading'
+            ? 'Loading…'
+            : projectKnown && totals.slowest
+              ? `${totals.slowest.p95Ms} ms`
+              : '—'}
+        </p>
+        <p className="mt-3 truncate text-xs leading-relaxed text-muted-foreground">
+          {projectKnown && totals.slowest
+            ? `${totals.slowest.slug}, the slowest of ${appWord(totals.apps)}`
+            : 'Response times need traffic'}
+        </p>
+      </button>
+      <div className="surface rounded-[1.25rem] bg-card p-4">
+        <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS.throttled}</p>
+        <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+          {throttle.kind === 'loading'
+            ? 'Loading…'
+            : throttle.kind === 'known'
+              ? metricValue('throttled', throttle.total, true)
+              : '—'}
+        </p>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          {throttle.kind === 'unknown' && throttle.reason === 'too-many'
+            ? `Not totalled for more than ${MAX_THROTTLE_APPS} apps`
+            : throttle.kind === 'unknown'
+              ? 'Some apps’ limits couldn’t be read'
+              : 'Requests limited by the platform'}
+        </p>
+      </div>
     </div>
   );
   const ranked = (metric: DetailMetric) =>
@@ -215,15 +294,39 @@ export function AccountAnalytics({
   return (
     <div className="flex flex-col gap-6">
       <section aria-label="Account overview" className="flex flex-col gap-5">
-        <PlanGated error={account.error} feature="Account analytics">
-          <InlinePhase
-            phase={accountPhase}
-            error={account.error}
-            loadingMessage="Loading account analytics…"
-            emptyMessage="No account analytics are available yet."
-            onRetry={() => void account.refetch()}
-          />
-          {accountPhase === 'ready' && accountDegraded && (
+        <PlanGated
+          error={scoped ? metrics.error : account.error}
+          feature={scoped ? 'Per-app metrics' : 'Account analytics'}
+        >
+          {scoped ? (
+            <>
+              {appsPhase !== 'ready' && (
+                <InlinePhase
+                  phase={appsPhase}
+                  error={metrics.error}
+                  loadingMessage={`Loading ${scope.label} analytics…`}
+                  emptyMessage={`No ${scope.label} apps in this window.`}
+                  onRetry={() => void metrics.refetch()}
+                />
+              )}
+              {appsPhase === 'ready' && (appsDegraded || !totals.known) && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {appsDegraded
+                    ? `Metrics source: ${metrics.data?.source}. ${scope.label}’s figures are unavailable.`
+                    : `${appWord(totals.unavailable)}’s figures are unavailable, so ${scope.label}’s totals aren’t shown.`}
+                </p>
+              )}
+            </>
+          ) : (
+            <InlinePhase
+              phase={accountPhase}
+              error={account.error}
+              loadingMessage="Loading account analytics…"
+              emptyMessage="No account analytics are available yet."
+              onRetry={() => void account.refetch()}
+            />
+          )}
+          {!scoped && accountPhase === 'ready' && accountDegraded && (
             <p role="status" className="text-sm text-muted-foreground">
               Metrics source: {data?.source}. Account figures are unavailable.
             </p>
@@ -234,14 +337,28 @@ export function AccountAnalytics({
           </div>
           <div className="space-y-3">
             <h2 className="text-sm font-semibold">Response times and limits</h2>
-            {tiles(latency)}
+            {scoped ? projectLimits : tiles(latency)}
           </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Account totals for the last {window}. Response times cover successful (2xx) requests.{' '}
-            {data?.as_of ? `Updated ${utcLabel(data.as_of, true)} UTC. ` : ''}Account history and
-            previous-period comparisons are not available.
-          </p>
-          {accountKnown && data?.requests_total === 0 && (
+          {scoped ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {scope.label}’s totals for the last {window}, added up from its {appWord(totals.apps)}
+              ’ figures. Response times can’t be combined across apps, so the slowest app is shown;
+              each app’s are in the table below.
+            </p>
+          ) : (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Account totals for the last {window}. Response times cover successful (2xx) requests.{' '}
+              {data?.as_of ? `Updated ${utcLabel(data.as_of, true)} UTC. ` : ''}Account history and
+              previous-period comparisons are not available.
+            </p>
+          )}
+          {scoped && projectKnown && totals.requests === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No requests to {scope.label} in this window. Rates and response times need traffic
+              before they can be measured.
+            </p>
+          )}
+          {!scoped && accountKnown && data?.requests_total === 0 && (
             <p className="text-sm text-muted-foreground">
               No requests in this window. Response times and rates need traffic before they can be
               measured.
@@ -326,7 +443,11 @@ export function AccountAnalytics({
                 initialSort={{ key: 'request_count', dir: 'desc' }}
                 searchKeys={['slug']}
                 searchPlaceholder="Filter apps…"
-                emptyMessage="No apps in this window."
+                emptyMessage={
+                  scope.project
+                    ? `No ${scope.label} apps in this window.`
+                    : 'No apps in this window.'
+                }
                 loading={appsPhase === 'loading'}
                 error={metrics.error}
                 onRetry={() => void metrics.refetch()}

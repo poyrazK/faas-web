@@ -128,12 +128,42 @@ describe('GitHub browser connection', () => {
     render(
       <IntegrationSettings search={{ github: 'connect-forbidden', section: 'integrations' }} />
     );
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'The GitHub connection request expired or could not be verified.'
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('GitHub connection expired');
 
     await userEvent.click(screen.getByRole('button', { name: 'Connect GitHub' }));
     await waitFor(() => expect(submissions).toHaveLength(1));
     expect(submissions[0].body.get('csrf_token')).toBe('settings-proof');
   });
+
+  it('explains an owner refusal and starts installation recovery with fresh proof', async () => {
+    issueCSRF.mockResolvedValue('installation-proof');
+    render(
+      <IntegrationSettings
+        search={{
+          section: 'integrations',
+          github: 'connect-failed',
+          github_error: 'github_installation_owner_required',
+        }}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('The GitHub account owner must connect');
+    await userEvent.click(screen.getByRole('button', { name: 'Install on GitHub' }));
+    await waitFor(() => expect(submissions).toHaveLength(1));
+    expect(Object.fromEntries(submissions[0].body)).toEqual({
+      csrf_token: 'installation-proof',
+      return_to: '/dashboard/settings?section=integrations',
+      intent: 'install',
+    });
+    expect(submissions[0].action).toBe('/dashboard/install/connect');
+  });
+
+  it.each(['github_unreachable', 'oauth_provider_unavailable', 'provider-secret-<script>'])(
+    'shows a safe explanation for %s without reflecting provider input',
+    (code) => {
+      render(<IntegrationSettings search={{ github: 'connect-failed', github_error: code }} />);
+      expect(screen.getByRole('alert')).toHaveTextContent('GitHub');
+      expect(screen.queryByRole('button', { name: 'Install on GitHub' })).not.toBeInTheDocument();
+      expect(screen.queryByText('provider-secret-<script>')).not.toBeInTheDocument();
+    }
+  );
 });

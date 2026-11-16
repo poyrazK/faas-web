@@ -5,6 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationsBody, deleteConfirmation } from './automations-body';
 import { ApiError } from '@/lib/api/errors';
 
+// No project chosen: these pages behave as they did before project scoping.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({
+    project: null,
+    label: '',
+    appSlugs: null,
+    settled: true,
+    choices: [],
+  }),
+}));
+
 const state = vi.hoisted(() => ({
   apps: [{ id: 'app-1', slug: 'alpha' }],
   read: vi.fn(),

@@ -15,7 +15,10 @@ import {
 } from '@/lib/api/queries';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Trash } from 'iconoir-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Sheet } from './kit/sheet';
+import { registryLine, registryQuotaWords } from './source-access-words';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 
 const FIELD = `${BASE_FIELD} w-full`;
@@ -65,7 +68,7 @@ export function RegistryCredentialsEditor({
     loading: credentials.isPending,
     isEmpty: rows.length === 0,
   });
-  const quota = credentials.data?.quota_max;
+  const quota = registryQuotaWords(credentials.data?.quota_max);
   const [creating, setCreating] = useState(false);
   const [registry, setRegistry] = useState('https://');
   const [username, setUsername] = useState('');
@@ -87,17 +90,22 @@ export function RegistryCredentialsEditor({
   return (
     <Panel
       title={title}
-      help={description}
+      help={
+        <>
+          {description}
+          {quota && <span className="mt-2 block">{quota}</span>}
+        </>
+      }
       actions={
         <Button size="sm" onClick={() => setCreating(true)}>
           Add registry
         </Button>
       }
     >
-      <div className="flex flex-col gap-5">
-        <Sheet open={creating} onClose={() => setCreating(false)} title="Registry credential">
+      <div className="flex flex-col gap-4">
+        <Sheet open={creating} onClose={() => setCreating(false)} title="Add a registry login">
           <form
-            className="grid gap-3 sm:grid-cols-3"
+            className="flex flex-col gap-4"
             onSubmit={(event) => {
               event.preventDefault();
               if (registry.trim() && username.trim() && password && !save.isPending) submit();
@@ -132,7 +140,7 @@ export function RegistryCredentialsEditor({
                 className={FIELD}
               />
             </label>
-            <div className="flex items-center justify-between gap-3 sm:col-span-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
                 Use an explicit https:// registry URL.
               </p>
@@ -148,34 +156,36 @@ export function RegistryCredentialsEditor({
           </form>
         </Sheet>
 
-        {quota ? (
-          <p className="text-xs text-muted-foreground">
-            Up to {quota} registries; replacing one does not use another.
+        {phase === 'ready' || phase === 'empty' ? (
+          <p className="text-base text-foreground/90">
+            {registryLine(rows.map((credential) => credential.registry))}
           </p>
-        ) : null}
-        {phase !== 'ready' ? (
+        ) : (
           <InlinePhase
             phase={phase}
             error={credentials.error}
             loadingMessage="Reading credentials…"
-            emptyMessage="No private registry credentials configured."
             onRetry={() => void credentials.refetch()}
           />
-        ) : (
-          <ul className="flex flex-col divide-y divide-border border-t border-border">
+        )}
+        {phase === 'ready' && (
+          <ul
+            aria-label="Registry logins"
+            className="well flex flex-col divide-y divide-border rounded-xl bg-muted/40"
+          >
             {rows.map((credential) => (
-              <li key={credential.registry} className="flex flex-wrap items-center gap-3 py-3">
-                <span className="min-w-0 flex-1 break-all font-mono text-xs">
-                  {credential.registry}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  {credential.username} · saved <Timestamp value={credential.updated_at} />
-                </span>
-                <Button
-                  size="xs"
-                  variant="ghost"
+              <li key={credential.registry} className="flex items-center gap-3 px-3 py-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="break-all font-mono text-xs">{credential.registry}</span>
+                  <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    Signs in as {credential.username} · saved{' '}
+                    <Timestamp value={credential.updated_at} />
+                  </span>
+                </div>
+                <IconButton
                   aria-label={`Remove ${credential.registry}`}
                   disabled={remove.isPending}
+                  className="text-muted-foreground transition-colors hover:text-foreground"
                   onClick={async () => {
                     if (
                       !(await confirm({
@@ -194,8 +204,8 @@ export function RegistryCredentialsEditor({
                       );
                   }}
                 >
-                  Remove
-                </Button>
+                  <Trash className="h-3.5 w-3.5" />
+                </IconButton>
               </li>
             ))}
           </ul>

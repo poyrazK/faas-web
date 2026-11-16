@@ -1,11 +1,16 @@
-import { useState } from 'react';
-import { Plus, Refresh, Trash } from 'iconoir-react';
+import { useEffect, useRef, useState } from 'react';
+import { MoreHoriz, Plus } from 'iconoir-react';
 import { useMfa } from '@/components/auth/mfa-provider';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { CopyIconButton } from '@/components/ui/copy-button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FIELD, Select } from '@/components/ui/field';
-import { IconButton } from '@/components/ui/icon-button';
 import { OneTimeSecret, useOneTimeSecret } from '@/components/ui/one-time-secret';
 import { useToast } from '@/components/ui/toast';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -16,8 +21,18 @@ import {
   useRotateDeployToken,
   type DeployToken,
 } from '@/lib/api/deploy-tokens';
+import { HelpTip } from './kit/help-tip';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { Pill } from './resource-table';
+import { Disclosure } from './settings-kit';
+import {
+  TOKEN_STATE,
+  tokenDetail,
+  tokenLine,
+  tokenName,
+  tokensLine,
+  tokenState,
+} from './source-access-words';
 
 /** Days on offer. 90 is the server default and is sent as "no expiry". */
 const EXPIRY_DAYS = ['30', '90', '180', '365'] as const;
@@ -27,28 +42,14 @@ const DAY_MS = 86_400_000;
 type StepUpCode = 'step_up_required' | 'mfa_required';
 type Shown = { value: string; title: string };
 
-function when(value: string | undefined): string | null {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString();
-}
-
-/** The server keeps `status` at `active` after expiry; the clock decides. */
-function stateOf(token: DeployToken): 'active' | 'expired' | 'revoked' | 'grace' {
-  if (token.status === 'revoked') return 'revoked';
-  if (token.expires_at && Date.parse(token.expires_at) <= Date.now()) return 'expired';
-  return token.status === 'grace' ? 'grace' : 'active';
-}
-
-const STATE_LABEL = { active: 'Active', grace: 'Grace', expired: 'Expired', revoked: 'Revoked' };
-const STATE_COLOR: Record<string, string | undefined> = {
-  active: 'var(--status-good)',
-  grace: 'var(--status-warning)',
-  expired: 'var(--status-critical)',
-};
-
-function nameOf(token: DeployToken): string {
-  return token.label || `token ${token.id.slice(0, 8)}`;
+/** A minute clock, so a token's expiry and "last used today" move on screen. */
+function useMinuteClock() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
 }
 
 /** Turns a refusal into the sentence the toast leads with. */
@@ -78,8 +79,14 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   const [label, setLabel] = useState('');
   const [days, setDays] = useState<string>(DEFAULT_DAYS);
   const [stepUpMissed, setStepUpMissed] = useState<StepUpCode | null>(null);
+  const [creating, setCreating] = useState(false);
+  const createButton = useRef<HTMLButtonElement>(null);
 
   const list = tokens.data?.tokens ?? [];
+  const now = useMinuteClock();
+  const current = list.filter((token) => token.status !== 'revoked');
+  const revoked = list.filter((token) => token.status === 'revoked');
+  const line = tokensLine(list, slug, now);
   const phase = queryPhase({
     error: tokens.error,
     loading: tokens.isPending,
@@ -129,13 +136,16 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
       const margin = days === '365' ? 5 * 60_000 : 0;
       body.expires_at = new Date(Date.now() + Number(days) * DAY_MS - margin).toISOString();
     }
-    const receive = evidence.capture();
+    // The form closes on success, so dismissing the reveal returns focus to
+    // the button that opened it.
+    const receive = evidence.capture(() => createButton.current?.focus());
     void minting(() => create.mutateAsync(body))
       .then((token) => {
         if (!token?.plaintext) return;
         if (receive({ value: token.plaintext, title: 'New deploy token' })) {
           setLabel('');
           setDays(DEFAULT_DAYS);
+          setCreating(false);
         }
       })
       .catch((err: unknown) =>
@@ -147,7 +157,7 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   const rotateToken = async (token: DeployToken, origin: HTMLElement) => {
     if (
       !(await confirm({
-        title: `Rotate ${nameOf(token)}?`,
+        title: `Rotate ${tokenName(token)}?`,
         description:
           'A replacement is minted and shown once. The old token stops working immediately, so CI fails until FAAS_TOKEN holds the new one. The replacement keeps the label and expires in 90 days.',
         confirmLabel: 'Rotate token',
@@ -174,7 +184,7 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
   const revokeToken = async (token: DeployToken) => {
     if (
       !(await confirm({
-        title: `Revoke ${nameOf(token)}?`,
+        title: `Revoke ${tokenName(token)}?`,
         description:
           'Any CI job using it fails on its next deploy. A revoked token cannot be restored; create a new one instead.',
         confirmLabel: 'Revoke token',
@@ -190,12 +200,39 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
       );
   };
 
+  const row = (token: DeployToken) => (
+    <TokenRow
+      key={token.id}
+      token={token}
+      now={now}
+      // One reveal serves both: never mint two secrets at once.
+      rotateDisabled={rotate.isPending || create.isPending}
+      revokeDisabled={revoke.isPending}
+      onRotate={(origin) => void rotateToken(token, origin)}
+      onRevoke={() => void revokeToken(token)}
+    />
+  );
+
   return (
     <Panel
       title="Deploy tokens"
       help="Can deploy this app and nothing else. Creating or rotating one needs an authenticator code from the last 5 minutes."
+      actions={
+        creating ? undefined : (
+          <Button
+            ref={createButton}
+            size="sm"
+            className="gap-1.5"
+            disabled={rotate.isPending}
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create token
+          </Button>
+        )
+      }
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {stepUpMissed && (
           <p role="alert" className="text-sm text-[color:var(--status-critical)]">
             {stepUpMissed === 'mfa_required'
@@ -214,121 +251,102 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
           />
         )}
 
-        <form
-          noValidate
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <label className="flex min-w-56 flex-1 flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Label</span>
-            <input
-              value={label}
-              maxLength={100}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="github-actions"
-              spellCheck={false}
-              className={FIELD}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label-mono text-muted-foreground">Expires in</span>
-            <Select value={days} onChange={(e) => setDays(e.target.value)}>
-              {EXPIRY_DAYS.map((d) => (
-                <option key={d} value={d}>
-                  {d === '365' ? '1 year' : `${d} days`}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <Button
-            type="submit"
-            size="sm"
-            className="gap-1.5"
-            busy={create.isPending}
-            disabled={rotate.isPending}
+        {creating && (
+          <form
+            noValidate
+            aria-label="Create a deploy token"
+            className="well flex flex-wrap items-end gap-3 rounded-xl bg-muted/40 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
           >
-            <Plus className="h-3.5 w-3.5" />
-            Create token
-          </Button>
-        </form>
+            <label className="flex min-w-48 flex-1 flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Label</span>
+              <input
+                value={label}
+                maxLength={100}
+                autoFocus
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="github-actions"
+                spellCheck={false}
+                className={FIELD}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label-mono text-muted-foreground">Expires in</span>
+              <Select value={days} onChange={(e) => setDays(e.target.value)}>
+                {EXPIRY_DAYS.map((d) => (
+                  <option key={d} value={d}>
+                    {d === '365' ? '1 year' : `${d} days`}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <div className="flex items-center gap-2">
+              <Button type="submit" size="sm" busy={create.isPending} disabled={rotate.isPending}>
+                Create token
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={create.isPending}
+                onClick={() => {
+                  setCreating(false);
+                  setStepUpMissed(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
 
-        {phase !== 'ready' ? (
+        {phase === 'ready' || phase === 'empty' ? (
+          <p className="text-base text-foreground/90">{line.sentence}</p>
+        ) : (
           <InlinePhase
             phase={phase}
             error={tokens.error}
             loadingMessage="Reading deploy tokens…"
-            emptyMessage="No deploy tokens yet."
             onRetry={() => void tokens.refetch()}
           />
-        ) : (
-          <ul className="flex flex-col divide-y divide-border border-t border-border">
-            {list.map((token) => {
-              const state = stateOf(token);
-              const name = nameOf(token);
-              const lastUsed = when(token.last_used_at);
-              const meta = [
-                `Created ${when(token.created_at) ?? '—'}`,
-                lastUsed ? `Last used ${lastUsed}` : 'Never used',
-                state === 'revoked'
-                  ? `Revoked ${when(token.revoked_at) ?? ''}`.trim()
-                  : `${state === 'expired' ? 'Expired' : 'Expires'} ${when(token.expires_at) ?? '—'}`,
-              ];
-              return (
-                <li
-                  key={token.id}
-                  aria-label={name}
-                  className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-3 ${
-                    state === 'revoked' ? 'opacity-60' : ''
-                  }`}
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-sm font-medium">{name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {token.prefix}…
-                      </span>
-                      <Pill label={STATE_LABEL[state]} color={STATE_COLOR[state]} />
-                    </span>
-                    <span className="text-xs text-muted-foreground">{meta.join(' · ')}</span>
-                  </div>
-                  {state !== 'revoked' && (
-                    <span className="flex items-center gap-1">
-                      {state !== 'expired' && (
-                        <IconButton
-                          aria-label={`Rotate ${name}`}
-                          // One reveal serves both: never mint two secrets at once.
-                          disabled={rotate.isPending || create.isPending}
-                          onClick={(event) => void rotateToken(token, event.currentTarget)}
-                          className="text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                          <Refresh className="h-3.5 w-3.5" />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        aria-label={`Revoke ${name}`}
-                        disabled={revoke.isPending}
-                        onClick={() => void revokeToken(token)}
-                        className="text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <Trash className="h-3.5 w-3.5" />
-                      </IconButton>
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         )}
 
-        <div className="flex flex-col gap-2 well rounded-xl bg-muted/40 p-4">
-          <p className="text-sm font-medium">Use it in CI</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Store the token as <code className="font-mono">FAAS_TOKEN</code> in the CI secret store;
-            the CLI reads it from the environment before any saved login. It can deploy only{' '}
-            <span className="font-mono">{slug}</span>.
+        {phase === 'ready' && (
+          <>
+            {current.length > 0 && (
+              <ul
+                aria-label="Deploy tokens"
+                className="well flex flex-col divide-y divide-border rounded-xl bg-muted/40"
+              >
+                {current.map(row)}
+              </ul>
+            )}
+            {revoked.length > 0 && (
+              <Disclosure label={`Show ${revoked.length} revoked`} className="gap-3">
+                <ul
+                  aria-label="Revoked deploy tokens"
+                  className="flex flex-col divide-y divide-border"
+                >
+                  {revoked.map(row)}
+                </ul>
+              </Disclosure>
+            )}
+          </>
+        )}
+
+        <div className="flex flex-col gap-2 border-t border-border pt-4">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+            <span className="text-sm font-medium text-foreground">Use it in CI</span>
+            <span>
+              Store it as <code className="font-mono text-foreground">FAAS_TOKEN</code>, then run:
+            </span>
+            <HelpTip label="About using a deploy token in CI">
+              The CLI reads FAAS_TOKEN from the environment before any saved login. The token can
+              deploy only {slug}.
+            </HelpTip>
           </p>
           <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5">
             <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
@@ -339,5 +357,83 @@ export function DeployTokensPanel({ slug }: { slug: string }) {
         </div>
       </div>
     </Panel>
+  );
+}
+
+/** One token: its name and state, one quiet line, and its actions behind ⋯. */
+function TokenRow({
+  token,
+  now,
+  rotateDisabled,
+  revokeDisabled,
+  onRotate,
+  onRevoke,
+}: {
+  token: DeployToken;
+  now: number;
+  rotateDisabled: boolean;
+  revokeDisabled: boolean;
+  onRotate: (origin: HTMLElement) => void;
+  onRevoke: () => void;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const state = tokenState(token, now);
+  const shown = TOKEN_STATE[state];
+  const name = tokenName(token);
+  const line = tokenLine(token, now);
+  return (
+    <li
+      aria-label={name}
+      className={`flex items-center gap-3 px-3 py-2.5 ${state === 'revoked' ? 'text-muted-foreground' : ''}`}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium">{name}</span>
+          <span title={shown.term}>
+            <Pill label={shown.label} color={shown.color} />
+          </span>
+        </span>
+        <span
+          title={tokenDetail(token)}
+          className={`text-xs ${
+            line.soon ? 'text-[color:var(--status-warning)]' : 'text-muted-foreground'
+          }`}
+        >
+          {line.text}
+        </span>
+      </div>
+      {state !== 'revoked' && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={trigger}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Actions for ${name}`}
+              className="text-muted-foreground"
+            >
+              <MoreHoriz aria-hidden className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {state !== 'expired' && (
+              <DropdownMenuItem
+                disabled={rotateDisabled}
+                onSelect={() => trigger.current && onRotate(trigger.current)}
+              >
+                Rotate token
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              disabled={revokeDisabled}
+              onSelect={onRevoke}
+              className="text-[color:var(--status-critical)] data-[highlighted]:text-[color:var(--status-critical)]"
+            >
+              Revoke token
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </li>
   );
 }

@@ -211,7 +211,11 @@ export function statusFor(a: db.App, since: string): S['DebugStatusResponse'] {
   const parked = scenario === 'parked';
   const regressions = regressionsFor(a, since).regressions;
   const requests = parked ? 0 : failing ? 212 : 1240;
-  const errors = failing ? 31 : 0;
+  // An open error regression's failures are server errors in this window
+  // too, so the health figure and the regression list agree.
+  const errors = failing
+    ? 31
+    : regressions.filter((r) => r.kind === 'errors').reduce((n, r) => n + (r.error_count ?? 0), 0);
   const failures: S['DebugTelemetryRequestItem'][] = failing
     ? [0, 1, 2].map((i) => ({
         id: db.id(),

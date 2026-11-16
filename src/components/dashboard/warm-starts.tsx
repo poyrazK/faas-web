@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { CheckCircle, WarningTriangle } from 'iconoir-react';
-import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, fieldErrorProps } from '@/components/ui/field';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
@@ -28,6 +28,11 @@ import { MaturityLabel } from './maturity-label';
 import { StatusTag } from './postgres-shared';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ProblemHelp } from './problem-help';
+import { FieldLabel } from './kit/field-label';
+import { HelpTip } from './kit/help-tip';
+import { SaveButton } from './save-button';
+import { Disclosure } from './settings-kit';
+import { warmSentence } from './snapshot-words';
 
 /**
  * Warm pool and warm snapshots (ledger C50, beta, catalog `warm-pool`).
@@ -79,24 +84,28 @@ function NumberField({
   max,
   error,
   hint,
+  help,
+  title,
   placeholder,
   onChange,
 }: {
   id: string;
   label: string;
+  /** The exact field name, for whoever searches for it. */
+  title?: string;
   value: string;
   min: number;
   max: number;
   error?: string;
   hint: string;
+  /** The longer explanation, behind a "?". */
+  help?: ReactNode;
   placeholder?: string;
   onChange: (v: string) => void;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="label-mono text-muted-foreground">
-        {label}
-      </label>
+      <FieldLabel label={label} htmlFor={id} help={help} />
       <input
         id={id}
         type="number"
@@ -104,6 +113,7 @@ function NumberField({
         max={max}
         inputMode="numeric"
         value={value}
+        title={title}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         {...fieldErrorProps(error, `${id}-error`)}
@@ -189,6 +199,12 @@ function WarmForm({
       });
   };
 
+  const discard = () => {
+    setDraft(warmDraft(app));
+    setFailure(null);
+  };
+  const thresholdError = Boolean(errors.warm_snapshot_min_ms || errors.warm_snapshot_min_requests);
+
   return (
     <div className="flex flex-col gap-6">
       {failure !== null && (
@@ -207,40 +223,52 @@ function WarmForm({
 
       <fieldset aria-label="Warm pool" className="flex min-w-0 flex-col gap-3">
         <legend className="sr-only">Warm pool</legend>
-        <p className="text-sm font-medium">Warm pool</p>
         {poolOk ? (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <NumberField
-                id="warm-pool-size"
-                label="Warm pool size"
-                value={draft.warm_pool_size}
-                min={0}
-                max={max}
-                error={errors.warm_pool_size}
-                hint={`Paused instances restored from the app’s latest snapshot and held in memory, so a wake resumes one instead of restoring from disk. They are billed while paused, as running instances are. 0 turns the pool off; at most ${max}, this app’s max concurrency.`}
-                onChange={(v) => set('warm_pool_size', v)}
-              />
-              {savedPool > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="label-mono text-muted-foreground">Ready now</span>
-                  <PausedNow slug={app.slug} desired={savedPool} />
-                </div>
-              )}
-            </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              The pool fills from the latest published snapshot, a few instances per scheduler pass,
-              and stays empty until a deployment has produced one. It is emptied while the app is
-              not active, and whenever {capHolder} reaches its{' '}
-              <Link to="/dashboard/usage" className="text-brand underline underline-offset-2">
-                spend cap
-              </Link>
-              , until the cap is raised or the month rolls over.
-              {workspace.org ? ' A company app is capped by its organization, not by you.' : ''}
-            </p>
-          </>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField
+              id="warm-pool-size"
+              label="Ready-to-wake copies"
+              title="warm_pool_size"
+              value={draft.warm_pool_size}
+              min={0}
+              max={max}
+              error={errors.warm_pool_size}
+              help={
+                <>
+                  Warm pool size: paused copies restored from the app’s latest snapshot and held in
+                  memory, so a wake resumes one instead of restoring from disk. They are billed
+                  while paused, as running copies are.
+                  <span className="mt-1.5 block">
+                    The pool is empty until a deployment publishes a snapshot, then fills a few
+                    copies per scheduler pass. It is emptied while the app is not active, and
+                    whenever {capHolder} reaches its{' '}
+                    <Link to="/dashboard/usage" className="text-brand underline underline-offset-2">
+                      spend cap
+                    </Link>
+                    ; after that it stays empty until the cap is raised or the month rolls over.
+                    {workspace.org
+                      ? ' A company app is capped by its organization, not by you.'
+                      : ''}
+                  </span>
+                </>
+              }
+              hint={`0 turns it off; up to ${max}, this app’s most copies at once. Billed while paused.`}
+              onChange={(v) => set('warm_pool_size', v)}
+            />
+            {savedPool > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Ready now</span>
+                <PausedNow slug={app.slug} desired={savedPool} />
+              </div>
+            )}
+          </div>
         ) : (
-          <PlanGateNote feature="Warm pools" plans="Hobby, Pro and Scale" plan={plan} />
+          <>
+            <p className="text-sm font-medium" title="warm pool">
+              Ready-to-wake copies
+            </p>
+            <PlanGateNote feature="Warm pools" plans="Hobby, Pro and Scale" plan={plan} />
+          </>
         )}
       </fieldset>
 
@@ -250,11 +278,16 @@ function WarmForm({
           <>
             <div className="flex items-start justify-between gap-6">
               <div>
-                <p className="text-sm font-medium">Warm snapshots</p>
+                <p className="flex items-center gap-1 text-sm font-medium">
+                  Warm snapshots
+                  <HelpTip label="About warm snapshots">
+                    When an instance that has warmed up parks, capture a second snapshot from it, so
+                    the next wake restores a process whose caches and JIT are already warm. The init
+                    snapshot from the deploy stays the fallback.
+                  </HelpTip>
+                </p>
                 <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-                  When an instance that has warmed up parks, capture a second snapshot from it, so
-                  the next wake restores a process whose caches and JIT are already warm. The init
-                  snapshot from the deploy stays the fallback.
+                  Wake from a snapshot taken after the app has warmed up.
                 </p>
               </div>
               <Switch
@@ -264,32 +297,6 @@ function WarmForm({
                 className="mt-1 data-[state=checked]:bg-brand"
               />
             </div>
-            {draft.warm_snapshot_enabled && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NumberField
-                  id="warm-min-ms"
-                  label="Capture after (ms)"
-                  value={draft.warm_snapshot_min_ms}
-                  min={MIN_MS.min}
-                  max={MIN_MS.max}
-                  placeholder="Not set"
-                  error={errors.warm_snapshot_min_ms}
-                  hint="How long the instance has been ready before a warm capture. 100 to 60,000."
-                  onChange={(v) => set('warm_snapshot_min_ms', v)}
-                />
-                <NumberField
-                  id="warm-min-requests"
-                  label="Capture after (requests)"
-                  value={draft.warm_snapshot_min_requests}
-                  min={MIN_REQUESTS.min}
-                  max={MIN_REQUESTS.max}
-                  placeholder="Not set"
-                  error={errors.warm_snapshot_min_requests}
-                  hint="Requests the instance has served before a warm capture. 1 to 100."
-                  onChange={(v) => set('warm_snapshot_min_requests', v)}
-                />
-              </div>
-            )}
             {draft.warm_snapshot_enabled && app.manifest?.before_checkpoint?.path && (
               <p
                 role="note"
@@ -301,10 +308,41 @@ function WarmForm({
               >
                 <WarningTriangle aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
                 <span>
-                  Warm snapshots are on, but none is captured while the app has a before_checkpoint
-                  hook: a warm capture resumes the same guest. Wakes restore the init snapshot.
+                  None is taken while the app has a before-snapshot hook (
+                  <code className="font-mono">before_checkpoint</code>): a warm capture resumes the
+                  same guest. Wakes restore the snapshot from the deploy instead.
                 </span>
               </p>
+            )}
+            {draft.warm_snapshot_enabled && (
+              <Disclosure label="Advanced snapshot settings" forceOpen={thresholdError}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NumberField
+                    id="warm-min-ms"
+                    label="Capture after (ms)"
+                    title="warm_snapshot_min_ms"
+                    value={draft.warm_snapshot_min_ms}
+                    min={MIN_MS.min}
+                    max={MIN_MS.max}
+                    placeholder="Not set"
+                    error={errors.warm_snapshot_min_ms}
+                    hint="How long the instance has been ready before a warm capture. 100 to 60,000."
+                    onChange={(v) => set('warm_snapshot_min_ms', v)}
+                  />
+                  <NumberField
+                    id="warm-min-requests"
+                    label="Capture after (requests)"
+                    title="warm_snapshot_min_requests"
+                    value={draft.warm_snapshot_min_requests}
+                    min={MIN_REQUESTS.min}
+                    max={MIN_REQUESTS.max}
+                    placeholder="Not set"
+                    error={errors.warm_snapshot_min_requests}
+                    hint="Requests the instance has served before a warm capture. 1 to 100."
+                    onChange={(v) => set('warm_snapshot_min_requests', v)}
+                  />
+                </div>
+              </Disclosure>
             )}
           </>
         ) : (
@@ -316,10 +354,21 @@ function WarmForm({
       </fieldset>
 
       {(poolOk || snapshotsOk) && (
-        <div className="flex justify-end">
-          <Button size="sm" disabled={!dirty || blocked} busy={update.isPending} onClick={save}>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+          {dirty && (
+            <Button size="sm" variant="ghost" disabled={update.isPending} onClick={discard}>
+              Discard changes
+            </Button>
+          )}
+          <SaveButton
+            saved={update.isSuccess && !dirty}
+            size="sm"
+            disabled={!dirty || blocked}
+            busy={update.isPending}
+            onClick={save}
+          >
             Save warm settings
-          </Button>
+          </SaveButton>
         </div>
       )}
     </div>
@@ -329,14 +378,14 @@ function WarmForm({
 export function WarmStarts({ app, plan }: { app: App; plan: Plan | undefined }) {
   const { access, capability, refresh } = useCapabilityAccess(CAPABILITY);
   const entitled = access !== 'plan-not-entitled';
+  const applies = warmApplies(app);
+  const sentence = warmSentence(app);
   return (
-    <Panel title="Warm starts" actions={<MaturityLabel capability={capability} />}>
-      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-        {
-          'Keep paused instances ready to resume, and snapshot a process once it has warmed up, so a wake skips the cold path.'
-        }
-      </p>
-
+    <Panel
+      title="Warm starts"
+      help="Keep paused copies ready to resume, and snapshot a process once it has warmed up, so a wake skips the slow cold start."
+      actions={<MaturityLabel capability={capability} />}
+    >
       {access !== 'on' && entitled ? (
         <div className="flex flex-col gap-3">
           <div
@@ -351,25 +400,25 @@ export function WarmStarts({ app, plan }: { app: App; plan: Plan | undefined }) 
             )}
           </div>
           {access !== 'loading' && (
-            <p className="text-xs text-muted-foreground">
-              Saved settings still apply: warm pool size {app.warm_pool_size ?? 0}, warm snapshots{' '}
-              {app.warm_snapshot_enabled ? 'on' : 'off'}.
-            </p>
+            <p className="text-xs text-muted-foreground">Saved settings still apply: {sentence}</p>
           )}
         </div>
-      ) : !warmApplies(app) ? (
+      ) : !applies ? (
         <p className="text-sm text-muted-foreground">
-          Warm pools and warm snapshots apply to request and service apps, which are snapshotted
-          when they park. This app runs in {executionMode(app)} mode, so it keeps no pool.
+          Warm starts apply to request and service apps, which are snapshotted when they park. This
+          app runs in {executionMode(app)} mode, so it keeps no paused copies.
         </p>
       ) : (
-        <WarmForm
-          app={app}
-          plan={plan}
-          poolOk={entitled && warmPoolAllowed(plan)}
-          snapshotsOk={entitled && warmSnapshotAllowed(plan)}
-          onNotReleased={refresh}
-        />
+        <div className="flex flex-col gap-5">
+          <p className="text-base text-foreground/90">{sentence}</p>
+          <WarmForm
+            app={app}
+            plan={plan}
+            poolOk={entitled && warmPoolAllowed(plan)}
+            snapshotsOk={entitled && warmSnapshotAllowed(plan)}
+            onNotReleased={refresh}
+          />
+        </div>
       )}
     </Panel>
   );

@@ -15,6 +15,7 @@ import {
   DEBUG_VIEW_LABELS,
   PREVIEW_DEBUG_VIEWS,
   WINDOWS,
+  WINDOW_LABELS,
   type DebugSelection,
   type DebugView,
 } from './debug-search';
@@ -50,13 +51,16 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
   const openRequest = previewOn ? (request: string) => onSelect({ request }) : undefined;
 
   return (
-    <Panel title="Debugger" actions={<MaturityLabel capability={debug} />}>
-      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-        {
-          'Investigate gateway requests with recorded details. Routes are templates, not expanded URLs.'
-        }
-      </p>
-
+    <Panel
+      title="Debugger"
+      help={
+        <>
+          Look into the requests your app served, with what was recorded for each one. Routes are
+          templates such as /orders/{'{id}'}, not the exact URLs called.
+        </>
+      }
+      actions={<MaturityLabel capability={debug} />}
+    >
       <div className="flex flex-col gap-4">
         {previewOn && (
           <DebugStatusPanel
@@ -64,6 +68,7 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
             slug={slug}
             since={search.debugWindow ?? '1h'}
             onOpenRequest={(request) => onSelect({ request })}
+            onLook={onSelect}
           />
         )}
         <SegmentedControl
@@ -122,7 +127,7 @@ export function DebugBody({ slug, search, onSelect }: { slug: string } & DebugSe
                 >
                   {WINDOWS.map((w) => (
                     <option key={w} value={w}>
-                      {w}
+                      {WINDOW_LABELS[w]}
                     </option>
                   ))}
                 </select>

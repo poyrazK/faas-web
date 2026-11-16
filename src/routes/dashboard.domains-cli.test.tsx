@@ -1,6 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// No project chosen (lib/project-scope.ts): the page behaves as before.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({ project: null, label: '', appSlugs: null, settled: true, choices: [] }),
+}));
+
 const useDomains = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({

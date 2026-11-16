@@ -1,11 +1,13 @@
 import { Modal } from '@/components/ui/modal';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useAuditEvent } from '@/lib/api/queries';
+import { authEventWords, severityWords } from './settings-words';
 
 /**
  * One auth audit event in full, behind the security page's list. The list
- * shows kind, actor and time; the detail adds the subject, the severity and
- * the `data` payload the API recorded, verbatim. A cross-account id is
+ * shows what happened in words, the actor and the time; the detail adds the
+ * exact event code, the subject, the severity and the `data` payload the API
+ * recorded, verbatim. A cross-account id is
  * indistinguishable from a missing one on purpose, so `not_found` reads as
  * "no such event" rather than as a permissions problem.
  */
@@ -18,7 +20,7 @@ export function AuthEventDetail({ id, onClose }: { id: string | null; onClose: (
     <Modal
       open={id !== null}
       onClose={onClose}
-      title={data ? data.kind : 'Auth event'}
+      title={data ? authEventWords(data).text : 'Event'}
       description={data ? `${data.actor} · ${new Date(data.at).toLocaleString()}` : undefined}
       width="max-w-lg"
     >
@@ -31,12 +33,19 @@ export function AuthEventDetail({ id, onClose }: { id: string | null; onClose: (
       ) : (
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
           <div>
+            <dt className="label-mono text-muted-foreground">Event code</dt>
+            <dd className="font-mono text-xs">{data.kind}</dd>
+          </div>
+          <div>
             <dt className="label-mono text-muted-foreground">Event id</dt>
             <dd className="font-mono text-xs">{data.id}</dd>
           </div>
           <div>
             <dt className="label-mono text-muted-foreground">Severity</dt>
-            <dd className="text-xs">{data.severity ?? 'info'}</dd>
+            <dd className="text-xs">
+              {severityWords(data.severity).flag ?? 'Ordinary'}{' '}
+              <span className="font-mono text-muted-foreground">({data.severity ?? 'info'})</span>
+            </dd>
           </div>
           <div>
             <dt className="label-mono text-muted-foreground">Actor</dt>

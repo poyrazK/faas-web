@@ -26,6 +26,7 @@ import {
 } from './cors-draft';
 import { storageRefusal } from './refusals';
 import { StatusChip } from './status-chip';
+import { HelpTip } from '../kit/help-tip';
 
 const LABEL = 'flex flex-col gap-1 text-xs text-muted-foreground';
 
@@ -98,7 +99,13 @@ export function CorsSetting({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">Browser access (CORS)</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-sm font-medium">Browser access (CORS)</h3>
+          <HelpTip label="About browser access">
+            Cross-origin resource sharing (CORS) rules. They are not authorization: every request
+            from a browser still needs a signed URL or an upload grant.
+          </HelpTip>
+        </div>
         {phase === 'ready' && !drafts && (
           <div className="flex items-center gap-2">
             {rules.length > 0 ? (
@@ -118,7 +125,7 @@ export function CorsSetting({
       </div>
       <p className="text-sm text-muted-foreground">
         Lets pages on your own sites use this bucket&apos;s signed URLs and upload grants from a
-        browser. CORS is not authorization: every request still needs a signature or grant.
+        browser.
       </p>
       {phase !== 'ready' ? (
         <InlinePhase phase={phase} error={cors.error} onRetry={() => void cors.refetch()} />

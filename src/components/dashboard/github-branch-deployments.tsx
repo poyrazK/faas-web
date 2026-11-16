@@ -27,7 +27,8 @@ import { ProblemHelp } from './problem-help';
  * previews, and whether production deploys come from the App's webhook or an
  * Actions workflow — is served only on the bearer-only
  * `/github/deployment-policy` (server.go:5161-5162), so it is neither shown
- * nor guessed here.
+ * nor guessed here. The connection panel says so behind "Show connection
+ * details" (github-connection.tsx).
  */
 
 /** InstallBindRequest.deploy_branches: values match this, at most 32 keys. */
@@ -160,12 +161,6 @@ export function GitHubBranchDeployments({
         {projectId && mappings.length === 0 && !editing && (
           <p>No other branch deploys. Map one to send its pushes to a project environment.</p>
         )}
-        <p>
-          Whether pull requests get previews, and whether production deploys come from the GitHub
-          App or a GitHub Actions workflow, is the project’s GitHub deployment policy. The API
-          serves that policy only to API keys with the github:manage scope, not to a signed-in
-          browser, so the console cannot show or change it.
-        </p>
       </div>
     </div>
   );

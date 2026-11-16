@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import type { Deployment } from '@/lib/api/queries';
+import type { ScopeGate } from './scope-gate';
 
 const reorder = vi.fn();
 const cancel = vi.fn();
@@ -161,5 +162,53 @@ describe('DeployQueue', () => {
     });
     render(<DeployQueue onOpen={vi.fn()} />);
     expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+});
+
+describe('DeployQueue inside a project', () => {
+  const gate = (appSlugs: string[] | null, settled = true): ScopeGate => ({
+    scope: {
+      project: 'acme-shop',
+      label: 'acme-shop',
+      appSlugs: appSlugs ? new Set(appSlugs) : null,
+      settled,
+      choices: [],
+    },
+    pending: appSlugs === null && !settled,
+    error: undefined,
+    retry: vi.fn(),
+  });
+
+  beforeEach(() => {
+    useDeployQueue.mockReturnValue(
+      ready([dep(), dep({ id: 'e'.repeat(32), app_id: 'app-elsewhere', revision: 8 })])
+    );
+  });
+
+  it('lists only the project’s queued deployments', () => {
+    render(<DeployQueue onOpen={vi.fn()} scope={gate(['alpha'])} />);
+    const items = within(screen.getByRole('region', { name: 'Deploy queue' })).getAllByRole(
+      'listitem'
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent('alpha');
+  });
+
+  it('names the project when nothing in it is waiting', () => {
+    render(<DeployQueue onOpen={vi.fn()} scope={gate(['beta'])} />);
+    expect(screen.getByText('Nothing in acme-shop is waiting to deploy.')).toBeInTheDocument();
+  });
+
+  it('reads the queue, rather than listing every app’s, while membership loads', () => {
+    render(<DeployQueue onOpen={vi.fn()} scope={gate(null, false)} />);
+    expect(screen.getByText('Reading the queue…')).toBeInTheDocument();
+    expect(screen.queryByRole('listitem')).toBeNull();
+  });
+
+  it('lists every queued deployment with no project chosen', () => {
+    render(<DeployQueue onOpen={vi.fn()} />);
+    expect(
+      within(screen.getByRole('region', { name: 'Deploy queue' })).getAllByRole('listitem')
+    ).toHaveLength(2);
   });
 });

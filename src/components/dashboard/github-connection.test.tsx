@@ -82,6 +82,8 @@ function show(data: unknown) {
   return render(<GitHubConnectionPanel slug="storefront" />);
 }
 
+const open = (name: RegExp | string) => userEvent.click(screen.getByRole('button', { name }));
+
 beforeEach(() => {
   state.sync.mockReset();
   state.disconnect.mockReset();
@@ -92,9 +94,22 @@ beforeEach(() => {
 });
 
 describe('a bound app', () => {
-  it('shows the installation, repository, production branch, last sync and activity', () => {
+  it('opens with which pushes deploy the app, from the binding', () => {
+    show(bound);
+    expect(screen.getByRole('region', { name: 'How code reaches this app' })).toHaveTextContent(
+      'Pushes to release on acme-corp/storefront deploy storefront.'
+    );
+    expect(screen.getByRole('region', { name: 'How code reaches this app' })).toHaveTextContent(
+      '1 recent GitHub update failed'
+    );
+  });
+
+  it('shows the installation, repository, production branch, last sync and activity', async () => {
     show(bound);
     const panel = screen.getByRole('region', { name: /github/i });
+    expect(within(panel).queryByText(/acme-corp · 48213377/)).not.toBeInTheDocument();
+    await open('Show connection details');
+    await open(/show recent activity/i);
     expect(within(panel).getByRole('link', { name: 'acme-corp/storefront' })).toHaveAttribute(
       'href',
       'https://github.com/acme-corp/storefront'
@@ -114,9 +129,16 @@ describe('a bound app', () => {
     expect(within(panel).getByText('Failed')).toBeInTheDocument();
   });
 
+  it('keeps the deployment-policy scope caveat behind the connection details', async () => {
+    show(bound);
+    expect(screen.queryByText(/github:manage scope/)).not.toBeInTheDocument();
+    await open('Show connection details');
+    expect(screen.getByText(/only to API keys with the github:manage scope/)).toBeInTheDocument();
+  });
+
   it('surfaces a degraded installation with the reconcile error', () => {
     show({ ...bound, health: 'degraded', last_reconcile_error: 'GitHub returned 401' });
-    expect(screen.getByText(/degraded/i)).toBeInTheDocument();
+    expect(screen.getByText(/connection needs attention/i)).toBeInTheDocument();
     expect(screen.getByText('GitHub returned 401')).toBeInTheDocument();
   });
 
@@ -176,8 +198,9 @@ describe('a bound app', () => {
     expect(within(list).getByText('staging environment')).toBeInTheDocument();
   });
 
-  it('marks a failed row with an icon as well as colour and a label', () => {
+  it('marks a failed row with an icon as well as colour and a label', async () => {
     show(bound);
+    await open(/show recent activity/i);
     const failed = screen.getByText('Failed');
     expect(failed.closest('span')?.querySelector('svg')).not.toBeNull();
   });
@@ -270,7 +293,8 @@ describe('a bound app', () => {
   it('disconnects only after a destructive confirm that says what stops and what stays', async () => {
     state.confirm.mockResolvedValue(false);
     show(bound);
-    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    await open('More GitHub actions');
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect' }));
     expect(state.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         destructive: true,
@@ -284,7 +308,8 @@ describe('a bound app', () => {
 
     state.confirm.mockResolvedValue(true);
     state.disconnect.mockResolvedValue({ ...bound, state: 'installed', connected: false });
-    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    await open('More GitHub actions');
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Disconnect' }));
     await waitFor(() => expect(state.disconnect).toHaveBeenCalledOnce());
     expect(state.toast).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', title: 'Push-to-deploy disconnected' })
@@ -303,11 +328,11 @@ describe('an app without a binding', () => {
       last_reconcile_repository_count: 4,
       last_reconcile_detached_count: 0,
     });
-    expect(screen.getByText(/pushes do not deploy this app/i)).toBeInTheDocument();
+    expect(screen.getByText(/pushes don’t deploy it/i)).toBeInTheDocument();
     expect(
       screen.getByText('gregale github link storefront --repo OWNER/NAME')
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More GitHub actions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument();
   });
 
@@ -335,7 +360,7 @@ it('keeps a failed read distinct from a missing binding', () => {
   };
   render(<GitHubConnectionPanel slug="storefront" />);
   expect(screen.getByRole('alert')).toHaveTextContent('down');
-  expect(screen.queryByText(/pushes do not deploy/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/pushes don’t deploy/i)).not.toBeInTheDocument();
 });
 
 it('explains why a company app’s connection reads as not found', () => {

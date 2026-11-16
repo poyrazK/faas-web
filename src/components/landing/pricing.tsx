@@ -1,3 +1,4 @@
+import { featureFlags } from '@/lib/feature-flags';
 import { Link } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button } from '@/components/ui/button';
@@ -158,6 +159,14 @@ export function Pricing() {
               >
                 Join the beta
               </SweepLink>
+              {featureFlags.salesIntake && (
+                <Link
+                  to="/contact"
+                  className="ml-6 text-sm text-brand underline underline-offset-4"
+                >
+                  Request a demo
+                </Link>
+              )}
               <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
                 <Link
                   to="/docs/$slug"

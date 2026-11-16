@@ -12,6 +12,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Jobs } from './dashboard.jobs';
 import { Route as Crons } from './dashboard.crons';
 import { Route as Triggers } from './dashboard.triggers';
+
+// No project chosen: these pages behave as they did before project scoping.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({
+    project: null,
+    label: '',
+    appSlugs: null,
+    settled: true,
+    choices: [],
+  }),
+}));
 const lists = vi.hoisted(() => ({
   empty: false,
   triggersAllowed: true,

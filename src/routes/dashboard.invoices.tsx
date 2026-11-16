@@ -15,6 +15,11 @@ import { InvoiceSource } from '@/components/dashboard/invoice-source';
 import { BillingIdentityPanel } from '@/components/dashboard/billing-identity';
 import { InvoiceRefreshButton } from '@/components/dashboard/invoice-refresh';
 import { useBillingStatus } from '@/lib/api/billing-identity';
+import {
+  invoiceStatusWord,
+  invoicesAnswer,
+  type InvoiceTone,
+} from '@/components/dashboard/invoice-words';
 
 export const Route = createFileRoute('/dashboard/invoices')({
   component: InvoicesPage,
@@ -46,6 +51,13 @@ const STATUS_COLOR: Record<string, string> = {
   draft: 'var(--chart-muted)',
   void: 'var(--chart-muted)',
   uncollectible: 'var(--status-critical)',
+};
+
+const TONE_COLOR: Record<InvoiceTone, string> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  critical: 'var(--status-critical)',
+  none: 'var(--muted-foreground)',
 };
 
 function formatMoney(cents: number, currency: string): string {
@@ -110,6 +122,16 @@ function InvoicesBody() {
     [data]
   );
 
+  const answer = invoicesAnswer(
+    rows.map((r) => ({
+      number: r.number,
+      status: r.status,
+      total: formatMoney(r.total, r.currency),
+      createdAt: r.createdAt,
+    })),
+    Boolean(invoices.hasNextPage)
+  );
+
   const columns: Column<InvoiceRow>[] = [
     {
       key: 'number',
@@ -120,7 +142,12 @@ function InvoicesBody() {
       key: 'status',
       label: 'Status',
       width: 'w-32',
-      render: (i) => <Pill label={i.status} color={STATUS_COLOR[i.status]} />,
+      // A plain word; the provider's status stays in the title.
+      render: (i) => (
+        <span title={i.status}>
+          <Pill label={invoiceStatusWord(i.status)} color={STATUS_COLOR[i.status]} />
+        </span>
+      ),
     },
     { key: 'period', label: 'Period' },
     {
@@ -143,9 +170,9 @@ function InvoicesBody() {
     },
     {
       key: 'provider',
-      label: 'Details',
+      label: '',
       sortable: false,
-      width: 'w-28',
+      width: 'w-12',
       render: (i) => (refreshable(i) ? <InvoiceRefreshButton id={i.id} number={i.number} /> : null),
     },
   ];
@@ -190,6 +217,20 @@ function InvoicesBody() {
           )
         }
       />
+      {!listLoading && !listError && (
+        <p
+          role="status"
+          aria-label="Invoices status"
+          className="flex max-w-[44rem] items-start gap-2.5 text-lg leading-7 font-semibold tracking-[-0.01em] text-balance"
+        >
+          <span
+            aria-hidden
+            className="mt-2.5 inline-block size-2 shrink-0 rounded-full"
+            style={{ background: TONE_COLOR[answer.tone] }}
+          />
+          {answer.sentence}
+        </p>
+      )}
       <InvoiceSource org={org} />
       {org && listError instanceof ApiError && listError.code === 'org_role_forbidden' ? (
         <p role="status" className="text-sm text-muted-foreground">

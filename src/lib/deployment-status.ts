@@ -43,6 +43,23 @@ export function hasRollbackTarget(deployments: ReadonlyArray<{ state: string }>)
   return deployments.filter((deployment) => deployment.state === 'succeeded').length > 1;
 }
 
+/**
+ * The release a plain rollback returns to: apid's `POST /rollback` with no
+ * body brings back the most recent superseded deployment (faas
+ * rollbackAppCore). Null when no deployment reports `superseded`, so the
+ * button can still offer a rollback without naming a release it cannot see.
+ */
+export function rollbackTarget<D extends { state: string; status?: string; createdAt: number }>(
+  deployments: ReadonlyArray<D>
+): D | null {
+  return deployments
+    .filter((deployment) => deployment.state === 'succeeded' && deployment.status === 'superseded')
+    .reduce<D | null>(
+      (newest, d) => (!newest || d.createdAt > newest.createdAt ? d : newest),
+      null
+    );
+}
+
 /** Invoke needs at least one deployment that can serve traffic. */
 export function hasRunnableDeployment(deployments: ReadonlyArray<{ state: string }>): boolean {
   return deployments.some((deployment) => deployment.state === 'succeeded');

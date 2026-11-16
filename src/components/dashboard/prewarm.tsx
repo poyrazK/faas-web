@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { Pill } from './resource-table';
 import { Timestamp } from '@/components/ui/timestamp';
+import { PREWARM_STATUS, copies, prewarmSentence } from './app-settings-words';
 
 /** `datetime-local` speaks local wall time; the API wants an instant. */
 export function localInputToIso(value: string): string | null {
@@ -45,6 +46,7 @@ export function PrewarmPanel({ slug }: { slug: string }) {
   const [start, setStart] = useState(() => toLocalInput(new Date(Date.now() + 3600_000)));
   const [end, setEnd] = useState(() => toLocalInput(new Date(Date.now() + 7200_000)));
   const [attempted, setAttempted] = useState(false);
+  const [open, setOpen] = useState(false);
   // "Now" is read when the form is submitted, never during render.
   const [startedInPast, setStartedInPast] = useState(false);
   const wakeAt = localInputToIso(start);
@@ -69,7 +71,8 @@ export function PrewarmPanel({ slug }: { slug: string }) {
     try {
       await schedule.mutateAsync({ count: countValue, wake_at: wakeAt, expires_at: expiresAt });
       setAttempted(false);
-      toast({ kind: 'success', title: 'Prewarm scheduled' });
+      setOpen(false);
+      toast({ kind: 'success', title: 'Warm-up scheduled' });
     } catch (err) {
       toast({ kind: 'error', title: 'Could not schedule', error: err });
     }
@@ -78,121 +81,140 @@ export function PrewarmPanel({ slug }: { slug: string }) {
   const items = [...(prewarms.data ?? [])].sort(
     (a, b) => Date.parse(b.wake_at) - Date.parse(a.wake_at)
   );
+  const upcoming = items.filter((item) => item.status === 'pending' || item.status === 'running');
   return (
     <Panel
-      title="Prewarm"
-      help="Instances start about a minute before the window and stop when it ends; minimum instances is unchanged."
+      title="Scheduled warm-ups"
+      help="Prewarm: capacity ahead of a known spike. Instances start about a minute before the window and stop when it ends; copies always running (minimum instances) is unchanged."
+      actions={
+        !open && (
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            Schedule a warm-up
+          </Button>
+        )
+      }
     >
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        <label className="flex flex-col gap-1.5 text-xs font-medium">
-          Instances
-          <input
-            type="number"
-            min={1}
-            value={count}
-            onChange={(event) => setCount(event.target.value)}
-            className={cn(FIELD, 'w-24 tabular-nums')}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium">
-          From
-          <input
-            type="datetime-local"
-            value={start}
-            onChange={(event) => {
-              setStart(event.target.value);
-              setStartedInPast(false);
-            }}
-            className={cn(FIELD, 'w-56')}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium">
-          Until
-          <input
-            type="datetime-local"
-            value={end}
-            onChange={(event) => setEnd(event.target.value)}
-            className={cn(FIELD, 'w-56')}
-          />
-        </label>
-        <Button type="submit" size="sm" busy={schedule.isPending}>
-          Schedule prewarm
-        </Button>
-        {attempted && error && (
-          <div className="w-full">
-            <FieldError id={`${id}-error`}>{error}</FieldError>
+      {prewarms.data && (
+        <p className={`text-base text-foreground/90 ${items.length || open ? 'mb-4' : ''}`}>
+          {prewarmSentence(upcoming.map((item) => item.status))}
+        </p>
+      )}
+      {open && (
+        <form
+          aria-label="Schedule a warm-up"
+          className="well mb-5 flex flex-wrap items-end gap-3 rounded-xl bg-muted/40 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
+            Copies
+            <input
+              type="number"
+              min={1}
+              value={count}
+              onChange={(event) => setCount(event.target.value)}
+              className={cn(FIELD, 'w-24 tabular-nums')}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
+            From
+            <input
+              type="datetime-local"
+              value={start}
+              onChange={(event) => {
+                setStart(event.target.value);
+                setStartedInPast(false);
+              }}
+              className={cn(FIELD, 'w-56')}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium">
+            Until
+            <input
+              type="datetime-local"
+              value={end}
+              onChange={(event) => setEnd(event.target.value)}
+              className={cn(FIELD, 'w-56')}
+            />
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" busy={schedule.isPending}>
+              Schedule
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
           </div>
-        )}
-      </form>
-      <div className="mt-5">
-        {items.length ? (
-          <ul aria-label="Prewarms" className="divide-y divide-border text-sm">
-            {items.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
-                <Pill label={item.status} color={STATUS_COLOR[item.status]} />
-                <span className="tabular-nums">
-                  {item.admitted_count !== undefined && item.status !== 'pending'
-                    ? `${item.admitted_count} of ${item.count}`
-                    : item.count}{' '}
-                  instances
+          {attempted && error && (
+            <div className="w-full">
+              <FieldError id={`${id}-error`}>{error}</FieldError>
+            </div>
+          )}
+        </form>
+      )}
+      {items.length ? (
+        <ul aria-label="Warm-ups" className="divide-y divide-border text-sm">
+          {items.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
+              <span title={item.status}>
+                <Pill
+                  label={PREWARM_STATUS[item.status] ?? item.status}
+                  color={STATUS_COLOR[item.status]}
+                />
+              </span>
+              <span className="tabular-nums">
+                {item.admitted_count !== undefined && item.status !== 'pending'
+                  ? `${item.admitted_count} of ${copies(item.count)}`
+                  : copies(item.count)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                <Timestamp value={item.wake_at} mode="absolute" /> →{' '}
+                <Timestamp value={item.expires_at} mode="absolute" />
+              </span>
+              {item.last_error && (
+                <span className="text-xs text-[color:var(--status-critical)]">
+                  {item.last_error}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  <Timestamp value={item.wake_at} mode="absolute" /> →{' '}
-                  <Timestamp value={item.expires_at} mode="absolute" />
-                </span>
-                {item.last_error && (
-                  <span className="text-xs text-[color:var(--status-critical)]">
-                    {item.last_error}
-                  </span>
-                )}
-                {item.status === 'pending' && (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="ml-auto"
-                    onClick={async () => {
-                      if (
-                        !(await confirm({
-                          title: 'Cancel this prewarm?',
-                          description: 'No instances will be started for this window.',
-                          confirmLabel: 'Cancel prewarm',
-                        }))
-                      )
-                        return;
-                      void cancel.mutateAsync(item.id).catch((err: unknown) =>
-                        toast({
-                          kind: 'error',
-                          title: 'Could not cancel',
-                          error: err,
-                        })
-                      );
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <InlinePhase
-            phase={queryPhase({
-              error: prewarms.error,
-              loading: prewarms.isPending,
-              isEmpty: true,
-            })}
-            error={prewarms.error}
-            emptyMessage="No prewarms scheduled."
-            onRetry={() => void prewarms.refetch()}
-          />
-        )}
-      </div>
+              )}
+              {item.status === 'pending' && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="ml-auto"
+                  aria-label="Cancel this warm-up"
+                  onClick={async () => {
+                    if (
+                      !(await confirm({
+                        title: 'Cancel this warm-up?',
+                        description: 'No instances will be started for this window.',
+                        confirmLabel: 'Cancel warm-up',
+                      }))
+                    )
+                      return;
+                    void cancel.mutateAsync(item.id).catch((err: unknown) =>
+                      toast({
+                        kind: 'error',
+                        title: 'Could not cancel',
+                        error: err,
+                      })
+                    );
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : prewarms.data ? null : (
+        <InlinePhase
+          phase={queryPhase({ error: prewarms.error, loading: prewarms.isPending })}
+          error={prewarms.error}
+          onRetry={() => void prewarms.refetch()}
+        />
+      )}
     </Panel>
   );
 }

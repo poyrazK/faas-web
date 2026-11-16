@@ -17,6 +17,7 @@ export interface SettingsSearch extends Record<string, unknown> {
   scope?: 'personal' | 'organization';
   org?: string;
   github?: string;
+  github_error?: string;
   default_branch?: string;
   key?: string;
 }
@@ -24,7 +25,7 @@ export function validateSettingsSearch(raw: Record<string, unknown>): SettingsSe
   const search = { ...raw } as SettingsSearch;
   if (!SETTINGS_SECTIONS.some(([section]) => raw.section === section)) search.section = undefined;
   if (raw.scope !== 'personal' && raw.scope !== 'organization') search.scope = undefined;
-  for (const key of ['org', 'github', 'default_branch'] as const) {
+  for (const key of ['org', 'github', 'github_error', 'default_branch'] as const) {
     if (typeof raw[key] !== 'string' || !raw[key].trim()) search[key] = undefined;
   }
   search.key = resourceId(raw.key);

@@ -153,9 +153,20 @@ function CapHistory() {
  * the cap, what the period is projected to cost, and every cap change and
  * cap-reached notice apid has recorded. The cap itself is edited in place.
  */
-export function SpendControl({ overageCents }: { overageCents: number | undefined }) {
+export function SpendControl({
+  overageCents,
+  editing: editingProp,
+  onEditingChange,
+}: {
+  overageCents: number | undefined;
+  /** Controlled by the page when its headline action also opens the editor. */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
+}) {
   const cap = useOverageCap();
-  const [editing, setEditing] = useState(false);
+  const [editingState, setEditingState] = useState(false);
+  const editing = editingProp ?? editingState;
+  const setEditing = onEditingChange ?? setEditingState;
   const phase = queryPhase({ error: cap.error, loading: cap.isPending });
   return (
     <Panel
@@ -169,7 +180,7 @@ export function SpendControl({ overageCents }: { overageCents: number | undefine
         )
       }
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         {phase !== 'ready' || !cap.data || overageCents === undefined ? (
           <InlinePhase
             phase={phase === 'ready' ? 'loading' : phase}
@@ -181,10 +192,15 @@ export function SpendControl({ overageCents }: { overageCents: number | undefine
           <Standing overageCents={overageCents} capCents={cap.data.overage_cap_cents} />
         )}
         <ForecastLine />
-        <div>
-          <h3 className="mb-1 text-xs font-medium text-muted-foreground">History</h3>
-          <CapHistory />
-        </div>
+        {/* Every cap change and cap-reached notice, one click away. */}
+        <details className="group text-sm">
+          <summary className="cursor-pointer text-xs text-muted-foreground underline-offset-4 hover:underline">
+            Show cap history
+          </summary>
+          <div className="mt-2">
+            <CapHistory />
+          </div>
+        </details>
       </div>
       {editing && cap.data && (
         <Modal
@@ -207,17 +223,20 @@ function Standing({ overageCents, capCents }: { overageCents: number; capCents: 
   const standing = capStanding(overageCents, capCents);
   return (
     <div className="flex flex-col gap-2">
-      <p className="flex items-center gap-2 text-sm font-medium">
-        <span
-          aria-hidden
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ background: standing.tone }}
-        />
-        {standing.label}
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+        <span className="inline-flex items-center gap-2 font-medium">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: standing.tone }}
+          />
+          {standing.label}
+        </span>
+        <span className="text-xs text-muted-foreground">{standing.detail}</span>
       </p>
       {standing.pct !== null && (
         <div
-          className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
           role="meter"
           aria-label="Overage used against the cap"
           aria-valuenow={Math.round(standing.pct)}
@@ -230,7 +249,6 @@ function Standing({ overageCents, capCents }: { overageCents: number; capCents: 
           />
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{standing.detail}</p>
     </div>
   );
 }

@@ -42,7 +42,15 @@ it("lists a job's own registries from its route, never a password", async () => 
   mount(<JobRegistryCredentialsPanel name="nightly-export" />);
   expect(await screen.findByText('ghcr.io')).toBeInTheDocument();
   expect(screen.getByText(/deploy-bot/)).toBeInTheDocument();
-  expect(screen.getByText(/Up to 5 registries/)).toBeInTheDocument();
+  expect(
+    screen.getByText('Gregale signs in to ghcr.io when it pulls private images.')
+  ).toBeInTheDocument();
+  // The cap is a caveat: it waits behind the panel's tip.
+  expect(screen.queryByText(/Up to 5 registries/)).not.toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole('button', { name: 'About Private registries — nightly-export' })
+  );
+  expect(await screen.findByText(/Up to 5 registries/)).toBeInTheDocument();
   expect(get).toHaveBeenCalledWith('/v1/jobs/{name}/registry-credentials', {
     params: { path: { name: 'nightly-export' } },
   });
@@ -52,7 +60,9 @@ it('saves a credential for the job', async () => {
   spyApi('GET').mockImplementation(() => ok({ credentials: [], quota_max: 5, count: 0 }));
   const put = spyApi('PUT').mockImplementation(() => ok(credential));
   mount(<JobRegistryCredentialsPanel name="nightly-export" />);
-  expect(await screen.findByText(/No private registry credentials/)).toBeInTheDocument();
+  expect(
+    await screen.findByText('Add a login so Gregale can pull images from a private registry.')
+  ).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Add registry' }));
   const url = screen.getByPlaceholderText('https://registry.example.com');
   await userEvent.clear(url);
@@ -93,7 +103,7 @@ it('shows a refused save with its code', async () => {
     problem(413, 'plan_job_registry_credential_quota', 'this job already has 5 registries')
   );
   mount(<JobRegistryCredentialsPanel name="nightly-export" />);
-  await screen.findByText(/No private registry credentials/);
+  await screen.findByText('Add a login so Gregale can pull images from a private registry.');
   await userEvent.click(screen.getByRole('button', { name: 'Add registry' }));
   await userEvent.type(screen.getByLabelText('Username'), 'bot');
   await userEvent.type(screen.getByLabelText('Password'), 'pw');

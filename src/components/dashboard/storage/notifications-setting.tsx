@@ -18,6 +18,7 @@ import {
 } from '@/lib/api/object-storage';
 import { storageRefusal } from './refusals';
 import { StatusChip } from './status-chip';
+import { HelpTip } from '../kit/help-tip';
 
 type Event = NotificationRule['events'][number];
 
@@ -186,7 +187,13 @@ export function NotificationsSetting({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">Change notifications</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-sm font-medium">Change notifications</h3>
+          <HelpTip label="About change notifications">
+            Every confirmed write also emits <code className="font-mono">object.created</code> on
+            the <code className="font-mono">gregale.storage</code> event source.
+          </HelpTip>
+        </div>
         {phase === 'ready' && !drafts && (
           <div className="flex items-center gap-2">
             {rules.length ? (
@@ -210,9 +217,7 @@ export function NotificationsSetting({
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Send writes and deletes in this bucket to a function or queue. Every confirmed write also
-        emits <code className="font-mono">object.created</code> on the{' '}
-        <code className="font-mono">gregale.storage</code> event source.
+        Send writes and deletes in this bucket to a function or queue.
       </p>
       {phase !== 'ready' ? (
         <InlinePhase phase={phase} error={query.error} onRetry={() => void query.refetch()} />
@@ -228,10 +233,11 @@ export function NotificationsSetting({
                       aria-hidden="true"
                       className="storage-rule__tick mt-2 h-px w-3 shrink-0"
                     />
-                    <span>{notificationSentence(r)}</span>
-                    <code className="break-all font-mono text-xs text-muted-foreground">
-                      {r.destination}
-                    </code>
+                    <span title={r.destination}>{notificationSentence(r)}</span>
+                    <details className="basis-full text-xs text-muted-foreground">
+                      <summary className="w-fit cursor-pointer">Show destination</summary>
+                      <code className="mt-1 block break-all font-mono">{r.destination}</code>
+                    </details>
                     {r.id && managed.has(r.id) && (
                       <span className="text-xs text-muted-foreground">
                         From your app&apos;s compute triggers

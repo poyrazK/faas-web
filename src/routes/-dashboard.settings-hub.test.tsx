@@ -289,7 +289,7 @@ describe('canonical Settings', () => {
     await waitFor(() => expect(screen.getByText('acme_prefix…')).toBeInTheDocument());
     await act(async () => router.history.forward());
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'People' })).toBeInTheDocument()
     );
     cleanup();
     await mount(saved);
@@ -317,12 +317,19 @@ describe('canonical Settings', () => {
   it('keeps Members focused and moves identity, seats, transfer and keys to their own sections', async () => {
     await mount('/dashboard/settings?section=members&org=acme');
     expect(await screen.findByText('next@example.com')).toBeInTheDocument();
-    expect(screen.getByText('owner')).toBeInTheDocument();
+    expect(screen.getByText('Owner')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Organization members' })).toHaveTextContent(
+      'acme has 2 members.'
+    );
     expect(screen.queryByRole('button', { name: 'Transfer' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create key' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     await section('Organization');
-    expect(await screen.findByText('2 of 5 seats used on the pro plan.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/uses 2 of 5 member seats on the Pro plan\./)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Transfer' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Hand over ownership' }));
     expect(screen.getByRole('button', { name: 'Transfer' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Invitations' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create key' })).not.toBeInTheDocument();
@@ -336,9 +343,7 @@ describe('canonical Settings', () => {
     );
     await mount('/dashboard/settings?section=organization&org=bravo');
     expect(
-      await screen.findByText(
-        'Personal organizations only on the free plan. Shared member seats are not included.'
-      )
+      await screen.findByText(/includes personal organizations only — no shared member seats/)
     ).toBeInTheDocument();
     expect(screen.queryByText(/1 of 0 seats used/)).not.toBeInTheDocument();
   });
@@ -348,18 +353,16 @@ describe('canonical Settings', () => {
     expect(screen.getByRole('link', { name: /Manage on GitHub/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Email sign-in' })).not.toBeInTheDocument();
     await section('Security');
-    for (const name of [
-      'Email sign-in',
-      'Multi-factor authentication',
-      'Active sessions',
-      'Sealed secrets',
-      'Auth events',
-    ])
+    for (const name of ['Signed-in devices', 'Recent activity', 'Email sign-in', 'Saved secrets'])
       expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set up two-factor sign-in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign out everywhere' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Manage on GitHub/ })).not.toBeInTheDocument();
     await section('Platform limits');
-    expect(await screen.findByRole('spinbutton', { name: 'Extra entries' })).toBeInTheDocument();
-    expect(screen.getByText('Scale to zero')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('spinbutton', { name: 'Extra address ranges' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Sleeping when idle')).toHaveAttribute('title', 'Scale to zero');
     await section('Data and privacy');
     for (const name of [
       'Download export',
@@ -457,6 +460,7 @@ describe('canonical Settings', () => {
 
   it('transfers only to another member and explains the old owner becomes admin', async () => {
     await mount('/dashboard/settings?section=organization&org=acme');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hand over ownership' }));
     const target = await screen.findByRole('combobox', { name: 'Transfer ownership to' });
     await waitFor(() =>
       expect(within(target).getByRole('option', { name: 'next@example.com' })).toBeInTheDocument()
@@ -514,7 +518,9 @@ describe('canonical Settings', () => {
     orgs = [org('personal', true)];
     await mount('/dashboard/settings?section=organization');
     expect(
-      await screen.findByText(/personal organizations cannot be renamed or deleted/i)
+      await screen.findByText(
+        /your personal organization\. It is always yours and can't be renamed or deleted/i
+      )
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete organization' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();

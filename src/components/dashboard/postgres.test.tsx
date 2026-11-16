@@ -261,17 +261,37 @@ describe('PostgresDatabases', () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
     expect(await screen.findByText('DATABASE_URL')).toBeInTheDocument();
+    expect(screen.getByText(/api-gateway uses it as DATABASE_URL/)).toBeInTheDocument();
+    // The credential generation is detail: one click away, not on the row.
+    expect(screen.queryByText('credentials v2')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /technical details/i }));
     expect(screen.getByText('credentials v2')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /bind app/i }));
+    await userEvent.click(screen.getByRole('button', { name: /connect an app/i }));
     expect(
       within(await screen.findByRole('dialog')).getByText(/never shown in the console/i)
+    ).toBeInTheDocument();
+  });
+
+  it('opens a database with its sentence, one primary action, and the restore form tucked away', async () => {
+    render(<PostgresDatabases />);
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    const detail = (await screen.findByRole('heading', { name: 'orders', level: 2 })).closest(
+      'section'
+    ) as HTMLElement;
+    expect(within(detail).getByText(/apps bound to it can connect/i)).toBeInTheDocument();
+    expect(within(detail).getByRole('button', { name: /connect an app/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Restored database name')).toBeNull();
+    expect(screen.queryByText('conditions section')).toBeNull();
+    await userEvent.click(within(detail).getByRole('button', { name: /restore a copy/i }));
+    expect(
+      within(await screen.findByRole('dialog')).getByLabelText('Restored database name')
     ).toBeInTheDocument();
   });
 
   it('binds an app under the chosen secret name', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /bind app/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /connect an app/i }));
     const sheet = await screen.findByRole('dialog');
     const key = within(sheet).getByLabelText('Environment key');
     await userEvent.clear(key);
@@ -290,6 +310,7 @@ describe('PostgresDatabases', () => {
   it('restores into a new database, saying the original is untouched', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /restore a copy/i }));
     await userEvent.type(await screen.findByLabelText('Restored database name'), 'orders-restored');
     const at = screen.getByLabelText('Restore point in time');
     await userEvent.type(at, '2026-09-07T10:30');
@@ -307,6 +328,7 @@ describe('PostgresDatabases', () => {
   it('shows the CLI restore command, with placeholders until the form is filled', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /restore a copy/i }));
 
     expect(
       await screen.findByText(
@@ -318,6 +340,7 @@ describe('PostgresDatabases', () => {
   it('names the restore copy button after the database, as a noun', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /restore a copy/i }));
 
     expect(
       await screen.findByRole('button', { name: 'Copy: restore command for orders' })
@@ -327,6 +350,7 @@ describe('PostgresDatabases', () => {
   it('fills the CLI restore command from the name and time typed in the form', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /restore a copy/i }));
     await userEvent.type(await screen.findByLabelText('Restored database name'), 'orders-restored');
     await userEvent.type(screen.getByLabelText('Restore point in time'), '2026-09-07T10:30');
 
@@ -607,6 +631,8 @@ describe('PostgresDatabases', () => {
       render(<PostgresDatabases />);
       const row = screen.getByRole('button', { name: /orders/i });
       await userEvent.click(row);
+      // Size lives behind its disclosure until a change is being followed.
+      await userEvent.click(await screen.findByRole('button', { name: /size and compute/i }));
       expect(await screen.findByText('compute section following nothing')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'start a change' }));
       expect(screen.getByText('compute section following r-1')).toBeInTheDocument();
@@ -631,6 +657,7 @@ describe('PostgresDatabases', () => {
     it('shows both for a personal database', async () => {
       render(<PostgresDatabases />);
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /health and connections/i }));
       expect(await screen.findByText('conditions section')).toBeInTheDocument();
       expect(screen.getByText('connection planning section')).toBeInTheDocument();
     });
@@ -640,6 +667,7 @@ describe('PostgresDatabases', () => {
       workspace.label = 'Acme';
       render(<PostgresDatabases />);
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /health and connections/i }));
       expect(await screen.findByText(/no organization route/i)).toBeInTheDocument();
       expect(screen.queryByText('conditions section')).toBeNull();
     });
@@ -796,6 +824,7 @@ describe('PostgresDatabases', () => {
       render(<PostgresDatabases />);
       await userEvent.click(screen.getByRole('button', { name: /orders/i }));
       expect(await screen.findByText('rotation pending')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /technical details/i }));
       expect(screen.getByText('credentials v3')).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /rotate credentials for api-gateway/i })
@@ -883,6 +912,7 @@ describe('IDs for the CLI', () => {
     usePostgresBindings.mockReturnValue(ready({ items: [] }));
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /technical details/i }));
     expect(await screen.findByText(dbId)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: `Copy: database ID ${dbId}` })).toBeInTheDocument();
   });
@@ -891,6 +921,7 @@ describe('IDs for the CLI', () => {
     usePostgresBindings.mockReturnValue(ready({ items: [binding({ id: bindingId })] }));
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /technical details/i }));
     expect(
       await screen.findByRole('button', { name: `Copy: binding ID ${bindingId}` })
     ).toBeInTheDocument();
@@ -909,6 +940,7 @@ describe('IDs for the CLI', () => {
     );
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /technical details/i }));
     expect(await screen.findByText(sourceId)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: `Copy: source database ID ${sourceId}` })

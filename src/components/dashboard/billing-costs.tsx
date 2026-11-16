@@ -57,6 +57,14 @@ const MISSING_COMPONENTS: Record<string, string> = {
   external_and_managed_resource_meters: 'External and managed resource meters',
 };
 
+/** The same components, short enough for a sentence. */
+const SHORT_COMPONENTS: Record<string, string> = {
+  subscription_and_addons: 'the subscription',
+  credits_and_adjustments: 'credits',
+  tax: 'tax',
+  external_and_managed_resource_meters: 'other services',
+};
+
 const words = (code: string) => code.replace(/_/g, ' ');
 const sentence = (code: string) => {
   const text = words(code);
@@ -400,6 +408,26 @@ const DELIVERY: Record<string, string> = {
   off: 'Off, not billed',
 };
 
+/**
+ * The report in one plain sentence: what the figure is, and that it is not
+ * the bill. Built only from the report's own fields.
+ */
+export function costSentence(
+  report: Pick<FinancialCosts, 'missing_bill_components'>,
+  gapCount: number
+): string {
+  const what = 'What usage has cost, at the price in force when it happened.';
+  const gaps =
+    gapCount > 0
+      ? ` ${gapCount === 1 ? 'One meter has' : `${gapCount} meters have`} gaps, so it counts only what is known.`
+      : '';
+  const parts = report.missing_bill_components.map((c) => SHORT_COMPONENTS[c] ?? words(c));
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  const bill =
+    parts.length > 0 ? ` It isn’t your bill: it leaves out ${list}.` : ' It isn’t an invoice.';
+  return what + gaps + bill;
+}
+
 function CostReport({ report }: { report: FinancialCosts }) {
   const month = monthLabel(report.period_start.slice(0, 7));
   const scope = SCOPES[report.scope] ?? words(report.scope);
@@ -442,131 +470,147 @@ function CostReport({ report }: { report: FinancialCosts }) {
             {gaps.length > 0 ? '; meters with coverage gaps count only what is known' : ''}.
           </HelpTip>
         </p>
-      </div>
-
-      <section aria-label="Cost by meter">
-        <ResourceTable
-          rows={rows}
-          columns={METER_COLUMNS}
-          emptyMessage="No meters were reported for this month."
-          desktopMinWidth="md:min-w-[760px]"
-        />
-      </section>
-
-      <div className="flex flex-col gap-2">
-        <h3 className="label-mono text-foreground">Coverage</h3>
-        {gaps.length === 0 ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle
-              className="h-3.5 w-3.5 shrink-0"
-              style={{ color: 'var(--status-good)' }}
-              aria-hidden
-            />
-            Every meter is fully sampled, fresh and priced for this month.
-          </p>
-        ) : (
-          <ul aria-label="Coverage gaps" className="flex flex-col gap-3 text-sm">
-            {gaps.map((m) => {
-              const unit = meterUnit(m);
-              const lines = m.coverage.reasons.map((r) =>
-                reasonSentence(r, m, report.retained_from)
-              );
-              if (m.coverage.unpriced_quantity > 0)
-                lines.push(
-                  `${formatQuantity(m.coverage.unpriced_quantity, unit)} is unpriced and not in the known cost.`
-                );
-              if (lines.length === 0) lines.push('Coverage is incomplete.');
-              return (
-                <li key={m.meter} className="flex items-start gap-2">
-                  <WarningTriangle
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                    style={{ color: 'var(--status-warning)' }}
-                    aria-hidden
-                  />
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span className="font-medium">{meterName(m.meter)}</span>
-                    {lines.map((line, i) => (
-                      <span key={i} className="text-muted-foreground">
-                        {line}
-                      </span>
-                    ))}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      {report.missing_bill_components.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <h3 className="label-mono text-foreground">Not in this report</h3>
-          <p className="text-sm text-muted-foreground">
-            This report covers {scope} only. These parts of a bill are left out, so the known usage
-            cost is not a bill estimate:
-          </p>
-          <ul aria-label="Not in this report" className="list-disc pl-5 text-sm">
-            {report.missing_bill_components.map((c) => (
-              <li key={c}>{MISSING_COMPONENTS[c] ?? sentence(c)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {contracts.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-xs text-muted-foreground underline underline-offset-4">
-            Prices in force this month
-          </summary>
-          <ul className="mt-3 flex flex-col gap-2">
-            {contracts.map((c) => {
-              const per = formatQuantity(c.price.unit_quantity, c.price.unit).replace(/^1 /, '');
-              return (
-                <li key={`${c.meter}:${c.price.version}:${c.effective_from}`}>
-                  <span className="font-medium">{meterName(c.meter)}</span>{' '}
-                  <span className="text-muted-foreground">
-                    · {formatMillicentRate(c.price.millicents_per_unit)} per {per}
-                    {c.price.included_quantity > 0 &&
-                      ` after ${formatQuantity(c.price.included_quantity, c.price.unit)} included`}{' '}
-                    · {sentence(c.plan)} plan · {DELIVERY[c.delivery_mode] ?? c.delivery_mode} ·
-                    from <Timestamp value={c.effective_from} mode="absolute" />
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
-
-      <div className="flex flex-col gap-2">
-        <h3 className="label-mono text-foreground">Invoices with a period ending in {month}</h3>
-        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
-            title="invoice_reconciliation: not_reconciled"
-          >
-            <Circle className="h-3 w-3" aria-hidden />
-            Not reconciled
-          </span>
-          Provider invoices are separate records. They are not reconciled to the usage costs above,
-          their periods can differ from the UTC usage month, and they are not added to the known
-          usage cost.
+        <p className="mt-3 max-w-[44rem] text-sm text-muted-foreground">
+          {costSentence(report, gaps.length)}
         </p>
-        {invoices.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No provider invoice has a period ending in this month.
-          </p>
-        ) : (
-          <section aria-label="Invoices">
+      </div>
+
+      {/* The meter table, coverage, what is left out, prices and invoices:
+          every honesty note kept, one click away. */}
+      <details className="group/details flex flex-col">
+        <summary className="w-fit cursor-pointer text-sm font-medium text-foreground underline-offset-4 hover:underline">
+          <span className="group-open/details:hidden">Show cost details</span>
+          <span className="hidden group-open/details:inline">Hide cost details</span>
+        </summary>
+        <div className="mt-4 flex flex-col gap-6">
+          <section aria-label="Cost by meter">
             <ResourceTable
-              rows={invoices}
-              columns={INVOICE_COLUMNS}
-              initialSort={{ key: 'periodEnd', dir: 'desc' }}
-              desktopMinWidth="md:min-w-[560px]"
+              rows={rows}
+              columns={METER_COLUMNS}
+              emptyMessage="No meters were reported for this month."
+              desktopMinWidth="md:min-w-[760px]"
             />
           </section>
-        )}
-      </div>
+
+          <div className="flex flex-col gap-2">
+            <h3 className="label-mono text-foreground">Coverage</h3>
+            {gaps.length === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle
+                  className="h-3.5 w-3.5 shrink-0"
+                  style={{ color: 'var(--status-good)' }}
+                  aria-hidden
+                />
+                Every meter is fully sampled, fresh and priced for this month.
+              </p>
+            ) : (
+              <ul aria-label="Coverage gaps" className="flex flex-col gap-3 text-sm">
+                {gaps.map((m) => {
+                  const unit = meterUnit(m);
+                  const lines = m.coverage.reasons.map((r) =>
+                    reasonSentence(r, m, report.retained_from)
+                  );
+                  if (m.coverage.unpriced_quantity > 0)
+                    lines.push(
+                      `${formatQuantity(m.coverage.unpriced_quantity, unit)} is unpriced and not in the known cost.`
+                    );
+                  if (lines.length === 0) lines.push('Coverage is incomplete.');
+                  return (
+                    <li key={m.meter} className="flex items-start gap-2">
+                      <WarningTriangle
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                        style={{ color: 'var(--status-warning)' }}
+                        aria-hidden
+                      />
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="font-medium">{meterName(m.meter)}</span>
+                        {lines.map((line, i) => (
+                          <span key={i} className="text-muted-foreground">
+                            {line}
+                          </span>
+                        ))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {report.missing_bill_components.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="label-mono text-foreground">Not in this report</h3>
+              <p className="text-sm text-muted-foreground">
+                This report covers {scope} only. These parts of a bill are left out, so the known
+                usage cost is not a bill estimate:
+              </p>
+              <ul aria-label="Not in this report" className="list-disc pl-5 text-sm">
+                {report.missing_bill_components.map((c) => (
+                  <li key={c}>{MISSING_COMPONENTS[c] ?? sentence(c)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {contracts.length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs text-muted-foreground underline underline-offset-4">
+                Prices in force this month
+              </summary>
+              <ul className="mt-3 flex flex-col gap-2">
+                {contracts.map((c) => {
+                  const per = formatQuantity(c.price.unit_quantity, c.price.unit).replace(
+                    /^1 /,
+                    ''
+                  );
+                  return (
+                    <li key={`${c.meter}:${c.price.version}:${c.effective_from}`}>
+                      <span className="font-medium">{meterName(c.meter)}</span>{' '}
+                      <span className="text-muted-foreground">
+                        · {formatMillicentRate(c.price.millicents_per_unit)} per {per}
+                        {c.price.included_quantity > 0 &&
+                          ` after ${formatQuantity(c.price.included_quantity, c.price.unit)} included`}{' '}
+                        · {sentence(c.plan)} plan · {DELIVERY[c.delivery_mode] ?? c.delivery_mode} ·
+                        from <Timestamp value={c.effective_from} mode="absolute" />
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <h3 className="label-mono text-foreground">Invoices with a period ending in {month}</h3>
+            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-foreground"
+                title="invoice_reconciliation: not_reconciled"
+              >
+                <Circle className="h-3 w-3" aria-hidden />
+                Not reconciled
+              </span>
+              Provider invoices are separate records. They are not reconciled to the usage costs
+              above, their periods can differ from the UTC usage month, and they are not added to
+              the known usage cost.
+            </p>
+            {invoices.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No provider invoice has a period ending in this month.
+              </p>
+            ) : (
+              <section aria-label="Invoices">
+                <ResourceTable
+                  rows={invoices}
+                  columns={INVOICE_COLUMNS}
+                  initialSort={{ key: 'periodEnd', dir: 'desc' }}
+                  desktopMinWidth="md:min-w-[560px]"
+                />
+              </section>
+            )}
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

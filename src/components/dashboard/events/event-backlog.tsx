@@ -13,6 +13,7 @@ import {
   type EventBacklogRecipient,
 } from '@/lib/api/events';
 import { formatNumber } from '@/lib/mock-data';
+import { inScope, useProjectScope, type ProjectScope } from '@/lib/project-scope';
 import { formatUsageBytes } from '@/lib/usage-format';
 import {
   ReasonPill,
@@ -31,16 +32,38 @@ function dominantReason(consumer: EventBacklogConsumer) {
   return entries[0]?.[0];
 }
 
+/**
+ * The backlog's consumers in the chosen project — each names its app — and
+ * whether that is still being worked out. Until the project's membership
+ * loads, nothing is listed rather than every consumer on the account.
+ */
+function useScopedConsumers(consumers: EventBacklogConsumer[] | undefined) {
+  const scope = useProjectScope();
+  const scopeLoading = Boolean(scope.project) && scope.appSlugs === null && !scope.settled;
+  return { scope, scopeLoading, consumers: inScope(consumers ?? [], scope, (c) => c.app_slug) };
+}
+
+/** "Account-wide — not limited to acme-shop." for figures no app owns. */
+function AccountWideNote({ scope }: { scope: ProjectScope }) {
+  if (!scope.project) return null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Retained events, storage and receipts are account-wide — not limited to {scope.label}.
+    </p>
+  );
+}
+
 /** Headline figures: what is waiting, and how much retained storage it costs. */
 export function EventOverview({ accountId }: { accountId: string }) {
   const backlog = useEventBacklog(accountId);
   const storage = useEventStorage(accountId);
   const retention = useEventRetention(accountId);
-  const consumers = backlog.data?.consumers ?? [];
+  const { scope, scopeLoading, consumers } = useScopedConsumers(backlog.data?.consumers);
   const waiting = consumers.reduce((sum, c) => sum + c.waiting_recipients, 0);
   const partial = Boolean(backlog.data?.next_consumers_after);
   const tileState = (q: { isPending: boolean; error: unknown }) =>
     q.error ? 'unavailable' : q.isPending ? 'loading' : 'ready';
+  const consumerCount = `${consumers.length} consumer${consumers.length === 1 ? '' : 's'}`;
   const usage = storage.data;
   const r = retention.data;
 
@@ -49,13 +72,17 @@ export function EventOverview({ accountId }: { accountId: string }) {
       <Stats columns={4}>
         <StatTile
           label="Waiting recipients"
-          state={tileState(backlog)}
+          state={scopeLoading && !backlog.error ? 'loading' : tileState(backlog)}
           value={waiting}
           format={formatNumber}
           note={
             partial
-              ? `Across the first ${BACKLOG_PAGE} consumers`
-              : `${consumers.length} consumer${consumers.length === 1 ? '' : 's'}`
+              ? scope.project
+                ? `${scope.label} apps among the first ${BACKLOG_PAGE} consumers`
+                : `Across the first ${BACKLOG_PAGE} consumers`
+              : scope.project
+                ? `${consumerCount} in ${scope.label}`
+                : consumerCount
           }
         />
         <StatTile
@@ -98,6 +125,7 @@ export function EventOverview({ accountId }: { accountId: string }) {
           onRetry={() => void retention.refetch()}
         />
       )}
+      <AccountWideNote scope={scope} />
     </div>
   );
 }
@@ -112,8 +140,9 @@ export function EventBacklogPanel({
   onOpenReceipt: (lookup: ReceiptLookup) => void;
 }) {
   const backlog = useEventBacklog(accountId);
+  const { scope, scopeLoading, consumers } = useScopedConsumers(backlog.data?.consumers);
   const [selected, setSelected] = useState<ConsumerRow | null>(null);
-  const rows: ConsumerRow[] = (backlog.data?.consumers ?? []).map((c) => ({
+  const rows: ConsumerRow[] = consumers.map((c) => ({
     ...c,
     id: `${c.subscription_id}:${c.consumer_kind}`,
     name: consumerName(c),
@@ -168,18 +197,22 @@ export function EventBacklogPanel({
         columns={columns}
         initialSort={{ key: 'waiting_recipients', dir: 'desc' }}
         onRowClick={setSelected}
-        loading={backlog.isPending}
+        loading={backlog.isPending || scopeLoading}
         error={backlog.error}
         onRetry={() => void backlog.refetch()}
-        emptyMessage="Nothing is waiting."
+        emptyMessage={
+          scope.project ? `Nothing is waiting for ${scope.label} apps.` : 'Nothing is waiting.'
+        }
         minWidth="min-w-[560px]"
       />
       {(backlog.data?.next_consumers_after || unattributed > 0) && (
         <p className="mt-3 text-xs text-muted-foreground">
           {backlog.data?.next_consumers_after &&
-            `Only the first ${BACKLOG_PAGE} consumers are listed. `}
+            (scope.project
+              ? `Only the first ${BACKLOG_PAGE} consumers on the account are checked for ${scope.label}. `
+              : `Only the first ${BACKLOG_PAGE} consumers are listed. `)}
           {unattributed > 0 &&
-            `${formatNumber(unattributed)} older receipt(s) predate recipient capture, so their consumers cannot be named.`}
+            `${formatNumber(unattributed)} older receipt(s)${scope.project ? ' on the account' : ''} predate recipient capture, so their consumers cannot be named.`}
         </p>
       )}
       <ConsumerDetail

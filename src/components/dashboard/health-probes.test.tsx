@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,15 +46,18 @@ const live = {
 };
 const deployments = (items: object[]) => accepted({ items, next_before: null });
 
-function renderWith(app: App, plan: Plan | undefined = 'hobby') {
+/** Renders with "Advanced restart settings" opened, unless asked not to. */
+function renderWith(app: App, plan: Plan | undefined = 'hobby', { advanced = true } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <HealthProbes app={app} plan={plan} />
     </QueryClientProvider>
   );
+  if (advanced) fireEvent.click(screen.getByRole('button', { name: 'Advanced restart settings' }));
+  return view;
 }
 
 beforeEach(() => {
@@ -66,31 +69,29 @@ beforeEach(() => {
 describe('HealthProbes', () => {
   it('shows the serving deployment probes, marking platform defaults, with what each does', async () => {
     renderWith(web);
-    const probes = await screen.findByRole('list', { name: 'Probes' });
-    const startup = within(probes).getByRole('listitem', { name: 'Startup check' });
+    const probes = await screen.findByRole('list', { name: 'Health checks' });
+    const startup = within(probes).getByRole('listitem', { name: 'Before it takes traffic' });
     expect(startup).toHaveTextContent('TCP connect on port 8080');
     expect(startup).toHaveTextContent(/default/i);
     expect(
-      within(startup).getByRole('button', { name: 'About Startup check' })
+      within(startup).getByRole('button', { name: 'About Before it takes traffic' })
     ).toBeInTheDocument();
 
-    const readiness = within(probes).getByRole('listitem', { name: 'Readiness probe' });
+    const readiness = within(probes).getByRole('listitem', { name: 'Ready to serve' });
     expect(readiness).toHaveTextContent('GET /readyz');
     expect(readiness).toHaveTextContent('out of routing after 4 failures');
     expect(readiness).not.toHaveTextContent(/default/i);
     expect(
-      within(readiness).getByRole('button', { name: 'About Readiness probe' })
+      within(readiness).getByRole('button', { name: 'About Ready to serve' })
     ).toBeInTheDocument();
 
-    const liveness = within(probes).getByRole('listitem', { name: 'Liveness probe' });
+    const liveness = within(probes).getByRole('listitem', { name: 'Still alive' });
     expect(liveness).toHaveTextContent('GET /healthz');
     expect(liveness).toHaveTextContent(/default/i);
-    expect(
-      within(liveness).getByRole('button', { name: 'About Liveness probe' })
-    ).toBeInTheDocument();
+    expect(within(liveness).getByRole('button', { name: 'About Still alive' })).toBeInTheDocument();
 
     // Probes have no app-level write; the panel's tip names where they are set.
-    await userEvent.click(screen.getByRole('button', { name: 'About probes' }));
+    await userEvent.click(screen.getByRole('button', { name: 'About health checks' }));
     expect(await screen.findByText('gregale deploy --healthcheck-path')).toBeInTheDocument();
     expect(screen.getByText('overrides.liveness_probe')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /deployment overrides/i })).toHaveAttribute(
@@ -105,7 +106,7 @@ describe('HealthProbes', () => {
     expect(
       await screen.findByText(/no production release is serving traffic/i)
     ).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Probes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Health checks' })).not.toBeInTheDocument();
   });
 
   it('does not take a dark release or a staging deploy for the serving one', async () => {
@@ -133,12 +134,14 @@ describe('HealthProbes', () => {
     );
     renderWith(web);
     expect(await screen.findByText(/cannot read deployments/i)).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Probes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Health checks' })).not.toBeInTheDocument();
   });
 
   it('shows the restart contract with plan defaults marked, and the gregale.yaml keys', () => {
     renderWith(web, 'hobby');
-    expect(screen.getByLabelText('Restart policy')).toHaveDisplayValue('Default (on-failure)');
+    expect(screen.getByLabelText('When it exits')).toHaveDisplayValue(
+      'Restarted when it exits with an error (default, on-failure)'
+    );
     expect(screen.getByLabelText('Max retries')).toHaveValue(null);
     expect(screen.getByLabelText('Max retries')).toHaveAttribute('placeholder', '5 (default)');
     expect(screen.getByLabelText('Startup deadline (s)')).toHaveAttribute(
@@ -157,19 +160,39 @@ describe('HealthProbes', () => {
     expect(screen.getByRole('button', { name: 'About As gregale.yaml' })).toBeInTheDocument();
   });
 
+  it('keeps the rarely changed restart fields behind Advanced', () => {
+    renderWith(web, 'hobby', { advanced: false });
+    expect(screen.getByLabelText('When it exits')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Max retries')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Stop signal')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced restart settings' }));
+    expect(screen.getByLabelText('Max retries')).toBeInTheDocument();
+  });
+
   it('never writes defaults into the gregale.yaml block, so Free gets no 30 s grace', async () => {
     const user = userEvent.setup();
     renderWith(web, 'free');
     expect(screen.queryByLabelText('gregale.yaml lifecycle block')).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Restart policy'), 'always');
+    await user.selectOptions(screen.getByLabelText('When it exits'), 'always');
     const yaml = screen.getByLabelText('gregale.yaml lifecycle block');
     expect(yaml.textContent).toBe('lifecycle:\n  restart_policy: always');
+  });
+
+  it('says an unset readiness probe is off once, not twice', async () => {
+    spyApi('GET').mockResolvedValue(deployments([{ ...live, override_readiness_probe: null }]));
+    renderWith(web);
+    const probes = await screen.findByRole('list', { name: 'Health checks' });
+    const readiness = within(probes).getByRole('listitem', { name: 'Ready to serve' });
+    expect(within(readiness).getAllByText(/^off$/i)).toHaveLength(1);
+    expect(readiness).not.toHaveTextContent(/default/i);
   });
 
   it('reads stored values, and a worker has no default liveness probe', async () => {
     spyApi('GET').mockResolvedValue(deployments([{ ...live, override_readiness_probe: null }]));
     renderWith(worker, 'pro');
-    expect(screen.getByLabelText('Restart policy')).toHaveDisplayValue('unless-stopped');
+    expect(screen.getByLabelText('When it exits')).toHaveDisplayValue(
+      'Restarted when it exits, unless it was stopped on purpose (unless-stopped)'
+    );
     expect(screen.getByLabelText('Stop signal')).toHaveDisplayValue('SIGINT');
     expect(screen.getByLabelText('Grace period (s)')).toHaveValue(45);
     await userEvent.click(screen.getByRole('button', { name: 'About Grace period (s)' }));
@@ -180,17 +203,19 @@ describe('HealthProbes', () => {
     expect(screen.getByLabelText('gregale.yaml lifecycle block').textContent).toBe(
       'lifecycle:\n  restart_policy: unless-stopped\n  stop_signal: SIGINT\n  stop_grace_period_s: 45'
     );
-    const probes = await screen.findByRole('list', { name: 'Probes' });
-    expect(within(probes).getByRole('listitem', { name: 'Liveness probe' })).toHaveTextContent(
+    const probes = await screen.findByRole('list', { name: 'Health checks' });
+    expect(within(probes).getByRole('listitem', { name: 'Still alive' })).toHaveTextContent(
       /workers and jobs have no HTTP endpoint/i
     );
   });
 
   it('offers no always policy to a job', () => {
     renderWith({ ...web, manifest: { entrypoint: ['run'], execution_mode: 'job' } } as App);
-    const select = screen.getByLabelText('Restart policy');
-    expect(within(select).queryByRole('option', { name: 'always' })).not.toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: 'Default (no)' })).toBeInTheDocument();
+    const select = screen.getByLabelText('When it exits');
+    expect(within(select).queryByRole('option', { name: /\(always\)$/ })).not.toBeInTheDocument();
+    expect(
+      within(select).getByRole('option', { name: 'Not restarted when it exits (default, no)' })
+    ).toBeInTheDocument();
   });
 
   it('saves only what changed, and says when each change applies', async () => {
@@ -203,7 +228,7 @@ describe('HealthProbes', () => {
     const user = userEvent.setup();
     renderWith(web, 'hobby');
     expect(screen.getByRole('button', { name: 'Save restart settings' })).toBeDisabled();
-    await user.selectOptions(screen.getByLabelText('Restart policy'), 'always');
+    await user.selectOptions(screen.getByLabelText('When it exits'), 'always');
     await user.type(screen.getByLabelText('Grace period (s)'), '20');
     await user.click(screen.getByRole('button', { name: 'Save restart settings' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
@@ -221,7 +246,7 @@ describe('HealthProbes', () => {
     const patch = spyApi('PATCH').mockResolvedValue(accepted(web));
     const user = userEvent.setup();
     renderWith(worker, 'pro');
-    await user.selectOptions(screen.getByLabelText('Restart policy'), '');
+    await user.selectOptions(screen.getByLabelText('When it exits'), '');
     await user.clear(screen.getByLabelText('Grace period (s)'));
     await user.click(screen.getByRole('button', { name: 'Save restart settings' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));

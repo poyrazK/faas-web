@@ -13,6 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Domains } from './dashboard.domains';
 import { spyApi } from '@/test/api';
 
+// No project chosen (lib/project-scope.ts): the page behaves as before.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({ project: null, label: '', appSlugs: null, settled: true, choices: [] }),
+}));
+
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn() }));

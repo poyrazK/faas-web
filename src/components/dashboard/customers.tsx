@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { useApps, useTenantSurfaces } from '@/lib/api/queries';
+import { inScope, useProjectScope } from '@/lib/project-scope';
 import {
   useConsumers,
   useLinkTenantConsumer,
@@ -55,6 +56,8 @@ type Row = Pick<PlatformTenant, 'id' | 'name' | 'external_ref' | 'status' | 'cre
 
 function CustomersBody() {
   const tenants = usePlatformTenants();
+  // A customer spans apps, and the list does not say which; it stays whole.
+  const scope = useProjectScope();
   const [selectedId, setSelectedId] = useState('');
   const [registering, setRegistering] = useState(false);
   const rows: Row[] = useMemo(
@@ -99,6 +102,11 @@ function CustomersBody() {
         }
       >
         <div className="flex flex-col gap-3">
+          {scope.project && (
+            <p className="text-xs text-muted-foreground">
+              Account-wide — not limited to {scope.label}.
+            </p>
+          )}
           <ResourceTable
             rows={rows}
             columns={columns}
@@ -442,7 +450,10 @@ function CustomerLinks({ tenant }: { tenant: PlatformTenantDetail }) {
 }
 
 function LinkExisting({ tenantId, onDone }: { tenantId: string; onDone: () => void }) {
-  const apps = useApps();
+  const appsQuery = useApps();
+  // Inside a project, link from its apps only.
+  const scope = useProjectScope();
+  const apps = appsQuery.data && inScope(appsQuery.data, scope, (a) => a.slug);
   const [kind, setKind] = useState<'consumer' | 'surface'>('consumer');
   const [slug, setSlug] = useState('');
   const [target, setTarget] = useState('');
@@ -505,7 +516,7 @@ function LinkExisting({ tenantId, onDone }: { tenantId: string; onDone: () => vo
             aria-label="App"
           >
             <option value="">Choose an app…</option>
-            {apps.data?.map((a) => (
+            {apps?.map((a) => (
               <option key={a.id} value={a.slug}>
                 {a.slug}
               </option>

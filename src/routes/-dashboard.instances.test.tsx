@@ -15,6 +15,18 @@ import type { components } from '@/lib/api/schema';
 import { Route as Instances } from './dashboard.instances';
 import { spyApi } from '@/test/api';
 
+// No project chosen: these pages behave as they did before project scoping.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({
+    project: null,
+    label: '',
+    appSlugs: null,
+    settled: true,
+    choices: [],
+  }),
+}));
+
 type Instance = components['schemas']['InstanceResponse'];
 const instance: Instance = {
   id: 'vm-1',

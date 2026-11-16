@@ -7,6 +7,8 @@ import {
 } from '@/lib/api/stateless-advisories';
 import { Timestamp } from './events/event-format';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { localDiskSentence } from './app-settings-words';
+import { Disclosure } from './settings-kit';
 
 const SEVERITY = {
   high: { label: 'High', color: 'var(--status-critical)' },
@@ -23,30 +25,34 @@ function Finding({ finding }: { finding: StatelessFinding }) {
         <span
           className="rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ color: severity.color, borderColor: severity.color }}
+          title={`severity: ${finding.severity}`}
         >
           {severity.label}
         </span>
         <code className="font-mono text-sm [overflow-wrap:anywhere]">{finding.root}</code>
         <span className="text-xs text-muted-foreground">
-          {finding.writes} {finding.writes === 1 ? 'write' : 'writes'} in {finding.batches}{' '}
-          {finding.batches === 1 ? 'batch' : 'batches'} · last <Timestamp iso={finding.lastSeen} />
+          {finding.writes} {finding.writes === 1 ? 'write' : 'writes'} · last{' '}
+          <Timestamp iso={finding.lastSeen} />
         </span>
       </div>
-      <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
-        <dt className="text-muted-foreground">Paths</dt>
-        <dd className="font-mono [overflow-wrap:anywhere]">
-          {finding.paths.slice(0, SHOWN_PATHS).join(', ')}
-          {more > 0 && <span className="text-muted-foreground"> +{more} more</span>}
-        </dd>
-        <dt className="text-muted-foreground">Operations</dt>
-        <dd>{finding.operations.join(', ') || '—'}</dd>
-        <dt className="text-muted-foreground">Instances</dt>
-        <dd className="font-mono [overflow-wrap:anywhere]">
-          {finding.instances.join(', ') || '—'}
-        </dd>
-        <dt className="text-muted-foreground">Fix</dt>
-        <dd>{finding.fix}</dd>
-      </dl>
+      <p className="text-sm text-foreground/85">{finding.fix}</p>
+      <Disclosure label="Show details" className="gap-2">
+        <dl className="grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[7rem_minmax(0,1fr)]">
+          <dt className="text-muted-foreground">Batches</dt>
+          <dd>{finding.batches}</dd>
+          <dt className="text-muted-foreground">Paths</dt>
+          <dd className="font-mono [overflow-wrap:anywhere]">
+            {finding.paths.slice(0, SHOWN_PATHS).join(', ')}
+            {more > 0 && <span className="text-muted-foreground"> +{more} more</span>}
+          </dd>
+          <dt className="text-muted-foreground">Operations</dt>
+          <dd>{finding.operations.join(', ') || '—'}</dd>
+          <dt className="text-muted-foreground">Instances</dt>
+          <dd className="font-mono [overflow-wrap:anywhere]">
+            {finding.instances.join(', ') || '—'}
+          </dd>
+        </dl>
+      </Disclosure>
     </li>
   );
 }
@@ -87,8 +93,13 @@ export function StatelessContract({ slug }: { slug: string }) {
         }
         padded={false}
       >
-        {phase === 'ready' ? (
-          <ul className="divide-y divide-border">
+        {(phase === 'ready' || phase === 'empty') && (
+          <p className="px-5 pb-3 text-base text-foreground/90">
+            {localDiskSentence(findings.length)}
+          </p>
+        )}
+        {phase === 'empty' ? null : phase === 'ready' ? (
+          <ul className="divide-y divide-border border-t border-border">
             {findings.map((finding) => (
               <Finding key={finding.root} finding={finding} />
             ))}

@@ -8,6 +8,21 @@ import {
   routeApi,
   type Handlers,
 } from '@/test/monetization';
+import type { ProjectScope } from '@/lib/project-scope';
+
+// No project chosen by default (lib/project-scope.ts); the scope cases set one.
+const NO_PROJECT: ProjectScope = {
+  project: null,
+  label: '',
+  appSlugs: null,
+  settled: true,
+  choices: [],
+};
+const scope = vi.hoisted(() => ({ current: null as unknown as ProjectScope }));
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => scope.current,
+}));
 
 vi.mock('@/lib/api/capabilities', async () => {
   const { capability } = await import('@/test/monetization');
@@ -73,6 +88,7 @@ function handlers(extra: Handlers = {}): Handlers {
 
 beforeEach(() => {
   capability.state = 'available';
+  scope.current = NO_PROJECT;
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -211,5 +227,61 @@ describe('Customers', () => {
         })
       )
     );
+  });
+});
+
+describe('Customers in a project', () => {
+  const scoped = (apps: Set<string> | null, settled = true): ProjectScope => ({
+    project: 'acme-shop',
+    label: 'acme-shop',
+    appSlugs: apps,
+    settled,
+    choices: [],
+  });
+  const withTwoApps = () =>
+    handlers({
+      'GET /v1/apps': () => [
+        { id: 'app-1', slug: 'api-gateway' },
+        { id: 'app-2', slug: 'nightly-etl' },
+      ],
+    });
+
+  it('keeps every customer, says so, and links from the project’s apps only', async () => {
+    scope.current = scoped(new Set(['api-gateway']));
+    routeApi(withTwoApps());
+    renderWithProviders(<Customers />);
+    expect(await screen.findByText('Initrode')).toBeInTheDocument();
+    expect(screen.getByText('Account-wide — not limited to acme-shop.')).toBeInTheDocument();
+    await openAcme();
+    await userEvent.click(await screen.findByRole('button', { name: 'Link existing' }));
+    const picker = screen.getByRole('combobox', { name: 'App' });
+    await waitFor(() =>
+      expect(
+        within(picker)
+          .getAllByRole('option')
+          .map((o) => o.textContent)
+      ).toEqual(['Choose an app…', 'api-gateway'])
+    );
+  });
+
+  it('adds no note and offers every app without a project', async () => {
+    routeApi(withTwoApps());
+    renderWithProviders(<Customers />);
+    expect(await screen.findByText('Initrode')).toBeInTheDocument();
+    expect(screen.queryByText(/not limited to/)).not.toBeInTheDocument();
+    await openAcme();
+    await userEvent.click(await screen.findByRole('button', { name: 'Link existing' }));
+    const picker = screen.getByRole('combobox', { name: 'App' });
+    await waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(3));
+  });
+
+  it('offers no app to link from while membership loads', async () => {
+    scope.current = scoped(null, false);
+    routeApi(withTwoApps());
+    renderWithProviders(<Customers />);
+    await openAcme();
+    await userEvent.click(await screen.findByRole('button', { name: 'Link existing' }));
+    const picker = screen.getByRole('combobox', { name: 'App' });
+    expect(within(picker).getAllByRole('option')).toHaveLength(1);
   });
 });

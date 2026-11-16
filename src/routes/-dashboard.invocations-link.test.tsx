@@ -12,6 +12,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/errors';
 import { Route as Traces } from './dashboard.invocations';
 
+// No project chosen (lib/project-scope.ts): the page behaves as before.
+vi.mock('@/lib/project-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/project-scope')>()),
+  useProjectScope: () => ({ project: null, label: '', appSlugs: null, settled: true, choices: [] }),
+}));
+
 const listedId = 'a'.repeat(32);
 const olderId = 'b'.repeat(32);
 const mocks = vi.hoisted(() => ({ read: vi.fn(), missing: false, errorStatus: 0 }));

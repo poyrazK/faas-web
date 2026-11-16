@@ -12,10 +12,13 @@ import {
   WINDOWS,
   QUICK_FILTERS,
   SLOW_MS,
+  WINDOW_LABELS,
   matchesRegression,
   type DebugSelection,
 } from './debug-search';
 import { Select } from '@/components/ui/field';
+import { HelpTip } from './kit/help-tip';
+import { windowWords } from './debug-words';
 
 /**
  * One row per gateway-served request (ADR-127 PR-A).
@@ -151,49 +154,50 @@ export function DebugRequests({ slug, search, onSelect }: { slug: string } & Deb
   return (
     <DebugGate error={error ?? regressionError}>
       <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Quick filter
-          <Select
-            aria-label="Quick filter"
-            value={filter}
-            onChange={(e) => onSelect({ debugFilter: e.target.value as typeof filter })}
-            className="h-8 rounded-md border border-border bg-background px-2 text-sm"
-          >
-            {QUICK_FILTERS.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <p className="text-xs text-muted-foreground">
-          Slow: 1,000 ms or more. Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests in the
-          window.
-        </p>
-        <label className="flex items-center gap-2 self-start text-xs text-muted-foreground">
-          Window
-          <Select
-            aria-label="Window"
-            value={since}
-            onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
-            className="h-8 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
-          >
-            {WINDOWS.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </Select>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Select
+              aria-label="Quick filter"
+              value={filter}
+              onChange={(e) => onSelect({ debugFilter: e.target.value as typeof filter })}
+              className="h-8 w-auto min-w-0 rounded-md border border-border bg-background px-2 text-sm"
+            >
+              {QUICK_FILTERS.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Window"
+              value={since}
+              onChange={(e) => onSelect({ debugWindow: e.target.value as typeof since })}
+              className="h-8 w-auto min-w-0 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-brand/50"
+            >
+              {WINDOWS.map((w) => (
+                <option key={w} value={w}>
+                  {WINDOW_LABELS[w]}
+                </option>
+              ))}
+            </Select>
+            <HelpTip label="About this list">
+              Up to the {DEBUG_REQUEST_SAMPLE_LIMIT} most recent requests in the window. Failed
+              means a 4xx or 5xx status; slow means 1,000 ms or more; routes that got worse are the
+              ones with an open regression.
+            </HelpTip>
+          </div>
           {data?.since && data.since !== since && (
             // The server clamps to the plan's retention. Say so rather than
             // labelling the table with a window it did not use.
-            <span className="text-[color:var(--status-warning)]">
-              plan retention capped this to {data.since}
+            <span className="text-xs text-[color:var(--status-warning)]">
+              Your plan keeps {windowWords(data.since)}, so that is all this shows
             </span>
           )}
-        </label>
-        <DebugRequestLookup onOpen={(request) => onSelect({ request })} />
-        <DebugExport slug={slug} since={since} />
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            <DebugRequestLookup onOpen={(request) => onSelect({ request })} />
+            <DebugExport slug={slug} since={since} />
+          </div>
+        </div>
 
         <ResourceTable
           rows={rows}

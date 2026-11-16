@@ -18,6 +18,7 @@ import {
   GraphUp,
   Group,
   HardDrive,
+  Headset,
   Journal,
   Key,
   Network,
@@ -52,6 +53,10 @@ export interface NavGroup {
   /** Undefined for the ungrouped lead item. */
   title?: string;
   items: NavHub[];
+  /** Account-wide resources listed inside a project: they belong to no project. */
+  shared?: boolean;
+  /** Sits at the foot of the rail. */
+  bottom?: boolean;
 }
 
 export interface NavHub extends NavItem {
@@ -70,6 +75,12 @@ export interface NavHub extends NavItem {
 
 /** Existing pages anchor each hub until its feature composition is ready. */
 export const NAV_HUBS: NavHub[] = [
+  {
+    to: '/dashboard/support',
+    label: 'Support',
+    icon: Headset,
+    capability: 'customer-support',
+  },
   {
     to: '/dashboard',
     sidebarIconClassName: 'text-brand/80',
@@ -274,19 +285,51 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   // The Debugger is per app (the app's Observe section); its account route is
   // an app picker, reachable from ⌘K rather than a rail row of its own.
   { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
-  { title: 'Account', hubs: ['Billing', 'Settings'] },
+  { title: 'Account', hubs: ['Billing', 'Support', 'Settings'] },
 ];
 
-export const NAV_GROUPS: NavGroup[] = SIDEBAR_GROUPS.map(({ title, hubs }) => ({
-  ...(title ? { title } : {}),
-  items: hubs.map((label) => {
-    const hub = NAV_HUBS.find((item) => item.label === label);
-    // A hub missing from a group would silently vanish from the rail. Fail at
-    // module load instead, where the test suite and the dev server both see it.
-    if (!hub) throw new Error(`nav-config: no hub labelled ${label}`);
-    return hub;
-  }),
-}));
+type GroupSpec = { title?: string; hubs: string[]; shared?: boolean; bottom?: boolean };
+
+const groupsOf = (specs: GroupSpec[]): NavGroup[] =>
+  specs.map(({ title, hubs, shared, bottom }) => ({
+    ...(title ? { title } : {}),
+    ...(shared ? { shared } : {}),
+    ...(bottom ? { bottom } : {}),
+    items: hubs.map((label) => {
+      const hub = NAV_HUBS.find((item) => item.label === label);
+      // A hub missing from a group would silently vanish from the rail. Fail at
+      // module load instead, where the test suite and the dev server both see it.
+      if (!hub) throw new Error(`nav-config: no hub labelled ${label}`);
+      return hub;
+    }),
+  }));
+
+/** Every destination, grouped — what ⌘K and the breadcrumb file pages under. */
+export const NAV_GROUPS: NavGroup[] = groupsOf(SIDEBAR_GROUPS);
+
+/**
+ * The rail before a project is chosen (Supabase's organization level): the
+ * way in, and the account's own pages at the foot. Everything else lives
+ * inside a project.
+ */
+export const ACCOUNT_NAV_GROUPS: NavGroup[] = groupsOf([
+  { hubs: ['Overview', 'Projects'] },
+  { title: 'Account', hubs: ['Billing', 'Audit log', 'Support', 'Settings'], bottom: true },
+]);
+
+/**
+ * The rail inside a project. Each page shows only the project's apps; the
+ * Storage group is account-wide — databases and buckets belong to no project
+ * in the API — and says so.
+ */
+export const PROJECT_NAV_GROUPS: NavGroup[] = groupsOf([
+  { title: 'Compute', hubs: ['Releases', 'Jobs', 'Instances'] },
+  { title: 'Storage', hubs: ['Object storage', 'Postgres'], shared: true },
+  { title: 'Networking', hubs: ['Domains', 'Edge rules'] },
+  { title: 'Messaging', hubs: ['Events', 'Integrations'] },
+  { title: 'Monetize', hubs: ['Customers'] },
+  { title: 'Observe', hubs: ['Analytics', 'Invocations'] },
+]);
 
 /**
  * The rail heading a destination is filed under, so ⌘K can find a page by its
@@ -430,6 +473,8 @@ export function matchesNavPath(pathname: string, item: Pick<NavItem, 'to' | 'exa
 
 /** Shared ownership for primary active states, breadcrumbs and section links. */
 export function findNavHub(pathname: string): NavHub | undefined {
+  if (/^\/dashboard\/orgs\/[^/]+\/support(?:\/|$)/.test(pathname))
+    return NAV_HUBS.find((hub) => hub.label === 'Support');
   if (
     ['/dashboard/team', '/dashboard/keys', '/dashboard/account', '/dashboard/security'].includes(
       pathname.replace(/\/$/, '')

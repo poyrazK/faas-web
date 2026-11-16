@@ -113,6 +113,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('opens with the state of the invoices in one sentence, statuses in words', async () => {
+  firstPage = [{ ...invoice, status: 'open' }];
+  await mount();
+  expect(await screen.findByRole('status', { name: 'Invoices status' })).toHaveTextContent(
+    /^Invoice INV-001 for €9\.00 is awaiting payment\.$/
+  );
+  expect(screen.getByTitle('open')).toHaveTextContent('Awaiting payment');
+});
+
 it('loads older invoices without losing the current page', async () => {
   await mount();
   expect(await screen.findByText('INV-001')).toBeInTheDocument();

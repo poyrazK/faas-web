@@ -4,7 +4,6 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
-  Panel,
   UnreachableState,
   queryPhase,
 } from '@/components/dashboard/primitives';
@@ -44,13 +43,15 @@ import { cn } from '@/lib/utils';
 import { Link } from '@tanstack/react-router';
 import { Clock, Pause, Plus, Trash, Undo } from 'iconoir-react';
 import { useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Sheet } from './kit/sheet';
+import { DetailDisclosure } from './detail-disclosure';
 import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
 import { ConnectionBudget, DatabaseConditions } from './postgres-health';
 import { TONE, explainPostgres } from './postgres-shared';
 import {
   SERVICE_CLASS_NAMES,
+  bindingsSentence,
   describeDatabase,
   regionName,
   spelledAgo,
@@ -250,6 +251,7 @@ export function PostgresDatabases() {
             <DatabaseDetail
               key={open.id}
               database={open}
+              words={describeDatabase(open, context)}
               capSuspended={capSuspended}
               operation={operations[open.id]}
               onOperation={(operation) =>
@@ -441,11 +443,13 @@ function DatabaseTile({
 
 function DatabaseDetail({
   database,
+  words,
   capSuspended,
   operation,
   onOperation,
 }: {
   database: PostgresDatabase;
+  words: DatabaseWords;
   capSuspended: boolean;
   operation?: ComputeOperation;
   onOperation: (operation: ComputeOperation) => void;
@@ -459,6 +463,13 @@ function DatabaseDetail({
   const restore = useRestorePostgresDatabase();
   const [restoreName, setRestoreName] = useState('');
   const [pointInTime, setPointInTime] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const [binding, setBinding] = useState(false);
+  const bindings = usePostgresBindings(database.id);
+  const apps = useApps();
+  const appName = (id: string) => apps.data?.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
+  const titleId = useId();
+  const paused = Boolean(database.plan_excess) || (capSuspended && database.state === 'ready');
 
   const onDelete = async () => {
     // apid schedules only a ready database; any other is deleted at once
@@ -512,6 +523,7 @@ function DatabaseDetail({
       });
       setRestoreName('');
       setPointInTime('');
+      setRestoring(false);
       toast({
         kind: 'success',
         title: `Restoring into ${created.name}`,
@@ -530,11 +542,69 @@ function DatabaseDetail({
     Number.isNaN(Date.parse(pointInTime)) ? undefined : new Date(pointInTime).toISOString()
   );
 
+  const restoreForm = (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (restoreReady && !restore.isPending) void onRestore();
+      }}
+    >
+      <p className="text-sm text-muted-foreground">
+        Makes a new database from this one as it was at a moment you choose, leaving this one
+        running. Anything within the last {hours(database.restore_window_seconds)} can be chosen.
+      </p>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">New database name</span>
+        <input
+          value={restoreName}
+          onChange={(e) => setRestoreName(e.target.value)}
+          placeholder={`${database.name}-restored`}
+          aria-label="Restored database name"
+          className={FIELD}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">Point in time</span>
+        <input
+          type="datetime-local"
+          value={pointInTime}
+          onChange={(e) => setPointInTime(e.target.value)}
+          aria-label="Restore point in time"
+          className={FIELD}
+        />
+      </label>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={!restoreReady} busy={restore.isPending}>
+          Restore into a new database
+        </Button>
+      </div>
+      <CliCommand
+        label="Or restore from the CLI"
+        copyLabel={`restore command for ${database.name}`}
+        command={restoreCommand}
+      />
+    </form>
+  );
+
+  const items = bindings.data?.items ?? [];
+
   return (
-    <Panel
-      title={database.name}
-      actions={
-        scheduled ? undefined : (
+    <section
+      aria-labelledby={titleId}
+      className="flex flex-col gap-5 surface rounded-[1.25rem] bg-card p-5 sm:p-6"
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h2
+            id={titleId}
+            className="min-w-0 text-2xl leading-tight font-semibold tracking-[-0.01em] break-words"
+          >
+            {database.name}
+          </h2>
+          <StatusWord words={words} />
+        </div>
+        {!scheduled && (
           <Button
             size="xs"
             variant="ghost"
@@ -544,59 +614,163 @@ function DatabaseDetail({
             <Trash className="h-3.5 w-3.5" />
             Delete
           </Button>
+        )}
+      </header>
+
+      <div className="flex flex-col gap-1.5">
+        <p
+          className={cn(
+            'max-w-3xl text-lg leading-snug sm:text-xl',
+            words.gone && 'text-muted-foreground'
+          )}
+          title={words.term}
+        >
+          <Sentence words={words} />
+        </p>
+        {!scheduled && !words.gone && !bindings.isPending && !bindings.error && (
+          <p className="text-sm text-muted-foreground">{bindingsSentence(items, appName)}</p>
+        )}
+      </div>
+
+      {scheduled && <ScheduledDeletion database={database} />}
+      {database.plan_excess ? (
+        <Suspension>{PLAN_EXCESS[database.plan_excess].explain(whose, database)}</Suspension>
+      ) : (
+        capSuspended &&
+        database.state === 'ready' && (
+          <Suspension>
+            This database refuses connections until the compute cap lifts; Usage this month, above,
+            says when and how. Its data is kept.
+          </Suspension>
         )
-      }
-    >
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>Database ID</span>
-          <CopyableId value={database.id} label="database ID" full />
+      )}
+      {database.restore_slot_until && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Clock
+            aria-hidden
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            style={{ color: TONE.warning }}
+          />
           <span>
-            · Restore window {hours(database.restore_window_seconds)} ·{' '}
-            {database.availability === 'high_availability' ? 'high availability' : 'single zone'}
+            This restored copy is past {org ? `${label}'s` : 'your'} plan&apos;s database limit.
+            Purge a database or upgrade before{' '}
+            <Timestamp value={database.restore_slot_until} mode="absolute" /> to keep it; otherwise
+            its delete is scheduled then.
           </span>
-        </div>
-        {scheduled && <ScheduledDeletion database={database} />}
-        {database.plan_excess ? (
-          <Suspension>{PLAN_EXCESS[database.plan_excess].explain(whose, database)}</Suspension>
-        ) : (
-          capSuspended &&
-          database.state === 'ready' && (
-            <Suspension>
-              This database refuses connections until the compute cap lifts; Usage this month,
-              above, says when and how. Its data is kept.
-            </Suspension>
-          )
-        )}
-        {database.restore_slot_until && (
-          <p className="flex items-start gap-2 text-xs text-muted-foreground">
-            <Clock
-              aria-hidden
-              className="mt-0.5 h-3.5 w-3.5 shrink-0"
-              style={{ color: TONE.warning }}
-            />
-            <span>
-              This restored copy is past {org ? `${label}'s` : 'your'} plan&apos;s database limit.
-              Purge a database or upgrade before{' '}
-              <Timestamp value={database.restore_slot_until} mode="absolute" /> to keep it;
-              otherwise its delete is scheduled then.
-            </span>
-          </p>
-        )}
-        {org ? (
-          <p className="text-xs text-muted-foreground">
-            Conditions and connection planning are read for personal databases only: the API has no
-            organization route for them.
-          </p>
-        ) : (
-          <div className="grid gap-5 lg:grid-cols-2">
-            <DatabaseConditions database={database} />
-            {!scheduled && <ConnectionBudget database={database} />}
+        </p>
+      )}
+
+      {scheduled ? (
+        <p className="text-sm text-muted-foreground">
+          Restore it to bind apps to it or make a copy from it.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            {(apps.data?.length ?? 0) > 0 && (
+              <Button
+                size="sm"
+                variant={paused ? 'outline' : 'default'}
+                onClick={() => setBinding(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Connect an app
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setRestoring(true)}>
+              <Undo className="h-3.5 w-3.5" />
+              Restore a copy…
+            </Button>
           </div>
+          <Bindings
+            database={database}
+            appName={appName}
+            sheetOpen={binding}
+            onSheetChange={setBinding}
+          />
+        </>
+      )}
+
+      <div className="flex flex-col gap-4 border-t border-border pt-5">
+        {!scheduled && (
+          <DetailDisclosure
+            title="Size and compute"
+            summary={`${SERVICE_CLASS_NAMES[database.service_class] ?? database.service_class}${database.scale_to_zero ? ' · sleeps when idle' : ''}`}
+            defaultOpen={database.plan_excess === 'service_class' || Boolean(operation)}
+          >
+            <DatabaseCompute database={database} operation={operation} onOperation={onOperation} />
+          </DetailDisclosure>
         )}
-        {database.restore_source_database_id && (
-          <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-            Restored from{' '}
+        <DetailDisclosure
+          title="Health and connections"
+          summary="conditions and connection planning"
+        >
+          {org ? (
+            <p className="text-xs text-muted-foreground">
+              Conditions and connection planning are read for personal databases only: the API has
+              no organization route for them.
+            </p>
+          ) : (
+            <div className="grid gap-5 lg:grid-cols-2">
+              <DatabaseConditions database={database} />
+              {!scheduled && <ConnectionBudget database={database} />}
+            </div>
+          )}
+        </DetailDisclosure>
+        {!scheduled && (
+          <DetailDisclosure title="Live queries" summary="preview, from the CLI">
+            <LiveQueries database={database} />
+          </DetailDisclosure>
+        )}
+        <DetailDisclosure title="Technical details" summary="IDs, restore window, bindings">
+          <TechnicalDetails database={database} bindings={items} appName={appName} />
+        </DetailDisclosure>
+      </div>
+
+      <Sheet
+        open={restoring}
+        onClose={() => setRestoring(false)}
+        title={`Restore a copy of ${database.name}`}
+      >
+        {restoreForm}
+      </Sheet>
+    </section>
+  );
+}
+
+/** Ids, windows and per-binding facts: one click away, never on the page by default. */
+function TechnicalDetails({
+  database,
+  bindings,
+  appName,
+}: {
+  database: PostgresDatabase;
+  bindings: PostgresBinding[];
+  appName: (id: string) => string;
+}) {
+  return (
+    <dl className="grid gap-x-6 gap-y-3 text-xs sm:grid-cols-[max-content_minmax(0,1fr)]">
+      <dt className="text-muted-foreground">Database ID</dt>
+      <dd>
+        <CopyableId value={database.id} label="database ID" full />
+      </dd>
+      <dt className="text-muted-foreground">Engine</dt>
+      <dd>
+        PostgreSQL {database.postgres_major} · {regionName(database.region)} ({database.region})
+      </dd>
+      <dt className="text-muted-foreground">Restore window</dt>
+      <dd>{hours(database.restore_window_seconds)}</dd>
+      <dt className="text-muted-foreground">Availability</dt>
+      <dd>{database.availability === 'high_availability' ? 'High availability' : 'Single zone'}</dd>
+      <dt className="text-muted-foreground">State</dt>
+      <dd className="font-mono">
+        {database.state}
+        {database.last_error_code ? ` · ${database.last_error_code}` : ''}
+      </dd>
+      {database.restore_source_database_id && (
+        <>
+          <dt className="text-muted-foreground">Restored from</dt>
+          <dd className="flex flex-wrap items-center gap-1">
             <CopyableId
               value={database.restore_source_database_id}
               label="source database ID"
@@ -606,75 +780,34 @@ function DatabaseDetail({
             {database.restore_point_in_time
               ? new Date(database.restore_point_in_time).toLocaleString()
               : 'an unrecorded point'}
-            .
-          </p>
-        )}
-
-        {scheduled ? (
-          <p className="text-sm text-muted-foreground">
-            Restore it to bind apps to it or make a copy from it.
-          </p>
-        ) : (
-          <>
-            <DatabaseCompute database={database} operation={operation} onOperation={onOperation} />
-
-            <Bindings database={database} />
-
-            <LiveQueries database={database} />
-
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (restoreReady && !restore.isPending) void onRestore();
-              }}
-            >
-              <p className="label-mono text-muted-foreground">Point-in-time restore</p>
-              <p className="text-xs text-muted-foreground">
-                Restores into a new database, leaving this one running. Anything within the last{' '}
-                {hours(database.restore_window_seconds)} can be chosen.
-              </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">New database name</span>
-                  <input
-                    value={restoreName}
-                    onChange={(e) => setRestoreName(e.target.value)}
-                    placeholder={`${database.name}-restored`}
-                    aria-label="Restored database name"
-                    className={cn(FIELD, 'w-56')}
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">Point in time</span>
-                  <input
-                    type="datetime-local"
-                    value={pointInTime}
-                    onChange={(e) => setPointInTime(e.target.value)}
-                    aria-label="Restore point in time"
-                    className={cn(FIELD, 'w-56')}
-                  />
-                </label>
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  disabled={!restoreReady}
-                  busy={restore.isPending}
-                >
-                  Restore into a new database
-                </Button>
-              </div>
-              <CliCommand
-                label="Or restore from the CLI"
-                copyLabel={`restore command for ${database.name}`}
-                command={restoreCommand}
-              />
-            </form>
-          </>
-        )}
-      </div>
-    </Panel>
+          </dd>
+        </>
+      )}
+      {bindings.length > 0 && (
+        <>
+          <dt className="text-muted-foreground">Bindings</dt>
+          <dd>
+            <ul className="flex flex-col gap-1.5">
+              {bindings.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-mono">{appName(b.app_id)}</span>
+                  <CopyableId value={b.id} label="binding ID" />
+                  <span className="text-muted-foreground">scope {b.scope}</span>
+                  <span className="text-muted-foreground">
+                    credentials v{b.credential_generation}
+                  </span>
+                  {b.last_error_code && (
+                    <span className="font-mono" style={{ color: 'var(--status-critical)' }}>
+                      {b.last_error_code}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </dd>
+        </>
+      )}
+    </dl>
   );
 }
 
@@ -805,10 +938,9 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
       </p>
       {open ? (
         <p className="text-sm text-muted-foreground">
-          Its compute is stopped and it refuses connections. Restore it before{' '}
-          <Timestamp value={until} mode="absolute" /> to return it to ready with its data and
-          restore history; after that it is deleted for good. Until then it counts toward the
-          plan&apos;s database limit and keeps its name.
+          Restore it before <Timestamp value={until} mode="absolute" /> to get it back with its data
+          and restore history. Until then it refuses connections and still counts toward the
+          plan&apos;s database limit.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -831,7 +963,18 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
   );
 }
 
-function Bindings({ database }: { database: PostgresDatabase }) {
+function Bindings({
+  database,
+  appName,
+  sheetOpen: binding,
+  onSheetChange: setBinding,
+}: {
+  database: PostgresDatabase;
+  appName: (id: string) => string;
+  /** The bind sheet, opened by the detail's "Connect an app". */
+  sheetOpen: boolean;
+  onSheetChange: (open: boolean) => void;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const bindings = usePostgresBindings(database.id);
@@ -847,12 +990,10 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
   const [scope, setScope] = useState('default');
-  const [binding, setBinding] = useState(false);
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
   const chosenApp = appId || appList[0]?.id || '';
-  const appName = (id: string) => appList.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
   // Rotations started here that apid answered as still pending, keyed by
   // binding id, with the generation each one minted. Polling keeps running
   // while any binding is pending, so the settle is seen and said once.
@@ -960,77 +1101,74 @@ function Bindings({ database }: { database: PostgresDatabase }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="label-mono text-muted-foreground">Bound apps</p>
+    <div className="flex flex-col gap-2">
       {bindings.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading bindings…</p>
+        <p className="text-sm text-muted-foreground">Loading the apps that use it…</p>
       ) : bindings.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(bindings.error)}</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No app is bound to this database yet.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {items.map((binding) => (
-            <li
-              key={binding.id}
-              className="flex flex-wrap items-center gap-3 py-2 text-xs first:pt-0 last:pb-0"
-            >
-              <span className="font-mono">{appName(binding.app_id)}</span>
-              <CopyableId value={binding.id} label="binding ID" />
-              <Pill label={binding.state} color={STATE_COLOR[binding.state]} />
-              <span className="font-mono text-muted-foreground">{binding.environment_key}</span>
-              <span className="text-muted-foreground">{binding.access.replace('_', ' ')}</span>
-              <span className="text-muted-foreground">scope {binding.scope}</span>
-              <span className="text-muted-foreground">
-                credentials v{binding.credential_generation}
-              </span>
-              {binding.rotation_pending && (
-                <Pill label="rotation pending" color="var(--status-warning)" />
-              )}
-              {binding.last_error_code && (
-                <span style={{ color: 'var(--status-critical)' }}>{binding.last_error_code}</span>
-              )}
-              <Button
-                size="xs"
-                variant="ghost"
-                className="ml-auto"
-                aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
-                title={
-                  binding.rotation_pending
-                    ? 'A rotation is still refreshing the app; wait for it to finish.'
-                    : undefined
-                }
-                onClick={() => void onRotate(binding)}
-                disabled={rotate.isPending || binding.rotation_pending || binding.state !== 'ready'}
+        items.length > 0 && (
+          <ul aria-label="Apps using it" className="flex flex-col divide-y divide-border">
+            {items.map((binding) => (
+              <li
+                key={binding.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 text-sm first:pt-0 last:pb-0"
               >
-                Rotate credentials
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                aria-label={`Remove binding for ${appName(binding.app_id)}`}
-                onClick={() => void onRemove(binding.id, binding.environment_key)}
-                disabled={remove.isPending}
-              >
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {appList.length > 0 && (
-        <div>
-          <Button size="sm" variant="outline" onClick={() => setBinding(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            Bind app
-          </Button>
-        </div>
+                <span className="font-medium">{appName(binding.app_id)}</span>
+                <Pill label={binding.state} color={STATE_COLOR[binding.state]} />
+                <span className="text-muted-foreground">
+                  as <span className="font-mono text-foreground/90">{binding.environment_key}</span>
+                  {' · '}
+                  {binding.access === 'read_only' ? 'reads only' : 'reads and writes'}
+                </span>
+                {binding.rotation_pending && (
+                  <Pill label="rotation pending" color="var(--status-warning)" />
+                )}
+                {binding.last_error_code && (
+                  <span
+                    className="text-xs"
+                    style={{ color: 'var(--status-critical)' }}
+                    title={binding.last_error_code}
+                  >
+                    Last change failed
+                  </span>
+                )}
+                <span className="ml-auto flex items-center gap-1">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                    title={
+                      binding.rotation_pending
+                        ? 'A rotation is still refreshing the app; wait for it to finish.'
+                        : `Credentials v${binding.credential_generation}`
+                    }
+                    onClick={() => void onRotate(binding)}
+                    disabled={
+                      rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
+                    }
+                  >
+                    Rotate credentials
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-label={`Remove binding for ${appName(binding.app_id)}`}
+                    onClick={() => void onRemove(binding.id, binding.environment_key)}
+                    disabled={remove.isPending}
+                  >
+                    Remove
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
       )}
       <Sheet
         open={binding}
         onClose={() => setBinding(false)}
-        title={`Bind an app to ${database.name}`}
+        title={`Connect an app to ${database.name}`}
       >
         <form
           className="flex flex-col gap-4"

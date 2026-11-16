@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { CheckCircle, Clock, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
+import {
+  CheckCircle,
+  Clock,
+  MoreHoriz,
+  OpenNewWindow,
+  RefreshDouble,
+  WarningTriangle,
+} from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useConfirm } from '@/components/ui/confirm';
@@ -17,6 +24,15 @@ import {
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { formatRelative } from '@/lib/mock-data';
 import { GitHubBranchDeployments } from './github-branch-deployments';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { githubSummary } from './app-settings-words';
+import { HelpTip } from './kit/help-tip';
+import { Disclosure, SettingsSummary } from './settings-kit';
 
 /**
  * Push-to-deploy for one app: which installation and repository it is bound
@@ -218,37 +234,98 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
     : [];
   const failed = activity.filter((item) => item.status === 'dead').length;
 
+  const summary = data ? githubSummary(data, slug, failed) : undefined;
+  const sentence = summary?.sentence ?? '';
+  const repoAt = bound && repo ? sentence.indexOf(repo) : -1;
+
   return (
-    <section aria-label="GitHub connection">
+    <section aria-label="GitHub connection" className="flex flex-col gap-5">
+      {!notShared && phase === 'ready' && data && summary && (
+        <SettingsSummary
+          label="Source"
+          ariaLabel="How code reaches this app"
+          tone={summary.tone}
+          facts={summary.facts}
+          actions={
+            bound ? (
+              <>
+                {failed > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      busy={retry.isPending}
+                      disabled={busy}
+                      onClick={() => void runRetry()}
+                    >
+                      <RefreshDouble className="h-3.5 w-3.5" />
+                      Retry failed activity
+                    </Button>
+                    <HelpTip label="About retrying failed activity">
+                      A failed push deployed nothing, and a failed Check Run update left its pull
+                      request without a Gregale status. Retrying queues up to ten recent failures
+                      again.
+                    </HelpTip>
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  busy={sync.isPending}
+                  disabled={busy}
+                  onClick={() => void runSync()}
+                >
+                  <RefreshDouble className="h-3.5 w-3.5" />
+                  Sync now
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-label="More GitHub actions"
+                      className="px-2"
+                      disabled={busy}
+                    >
+                      <MoreHoriz aria-hidden className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() => void runDisconnect()}
+                      className="text-[color:var(--status-critical)] data-[highlighted]:text-[color:var(--status-critical)]"
+                    >
+                      Disconnect
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : undefined
+          }
+        >
+          {repoAt >= 0 ? (
+            <>
+              {sentence.slice(0, repoAt)}
+              <a
+                href={`https://github.com/${repo}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-brand underline-offset-4 hover:underline"
+              >
+                {repo}
+                <OpenNewWindow aria-hidden className="h-3.5 w-3.5" />
+              </a>
+              {sentence.slice(repoAt + repo.length)}
+            </>
+          ) : (
+            sentence
+          )}
+        </SettingsSummary>
+      )}
       <Panel
         title="GitHub"
         help="Pushes to the bound repository's production branch deploy this app."
-        actions={
-          bound ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                busy={sync.isPending}
-                disabled={busy}
-                onClick={() => void runSync()}
-              >
-                <RefreshDouble className="h-3.5 w-3.5" />
-                Sync now
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                busy={disconnect.isPending}
-                disabled={busy}
-                onClick={() => void runDisconnect()}
-              >
-                Disconnect
-              </Button>
-            </div>
-          ) : undefined
-        }
       >
         {notShared ? (
           <p role="status" className="text-sm text-muted-foreground">
@@ -263,94 +340,74 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
             onRetry={() => void connection.refetch()}
           />
         ) : data.state === 'not_installed' ? (
-          <p className="text-sm text-muted-foreground">
-            GitHub is not connected to this account, so pushes do not deploy this app.{' '}
-            <Link
-              to="/dashboard/settings"
-              search={{ section: 'integrations' }}
-              className="text-brand hover:underline"
-            >
-              Connect GitHub
-            </Link>
-          </p>
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-sm text-muted-foreground">
+              Connect GitHub to deploy {slug} on every push.
+            </p>
+            <Button asChild size="sm">
+              <Link to="/dashboard/settings" search={{ section: 'integrations' }}>
+                Connect GitHub
+              </Link>
+            </Button>
+          </div>
         ) : data.state === 'installed' ? (
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <p>
-              This app is not bound to a repository, so pushes do not deploy this app. Deploying
-              from a repository binds it, or bind it from the CLI:
-            </p>
+            <p>Deploying from a repository links it, or link it from the CLI:</p>
             <code className="w-fit max-w-full overflow-x-auto rounded-md border border-border bg-muted px-2.5 py-1.5 font-mono text-xs text-foreground">
               gregale github link {slug} --repo OWNER/NAME
             </code>
           </div>
         ) : (
           <div className="flex flex-col gap-5">
-            <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Field label="Repository">
-                <a
-                  href={`https://github.com/${repo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-brand hover:underline"
-                >
-                  {repo}
-                  <OpenNewWindow aria-hidden className="h-3 w-3" />
-                </a>
-              </Field>
-              <Field label="Installation">
-                <span className="font-mono">
-                  {data.github_login
-                    ? `${data.github_login} · ${data.installation_id}`
-                    : (data.installation_id ?? '—')}
-                </span>
-              </Field>
-              <Field label="Health">
-                <Badge variant="outline">{HEALTH[data.health]}</Badge>
-              </Field>
-              <Field label="Last sync">
-                <span title={data.last_reconciled_at ?? undefined}>
-                  {ago(data.last_reconciled_at)}
-                </span>
-              </Field>
-              <Field label="Bound">
-                <span title={data.linked_at ?? undefined}>{ago(data.linked_at)}</span>
-              </Field>
-            </dl>
             {data.last_reconcile_error && (
               <p role="status" className="text-xs text-[color:var(--status-critical)]">
                 {data.last_reconcile_error}
               </p>
             )}
             <GitHubBranchDeployments slug={slug} status={data} />
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="label-mono text-muted-foreground">Recent activity</h3>
-                {failed > 0 && (
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="gap-1"
-                    busy={retry.isPending}
-                    disabled={busy}
-                    onClick={() => void runRetry()}
-                  >
-                    <RefreshDouble />
-                    Retry failed activity
-                  </Button>
-                )}
-              </div>
-              {failed > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  A failed push deployed nothing, and a failed Check Run update left its pull
-                  request without a Gregale status. Retrying queues up to ten recent failures again.
-                </p>
-              )}
+            <Disclosure label="Show connection details" className="gap-3">
+              <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Field label="Installation">
+                  <span className="font-mono">
+                    {data.github_login
+                      ? `${data.github_login} · ${data.installation_id}`
+                      : (data.installation_id ?? '—')}
+                  </span>
+                </Field>
+                <Field label="Health">
+                  <Badge variant="outline" title={data.health}>
+                    {HEALTH[data.health]}
+                  </Badge>
+                </Field>
+                <Field label="Last sync">
+                  <span title={data.last_reconciled_at ?? undefined}>
+                    {ago(data.last_reconciled_at)}
+                  </span>
+                </Field>
+                <Field label="Bound">
+                  <span title={data.linked_at ?? undefined}>{ago(data.linked_at)}</span>
+                </Field>
+              </dl>
+              <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                Pull request previews, and whether production deploys come from the GitHub App or a
+                GitHub Actions workflow, are the project’s GitHub deployment policy. The API serves
+                that policy only to API keys with the github:manage scope, not to a signed-in
+                browser, so the console cannot show or change it.
+              </p>
+            </Disclosure>
+            <Disclosure
+              label={`Show recent activity${activity.length ? ` (${activity.length})` : ''}`}
+              className="gap-3"
+            >
               {activity.length === 0 ? (
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   No pushes or check updates recorded yet.
                 </p>
               ) : (
-                <ul className="mt-2 divide-y divide-border well rounded-xl bg-muted/40">
+                <ul
+                  aria-label="Recent activity"
+                  className="divide-y divide-border well rounded-xl bg-muted/40"
+                >
                   {activity.map((item, i) => {
                     const shown = ACTIVITY_STATUS[item.status];
                     const Icon = shown.icon;
@@ -381,7 +438,7 @@ export function GitHubConnectionPanel({ slug }: { slug: string }) {
                   })}
                 </ul>
               )}
-            </div>
+            </Disclosure>
           </div>
         )}
       </Panel>

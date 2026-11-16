@@ -16,7 +16,8 @@ export const METRIC_LABELS = {
 } as const;
 export type DetailMetric = keyof typeof METRIC_LABELS;
 export const DETAIL_WINDOWS = ['5m', '15m', '1h', '6h', '12h', '24h', '3d', '7d', '14d', '15d'];
-export type DetailMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+export type DetailMethod =
+  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS' | 'OTHER';
 export type DetailGroup =
   'route' | 'country' | 'referrer_host' | 'ua_family' | 'status' | 'consumer_id';
 export interface MetricDetailRequest {
@@ -56,7 +57,7 @@ export function validateMetricDetailSearch(search: Record<string, unknown>): Met
     (DETAIL_WINDOWS.includes(search.inspectSince) || timestamp(search.inspectSince))
       ? search.inspectSince
       : '24h';
-  const method = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].find(
+  const method = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'OTHER'].find(
     (m) => m === search.inspectMethod
   ) as DetailMethod | undefined;
   const group = ['route', 'country', 'referrer_host', 'ua_family', 'status', 'consumer_id'].find(

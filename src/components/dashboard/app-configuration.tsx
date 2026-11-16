@@ -39,6 +39,15 @@ import { ErrorState, LoadingState, Panel, UnreachableState, queryPhase } from '.
 import { SnapshotHooks } from './snapshot-hooks';
 import { GatedSupplyChainPanel } from './supply-chain-gate';
 import { WarmStarts } from './warm-starts';
+import {
+  EVICTION,
+  PUBLIC_AUTH,
+  generalSummary,
+  healthSummary,
+  runtimeSummary,
+} from './app-settings-words';
+import { ChoiceButtons, Disclosure, SettingsSummary } from './settings-kit';
+import { executionMode } from '@/lib/health-probes';
 
 /**
  * The app's own settings, editable.
@@ -266,13 +275,264 @@ function ConfigForm({ app }: { app: App }) {
       .catch((err: unknown) => toast({ kind: 'error', title: 'Could not save', error: err }));
   };
 
+  const summary = runtimeSummary(app);
+  const savedNote = savedEffects
+    ? [
+        savedEffects.replacement.length
+          ? `Saved: ${savedEffects.replacement.join(', ')}. Running instances retain their boot configuration; a fresh instance is required.`
+          : '',
+        savedEffects.future.length
+          ? `Saved: ${savedEffects.future.join(', ')}. These settings affect subsequent runtime decisions; no live acknowledgment is available here.`
+          : '',
+      ].filter(Boolean)
+    : [];
+  const justSaved = Boolean(savedEffects) && !dirty;
+
   return (
     <>
+      <SettingsSummary label="Runtime" tone={summary.tone} facts={summary.facts}>
+        {summary.sentence}
+      </SettingsSummary>
+
       <Panel
-        title="Runtime"
+        title="Size and sleep"
         help="Memory requires a fresh instance. Other settings apply live."
-        actions={
-          <>
+      >
+        <div className="grid gap-5 sm:grid-cols-3">
+          <div className="flex flex-col gap-1.5 sm:col-span-3">
+            <FieldLabel label="Memory" help="Billed as GB-seconds while resident." />
+            <MemorySelect
+              value={draft.ram_mb}
+              maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
+              onChange={(mb) => set('ram_mb', mb)}
+            />
+            <span className="text-xs text-muted-foreground">
+              {account
+                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
+                : 'Checking plan limits…'}
+            </span>
+          </div>
+          <NumberField
+            label="Sleeps after (seconds idle)"
+            help="Idle timeout: seconds without a request before the instance snapshots and parks. This is scale-to-zero. At least 5."
+            value={draft.idle_timeout_s}
+            min={5}
+            onChange={(n) => set('idle_timeout_s', n)}
+          />
+          <NumberField
+            label="Copies always running"
+            help="Minimum instances: kept resident even when idle, and billed the whole time. 0 means park when quiet."
+            value={draft.min_instances}
+            min={0}
+            onChange={(n) => set('min_instances', n)}
+          />
+          <NumberField
+            label="Most copies at once"
+            help="Max concurrency: instances this app may run at once. Each one costs memory."
+            value={draft.max_concurrency}
+            min={1}
+            onChange={(n) => set('max_concurrency', n)}
+          />
+        </div>
+      </Panel>
+
+      <Panel title="Requests">
+        <ul className="flex flex-col divide-y divide-border">
+          <Toggle
+            label="Streaming responses"
+            help="Flush the response as the handler writes it, instead of buffering to the end."
+            checked={draft.streaming_enabled}
+            onChange={(on) => set('streaming_enabled', on)}
+          />
+          <StreamingCapNote slug={app.slug} />
+          <Toggle
+            label="WebSockets"
+            help="Allow upgrade requests. An open socket keeps the instance resident."
+            checked={draft.websocket_enabled}
+            onChange={(on) => set('websocket_enabled', on)}
+          />
+          <Toggle
+            label="Per-route metrics"
+            help="Record latency and errors per route, so the Routes tab can list them. Paid plans."
+            checked={draft.route_metrics_enabled}
+            onChange={(on) => set('route_metrics_enabled', on)}
+          />
+          <Toggle
+            label="Default CORS headers"
+            help="Answer preflights at the edge with the origins below, before the app wakes."
+            checked={draft.cors_default_enabled}
+            onChange={(on) => set('cors_default_enabled', on)}
+          />
+          {draft.cors_default_enabled && (
+            <li className="py-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="label-mono text-muted-foreground">Allowed origins</span>
+                <textarea
+                  value={draft.cors_default_origins}
+                  onChange={(e) => set('cors_default_origins', e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  placeholder={'https://app.example.com'}
+                  className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+                />
+                <span className="text-xs text-muted-foreground">One origin per line.</span>
+              </label>
+            </li>
+          )}
+        </ul>
+      </Panel>
+
+      <Panel title="Access">
+        <ul className="flex flex-col divide-y divide-border">
+          <li className="flex flex-col gap-3 pb-4">
+            <p className="flex items-center gap-1 text-sm font-medium">
+              Who can open the public URL
+              <HelpTip label="About public URL access">
+                Public URL auth: gate the app&rsquo;s public URL before it wakes. A bearer token
+                needs Hobby or above, a username and password needs Pro or above. Basic credentials
+                are sealed at save and never shown again.
+              </HelpTip>
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <ChoiceButtons
+                label="Public URL auth"
+                value={draft.public_auth_mode}
+                onChange={(mode) => set('public_auth_mode', mode)}
+                options={(['open', 'bearer', 'basic'] as const).map((mode) => ({
+                  value: mode,
+                  label: PUBLIC_AUTH[mode].label,
+                  title: `public_auth: ${mode}`,
+                }))}
+              />
+              {draft.public_auth_mode === 'basic' && (
+                <>
+                  <input
+                    value={draft.public_auth_user}
+                    onChange={(e) => set('public_auth_user', e.target.value)}
+                    placeholder="username"
+                    aria-label="Username"
+                    autoComplete="off"
+                    className={`${FIELD} sm:w-48`}
+                  />
+                  <input
+                    type="password"
+                    value={draft.public_auth_pass}
+                    onChange={(e) => set('public_auth_pass', e.target.value)}
+                    placeholder="password"
+                    aria-label="Password"
+                    autoComplete="new-password"
+                    className={`${FIELD} sm:w-48`}
+                  />
+                </>
+              )}
+            </div>
+          </li>
+          <Toggle
+            label="Require API key for app requests"
+            help="Require an API key to call the app's public URL. Pro and Scale."
+            checked={draft.require_authn}
+            onChange={(on) => set('require_authn', on)}
+          />
+          <Toggle
+            label="Maintenance mode"
+            help="Answer every request with 503 and park. Deployments still work."
+            checked={draft.maintenance_mode}
+            onChange={(on) => set('maintenance_mode', on)}
+          />
+        </ul>
+      </Panel>
+
+      <Panel>
+        <Disclosure label="Advanced runtime settings">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <NumberField
+              label="Add a copy at (requests/second)"
+              help="Autoscale target (rps): requests per second per instance before another one is added."
+              value={draft.autoscale_target_rps}
+              min={1}
+              onChange={(n) => set('autoscale_target_rps', n)}
+            />
+            <NumberField
+              label="Add a copy at (CPU %)"
+              help="Autoscale target (CPU %): scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
+              value={draft.autoscale_target_cpu_pct}
+              min={0}
+              onChange={(n) => set('autoscale_target_cpu_pct', Math.min(100, n))}
+            />
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel
+                label="Under memory pressure"
+                help="Eviction tier: reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per account."
+              />
+              <ChoiceButtons
+                label="Eviction tier"
+                value={draft.eviction_priority}
+                onChange={(tier) => set('eviction_priority', tier)}
+                options={(['best_effort', 'reserved'] as const).map((tier) => ({
+                  value: tier,
+                  label: EVICTION[tier],
+                  title: `eviction_priority: ${tier}`,
+                }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel
+                label="Overflow node"
+                htmlFor={`${formId}-overflow-node`}
+                help="Preferred spill target under node pressure. Empty leaves placement to the scheduler."
+              />
+              <input
+                id={`${formId}-overflow-node`}
+                value={draft.overflow_node}
+                onChange={(e) => set('overflow_node', e.target.value)}
+                placeholder="fra-metal-2"
+                spellCheck={false}
+                className={FIELD}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <FieldLabel
+                label="Egress allowlist"
+                htmlFor={`${formId}-egress-allowlist`}
+                help="Outbound addresses the app may reach. Empty means the platform denylist alone applies. Pro allows 16 entries, Scale 64."
+              />
+              <textarea
+                id={`${formId}-egress-allowlist`}
+                value={draft.egress_allowlist}
+                onChange={(e) => set('egress_allowlist', e.target.value)}
+                rows={3}
+                spellCheck={false}
+                placeholder={'10.0.0.0/8\n203.0.113.4/32'}
+                className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
+              />
+              <span className="text-xs text-muted-foreground">One CIDR per line</span>
+            </div>
+            <div className="sm:col-span-2">
+              <StaticEgressIP slug={app.slug} />
+            </div>
+            <div className="sm:col-span-2">
+              <PurgeCacheControl slug={app.slug} appId={app.id} />
+            </div>
+          </div>
+        </Disclosure>
+      </Panel>
+
+      {(dirty || justSaved) && (
+        <div
+          role="region"
+          aria-label="Unsaved runtime changes"
+          className={`surface z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-card px-5 py-3 ${
+            dirty ? 'sticky bottom-4' : ''
+          }`}
+        >
+          <p className="min-w-0 flex-1 basis-60 text-sm text-muted-foreground">
+            {dirty
+              ? memoryBlocked
+                ? 'That memory size is above your plan, so these changes can’t be saved.'
+                : 'You have unsaved runtime changes.'
+              : savedNote.join(' ') || 'Settings saved.'}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             {/* The CLI's deploy --diff, one click before Save: the server
                 says exactly what this PATCH would change, and what it would
                 break, before anything is written. */}
@@ -297,7 +557,7 @@ function ConfigForm({ app }: { app: App }) {
               Preview
             </Button>
             <SaveButton
-              saved={Boolean(savedEffects) && !dirty}
+              saved={justSaved}
               size="sm"
               disabled={!dirty || memoryBlocked}
               busy={update.isPending || operation.busy}
@@ -305,242 +565,14 @@ function ConfigForm({ app }: { app: App }) {
             >
               Save changes
             </SaveButton>
-          </>
-        }
-      >
-        {operation.receipt && operation.receipt.components.length > 0 && (
-          <PolicyStatus accountId={account?.id ?? ''} slug={app.slug} receipt={operation.receipt} />
-        )}
-        {savedEffects?.replacement.length ? (
-          <p className="mb-4 text-xs text-muted-foreground">
-            Saved: {savedEffects.replacement.join(', ')}. Running instances retain their boot
-            configuration; a fresh instance is required.
-          </p>
-        ) : null}
-        {savedEffects?.future.length ? (
-          <p className="mb-4 text-xs text-muted-foreground">
-            Saved: {savedEffects.future.join(', ')}. These settings affect subsequent runtime
-            decisions; no live acknowledgment is available here.
-          </p>
-        ) : null}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel label="Memory" help="Billed as GB-seconds while resident." />
-            <MemorySelect
-              value={draft.ram_mb}
-              maxMb={limitsLoading ? undefined : account?.limits.ram_mb}
-              onChange={(mb) => set('ram_mb', mb)}
-            />
-            <span className="text-xs text-muted-foreground">
-              {account
-                ? `${account.plan} plan · up to ${account.limits.ram_mb} MB per instance`
-                : 'Checking plan limits…'}
-            </span>
-          </div>
-
-          <NumberField
-            label="Idle timeout (s)"
-            help="Seconds without a request before the instance snapshots and parks. This is scale-to-zero."
-            value={draft.idle_timeout_s}
-            min={5}
-            onChange={(n) => set('idle_timeout_s', n)}
-          />
-          <NumberField
-            label="Minimum instances"
-            help="Kept resident even when idle, and billed the whole time. 0 means park when quiet."
-            value={draft.min_instances}
-            min={0}
-            onChange={(n) => set('min_instances', n)}
-          />
-          <NumberField
-            label="Max concurrency"
-            help="Instances this app may run at once. Each one costs memory."
-            value={draft.max_concurrency}
-            min={1}
-            onChange={(n) => set('max_concurrency', n)}
-          />
-          <NumberField
-            label="Autoscale target (rps)"
-            help="Requests per second per instance before another one is added."
-            value={draft.autoscale_target_rps}
-            min={1}
-            onChange={(n) => set('autoscale_target_rps', n)}
-          />
-          <NumberField
-            label="Autoscale target (CPU %)"
-            help="Scale up when an instance sustains this CPU. 0 disables. Pro and Scale."
-            value={draft.autoscale_target_cpu_pct}
-            min={0}
-            onChange={(n) => set('autoscale_target_cpu_pct', Math.min(100, n))}
-          />
-
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel
-              label="Eviction tier"
-              help="Reserved apps are parked last under cross-account RAM pressure. Paid plans, capped per account."
-            />
-            <div className="flex gap-1.5">
-              {(['best_effort', 'reserved'] as const).map((tier) => (
-                <button
-                  key={tier}
-                  type="button"
-                  aria-pressed={draft.eviction_priority === tier}
-                  onClick={() => set('eviction_priority', tier)}
-                  className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
-                    draft.eviction_priority === tier
-                      ? 'border-brand bg-brand/10 text-foreground'
-                      : 'border-border text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {tier === 'best_effort' ? 'best effort' : 'reserved'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel
-              label="Overflow node"
-              htmlFor={`${formId}-overflow-node`}
-              help="Preferred spill target under node pressure. Empty leaves placement to the scheduler."
-            />
-            <input
-              id={`${formId}-overflow-node`}
-              value={draft.overflow_node}
-              onChange={(e) => set('overflow_node', e.target.value)}
-              placeholder="fra-metal-2"
-              spellCheck={false}
-              className={FIELD}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <FieldLabel
-              label="Egress allowlist"
-              htmlFor={`${formId}-egress-allowlist`}
-              help="Empty means the platform denylist alone applies. Pro allows 16 entries, Scale 64."
-            />
-            <textarea
-              id={`${formId}-egress-allowlist`}
-              value={draft.egress_allowlist}
-              onChange={(e) => set('egress_allowlist', e.target.value)}
-              rows={3}
-              spellCheck={false}
-              placeholder={'10.0.0.0/8\n203.0.113.4/32'}
-              className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
-            />
-            <span className="text-xs text-muted-foreground">One CIDR per line</span>
-          </div>
-          <div className="sm:col-span-2">
-            <StaticEgressIP slug={app.slug} />
-          </div>
-          <div className="sm:col-span-2">
-            <PurgeCacheControl slug={app.slug} appId={app.id} />
           </div>
         </div>
-      </Panel>
-
-      <Panel title="Behaviour">
-        <ul className="flex flex-col divide-y divide-border">
-          <Toggle
-            label="Streaming responses"
-            help="Flush the response as the handler writes it, instead of buffering to the end."
-            checked={draft.streaming_enabled}
-            onChange={(on) => set('streaming_enabled', on)}
-          />
-          <StreamingCapNote slug={app.slug} />
-          <Toggle
-            label="WebSockets"
-            help="Allow upgrade requests. An open socket keeps the instance resident."
-            checked={draft.websocket_enabled}
-            onChange={(on) => set('websocket_enabled', on)}
-          />
-          <Toggle
-            label="Per-route metrics"
-            help="Record latency and errors per route, so the Routes tab can list them. Paid plans."
-            checked={draft.route_metrics_enabled}
-            onChange={(on) => set('route_metrics_enabled', on)}
-          />
-          <Toggle
-            label="Maintenance mode"
-            help="Answer every request with 503 and park. Deployments still work."
-            checked={draft.maintenance_mode}
-            onChange={(on) => set('maintenance_mode', on)}
-          />
-          <Toggle
-            label="Require API key for app requests"
-            help="Require an API key to call the app's public URL. Pro and Scale."
-            checked={draft.require_authn}
-            onChange={(on) => set('require_authn', on)}
-          />
-          <Toggle
-            label="Default CORS headers"
-            help="Answer preflights at the edge with the origins below, before the app wakes."
-            checked={draft.cors_default_enabled}
-            onChange={(on) => set('cors_default_enabled', on)}
-          />
-          {draft.cors_default_enabled && (
-            <li className="py-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="label-mono text-muted-foreground">Allowed origins</span>
-                <textarea
-                  value={draft.cors_default_origins}
-                  onChange={(e) => set('cors_default_origins', e.target.value)}
-                  rows={2}
-                  spellCheck={false}
-                  placeholder={'https://app.example.com'}
-                  className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-brand/50"
-                />
-                <span className="text-xs text-muted-foreground">One origin per line.</span>
-              </label>
-            </li>
-          )}
-          <li className="py-4">
-            <p className="text-sm font-medium">Public URL auth</p>
-            <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-              Gate the app's public URL before it wakes: bearer needs Hobby+, basic needs Pro+.
-              Basic credentials are sealed at save and never shown again.
-            </p>
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div className="flex gap-1.5">
-                {(['open', 'bearer', 'basic'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    aria-pressed={draft.public_auth_mode === mode}
-                    onClick={() => set('public_auth_mode', mode)}
-                    className={`pressable h-9 rounded-md border px-3 font-mono text-xs ${
-                      draft.public_auth_mode === mode
-                        ? 'border-brand bg-brand/10 text-foreground'
-                        : 'border-border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-              {draft.public_auth_mode === 'basic' && (
-                <>
-                  <input
-                    value={draft.public_auth_user}
-                    onChange={(e) => set('public_auth_user', e.target.value)}
-                    placeholder="username"
-                    autoComplete="off"
-                    className={FIELD}
-                  />
-                  <input
-                    type="password"
-                    value={draft.public_auth_pass}
-                    onChange={(e) => set('public_auth_pass', e.target.value)}
-                    placeholder="password"
-                    autoComplete="new-password"
-                    className={FIELD}
-                  />
-                </>
-              )}
-            </div>
-          </li>
-        </ul>
-      </Panel>
+      )}
+      {operation.receipt && operation.receipt.components.length > 0 && (
+        <Panel title="Applying your changes">
+          <PolicyStatus accountId={account?.id ?? ''} slug={app.slug} receipt={operation.receipt} />
+        </Panel>
+      )}
       <Modal
         open={preview !== null}
         onClose={() => setPreview(null)}
@@ -571,8 +603,8 @@ function RenamePanel({ app }: { app: App }) {
 
   return (
     <Panel
-      title="Name"
-      help="The slug is also the subdomain. Renaming changes the URL, and the old one stops answering."
+      title="Name and address"
+      help="The name (slug) is also the subdomain. Renaming changes the URL, and the old one stops answering."
     >
       {/* The error goes under the row, not inside it, so the button stays
           level with the input when it appears. */}
@@ -604,8 +636,8 @@ function RenamePanel({ app }: { app: App }) {
             );
         }}
       >
-        <label htmlFor="rename-slug" className="label-mono text-muted-foreground">
-          Slug
+        <label htmlFor="rename-slug" className="label-mono text-muted-foreground" title="slug">
+          Name
         </label>
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
@@ -719,14 +751,19 @@ export function AppConfiguration({ slug, section }: { slug: string; section: Con
         />
       </div>
     );
-  if (section === 'health')
+  if (section === 'health') {
+    const health = healthSummary(data, executionMode(data));
     return (
       <div className="flex flex-col gap-5">
+        <SettingsSummary label="Health and releases" tone={health.tone} facts={health.facts}>
+          {health.sentence}
+        </SettingsSummary>
         <AppReleaseSettings key={`release:${account?.id}:${data.id}:${data.slug}`} app={data} />
         <HealthProbes key={`health:${data.id}:${data.slug}`} app={data} plan={account?.plan} />
         <SnapshotHooks key={`snapshot:${data.id}:${data.slug}`} app={data} />
       </div>
     );
+  }
   if (section === 'source')
     return (
       <div className="flex flex-col gap-5">
@@ -736,8 +773,28 @@ export function AppConfiguration({ slug, section }: { slug: string; section: Con
       </div>
     );
 
+  const general = generalSummary(data);
   return (
     <div className="flex flex-col gap-5">
+      <SettingsSummary label="General">
+        {general.before}
+        {general.href && (
+          <>
+            {' '}
+            <a
+              href={general.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open endpoint ${data.url}`}
+              title={data.url}
+              className="text-brand underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              {general.host}
+            </a>
+            .
+          </>
+        )}
+      </SettingsSummary>
       <AppVisibility
         key={`${account?.id ?? ''}:${data.id}`}
         accountId={account?.id ?? ''}
@@ -745,40 +802,6 @@ export function AppConfiguration({ slug, section }: { slug: string; section: Con
         slug={slug}
         app={data}
       />
-      <Panel title="About" padded={false}>
-        <dl className="grid gap-x-8 gap-y-0 px-5 sm:grid-cols-3">
-          {[
-            ['Runtime', data.runtime ?? data.type],
-            ['Type', data.type],
-            ['Endpoint', data.visibility === 'internal' ? 'Internal only' : data.url],
-          ].map(([label, value]) => {
-            const href =
-              label === 'Endpoint' && data.visibility !== 'internal'
-                ? publicAppUrl(value)
-                : undefined;
-            return (
-              <div key={label} className="flex flex-col gap-1 py-4">
-                <dt className="label-mono text-muted-foreground">{label}</dt>
-                <dd className="truncate font-mono text-sm">
-                  {href ? (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`Open endpoint ${value}`}
-                      className="text-brand underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                    >
-                      {value}
-                    </a>
-                  ) : (
-                    value || 'Not assigned'
-                  )}
-                </dd>
-              </div>
-            );
-          })}
-        </dl>
-      </Panel>
       <RenamePanel key={`rename:${data.slug}`} app={data} />
       <DangerZone app={data} />
     </div>

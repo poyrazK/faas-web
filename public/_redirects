@@ -63,6 +63,10 @@
 /dashboard/security    /index.html   200
 /dashboard/settings    /index.html   200
 /dashboard/storage    /index.html   200
+/dashboard/support    /index.html   200
+/dashboard/support/:ticket    /index.html   200
+/dashboard/orgs/:org/support    /index.html   200
+/dashboard/orgs/:org/support/:ticket    /index.html   200
 /dashboard/team    /index.html   200
 /dashboard/templates    /index.html   200
 /dashboard/tenant-surfaces    /index.html   200

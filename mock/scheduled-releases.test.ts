@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The seeded weekly freeze ("no weekend releases", Fri 16:00 for 64 h in
+// Istanbul) would refuse these releases whenever the suite runs on a weekend.
+// Pin the clock to a Wednesday before the mock's data module loads.
+vi.hoisted(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-11T09:00:00Z'));
+});
 import { mockCapabilities } from './capabilities';
 import * as db from './data';
 import { GuardProblem } from './release-freezes';

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
@@ -75,6 +76,8 @@ import { Route as DashboardAppsAppSlugRouteImport } from './routes/dashboard.app
 import { Route as DashboardAppsNewRouteImport } from './routes/dashboard.apps.new'
 import { Route as DashboardProjectsIndexRouteImport } from './routes/dashboard.projects.index'
 import { Route as DashboardProjectsProjectSlugRouteImport } from './routes/dashboard.projects.$projectSlug'
+import { Route as DashboardSupportIndexRouteImport } from './routes/dashboard.support.index'
+import { Route as DashboardSupportTicketRouteImport } from './routes/dashboard.support.$ticket'
 import { Route as DashboardTriggersTriggerIdRouteImport } from './routes/dashboard.triggers.$triggerId'
 import { Route as DashboardTriggersNewRouteImport } from './routes/dashboard.triggers.new'
 import { Route as DashboardWorkflowsIndexRouteImport } from './routes/dashboard.workflows.index'
@@ -83,10 +86,17 @@ import { Route as DocsApiIndexRouteImport } from './routes/docs.api.index'
 import { Route as DocsApiGroupRouteImport } from './routes/docs.api.$group'
 import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 import { Route as DashboardReleasesDeploymentIdApprovalRouteImport } from './routes/dashboard.releases_.$deploymentId.approval'
+import { Route as DashboardOrgsOrgSupportIndexRouteImport } from './routes/dashboard.orgs.$org.support.index'
+import { Route as DashboardOrgsOrgSupportTicketRouteImport } from './routes/dashboard.orgs.$org.support.$ticket'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -415,6 +425,16 @@ const DashboardProjectsProjectSlugRoute =
     path: '/$projectSlug',
     getParentRoute: () => DashboardProjectsRoute,
   } as any)
+const DashboardSupportIndexRoute = DashboardSupportIndexRouteImport.update({
+  id: '/support/',
+  path: '/support/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSupportTicketRoute = DashboardSupportTicketRouteImport.update({
+  id: '/support/$ticket',
+  path: '/support/$ticket',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardTriggersTriggerIdRoute =
   DashboardTriggersTriggerIdRouteImport.update({
     id: '/$triggerId',
@@ -457,9 +477,22 @@ const DashboardReleasesDeploymentIdApprovalRoute =
     path: '/releases/$deploymentId/approval',
     getParentRoute: () => DashboardRoute,
   } as any)
+const DashboardOrgsOrgSupportIndexRoute =
+  DashboardOrgsOrgSupportIndexRouteImport.update({
+    id: '/orgs/$org/support/',
+    path: '/orgs/$org/support/',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardOrgsOrgSupportTicketRoute =
+  DashboardOrgsOrgSupportTicketRouteImport.update({
+    id: '/orgs/$org/support/$ticket',
+    path: '/orgs/$org/support/$ticket',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/login': typeof LoginRoute
@@ -523,6 +556,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
+  '/dashboard/support/$ticket': typeof DashboardSupportTicketRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
@@ -530,12 +564,16 @@ export interface FileRoutesByFullPath {
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
+  '/dashboard/support/': typeof DashboardSupportIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
+  '/dashboard/orgs/$org/support/': typeof DashboardOrgsOrgSupportIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/contact': typeof ContactRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
@@ -595,6 +633,7 @@ export interface FileRoutesByTo {
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
+  '/dashboard/support/$ticket': typeof DashboardSupportTicketRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
@@ -602,13 +641,17 @@ export interface FileRoutesByTo {
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps': typeof DashboardAppsIndexRoute
   '/dashboard/projects': typeof DashboardProjectsIndexRoute
+  '/dashboard/support': typeof DashboardSupportIndexRoute
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
   '/docs/api': typeof DocsApiIndexRoute
   '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
+  '/dashboard/orgs/$org/support': typeof DashboardOrgsOrgSupportIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/login': typeof LoginRoute
@@ -672,6 +715,7 @@ export interface FileRoutesById {
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
+  '/dashboard/support/$ticket': typeof DashboardSupportTicketRoute
   '/dashboard/triggers/$triggerId': typeof DashboardTriggersTriggerIdRoute
   '/dashboard/triggers/new': typeof DashboardTriggersNewRoute
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
@@ -679,14 +723,18 @@ export interface FileRoutesById {
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
+  '/dashboard/support/': typeof DashboardSupportIndexRoute
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/dashboard/releases_/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
+  '/dashboard/orgs/$org/support/': typeof DashboardOrgsOrgSupportIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/contact'
     | '/dashboard'
     | '/docs'
     | '/login'
@@ -750,6 +798,7 @@ export interface FileRouteTypes {
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
+    | '/dashboard/support/$ticket'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
@@ -757,12 +806,16 @@ export interface FileRouteTypes {
     | '/status/incidents/$id'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
+    | '/dashboard/support/'
     | '/dashboard/workflows/'
     | '/docs/api/'
     | '/dashboard/releases/$deploymentId/approval'
+    | '/dashboard/orgs/$org/support/$ticket'
+    | '/dashboard/orgs/$org/support/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/contact'
     | '/login'
     | '/onboarding'
     | '/signup'
@@ -822,6 +875,7 @@ export interface FileRouteTypes {
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
+    | '/dashboard/support/$ticket'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
@@ -829,12 +883,16 @@ export interface FileRouteTypes {
     | '/status/incidents/$id'
     | '/dashboard/apps'
     | '/dashboard/projects'
+    | '/dashboard/support'
     | '/dashboard/workflows'
     | '/docs/api'
     | '/dashboard/releases/$deploymentId/approval'
+    | '/dashboard/orgs/$org/support/$ticket'
+    | '/dashboard/orgs/$org/support'
   id:
     | '__root__'
     | '/'
+    | '/contact'
     | '/dashboard'
     | '/docs'
     | '/login'
@@ -898,6 +956,7 @@ export interface FileRouteTypes {
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
+    | '/dashboard/support/$ticket'
     | '/dashboard/triggers/$triggerId'
     | '/dashboard/triggers/new'
     | '/dashboard/workflows/$'
@@ -905,13 +964,17 @@ export interface FileRouteTypes {
     | '/status/incidents/$id'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
+    | '/dashboard/support/'
     | '/dashboard/workflows/'
     | '/docs/api/'
     | '/dashboard/releases_/$deploymentId/approval'
+    | '/dashboard/orgs/$org/support/$ticket'
+    | '/dashboard/orgs/$org/support/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -929,6 +992,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -1386,6 +1456,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardProjectsProjectSlugRouteImport
       parentRoute: typeof DashboardProjectsRoute
     }
+    '/dashboard/support/': {
+      id: '/dashboard/support/'
+      path: '/support'
+      fullPath: '/dashboard/support/'
+      preLoaderRoute: typeof DashboardSupportIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/support/$ticket': {
+      id: '/dashboard/support/$ticket'
+      path: '/support/$ticket'
+      fullPath: '/dashboard/support/$ticket'
+      preLoaderRoute: typeof DashboardSupportTicketRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/triggers/$triggerId': {
       id: '/dashboard/triggers/$triggerId'
       path: '/$triggerId'
@@ -1440,6 +1524,20 @@ declare module '@tanstack/react-router' {
       path: '/releases/$deploymentId/approval'
       fullPath: '/dashboard/releases/$deploymentId/approval'
       preLoaderRoute: typeof DashboardReleasesDeploymentIdApprovalRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/orgs/$org/support/': {
+      id: '/dashboard/orgs/$org/support/'
+      path: '/orgs/$org/support'
+      fullPath: '/dashboard/orgs/$org/support/'
+      preLoaderRoute: typeof DashboardOrgsOrgSupportIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/orgs/$org/support/$ticket': {
+      id: '/dashboard/orgs/$org/support/$ticket'
+      path: '/orgs/$org/support/$ticket'
+      fullPath: '/dashboard/orgs/$org/support/$ticket'
+      preLoaderRoute: typeof DashboardOrgsOrgSupportTicketRouteImport
       parentRoute: typeof DashboardRoute
     }
   }
@@ -1522,10 +1620,14 @@ interface DashboardRouteChildren {
   DashboardIndexRoute: typeof DashboardIndexRoute
   DashboardAppsAppSlugRoute: typeof DashboardAppsAppSlugRoute
   DashboardAppsNewRoute: typeof DashboardAppsNewRoute
+  DashboardSupportTicketRoute: typeof DashboardSupportTicketRoute
   DashboardWorkflowsSplatRoute: typeof DashboardWorkflowsSplatRoute
   DashboardAppsIndexRoute: typeof DashboardAppsIndexRoute
+  DashboardSupportIndexRoute: typeof DashboardSupportIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
   DashboardReleasesDeploymentIdApprovalRoute: typeof DashboardReleasesDeploymentIdApprovalRoute
+  DashboardOrgsOrgSupportTicketRoute: typeof DashboardOrgsOrgSupportTicketRoute
+  DashboardOrgsOrgSupportIndexRoute: typeof DashboardOrgsOrgSupportIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
@@ -1579,11 +1681,15 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardIndexRoute: DashboardIndexRoute,
   DashboardAppsAppSlugRoute: DashboardAppsAppSlugRoute,
   DashboardAppsNewRoute: DashboardAppsNewRoute,
+  DashboardSupportTicketRoute: DashboardSupportTicketRoute,
   DashboardWorkflowsSplatRoute: DashboardWorkflowsSplatRoute,
   DashboardAppsIndexRoute: DashboardAppsIndexRoute,
+  DashboardSupportIndexRoute: DashboardSupportIndexRoute,
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,
   DashboardReleasesDeploymentIdApprovalRoute:
     DashboardReleasesDeploymentIdApprovalRoute,
+  DashboardOrgsOrgSupportTicketRoute: DashboardOrgsOrgSupportTicketRoute,
+  DashboardOrgsOrgSupportIndexRoute: DashboardOrgsOrgSupportIndexRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
@@ -1623,6 +1729,7 @@ const StatusRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,
   LoginRoute: LoginRoute,

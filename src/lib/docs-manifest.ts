@@ -85,25 +85,50 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Pin a branch, tag, or commit for a reproducible CI deployment.',
       },
       {
-        slug: 'cli',
-        source: 'docs/cli-setup.md',
-        title: 'CLI guide',
-        summary:
-          'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
-      },
-      {
-        slug: 'cli-command-tree',
-        source: 'docs/cli-command-tree.md',
-        title: 'CLI command tree',
-        summary:
-          'How every gregale command is named (noun, subnoun, verb) and the older names that still work.',
-      },
-      {
         slug: 'agents',
         source: 'docs/agents.md',
         title: 'Use Gregale from coding agents',
         summary:
           'Give Claude Code, Codex or Cursor a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
+      },
+    ],
+  },
+  {
+    title: 'Ship releases',
+    blurb: 'Change production safely: database releases, gates, approvals, rollouts and promotion.',
+    entries: [
+      {
+        slug: 'releases',
+        source: 'docs/releases.md',
+        title: 'Safe releases',
+        summary:
+          'Safe changes, database releases and rollbacks, release gates, and the release page.',
+      },
+      {
+        slug: 'release-controls',
+        source: 'docs/release-controls.md',
+        title: 'Approvals, freezes and schedules',
+        summary: 'Require approvals, freeze deploys, and schedule releases for a chosen time.',
+      },
+      {
+        slug: 'rollouts',
+        source: 'docs/rollouts.md',
+        title: 'Progressive rollouts',
+        summary: 'Dark deployments, canary stages, safe-by-default rollouts and sticky revisions.',
+      },
+      {
+        slug: 'project-releases',
+        source: 'docs/project-releases.md',
+        title: 'Atomic project releases',
+        summary:
+          'Release every service of a project together, with readiness checks and schema contracts.',
+      },
+      {
+        slug: 'environment-promotion',
+        source: 'docs/environment-promotion.md',
+        title: 'Environment promotion',
+        summary:
+          'Promote a tested artifact and its configuration from one environment to the next.',
       },
     ],
   },
@@ -218,11 +243,42 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Code-first workflows',
         summary: 'Durable workflows written as ordinary async functions.',
       },
+    ],
+  },
+  {
+    title: 'Connect services',
+    blurb: 'Outbound traffic, calls between your apps, and the bindings that connect them.',
+    entries: [
       {
         slug: 'networking',
         source: 'docs/networking.md',
         title: 'Networking',
         summary: 'Outbound rules, WebSockets, gRPC, internal services and service bindings.',
+      },
+      {
+        slug: 'internal-services',
+        source: 'docs/internal-services.md',
+        title: 'Internal services',
+        summary: 'Call other apps by name, set deadlines and call scopes, and verify the caller.',
+      },
+      {
+        slug: 'service-bindings',
+        source: 'docs/service-bindings.md',
+        title: 'Service bindings',
+        summary: 'The binding inventory, readiness checks in CI, canaries and release enforcement.',
+      },
+      {
+        slug: 'binding-verification-runs',
+        source: 'docs/binding-verification-runs.md',
+        title: 'Binding verification runs',
+        summary: 'Durable, resumable verification runs for one app or a whole project.',
+      },
+      {
+        slug: 'service-release-graphs',
+        source: 'docs/service-release-graphs.md',
+        title: 'Service release graphs',
+        summary:
+          'Keep callers and services on consistent revisions; qualify, activate and recover graphs.',
       },
     ],
   },
@@ -339,6 +395,86 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/alerts.md',
         title: 'Alerts',
         summary: 'Alert presets, notification channels and anomaly rules.',
+      },
+    ],
+  },
+  {
+    title: 'CLI',
+    blurb: 'Everyday use of the gregale CLI, by task.',
+    entries: [
+      {
+        slug: 'cli',
+        source: 'docs/cli-setup.md',
+        title: 'CLI guide',
+        summary:
+          'Interactive flows, saved log views, Job and workflow recovery, required secrets, and shell completion for the gregale CLI.',
+      },
+      {
+        slug: 'cli-command-tree',
+        source: 'docs/cli-command-tree.md',
+        title: 'CLI command tree',
+        summary:
+          'How every gregale command is named (noun, subnoun, verb) and the older names that still work.',
+      },
+      {
+        slug: 'cli-inspect',
+        source: 'docs/cli-inspect.md',
+        title: 'Deployments, settings and health',
+        summary: 'Inspect deployments, read settings receipts, and check health in scripts.',
+      },
+      {
+        slug: 'cli-context',
+        source: 'docs/cli-context.md',
+        title: 'Linked targets and saved runs',
+        summary: 'Which app and environment a command uses, presets, and saved run records.',
+      },
+      {
+        slug: 'cli-secrets',
+        source: 'docs/cli-secrets.md',
+        title: 'Secrets and required configuration',
+        summary: 'Set, remove and watch secrets; declare and check required names.',
+      },
+      {
+        slug: 'cli-logs',
+        source: 'docs/cli-logs.md',
+        title: 'Logs and saved log views',
+        summary: 'Filter logs, save and reuse log views, and query archives.',
+      },
+      {
+        slug: 'cli-jobs',
+        source: 'docs/cli-jobs.md',
+        title: 'Jobs from the CLI',
+        summary: 'Submit a Job run, wait for it, and save project-local Job defaults.',
+      },
+      {
+        slug: 'cli-jobs-interactive',
+        source: 'docs/cli-jobs-interactive.md',
+        title: 'Interactive Job commands',
+        summary: 'Guided prompts for creating, running, retrying and editing Jobs.',
+      },
+      {
+        slug: 'cli-job-results',
+        source: 'docs/cli-job-results.md',
+        title: 'Job run results and artifacts',
+        summary: 'Read the newest run, find tasks with artifacts, and collect outputs.',
+      },
+      {
+        slug: 'cli-job-recovery',
+        source: 'docs/cli-job-recovery.md',
+        title: 'Recover Job runs',
+        summary: 'Preview and run retries, replays and cancellations from saved run records.',
+      },
+      {
+        slug: 'cli-workflows',
+        source: 'docs/cli-workflows.md',
+        title: 'Workflows from the CLI',
+        summary: 'Start, wait for, inspect and recover workflow runs.',
+      },
+      {
+        slug: 'cli-operations',
+        source: 'docs/cli-operations.md',
+        title: 'Scheduled tasks, alerts and issues',
+        summary: 'Scheduled HTTP tasks, alert presets and deliveries, and issue triage.',
       },
     ],
   },

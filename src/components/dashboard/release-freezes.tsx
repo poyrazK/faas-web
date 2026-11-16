@@ -37,6 +37,7 @@ import { InlinePhase, queryPhase } from './primitives';
 import { SafetyCard } from './release-safety-card';
 import { freezeCardWords, spokenTime } from './release-safety-words';
 import { SegmentedControl } from './tabs';
+import { scopedApps, type ScopeGate } from './scope-gate';
 
 /** The browser's IANA zone: `datetime-local` inputs speak its wall clock. */
 export function localZone(): string {
@@ -597,19 +598,29 @@ const SHEET_TITLE = (owner: FreezeOwner) =>
 export function ReleaseFreezes({
   owner,
   description,
+  scope,
 }: {
   owner: FreezeOwner;
   description?: string;
+  /**
+   * Inside a project: freezes on its apps, and freezes on every app, which
+   * hold the project's apps too. Freezes on other apps are left out.
+   */
+  scope?: ScopeGate;
 }) {
   const freezes = useReleaseFreezes(owner);
   const status = useFreezeStatus(owner.kind === 'app' ? owner.slug : '', owner.kind === 'app');
   const stage = useCapabilityStage('deploy-freezes');
   const [adding, setAdding] = useState(false);
+  const scoped = scope?.scope.project ? scope : undefined;
   // What withholds releases now comes first.
-  const list = [...(freezes.data ?? [])].sort((a, b) => Number(b.active) - Number(a.active));
+  const list = [...(freezes.data ?? [])]
+    .filter((f) => !scoped || !f.app || Boolean(scoped.scope.appSlugs?.has(f.app)))
+    .sort((a, b) => Number(b.active) - Number(a.active));
   const phase = queryPhase({
-    error: freezes.error ?? (owner.kind === 'app' ? status.error : undefined),
-    loading: freezes.isPending || (owner.kind === 'app' && status.isPending),
+    error: freezes.error ?? (owner.kind === 'app' ? status.error : undefined) ?? scoped?.error,
+    loading:
+      freezes.isPending || (owner.kind === 'app' && status.isPending) || Boolean(scoped?.pending),
     isEmpty: list.length === 0,
   });
   const words =
@@ -641,11 +652,12 @@ export function ReleaseFreezes({
         ) : (
           <InlinePhase
             phase={phase}
-            error={freezes.error ?? status.error}
+            error={freezes.error ?? status.error ?? scoped?.error}
             loadingMessage="Reading freezes…"
             onRetry={() => {
               void freezes.refetch();
               if (owner.kind === 'app') void status.refetch();
+              if (scoped?.error) scoped.retry();
             }}
           />
         )
@@ -662,6 +674,12 @@ export function ReleaseFreezes({
           freezes={list}
           showCoverage={owner.kind !== 'app' || list.some((f) => !f.app)}
         />
+      )}
+      {phase === 'ready' && scoped && list.some((f) => !f.app) && (
+        <p className="text-xs text-muted-foreground">
+          Freezes on every app are listed too: they also hold {scopedApps(scoped.scope)}, and
+          lifting one frees every app.
+        </p>
       )}
       <Sheet open={adding} onClose={() => setAdding(false)} title={SHEET_TITLE(owner)}>
         {adding && <NewFreezeForm owner={owner} onDone={() => setAdding(false)} />}

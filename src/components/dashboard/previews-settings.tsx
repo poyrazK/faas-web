@@ -5,6 +5,8 @@ import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useJoinPreview, useLeavePreview, usePreviews, type Preview } from '@/lib/api/previews';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { InlinePhase, Panel, queryPhase } from './primitives';
+import { SettingsSummary } from './settings-kit';
+import { previewsSummary } from './settings-words';
 
 /** A refusal in the API's own terms (faas ADR-20261021080640). */
 function explain(err: unknown): string {
@@ -30,25 +32,41 @@ export function PreviewsSettings() {
     error: previews.error,
     isEmpty: items.length === 0,
   });
+  const summary =
+    phase === 'ready' || phase === 'empty'
+      ? previewsSummary(items, org ? label : 'your account')
+      : undefined;
   return (
-    <Panel
-      title={org ? `Previews for ${label}` : 'Previews'}
-      help="Joining a preview turns it on for this workspace; it may change before general availability."
-    >
-      <InlinePhase
-        phase={phase}
-        error={previews.error}
-        emptyMessage="No previews are open to join right now."
-        onRetry={() => void previews.refetch()}
-      />
-      {phase === 'ready' && (
-        <ul className="flex flex-col divide-y divide-border">
-          {items.map((preview) => (
-            <PreviewRow key={preview.key} preview={preview} />
-          ))}
-        </ul>
+    <div className="flex flex-col gap-6">
+      {summary && (
+        <SettingsSummary
+          label="Previews"
+          ariaLabel="Early features"
+          tone={summary.tone}
+          facts={summary.facts}
+        >
+          {summary.sentence}
+        </SettingsSummary>
       )}
-    </Panel>
+      <Panel
+        title={org ? `Previews for ${label}` : 'Open previews'}
+        help="A preview is an early feature that is off by default. Joining turns it on for everyone in this workspace; it may change before general availability."
+      >
+        <InlinePhase
+          phase={phase}
+          error={previews.error}
+          emptyMessage="No previews are open to join right now."
+          onRetry={() => void previews.refetch()}
+        />
+        {phase === 'ready' && (
+          <ul className="flex flex-col divide-y divide-border">
+            {items.map((preview) => (
+              <PreviewRow key={preview.key} preview={preview} />
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -115,6 +133,7 @@ function PreviewRow({ preview }: { preview: Preview }) {
       ) : (
         <Button
           size="sm"
+          variant="outline"
           busy={join.isPending}
           disabled={busy || !preview.eligible}
           onClick={onJoin}

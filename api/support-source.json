@@ -1,0 +1,5 @@
+{
+  "repository": "poyrazK/faas",
+  "revision": "10034cea1a094876cedb5ef0f9a756afa72a47fe",
+  "refresh": "node scripts/pull-support-api.mjs /path/to/faas && npm run api:types"
+}

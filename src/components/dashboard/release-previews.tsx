@@ -27,6 +27,7 @@ import { TearDownPreviewButton } from './preview-actions';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { ProblemHelp } from './problem-help';
 import { ReleaseStatusLabel } from './release-status-label';
+import { scopedIn, type ScopeGate } from './scope-gate';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -135,9 +136,25 @@ function rowLabel(row: PreviewRow) {
  * PR previews on Releases: the workspace's previews, one preview read by
  * slug, and creating one for a production app (B27).
  */
-export function ReleasePreviews() {
+export function ReleasePreviews({ scope }: { scope?: ScopeGate } = {}) {
   const availability = useCapability('pr-previews');
-  const { workspace, previews, parents, error, loading, refetch } = useWorkspacePreviews();
+  const read = useWorkspacePreviews();
+  const { workspace } = read;
+  // Inside a project: previews of its apps (a preview is its own app, and
+  // may sit outside the project its parent belongs to) and previews that are
+  // themselves in scope; new previews start from the project's apps.
+  const scoped = scope?.scope.project ? scope : undefined;
+  const inProject = (slug: string) => Boolean(scoped?.scope.appSlugs?.has(slug));
+  const previews = scoped
+    ? read.previews.filter((row) => inProject(row.slug) || inProject(row.parent))
+    : read.previews;
+  const parents = scoped ? read.parents.filter((app) => inProject(app.slug)) : read.parents;
+  const error = read.error ?? scoped?.error;
+  const loading = read.loading || Boolean(scoped?.pending);
+  const refetch = () => {
+    read.refetch();
+    if (scoped?.error) scoped.retry();
+  };
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState('');
   const canCreate = availability.state === 'available' && parents.length > 0;
@@ -179,9 +196,11 @@ export function ReleasePreviews() {
           error={error}
           loadingMessage="Loading previews…"
           emptyMessage={
-            workspace.org
-              ? `No previews in ${workspace.label} yet. Pull requests on a connected repository get one automatically.`
-              : 'No previews yet. Pull requests on a connected repository get one automatically.'
+            scoped
+              ? `No previews ${scopedIn(scoped.scope)} yet. Pull requests on a connected repository get one automatically.`
+              : workspace.org
+                ? `No previews in ${workspace.label} yet. Pull requests on a connected repository get one automatically.`
+                : 'No previews yet. Pull requests on a connected repository get one automatically.'
           }
           onRetry={refetch}
         />

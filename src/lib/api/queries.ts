@@ -14,6 +14,7 @@ import { api, issueCSRF, unwrap } from './client';
 import { ApiError } from './errors';
 import { isDeploymentTerminal } from '../deployment-status';
 import type { components, paths } from './schema';
+import { checkoutReferralKey } from './referrals';
 import type { InvocationEnvelope } from './async-invocations';
 import { useWorkspaceTarget } from './workspace-apps';
 import { postgresDatabasesSettling, postgresKey } from './postgres';
@@ -3125,12 +3126,42 @@ export function useBillingPortal() {
 export function useChangePlan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (plan: components['schemas']['ChangePlanRequest']['plan']) => {
-      const result = await api.PATCH('/v1/account/plan', { body: { plan } });
+    mutationFn: async (
+      input:
+        | components['schemas']['ChangePlanRequest']['plan']
+        | { plan: components['schemas']['ChangePlanRequest']['plan']; salespersonCode?: string }
+    ) => {
+      const body =
+        typeof input === 'string'
+          ? { plan: input }
+          : {
+              plan: input.plan,
+              salesperson_code: input.salespersonCode?.trim().toUpperCase() || undefined,
+            };
+      const result = await api.PATCH('/v1/account/plan', { body });
       const account = await unwrap(Promise.resolve(result));
       return { account, pending: result.response.status === 202 };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.account }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: checkoutReferralKey });
+    },
+  });
+}
+
+/**
+ * Several apps' SLO summaries at once, one query each (shared cache with
+ * `useAppSlo`). For a project's throttled total; callers cap the app count.
+ */
+export function useAppsSlo(slugs: string[], window: AppSLOWindow = '24h', enabled = true) {
+  return useQueries({
+    queries: slugs.map((slug) => ({
+      queryKey: keys.appSlo(slug, window),
+      queryFn: () =>
+        unwrap(api.GET('/v1/apps/{slug}/slo', { params: { path: { slug }, query: { window } } })),
+      refetchOnWindowFocus: false,
+      enabled,
+    })),
   });
 }
 
