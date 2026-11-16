@@ -52,7 +52,7 @@ async function shot(page, name) {
 }
 async function live(page) {
   await page
-    .getByRole('heading', { name: 'Your app is live', exact: true })
+    .getByRole('heading', { name: 'Deployment ready', exact: true })
     .waitFor({ timeout: 35000 });
 }
 try {
@@ -109,10 +109,13 @@ try {
     false
   );
   const endpoint = await page
-    .getByRole('link', { name: 'Open app', exact: true })
+    .getByRole('link', { name: 'Open public request URL', exact: true })
     .getAttribute('href');
   assert.match(endpoint, /^https:\/\//);
-  await page.getByRole('button', { name: 'Copy: curl command' }).waitFor();
+  await page.getByRole('button', { name: 'Copy: Public curl command' }).waitFor();
+  await page.getByRole('button', { name: 'Verify response', exact: true }).click();
+  await page.getByRole('heading', { name: 'Application response verified', exact: true }).waitFor();
+  assert.equal(posts.filter((p) => /response-check$/.test(p.path)).length, 1);
   await shot(page, 'sample-live-390');
   await sample.context.close();
   console.log(
@@ -226,7 +229,10 @@ try {
     await failed.page
       .getByRole('button', { name: 'Retry original deployment' })
       .waitFor({ timeout: 35000 });
-    assert.equal(await failed.page.getByRole('link', { name: 'Open app', exact: true }).count(), 0);
+    assert.equal(
+      await failed.page.getByRole('link', { name: 'Open public request URL', exact: true }).count(),
+      0
+    );
     await failed.page.getByRole('button', { name: 'Retry original deployment' }).click();
     await failed.page.getByRole('button', { name: 'Retry deployment', exact: true }).click();
     await failed.page

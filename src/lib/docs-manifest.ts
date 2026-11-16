@@ -62,7 +62,8 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'content/docs/getting-started.md',
         local: true,
         title: 'Deploy your first app',
-        summary: 'Install the CLI, deploy a starter API, and verify its live URL.',
+        summary:
+          'Use gregale start to deploy your project or a starter, then verify an application response.',
       },
       {
         slug: 'quickstart',

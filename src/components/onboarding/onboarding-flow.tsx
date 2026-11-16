@@ -289,7 +289,7 @@ function ScopedOnboarding({
           <li aria-hidden>→</li>
           <li>2. Deploy</li>
           <li aria-hidden>→</li>
-          <li>3. Open your app</li>
+          <li>3. Verify response</li>
         </ol>
         {inventory.error && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-4">
@@ -358,8 +358,8 @@ function ScopedOnboarding({
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Get your first app live</h1>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Try a working sample, or bring a repository. Follow the real build, then open your
-                app's URL.
+                Try a working sample, or bring a repository. Follow the real build, then verify an
+                application response.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

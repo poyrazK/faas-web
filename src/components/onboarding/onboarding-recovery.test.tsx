@@ -92,8 +92,11 @@ it('requires a fresh matching live read and gives Free customers a public URL/cu
   responses();
   const post = spyApi('POST');
   setup();
-  expect(await screen.findByRole('heading', { name: 'Your app is live' })).toBeVisible();
-  expect(screen.getByRole('link', { name: 'Open app' })).toHaveAttribute('href', `${app.url}/`);
+  expect(await screen.findByRole('heading', { name: 'Deployment ready' })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Open public request URL' })).toHaveAttribute(
+    'href',
+    `${app.url}/`
+  );
   expect(screen.getByRole('button', { name: /curl command/ })).toBeVisible();
   expect(post).not.toHaveBeenCalled();
 });
@@ -101,7 +104,7 @@ it('writes the legacy completion marker once live is confirmed, so a flag rollba
   localStorage.clear();
   responses();
   setup();
-  await screen.findByRole('heading', { name: 'Your app is live' });
+  await screen.findByRole('heading', { name: 'Deployment ready' });
   await waitFor(() => expect(localStorage.getItem('gregale.onboarded')).toBe('true'));
 });
 it('reads the history for a recovery that saved an app but no deployment', async () => {
@@ -113,16 +116,16 @@ it('reads the history for a recovery that saved an app but no deployment', async
 it('does not announce cached success while the required fresh read fails', async () => {
   responses({ fail: true });
   setup(draft, { cached: true });
-  expect(screen.queryByRole('heading', { name: 'Your app is live' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Deployment ready' })).not.toBeInTheDocument();
   await screen.findByRole('button', { name: 'Retry status check' });
-  expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
 });
 it('blocks a saved deployment that belongs to a different app', async () => {
   responses({ mismatch: true });
   const post = spyApi('POST');
   setup();
   expect(await screen.findByRole('alert')).toHaveTextContent('does not belong to this app');
-  expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
 });
 it('blocks completion and mutations when workspace inventory could not be confirmed', async () => {
@@ -130,7 +133,7 @@ it('blocks completion and mutations when workspace inventory could not be confir
   const post = spyApi('POST');
   setup(draft, { unavailable: true });
   await screen.findByRole('button', { name: 'Retry app lookup' });
-  expect(screen.queryByRole('heading', { name: 'Your app is live' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Deployment ready' })).not.toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
 });
 it('requires explicit selection from actual history after an unknown submission', async () => {
@@ -138,10 +141,10 @@ it('requires explicit selection from actual history after an unknown submission'
   const post = spyApi('POST');
   const { changed } = setup({ ...draft, phase: 'unknown', deployment: undefined });
   await screen.findByRole('button', { name: 'Use this deployment' });
-  expect(screen.queryByRole('link', { name: 'Open app' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
   expect(post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Use this deployment' }));
-  await screen.findByRole('heading', { name: 'Your app is live' });
+  await screen.findByRole('heading', { name: 'Deployment ready' });
   expect(changed).toHaveBeenCalledWith(
     expect.objectContaining({ deployment: deployment.id, phase: 'accepted' })
   );
@@ -175,7 +178,7 @@ it('does not replace the saved starter version while restoring rejected source',
 it('keeps different actors in different query families', async () => {
   responses();
   const { client } = setup(draft, { account: 'account-b' });
-  await screen.findByRole('heading', { name: 'Your app is live' });
+  await screen.findByRole('heading', { name: 'Deployment ready' });
   expect(
     client.getQueryData(['deployments', 'account', 'account-a', deployment.id])
   ).toBeUndefined();

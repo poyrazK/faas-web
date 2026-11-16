@@ -1,89 +1,117 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@/lib/api/errors';
+import type { App } from '@/lib/api/queries';
 import { FirstResponse } from './first-response';
 
-const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  plan: 'pro' as string,
+const mocks = vi.hoisted(() => ({ check: vi.fn() }));
+vi.mock('@/lib/api/deployment-response', async (original) => ({
+  ...(await original<typeof import('@/lib/api/deployment-response')>()),
+  checkDeploymentResponse: mocks.check,
 }));
-
-vi.mock('@/lib/api/queries', () => ({
-  useInvokeApp: () => ({ mutateAsync: mocks.invoke, isPending: false }),
-}));
-vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: mocks.plan } }) }));
-
+const deployment = { id: 'a'.repeat(32), app_id: 'b'.repeat(32), status: 'live' };
+const app = {
+  id: deployment.app_id,
+  slug: 'hello-app',
+  visibility: 'public',
+  require_authn: false,
+} as App;
+const response = {
+  app_id: app.id,
+  deployment_id: deployment.id,
+  scope: 'default',
+  instance_id: 'c'.repeat(32),
+  http_status: 200,
+  body: 'OK',
+  body_truncated: false,
+};
+const props = { slug: app.slug, endpoint: 'https://api.example', app, deployment };
 beforeEach(() => {
-  mocks.invoke.mockReset();
-  mocks.plan = 'pro';
+  mocks.check.mockReset();
+  mocks.check.mockResolvedValue(response);
 });
 
-function problem(status: number, code: string) {
-  return new ApiError({ type: 'about:blank', title: code, status, code, detail: code });
-}
-
-describe('first response', () => {
-  it('makes no request until asked, then sends a GET through the invoke API', async () => {
-    mocks.invoke.mockResolvedValue({ id: 'i1', status: 'completed', result: { ok: true } });
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    expect(mocks.invoke).not.toHaveBeenCalled();
-    await userEvent.type(screen.getByLabelText('Request path'), 'health');
-    await userEvent.click(screen.getByRole('button', { name: 'Send GET request' }));
-    expect(await screen.findByRole('heading', { name: 'First response received' })).toBeVisible();
-    expect(screen.getByText(/"ok": true/)).toBeVisible();
-    expect(mocks.invoke).toHaveBeenCalledWith({
-      slug: 'hello-app',
-      method: 'GET',
-      path: '/health',
-    });
+describe('deployment response verification', () => {
+  it('waits for an explicit action and pins the exact deployment', async () => {
+    render(<FirstResponse {...props} />);
+    expect(mocks.check).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Verify response' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Application response verified' })
+    ).toBeVisible();
+    expect(mocks.check).toHaveBeenCalledWith(app.slug, deployment, '/', expect.any(AbortSignal));
+    expect(screen.getByText('OK')).toBeVisible();
+    expect(screen.getByText(/Public access has not been verified/)).toBeVisible();
   });
-
-  it('shows a plain-text body as the app sent it', async () => {
-    mocks.invoke.mockResolvedValue({ id: 'i1', status: 'completed', result: 'OK' });
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Send GET request' }));
-    expect(await screen.findByText('OK')).toBeVisible();
+  it.each([401, 403, 404, 500])(
+    'does not treat an API envelope with application HTTP %s as success',
+    async (http_status) => {
+      mocks.check.mockResolvedValue({ ...response, http_status });
+      render(<FirstResponse {...props} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Verify response' }));
+      expect(await screen.findByText(new RegExp('HTTP ' + http_status))).toBeVisible();
+      expect(
+        screen.queryByRole('heading', { name: 'Application response verified' })
+      ).not.toBeInTheDocument();
+    }
+  );
+  it('offers private testing without a public link or access change', async () => {
+    render(<FirstResponse {...props} app={{ ...app, require_authn: true }} />);
+    expect(screen.getByText(/Private endpoint:/)).toHaveTextContent('401');
+    expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
+    expect(screen.getByText(/gregale release verify/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Verify response' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Application response verified' })
+    ).toBeVisible();
   });
-
-  it('shows a failed invocation without calling it a successful verification', async () => {
-    mocks.invoke.mockResolvedValue({ id: 'i1', status: 'failed', error: 'handler returned 404' });
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Send GET request' }));
-    expect(await screen.findByText(/failed: handler returned 404/)).toBeVisible();
-    expect(screen.queryByText('First response received')).not.toBeInTheDocument();
+  it('offers an internal app the same account check without requiring an endpoint', async () => {
+    render(<FirstResponse {...props} endpoint={null} app={{ ...app, visibility: 'internal' }} />);
+    expect(screen.getByText(/Internal app:/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Verify response' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Application response verified' })
+    ).toBeVisible();
   });
-
-  it('explains a wait that ran out without claiming the app is down', async () => {
-    mocks.invoke.mockRejectedValue(problem(504, 'long_poll_timeout'));
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    await userEvent.click(screen.getByRole('button', { name: 'Send GET request' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/still be waking/);
-    expect(screen.getByRole('link', { name: 'Open request URL' })).toHaveAttribute(
-      'href',
-      'https://api.example/'
+  it('reports unsupported verification without falling back to invocation', async () => {
+    mocks.check.mockRejectedValue(new Error('Deployment verification is unavailable'));
+    render(<FirstResponse {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Verify response' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('unavailable');
+  });
+  it('cancels a stale request when its path changes', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.check.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
     );
-  });
-
-  it('offers only the public URL on a plan that cannot invoke from the console', () => {
-    mocks.plan = 'free';
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    expect(screen.queryByRole('button', { name: 'Send GET request' })).not.toBeInTheDocument();
-    expect(screen.getByText(/needs a paid plan/)).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Open request URL' })).toBeVisible();
-  });
-
-  it('rejects paths that could target another host and clears a stale success', async () => {
-    mocks.invoke.mockResolvedValue({ id: 'i1', status: 'completed', result: 'OK' });
+    render(<FirstResponse {...props} />);
     const user = userEvent.setup();
-    render(<FirstResponse slug="hello-app" endpoint="https://api.example" />);
-    await user.click(screen.getByRole('button', { name: 'Send GET request' }));
-    await screen.findByText('First response received');
+    await user.click(screen.getByRole('button', { name: 'Verify response' }));
+    const signal = mocks.check.mock.calls[0][3];
     await user.clear(screen.getByLabelText('Request path'));
     await user.type(screen.getByLabelText('Request path'), '//other.example');
-    expect(screen.queryByText('First response received')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send GET request' })).toBeDisabled();
-    expect(screen.queryByRole('link', { name: 'Open request URL' })).not.toBeInTheDocument();
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      resolve(response);
+    });
+    expect(
+      screen.queryByRole('heading', { name: 'Application response verified' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Verify response' })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
+  });
+  it('does not offer an anonymous URL for consumer-key-protected apps', () => {
+    render(<FirstResponse {...props} app={{ ...app, consumer_auth_mode: 'required' }} />);
+    expect(screen.queryByRole('link', { name: 'Open public request URL' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Private endpoint:/)).toBeVisible();
+  });
+  it('guides workers to logs instead of sending an HTTP check', () => {
+    render(<FirstResponse {...props} app={{ ...app, workload_class: 'worker' }} />);
+    expect(screen.getByRole('heading', { name: 'Check workload activity' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Verify response' })).not.toBeInTheDocument();
+    expect(mocks.check).not.toHaveBeenCalled();
   });
 });

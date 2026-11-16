@@ -1,116 +1,102 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ApiError, errorMessage } from '@/lib/api/errors';
-import { useInvokeApp } from '@/lib/api/queries';
-import { useAuth } from '@/lib/auth';
-import { isPaidPlan } from '@/lib/plan';
+import { CopyIconButton } from '@/components/ui/copy-button';
+import { errorMessage } from '@/lib/api/errors';
+import type { App } from '@/lib/api/queries';
+import {
+  appAccess,
+  canVerifyHTTP,
+  checkDeploymentResponse,
+  validResponsePath,
+  type ResponseCheck,
+  type ResponseDeployment,
+} from '@/lib/api/deployment-response';
+import { publicAppUrl } from '@/lib/app-url';
 
-const BODY_LIMIT = 16_384;
+type Props = {
+  slug: string;
+  endpoint?: string | null;
+  app?: App;
+  deployment: ResponseDeployment;
+  onPublicOpen?: () => void;
+};
 
-type Outcome = { status: string; body: string; error?: string };
-
-function validPath(path: string): boolean {
-  return path.startsWith('/') && !path.startsWith('//') && !/[\\\s#]/.test(path);
+export function FirstResponse(props: Props) {
+  if (!canVerifyHTTP(props.app))
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Check workload activity</h2>
+        <p className="text-sm text-muted-foreground">
+          This workload does not serve HTTP. Inspect its runtime logs to check its activity.
+        </p>
+        <code className="break-all text-xs">gregale logs {props.slug} --follow</code>
+      </section>
+    );
+  return (
+    <RequestCheck
+      key={`${props.slug} ${props.deployment.id} ${props.deployment.scope || 'default'}`}
+      {...props}
+    />
+  );
 }
 
-function publicUrl(endpoint: string, path: string): string | undefined {
-  try {
-    const base = new URL(endpoint);
-    if (base.protocol !== 'https:' || base.username || base.password) return undefined;
-    if (!validPath(path)) return undefined;
-    const url = new URL(path, base);
-    return url.origin === base.origin ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// The platform stores a JSON body as-is and any other body as a JSON string.
-function preview(result: unknown): string {
-  if (result === undefined || result === null) return '';
-  let text: string;
-  try {
-    text = typeof result === 'string' ? result : (JSON.stringify(result, null, 2) ?? '');
-  } catch {
-    text = String(result);
-  }
-  return text.length > BODY_LIMIT
-    ? `${text.slice(0, BODY_LIMIT)}\n… Response preview limited to 16 KB.`
-    : text;
-}
-
-function failureMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'long_poll_timeout')
-      return 'Your app did not answer within the wait, and the request keeps running. It may still be waking. Try again shortly, or see it under Invocations.';
-    if (error.code === 'plan_feature_gated')
-      return 'Sending requests from the console needs a paid plan. Open the request URL instead, or run the request under Call it.';
-  }
-  return errorMessage(error);
-}
-
-/**
- * An explicit GET sent through the platform's invoke API, separate from the
- * deployment status. The console's content policy keeps the browser off the
- * app's own host, so the public URL is offered as a link instead.
- */
-export function FirstResponse({ slug, endpoint }: { slug: string; endpoint: string }) {
-  return <RequestCheck key={`${slug} ${endpoint}`} slug={slug} endpoint={endpoint} />;
-}
-
-function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
+function RequestCheck({ slug, endpoint, app, deployment, onPublicOpen }: Props) {
   const pathId = useId();
-  const { account } = useAuth();
-  const invoke = useInvokeApp();
-  const [path, setPath] = useState(() => {
-    try {
-      const url = new URL(endpoint);
-      return `${url.pathname}${url.search}`;
-    } catch {
-      return '/';
-    }
-  });
-  const attempt = useRef(0);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [path, setPath] = useState('/');
+  const [outcome, setOutcome] = useState<ResponseCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Free plans cannot invoke synchronously; an unresolved account still tries.
-  const canSend = account === null || isPaidPlan(account.plan);
-  const valid = validPath(path);
-  const url = publicUrl(endpoint, path);
-  const pending = invoke.isPending;
-  const successful = outcome?.status === 'completed';
+  const [pending, setPending] = useState(false);
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  const valid = validResponsePath(path);
+  const access = appAccess(app);
+  const successful = Boolean(outcome && outcome.http_status >= 200 && outcome.http_status < 300);
+  const base =
+    access === 'public' && (!deployment.scope || deployment.scope === 'default')
+      ? publicAppUrl(endpoint)
+      : undefined;
+  const url = valid && base ? new URL(path, base).href : undefined;
+  const named = Boolean(deployment.scope && deployment.scope !== 'default');
+  const command =
+    `gregale release verify ${deployment.id} --app ${slug} --path '${path.replaceAll("'", "'\\''")}'` +
+    (named && outcome
+      ? ` --project-id ${outcome.project_id} --environment-id ${outcome.environment_id}`
+      : '');
 
   function changePath(value: string) {
-    // A reply to an earlier path must not land on this one.
-    attempt.current += 1;
+    controller.current?.abort();
+    controller.current = null;
+    setPending(false);
     setOutcome(null);
     setError(null);
     setPath(value);
   }
 
   async function send() {
-    if (!valid || pending) return;
-    const current = ++attempt.current;
+    if (!valid || controller.current) return;
+    const current = new AbortController();
+    controller.current = current;
+    setPending(true);
     setOutcome(null);
     setError(null);
     try {
-      const response = await invoke.mutateAsync({ slug, method: 'GET', path });
-      if (attempt.current === current)
-        setOutcome({
-          status: response.status,
-          body: preview(response.result),
-          error: response.error,
-        });
+      const result = await checkDeploymentResponse(slug, deployment, path, current.signal);
+      if (!current.signal.aborted) setOutcome(result);
     } catch (cause) {
-      if (attempt.current === current) setError(failureMessage(cause));
+      if (!current.signal.aborted) setError(errorMessage(cause));
+    } finally {
+      if (controller.current === current) {
+        controller.current = null;
+        setPending(false);
+      }
     }
   }
 
   return (
     <section aria-labelledby={`${pathId}-title`} className="flex flex-col gap-3">
       <h2 id={`${pathId}-title`} className="text-sm font-medium text-muted-foreground">
-        {successful ? 'First response received' : 'Verify your API'}
+        {successful ? 'Application response verified' : 'Verify application response'}
       </h2>
       <div className="flex flex-col divide-y divide-border surface rounded-[1.25rem] bg-card">
         <form
@@ -121,9 +107,19 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
           className="flex flex-col gap-3 px-4 py-4"
         >
           <p className="text-[13px] leading-5 text-muted-foreground">
-            {canSend
-              ? 'Sends a GET to a read-only route, such as a health check. It can wake your app and use compute allowance.'
-              : 'Sending a request from the console needs a paid plan.'}
+            Deployment ready. Send an authenticated GET to this exact deployment using your Gregale
+            account. Available on every plan; the check can wake the app and use compute allowance.
+            Choose an application route such as /. A public /healthz can answer from Gregale’s edge.
+          </p>
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            {access === 'private'
+              ? 'Private endpoint: opening its URL may return 401 or 403 unless its access requirements are met. Verify it here without making it public.'
+              : access === 'internal'
+                ? 'Internal app: test it here using your account. It has no public endpoint.'
+                : access === 'public'
+                  ? 'Public access is configured. Opening its URL is a separate public access test.'
+                  : 'App access has not been confirmed. A browser URL alone does not establish public access.'}{' '}
+            Account credentials stay with Gregale. Application-owned authentication still applies.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5">
@@ -140,22 +136,20 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
                 aria-invalid={!valid || undefined}
               />
             </div>
-            {canSend && (
-              <Button type="submit" variant="cta" busy={pending} disabled={!valid}>
-                Send GET request
-              </Button>
-            )}
+            <Button type="submit" variant="cta" busy={pending} disabled={!valid}>
+              Verify response
+            </Button>
           </div>
           {!valid && (
             <p role="alert" className="text-[13px] text-destructive">
-              Use a path starting with a single /.
+              Use an app-relative path starting with a single /, without spaces or a fragment.
             </p>
           )}
         </form>
         <div aria-live="polite" aria-atomic="true" className="empty:hidden">
           {pending && (
             <p className="px-4 py-3 text-[13px] text-muted-foreground">
-              Waiting for your app to respond…
+              Waiting for this deployment to respond…
             </p>
           )}
           {error && (
@@ -168,31 +162,55 @@ function RequestCheck({ slug, endpoint }: { slug: string; endpoint: string }) {
               <p
                 className={successful ? 'text-sm text-status-good' : 'text-sm text-status-warning'}
               >
-                {successful
-                  ? 'Your app responded successfully.'
-                  : `The request ${outcome.status === 'failed' ? 'failed' : `ended ${outcome.status}`}${outcome.error ? `: ${outcome.error}` : '.'} Check the path and app logs.`}
+                GET {path} → HTTP {outcome.http_status} ·{' '}
+                {successful ? 'Application response verified' : 'Application response not verified'}
               </p>
-              {(successful || outcome.body) && (
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
-                  {outcome.body || '(Empty response body)'}
-                </pre>
+              <p className="text-xs text-muted-foreground">
+                Deployment {outcome.deployment_id} · {outcome.scope} · owner-authorized check.
+                Public access has not been verified.
+              </p>
+              {!successful && (
+                <p className="text-sm text-muted-foreground">
+                  {outcome.http_status === 401 || outcome.http_status === 403
+                    ? 'The application denied this request. Check its own authentication or choose a route it permits.'
+                    : 'Check this route and the deployment logs, then retry the check.'}
+                </p>
+              )}
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs">
+                {outcome.body || '(Empty response body)'}
+              </pre>
+              {outcome.body_truncated && (
+                <p className="text-xs text-muted-foreground">Response preview shortened to 4 KB.</p>
               )}
             </div>
           )}
         </div>
+        {valid && (!named || outcome) && (
+          <div className="flex items-center gap-2 px-4 py-3">
+            <code className="min-w-0 flex-1 break-all text-xs">{command}</code>
+            <CopyIconButton text={command} label="Verification command" />
+          </div>
+        )}
         {url && (
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <span className="min-w-0 truncate font-mono text-[13px] text-muted-foreground">
-              {url}
-            </span>
+          <div className="flex flex-col gap-2 px-4 py-3">
             <a
               href={url}
+              onClick={onPublicOpen}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 text-[13px] text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
+              className="text-[13px] text-brand underline"
             >
-              Open request URL
+              Open public request URL
             </a>
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 break-all text-xs">
+                curl '{url.replaceAll("'", '%27')}'
+              </code>
+              <CopyIconButton
+                text={`curl '${url.replaceAll("'", '%27')}'`}
+                label="Public curl command"
+              />
+            </div>
           </div>
         )}
       </div>

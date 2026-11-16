@@ -5,7 +5,8 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { Check, NavArrowDown, OpenNewWindow, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
-import { useDeployment, type Deployment } from '@/lib/api/queries';
+import { useApp, useDeployment, type Deployment } from '@/lib/api/queries';
+import { appAccess, canVerifyHTTP } from '@/lib/api/deployment-response';
 import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { useLogStream } from '@/lib/api/logs';
 import { LogView } from './log-view';
@@ -107,7 +108,13 @@ export function DeploymentProgress({
   const live = phase === 'live' && !unavailable && !submissionError;
   // Only an API-assigned http(s) destination becomes a link; the raw value is
   // still shown and copyable beside it, so nothing is hidden.
-  const openHref = live ? publicAppUrl(endpoint) : undefined;
+  const app = useApp(appSlug ?? '', { enabled: live && Boolean(appSlug), retry: false }, accountId);
+  const openHref =
+    live &&
+    appAccess(app.data) === 'public' &&
+    (!deployment?.scope || deployment.scope === 'default')
+      ? publicAppUrl(endpoint)
+      : undefined;
   useEffect(() => {
     if (live && deployment) onLive?.(deployment);
   }, [live, deployment, onLive]);
@@ -139,7 +146,12 @@ export function DeploymentProgress({
                 : 'Your app is created. We’re sending its source to the builder.',
             ]
           : live
-            ? ['Your app is live', `${appName} is ready to receive requests.`]
+            ? [
+                'Deployment ready',
+                canVerifyHTTP(app.data)
+                  ? `${appName} is deployed. Verify an application response below.`
+                  : `${appName} is deployed. Inspect its runtime logs to check its activity.`,
+              ]
             : superseded
               ? [
                   'Replaced by a newer deployment',
@@ -417,8 +429,14 @@ export function DeploymentProgress({
 
       {/* An explicit request through the platform, separate from deployment
           status: only when asked, and never counted as verification on failure. */}
-      {live && endpoint && appSlug && (
-        <FirstResponse key={`response-${deploymentId}`} slug={appSlug} endpoint={endpoint} />
+      {live && deployment && appSlug && (
+        <FirstResponse
+          key={`response-${deploymentId}`}
+          slug={appSlug}
+          endpoint={endpoint}
+          app={app.data}
+          deployment={deployment}
+        />
       )}
       {live && appSlug && <AppCallIt slug={appSlug} />}
     </section>

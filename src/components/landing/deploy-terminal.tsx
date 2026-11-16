@@ -2,16 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Restart } from 'iconoir-react';
 
 /**
- * A deploy session, typed out.
- *
- * The deploy command and
- * its one-line reply are the worked example from `content/docs/deploy-from-
- * source.md`; the `x-faas-wake: cold` header is from
- * `content/docs/scale-to-zero.md`; `*.apps.gregale.dev` is the zone from
- * `preview-environments.md`. Change those docs, change this script.
- *
- * The idle comment explains the lifecycle; it is not CLI output. Timings
- * are illustrative, not a live call or a performance guarantee.
+ * An illustrative guided launch using the canonical quickstart. Comments show
+ * the review/confirmation step; output distinguishes deployment readiness,
+ * an application response, and public access. This never runs a live command.
  */
 type Line =
   | { kind: 'cmd'; text: string }
@@ -19,32 +12,22 @@ type Line =
   | { kind: 'gap' };
 
 const SCRIPT: Line[] = [
-  { kind: 'cmd', text: 'gregale deploy --repo onebox-faas/hello --ref main' },
+  { kind: 'cmd', text: 'curl -fsSL https://get.gregale.dev | sh' },
+  { kind: 'cmd', text: 'gregale start ./my-api' },
+  { kind: 'out', text: 'Gregale · Let’s get your app live', tone: 'brand' },
   {
     kind: 'out',
-    text: 'Deployed hello from onebox-faas/hello@3f9c2e1 (build bld_9k2f, deployment dep_4q7x)',
-  },
-  { kind: 'gap' },
-  {
-    kind: 'cmd',
-    text: "curl -sD - -o /dev/null -w 'total %{time_total}s\\n' https://hello.apps.gregale.dev/",
-  },
-  { kind: 'out', text: 'HTTP/2 200', tone: 'dim' },
-  { kind: 'out', text: 'x-faas-wake: cold', tone: 'brand', note: 'snapshot restored' },
-  { kind: 'out', text: 'total 0.338s' },
-  { kind: 'gap' },
-  {
-    kind: 'cmd',
-    text: "curl -sD - -o /dev/null -w 'total %{time_total}s\\n' https://hello.apps.gregale.dev/",
-  },
-  { kind: 'out', text: 'HTTP/2 200', tone: 'dim' },
-  { kind: 'out', text: 'total 0.019s', note: 'warm instance' },
-  { kind: 'gap' },
-  {
-    kind: 'out',
-    text: '# idle → instance parked. The next request wakes it again.',
+    text: '# Review source, account, access, and resources; confirm the launch.',
     tone: 'dim',
   },
+  { kind: 'gap' },
+  { kind: 'out', text: 'Your app is ready. Checking its first response...' },
+  { kind: 'out', text: 'Application response verified', tone: 'brand' },
+  { kind: 'out', text: 'GET / · HTTP 200 · owner-authorized check' },
+  { kind: 'out', text: 'Public access has not been verified.', tone: 'dim' },
+  { kind: 'out', text: '# Private apps can be tested without making them public.', tone: 'dim' },
+  { kind: 'gap' },
+  { kind: 'cmd', text: 'gregale logs my-api --follow' },
 ];
 
 /** Milliseconds per typed character, and the pause before output appears. */
@@ -135,7 +118,7 @@ export function DeployTerminal() {
             <span className="h-2.5 w-2.5 rounded-full bg-border-secondary" />
             <span className="h-2.5 w-2.5 rounded-full bg-border-secondary" />
           </div>
-          <span className="font-mono text-xs text-muted-foreground">hello — zsh</span>
+          <span className="font-mono text-xs text-muted-foreground">my-api — zsh</span>
         </div>
         <button
           type="button"

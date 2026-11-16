@@ -17,11 +17,11 @@ export const STEPS: readonly Step[] = [
       [3, 4, 2],
       [5, 2, 2],
     ],
-    links: [{ label: 'Deploy from a ref', doc: 'deploy-from-source' }],
+    links: [{ label: 'Guided first deploy', doc: 'quickstart' }],
     panel: (
       <Panel
         title="example · source tree"
-        rows={['my-api/', '  src/server.ts', '  package.json', '  gregale deploy --dry-run']}
+        rows={['my-api/', '  src/server.ts', '  package.json', '  gregale start']}
       />
     ),
   },
@@ -52,8 +52,8 @@ export const STEPS: readonly Step[] = [
   },
   {
     title: 'Deploy and verify.',
-    body: 'Follow the build and readiness checks to a verified URL. Inspect logs when something fails, then deploy your next change through the same path.',
-    links: [{ label: 'Deployment guide', doc: 'deploy-from-github' }],
+    body: 'Follow the build to deployment readiness, then verify a response from your application. Test private apps using your Gregale account; check public access separately.',
+    links: [{ label: 'Verify your first deployment', doc: 'quickstart' }],
     mosaic: [
       [5, 0, 0],
       [4, 1, 2],

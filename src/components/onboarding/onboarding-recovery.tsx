@@ -218,6 +218,8 @@ export function OnboardingRecovery({
         plan={plan}
         slug={draft.app}
         endpoint={app.data?.visibility === 'internal' ? null : app.data?.url}
+        app={app.data!}
+        deployment={deployment.data!}
       />
     );
   if (progress === 'unknown' && draft.phase !== 'submitting')

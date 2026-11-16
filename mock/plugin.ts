@@ -7506,6 +7506,43 @@ route(
     } satisfies components['schemas']['ProjectEnvironmentApprovalStatusResponse'];
   }
 );
+route(
+  'GET',
+  '/v1/deployments/response-check/capabilities',
+  () =>
+    ({
+      protocol_version: 1,
+      available: true,
+    }) satisfies components['schemas']['DeploymentResponseCheckCapabilities']
+);
+route(
+  'POST',
+  '/v1/apps/{slug}/deployments/{deployment}/response-check',
+  ({ params, body, res }) => {
+    const target = app(params.slug);
+    const deployment = db.deployments.find((d) => d.id === params.deployment);
+    if (
+      !deployment ||
+      deployment.app_id !== target.id ||
+      body.app_id !== target.id ||
+      body.scope !== (deployment.scope || 'default') ||
+      deployment.status !== 'live'
+    )
+      throw new Problem(409, 'deployment_check_target_changed');
+    res.setHeader('Cache-Control', 'no-store');
+    return {
+      app_id: target.id,
+      deployment_id: deployment.id,
+      scope: deployment.scope || 'default',
+      ...(body.project_id ? { project_id: String(body.project_id) } : {}),
+      ...(body.environment_id ? { environment_id: String(body.environment_id) } : {}),
+      instance_id: '018f0000-0000-7000-8000-000000000001',
+      http_status: body.path === '/denied' ? 401 : 200,
+      body: body.path === '/denied' ? 'Application authentication required' : 'hello from gregale',
+      body_truncated: false,
+    } satisfies components['schemas']['DeploymentResponseCheckResult'];
+  }
+);
 route('GET', '/v1/deployments', ({ query }) => ({
   items: db.deployments.slice(0, Number(query.get('limit') ?? 50)),
   next_before: null,

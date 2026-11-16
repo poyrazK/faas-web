@@ -2,8 +2,10 @@
 
 > Gregale is a serverless platform for APIs, functions and background work. Every app runs in its own Firecracker microVM, scales to zero when idle — holding no memory at all — and wakes from a VM snapshot when a request arrives. Deploy with one CLI command from source or any OCI image.
 
-Gregale is CLI-first (`gregale deploy`), with a full web console for
-everything the API can do. {{BETA_STATUS}}
+For a guided human launch, use `gregale start [path]`. Coding agents and CI use
+non-interactive `gregale deploy`, then `gregale release verify` with the accepted
+deployment UUID to check an application response. Public access is a separate
+check. Gregale also has a web console. {{BETA_STATUS}}
 
 Key facts:
 

@@ -96,7 +96,7 @@ describe('live deployment', () => {
   it('shows how to call the app once it is live', () => {
     api.status = 'live';
     render(<DeploymentProgress {...props} appSlug="hello-app" />);
-    expect(screen.getByRole('heading', { name: 'Your app is live' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Deployment ready' })).toBeInTheDocument();
     const block = screen.getByRole('region', { name: 'Call it' });
     expect(block).toHaveTextContent('curl -i https://hello-app.gregale.dev');
     expect(block).toHaveTextContent('gregale logs hello-app --follow');
@@ -363,9 +363,9 @@ describe('first response', () => {
     const { rerender } = render(
       <DeploymentProgress {...props} deploymentId={null} appSlug="hello-app" />
     );
-    expect(screen.queryByRole('button', { name: 'Send GET request' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify response' })).not.toBeInTheDocument();
     api.status = 'live';
     for (let i = 0; i < 3; i++) rerender(<DeploymentProgress {...props} appSlug="hello-app" />);
-    expect(screen.getAllByRole('button', { name: 'Send GET request' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Verify response' })).toHaveLength(1);
   });
 });

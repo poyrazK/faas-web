@@ -46,12 +46,21 @@ handoffs expire after one hour. The connected installation must have access to
 the selected repository. The first build uses the checked SHA, while the binding
 uses the backend's default branch when the ref is a commit.
 
-Once the API reports a live deployment, **Verify your API** lets the user send
-an explicit, credential-free GET to a read-only path on the assigned HTTPS
-endpoint. Only a readable 2xx response is marked successful. Requests time out
-after 20 seconds and previews are bounded to 16 KB. CORS restrictions or redirects
-may prevent browser verification; the public URL and a copyable curl command
-remain available. No request is sent automatically.
+Once the API reports a ready deployment, **Verify response** sends an explicit
+owner-authorized GET through the deployment response-check API. This is available
+on every plan, pins the app, deployment, environment, and running instance, and
+keeps account credentials out of the app request. Only an actual application 2xx
+is verified; the API envelope's status does not count. Response previews are
+bounded to 4 KB and remain component-local. Path changes, target changes, and
+unmounts cancel an in-flight check. No request is sent automatically.
+
+Private and internal apps use the same check without changing access. Public URL
+links and curl commands appear separately when public access is configured;
+opening a link does not verify public access. The equivalent CLI command is
+`gregale release verify DEPLOYMENT_UUID --app APP --path /`. Named
+environments require project/environment UUIDs, which the console resolves from
+the active workspace before checking. The getting-started page and upstream
+quickstart share the guided `gregale start` path.
 
 ## Scripts
 
@@ -101,8 +110,9 @@ The sample uses the packaged Node.js starter and needs no GitHub installation.
 The repository path preserves the selected repository/ref through the existing
 Settings installation return. Both paths reuse New app creation and deployment.
 Only a fresh, matching API deployment read reporting `live` opens the success
-screen. Free customers can open the assigned public URL or copy curl without a
-paid console invocation. Opening a URL is not recorded as a verified response.
+screen. Customers on every plan can explicitly verify the exact deployment without a
+paid console invocation. Public URLs and curl are offered only for apps whose
+access allows anonymous requests. Opening a URL is not recorded as a verified response.
 
 Dismissal and versioned drafts belong to the confirmed account and workspace.
 Saved descriptors include source/name and app/deployment pointers, never code or

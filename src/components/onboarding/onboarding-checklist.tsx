@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useOnboardingInventory } from '@/lib/api/onboarding';
-import { readOnboarding } from '@/lib/onboarding-draft';
+import { readOnboarding, writeOnboarding } from '@/lib/onboarding-draft';
 import { Button } from '@/components/ui/button';
 
 export function OnboardingChecklist() {
@@ -26,14 +27,20 @@ export function OnboardingChecklist() {
 function ScopedChecklist({ account, workspace }: { account: string; workspace: string | null }) {
   const owner = { account, workspace };
   const record = readOnboarding(owner);
+  const [dismissed, setDismissed] = useState(record.dismissed);
   const inventory = useOnboardingInventory(owner);
-  if (inventory.pending || inventory.error) return null;
-  if (
-    inventory.apps.some((app) =>
-      inventory.deployments.some((d) => d.app_id === app.id && d.status === 'live')
-    )
-  )
-    return null;
+  if (inventory.pending || inventory.error || dismissed) return null;
+  const hasLiveApp = inventory.apps.some((app) =>
+    inventory.deployments.some((d) => d.app_id === app.id && d.status === 'live')
+  );
+  const live = inventory.apps.some(
+    (app) =>
+      app.slug === record.draft?.app &&
+      inventory.deployments.some(
+        (d) => d.app_id === app.id && d.id === record.draft?.deployment && d.status === 'live'
+      )
+  );
+  if (hasLiveApp && !record.draft?.deployment) return null;
   const resume = Boolean(record.draft?.app || record.draft?.phase === 'unknown');
   return (
     <section
@@ -42,19 +49,35 @@ function ScopedChecklist({ account, workspace }: { account: string; workspace: s
     >
       <div>
         <h2 className="text-sm font-semibold">
-          {resume ? 'Continue your first deployment' : 'Get your first app live'}
+          {live
+            ? 'Verify your app response'
+            : resume
+              ? 'Continue your first deployment'
+              : 'Get your first app live'}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {resume
-            ? 'Your saved app and deployment can be checked without starting another one.'
-            : 'Deploy a working sample with no GitHub connection, or bring your repository.'}
+          {live
+            ? 'Your deployment is ready. Check an application response using your Gregale account.'
+            : resume
+              ? 'Your saved app and deployment can be checked without starting another one.'
+              : 'Deploy a working sample with no GitHub connection, or bring your repository.'}
         </p>
       </div>
       <Button asChild size="sm">
         <Link to="/onboarding" search={resume ? {} : { source: 'function', step: 'configure' }}>
           {' '}
-          {resume ? 'Resume setup' : 'Deploy a sample'}
+          {live ? 'Verify response' : resume ? 'Resume setup' : 'Deploy a sample'}
         </Link>
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          writeOnboarding({ ...record, dismissed: true });
+          setDismissed(true);
+        }}
+      >
+        Dismiss setup
       </Button>
     </section>
   );

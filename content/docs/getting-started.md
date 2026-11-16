@@ -1,82 +1,78 @@
 # Deploy your first app
 
-Start with a small Node.js API, deploy it from your terminal, and verify the live URL. You can use your own repository afterward.
+Use the guided Gregale CLI to deploy your own project or a small starter, then
+verify a response from your application. The [quickstart](/docs/quickstart) is
+the reference for this flow, recovery, and automation.
 
-> Hosting is in public beta. Start with a demo, side project, or another non-critical workload. Deployments consume your account’s compute and app allowance; check your [plan limits](/docs/plans) first.
-
-## Before you start
-
-- Create a [Gregale account](/signup), or sign in to your existing account.
-- Have a terminal with Node.js and npm installed.
-- Make sure your plan has room for another deployed app.
-
-## Install and sign in
-
-Install the CLI, then authenticate this machine:
+## Install and start
 
 ```bash
-npm install -g gregale@rc
-gregale login
+curl -fsSL https://get.gregale.dev | sh
+gregale start ./my-api
 ```
 
-Every release is still a prerelease, so the command pins npm's `rc` tag; `latest` lags behind it. The [install guide](/docs/install) covers the curl installer, pinning a version, and what to do if npm skipped the platform package.
+Point Start at your project directory. It signs you in when needed, detects your
+app, and shows the source, account, access settings, and resources before you
+confirm deployment. Your current working files, including uncommitted changes,
+are included. Review the proposed files and secret key names before confirming.
 
-Follow the login prompts. Keep credentials out of your repository and shared terminal output. For automation, use a scoped token rather than sharing your personal login.
-
-## Create a small API
-
-Generate the built-in Node.js starter in a new directory:
+No project yet? Run Start in an empty directory and choose a Node.js, Python,
+or Go starter:
 
 ```bash
-gregale init --template hello-node --path my-first-api
+mkdir my-first-api
 cd my-first-api
+gregale start
 ```
 
-Review the generated files before deploying. To explore other starters, run `gregale init --list`.
+You do not need Node.js or npm to install the CLI. A starter's local development
+tools depend on the language you choose. The [installation guide](/docs/install)
+covers other installation channels and PATH troubleshooting.
 
-## Deploy the directory
+Prefer the browser? [Start in the dashboard](/onboarding) with a sample or a GitHub
+repository. Both routes lead to deployment progress and response verification.
+Deployments use your account's app and compute allowance; review the displayed
+limits before confirming.
 
-Choose an available app name and deploy the files you just generated:
+## Verify your application
+
+Deployment readiness, an application response, and public access are separate
+results. Start automatically checks an application route against the accepted
+deployment. In the dashboard, choose **Verify response** after **Deployment ready**.
+Only a 2xx application response is verified. Opening a link alone does not verify it.
+
+Private and internal apps can be tested using your Gregale account on every plan,
+without changing their access settings. To repeat a check from the terminal,
+use the exact deployment UUID printed in your launch receipt:
 
 ```bash
-gregale deploy --path . --worktree --name my-first-api
+gregale release verify DEPLOYMENT_UUID --app my-api --path /
 ```
 
-Replace `my-first-api` with your chosen app name. `--worktree` explicitly includes the current files, including uncommitted and untracked files. Review them for secrets before deploying.
+The result names the deployment, environment, and actual HTTP status. This
+owner-authorized check keeps account credentials out of the app request and
+does not verify public access. Application-owned authentication still applies.
 
-The CLI waits for the build, readiness checks, and a platform-side smoke request. A queued build is not the same as a live app. Wait for the successful deployment receipt and its app URL.
+A private endpoint can return 401 in a browser without the required credentials,
+even when deployment succeeded. If you intentionally make your app public,
+test an application route on its public URL separately. A public `/healthz`
+can be answered by Gregale's edge without running your code.
 
-## Verify the live app
+## Change it or recover
 
-Open the URL printed by the CLI in your browser. Confirm that the starter responds, then inspect the app:
+After verification, Start offers an edit-and-deploy loop. Change your code,
+review the update, and confirm it to see the new response. A starter can offer
+a greeting change directly.
+
+If you are interrupted, repeat `gregale start` with the same source directory
+and choose **Continue**. This inspects the saved submission before starting
+another deployment. For a failed check, retry the response check or inspect logs:
 
 ```bash
-gregale inspect my-first-api
+gregale logs my-api --follow
+gregale inspect my-api --errors
 ```
 
-You can also open the [console](/dashboard) to inspect the deployment and runtime logs. With scale-to-zero enabled, an eligible idle app can park; the next request waits for it to wake.
-
-## If the deployment fails
-
-Inspect the latest failed deployment rather than repeatedly deploying unchanged code:
-
-```bash
-gregale inspect my-first-api --errors
-```
-
-| Symptom | Next step |
-|---|---|
-| Authentication failed | Run `gregale login` again and confirm the account. |
-| App or resource limit reached | Review your [plan limits](/docs/plans) and existing apps. |
-| Build failed | Read the build error and check dependencies, source files, and runtime selection. |
-| Readiness failed | Check the app’s startup command, listening port, and health route. |
-| Changes are missing | Confirm the selected directory. Git-based deploys can use committed source; `--worktree` explicitly deploys current files. |
-
-## Use your own project
-
-- [Deploy from a checkout or connect GitHub](/docs/deploy-from-github).
-- [Pin a GitHub source ref for CI](/docs/deploy-from-source).
-- [Attach a custom domain](/docs/custom-domains).
-- [Understand scale-to-zero](/docs/scale-to-zero).
-
-When you finish experimenting, remove the demo app in the console if you no longer need it. This guide does not enable preview jobs, workflows, or object storage.
+Continue with the [quickstart](/docs/quickstart), [daily development](/docs/dev),
+or [coding-agent guide](/docs/agents). Agents and CI use non-interactive
+`deploy` and `release verify`; Start requires a terminal.
