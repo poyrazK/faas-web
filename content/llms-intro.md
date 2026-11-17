@@ -1,26 +1,47 @@
 # Gregale
 
-> Gregale is a serverless platform for APIs, functions and background work. Every app runs in its own Firecracker microVM, scales to zero when idle — holding no memory at all — and wakes from a VM snapshot when a request arrives. Deploy with one CLI command from source or any OCI image.
+> Gregale is a backend platform for product teams without an ops team: APIs, background jobs, workflows, crons, webhooks and managed PostgreSQL in one place, with safe releases and rollbacks, every app in its own Firecracker microVM, and one command from a repository to production.
 
 Gregale is CLI-first (`gregale deploy`), with a full web console for
 everything the API can do. {{BETA_STATUS}}
 
+From a repository to a live URL, the way a coding agent does it:
+
+```sh
+{{INSTALL_COMMAND}}
+gregale login        # a person signs in once; CI and agents can set FAAS_TOKEN instead
+gregale guide        # task index written for agents
+gregale deploy --dry-run   # what Gregale detects in this repository
+gregale --non-interactive --json deploy --path . --worktree --name my-api
+gregale --non-interactive --json inspect my-api --errors   # after a failed deploy
+```
+
+`--non-interactive` never prompts or opens a browser; errors arrive on stderr
+as one JSON object with a stable `code` and exit code. The full contract,
+scoped keys for agents and the Claude Code plugin are in
+[Use Gregale from coding agents](https://gregale.dev/docs/agents.md).
+
 Key facts:
 
-- Isolation: every instance is a Firecracker microVM, not a container in a
-  shared kernel. A wake is a snapshot restore ({{RESTORE_TARGET}}).
-  {{RESTORE_CONTEXT}}
-- Scale to zero: idle apps are parked and hold zero RAM; you pay only for
-  GB-hours actually resident. Billing is metered per app.
-- Runtimes: Node 22 and 24, Python 3.12 and 3.13, Go 1.24 (beta) — or bring
-  any OCI image.
-- Build from source: push a repo or tarball; buildpacks (Railpack) or your
-  Dockerfile, built inside an isolated builder microVM.
-- Included: cron jobs, delayed tasks, edge rules, custom domains, per-PR
-  preview environments, sealed secrets, egress lockdown (deny-by-default
-  outbound) and structured logs. Queues and request tracing are in preview.
-- Projects: a Compose file or a monorepo deploys as one project whose
-  services call each other by name. Kubernetes manifests import in preview.
+- The whole backend in one place: APIs and functions, background jobs,
+  workflows, crons, delayed tasks, inbound webhooks and managed PostgreSQL.
+  A Compose file or a monorepo deploys as one project whose services call
+  each other by name.
+- Safe releases: every deploy is an immutable revision. Roll back to an
+  earlier one, with managed databases restored to that release's point in
+  time; release commands run migrations before traffic moves; progressive
+  rollouts (beta) shift traffic in stages. See
+  [Safe releases](https://gregale.dev/docs/releases.md).
+- A VM per app: every instance is a Firecracker microVM, not a container in
+  a shared kernel. Idle apps park and wake from a VM snapshot
+  ({{RESTORE_TARGET}}). {{RESTORE_CONTEXT}}
+- Runtimes: Node 22 and 24, Python 3.12 and 3.13, Go 1.24 (beta), or any
+  OCI image. Builds use buildpacks (Railpack) or your Dockerfile, inside an
+  isolated builder microVM.
+- Included: custom domains, per-PR preview environments, edge rules, sealed
+  secrets, outbound lockdown (deny-by-default egress) and structured logs.
+  Queues and request tracing are in preview.
 - Privacy: GDPR export and deletion are built into the product.
-- Pricing: metered GB-hours with a plan allowance and a spend cap you set in
-  the console. Paid plans open after the beta.
+- Pricing: monthly plans with included compute and a spend cap you set; see
+  [Plans and pricing](https://gregale.dev/docs/plans.md). Paid plans open
+  after the beta.

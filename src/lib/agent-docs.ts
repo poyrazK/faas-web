@@ -1,6 +1,11 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
-import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.ts';
+import {
+  BETA_STATUS,
+  INSTALL_COMMAND,
+  RESTORE_CONTEXT,
+  RESTORE_TARGET,
+} from './platform-claims.ts';
 
 /**
  * Documentation for coding agents, written by `scripts/prerender.mjs`:
@@ -8,6 +13,8 @@ import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.
  * - `/llms.txt` — the llmstxt.org index: the hand-written intro in
  *   `content/llms-intro.md`, then every page in manifest order.
  * - `/llms-full.txt` — the intro and every page in one file.
+ * - `/llms-small.txt` — the intro and the pages an agent needs to deploy and
+ *   debug an app (`AGENT_CORE_SLUGS`), small enough for one context window.
  * - `/docs/<slug>.md` — each page as Markdown.
  *
  * Generated from the manifest for the same reason as the sitemap: adding a
@@ -22,6 +29,28 @@ import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.
 const OPTIONAL_SECTION = 'Trust';
 
 const AGENTS_SLUG = 'agents';
+
+/**
+ * The pages in `/llms-small.txt`, in reading order: install, deploy, configure,
+ * debug, limits. llms-full.txt is over 1 MB, more than most agents can read
+ * at once; this subset stays under `LLMS_SMALL_MAX_BYTES` (a test holds it
+ * there), so an agent that reads one file still gets the deploy path.
+ */
+export const AGENT_CORE_SLUGS = [
+  'agents',
+  'install',
+  'getting-started',
+  'quickstart',
+  'deploy-overrides',
+  'build',
+  'env',
+  'logs',
+  'errors',
+  'plans',
+] as const;
+
+/** About 30k tokens at four bytes a token. */
+export const LLMS_SMALL_MAX_BYTES = 120_000;
 
 export const markdownUrl = (siteUrl: string, slug: string): string => `${siteUrl}/docs/${slug}.md`;
 
@@ -46,6 +75,7 @@ export function markdownPage(entry: DocEntry, source: string, siteUrl: string): 
  */
 const INTRO_CLAIMS: Record<string, string> = {
   BETA_STATUS,
+  INSTALL_COMMAND,
   RESTORE_CONTEXT,
   RESTORE_TARGET,
 };
@@ -63,7 +93,8 @@ export function llmsIndex(intro: string, siteUrl: string): string {
   if (findDoc(AGENTS_SLUG)) {
     parts.push(
       `Coding agents: start with [Use Gregale from coding agents](${markdownUrl(siteUrl, AGENTS_SLUG)}). ` +
-        `[llms-full.txt](${siteUrl}/llms-full.txt) holds every page below in one file.`
+        `[llms-small.txt](${siteUrl}/llms-small.txt) holds the pages needed to deploy and debug an app in one file; ` +
+        `[llms-full.txt](${siteUrl}/llms-full.txt) holds every page below, over 1 MB.`
     );
   }
   const sections = [
@@ -82,6 +113,20 @@ export function llmsIndex(intro: string, siteUrl: string): string {
 
 export function llmsFull(intro: string, pages: string[]): string {
   return [renderIntro(intro), ...pages.map((page) => page.trim())].join('\n\n') + '\n';
+}
+
+/**
+ * The intro and the `AGENT_CORE_SLUGS` pages, from the same Markdown copies
+ * llms-full.txt uses. A core slug the manifest no longer publishes fails the
+ * build rather than shipping a smaller file without saying so.
+ */
+export function llmsSmall(intro: string, pagesBySlug: ReadonlyMap<string, string>): string {
+  const pages = AGENT_CORE_SLUGS.map((slug) => {
+    const page = pagesBySlug.get(slug);
+    if (page === undefined) throw new Error(`llms-small: core page ${slug} is not published`);
+    return page;
+  });
+  return llmsFull(intro, pages);
 }
 
 /**
