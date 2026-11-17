@@ -147,6 +147,11 @@ for (const route of ROUTES) {
   if (docSlug) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
   }
+  // The home page names the agent index, so an agent that starts at the site
+  // root finds llms.txt without guessing the path.
+  if (route === '/') {
+    perRoute.push('<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />');
+  }
   // Keeps a non-indexable page out of results without hiding it from the
   // unfurler, which ignores robots meta.
   if (!INDEXABLE.includes(route)) {
@@ -285,8 +290,9 @@ if (SITE_URL) {
  * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
  * ------------------------------------------------------------------ */
 
-const { llmsFull, llmsIndex, markdownPage } = await import('../src/lib/agent-docs.ts');
+const { llmsFull, llmsIndex, llmsSmall, markdownPage } = await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
+const pagesBySlug = new Map();
 const markdownPages = DOC_ENTRIES.map((entry) => {
   const page = markdownPage(
     entry,
@@ -294,11 +300,15 @@ const markdownPages = DOC_ENTRIES.map((entry) => {
     SITE_URL
   );
   writeFileSync(join(DIST, 'docs', `${entry.slug}.md`), page);
+  pagesBySlug.set(entry.slug, page);
   return page;
 });
 writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL));
 writeFileSync(join(DIST, 'llms-full.txt'), llmsFull(llmsIntro, markdownPages));
-console.log(`  wrote llms.txt, llms-full.txt and ${markdownPages.length} Markdown docs pages`);
+writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
+console.log(
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length} Markdown docs pages`
+);
 
 // The SSR bundle is a build artifact, not something to deploy.
 rmSync('dist-ssr', { recursive: true, force: true });

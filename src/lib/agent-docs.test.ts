@@ -2,15 +2,18 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  AGENT_CORE_SLUGS,
+  LLMS_SMALL_MAX_BYTES,
   absoluteLinks,
   llmsFull,
   llmsIndex,
+  llmsSmall,
   markdownPage,
   markdownUrl,
   renderIntro,
 } from './agent-docs';
 import { DOC_ENTRIES, findDoc } from './docs-manifest';
-import { BETA_STATUS, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims';
+import { BETA_STATUS, INSTALL_COMMAND, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims';
 
 const SITE = 'https://gregale.dev';
 
@@ -76,6 +79,11 @@ describe('llmsIndex', () => {
     expect(index).toContain(`(${markdownUrl(SITE, 'agents')})`);
   });
 
+  it('names the small and full bundles', () => {
+    expect(index).toContain(`[llms-small.txt](${SITE}/llms-small.txt)`);
+    expect(index).toContain(`[llms-full.txt](${SITE}/llms-full.txt)`);
+  });
+
   it('links every published page exactly once, as Markdown', () => {
     for (const entry of DOC_ENTRIES) {
       const link = `](${markdownUrl(SITE, entry.slug)}): `;
@@ -99,6 +107,37 @@ describe('llmsFull', () => {
   });
 });
 
+describe('llmsSmall', () => {
+  const pages = new Map(AGENT_CORE_SLUGS.map((slug) => [slug as string, `# ${slug}\n`]));
+
+  it('is the intro and the core pages in reading order', () => {
+    expect(llmsSmall('# Gregale\n', pages)).toBe(
+      ['# Gregale', ...AGENT_CORE_SLUGS.map((slug) => `# ${slug}`)].join('\n\n') + '\n'
+    );
+  });
+
+  it('fails the build when a core page is not published', () => {
+    const missing = new Map(pages);
+    missing.delete('errors');
+    expect(() => llmsSmall('# Gregale\n', missing)).toThrow(/core page errors/);
+  });
+
+  it('names only published pages and stays small enough to read at once', () => {
+    const real = new Map<string, string>();
+    for (const slug of AGENT_CORE_SLUGS) {
+      const entry = findDoc(slug);
+      expect(entry, slug).toBeDefined();
+      real.set(
+        slug,
+        markdownPage(entry!, readFileSync(resolve('content/docs', `${slug}.md`), 'utf8'), SITE)
+      );
+    }
+    const intro = readFileSync(resolve('content/llms-intro.md'), 'utf8');
+    const bytes = Buffer.byteLength(llmsSmall(intro, real));
+    expect(bytes).toBeLessThanOrEqual(LLMS_SMALL_MAX_BYTES);
+  });
+});
+
 describe('renderIntro', () => {
   it('fills each claim from its one home', () => {
     expect(renderIntro('A ({{RESTORE_TARGET}}). {{RESTORE_CONTEXT}} {{BETA_STATUS}}\n')).toBe(
@@ -114,6 +153,7 @@ describe('renderIntro', () => {
     const intro = renderIntro(readFileSync(resolve('content/llms-intro.md'), 'utf8'));
     expect(intro).not.toContain('{{');
     expect(intro).toContain(RESTORE_TARGET);
+    expect(intro).toContain(INSTALL_COMMAND);
     expect(llmsIndex(readFileSync(resolve('content/llms-intro.md'), 'utf8'), SITE)).toContain(
       RESTORE_TARGET
     );
