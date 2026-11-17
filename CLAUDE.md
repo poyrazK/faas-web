@@ -113,7 +113,9 @@ paths are checked against `api/openapi.yaml` by `src/lib/mock-spec-drift.test.ts
   the `openapi-fetch` client and not TanStack Query.
 - **`content/docs/*.md` is vendored**, pulled by `npm run docs:pull` from
   `poyrazK/faas`. Never hand-edit it — fix it upstream and re-pull. It is
-  Prettier-ignored for the same reason `api/openapi.yaml` is.
+  Prettier-ignored for the same reason `api/openapi.yaml` is. The Docs sync
+  workflow re-pulls every three hours into a rolling `docs/auto-sync` pull
+  request; never push to that branch, since each run rebuilds it from `main`.
 - **The docs are a curated subset, and the curation is a security boundary.**
   Runbooks, ADRs, and `docs/ops/*` stay unpublished; the reasoning is in
   `src/lib/docs-manifest.ts` and a test enforces it. Adding a page means adding
