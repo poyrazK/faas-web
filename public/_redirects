@@ -1,7 +1,8 @@
-# Server-rendered CLI authorization must stay on the public console origin;
-# proxy it to apid before the SPA fallback. This preserves the browser session
+# Server-rendered CLI authorization and MFA must stay on the public console origin;
+# proxy them to apid before the SPA fallback. This preserves the browser session
 # cookie while keeping the API implementation behind the edge.
 /cli-auth    https://api.gregale.dev/cli-auth   200
+/dashboard/mfa    https://api.gregale.dev/dashboard/mfa   200
 /status/slo.json    https://api.gregale.dev/status/slo.json   200
 # RFC 9116: security.txt is canonical on the apex; apid serves the one copy.
 /.well-known/security.txt    https://api.gregale.dev/.well-known/security.txt   200

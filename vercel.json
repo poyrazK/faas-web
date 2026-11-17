@@ -20,6 +20,11 @@
       "dest": "https://api.gregale.dev/cli-auth"
     },
     {
+      "src": "^/dashboard/mfa$",
+      "methods": ["GET", "HEAD", "POST", "OPTIONS"],
+      "dest": "https://api.gregale.dev/dashboard/mfa"
+    },
+    {
       "src": "^/oauth(?:/(.*))?$",
       "methods": ["GET", "HEAD", "OPTIONS"],
       "dest": "https://api.gregale.dev/oauth/$1"

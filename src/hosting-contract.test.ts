@@ -5,6 +5,7 @@ import { securityHeaders } from '@/lib/security-headers';
 interface Route {
   src?: string;
   dest?: string;
+  methods?: string[];
   status?: number;
   headers?: Record<string, string>;
   continue?: boolean;
@@ -15,6 +16,36 @@ const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
 };
 
 describe('public hosting contract', () => {
+  it.each(['GET', 'POST'])('sends the MFA %s to apid before any app or 404 fallback', (method) => {
+    const request = new URL(
+      '/dashboard/mfa?next=%2Fcli-auth%3Fcode%3Dfixture%26return%3Dmcp',
+      'https://gregale.dev'
+    );
+    const route = config.routes.find(
+      (candidate) =>
+        candidate.src &&
+        !candidate.continue &&
+        (!candidate.methods || candidate.methods.includes(method)) &&
+        new RegExp(candidate.src).test(request.pathname)
+    );
+
+    expect(route?.dest).toBe('https://api.gregale.dev/dashboard/mfa');
+    expect(route?.status).toBeUndefined();
+  });
+
+  it('keeps MFA server-rendered on alternate static hosts too', () => {
+    const rules = readFileSync('public/_redirects', 'utf8')
+      .split('\n')
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => line.trim().split(/\s+/));
+
+    expect(rules.find(([source]) => source === '/dashboard/mfa')).toEqual([
+      '/dashboard/mfa',
+      'https://api.gregale.dev/dashboard/mfa',
+      '200',
+    ]);
+  });
+
   it('returns a host-level 404 for unknown documentation routes', () => {
     const filesystem = config.routes.findIndex((route) => 'handle' in route);
     const docs404 = config.routes.findIndex(
