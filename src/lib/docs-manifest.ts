@@ -93,6 +93,66 @@ export const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    title: 'Frameworks and migration',
+    blurb: 'Deploy Express, FastAPI, Django, Flask or Go, or move an app from Heroku or Render.',
+    entries: [
+      {
+        slug: 'frameworks',
+        source: 'docs/frameworks.md',
+        title: 'Deploy a web framework',
+        summary:
+          'What Gregale detects, the start command, the listener, health checks and runtime versions for every framework.',
+      },
+      {
+        slug: 'deploy-express',
+        source: 'docs/deploy-express.md',
+        title: 'Deploy an Express app',
+        summary:
+          'Express, Fastify, Hono and NestJS: the start script, the port, Node versions and PostgreSQL.',
+      },
+      {
+        slug: 'deploy-fastapi',
+        source: 'docs/deploy-fastapi.md',
+        title: 'Deploy a FastAPI app',
+        summary:
+          'Uvicorn on $PORT, Python versions, secrets, PostgreSQL and migrations as a release command.',
+      },
+      {
+        slug: 'deploy-django',
+        source: 'docs/deploy-django.md',
+        title: 'Deploy a Django app',
+        summary:
+          'Gunicorn, settings from the environment, ALLOWED_HOSTS, migrations and static files.',
+      },
+      {
+        slug: 'deploy-flask',
+        source: 'docs/deploy-flask.md',
+        title: 'Deploy a Flask app',
+        summary: 'Gunicorn on $PORT, app factories, PostgreSQL with SQLAlchemy and migrations.',
+      },
+      {
+        slug: 'deploy-go',
+        source: 'docs/deploy-go.md',
+        title: 'Deploy a Go app',
+        summary: 'net/http and Gin on $PORT, the Go version, PostgreSQL with pgx and migrations.',
+      },
+      {
+        slug: 'migrate-from-heroku',
+        source: 'docs/migrate-from-heroku.md',
+        title: 'Migrate from Heroku',
+        summary:
+          'Map dynos, the Procfile, config vars, Postgres, workers and Scheduler to Gregale, step by step.',
+      },
+      {
+        slug: 'migrate-from-render',
+        source: 'docs/migrate-from-render.md',
+        title: 'Migrate from Render',
+        summary:
+          'Translate render.yaml services, pre-deploy commands, workers, crons and Postgres to Gregale.',
+      },
+    ],
+  },
+  {
     title: 'Ship releases',
     blurb: 'Change production safely: database releases, gates, approvals, rollouts and promotion.',
     entries: [
