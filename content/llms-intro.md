@@ -13,7 +13,8 @@ gregale login        # a person signs in once; CI and agents can set FAAS_TOKEN 
 gregale guide        # task index written for agents
 gregale deploy --dry-run   # what Gregale detects in this repository
 gregale --non-interactive --json deploy --path . --worktree --name my-api
-gregale --non-interactive --json inspect my-api --errors   # after a failed deploy
+gregale --non-interactive --json app health my-api --errors   # after a failed deploy
+gregale app update my-api --no-require-authn   # only if the owner wants it public
 ```
 
 `--non-interactive` never prompts or opens a browser; errors arrive on stderr
