@@ -557,7 +557,14 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'errors',
         source: 'docs/errors.md',
         title: 'Errors',
-        summary: 'Error codes, what they mean and what to do next.',
+        summary: 'How errors are shaped, and what to do about the most common ones.',
+      },
+      {
+        slug: 'error-codes',
+        source: 'docs/error-codes.md',
+        title: 'Error code reference',
+        summary:
+          'Every error code with its HTTP status, title, hint and the page that explains it.',
       },
       {
         slug: 'sdks',
