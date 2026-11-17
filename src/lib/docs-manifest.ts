@@ -108,8 +108,7 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'cursor',
         source: 'docs/cursor.md',
         title: 'Deploy with Cursor',
-        summary:
-          'Install the CLI, have Cursor deploy from AGENTS.md, read failures and roll back.',
+        summary: 'Install the CLI, have Cursor deploy from AGENTS.md, read failures and roll back.',
       },
       {
         slug: 'gemini-cli',
