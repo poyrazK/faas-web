@@ -505,6 +505,13 @@ sidebar, the index, prev/next, the prerender list, and the sitemap.
 npm run docs:pull      # refresh the vendored copies
 ```
 
+The **Docs sync** workflow (`.github/workflows/docs-sync.yml`) runs the same
+pull every three hours, and on demand from the Actions tab, and keeps one
+rolling pull request from `docs/auto-sync` with the result, its build and its
+check. It rebuilds that branch from `main` each run, so fixes go to `main`, not
+to the branch. Setting the repository variable `DOCS_SYNC_AUTO_MERGE=true` makes
+it squash-merge the pull request when build and check pass.
+
 Content is committed rather than fetched at runtime, for the same reason
 `api/openapi.yaml` is — the site prerenders, and docs that depend on GitHub
 being reachable break during exactly the incident that sends people to read

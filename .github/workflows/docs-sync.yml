@@ -1,0 +1,204 @@
+name: Docs sync
+
+# Re-vendors the customer docs from poyrazK/faas (`npm run docs:pull`) and keeps
+# one rolling pull request, from the `docs/auto-sync` branch, with the result.
+# Without it the site trails faas `main` until someone remembers to pull by
+# hand, and the management MCP server's docs tools read the site, so agents
+# trail with it.
+#
+# A pull request opened with the workflow token starts no other workflow, so
+# CI's build and check run here, on the synced tree, and the pull request body
+# reports them. The branch is rebuilt from `main` on every run: a fix (usually
+# a new or moved page in `src/lib/docs-manifest.ts`) belongs on `main`, and the
+# next run picks it up.
+#
+# Repository settings:
+# - Settings → Actions → General → Workflow permissions → "Allow GitHub Actions
+#   to create and approve pull requests". Without it opening the pull request
+#   fails with HTTP 403.
+# - Optional repository variable DOCS_SYNC_AUTO_MERGE=true squash-merges the
+#   pull request when build and check pass. Off by default.
+
+on:
+  schedule:
+    # Every three hours, off the hour.
+    - cron: '23 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: faas branch, tag or commit to pull
+        default: main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Queue rather than cancel: a cancelled run can leave the branch pushed and
+# the pull request body describing the previous commit.
+concurrency:
+  group: docs-sync
+  cancel-in-progress: false
+
+env:
+  BRANCH: docs/auto-sync
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # One faas commit for every file, so a merge upstream mid-pull cannot
+      # mix two versions of the docs.
+      - name: Resolve the faas commit
+        id: faas
+        env:
+          REF: ${{ inputs.ref || 'main' }}
+        run: |
+          sha=$(gh api "repos/poyrazK/faas/commits/${REF}" --jq .sha)
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:10}" >> "$GITHUB_OUTPUT"
+
+      # The pull script imports only the manifest, so it needs no npm install.
+      - name: Pull the docs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DOCS_REF: ${{ steps.faas.outputs.sha }}
+        run: npm run docs:pull
+
+      - name: Compare with main
+        id: diff
+        run: |
+          git add -A content/docs content/customer-pages.json
+          if git status --porcelain --untracked-files=all | grep -qv '^[AMDR] '; then
+            git status --porcelain --untracked-files=all
+            echo "::error::docs:pull wrote outside content/docs and content/customer-pages.json"
+            exit 1
+          fi
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Close a sync pull request main already contains
+        if: steps.diff.outputs.changed == 'false'
+        env:
+          FAAS_SHORT: ${{ steps.faas.outputs.short }}
+        run: |
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr close "$pr" --comment "main already matches faas ${FAAS_SHORT}."
+          fi
+          echo "Docs already match faas ${FAAS_SHORT}."
+
+      # Rebuild and recheck only when the branch would change or no pull
+      # request is open for it.
+      - name: Commit
+        id: commit
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          FAAS_SHA: ${{ steps.faas.outputs.sha }}
+          FAAS_SHORT: ${{ steps.faas.outputs.short }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898283+github-actions[bot]@users.noreply.github.com'
+          git diff --cached --stat > "$RUNNER_TEMP/stat.txt"
+          git switch -q -c "$BRANCH"
+          git commit -q -m "docs: sync from faas ${FAAS_SHORT}" \
+            -m "Vendored by the Docs sync workflow from poyrazK/faas@${FAAS_SHA}."
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+          same=false
+          if git fetch -q --depth=1 origin "refs/heads/${BRANCH}" 2>/dev/null &&
+            [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'FETCH_HEAD^{tree}')" ]; then
+            same=true
+          fi
+          if [ "$same" = true ] && [ -n "$pr" ]; then
+            echo "act=false" >> "$GITHUB_OUTPUT"
+            echo "Pull request #${pr} already carries faas ${FAAS_SHORT}."
+          else
+            echo "act=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.commit.outputs.act == 'true'
+        run: npm ci
+
+      - name: Build
+        id: build
+        if: steps.commit.outputs.act == 'true'
+        continue-on-error: true
+        run: npm run build
+
+      - name: Check
+        id: check
+        if: steps.commit.outputs.act == 'true' && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: npm run check
+
+      - name: Push the branch
+        if: steps.commit.outputs.act == 'true'
+        run: git push -q --force origin "HEAD:refs/heads/${BRANCH}"
+
+      - name: Open or update the pull request
+        if: steps.commit.outputs.act == 'true'
+        env:
+          PR: ${{ steps.commit.outputs.pr }}
+          FAAS_SHA: ${{ steps.faas.outputs.sha }}
+          FAAS_SHORT: ${{ steps.faas.outputs.short }}
+          BUILD: ${{ steps.build.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "Vendored from [poyrazK/faas@${FAAS_SHORT}](https://github.com/poyrazK/faas/commit/${FAAS_SHA}) by the [Docs sync run](${RUN_URL}) (\`npm run docs:pull\`)."
+            echo
+            echo "| Step | Result |"
+            echo "| --- | --- |"
+            echo "| \`npm run build\` | ${BUILD} |"
+            echo "| \`npm run check\` | ${CHECK} |"
+            echo
+            echo "A pull request opened by a workflow starts no CI of its own; the results above come from the sync run."
+            echo
+            echo "The branch is rebuilt from \`main\` on every run, so don't push fixes to it. A failing check usually means \`src/lib/docs-manifest.ts\` needs a page added or a source path moved: fix that on \`main\`, then run **Docs sync** again (Actions → Docs sync → Run workflow)."
+            echo
+            echo "<details><summary>Changed files</summary>"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/stat.txt"
+            echo '```'
+            echo
+            echo "</details>"
+          } > "$body"
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --title "docs: sync from faas ${FAAS_SHORT}" --body-file "$body"
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "docs: sync from faas ${FAAS_SHORT}" --body-file "$body"
+          fi
+
+      - name: Merge
+        if: >-
+          steps.commit.outputs.act == 'true' &&
+          steps.check.outcome == 'success' &&
+          vars.DOCS_SYNC_AUTO_MERGE == 'true'
+        run: gh pr merge "$BRANCH" --squash --match-head-commit "$(git rev-parse HEAD)"
+
+      # The pull request is open either way; fail the run so a broken sync is
+      # noticed rather than left sitting.
+      - name: Fail when the synced docs don't build or check
+        if: steps.build.outcome == 'failure' || steps.check.outcome == 'failure'
+        run: |
+          echo "::error::The synced docs failed build or check; see the pull request."
+          exit 1
