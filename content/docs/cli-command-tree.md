@@ -461,10 +461,12 @@ touch them. The tables below map each earlier name.
 | `gregale mcp task-cancel` | `gregale mcp client cancel` |
 | `gregale mcp task-get` | `gregale mcp client status` |
 | `gregale mcp task-wait` | `gregale mcp client wait` |
+| `gregale mcp tasks bindings` | `gregale mcp server tasks bind` |
 | `gregale mcp tasks execution` | `gregale mcp server tasks run` |
 | `gregale mcp tasks intent` | `gregale mcp server tasks review` |
 | `gregale mcp tasks observer` | `gregale mcp observer` |
 | `gregale mcp tasks release` | `gregale mcp server tasks deploy` |
+| `gregale mcp tasks source-review` | `gregale mcp server tasks audit` |
 | `gregale mcp tools` | `gregale mcp client tools` |
 | `gregale openapi dry-run` | `gregale api spec import --dry-run` |
 | `gregale openapi preview` | `gregale api spec apply --dry-run` |
@@ -480,6 +482,7 @@ touch them. The tables below map each earlier name.
 | `gregale orgs standards local-intent` | `gregale org standards local set` |
 | `gregale orgs standards operation abort` | `gregale org standards operation cancel` |
 | `gregale orgs standards reviews preview` | `gregale org standards reviews approve --dry-run` |
+| `gregale orgs support-access` | `gregale org support` |
 | `gregale orgs transfer-ownership` | `gregale org owner set` |
 | `gregale pipeline access` | `gregale pipeline access approve` |
 | `gregale pipeline access` | `gregale pipeline access check` |
