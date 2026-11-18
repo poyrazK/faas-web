@@ -88,7 +88,7 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/agents.md',
         title: 'Use Gregale from coding agents',
         summary:
-          'Give Claude Code, Codex or Cursor a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
+          'Give Claude Code, Codex, Cursor or Antigravity a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
       },
       {
         slug: 'claude-code',
@@ -109,6 +109,13 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/cursor.md',
         title: 'Deploy with Cursor',
         summary: 'Install the CLI, have Cursor deploy from AGENTS.md, read failures and roll back.',
+      },
+      {
+        slug: 'antigravity',
+        source: 'docs/antigravity.md',
+        title: 'Deploy with Antigravity',
+        summary:
+          'Install the CLI, have Antigravity deploy from AGENTS.md, connect the MCP server, read failures and roll back.',
       },
       {
         slug: 'gemini-cli',
