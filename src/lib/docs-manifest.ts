@@ -90,6 +90,33 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Give Claude Code, Codex or Cursor a scoped key, the non-interactive CLI contract, the management MCP server, and the Gregale plugin.',
       },
+      {
+        slug: 'claude-code',
+        source: 'docs/claude-code.md',
+        title: 'Deploy with Claude Code',
+        summary:
+          'Install the CLI, point Claude Code at AGENTS.md, deploy, read failures and roll back.',
+      },
+      {
+        slug: 'codex',
+        source: 'docs/codex.md',
+        title: 'Deploy with Codex',
+        summary:
+          'Install the CLI, let the sandbox reach Gregale, deploy, read failures and roll back.',
+      },
+      {
+        slug: 'cursor',
+        source: 'docs/cursor.md',
+        title: 'Deploy with Cursor',
+        summary: 'Install the CLI, have Cursor deploy from AGENTS.md, read failures and roll back.',
+      },
+      {
+        slug: 'gemini-cli',
+        source: 'docs/gemini-cli.md',
+        title: 'Deploy with Gemini CLI',
+        summary:
+          'Install the CLI, have Gemini CLI read AGENTS.md, deploy, read failures and roll back.',
+      },
     ],
   },
   {
