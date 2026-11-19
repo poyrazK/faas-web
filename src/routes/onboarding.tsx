@@ -2,6 +2,7 @@ import { hasOnboardingRecovery } from '@/lib/onboarding-draft';
 import { OnboardingResume } from '@/components/onboarding/onboarding-resume';
 import { featureFlags } from '@/lib/feature-flags';
 import { OnboardingFlow } from '@/components/onboarding/onboarding-flow';
+import { FreeCliStart } from '@/components/onboarding/free-cli-start';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
 import { NewAppWizard } from '@/components/dashboard/new-app-wizard';
@@ -46,7 +47,12 @@ function OnboardingPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const sweepNavigate = useSweepNavigate();
-  const { user } = useAuth();
+  const { account, user } = useAuth();
+  const showFreeCliStart =
+    account?.plan === 'free' &&
+    Boolean(user?.email) &&
+    user?.email?.toLowerCase() === account.email?.toLowerCase() &&
+    !Object.values(search).some(Boolean);
 
   const finishDeployment = () => {
     markOnboarded();
@@ -80,6 +86,11 @@ function OnboardingPage() {
       </header>
 
       <main className="relative px-5 py-10 sm:py-14">
+        {showFreeCliStart && (
+          <div className="mx-auto mb-8 max-w-3xl">
+            <FreeCliStart needsEmailVerification={account.email_verified === false} />
+          </div>
+        )}
         <ConfirmProvider>
           <NewAppWizard
             onboarding
