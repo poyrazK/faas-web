@@ -17,6 +17,7 @@ import {
   type OnboardingRecord,
 } from '@/lib/onboarding-draft';
 import { OnboardingRecovery } from './onboarding-recovery';
+import { FreeCliStart } from './free-cli-start';
 import { onboardingEvent } from '@/lib/onboarding-events';
 
 export function OnboardingFlow({
@@ -83,6 +84,7 @@ export function OnboardingFlow({
       key={JSON.stringify([account.id, workspace.org])}
       owner={{ account: account.id, workspace: workspace.org }}
       plan={account.plan}
+      needsEmailVerification={account.email_verified === false}
       label={workspace.label}
       search={search}
       onSearchChange={onSearchChange}
@@ -93,12 +95,14 @@ export function OnboardingFlow({
 function ScopedOnboarding({
   owner,
   plan,
+  needsEmailVerification,
   label,
   search,
   onSearchChange,
 }: {
   owner: OnboardingOwner;
   plan: string;
+  needsEmailVerification: boolean;
   label: string;
   search: NewAppSearch;
   onSearchChange: (search: NewAppSearch, options?: { replace?: boolean }) => void;
@@ -358,10 +362,12 @@ function ScopedOnboarding({
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">Get your first app live</h1>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Try a working sample, or bring a repository. Follow the real build, then open your
-                app's URL.
+                Choose how to deploy your first app.
               </p>
             </div>
+            {plan === 'free' && owner.workspace === null && (
+              <FreeCliStart needsEmailVerification={needsEmailVerification} />
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-4 rounded-xl border border-brand/40 bg-card p-6">
                 <Code className="size-7 text-brand" />
