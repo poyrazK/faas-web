@@ -30,9 +30,12 @@ const app = (id: string, runtime = 'node') => ({
   lastDeployedAt: Date.now() - 86_400_000,
   metricsUnavailable: false,
 });
+const account = vi.hoisted(() => ({ empty: false }));
 vi.mock('@/lib/store', () => ({
   useData: () => ({
-    workflows: [app('api-gateway'), app('nightly-etl', 'python'), app('pr-42-api-gateway')],
+    workflows: account.empty
+      ? []
+      : [app('api-gateway'), app('nightly-etl', 'python'), app('pr-42-api-gateway')],
     loading: false,
     error: null,
     refresh: vi.fn(),
@@ -87,6 +90,17 @@ describe('Apps inside a project', () => {
     expect(
       screen.getByText('No standalone apps — every app belongs to a project.')
     ).toBeInTheDocument();
+  });
+
+  it('does not claim every app is in a project when the account has none', () => {
+    account.empty = true;
+    try {
+      scope = project('_standalone', []);
+      render(<Page />);
+      expect(screen.getByText('No apps on this account yet.')).toBeInTheDocument();
+    } finally {
+      account.empty = false;
+    }
   });
 
   it('shows the loading state, not every app, while membership loads', () => {

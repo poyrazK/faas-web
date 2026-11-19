@@ -169,6 +169,25 @@ it('lists apps outside every project as standalone, and only once membership is 
   expect(within(standalone).getByRole('link', { name: 'scratch' })).toBeInTheDocument();
   expect(within(standalone).queryByRole('link', { name: 'api' })).not.toBeInTheDocument();
 });
+it('opens standalone apps as their own workspace, with a count and no repository', async () => {
+  store.workflows = [
+    { id: 'api', name: 'api', runtime: 'node24', state: 'running' },
+    { id: 'scratch', name: 'scratch', runtime: 'python313', state: 'idle' },
+  ];
+  await mount('/dashboard/projects');
+  const card = (await screen.findByRole('heading', { name: /^Standalone/ })).closest('section')!;
+  await within(card).findByText('1 app · not from a repository');
+  expect(within(card).getByRole('link', { name: 'Open standalone apps' })).toHaveAttribute(
+    'href',
+    '/dashboard/apps?project=_standalone'
+  );
+});
+it('keeps the standalone way in when every app belongs to a project', async () => {
+  store.workflows = [{ id: 'api', name: 'api', runtime: 'node24', state: 'running' }];
+  await mount('/dashboard/projects');
+  expect(await screen.findByText('Every app belongs to a project.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Open standalone apps' })).toBeInTheDocument();
+});
 it('bounds the project list and expands on request', async () => {
   await mount(
     '/dashboard/projects',
@@ -179,9 +198,15 @@ it('bounds the project list and expands on request', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Show 10 more projects' }));
   expect(screen.getAllByRole('link', { name: /^Open project / })).toHaveLength(20);
 });
-it('offers an import when nothing is deployed', async () => {
+it('offers an import and the standalone way in when nothing is deployed', async () => {
   await mount('/dashboard/projects', []);
   expect(await screen.findByText(/Nothing deployed yet/)).toBeInTheDocument();
+  // A new account can still open the full menu (Postgres, storage) before deploying.
+  expect(screen.getByRole('link', { name: 'Open standalone apps' })).toHaveAttribute(
+    'href',
+    '/dashboard/apps?project=_standalone'
+  );
+  expect(screen.getByText('0 apps · not from a repository')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Import a repository' })).toHaveAttribute(
     'href',
     '/dashboard/apps/new?source=import'

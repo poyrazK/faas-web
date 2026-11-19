@@ -1,14 +1,16 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ArrowUpRight, Search, Upload } from 'iconoir-react';
+import { ArrowUpRight, Cube, Search, Upload } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
 import { useProjectMembership, type ProjectDetail } from '@/lib/api/projects';
+import { STANDALONE } from '@/lib/project-scope';
+import { cn } from '@/lib/utils';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { WorkspaceAppInventory } from '@/components/dashboard/workspace-app-inventory';
 import type { Deployment, Workflow } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
-import { EmptyState, ErrorState, LoadingState } from '@/components/dashboard/primitives';
+import { ErrorState, LoadingState } from '@/components/dashboard/primitives';
 import { AppTile, AppTiles, byState } from '@/components/dashboard/app-tile';
 import { latestDeployNote, projectsSummary } from '@/components/dashboard/app-tile-words';
 import { HelpTip } from '@/components/dashboard/kit/help-tip';
@@ -24,15 +26,20 @@ function matches(q: string, ...values: (string | undefined)[]) {
 /** A heading, its context and a grid of app tiles — no frame around the tiles. */
 function AppGroup({
   title,
+  icon,
   meta,
   help,
   action,
+  dashed,
   children,
 }: {
   title: string;
+  icon?: ReactNode;
   meta?: ReactNode;
   help?: string;
   action?: ReactNode;
+  /** A dashed edge: a group that is not a repository (standalone apps). */
+  dashed?: boolean;
   children: ReactNode;
 }) {
   const id = useId();
@@ -41,11 +48,15 @@ function AppGroup({
     // project rather than loose cards.
     <section
       aria-labelledby={id}
-      className="flex flex-col gap-4 rounded-[1.75rem] bg-muted/25 p-4 sm:p-5"
+      className={cn(
+        'flex flex-col gap-4 rounded-[1.75rem] p-4 sm:p-5',
+        dashed ? 'border border-dashed border-border bg-muted/10' : 'bg-muted/25'
+      )}
     >
       <header className="flex items-start justify-between gap-3 px-1">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 id={id} className="flex items-center gap-1 text-lg font-semibold tracking-[-0.01em]">
+            {icon}
             {title}
             {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
           </h2>
@@ -57,6 +68,9 @@ function AppGroup({
     </section>
   );
 }
+
+const openLink =
+  'pressable inline-flex h-8 items-center gap-1 rounded-full bg-muted px-3 text-[13px] text-foreground';
 
 const appCount = (n: number | undefined) =>
   n == null ? 'Apps loading' : `${n} ${n === 1 ? 'app' : 'apps'}`;
@@ -113,7 +127,7 @@ function ProjectCard({
           params={{ projectSlug: slug }}
           search={{ q: q || undefined }}
           aria-label={`Open project ${slug}`}
-          className="pressable inline-flex h-8 items-center gap-1 rounded-full bg-muted px-3 text-[13px] text-foreground"
+          className={openLink}
         >
           Open project
           <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
@@ -182,6 +196,8 @@ export function ProjectInventory() {
   const standalone = workflows.filter(
     (app) => !membership.projectOfApp.has(app.id) && matches(q, app.id, app.name, app.runtime)
   );
+  const standaloneKnown = !appsLoading && !appsError && membership.state === 'ready';
+  const standaloneCount = workflows.filter((app) => !membership.projectOfApp.has(app.id)).length;
   const nothingYet =
     membership.state === 'ready' && !membership.projects.length && !workflows.length;
   const summary =
@@ -189,7 +205,7 @@ export function ProjectInventory() {
       ? projectsSummary({
           apps: workflows,
           projectCount: membership.projects.length,
-          standaloneCount: workflows.filter((app) => !membership.projectOfApp.has(app.id)).length,
+          standaloneCount,
           deployments,
         })
       : null;
@@ -257,8 +273,6 @@ export function ProjectInventory() {
         <LoadingState message="Loading projects…" />
       ) : membership.list.isError ? (
         <ErrorState error={membership.list.error} onRetry={membership.retry} />
-      ) : nothingYet ? (
-        <EmptyState message="Nothing deployed yet." />
       ) : (
         <>
           {/* Projects stand side by side as columns, apps stacked inside; each
@@ -282,9 +296,30 @@ export function ProjectInventory() {
                 />
               );
             })}
+            {/* Standalone apps are a workspace of their own: Open gives them
+                the full project menu, which is also where an account with no
+                project reaches Postgres, storage and the rest. */}
             <AppGroup
-              title="Standalone apps"
+              title="Standalone"
+              icon={<Cube aria-hidden className="mr-0.5 h-4 w-4 text-muted-foreground" />}
+              dashed
               help="Apps deployed from a folder, an image, or a template belong to no project."
+              meta={
+                <>
+                  {appCount(standaloneKnown ? standaloneCount : undefined)} · not from a repository
+                </>
+              }
+              action={
+                <Link
+                  to="/dashboard/apps"
+                  search={{ project: STANDALONE }}
+                  aria-label="Open standalone apps"
+                  className={openLink}
+                >
+                  Open
+                  <ArrowUpRight aria-hidden className="h-3.5 w-3.5" />
+                </Link>
+              }
             >
               {appsError ? (
                 <ErrorState error={appsError} onRetry={refresh} />
@@ -299,7 +334,11 @@ export function ProjectInventory() {
                 </div>
               ) : !standalone.length ? (
                 <GroupNote>
-                  {q ? 'No standalone apps match the search.' : 'Every app belongs to a project.'}
+                  {q
+                    ? 'No standalone apps match the search.'
+                    : nothingYet
+                      ? 'Nothing deployed yet. Apps you deploy from a folder, an image or a template land here.'
+                      : 'Every app belongs to a project.'}
                 </GroupNote>
               ) : (
                 <AppTiles label="Standalone apps" stacked>

@@ -247,7 +247,9 @@ function FunctionsPage() {
             : !scope.project
               ? 'No apps on this account yet.'
               : scope.project === STANDALONE
-                ? 'No standalone apps — every app belongs to a project.'
+                ? allApps.length
+                  ? 'No standalone apps — every app belongs to a project.'
+                  : 'No apps on this account yet.'
                 : `No apps in ${scope.label} yet.`
         }
         emptyAction={
