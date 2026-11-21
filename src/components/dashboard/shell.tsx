@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
 import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
 import { EnvironmentLine, EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
+import { useEnvironmentScope } from '@/lib/environment-scope';
 import { ProjectScopeProvider, isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
@@ -132,7 +133,7 @@ function NavRow({
   hash: string;
   current: boolean;
   /** The project the link should carry: a slug inside a project, undefined to leave one. */
-  scope?: { project?: string };
+  scope?: { project?: string; env?: string };
 }) {
   const { to, label, icon: Icon, exact } = item;
   const onThisPath = matchesNavPath(pathname, { to, exact: true });
@@ -323,6 +324,17 @@ function SidebarBody({
   // across all apps).
   const linkScope = { project: scope.project ?? undefined };
   const home = scope.project ? projectHome(scope.project) : null;
+  // The project's own page names the project in its path (`project:
+  // undefined`), which the environment middleware would read as leaving the
+  // project; carry the environment explicitly so the way back keeps it.
+  const environment = useEnvironmentScope();
+  const homeScope = home && {
+    ...home.search,
+    env:
+      environment.applies && environment.environment !== 'production'
+        ? environment.environment
+        : undefined,
+  };
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -434,7 +446,7 @@ function SidebarBody({
                   pathname={pathname}
                   hash={hash}
                   current={matchesNavPath(pathname, { to: home.to, exact: true })}
-                  scope={home.search}
+                  scope={homeScope ?? home.search}
                 />
               </li>
             </ul>

@@ -8,7 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
 import { useEnvironmentState, type ProjectEnvironment } from '@/lib/api/projects';
 import { useAuth } from '@/lib/auth';
 import {
@@ -108,12 +107,20 @@ export function EnvironmentSwitcher() {
             Environments
           </DropdownMenuLabel>
           {env.list.isError ? (
-            <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
-              <span className="text-muted-foreground">Environments could not be read</span>
-              <Button size="xs" variant="outline" onClick={env.list.refetch}>
+            <>
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                Environments could not be read
+              </p>
+              {/* A menu item, not a button: arrow keys and Enter reach it. */}
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault();
+                  env.list.refetch();
+                }}
+              >
                 Retry
-              </Button>
-            </div>
+              </DropdownMenuItem>
+            </>
           ) : !env.choices ? (
             <p role="status" className="px-2 py-1.5 text-sm text-muted-foreground">
               Loading environments…

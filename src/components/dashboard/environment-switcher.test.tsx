@@ -185,7 +185,7 @@ it('says the list could not be read, with a retry', async () => {
   await mount('/dashboard/releases?project=shop&env=staging');
   await userEvent.click(screen.getByRole('button', { name: /Switch environment/ }));
   expect(await screen.findByText('Environments could not be read')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Retry' }));
   expect(refetch).toHaveBeenCalled();
 });
 
@@ -219,4 +219,21 @@ it('draws no line where environments do not apply', async () => {
   env.current = staging({ applies: false });
   await mount('/dashboard/usage?env=staging');
   expect(screen.queryByTestId('environment-line')).toBeNull();
+});
+
+it('reaches Retry with the keyboard alone', async () => {
+  const refetch = vi.fn();
+  env.current = staging({
+    choices: null,
+    available: null,
+    list: { isPending: false, isError: true, refetch },
+  });
+  await mount('/dashboard/releases?project=shop&env=staging');
+  screen.getByRole('button', { name: /Switch environment/ }).focus();
+  await userEvent.keyboard('{Enter}');
+  // Opened from the keyboard, the menu focuses its first item: Retry.
+  const retry = await screen.findByRole('menuitem', { name: 'Retry' });
+  await waitFor(() => expect(retry).toHaveFocus());
+  await userEvent.keyboard('{Enter}');
+  expect(refetch).toHaveBeenCalled();
 });
