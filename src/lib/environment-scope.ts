@@ -1,5 +1,13 @@
-import type { SearchMiddleware } from '@tanstack/react-router';
-import { validEnvironment, type ProjectEnvironment } from '@/lib/api/projects';
+import { useMemo } from 'react';
+import { useRouterState, type SearchMiddleware } from '@tanstack/react-router';
+import {
+  useProjectEnvironments,
+  validEnvironment,
+  type ProjectEnvironment,
+} from '@/lib/api/projects';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useAuth } from '@/lib/auth';
+import { STANDALONE, isAccountPath, useProjectScope } from '@/lib/project-scope';
 
 /**
  * The environment the console is in, inside a project: production by default,
@@ -54,4 +62,63 @@ export type EnvironmentKind = 'production' | 'stage' | 'preview';
 export function environmentKind(slug: string, environment?: ProjectEnvironment): EnvironmentKind {
   if (slug === 'production') return 'production';
   return environment?.branch ? 'preview' : 'stage';
+}
+
+export interface EnvironmentScope {
+  /** False where environments don't apply: account pages, no project, standalone apps, a company workspace. */
+  applies: boolean;
+  /** The environment slug in force: the URL's, else 'production'. */
+  environment: string;
+  kind: EnvironmentKind;
+  name: string;
+  /** The project's environments, production first then by name; null while loading or on error. */
+  choices: ProjectEnvironment[] | null;
+  /** True when the project has this environment; null while unknown. Production always counts. */
+  available: boolean | null;
+  /** The list query, for the dropdown's loading, error and retry states. */
+  list: { isPending: boolean; isError: boolean; refetch: () => void };
+}
+
+const byStage = (a: ProjectEnvironment, b: ProjectEnvironment) =>
+  a.slug === 'production' ? -1 : b.slug === 'production' ? 1 : a.slug.localeCompare(b.slug);
+
+/**
+ * The environment in force for the page: the URL's `?env=`, checked against the
+ * project's environments. Reads nothing where environments don't apply.
+ */
+export function useEnvironmentScope(): EnvironmentScope {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const env = useRouterState({
+    select: (s) => validateEnvironmentSearch(s.location.search as Record<string, unknown>).env,
+  });
+  const { project } = useProjectScope();
+  const { account } = useAuth();
+  const { org } = useWorkspaceTarget();
+  // Company projects: environment routes resolve under the signed-in account
+  // (faas ProjectBySlug), so a company project's environments can't be read.
+  const applies = Boolean(project) && project !== STANDALONE && !org && !isAccountPath(pathname);
+  const query = useProjectEnvironments(
+    applies ? (account?.id ?? '') : '',
+    applies ? (project ?? '') : ''
+  );
+  const environment = env ?? 'production';
+  const choices = useMemo(
+    () =>
+      query.data ? [...query.data].filter((e) => validEnvironment(e.slug)).sort(byStage) : null,
+    [query.data]
+  );
+  const current = choices?.find((e) => e.slug === environment);
+  return {
+    applies,
+    environment,
+    kind: environmentKind(environment, current),
+    name: environmentName(environment),
+    choices,
+    available: environment === 'production' ? true : choices ? Boolean(current) : null,
+    list: {
+      isPending: query.isPending,
+      isError: query.isError,
+      refetch: () => void query.refetch(),
+    },
+  };
 }
