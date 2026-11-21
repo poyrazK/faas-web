@@ -103,7 +103,7 @@ it('shows no published graph separately from a workload live release and safe me
           workload_slug: 'api',
           workload_name: 'API',
           status: 'live',
-          deployment_id: 'dep-1',
+          deployment_id: 'dep-1234567890',
           image_digest: 'sha256:abc',
         },
         variables: [{ key: 'REGION', value: 'eu' }],
@@ -131,12 +131,14 @@ it('shows no published graph separately from a workload live release and safe me
     ],
   };
   render(<EnvironmentStateView data={data} />);
-  // The row says what is live; ids and metadata wait behind "Show details".
-  expect(screen.getByText('Live')).toBeInTheDocument();
+  // Each app is one line with its short release; ids and metadata wait behind
+  // one "Technical details" for the whole environment, not one per app.
+  expect(screen.getByText('release dep-123')).toBeInTheDocument();
   expect(screen.getByText(/no release set active/)).toBeInTheDocument();
-  expect(screen.queryByText('dep-1')).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Show details' }));
-  expect(screen.getByText('dep-1')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Show details' })).not.toBeInTheDocument();
+  expect(screen.queryByText('dep-1234567890')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Technical details/ }));
+  expect(screen.getByText('dep-1234567890')).toBeInTheDocument();
   expect(screen.getByText('REGION')).toBeInTheDocument();
   expect(screen.getByText('eu')).toBeInTheDocument();
   expect(screen.getAllByText(/generation 3/).length).toBeGreaterThan(0);

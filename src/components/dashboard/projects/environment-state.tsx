@@ -6,6 +6,8 @@ import { publicAppUrl } from '@/lib/app-url';
 import { HelpTip } from '../kit/help-tip';
 import { Panel } from '../primitives';
 import { Disclosure } from '../settings-kit';
+import { cn } from '@/lib/utils';
+import { releaseWords } from './environment-words';
 
 type Workload = EnvironmentState['workloads'][number];
 
@@ -54,9 +56,8 @@ function WorkloadRow({ workload }: { workload: Workload }) {
   const { release } = workload;
   const live = release.status === 'live';
   const url = publicAppUrl(release.url);
-  const artifact = release.image_digest || release.source_sha256 || release.commit_sha;
   return (
-    <li className="flex flex-col gap-3 px-5 py-4">
+    <li className="flex flex-col gap-3 px-5 py-3.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span
           aria-hidden
@@ -68,7 +69,9 @@ function WorkloadRow({ workload }: { workload: Workload }) {
           }
         />
         <h3 className="min-w-0 truncate text-[15px] font-medium">{workload.workload_name}</h3>
-        <span className="text-sm text-muted-foreground">{live ? 'Live' : 'Not deployed'}</span>
+        <span className={cn('text-sm text-muted-foreground', live && 'font-mono text-xs')}>
+          {releaseWords(release)}
+        </span>
         {url && (
           <a
             href={url}
@@ -81,105 +84,113 @@ function WorkloadRow({ workload }: { workload: Workload }) {
           </a>
         )}
       </div>
-      <Disclosure label="Show details" className="pl-5">
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          <Fact label="Deployment">
-            {release.deployment_id ? (
-              <CopyableId value={release.deployment_id} label="deployment ID" />
-            ) : (
-              'Not deployed'
-            )}
-          </Fact>
-          <Fact label="Built from">
-            {artifact ? <CopyableId value={artifact} label="artifact" /> : 'Unknown'}
-          </Fact>
-          <Fact label="Routes">
-            {workload.routes.declared_routes.length} declared, owned by {workload.routes.ownership}
-          </Fact>
-          <Fact label="Headers and CORS">
-            {workload.policies.rules.length} rules, owned by {workload.policies.ownership}
-          </Fact>
-          {workload.domains.length > 0 && (
-            <Fact label="Domains">
-              <span className="break-all">
-                {workload.domains
-                  .map(
-                    (domain) => `${domain.domain} (${domain.verified ? 'verified' : 'unverified'})`
-                  )
-                  .join(', ')}
-              </span>
-            </Fact>
-          )}
-        </dl>
-        <div>
-          <h4 className="text-xs text-muted-foreground">Variables ({workload.variables.length})</h4>
-          {workload.variables.length > 0 && (
-            <dl className="mt-1.5 space-y-1.5 text-sm">
-              {workload.variables.map((variable) => (
-                <div key={variable.key} className="flex flex-wrap gap-x-2">
-                  <dt className="font-mono text-xs leading-5">{variable.key}</dt>
-                  <dd className="min-w-0 break-all whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">
-                    {variable.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-        <div>
-          <h4 className="flex items-center gap-1 text-xs text-muted-foreground">
-            Secrets ({workload.secrets.length})
-            <HelpTip label="About secrets here">
-              Values and sealing details are never shown. The fingerprint changes when the value
-              does.
-            </HelpTip>
-          </h4>
-          {workload.secrets.length > 0 && (
-            <ul className="mt-1.5 space-y-1.5 text-sm">
-              {workload.secrets.map((secret) => (
-                <li key={secret.key} className="break-all">
-                  <span className="font-mono text-xs">{secret.key}</span>{' '}
-                  <span className="text-xs text-muted-foreground">
-                    fingerprint {secret.value_hash || 'unknown'}, version{' '}
-                    {secret.version ?? 'unknown'}
-                    {secret.managed_by && `, managed by ${secret.managed_by}`}
-                    {secret.binding_id && `, binding ${secret.binding_id}`}
-                    {secret.credential_generation !== undefined &&
-                      `, generation ${secret.credential_generation}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {workload.bindings.length > 0 && (
-          <div>
-            <h4 className="text-xs text-muted-foreground">
-              Managed bindings ({workload.bindings.length})
-            </h4>
-            <ul className="mt-1.5 space-y-1.5 text-sm">
-              {workload.bindings.map((binding) => (
-                <li key={binding.binding_id} className="break-all">
-                  {binding.kind}{' '}
-                  <span className="text-xs text-muted-foreground">
-                    {binding.binding_id}, generation {binding.credential_generation ?? 'unknown'},
-                    keys {binding.secret_keys.join(', ')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Disclosure>
     </li>
   );
 }
 
+/** One app's ids, variables, secret metadata and bindings, for "Technical details". */
+function WorkloadFacts({ workload }: { workload: Workload }) {
+  const { release } = workload;
+  const artifact = release.image_digest || release.source_sha256 || release.commit_sha;
+  return (
+    <section aria-label={`${workload.workload_name} details`} className="flex flex-col gap-3">
+      <h3 className="text-sm font-medium">{workload.workload_name}</h3>
+      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        <Fact label="Deployment">
+          {release.deployment_id ? (
+            <CopyableId value={release.deployment_id} label="deployment ID" />
+          ) : (
+            'Not deployed'
+          )}
+        </Fact>
+        <Fact label="Built from">
+          {artifact ? <CopyableId value={artifact} label="artifact" /> : 'Unknown'}
+        </Fact>
+        <Fact label="Routes">
+          {workload.routes.declared_routes.length} declared, owned by {workload.routes.ownership}
+        </Fact>
+        <Fact label="Headers and CORS">
+          {workload.policies.rules.length} rules, owned by {workload.policies.ownership}
+        </Fact>
+        {workload.domains.length > 0 && (
+          <Fact label="Domains">
+            <span className="break-all">
+              {workload.domains
+                .map(
+                  (domain) => `${domain.domain} (${domain.verified ? 'verified' : 'unverified'})`
+                )
+                .join(', ')}
+            </span>
+          </Fact>
+        )}
+      </dl>
+      <div>
+        <h4 className="text-xs text-muted-foreground">Variables ({workload.variables.length})</h4>
+        {workload.variables.length > 0 && (
+          <dl className="mt-1.5 space-y-1.5 text-sm">
+            {workload.variables.map((variable) => (
+              <div key={variable.key} className="flex flex-wrap gap-x-2">
+                <dt className="font-mono text-xs leading-5">{variable.key}</dt>
+                <dd className="min-w-0 break-all whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">
+                  {variable.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+      <div>
+        <h4 className="flex items-center gap-1 text-xs text-muted-foreground">
+          Secrets ({workload.secrets.length})
+          <HelpTip label="About secrets here">
+            Values and sealing details are never shown. The fingerprint changes when the value does.
+          </HelpTip>
+        </h4>
+        {workload.secrets.length > 0 && (
+          <ul className="mt-1.5 space-y-1.5 text-sm">
+            {workload.secrets.map((secret) => (
+              <li key={secret.key} className="break-all">
+                <span className="font-mono text-xs">{secret.key}</span>{' '}
+                <span className="text-xs text-muted-foreground">
+                  fingerprint {secret.value_hash || 'unknown'}, version{' '}
+                  {secret.version ?? 'unknown'}
+                  {secret.managed_by && `, managed by ${secret.managed_by}`}
+                  {secret.binding_id && `, binding ${secret.binding_id}`}
+                  {secret.credential_generation !== undefined &&
+                    `, generation ${secret.credential_generation}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {workload.bindings.length > 0 && (
+        <div>
+          <h4 className="text-xs text-muted-foreground">
+            Managed bindings ({workload.bindings.length})
+          </h4>
+          <ul className="mt-1.5 space-y-1.5 text-sm">
+            {workload.bindings.map((binding) => (
+              <li key={binding.binding_id} className="break-all">
+                {binding.kind}{' '}
+                <span className="text-xs text-muted-foreground">
+                  {binding.binding_id}, generation {binding.credential_generation ?? 'unknown'},
+                  keys {binding.secret_keys.join(', ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
- * What an environment runs right now: one row per app, live or not, with a
- * way to open it. Ids, digests, variables and secret fingerprints are each
- * row's "Show details"; the configuration values and the release set are the
- * panel's own.
+ * What an environment runs right now: one line per app — live with its short
+ * release, or not deployed — with a way to open it. Every id, digest, variable,
+ * secret fingerprint, the configuration and the release set sit behind one
+ * "Technical details" for the whole environment.
  */
 export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
   const set = data.active_release_set;
@@ -218,7 +229,10 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
                   : 'release set unavailable'}
             </span>
           </p>
-          <Disclosure label="Show configuration and release set">
+          <Disclosure label="Technical details">
+            {data.workloads.map((workload) => (
+              <WorkloadFacts key={workload.workload_slug} workload={workload} />
+            ))}
             <div>
               <h3 className="text-xs text-muted-foreground">Configuration values</h3>
               <pre className="well mt-1.5 max-h-64 overflow-auto rounded-xl bg-muted/40 p-3 text-xs">
