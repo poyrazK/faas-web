@@ -4,6 +4,7 @@ import { ArrowRight, Lock } from 'iconoir-react';
 import type { Deployment, Workflow } from '@/lib/mock-data';
 import { useProjectEnvironments, validEnvironment, type ProjectDetail } from '@/lib/api/projects';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useEnvironmentScope } from '@/lib/environment-scope';
 import { Button } from '@/components/ui/button';
 import { AppTile, AppTiles } from '../app-tile';
 import { HelpTip } from '../kit/help-tip';
@@ -136,6 +137,7 @@ function EnvironmentCards({
   slug: string;
 }) {
   const query = useProjectEnvironments(accountId, slug);
+  const { environment: current } = useEnvironmentScope();
   const items = (query.data ?? []).filter(
     (item) => item.project_id === projectId && validEnvironment(item.slug)
   );
@@ -167,17 +169,30 @@ function EnvironmentCards({
               <Link
                 to="/dashboard/projects/$projectSlug"
                 params={{ projectSlug: slug }}
-                search={(current) => ({
-                  ...current,
-                  tab: 'environments' as const,
-                  environment: item.slug,
-                  compare: undefined,
-                })}
+                // Opening an environment switches the console into it (the top
+                // bar's ?env=); production is the absence of the param.
+                search={(search) =>
+                  ({
+                    ...search,
+                    tab: 'environments' as const,
+                    env: item.slug === 'production' ? undefined : item.slug,
+                    environment: undefined,
+                    compare: undefined,
+                  }) as never
+                }
                 aria-label={`Open ${item.slug}`}
+                aria-current={item.slug === current ? 'true' : undefined}
                 className="surface pressable group flex min-h-16 items-center gap-3 rounded-[1.25rem] bg-card px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate font-mono text-sm">{item.slug}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-mono text-sm">{item.slug}</span>
+                    {item.slug === current && (
+                      <span className="shrink-0 rounded-full bg-brand/15 px-2 py-0.5 text-[11px] text-brand">
+                        Current
+                      </span>
+                    )}
+                  </span>
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     {item.protected ? (
                       <>
