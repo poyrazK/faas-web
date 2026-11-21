@@ -1,7 +1,7 @@
 import { WorkspaceReleaseGuards } from '@/components/dashboard/release-safety';
 import { DeployQueue } from '@/components/dashboard/deploy-queue';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
-import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import { BuildDetailPanel } from '@/components/dashboard/build-detail';
 import { ReleasePreviews } from '@/components/dashboard/release-previews';
 import { ReleaseProcess } from '@/components/dashboard/release-process';
 import { ReleaseStatusLabel } from '@/components/dashboard/release-status-label';
@@ -269,7 +269,6 @@ export function DeploymentsPage() {
       render: (r) => <Timestamp value={r.createdAt} />,
     },
   ];
-  const selected = deployments.find((deployment) => deployment.id === search.deployment);
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Releases" />
@@ -463,33 +462,13 @@ export function DeploymentsPage() {
           Load older build details
         </Button>
       )}
-      {(search.deployment || search.build) && (
-        <ReleaseDetailPanel
-          key={search.deployment ?? search.build}
-          deploymentId={search.deployment}
+      {search.build && (
+        <BuildDetailPanel
+          key={search.build}
           buildId={search.build}
-          fallbackBuildId={selected ? joinedBuilds.get(selected.id)?.id : undefined}
-          section={search.releaseSection ?? 'overview'}
+          section={search.releaseSection}
           onSectionChange={(releaseSection, replace) => select({ releaseSection }, replace)}
-          onClose={() =>
-            select({ deployment: undefined, build: undefined, releaseSection: undefined })
-          }
-          footer={
-            selected &&
-            appById.has(selected.app_id) && (
-              <Link
-                to="/dashboard/apps/$appSlug"
-                params={{ appSlug: appById.get(selected.app_id)! }}
-                search={{
-                  tab: 'Deployments',
-                  deployment: selected.id,
-                  releaseSection: search.releaseSection,
-                }}
-              >
-                Open {appById.get(selected.app_id)}
-              </Link>
-            )
-          }
+          onClose={() => select({ build: undefined, releaseSection: undefined })}
         />
       )}
       {view === 'releases' && <ReleasePreviews scope={gate} />}

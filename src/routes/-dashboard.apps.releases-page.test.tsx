@@ -157,10 +157,23 @@ describe('Release page', () => {
 
   it('refuses a release from another app', async () => {
     fixtures.deployment = deployment({ app_id: 'other-app' });
+    const streams = vi.fn();
+    vi.stubGlobal(
+      'EventSource',
+      class {
+        constructor() {
+          streams();
+        }
+        addEventListener() {}
+        close() {}
+      }
+    );
     await mount();
     expect(await screen.findByText('This release is not part of this app.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Release tiles' })).not.toBeInTheDocument();
     expect(screen.queryByText('Live · 100% of traffic')).not.toBeInTheDocument();
+    // Another app's build log is never opened.
+    expect(streams).not.toHaveBeenCalled();
   });
 
   it('shows the failure card first', async () => {

@@ -14,6 +14,7 @@ import { Route as Releases } from './dashboard.releases';
 import { Route as Builds } from './dashboard.builds';
 import { Route as App } from './dashboard.apps.$appSlug';
 import { Route as ReleaseShortcut } from './dashboard.releases_.$deploymentId';
+import { Route as ReleasePageRoute } from './dashboard.apps.$appSlug_.releases.$deploymentId';
 import { api } from '@/lib/api/client';
 import { spyApi } from '@/test/api';
 
@@ -78,6 +79,11 @@ vi.mock('@/lib/api/capabilities', async (original) => ({
   useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: fixtures.toast }) }));
+// The personal workspace: the release shortcut finds apps in `/v1/apps` alone.
+vi.mock('@/lib/api/workspace-apps', async (original) => ({
+  ...(await original<object>()),
+  useWorkspaceTarget: () => ({ org: null, label: 'Personal', ready: true }),
+}));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/lib/store', () => ({
@@ -230,19 +236,19 @@ async function mount(entry = '/dashboard/releases') {
       beforeLoad: (context) => route.options.beforeLoad?.(context as never),
     })
   );
-  // Where old release links now land; the pages themselves are tested elsewhere.
+  // A release is its own page: the shortcut that finds its app, and the page.
   routes.push(
     createRoute({
       getParentRoute: () => dashboard,
       path: 'releases/$deploymentId',
-      component: () => <p>release shortcut</p>,
+      component: ReleaseShortcut.options.component,
       validateSearch: ReleaseShortcut.options.validateSearch,
     }),
     createRoute({
       getParentRoute: () => dashboard,
       path: 'apps/$appSlug/releases/$deploymentId',
-      component: () => <p>release page</p>,
-      validateSearch: ReleaseShortcut.options.validateSearch,
+      component: ReleasePageRoute.options.component,
+      validateSearch: ReleasePageRoute.options.validateSearch,
     })
   );
   const router = createRouter({
@@ -303,8 +309,13 @@ describe('Releases hub', () => {
     await userEvent.clear(screen.getByRole('searchbox'));
     await userEvent.type(screen.getByRole('searchbox'), fixtures.deployment.id);
     await userEvent.click(listRow(/0123456789ab…/));
-    expect(router.state.location.search).toMatchObject({ deployment: fixtures.deployment.id });
-    const details = await screen.findByRole('region', { name: 'Release details' });
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/dashboard/apps/alpha/releases/${fixtures.deployment.id}`
+      )
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'All details' }));
+    const details = await screen.findByRole('dialog', { name: 'All details' });
     expect(
       within(details).getByText(fixtures.deployment.id, { selector: 'dd *' })
     ).toBeInTheDocument();
@@ -439,12 +450,11 @@ describe('Releases hub', () => {
     expect(await within(queue).findByText('alpha')).toBeInTheDocument();
     expect(within(queue).getByRole('button', { name: 'Deploy now' })).toBeInTheDocument();
     await userEvent.click(within(queue).getByRole('button', { name: 'Open release v9' }));
+    // The queued release is not in the loaded list, so the shortcut finds its app.
     await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({
-        deployment: 'dep-q',
-        releaseSection: 'lifecycle',
-      })
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-q')
     );
+    expect(router.state.location.search).toEqual({ panel: 'rollout' });
     await act(() => router.navigate({ to: '/dashboard/releases', search: { view: 'builds' } }));
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: 'Deploy queue' })).not.toBeInTheDocument()
@@ -488,12 +498,11 @@ describe('Releases hub', () => {
       await mount('/dashboard/releases?view=builds&build=build-only');
       expect(await screen.findByText('Failure class')).toBeInTheDocument();
       expect(screen.getByText('4.0 KB', { selector: 'dd' })).toBeInTheDocument();
-      expect(screen.queryByText(/No deployment is attached/)).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Runtime controls' }));
-      expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
-      if (state === 'error')
-        expect(await screen.findByText('Deployment read failed')).toBeInTheDocument();
-      else expect(await screen.findByText('Loading deployment…')).toBeInTheDocument();
+      // The build popup never reads its deployment; the release is one link away.
+      expect(screen.getByRole('link', { name: 'Open its release' })).toHaveAttribute(
+        'href',
+        '/dashboard/releases/dep-1'
+      );
       await userEvent.click(screen.getByRole('button', { name: 'Provenance / SBOM' }));
       expect(await screen.findByText('v0.20')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'Download SBOM' }));
@@ -503,10 +512,31 @@ describe('Releases hub', () => {
   );
 
   it.each([
-    ['/dashboard/releases', 'pointer', 'release'],
-    ['/dashboard/releases?view=builds', 'keyboard', 'build'],
     ['/dashboard/apps/alpha?tab=Deployments', 'keyboard', 'app release'],
+    ['/dashboard/releases', 'pointer', 'release'],
   ])(
+    'opens %s detail on the release’s own page for %s selection, and Back returns there',
+    async (entry, input, kind) => {
+      const router = await mount(entry);
+      const row =
+        kind === 'app release'
+          ? screen.getByRole('button', { name: /^Details of / })
+          : listRow(/dep-1\b/);
+      if (input === 'pointer') await userEvent.click(row);
+      else {
+        row.focus();
+        await userEvent.keyboard('{Enter}');
+      }
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
+      );
+      expect(await screen.findByRole('region', { name: 'Release tiles' })).toBeInTheDocument();
+      await act(async () => router.history.back());
+      await waitFor(() => expect(router.state.location.href).toBe(entry));
+    }
+  );
+
+  it.each([['/dashboard/releases?view=builds', 'keyboard', 'build']])(
     'opens %s detail in a modal for %s selection without scrolling and restores focus on close/Back',
     async (entry, input, kind) => {
       fixtures.rowCount = 50;
@@ -557,11 +587,13 @@ describe('Releases hub', () => {
     const row = listRow(/dep-1\b/);
     expect(within(row).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
     await userEvent.click(row);
-    const details = await screen.findByRole('region', { name: 'Release details' });
-    expect(within(details).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
-    expect(within(details).getAllByText('failed')[0].parentElement).toHaveStyle({
+    // The release's own failure leads its page.
+    expect((await screen.findAllByText('failed'))[0].parentElement).toHaveStyle({
       color: 'var(--status-critical)',
     });
+    await userEvent.click(screen.getByRole('button', { name: 'All details' }));
+    const details = await screen.findByRole('dialog', { name: 'All details' });
+    expect(within(details).getAllByText(status).at(-1)?.parentElement).toHaveStyle({ color });
   });
   it('resolves joined build evidence even when its record is outside the loaded build page', async () => {
     fixtures.omitBuildFromHistory = true;
@@ -609,20 +641,16 @@ describe('Releases hub', () => {
     expect(await screen.findByRole('heading', { name: 'Build details' })).toBeInTheDocument();
   });
 
-  it('restores selected detail and section after Back, Forward and a copied URL', async () => {
-    const router = await mount('/dashboard/releases?campaign=handoff#details');
+  it('restores an open release popup after Back, Forward and a copied URL', async () => {
+    const router = await mount('/dashboard/releases');
     await userEvent.click(listRow(/dep-1\b/));
-    await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open Security' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({
-      deployment: 'dep-1',
-      releaseSection: 'scans',
-      campaign: 'handoff',
-    });
-    expect(router.state.location.hash).toBe('details');
+    expect(router.state.location.search).toEqual({ panel: 'security' });
     const copied = router.state.location.href;
     await act(async () => router.history.back());
     await waitFor(() => expect(screen.queryByText('CVE-2026-1234')).not.toBeInTheDocument());
+    expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1');
     await act(async () => router.history.forward());
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     cleanup();
@@ -633,33 +661,45 @@ describe('Releases hub', () => {
   it.each([
     '/dashboard/releases?deployment=dep-1',
     '/dashboard/apps/alpha?tab=Deployments&deployment=dep-1',
-  ])('uses shared release evidence and operational actions at %s', async (entry) => {
+  ])('lands %s on the release page, with its evidence and actions', async (entry) => {
     const router = await mount(entry);
-    expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Failure explanation' })).toHaveTextContent(
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
+    );
+    expect(await screen.findByRole('region', { name: 'Failure explanation' })).toHaveTextContent(
       'The build ran out of memory.'
     );
-    await userEvent.click(screen.getByRole('button', { name: 'View build output' }));
-    const stream = Stream.instances.at(-1)!;
+    // One build log serves the tile and its popup.
+    expect(Stream.instances).toHaveLength(1);
+    const stream = Stream.instances[0];
     expect(stream.url).toContain('/v1/deployments/dep-1/logs');
     act(() => stream.emit('log', 'compiler output'));
-    expect(await screen.findByText('compiler output')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Provenance / SBOM' }));
+    await userEvent.click(screen.getByRole('button', { name: 'View build output' }));
+    const output = await screen.findByRole('dialog', { name: 'Build output' });
+    expect(within(output).getByText('compiler output')).toBeInTheDocument();
+    expect(Stream.instances).toHaveLength(1);
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Open Provenance' }));
     expect(await screen.findByText('v0.20')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Security scans' }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Open Security' }));
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     expect(screen.getByText('/app/config:4')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Overview' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
-    expect(screen.queryByRole('combobox', { name: 'Resume from' })).not.toBeInTheDocument();
-    expect(screen.getByText(/every build stage runs again/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Retry deployment' }));
+    await userEvent.keyboard('{Escape}');
+    // A failed release leads with Retry, which opens its recovery controls.
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    const rollout = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    expect(
+      within(rollout).queryByRole('combobox', { name: 'Resume from' })
+    ).not.toBeInTheDocument();
+    expect(within(rollout).getByText(/every build stage runs again/)).toBeInTheDocument();
+    await userEvent.click(within(rollout).getByRole('button', { name: 'Retry deployment' }));
     expect(fixtures.retry).toHaveBeenCalledWith({ id: 'dep-1', from_stage: 'source_download' });
-    expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
-      'href',
-      '/dashboard/releases?deployment=retry-1&releaseSection=overview'
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Runtime controls' }));
+    expect(
+      await within(rollout).findByRole('link', { name: 'View new deployment' })
+    ).toHaveAttribute('href', '/dashboard/apps/alpha/releases/retry-1');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Open Runtime' }));
     fireEvent.change(screen.getByRole('spinbutton', { name: /Minimum instances/ }), {
       target: { value: '2' },
     });
@@ -670,18 +710,20 @@ describe('Releases hub', () => {
     });
     await userEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
     expect(fixtures.traffic).toHaveBeenCalledWith({ id: 'dep-1', traffic_percent: 25 });
-    await userEvent.click(screen.getByRole('button', { name: 'Audit context' }));
-    expect(await screen.findByText('Audit timeline')).toBeInTheDocument();
-    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-app', 'app-1');
-    expect(screen.getByLabelText('Release activity')).toHaveAttribute('data-release', 'dep-1');
-    expect(screen.getByText('operator@example.test')).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({
-      deployment: 'dep-1',
-      releaseSection: 'audit',
-    });
-    if (entry.includes('workflows')) expect(router.state.location.search.tab).toBe('Deployments');
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(stream.close).toHaveBeenCalled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
+    const activity = await screen.findByRole('dialog', { name: 'Activity' });
+    expect(await within(activity).findByText('Audit timeline')).toBeInTheDocument();
+    expect(within(activity).getByLabelText('Release activity')).toHaveAttribute(
+      'data-app',
+      'app-1'
+    );
+    expect(within(activity).getByLabelText('Release activity')).toHaveAttribute(
+      'data-release',
+      'dep-1'
+    );
+    expect(within(activity).getByText('operator@example.test')).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({ panel: 'activity' });
   });
 
   it('downloads SBOM for a successful build without requiring a deployment', async () => {
@@ -701,21 +743,16 @@ describe('Releases hub', () => {
     click.mockRestore();
   });
 
-  it('normalizes invalid owned state without discarding valid selection or foreign search', async () => {
+  it('lands an old link with an invalid section on the release, with no popup open', async () => {
     const router = await mount(
       '/dashboard/releases?deployment=dep-1&view=wrong&releaseSection=wrong&campaign=handoff'
     );
-    expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
     );
-    expect(router.state.location.search).toMatchObject({
-      deployment: 'dep-1',
-      campaign: 'handoff',
-    });
-    expect(router.state.location.search.view).not.toBe('wrong');
-    expect(router.state.location.search.releaseSection).not.toBe('wrong');
+    expect(router.state.location.search).toEqual({});
+    expect(await screen.findByRole('region', { name: 'Release tiles' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('normalizes a deployment-only section on an unattached build while retaining its selection', async () => {
@@ -730,26 +767,26 @@ describe('Releases hub', () => {
     });
   });
 
-  it('restores app release sections and selection through Back, Forward and refresh', async () => {
+  it('returns from an app’s release and its popup through Back, Forward and refresh', async () => {
     const router = await mount('/dashboard/apps/alpha?tab=Deployments#release');
     await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open Security' }));
+    expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
     const copied = router.state.location.href;
     await act(async () => router.history.back());
     await waitFor(() => expect(screen.queryByText('CVE-2026-1234')).not.toBeInTheDocument());
     await act(async () => router.history.back());
     await waitFor(() =>
-      expect(screen.queryByRole('heading', { name: 'Release details' })).not.toBeInTheDocument()
+      expect(router.state.location.href).toBe('/dashboard/apps/alpha?tab=Deployments#release')
     );
     await act(async () => router.history.forward());
-    expect(await screen.findByRole('heading', { name: 'Release details' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Release tiles' })).toBeInTheDocument();
     cleanup();
     await mount(copied);
     expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
-    expect(copied).toContain('#release');
   });
 
-  it('preserves Debugger investigation and unrelated state when selecting and closing app releases', async () => {
+  it('keeps the app’s Debugger investigation when a release page is opened and left', async () => {
     const router = await mount(
       '/dashboard/apps/alpha?tab=Deployments&debugView=compare&debugFilter=failed&debugWindow=6h&request=request-7&debugRoute=%2Fcheckout&campaign=handoff#evidence'
     );
@@ -762,51 +799,28 @@ describe('Releases hub', () => {
       campaign: 'handoff',
     };
     await userEvent.click(screen.getByRole('button', { name: /^Details of / }));
-    expect(router.state.location.search).toMatchObject({ ...investigation, deployment: 'dep-1' });
-    await userEvent.click(await screen.findByRole('button', { name: 'Security scans' }));
-    await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Release details' })).getByRole('button', {
-        name: 'Close',
-      })
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
     );
-    expect(router.state.location.search).toMatchObject(investigation);
-    expect(router.state.location.search.deployment).toBeUndefined();
-    expect(router.state.location.search.releaseSection).toBeUndefined();
+    await act(async () => router.history.back());
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ ...investigation, tab: 'Deployments' })
+    );
+    expect(router.state.location.hash).toBe('evidence');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Logs');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Section' }), 'Debugger');
     expect(await screen.findByRole('dialog', { name: 'Request details' })).toBeInTheDocument();
     expect(router.state.location.search).toMatchObject(investigation);
-    await act(async () => router.history.back());
-    await waitFor(() => expect(router.state.location.search.tab).toBe('Logs'));
-    await act(async () => router.history.back());
-    await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: 'Section' })).toHaveValue('Deployments')
-    );
-    await act(async () => router.history.back());
-    expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({
-      ...investigation,
-      deployment: 'dep-1',
-      releaseSection: 'scans',
-    });
-    expect(router.state.location.hash).toBe('evidence');
-    const copied = router.state.location.href;
-    cleanup();
-    const restored = await mount(copied);
-    expect(restored.state.location.search).toMatchObject(investigation);
-    expect(await screen.findByText('CVE-2026-1234')).toBeInTheDocument();
   });
 
-  it('clears an invalid app release section without losing the existing app tab and deployment', async () => {
+  it('lands an app’s old release link with an invalid section on the release', async () => {
     const router = await mount(
       '/dashboard/apps/alpha?tab=Deployments&deployment=dep-1&releaseSection=wrong'
     );
-    expect(await screen.findByRole('button', { name: 'Overview' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
     );
-    expect(router.state.location.search.releaseSection).toBeUndefined();
-    expect(router.state.location.search).toMatchObject({ tab: 'Deployments', deployment: 'dep-1' });
+    expect(router.state.location.search).toEqual({});
   });
 
   it('lists the app’s deployment aliases on its Deployments tab and opens their release', async () => {
@@ -837,10 +851,7 @@ describe('Releases hub', () => {
     expect(screen.getByText(/not serving: v1 is failed/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open release v1' }));
     await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({
-        tab: 'Deployments',
-        deployment: 'dep-1',
-      })
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
     );
   });
 });
@@ -848,7 +859,10 @@ describe('Releases hub', () => {
 describe('old release links', () => {
   it('send a Releases selection to the release, opening the popup its section became', async () => {
     const router = await mount('/dashboard/releases?deployment=dep-1&releaseSection=scans');
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/releases/dep-1'));
+    // Through the shortcut, which finds the app.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
+    );
     expect(router.state.location.search).toEqual({ panel: 'security' });
   });
 
