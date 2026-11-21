@@ -11,6 +11,7 @@ import {
 import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { releaseProcess } from '@/lib/release-process';
 import { useDocumentTitle } from '@/lib/seo';
+import { useLogStream } from '@/lib/api/logs';
 import { ErrorState, LoadingState, UnreachableState, queryPhase } from '../primitives';
 import { FailurePanel } from '../failure-panel';
 import { failureSummary } from '../failure-summary';
@@ -19,6 +20,8 @@ import { ReleaseDetailsPopup, ReleaseFacts, relativeTime } from './facts';
 import { ReleaseHeader, releaseName } from './release-header';
 import { ReleasePanelHost, useReleasePanel, type ReleasePanelSpec } from './panel-host';
 import type { ReleasePanel } from './panels';
+import { ReleaseTileGrid } from './tile';
+import { RELEASE_TILES } from './tiles';
 
 export type Build = components['schemas']['BuildResponse'];
 
@@ -28,6 +31,8 @@ export interface ReleaseContext {
   deployment: Deployment;
   build?: Build;
   summary?: DeploymentSummary;
+  /** One build-log stream per page, shared by the tile and its popup. */
+  buildLog: ReturnType<typeof useLogStream>;
 }
 
 /** A release's own page: header, failure, process, tiles and facts. */
@@ -41,14 +46,25 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
   const owned = app.data && deployment && !wrongApp ? deployment : undefined;
   const build = useBuild(owned?.build_id ?? '').data;
   const summary = useDeploymentSummary(owned ? appSlug : '', owned?.id ?? '').data;
+  const buildLog = useLogStream(
+    { kind: 'build', deploymentId: owned?.id ?? '', limit: 500 },
+    Boolean(owned)
+  );
   const { panel, open, close } = useReleasePanel();
   useDocumentTitle(owned ? `${releaseName(owned)} · ${appSlug}` : undefined);
 
   const ctx: ReleaseContext | undefined = owned
-    ? { slug: appSlug, deployment: owned, build, summary }
+    ? { slug: appSlug, deployment: owned, build, summary, buildLog }
     : undefined;
+  const tiles = ctx ? RELEASE_TILES.filter((tile) => tile.when?.(ctx) ?? true) : [];
   const panels: Partial<Record<ReleasePanel, ReleasePanelSpec>> = ctx
     ? {
+        ...Object.fromEntries(
+          tiles.map((tile) => [
+            tile.panel,
+            { title: tile.title, width: tile.width, render: () => <tile.Popup ctx={ctx} /> },
+          ])
+        ),
         details: {
           title: 'All details',
           render: () => <ReleaseDetailsPopup deployment={ctx.deployment} build={ctx.build} />,
@@ -98,7 +114,11 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
         <p className="text-sm">{shippedLine(ctx.deployment, build)}</p>
         <ReleaseProcess phases={releaseProcess(ctx.deployment)} />
       </section>
-      <section aria-label="Release tiles" />
+      <ReleaseTileGrid>
+        {tiles.map((tile) => (
+          <tile.Tile key={tile.panel} ctx={ctx} onOpen={() => open(tile.panel)} />
+        ))}
+      </ReleaseTileGrid>
       <ReleaseFacts
         deployment={ctx.deployment}
         build={build}

@@ -107,12 +107,20 @@ beforeEach(() => {
       close() {}
     }
   );
+  routes.clear();
   spyApi('GET').mockImplementation(async (path) => {
     if (path === '/v1/deployments/{id}')
       return { data: fixtures.deployment, response: new Response() } as never;
-    return { data: undefined, response: new Response(null, { status: 404 }) } as never;
+    if (routes.has(path)) return { data: routes.get(path), response: new Response() } as never;
+    return {
+      error: { code: 'not_found', status: 404, title: 'Not found' },
+      response: new Response(null, { status: 404 }),
+    } as never;
   });
 });
+
+/** Answers for the reads behind the tiles; anything unlisted is a 404. */
+const routes = new Map<string, unknown>();
 
 afterEach(() => {
   cleanup();
@@ -182,5 +190,99 @@ describe('Release page', () => {
     await screen.findByRole('heading', { level: 1, name: 'v14' });
     await waitFor(() => expect(router.state.location.search).not.toHaveProperty('panel'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('Release tiles', () => {
+  function tile(name: string) {
+    return screen.getByRole('group', { name });
+  }
+
+  it('says Not scanned on a 404 and still renders the other tiles', async () => {
+    routes.set('/v1/deployments/{id}/diff', { summary: 'new code, 2 config keys' });
+    await mount();
+    await waitFor(() =>
+      expect(within(tile('Security')).getByText('Not scanned')).toBeInTheDocument()
+    );
+    expect(within(tile('What changed')).getByText('new code, 2 config keys')).toBeInTheDocument();
+    for (const name of ['Build output', 'Traffic & rollout', 'Runtime', 'Activity'])
+      expect(tile(name)).toBeInTheDocument();
+  });
+
+  it('counts critical and high findings and found secrets', async () => {
+    routes.set('/v1/deployments/{id}/scan', {
+      status: 'complete',
+      severity_counts: { critical: 0, high: 1, medium: 0, low: 2, unknown: 0 },
+    });
+    routes.set('/v1/deployments/{id}/secret-scan', {
+      status: 'complete',
+      findings: [{ severity: 'high' }, { severity: 'low' }],
+    });
+    await mount();
+    const security = await screen.findByRole('group', { name: 'Security' });
+    await waitFor(() => expect(within(security).getByText('0 critical')).toBeInTheDocument());
+    expect(within(security).getByText('1 high · 2 secrets found')).toBeInTheDocument();
+  });
+
+  it('shows the commit and SBOM, and never claims a signature', async () => {
+    routes.set('/v1/builds/{id}/provenance', {
+      commit_sha: 'abcdef0123456789',
+      sbom_storage_key: 'sbom/build-1.json',
+    });
+    await mount();
+    const provenance = await screen.findByRole('group', { name: 'Provenance' });
+    await waitFor(() => expect(within(provenance).getByText('abcdef0')).toBeInTheDocument());
+    expect(within(provenance).getByText('SBOM ready')).toBeInTheDocument();
+    expect(screen.queryByText(/signed/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves out the release command and canary tiles when the release has neither', async () => {
+    await mount();
+    await screen.findByRole('group', { name: 'Security' });
+    expect(screen.queryByRole('group', { name: 'Release command' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Canary health' })).not.toBeInTheDocument();
+  });
+
+  it('shows the release command and canary tiles when the release has them', async () => {
+    fixtures.deployment = deployment({
+      canary_total_steps: 4,
+      canary_step: 2,
+      release: {
+        status: 'succeeded',
+        started_at: '2026-11-21T10:00:00Z',
+        finished_at: '2026-11-21T10:00:04Z',
+      },
+    });
+    await mount();
+    expect(await screen.findByRole('group', { name: 'Canary health' })).toHaveTextContent(
+      'Step 2 of 4'
+    );
+    expect(screen.getByRole('group', { name: 'Release command' })).toHaveTextContent('4s');
+  });
+
+  it('says there is nothing to compare when the diff has no summary', async () => {
+    routes.set('/v1/deployments/{id}/diff', { summary: '' });
+    await mount();
+    await waitFor(() =>
+      expect(
+        within(tile('What changed')).getByText('No earlier release to compare')
+      ).toBeInTheDocument()
+    );
+  });
+
+  it('opens a tile’s popup through the URL', async () => {
+    const router = await mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Open Security' }));
+    expect(await screen.findByRole('dialog', { name: 'Security' })).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({ panel: 'security' });
+  });
+
+  it('names the latest audit event on the Activity tile', async () => {
+    routes.set('/v1/deployments/{id}/audit', {
+      items: [{ kind: 'deploy.created', actor: 'ada@example.test', at: '2026-11-21T10:00:00Z' }],
+      limit: 1,
+    });
+    await mount();
+    await waitFor(() => expect(tile('Activity')).toHaveTextContent('Created by ada@example.test'));
   });
 });
