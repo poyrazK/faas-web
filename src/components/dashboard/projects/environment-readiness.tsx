@@ -10,6 +10,7 @@ import {
 } from '@/lib/api/environment-readiness';
 import { Button } from '@/components/ui/button';
 import { Panel } from '../primitives';
+import { Disclosure } from '../settings-kit';
 import { Select } from '@/components/ui/field';
 
 export type ReadinessSearch = {
@@ -75,25 +76,17 @@ export function EnvironmentReadiness({
       : undefined;
   return (
     <div className="space-y-5">
-      <Panel title="Environment readiness">
-        <div className="space-y-4 p-4 text-sm">
-          <p>
-            Promote, rollback, full clone and GitOps enforcement are not available in the console.
+      <Panel
+        title={source ? `Promote ${source} into ${identity.target}` : 'Preview a promotion'}
+        help="A preview is read-only. It is the server's answer for the two environments as they are now; a change to either needs a fresh preview."
+      >
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            The console shows what a promotion would do. Promoting, rolling back, cloning and GitOps
+            enforcement are done with the <code>gregale environment</code> CLI commands.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled>Promote</Button>
-            <Button disabled variant="outline">
-              Rollback
-            </Button>
-            <Button disabled variant="outline">
-              Create full clone
-            </Button>
-            <Button disabled variant="outline">
-              Enforce GitOps
-            </Button>
-          </div>
           {!source ? (
-            <p>Select Compare to inspect a source-to-target preview.</p>
+            <p>Choose an environment under Compare with to see what promoting it would change.</p>
           ) : preview.error ? (
             <div role="alert">
               <p>
@@ -132,102 +125,106 @@ export function EnvironmentReadiness({
                   ))}
                 </ul>
               )}
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <Identity label="Promotion hash" value={p.promotion_hash} />
-                <Identity label="Source configuration version" value={p.config.fromVersion} />
-                <Identity label="Target configuration version" value={p.config.toVersion} />
-                <Identity label="Source configuration hash" value={p.config.sourceHash} />
-                <Identity label="Target configuration hash" value={p.config.targetHash} />
-                <Identity label="Source release set" value={p.sourceRelease?.id} />
-                <Identity label="Target release set" value={p.targetRelease?.id} />
-              </dl>
-              <p>
-                Secrets and managed credentials stay with the target; shared resources are not
-                copied.
-              </p>
-              {p.qualification ? (
-                <div className="space-y-2 well rounded-xl bg-muted/40 p-3">
-                  <p>
-                    Qualification: {p.qualification.id} · {p.qualification.status}
-                  </p>
-                  <p>
-                    Returned expiry: <code>{p.qualification.expires_at}</code>
-                  </p>
-                  <dl className="grid gap-3 sm:grid-cols-2">
-                    <Identity
-                      label="Qualified release set"
-                      value={p.qualification.release_set_id}
-                    />
-                    <Identity
-                      label="Qualified configuration version"
-                      value={p.qualification.configuration_version}
-                    />
-                    <Identity
-                      label="Qualified configuration hash"
-                      value={p.qualification.configuration_hash}
-                    />
-                  </dl>
-                  <p>
-                    Bound secret revision fingerprints:{' '}
-                    {Object.entries(p.qualification.secret_revision_hashes).map(([name, hash]) => (
-                      <span key={name} className="block break-all font-mono text-xs">
-                        {name}: {hash}
-                      </span>
-                    ))}
-                  </p>
-                  {p.qualification.checks.map((check) => (
-                    <div key={check.name}>
-                      <p>
-                        {check.name}: {check.status}
-                      </p>
-                      {check.results.map((result, i) => (
-                        <p key={i}>
-                          {result.workload_slug} · {result.deployment_id}: {result.status}
-                          {result.error_code ? ` · ${result.error_code}` : ''}
-                        </p>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ) : (
+              <Disclosure label="Show promotion details">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <Identity label="Promotion hash" value={p.promotion_hash} />
+                  <Identity label="Source configuration version" value={p.config.fromVersion} />
+                  <Identity label="Target configuration version" value={p.config.toVersion} />
+                  <Identity label="Source configuration hash" value={p.config.sourceHash} />
+                  <Identity label="Target configuration hash" value={p.config.targetHash} />
+                  <Identity label="Source release set" value={p.sourceRelease?.id} />
+                  <Identity label="Target release set" value={p.targetRelease?.id} />
+                </dl>
                 <p>
-                  No qualification receipt returned.{' '}
-                  {p.qualification_required
-                    ? 'This preview requires qualification.'
-                    : 'This preview does not require it.'}
+                  Secrets and managed credentials stay with the target; shared resources are not
+                  copied.
                 </p>
-              )}
-              <ul aria-label="Preview workload identities" className="space-y-3">
-                {p.changes.map((change) => (
-                  <li key={change.workload_slug} className="well rounded-xl bg-muted/40 p-3">
-                    <p className="break-all">
-                      {change.workload_slug}: {change.kind}
+                {p.qualification ? (
+                  <div className="space-y-2 well rounded-xl bg-muted/40 p-3">
+                    <p>
+                      Qualification: {p.qualification.id} · {p.qualification.status}
+                    </p>
+                    <p>
+                      Returned expiry: <code>{p.qualification.expires_at}</code>
                     </p>
                     <dl className="grid gap-3 sm:grid-cols-2">
-                      <Identity label="Source revision" value={change.source_revision} />
-                      <Identity label="Target revision" value={change.target_revision} />
-                      <Identity label="Source deployment" value={change.source_deployment_id} />
-                      <Identity label="Target deployment" value={change.target_deployment_id} />
                       <Identity
-                        label="Source workload hash"
-                        value={change.source_workload_config_hash}
+                        label="Qualified release set"
+                        value={p.qualification.release_set_id}
                       />
                       <Identity
-                        label="Target workload hash"
-                        value={change.target_workload_config_hash}
+                        label="Qualified configuration version"
+                        value={p.qualification.configuration_version}
+                      />
+                      <Identity
+                        label="Qualified configuration hash"
+                        value={p.qualification.configuration_hash}
                       />
                     </dl>
-                  </li>
-                ))}
-              </ul>
+                    <p>
+                      Bound secret revision fingerprints:{' '}
+                      {Object.entries(p.qualification.secret_revision_hashes).map(
+                        ([name, hash]) => (
+                          <span key={name} className="block break-all font-mono text-xs">
+                            {name}: {hash}
+                          </span>
+                        )
+                      )}
+                    </p>
+                    {p.qualification.checks.map((check) => (
+                      <div key={check.name}>
+                        <p>
+                          {check.name}: {check.status}
+                        </p>
+                        {check.results.map((result, i) => (
+                          <p key={i}>
+                            {result.workload_slug} · {result.deployment_id}: {result.status}
+                            {result.error_code ? ` · ${result.error_code}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p>
+                    No qualification receipt returned.{' '}
+                    {p.qualification_required
+                      ? 'This preview requires qualification.'
+                      : 'This preview does not require it.'}
+                  </p>
+                )}
+                <ul aria-label="Preview workload identities" className="space-y-3">
+                  {p.changes.map((change) => (
+                    <li key={change.workload_slug} className="well rounded-xl bg-muted/40 p-3">
+                      <p className="break-all">
+                        {change.workload_slug}: {change.kind}
+                      </p>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <Identity label="Source revision" value={change.source_revision} />
+                        <Identity label="Target revision" value={change.target_revision} />
+                        <Identity label="Source deployment" value={change.source_deployment_id} />
+                        <Identity label="Target deployment" value={change.target_deployment_id} />
+                        <Identity
+                          label="Source workload hash"
+                          value={change.source_workload_config_hash}
+                        />
+                        <Identity
+                          label="Target workload hash"
+                          value={change.target_workload_config_hash}
+                        />
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              </Disclosure>
             </>
           ) : (
             <p role="alert">Preview details do not match this selection. Refresh before review.</p>
           )}
         </div>
       </Panel>
-      <Panel title="Recorded promotion operations">
-        <div className="space-y-4 p-4 text-sm">
+      <Panel title="Past promotions">
+        <div className="space-y-4 text-sm">
           <label className="flex flex-col gap-1.5">
             Recorded status
             <Select
@@ -368,10 +365,10 @@ export function EnvironmentReadiness({
         </div>
       </Panel>
       <Panel
-        title="Inspect a known approval"
+        title="Look up an approval"
         help="Enter the approval ID from a CLI or API operation, never a token."
       >
-        <div className="space-y-3 p-4 text-sm">
+        <div className="space-y-3 text-sm">
           <form
             onSubmit={(e) => {
               e.preventDefault();
