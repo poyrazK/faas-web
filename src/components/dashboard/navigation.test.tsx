@@ -364,6 +364,17 @@ describe('dashboard navigation foundation', () => {
     );
   });
 
+  it('keeps the environment on the way back to the project overview', async () => {
+    await renderShell('/dashboard/releases?project=shop&env=staging');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    const home = within(main).getByRole('link', { name: 'Project overview' });
+    expect(home.getAttribute('href')).toContain('env=staging');
+    // Leaving the project still drops it.
+    expect(
+      within(main).getByRole('link', { name: 'Back to Overview' }).getAttribute('href')
+    ).not.toContain('env=');
+  });
+
   it('keeps every account destination visible before a project, desktop and mobile', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
