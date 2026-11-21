@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
-import { EnvironmentDiffView } from './environment-diff';
-import { EnvironmentStateView } from './environment-state';
+import { EnvironmentDifferences } from './environment-diff';
+import { EnvironmentTechnical } from './environment-state';
 import type { EnvironmentDiff, EnvironmentState } from '@/lib/api/projects';
 const config = {
   project_slug: 'shop',
@@ -16,7 +17,7 @@ const routes = {
   declared_routes: [],
 };
 const policies = { ownership: 'application' as const, rules: [] };
-it('keeps unknown secret fingerprints and version drift distinct from equality', () => {
+it('keeps unknown secret fingerprints and version drift distinct from equality', async () => {
   const data: EnvironmentDiff = {
     project_slug: 'shop',
     from_environment: 'production',
@@ -61,7 +62,23 @@ it('keeps unknown secret fingerprints and version drift distinct from equality',
       },
     ],
   };
-  render(<EnvironmentDiffView data={data} />);
+  render(<EnvironmentDifferences data={data} />);
+  // Plain words first: a missing fingerprint is "can't tell", never "the same".
+  expect(
+    screen.getByText(
+      "Can't tell whether secret LEGACY matches: neither side reports a fingerprint."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Secret TOKEN is on a different version (1 in Production, 2 in Staging).')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Releases, variables, routes, headers and domains are the same.')
+  ).toBeInTheDocument();
+  expect(screen.queryByText('No differences Gregale can see.')).not.toBeInTheDocument();
+  // The raw comparison is one click away.
+  expect(screen.queryByText('version_drift', { exact: true })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /technical details/i }));
   expect(screen.getByText('unknown', { exact: true })).toBeInTheDocument();
   expect(screen.getByText('version_drift', { exact: true })).toBeInTheDocument();
   expect(screen.getByText('Fingerprint unknown', { exact: false })).toBeInTheDocument();
@@ -113,7 +130,7 @@ it('shows no published graph separately from a workload live release and safe me
       },
     ],
   };
-  render(<EnvironmentStateView data={data} />);
+  render(<EnvironmentTechnical data={data} />);
   expect(screen.getByText('No active release graph')).toBeInTheDocument();
   expect(screen.getByText('dep-1')).toBeInTheDocument();
   expect(screen.getByText('REGION')).toBeInTheDocument();

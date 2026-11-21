@@ -3,12 +3,15 @@ import {
   useEnvironmentState,
   useProjectEnvironment,
   useProjectEnvironments,
+  projectKeys,
   validEnvironment,
 } from '@/lib/api/projects';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, Panel } from '../primitives';
-import { EnvironmentStateView } from './environment-state';
-import { EnvironmentDiffView } from './environment-diff';
+import { EnvironmentCard } from './environment-card';
+import { EnvironmentDifferences } from './environment-diff';
+import { environmentName } from './environment-words';
 import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
 import { ProjectVerificationRuns } from './project-verification-runs';
@@ -30,6 +33,10 @@ type Props = {
   readinessSearch?: ReadinessSearch;
   onReadinessSearch?: (patch: ReadinessSearch) => void;
 };
+/**
+ * What only the selected environment carries: its queue bindings, release
+ * readiness and verification runs. Its state reads the same query as its card.
+ */
 function SelectedEnvironment({
   accountId,
   plan,
@@ -41,11 +48,16 @@ function SelectedEnvironment({
   onSelectQueueWorkload,
   readinessSearch,
   onReadinessSearch,
-}: Props & { environment: string }) {
+  previewFrom,
+  onPreview,
+}: Props & {
+  environment: string;
+  previewFrom?: string;
+  onPreview?: (from: string) => void;
+}) {
   const detail = useProjectEnvironment(accountId, slug, environment);
   const state = useEnvironmentState(accountId, slug, environment);
-  const diff = useEnvironmentDiff(accountId, slug, environment, compare ?? '');
-  const error = detail.error || state.error || (compare ? diff.error : null);
+  const error = detail.error || state.error;
   if (error)
     return (
       <ErrorState
@@ -53,22 +65,17 @@ function SelectedEnvironment({
         onRetry={() => {
           void detail.refetch();
           void state.refetch();
-          if (compare) void diff.refetch();
         }}
       />
     );
-  if (detail.isPending || state.isPending || (compare && diff.isPending))
+  if (detail.isPending || state.isPending)
     return <LoadingState message="Loading environment details…" />;
   if (
     detail.data?.project_id !== projectId ||
     detail.data?.slug !== environment ||
     state.data?.project_slug !== slug ||
     state.data?.environment !== environment ||
-    state.data?.configuration.environment !== environment ||
-    (compare &&
-      (diff.data?.project_slug !== slug ||
-        diff.data?.from_environment !== compare ||
-        diff.data?.to_environment !== environment))
+    state.data?.configuration.environment !== environment
   )
     return (
       <p role="alert" className="text-sm text-destructive">
@@ -77,25 +84,6 @@ function SelectedEnvironment({
     );
   return (
     <>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <p>
-          {environment}
-          {detail.data.protected ? ' · Protected' : ''}
-        </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={detail.isFetching || state.isFetching || diff.isFetching}
-          onClick={() => {
-            void detail.refetch();
-            void state.refetch();
-            if (compare) void diff.refetch();
-          }}
-        >
-          Refresh environment
-        </Button>
-      </div>
-      <EnvironmentStateView data={state.data} />
       {environment !== 'production' && (
         <StageQueueOverview
           key={`${accountId}:${slug}:${environment}`}
@@ -111,12 +99,13 @@ function SelectedEnvironment({
           onSelectWorkload={onSelectQueueWorkload}
         />
       )}
-      {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
       {onReadinessSearch && (
         <EnvironmentReadiness
           key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
           identity={{ accountId, projectId, project: slug, target: environment }}
           source={compare}
+          previewSource={previewFrom && environmentName(previewFrom)}
+          onPreview={previewFrom ? () => onPreview?.(previewFrom) : undefined}
           operation={readinessSearch?.promotion}
           approval={readinessSearch?.approval}
           before={readinessSearch?.promotionBefore}
@@ -133,6 +122,61 @@ function SelectedEnvironment({
     </>
   );
 }
+
+/**
+ * Two environments compared in words. With no explicit comparison it reads the
+ * first other environment against the selected one, for display only: the
+ * readiness block's promote source stays the explicit `compare`.
+ */
+function Differences({
+  accountId,
+  slug,
+  environment,
+  from,
+  choices,
+  onCompare,
+}: {
+  accountId: string;
+  slug: string;
+  environment: string;
+  from: string;
+  choices: string[];
+  onCompare: (from: string) => void;
+}) {
+  const diff = useEnvironmentDiff(accountId, slug, environment, from);
+  const control = (
+    <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      Compare with
+      <Select
+        aria-label="Compare from"
+        className={selectClass}
+        value={from}
+        onChange={(event) => onCompare(event.target.value)}
+      >
+        {choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {environmentName(choice)}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+  if (diff.error) return <ErrorState error={diff.error} onRetry={() => void diff.refetch()} />;
+  if (diff.isPending) return <LoadingState message="Comparing environments…" />;
+  if (
+    !diff.data ||
+    diff.data.project_slug !== slug ||
+    diff.data.from_environment !== from ||
+    diff.data.to_environment !== environment
+  )
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        Comparison details do not match this selection.
+      </p>
+    );
+  return <EnvironmentDifferences data={diff.data} control={control} />;
+}
+
 /**
  * Environment routes resolve the project under the signed-in account
  * (faas ProjectBySlug(acct.ID, slug)), so in a company workspace they would
@@ -152,14 +196,19 @@ export function ProjectEnvironments(props: Props) {
   return <PersonalProjectEnvironments {...props} />;
 }
 
+/** Production first, then the rest by name. */
+const byStage = (a: { slug: string }, b: { slug: string }) =>
+  a.slug === 'production' ? -1 : b.slug === 'production' ? 1 : a.slug.localeCompare(b.slug);
+
 function PersonalProjectEnvironments(props: Props) {
   const { accountId, projectId, slug, environment, compare, onChange } = props;
   const query = useProjectEnvironments(accountId, slug);
+  const cache = useQueryClient();
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (query.isPending) return <LoadingState message="Loading environments…" />;
-  const items = (query.data ?? []).filter(
-    (item) => item.project_id === projectId && validEnvironment(item.slug)
-  );
+  const items = (query.data ?? [])
+    .filter((item) => item.project_id === projectId && validEnvironment(item.slug))
+    .sort(byStage);
   const selected = environment ?? items.find((item) => item.slug === 'production')?.slug;
   const invalid =
     environment !== undefined &&
@@ -169,74 +218,78 @@ function PersonalProjectEnvironments(props: Props) {
     (!validEnvironment(compare) ||
       compare === selected ||
       !items.some((item) => item.slug === compare));
+  const others = items.filter((item) => item.slug !== selected).map((item) => item.slug);
+  const from = compare && !invalidComparison ? compare : others[0];
+  const select = (next: string) =>
+    onChange({ environment: next, compare: compare === next ? undefined : compare });
   return (
     <>
-      <Panel title="Environments">
-        <div className="flex flex-wrap gap-4 p-4">
-          <label className="flex min-w-40 flex-col gap-2 text-sm">
-            Environment
-            <Select
-              aria-label="Environment"
-              className={selectClass}
-              value={selected ?? ''}
-              onChange={(event) =>
-                onChange({
-                  environment: event.target.value || undefined,
-                  compare: compare === event.target.value ? undefined : compare,
+      <Panel
+        title="Environments"
+        help="Each environment runs its own copy of the project's apps. Choose one to see its releases and queues below."
+        actions={
+          items.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void cache.invalidateQueries({
+                  queryKey: [...projectKeys.detail(accountId, slug), 'environments'],
                 })
               }
             >
-              <option value="">Select an environment</option>
-              {invalid && <option value={environment}>{environment} (unavailable)</option>}
+              Refresh
+            </Button>
+          )
+        }
+      >
+        <div className="flex flex-col gap-4 p-4">
+          {!items.length ? (
+            <p className="text-sm text-muted-foreground">No environments</p>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
               {items.map((item) => (
-                <option value={item.slug} key={item.id}>
-                  {item.slug}
-                </option>
+                <EnvironmentCard
+                  key={item.id}
+                  accountId={accountId}
+                  project={slug}
+                  environment={item}
+                  selected={item.slug === selected && !invalid}
+                  onSelect={() => select(item.slug)}
+                />
               ))}
-            </Select>
-          </label>
-          <label className="flex min-w-40 flex-col gap-2 text-sm">
-            Compare from
-            <Select
-              aria-label="Compare from"
-              className={selectClass}
-              value={compare ?? ''}
-              disabled={!selected || invalid}
-              onChange={(event) =>
-                onChange({ environment: selected, compare: event.target.value || undefined })
-              }
-            >
-              <option value="">No comparison</option>
-              {invalidComparison && <option value={compare}>{compare} (unavailable)</option>}
-              {items
-                .filter((item) => item.slug !== selected)
-                .map((item) => (
-                  <option value={item.slug} key={item.id}>
-                    {item.slug}
-                  </option>
-                ))}
-            </Select>
-          </label>
+            </div>
+          )}
+          {invalid && (
+            <p role="alert" className="text-sm text-destructive">
+              Selected environment is unavailable.
+            </p>
+          )}
+          {invalidComparison && (
+            <p role="alert" className="text-sm text-destructive">
+              Selected comparison is unavailable.
+            </p>
+          )}
         </div>
-        {!items.length && (
-          <p className="px-4 pb-4 text-sm text-muted-foreground">No environments</p>
-        )}
-        {invalid && (
-          <p role="alert" className="px-4 pb-4 text-sm text-destructive">
-            Selected environment is unavailable.
-          </p>
-        )}
-        {invalidComparison && (
-          <p role="alert" className="px-4 pb-4 text-sm text-destructive">
-            Selected comparison is unavailable.
-          </p>
-        )}
       </Panel>
+      {selected && !invalid && from && (
+        <Differences
+          key={`diff:${accountId}:${slug}:${selected}:${from}`}
+          accountId={accountId}
+          slug={slug}
+          environment={selected}
+          from={from}
+          choices={others}
+          onCompare={(next) => onChange({ environment: selected, compare: next })}
+        />
+      )}
       {selected && !invalid && !invalidComparison && (
         <SelectedEnvironment
           key={`${accountId}:${slug}:${selected}:${compare ?? ''}`}
           {...props}
           environment={selected}
+          previewFrom={compare ? undefined : from}
+          onPreview={(next) => onChange({ environment: selected, compare: next })}
         />
       )}
     </>

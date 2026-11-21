@@ -81,6 +81,22 @@ it('shows preview identities without treating can_promote as console authorizati
   expect(screen.getByRole('button', { name: 'Promote' })).toBeDisabled();
   expect(screen.getByText(/Promote, rollback, full clone and GitOps/)).toBeVisible();
 });
+it('offers the comparison shown above as a one-click preview, loading nothing until asked', () => {
+  setup();
+  const onPreview = vi.fn();
+  render(
+    <EnvironmentReadiness
+      identity={identity}
+      previewSource="Staging"
+      onPreview={onPreview}
+      onSearch={vi.fn()}
+    />
+  );
+  expect(vi.mocked(usePromotionPreview)).toHaveBeenCalledWith(identity, '');
+  expect(screen.queryByText('exact-source')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Preview promoting from Staging' }));
+  expect(onPreview).toHaveBeenCalled();
+});
 it('keeps blockers and missing qualification explicit', () => {
   setup();
   vi.mocked(usePromotionPreview).mockReturnValue({

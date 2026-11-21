@@ -41,11 +41,17 @@ it('never maps an explicitly invalid or deleted environment to production', asyn
   const get = spyApi('GET').mockResolvedValue(ok(environments));
   mount('deleted');
   expect(await screen.findByText('Selected environment is unavailable.')).toBeInTheDocument();
-  expect(
-    (get.mock.calls as unknown as unknown[][]).every(
-      (call) => call[0] === '/v1/projects/{slug}/environments'
-    )
-  ).toBe(true);
+  // Each card reads its own environment; nothing reads the deleted one, and
+  // production is not quietly selected in its place.
+  const environments_read = (get.mock.calls as unknown as unknown[][]).map(
+    (call) =>
+      (call[1] as { params?: { path?: { environment?: string } } })?.params?.path?.environment
+  );
+  expect(environments_read).not.toContain('deleted');
+  expect(screen.getByRole('button', { name: 'Production' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  );
 });
 it('selects production only when registered, and reads its exact state', async () => {
   const get = spyApi('GET').mockImplementation(async (path) => {
@@ -70,8 +76,14 @@ it('selects production only when registered, and reads its exact state', async (
     });
   });
   mount();
-  expect(await screen.findByLabelText('Environment')).toHaveValue('production');
-  await waitFor(() => expect(screen.getByText('Release graph unavailable')).toBeInTheDocument());
+  // Production and staging are separate cards; production is selected.
+  expect(await screen.findByRole('button', { name: 'Production' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  expect(screen.getByRole('button', { name: 'Staging' })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByText('Protected')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText('No apps yet')).toBeInTheDocument());
   expect(get).toHaveBeenCalledWith(
     '/v1/projects/{slug}/environments/{environment}/state',
     expect.objectContaining({ params: { path: { slug: 'shop', environment: 'production' } } })

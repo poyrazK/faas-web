@@ -30,6 +30,8 @@ function Identity({ label, value }: { label: string; value: string | number | un
 export function EnvironmentReadiness({
   identity,
   source,
+  previewSource,
+  onPreview,
   operation,
   approval,
   before,
@@ -37,14 +39,20 @@ export function EnvironmentReadiness({
   onSearch,
 }: {
   identity: EnvironmentIdentity;
+  /** The explicit comparison: it also filters the promotion history. */
   source?: string;
+  /** The environment compared above, offered as a one-click preview. */
+  previewSource?: string;
+  onPreview?: () => void;
   operation?: string;
   approval?: string;
   before?: string;
   status?: PromotionFilters['status'];
   onSearch: (patch: ReadinessSearch) => void;
 }) {
-  const preview = usePromotionPreview(identity, source ?? '');
+  // The preview and its ids load only on request: an explicit comparison.
+  const from = source;
+  const preview = usePromotionPreview(identity, from ?? '');
   const history = usePromotionHistory(identity, { source, status, before });
   const receipt = usePromotionReceipt(identity, operation ?? '');
   const approvalReceipt = useApprovalReceipt(identity, approval ?? '');
@@ -55,7 +63,7 @@ export function EnvironmentReadiness({
     !preview.isFetching &&
     preview.data?.project_slug === identity.project &&
     preview.data.to_environment === identity.target &&
-    preview.data.from_environment === source
+    preview.data.from_environment === from
       ? preview.data
       : undefined;
   const r =
@@ -92,8 +100,14 @@ export function EnvironmentReadiness({
               Enforce GitOps
             </Button>
           </div>
-          {!source ? (
-            <p>Select Compare to inspect a source-to-target preview.</p>
+          {!from ? (
+            previewSource && onPreview ? (
+              <Button size="sm" variant="outline" className="self-start" onClick={onPreview}>
+                Preview promoting from {previewSource}
+              </Button>
+            ) : (
+              <p>Select Compare to inspect a source-to-target preview.</p>
+            )
           ) : preview.error ? (
             <div role="alert">
               <p>

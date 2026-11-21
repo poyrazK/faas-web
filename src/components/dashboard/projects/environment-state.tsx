@@ -1,10 +1,9 @@
 import type { EnvironmentState } from '@/lib/api/projects';
-import { Panel } from '../primitives';
 import { publicAppUrl } from '@/lib/app-url';
 export function SharedResources({ items }: { items: EnvironmentState['shared_resources'] }) {
   return (
     items.length > 0 && (
-      <div className="border-t border-border p-4 text-sm">
+      <div className="border-t border-border pt-4 text-sm">
         <h3 className="mb-2 font-medium">Shared resources</h3>
         <ul className="space-y-2">
           {items.map((item) => (
@@ -19,13 +18,16 @@ export function SharedResources({ items }: { items: EnvironmentState['shared_res
     )
   );
 }
-export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
+/**
+ * Everything the environment's state reports — ids, digests, variables,
+ * secret metadata, bindings — for the card's "Technical details". The card
+ * itself says the same thing in plain words.
+ */
+export function EnvironmentTechnical({ data }: { data: EnvironmentState }) {
   return (
-    <Panel
-      title="Effective environment state"
-      actions={<span className="text-xs text-muted-foreground">Snapshot {data.generated_at}</span>}
-    >
-      <div className="space-y-4 p-4 text-sm">
+    <div className="flex flex-col gap-4">
+      <div className="space-y-4 text-sm">
+        <p className="text-xs text-muted-foreground">Snapshot {data.generated_at}</p>
         <div>
           <h3 className="font-medium">Active release graph</h3>
           {data.active_release_set ? (
@@ -164,6 +166,6 @@ export function EnvironmentStateView({ data }: { data: EnvironmentState }) {
         ))}
       </div>
       <SharedResources items={data.shared_resources} />
-    </Panel>
+    </div>
   );
 }
