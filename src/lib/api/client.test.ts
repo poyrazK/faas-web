@@ -80,6 +80,28 @@ describe('a 401 that is not about the session', () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'the TOTP code did not match',
+    'this code was already used; wait for your authenticator app to show the next code',
+  ])('passes a rejected MFA code back to the prompt (%s)', async (detail) => {
+    const { api } = await clientWith(
+      answer(401, {
+        code: 'mfa_invalid_code',
+        status: 401,
+        title: 'Invalid code',
+        detail,
+      })
+    );
+    const { setUnauthorizedHandler, unwrap } = await import('./client');
+    const signOut = vi.fn();
+    setUnauthorizedHandler(signOut);
+
+    await expect(
+      unwrap(api.POST('/v1/account/mfa/verify', { body: { totp: '123456' } }))
+    ).rejects.toMatchObject({ code: 'mfa_invalid_code', detail });
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
   it('still signs out on a 401 about the session', async () => {
     const { api } = await clientWith(
       answer(401, { code: 'unauthorized', status: 401, title: 'x' })
@@ -87,7 +109,7 @@ describe('a 401 that is not about the session', () => {
     const { setUnauthorizedHandler } = await import('./client');
     const signOut = vi.fn();
     setUnauthorizedHandler(signOut);
-    await api.GET('/v1/account');
+    await api.POST('/v1/account/mfa/verify', { body: { totp: '123456' } });
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 });
