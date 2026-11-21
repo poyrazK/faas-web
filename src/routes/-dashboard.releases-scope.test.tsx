@@ -73,7 +73,6 @@ vi.mock('@/components/dashboard/release-previews', () => ({
     return null;
   },
 }));
-vi.mock('@/components/dashboard/release-detail', () => ({ ReleaseDetailPanel: () => null }));
 
 const { DeploymentsPage } = await import('@/components/dashboard/pages/releases');
 

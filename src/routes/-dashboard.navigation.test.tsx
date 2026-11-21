@@ -5,7 +5,6 @@ import { routeTree } from '@/routeTree.gen';
 describe('legacy dashboard bookmarks', () => {
   it.each([
     '/dashboard/apps?q=api&state=running&runtime=node24',
-    '/dashboard/apps/api?tab=Deployments&deployment=dep-1#lifecycle',
     '/dashboard/apps/new?template=hello-world',
     '/dashboard/jobs',
     '/dashboard/instances',
@@ -56,6 +55,12 @@ describe('legacy dashboard bookmarks', () => {
     ['/dashboard/crons', '/dashboard/jobs?section=scheduled'],
     ['/dashboard/triggers', '/dashboard/jobs?section=triggers'],
     ['/dashboard/builds', '/dashboard/releases?view=builds'],
+    // A release is a page now; the dialog's old addresses land there.
+    ['/dashboard/apps/api?tab=Deployments&deployment=dep-1', '/dashboard/apps/api/releases/dep-1'],
+    [
+      '/dashboard/releases?deployment=dep-1&releaseSection=scans',
+      '/dashboard/releases/dep-1?panel=security',
+    ],
     ['/dashboard/team', '/dashboard/settings?section=members'],
     ['/dashboard/keys', '/dashboard/settings?section=api-keys'],
     ['/dashboard/security', '/dashboard/settings?section=security'],

@@ -15,6 +15,7 @@ import { AppCallIt } from './call-it';
 import { FirstResponse } from './first-response';
 import { publicAppUrl } from '@/lib/app-url';
 import { cn } from '@/lib/utils';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 // These are server states, not a simulated percentage or a timed sequence.
 const ACTIVE_STATES: Record<string, [string, string]> = {
@@ -312,10 +313,9 @@ export function DeploymentProgress({
               onRetryOptions={
                 deployment.status === 'failed' && !hideRetryOptions
                   ? () => {
-                      void navigate({
-                        to: '/dashboard/releases',
-                        search: { deployment: deployment.id, releaseSection: 'lifecycle' },
-                      });
+                      void navigate(
+                        releaseLink(deployment.id, { slug: appSlug, panel: 'rollout' })
+                      );
                     }
                   : undefined
               }
@@ -375,8 +375,7 @@ export function DeploymentProgress({
           </div>
           {deploymentId && (
             <Link
-              to="/dashboard/releases"
-              search={{ deployment: deploymentId, releaseSection: 'overview' }}
+              {...releaseLink(deploymentId, { slug: appSlug })}
               className="text-[13px] text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
             >
               Review deployment

@@ -98,7 +98,7 @@ import {
   UnreachableState,
 } from '@/components/dashboard/primitives';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import { releaseLink, redirectOldReleaseLink } from '@/components/dashboard/release-page/links';
 import {
   validateReleasesSearch,
   type ReleaseSection,
@@ -235,13 +235,15 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     workflowRun:
       typeof search.workflowRun === 'string' && search.workflowRun ? search.workflowRun : undefined,
   }),
+  // A release is a page now; old `?deployment=` links open it there.
+  beforeLoad: ({ search, params }) => redirectOldReleaseLink(search, params.appSlug),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { appSlug } = useParams({ from: '/dashboard/apps/$appSlug' });
   const search = Route.useSearch();
-  const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
+  const { tab = 'Overview' } = search;
   // Tabs whose capability apid hides for this account (faas capgate, #5319).
   const registry = useCapabilityRegistry();
   const visibleTabs = visibleAppTabs((id) =>
@@ -322,14 +324,6 @@ function FunctionDetailPage() {
         startedAt: build.started_at,
         finishedAt: build.finished_at,
       });
-    }
-    return byDeployment;
-  }, [buildRecords]);
-  const buildIdsByDeployment = useMemo(() => {
-    const byDeployment = new Map<string, string>();
-    for (const result of buildRecords) {
-      const build = result.data;
-      if (build) byDeployment.set(build.deployment_id, build.id);
     }
     return byDeployment;
   }, [buildRecords]);
@@ -534,15 +528,13 @@ function FunctionDetailPage() {
                         : 'restricted'
                   }
                   onNavigate={(next, id) =>
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        tab: next,
-                        ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
-                      }),
-                      hash: true,
-                      resetScroll: false,
-                    })
+                    void (id
+                      ? navigate(releaseLink(id, { slug: fn.id }))
+                      : navigate({
+                          search: (current) => ({ ...current, tab: next }),
+                          hash: true,
+                          resetScroll: false,
+                        }))
                   }
                   onDeploy={() => {
                     setDeploySubmissionError(null);
@@ -613,36 +605,13 @@ function FunctionDetailPage() {
                   <ImageDeploymentPanel key={appSlug} slug={appSlug} />
                   <DeploymentHistoryPanel
                     slug={fn.id}
-                    selectedDeploymentId={selectedDeploymentId}
                     buildTimings={buildTimings}
-                    onSelect={(id) =>
-                      void navigate({
-                        search: (current) => ({
-                          ...current,
-                          tab: 'Deployments',
-                          deployment: id,
-                          releaseSection: undefined,
-                        }),
-                        hash: true,
-                        resetScroll: false,
-                      })
-                    }
+                    onSelect={(id) => void navigate(releaseLink(id, { slug: fn.id }))}
                     cleanup={<ClearObsoleteDeploymentsButton slug={fn.id} />}
                   />
                   <DeploymentAliasesPanel
                     slug={fn.id}
-                    onOpenDeployment={(id) =>
-                      void navigate({
-                        search: (current) => ({
-                          ...current,
-                          tab: 'Deployments',
-                          deployment: id,
-                          releaseSection: undefined,
-                        }),
-                        hash: true,
-                        resetScroll: false,
-                      })
-                    }
+                    onOpenDeployment={(id) => void navigate(releaseLink(id, { slug: fn.id }))}
                   />
                   <Panel
                     title="Deploy an archive"
@@ -651,48 +620,10 @@ function FunctionDetailPage() {
                     <TarballDeploy
                       slug={fn.id}
                       onDeployed={(id) =>
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            tab: 'Deployments',
-                            deployment: id,
-                            releaseSection: undefined,
-                          }),
-                          hash: true,
-                          replace: true,
-                        })
+                        void navigate({ ...releaseLink(id, { slug: fn.id }), replace: true })
                       }
                     />
                   </Panel>
-                  {selectedDeploymentId && (
-                    <ReleaseDetailPanel
-                      key={selectedDeploymentId}
-                      deploymentId={selectedDeploymentId}
-                      appSlug={fn.id}
-                      timing={buildTimings.get(selectedDeploymentId)}
-                      fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
-                      section={releaseSection ?? 'overview'}
-                      onSectionChange={(next) =>
-                        void navigate({
-                          search: (current) => ({ ...current, releaseSection: next }),
-                          hash: true,
-                          resetScroll: false,
-                        })
-                      }
-                      onClose={() =>
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            tab: 'Deployments',
-                            deployment: undefined,
-                            releaseSection: undefined,
-                          }),
-                          hash: true,
-                          resetScroll: false,
-                        })
-                      }
-                    />
-                  )}
                 </>
               )}
 
@@ -700,16 +631,7 @@ function FunctionDetailPage() {
                 <ReleaseSafety
                   slug={fn.id}
                   onOpenDeployment={(id) =>
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        tab: 'Deployments',
-                        deployment: id,
-                        releaseSection: 'lifecycle',
-                      }),
-                      hash: true,
-                      resetScroll: false,
-                    })
+                    void navigate(releaseLink(id, { slug: fn.id, panel: 'rollout' }))
                   }
                 />
               )}
@@ -931,16 +853,7 @@ function FunctionDetailPage() {
         onSubmissionError={setDeploySubmissionError}
         onAccepted={(deployment) => {
           setActiveDeployment(deployment);
-          void navigate({
-            search: (current) => ({
-              ...current,
-              tab: 'Deployments',
-              deployment: deployment.id,
-              releaseSection: undefined,
-            }),
-            hash: true,
-            replace: true,
-          });
+          void navigate({ ...releaseLink(deployment.id, { slug: fn.id }), replace: true });
         }}
       />
     </div>

@@ -65,11 +65,7 @@ describe('palette resource results', () => {
   });
 
   it.each([
-    [
-      'Deployment deployment-id',
-      '/dashboard/releases',
-      { deployment: 'deployment-id', releaseSection: 'overview' },
-    ],
+    ['Deployment deployment-id', '/dashboard/releases/deployment-id', {}],
     ['api.example.com', '/dashboard/domains', { doctor: 'api.example.com' }],
     ['api-bot', '/dashboard/settings', { section: 'api-keys', scope: 'personal', key: 'key-id' }],
     ['Invocation invocation-id', '/dashboard/invocations', { invocation: 'invocation-id' }],

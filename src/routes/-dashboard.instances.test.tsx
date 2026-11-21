@@ -337,7 +337,7 @@ describe('Instance details', () => {
     );
     expect(view.getByRole('link', { name: 'Open release' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?deployment=dep-1'
+      '/dashboard/apps/alpha/releases/dep-1'
     );
     expect(view.getByRole('link', { name: 'App logs' })).toHaveAttribute(
       'href',
