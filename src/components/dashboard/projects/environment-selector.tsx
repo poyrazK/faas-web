@@ -5,9 +5,12 @@ import {
   useProjectEnvironments,
   validEnvironment,
 } from '@/lib/api/projects';
+import { Refresh } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, Panel } from '../primitives';
-import { EnvironmentStateView } from './environment-state';
+import { SegmentedControl } from '../tabs';
+import { DisclosureSection } from './disclosure';
+import { EnvironmentStateView, liveSentence } from './environment-state';
 import { EnvironmentDiffView } from './environment-diff';
 import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
@@ -17,6 +20,8 @@ import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { Select } from '@/components/ui/field';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
+/** More environments than this and the picker is a menu, not a row of segments. */
+const SEGMENT_LIMIT = 5;
 type Props = {
   accountId: string;
   plan: components['schemas']['CapabilitiesResponse']['plan'];
@@ -75,16 +80,39 @@ function SelectedEnvironment({
         Environment details do not match this selection.
       </p>
     );
+  const readiness = readinessSearch ?? {};
+  // Someone who arrived with a comparison, a promotion or an approval in the
+  // URL came for the release tooling, so it starts open for them.
+  const toolingAsked = Boolean(
+    compare ||
+    readiness.promotion ||
+    readiness.approval ||
+    readiness.promotionBefore ||
+    readiness.promotionStatus
+  );
   return (
     <>
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <p>
-          {environment}
-          {detail.data.protected ? ' · Protected' : ''}
+      {/* The answer for this environment, then the one thing to do with it. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[15px] text-muted-foreground">
+          <span className="text-foreground">
+            {environment} {detail.data.protected ? 'is protected.' : 'is not protected.'}
+          </span>{' '}
+          <span
+            className={
+              state.data.workloads.length > 0 &&
+              state.data.workloads.every((workload) => workload.release.status === 'live')
+                ? 'text-brand'
+                : undefined
+            }
+          >
+            {liveSentence(state.data.workloads)}
+          </span>
         </p>
         <Button
           size="sm"
           variant="outline"
+          className="gap-1.5"
           disabled={detail.isFetching || state.isFetching || diff.isFetching}
           onClick={() => {
             void detail.refetch();
@@ -92,7 +120,8 @@ function SelectedEnvironment({
             if (compare) void diff.refetch();
           }}
         >
-          Refresh environment
+          <Refresh aria-hidden className="h-3.5 w-3.5" />
+          Refresh
         </Button>
       </div>
       <EnvironmentStateView data={state.data} />
@@ -112,24 +141,31 @@ function SelectedEnvironment({
         />
       )}
       {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
-      {onReadinessSearch && (
-        <EnvironmentReadiness
-          key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
-          identity={{ accountId, projectId, project: slug, target: environment }}
-          source={compare}
-          operation={readinessSearch?.promotion}
-          approval={readinessSearch?.approval}
-          before={readinessSearch?.promotionBefore}
-          status={readinessSearch?.promotionStatus}
-          onSearch={onReadinessSearch}
+      <DisclosureSection
+        key={`tooling:${toolingAsked}`}
+        title="Promotions and verification"
+        hint={`Preview promoting another environment into ${environment}, look up past promotions and approvals, and check verification runs.`}
+        defaultOpen={toolingAsked}
+      >
+        {onReadinessSearch && (
+          <EnvironmentReadiness
+            key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
+            identity={{ accountId, projectId, project: slug, target: environment }}
+            source={compare}
+            operation={readinessSearch?.promotion}
+            approval={readinessSearch?.approval}
+            before={readinessSearch?.promotionBefore}
+            status={readinessSearch?.promotionStatus}
+            onSearch={onReadinessSearch}
+          />
+        )}
+        <ProjectVerificationRuns
+          key={`graph-runs:${accountId}:${slug}:${environment}`}
+          accountId={accountId}
+          project={slug}
+          environment={environment}
         />
-      )}
-      <ProjectVerificationRuns
-        key={`graph-runs:${accountId}:${slug}:${environment}`}
-        accountId={accountId}
-        project={slug}
-        environment={environment}
-      />
+      </DisclosureSection>
     </>
   );
 }
@@ -169,11 +205,21 @@ function PersonalProjectEnvironments(props: Props) {
     (!validEnvironment(compare) ||
       compare === selected ||
       !items.some((item) => item.slug === compare));
+  const segments = items.length > 0 && items.length <= SEGMENT_LIMIT && !invalid;
   return (
     <>
-      <Panel title="Environments">
-        <div className="flex flex-wrap gap-4 p-4">
-          <label className="flex min-w-40 flex-col gap-2 text-sm">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        {segments ? (
+          <SegmentedControl
+            label="Environment"
+            value={selected ?? ''}
+            options={items.map((item) => ({ key: item.slug, label: item.slug }))}
+            onChange={(next) =>
+              onChange({ environment: next, compare: compare === next ? undefined : compare })
+            }
+          />
+        ) : (
+          <label className="flex min-w-40 flex-col gap-1.5 text-xs text-muted-foreground">
             Environment
             <Select
               aria-label="Environment"
@@ -195,8 +241,10 @@ function PersonalProjectEnvironments(props: Props) {
               ))}
             </Select>
           </label>
-          <label className="flex min-w-40 flex-col gap-2 text-sm">
-            Compare from
+        )}
+        {items.length > 1 && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            Compare with
             <Select
               aria-label="Compare from"
               className={selectClass}
@@ -206,7 +254,7 @@ function PersonalProjectEnvironments(props: Props) {
                 onChange({ environment: selected, compare: event.target.value || undefined })
               }
             >
-              <option value="">No comparison</option>
+              <option value="">Nothing</option>
               {invalidComparison && <option value={compare}>{compare} (unavailable)</option>}
               {items
                 .filter((item) => item.slug !== selected)
@@ -217,21 +265,19 @@ function PersonalProjectEnvironments(props: Props) {
                 ))}
             </Select>
           </label>
-        </div>
-        {!items.length && (
-          <p className="px-4 pb-4 text-sm text-muted-foreground">No environments</p>
         )}
-        {invalid && (
-          <p role="alert" className="px-4 pb-4 text-sm text-destructive">
-            Selected environment is unavailable.
-          </p>
-        )}
-        {invalidComparison && (
-          <p role="alert" className="px-4 pb-4 text-sm text-destructive">
-            Selected comparison is unavailable.
-          </p>
-        )}
-      </Panel>
+      </div>
+      {!items.length && <p className="text-sm text-muted-foreground">No environments</p>}
+      {invalid && (
+        <p role="alert" className="text-sm text-destructive">
+          Selected environment is unavailable.
+        </p>
+      )}
+      {invalidComparison && (
+        <p role="alert" className="text-sm text-destructive">
+          Selected comparison is unavailable.
+        </p>
+      )}
       {selected && !invalid && !invalidComparison && (
         <SelectedEnvironment
           key={`${accountId}:${slug}:${selected}:${compare ?? ''}`}

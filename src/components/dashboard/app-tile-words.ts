@@ -35,7 +35,8 @@ export function runtimeLabel(runtime: string | undefined): string {
 export interface DeployNote {
   tone: 'critical' | 'warning';
   text: string;
-  at: number;
+  /** When the deployment was created; absent when the source reports no time. */
+  at?: number;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 import { EnvironmentDiffView } from './environment-diff';
 import { EnvironmentStateView } from './environment-state';
@@ -68,7 +69,7 @@ it('keeps unknown secret fingerprints and version drift distinct from equality',
   expect(screen.getByText('Shared across environments')).toBeInTheDocument();
   expect(screen.queryByText('Environments match')).not.toBeInTheDocument();
 });
-it('shows no published graph separately from a workload live release and safe metadata', () => {
+it('shows no published graph separately from a workload live release and safe metadata', async () => {
   const data: EnvironmentState = {
     project_slug: 'shop',
     environment: 'staging',
@@ -114,11 +115,18 @@ it('shows no published graph separately from a workload live release and safe me
     ],
   };
   render(<EnvironmentStateView data={data} />);
-  expect(screen.getByText('No active release graph')).toBeInTheDocument();
+  // The row says what is live; ids and metadata wait behind "Show details".
+  expect(screen.getByText('Live')).toBeInTheDocument();
+  expect(screen.getByText(/no release set active/)).toBeInTheDocument();
+  expect(screen.queryByText('dep-1')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Show details' }));
   expect(screen.getByText('dep-1')).toBeInTheDocument();
   expect(screen.getByText('REGION')).toBeInTheDocument();
   expect(screen.getByText('eu')).toBeInTheDocument();
   expect(screen.getAllByText(/generation 3/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Snapshot/)).toHaveTextContent('2026-10-09T10:00:00Z');
+  expect(screen.getByText(/^Read/).querySelector('time')).toHaveAttribute(
+    'datetime',
+    '2026-10-09T10:00:00.000Z'
+  );
   expect(screen.queryByRole('button', { name: /promote|clone|save/i })).not.toBeInTheDocument();
 });

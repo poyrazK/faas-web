@@ -36,6 +36,8 @@ export function AppTile({
   app,
   label,
   deploy,
+  fallbackState,
+  detail,
 }: {
   slug: string;
   app?: Workflow;
@@ -43,6 +45,10 @@ export function AppTile({
   label?: string;
   /** The latest deployment, when it failed or is still running. */
   deploy?: DeployNote | null;
+  /** The state another answer reported, shown when the app itself is not loaded. */
+  fallbackState?: string;
+  /** One more line under the name: what the app calls, for instance. */
+  detail?: ReactNode;
 }) {
   const runsOn = [
     runtimeLabel(app?.runtime),
@@ -56,7 +62,7 @@ export function AppTile({
         {app ? (
           <StateBadge state={app.state} />
         ) : (
-          <span className="text-muted-foreground">State not loaded</span>
+          <span className="text-muted-foreground">{fallbackState || 'State not loaded'}</span>
         )}
         {deploy && (
           <span
@@ -65,7 +71,8 @@ export function AppTile({
               deploy.tone === 'critical' ? 'text-status-critical' : 'text-status-warning'
             )}
           >
-            · {deploy.text} {formatRelative(deploy.at)}
+            · {deploy.text}
+            {deploy.at != null && ` ${formatRelative(deploy.at)}`}
           </span>
         )}
       </p>
@@ -79,6 +86,7 @@ export function AppTile({
           {app?.name ?? slug}
         </Link>
         {label && <p className="truncate text-[13px] text-muted-foreground">{label}</p>}
+        {detail && <p className="truncate text-[13px] text-muted-foreground">{detail}</p>}
       </div>
 
       <p className="mt-auto flex items-center justify-between gap-3 text-xs text-muted-foreground">
