@@ -340,10 +340,14 @@ function SidebarBody({
   const labelCls = sidebarLabelClass(collapsed);
   return (
     <>
+      {/* Inside the console the logo is the way home: the account Overview,
+          leaving any project — not the marketing site. */}
       <Link
-        to="/"
+        to="/dashboard"
+        search={{ project: undefined }}
+        onClick={onNavigate}
         className="relative flex h-9 items-center overflow-hidden px-2.5 py-1"
-        aria-label="Gregale home"
+        aria-label="Gregale — go to Overview"
       >
         {/* Mint recolours of the wordmark: the brand green vanishes on the
             console's near-black, so the dark surface gets its own step.
