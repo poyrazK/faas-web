@@ -331,7 +331,8 @@ describe('Releases hub', () => {
         within(details).getByRole('button', { name: `Copy: ${label} ${value}` })
       ).toBeInTheDocument();
     }
-  });
+    // Typing a full ID, then a page and a popup: over 5 s under load.
+  }, 15_000);
 
   it('copies the full deployment ID from the list without opening the release', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
