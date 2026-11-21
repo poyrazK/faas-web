@@ -89,7 +89,8 @@ const byStage = (a: ProjectEnvironment, b: ProjectEnvironment) =>
 export function useEnvironmentScope(): EnvironmentScope {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const env = useRouterState({
-    select: (s) => validateEnvironmentSearch(s.location.search as Record<string, unknown>).env,
+    select: (s) =>
+      validateEnvironmentSearch((s.location.search ?? {}) as Record<string, unknown>).env,
   });
   const { project } = useProjectScope();
   const { account } = useAuth();

@@ -19,6 +19,7 @@ import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
 import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
+import { EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
 import { ProjectScopeProvider, isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
@@ -595,6 +596,7 @@ function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <WorkspaceSwitcher />
       <ProjectSwitcher />
+      <EnvironmentSwitcher />
 
       {trail.map(({ label, to, search }, i) => {
         const last = i === trail.length - 1;
