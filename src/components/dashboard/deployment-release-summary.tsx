@@ -23,9 +23,12 @@ function isNotFound(error: unknown): boolean {
 export function DeploymentReleaseSummary({
   appSlug,
   deploymentId,
+  showRollback = true,
 }: {
   appSlug: string;
   deploymentId: string;
+  /** False where the page already leads with this rollback, so it appears once. */
+  showRollback?: boolean;
 }) {
   const summary = useDeploymentSummary(appSlug, deploymentId);
   // The drawer's own rollback flow: confirmation, cross-release check, status.
@@ -35,7 +38,8 @@ export function DeploymentReleaseSummary({
   const targetRevision = summary.data?.rollback_target_revision;
   const targetLabel = targetRevision ? `v${targetRevision}` : targetId?.slice(0, 8);
   // A superseded release carries its own "Roll back to vN" in the drawer.
-  const offerRollback = summary.data?.deployment.status.toLowerCase() !== 'superseded';
+  const offerRollback =
+    showRollback && summary.data?.deployment.status.toLowerCase() !== 'superseded';
 
   let body: React.ReactNode;
   if (phase === 'loading') {
@@ -84,7 +88,7 @@ export function DeploymentReleaseSummary({
           </div>
         )}
       </div>
-      {rollback.operation && (
+      {showRollback && rollback.operation && (
         <div className="mt-3">
           <RollbackStatus
             slug={appSlug}

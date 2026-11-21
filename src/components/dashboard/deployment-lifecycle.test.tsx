@@ -7,13 +7,19 @@ import type { ReactNode } from 'react';
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
-    search,
+    params = {},
+    search = {},
     children,
   }: {
     to: string;
-    search: Record<string, string>;
+    params?: Record<string, string>;
+    search?: Record<string, string>;
     children: ReactNode;
-  }) => <a href={`${to}?${new URLSearchParams(search)}`}>{children}</a>,
+  }) => {
+    const query = new URLSearchParams(search).toString();
+    const path = to.replace(/\$(\w+)/g, (_, key: string) => params[key] ?? '');
+    return <a href={query ? `${path}?${query}` : path}>{children}</a>;
+  },
 }));
 
 const cancel = vi.fn();
@@ -83,7 +89,7 @@ describe('DeploymentLifecycle', () => {
     expect(retry).toHaveBeenCalledWith({ id: 'd'.repeat(32), from_stage: 'source_download' });
     expect(await screen.findByRole('link', { name: 'View new deployment' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?deployment=new-deployment&releaseSection=overview'
+      '/dashboard/apps/api/releases/new-deployment'
     );
     expect(screen.getByRole('status')).toHaveTextContent('failed record is unchanged');
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
@@ -257,7 +263,7 @@ describe('DeploymentLifecycle', () => {
     expect(screen.getByRole('button', { name: 'Retry deployment' })).toBeDisabled();
     expect(screen.getByRole('link', { name: 'Check deployment history' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?'
+      '/dashboard/releases'
     );
   });
 

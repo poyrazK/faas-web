@@ -766,7 +766,7 @@ function ImageJourney({
                       <li key={item.id} className="break-all text-sm">
                         <a
                           className="text-brand underline"
-                          href={`/dashboard/releases?deployment=${encodeURIComponent(item.id)}`}
+                          href={`/dashboard/releases/${encodeURIComponent(item.id)}`}
                         >
                           {item.id}
                         </a>{' '}

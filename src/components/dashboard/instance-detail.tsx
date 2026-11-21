@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/modal';
 import type { components } from '@/lib/api/schema';
 import { InlinePhase, queryPhase } from './primitives';
 import { WakeWaterfall } from './wake-waterfall';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 type Instance = components['schemas']['InstanceResponse'];
 const missing = 'Not reported';
@@ -104,9 +105,7 @@ export function InstanceDetail({
                 </Link>
               )}
               {instance.deployment_id && (
-                <Link to="/dashboard/releases" search={{ deployment: instance.deployment_id }}>
-                  Open release
-                </Link>
+                <Link {...releaseLink(instance.deployment_id, { slug })}>Open release</Link>
               )}
               {slug && (
                 <Link to="/dashboard/logs" search={{ app: slug }}>

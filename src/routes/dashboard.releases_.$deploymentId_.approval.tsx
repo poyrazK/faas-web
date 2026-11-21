@@ -3,6 +3,7 @@ import { CapabilityGate } from '@/components/dashboard/capability-gate';
 import { DeploymentDiff } from '@/components/dashboard/deployment-diff';
 import { PageHeader, Panel } from '@/components/dashboard/primitives';
 import { ReleaseApproval } from '@/components/dashboard/release-approvals';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { useDeployment } from '@/lib/api/queries';
 import { useReleaseApproval } from '@/lib/api/release-approvals';
 import { pageHead } from '@/lib/seo';
@@ -19,7 +20,7 @@ interface ApprovalSearch extends Record<string, unknown> {
  * intent only prepares the action. Not nested under Releases: it is its own
  * page, reached from a link.
  */
-export const Route = createFileRoute('/dashboard/releases_/$deploymentId/approval')({
+export const Route = createFileRoute('/dashboard/releases_/$deploymentId_/approval')({
   component: ReleaseApprovalPage,
   validateSearch: (raw: Record<string, unknown>): ApprovalSearch => ({
     ...raw,
@@ -36,15 +37,7 @@ export function ReleaseApprovalPage() {
       <PageHeader
         title="Release approval"
         help="Approve the release to let its rollout continue, or reject it to abort the rollout."
-        actions={
-          <Link
-            to="/dashboard/releases"
-            search={{ deployment: deploymentId, releaseSection: 'lifecycle' }}
-            className="text-sm text-brand underline-offset-4 hover:underline"
-          >
-            Open the release
-          </Link>
-        }
+        actions={<OpenReleaseLink deploymentId={deploymentId} />}
       />
       <CapabilityGate capability="release-approvals" title="Release approval">
         <ApprovalBody deploymentId={deploymentId} intent={intent} />
@@ -79,5 +72,51 @@ function ApprovalBody({
         />
       )}
     </>
+  );
+}
+
+const LINK_CLASS = 'text-sm text-brand underline-offset-4 hover:underline';
+
+/**
+ * Approvers are often organization members who did not create the app, so the
+ * link names the app the approval status reports rather than leaving the
+ * release shortcut to find it. While approvals are off nothing is read, and the
+ * shortcut resolves the app instead.
+ */
+function OpenReleaseLink({ deploymentId }: { deploymentId: string }) {
+  const { access } = useCapabilityAccess('release-approvals');
+  if (access === 'on') return <OpenReleaseByApp deploymentId={deploymentId} />;
+  return (
+    <Link
+      to="/dashboard/releases/$deploymentId"
+      params={{ deploymentId }}
+      search={{ panel: 'rollout' }}
+      className={LINK_CLASS}
+    >
+      Open the release
+    </Link>
+  );
+}
+
+function OpenReleaseByApp({ deploymentId }: { deploymentId: string }) {
+  const app = useReleaseApproval(deploymentId).data?.app;
+  return app ? (
+    <Link
+      to="/dashboard/apps/$appSlug/releases/$deploymentId"
+      params={{ appSlug: app, deploymentId }}
+      search={{ panel: 'rollout' }}
+      className={LINK_CLASS}
+    >
+      Open the release
+    </Link>
+  ) : (
+    <Link
+      to="/dashboard/releases/$deploymentId"
+      params={{ deploymentId }}
+      search={{ panel: 'rollout' }}
+      className={LINK_CLASS}
+    >
+      Open the release
+    </Link>
   );
 }

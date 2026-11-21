@@ -13,12 +13,12 @@ vi.mock('@tanstack/react-router', () => ({
     children,
   }: {
     to: string;
-    params?: { appSlug: string };
+    params?: Record<string, string>;
     search?: Record<string, string>;
     children: ReactNode;
   }) => (
     <a
-      href={`${to.replace('$appSlug', params?.appSlug ?? '')}${search ? '?' + new URLSearchParams(search) : ''}`}
+      href={`${to.replace(/\$(\w+)/g, (_, key: string) => params?.[key] ?? '')}${search ? '?' + new URLSearchParams(search) : ''}`}
     >
       {children}
     </a>
@@ -116,7 +116,7 @@ describe('resource activity timeline', () => {
     expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View release' })).toHaveAttribute(
       'href',
-      `/dashboard/releases?deployment=${release}&releaseSection=audit`
+      `/dashboard/apps/api/releases/${release}?panel=activity`
     );
     expect(
       ['View settings', 'View environment'].map((name) =>

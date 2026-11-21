@@ -292,8 +292,9 @@ describe('first deployment progress', () => {
     expect(screen.getByText('Build output')).toHaveFocus();
     await userEvent.click(screen.getByRole('button', { name: 'Retry options' }));
     expect(api.navigate).toHaveBeenCalledWith({
-      to: '/dashboard/releases',
-      search: { deployment: 'deploy-1', releaseSection: 'lifecycle' },
+      to: '/dashboard/releases/$deploymentId',
+      params: { deploymentId: 'deploy-1' },
+      search: { panel: 'rollout' },
     });
   });
 

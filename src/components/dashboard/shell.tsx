@@ -572,7 +572,7 @@ function Breadcrumbs() {
   const project = appPage && !scope.project ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
-  const trail: { label: string; to?: string; search?: { scope: 'personal' } }[] = [];
+  const trail: { label: string; to?: string; search?: Record<string, string> }[] = [];
   const projectPage = section === 'projects' && Boolean(detail);
   // Inside a project, its own page and its apps' pages hang off the switcher.
   if (hub && (hub.label !== pageLabel || detail) && !(scope.project && (projectPage || appPage))) {
@@ -582,10 +582,21 @@ function Breadcrumbs() {
   if (projectPage && !scope.project) trail.push({ label: detail });
   if (project)
     trail.push({ label: project, to: `/dashboard/projects/${encodeURIComponent(project)}` });
+  // A release page trails through its app and the app's Deployments tab.
+  const releasePage = appPage && segments[2] === 'releases' && Boolean(segments[3]);
   if (section === 'apps' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
+      ...(releasePage ? { to: `/dashboard/apps/${encodeURIComponent(detail)}` } : {}),
     });
+  }
+  if (releasePage) {
+    trail.push({
+      label: 'Deployments',
+      to: `/dashboard/apps/${encodeURIComponent(detail)}`,
+      search: { tab: 'Deployments' },
+    });
+    trail.push({ label: 'Release' });
   }
   const orgSupport = section === 'orgs' && segments[2] === 'support';
   if (section === 'support' || orgSupport) {

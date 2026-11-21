@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findNavHub,
   NAV_GROUPS,
   NAV_ITEMS,
   railGroupFor,
@@ -74,5 +75,11 @@ describe('nav items gated on a capability', () => {
     const labels = visibleNavItems(NAV_ITEMS, off('object-storage')).map((i) => i.label);
     expect(labels).not.toContain('Object storage');
     expect(labels).toContain('Postgres');
+  });
+});
+
+describe('release pages', () => {
+  it('light Projects, as the app page they belong to does', () => {
+    expect(findNavHub('/dashboard/apps/api/releases/dep-1')?.label).toBe('Projects');
   });
 });
