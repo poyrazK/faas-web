@@ -6,6 +6,7 @@
 line, bento tiles and a facts strip, where each tile opens a centred popup.
 
 **Architecture:**
+
 - **Canonical page:** a new un-nested TanStack file route at
   `/dashboard/apps/$appSlug/releases/$deploymentId` renders `ReleasePage` from a new
   `src/components/dashboard/release-page/` folder.
@@ -47,7 +48,7 @@ argues from it.
 ## Review Focus
 
 1. **The URL slug and the release's app disagree** (`/apps/a/releases/<id of b's
-   release>`). The page must say "This release is not part of this app." and render no
+release>`). The page must say "This release is not part of this app." and render no
    tile from b's data. Test in Task 2.
 2. **An invalid or irrelevant `panel` in the URL** (`panel=nope`, or `panel=canary` on a
    non-canary release). No popup opens, and the param is dropped with `replace`. Tests in
@@ -66,10 +67,12 @@ argues from it.
 ### Task 1: Panel model and old-section mapping
 
 **Files:**
+
 - Create: `src/components/dashboard/release-page/panels.ts`
 - Test: `src/components/dashboard/release-page/panels.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `RELEASE_PANELS: readonly ReleasePanel[]`, in the order of the Global Constraints list.
   - `type ReleasePanel` (union of those strings).
@@ -90,7 +93,7 @@ argues from it.
   - `panelForSection('audit')` returns `'activity'`.
   - `panelForSection('overview')` and `panelForSection(undefined)` return `undefined`.
 - [ ] **Step 2:** Run `npx vitest run src/components/dashboard/release-page/panels.test.ts`.
-  Expect FAIL (module not found).
+      Expect FAIL (module not found).
 - [ ] **Step 3:** Implement `panels.ts` with the exports above.
 - [ ] **Step 4:** Run the same test. Expect PASS.
 - [ ] **Step 5:** Commit: `feat(release-page): panel model and old section mapping`.
@@ -98,6 +101,7 @@ argues from it.
 ### Task 2: Canonical route, page shell, header and facts strip
 
 **Files:**
+
 - Create: `src/routes/dashboard.apps.$appSlug_.releases.$deploymentId.tsx` (route file).
 - Create: `src/components/dashboard/release-page/release-page.tsx` (`ReleasePage`).
 - Create: `src/components/dashboard/release-page/release-header.tsx`.
@@ -109,6 +113,7 @@ argues from it.
   `useProjectScope`).
 
 **Interfaces:**
+
 - Consumes: Task 1's `ReleasePanel`, `validateReleasePageSearch`.
 - Produces:
   - `Route` for `/dashboard/apps/$appSlug_/releases/$deploymentId`. It uses
@@ -148,7 +153,7 @@ argues from it.
   - `drops an unknown panel`: `?panel=canary` on a non-canary release leaves no dialog,
     and the location search has no `panel` (Review Focus 2).
 - [ ] **Step 2:** Run `npx vitest run src/routes/-dashboard.apps.releases-page.test.tsx`.
-  Expect FAIL.
+      Expect FAIL.
 - [ ] **Step 3: Implement.**
   - **Route file:** un-nest it with the trailing `_` (spec § URL and routing). After the
     deployment resolves, call `useDocumentTitle(\`${releaseName} · ${appSlug}\`)`.
@@ -171,10 +176,12 @@ argues from it.
 ### Task 3: Tile primitive and grid
 
 **Files:**
+
 - Create: `src/components/dashboard/release-page/tile.tsx`
 - Test: `src/components/dashboard/release-page/tile.test.tsx`
 
 **Interfaces:**
+
 - Produces:
   - `ReleaseTile` takes these props:
     - `title: string`
@@ -187,9 +194,8 @@ argues from it.
     - `onRetry?: () => void`
     - `onOpen: () => void`
     - `span?: 1 | 2`
-  - `ReleaseTile` renders one `<button>` with `aria-label={\`Open ${title}\`}` and the
-    `.surface` class, plus `.bento-label` for the title.
-  - In the `error` and `unreachable` states it renders `InlinePhase` with a retry, *and*
+  - `ReleaseTile` renders one `<button>` with `aria-label={\`Open ${title}\`}`and the`.surface`class, plus`.bento-label` for the title.
+  - In the `error` and `unreachable` states it renders `InlinePhase` with a retry, _and_
     still opens the popup on click.
   - `ReleaseTileGrid({ children })`: `grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-4`;
     `span=2` maps to `md:col-span-2`.
@@ -203,14 +209,15 @@ argues from it.
   - The accessible name is "Open Security".
 - [ ] **Step 2:** Run it. Expect FAIL.
 - [ ] **Step 3:** Implement. Retry is a nested control, so render the tile as a `div` with
-  `role="group"`, and make the title row the single `<button>`. Never nest a button inside
-  a button.
+      `role="group"`, and make the title row the single `<button>`. Never nest a button inside
+      a button.
 - [ ] **Step 4:** Run it. Expect PASS.
 - [ ] **Step 5:** Commit: `feat(release-page): tile primitive`.
 
 ### Task 4: The nine tiles and their popups
 
 **Files:**
+
 - Create: `src/components/dashboard/release-page/tiles.tsx`, holding every
   `ReleaseTileSpec` plus small read hooks. If it passes ~250 lines, split it into
   `tiles-change.tsx` (changes, output, activity) and `tiles-evidence.tsx` (security,
@@ -219,6 +226,7 @@ argues from it.
 - Test: `src/components/dashboard/release-page/tiles.test.tsx`
 
 **Interfaces:**
+
 - Consumes: Task 3's `ReleaseTile`, `ReleaseTileSpec`; Task 2's `ReleaseContext`.
 - Produces: `RELEASE_TILES: ReleaseTileSpec[]`, in this order: changes(2), output(2),
   rollout, runtime, security, provenance, release-command, canary, activity(2).
@@ -226,17 +234,17 @@ argues from it.
 
 Tile key values and popup bodies are exactly the spec's tile table. Sources:
 
-| panel | tile reads | `when` | Popup |
-|---|---|---|---|
-| changes | `useReleaseDiff(id).data.summary`; empty → "No earlier release to compare" | always | `DeploymentReleaseSummary` (with `showRollback={false}`, added in Task 5) + `DeploymentDiff` |
-| output | the last 2 of `useLogStream({kind:'build', deploymentId, limit: 500}).lines` + build `duration_seconds` | always | `LogStreamRecovery` + `LogView` (move the empty-state copy from `release-detail.tsx:350-358`) |
-| rollout | `traffic_percent`; "Step n of m" when canary | always | Task 5 |
-| runtime | `useDeploymentRuntime(id).data.status` in plain words | always | `DeploymentControls` (same `key` as `release-detail.tsx:401`) + `DeploymentRuntime` |
-| security | `useDeploymentScan(id).data.severity_counts` critical + high; `useDeploymentSecretScan(id).data.findings.length`; a 404 → "Not scanned" | always | `ReleaseScans` |
-| provenance | `useBuildProvenance(build_id)`: `commit_sha.slice(0,7)` + "SBOM ready" when `sbom_storage_key` | `Boolean(deployment.build_id)` | `ReleaseProvenance` |
-| release-command | `deployment.release.status` + duration from `started_at`/`finished_at` (no duration while either is missing) | `Boolean(deployment.release)` | `ReleaseCommand` |
-| canary | "Step {canary_step} of {canary_total_steps}" | `Boolean(deployment.canary_total_steps)` | `CanaryHealth` |
-| activity | `useDeploymentAudit(id, 1).data.items[0]` (`kind`, `actor`, `at`), as "{label} by {actor} · {relative at}". The label comes from `AUDIT_LABEL` in `deployment-insights.tsx:34`; export it, don't copy it. | always | `ResourceActivityTimeline` + `DeploymentAudit` |
+| panel           | tile reads                                                                                                                                                                                                | `when`                                   | Popup                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------- |
+| changes         | `useReleaseDiff(id).data.summary`; empty → "No earlier release to compare"                                                                                                                                | always                                   | `DeploymentReleaseSummary` (with `showRollback={false}`, added in Task 5) + `DeploymentDiff`  |
+| output          | the last 2 of `useLogStream({kind:'build', deploymentId, limit: 500}).lines` + build `duration_seconds`                                                                                                   | always                                   | `LogStreamRecovery` + `LogView` (move the empty-state copy from `release-detail.tsx:350-358`) |
+| rollout         | `traffic_percent`; "Step n of m" when canary                                                                                                                                                              | always                                   | Task 5                                                                                        |
+| runtime         | `useDeploymentRuntime(id).data.status` in plain words                                                                                                                                                     | always                                   | `DeploymentControls` (same `key` as `release-detail.tsx:401`) + `DeploymentRuntime`           |
+| security        | `useDeploymentScan(id).data.severity_counts` critical + high; `useDeploymentSecretScan(id).data.findings.length`; a 404 → "Not scanned"                                                                   | always                                   | `ReleaseScans`                                                                                |
+| provenance      | `useBuildProvenance(build_id)`: `commit_sha.slice(0,7)` + "SBOM ready" when `sbom_storage_key`                                                                                                            | `Boolean(deployment.build_id)`           | `ReleaseProvenance`                                                                           |
+| release-command | `deployment.release.status` + duration from `started_at`/`finished_at` (no duration while either is missing)                                                                                              | `Boolean(deployment.release)`            | `ReleaseCommand`                                                                              |
+| canary          | "Step {canary_step} of {canary_total_steps}"                                                                                                                                                              | `Boolean(deployment.canary_total_steps)` | `CanaryHealth`                                                                                |
+| activity        | `useDeploymentAudit(id, 1).data.items[0]` (`kind`, `actor`, `at`), as "{label} by {actor} · {relative at}". The label comes from `AUDIT_LABEL` in `deployment-insights.tsx:34`; export it, don't copy it. | always                                   | `ResourceActivityTimeline` + `DeploymentAudit`                                                |
 
 - [ ] **Step 1: Write the failing tests** (via `spyApi`):
   - `security says Not scanned on a 404 and the page still renders the other tiles`
@@ -250,14 +258,15 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
     and a dialog titled "Security".
 - [ ] **Step 2:** Run it. Expect FAIL.
 - [ ] **Step 3:** Implement the specs and register them in `release-page.tsx`.
-  `WhenCapable` gates stay inside the popups that already use them.
+      `WhenCapable` gates stay inside the popups that already use them.
 - [ ] **Step 4:** Run it. Expect PASS. Then run Task 2's route test again; it should still
-  pass.
+      pass.
 - [ ] **Step 5:** Commit: `feat(release-page): tiles and popups`.
 
 ### Task 5: Header main action and the grouped Traffic & rollout popup
 
 **Files:**
+
 - Create: `src/components/dashboard/release-page/main-action.ts` (pure choice) and
   `main-action.tsx` (renders it).
 - Create: `src/components/dashboard/release-page/rollout-popup.tsx`.
@@ -268,6 +277,7 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
 - Test: `main-action.test.ts`, `rollout-popup.test.tsx`
 
 **Interfaces:**
+
 - Produces:
   - `type MainAction = { kind: 'retry' } | { kind: 'advance-canary' } | { kind: 'rollback-to-this' } | { kind: 'rollback-to'; targetId: string; targetLabel: string } | { kind: 'promote' }`.
   - `chooseMainAction(d: Deployment, summary?: DeploymentSummary): MainAction | null`.
@@ -321,6 +331,7 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
 ### Task 6: Slug-free shortcut route and approval link
 
 **Files:**
+
 - Create: `src/routes/dashboard.releases_.$deploymentId.tsx` (`ReleaseResolver`).
 - Rename: `dashboard.releases_.$deploymentId.approval.tsx` →
   `dashboard.releases_.$deploymentId_.approval.tsx`, with `createFileRoute` path
@@ -333,6 +344,7 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
 - Test: `src/routes/-dashboard.releases-resolver.test.tsx`, `src/lib/ids.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1's `validateReleasePageSearch`; `useApps`, `useWorkspaceTarget`,
   `useOrgApps` (`lib/api/workspace-apps.ts`).
 - Produces: `resolveAppSlug(appId: string, personal: App[] | undefined, org: OrgAppSummary[] | undefined): string | undefined`,
@@ -352,14 +364,15 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
     - The approval page still renders at `/dashboard/releases/<id>/approval`.
 - [ ] **Step 2:** Run them. Expect FAIL.
 - [ ] **Step 3:** Implement. Render, then `navigate({ replace: true })` once the slug resolves;
-  until then, show `LoadingState`. Only wait on `useOrgApps` when `target.org` is set, so the
-  "never pass a disabled query's pending" rule holds.
+      until then, show `LoadingState`. Only wait on `useOrgApps` when `target.org` is set, so the
+      "never pass a disabled query's pending" rule holds.
 - [ ] **Step 4:** Run them, plus `src/routes/-dashboard.releases.test.tsx`. Expect PASS.
 - [ ] **Step 5:** Commit: `feat(release-page): slug-free release shortcut`.
 
 ### Task 7: Redirects, entry points, breadcrumb and nav
 
 **Files:**
+
 - Modify: `src/routes/dashboard.releases.tsx`. Add a `beforeLoad`: when `search.deployment`
   is set, redirect (`replace`) to `/dashboard/releases/$deploymentId` with
   `panel: panelForSection(search.releaseSection)`, keeping `project`. Leave `build` alone.
@@ -385,6 +398,7 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
   - then the last crumb is "Release".
 
   The header carries the real release name, so the breadcrumb can stay route-only.
+
 - Check `findNavHub` in `nav-config.ts`. `/dashboard/apps/x/releases/y` must light
   Projects. It already falls through the Apps hub rule; add a test, and change code only
   if the test fails.
@@ -406,12 +420,13 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
 - [ ] **Step 2:** Run them. Expect FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run `npm run test -- --maxWorkers=8 src/routes src/components/dashboard`.
-  Expect PASS, apart from tests that assert the old popup; Task 8 owns those.
+      Expect PASS, apart from tests that assert the old popup; Task 8 owns those.
 - [ ] **Step 5:** Commit: `feat(release-page): route every release link to the page`.
 
 ### Task 8: Build-only popup, removing `ReleaseDetailPanel`, updating old tests
 
 **Files:**
+
 - Create: `src/components/dashboard/build-detail.tsx` (`BuildDetailPanel`). Lift the
   no-deployment branch of `release-detail.tsx`: build `EvidenceFields`, build output, and
   `ReleaseProvenance`, under the sections `overview`/`output`/`provenance` and `Modal` title
@@ -434,18 +449,19 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
 - Test: `src/components/dashboard/build-detail.test.tsx`
 
 - [ ] **Step 1: Write the failing test.** `BuildDetailPanel` for a build with no deployment
-  shows "Build details", source size, and the SBOM download for a succeeded build.
-  Then update the route tests listed above.
+      shows "Build details", source size, and the SBOM download for a succeeded build.
+      Then update the route tests listed above.
 - [ ] **Step 2:** Run `npx vitest run src/routes/-dashboard.releases.test.tsx src/components/dashboard/build-detail.test.tsx`.
-  Expect FAIL.
+      Expect FAIL.
 - [ ] **Step 3:** Implement, then delete the old files.
 - [ ] **Step 4:** Run `npm run test -- --maxWorkers=8`, then `npm run check`. Expect
-  everything to pass with 4 lint warnings.
+      everything to pass with 4 lint warnings.
 - [ ] **Step 5:** Commit: `refactor(release-page): build-only popup, remove release detail dialog`.
 
 ### Task 9: Mock coverage, tour, full verification
 
 **Files:**
+
 - Modify: `mock/` handlers, only if `npm run dev:mock` returns `404 not_mocked` for one of
   `/v1/deployments/{id}/diff`, `/runtime`, `/scan`, `/secret-scan`, `/audit`,
   `/v1/builds/{id}/provenance`, `/v1/apps/{slug}/deployments/{id}/summary`.
@@ -454,9 +470,9 @@ Tile key values and popup bodies are exactly the spec's tile table. Sources:
   `?panel=security`, taking a deployment ID from the mock seed.
 
 - [ ] **Step 1:** Run `MOCK_API=1 npm run dev:mock`, open a seeded release page, and confirm
-  the dev server logs no `not_mocked`. Add any missing handler.
+      the dev server logs no `not_mocked`. Add any missing handler.
 - [ ] **Step 2:** Run `BASE_URL=http://localhost:3000 npm run tour`. Expect it to pass with
-  no error boundary and no spinner left running. Repeat with `MOCK_BUILD_FAIL=1` on a
-  freshly deployed release; the failure card and Retry should show.
+      no error boundary and no spinner left running. Repeat with `MOCK_BUILD_FAIL=1` on a
+      freshly deployed release; the failure card and Retry should show.
 - [ ] **Step 3:** Run `npm run build`. Expect success.
 - [ ] **Step 4:** Commit: `test(release-page): mock coverage and tour`.

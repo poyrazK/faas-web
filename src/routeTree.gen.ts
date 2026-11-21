@@ -86,6 +86,7 @@ import { Route as DocsApiIndexRouteImport } from './routes/docs.api.index'
 import { Route as DocsApiGroupRouteImport } from './routes/docs.api.$group'
 import { Route as StatusIncidentsIdRouteImport } from './routes/status.incidents.$id'
 import { Route as DashboardReleasesDeploymentIdApprovalRouteImport } from './routes/dashboard.releases_.$deploymentId.approval'
+import { Route as DashboardAppsAppSlugReleasesDeploymentIdRouteImport } from './routes/dashboard.apps.$appSlug_.releases.$deploymentId'
 import { Route as DashboardOrgsOrgSupportIndexRouteImport } from './routes/dashboard.orgs.$org.support.index'
 import { Route as DashboardOrgsOrgSupportTicketRouteImport } from './routes/dashboard.orgs.$org.support.$ticket'
 
@@ -477,6 +478,12 @@ const DashboardReleasesDeploymentIdApprovalRoute =
     path: '/releases/$deploymentId/approval',
     getParentRoute: () => DashboardRoute,
   } as any)
+const DashboardAppsAppSlugReleasesDeploymentIdRoute =
+  DashboardAppsAppSlugReleasesDeploymentIdRouteImport.update({
+    id: '/apps/$appSlug_/releases/$deploymentId',
+    path: '/apps/$appSlug/releases/$deploymentId',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 const DashboardOrgsOrgSupportIndexRoute =
   DashboardOrgsOrgSupportIndexRouteImport.update({
     id: '/orgs/$org/support/',
@@ -568,6 +575,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/apps/$appSlug/releases/$deploymentId': typeof DashboardAppsAppSlugReleasesDeploymentIdRoute
   '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
   '/dashboard/orgs/$org/support/': typeof DashboardOrgsOrgSupportIndexRoute
 }
@@ -645,6 +653,7 @@ export interface FileRoutesByTo {
   '/dashboard/workflows': typeof DashboardWorkflowsIndexRoute
   '/docs/api': typeof DocsApiIndexRoute
   '/dashboard/releases/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/apps/$appSlug/releases/$deploymentId': typeof DashboardAppsAppSlugReleasesDeploymentIdRoute
   '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
   '/dashboard/orgs/$org/support': typeof DashboardOrgsOrgSupportIndexRoute
 }
@@ -727,6 +736,7 @@ export interface FileRoutesById {
   '/dashboard/workflows/': typeof DashboardWorkflowsIndexRoute
   '/docs/api/': typeof DocsApiIndexRoute
   '/dashboard/releases_/$deploymentId/approval': typeof DashboardReleasesDeploymentIdApprovalRoute
+  '/dashboard/apps/$appSlug_/releases/$deploymentId': typeof DashboardAppsAppSlugReleasesDeploymentIdRoute
   '/dashboard/orgs/$org/support/$ticket': typeof DashboardOrgsOrgSupportTicketRoute
   '/dashboard/orgs/$org/support/': typeof DashboardOrgsOrgSupportIndexRoute
 }
@@ -810,6 +820,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows/'
     | '/docs/api/'
     | '/dashboard/releases/$deploymentId/approval'
+    | '/dashboard/apps/$appSlug/releases/$deploymentId'
     | '/dashboard/orgs/$org/support/$ticket'
     | '/dashboard/orgs/$org/support/'
   fileRoutesByTo: FileRoutesByTo
@@ -887,6 +898,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows'
     | '/docs/api'
     | '/dashboard/releases/$deploymentId/approval'
+    | '/dashboard/apps/$appSlug/releases/$deploymentId'
     | '/dashboard/orgs/$org/support/$ticket'
     | '/dashboard/orgs/$org/support'
   id:
@@ -968,6 +980,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows/'
     | '/docs/api/'
     | '/dashboard/releases_/$deploymentId/approval'
+    | '/dashboard/apps/$appSlug_/releases/$deploymentId'
     | '/dashboard/orgs/$org/support/$ticket'
     | '/dashboard/orgs/$org/support/'
   fileRoutesById: FileRoutesById
@@ -1526,6 +1539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardReleasesDeploymentIdApprovalRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/apps/$appSlug_/releases/$deploymentId': {
+      id: '/dashboard/apps/$appSlug_/releases/$deploymentId'
+      path: '/apps/$appSlug/releases/$deploymentId'
+      fullPath: '/dashboard/apps/$appSlug/releases/$deploymentId'
+      preLoaderRoute: typeof DashboardAppsAppSlugReleasesDeploymentIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/orgs/$org/support/': {
       id: '/dashboard/orgs/$org/support/'
       path: '/orgs/$org/support'
@@ -1626,6 +1646,7 @@ interface DashboardRouteChildren {
   DashboardSupportIndexRoute: typeof DashboardSupportIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
   DashboardReleasesDeploymentIdApprovalRoute: typeof DashboardReleasesDeploymentIdApprovalRoute
+  DashboardAppsAppSlugReleasesDeploymentIdRoute: typeof DashboardAppsAppSlugReleasesDeploymentIdRoute
   DashboardOrgsOrgSupportTicketRoute: typeof DashboardOrgsOrgSupportTicketRoute
   DashboardOrgsOrgSupportIndexRoute: typeof DashboardOrgsOrgSupportIndexRoute
 }
@@ -1688,6 +1709,8 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,
   DashboardReleasesDeploymentIdApprovalRoute:
     DashboardReleasesDeploymentIdApprovalRoute,
+  DashboardAppsAppSlugReleasesDeploymentIdRoute:
+    DashboardAppsAppSlugReleasesDeploymentIdRoute,
   DashboardOrgsOrgSupportTicketRoute: DashboardOrgsOrgSupportTicketRoute,
   DashboardOrgsOrgSupportIndexRoute: DashboardOrgsOrgSupportIndexRoute,
 }

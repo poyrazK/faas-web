@@ -63,7 +63,7 @@ deployment ID: the command palette, instance detail, and old bookmarks. This rou
 `/v1/deployments/{id}`, then finds the app's slug by `app_id`, and redirects (`replace`)
 to the canonical page, carrying `panel`. While it loads it shows the loading state.
 
-Finding the slug *(builder check, my call)*: `DeploymentResponse` has `app_id` but no
+Finding the slug _(builder check, my call)_: `DeploymentResponse` has `app_id` but no
 slug. `/v1/apps` lists only the signed-in account's own apps, and ignores the active
 organization. So look in two places:
 
@@ -131,9 +131,9 @@ Top to bottom:
    first 8 characters), a status label (`ReleaseStatusLabel`), the traffic share ("Live ·
    100% of traffic"), and the preview URL (`DeploymentPreviewUrl`). An "Updating" spinner
    shows while the deployment is not terminal; it polls every 2.5 s as today.
-   - **One main action**, chosen by state, first match wins *(builder check, my call:
+   - **One main action**, chosen by state, first match wins _(builder check, my call:
      the approved mockup showed "Roll back to v13" on a live release; this reuses the two
-     rollback flows that already exist, with no new rules)*:
+     rollback flows that already exist, with no new rules)_:
      - failed (not cancelled): **Retry**, which opens the `rollout` popup at its recovery
        group.
      - a canary in progress: **Advance canary** (`AdvanceCanaryButton`). Aborting stays in
@@ -171,18 +171,18 @@ merged in #353) so this page matches; do not invent a new card style.
 
 Dashed (conditional) tiles render only when the release has that thing.
 
-| Tile (span) | Key value on the tile | Source | Popup (`panel`) holds |
-| --- | --- | --- | --- |
-| What changed (2) | `ReleaseDiff.summary` ("new code, 2 config keys, 5 packages") | `/v1/deployments/{id}/diff` | `changes`: `DeploymentReleaseSummary` (without its rollback button, now in the header) + `DeploymentDiff` |
-| Build output (2) | last two log lines + build duration | build log SSE (`useLogStream`) + build | `output`: `LogStreamRecovery` + full `LogView` |
-| Traffic & rollout | traffic % ; canary step if any | deployment | `rollout`: grouped Lifecycle (below) + `DeploymentAliasesHere` |
-| Runtime | runtime `status` / `current` in plain words | `/v1/deployments/{id}/runtime` | `runtime`: `DeploymentControls` + `DeploymentRuntime` |
-| Security | critical + high from `severity_counts`; secret findings count | `/scan`, `/secret-scan` | `security`: `ReleaseScans` |
-| Provenance | short commit SHA; "SBOM ready" when `sbom_storage_key` is set | `/v1/builds/{id}/provenance` | `provenance`: `ReleaseProvenance` |
-| Release command (dashed) | its status + duration | `deployment.release` | `release-command`: `ReleaseCommand` |
-| Canary health (dashed) | "Step n of m" + its verdict | deployment canary fields | `canary`: `CanaryHealth` |
-| Activity (2) | latest audit row ("Deployed by you via the CLI · 12 min ago") | `/v1/deployments/{id}/audit` | `activity`: `ResourceActivityTimeline` + `DeploymentAudit` |
-| (facts strip link) | — | deployment + build | `details`: the two `EvidenceFields` lists from today's Overview |
+| Tile (span)              | Key value on the tile                                         | Source                                 | Popup (`panel`) holds                                                                                     |
+| ------------------------ | ------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| What changed (2)         | `ReleaseDiff.summary` ("new code, 2 config keys, 5 packages") | `/v1/deployments/{id}/diff`            | `changes`: `DeploymentReleaseSummary` (without its rollback button, now in the header) + `DeploymentDiff` |
+| Build output (2)         | last two log lines + build duration                           | build log SSE (`useLogStream`) + build | `output`: `LogStreamRecovery` + full `LogView`                                                            |
+| Traffic & rollout        | traffic % ; canary step if any                                | deployment                             | `rollout`: grouped Lifecycle (below) + `DeploymentAliasesHere`                                            |
+| Runtime                  | runtime `status` / `current` in plain words                   | `/v1/deployments/{id}/runtime`         | `runtime`: `DeploymentControls` + `DeploymentRuntime`                                                     |
+| Security                 | critical + high from `severity_counts`; secret findings count | `/scan`, `/secret-scan`                | `security`: `ReleaseScans`                                                                                |
+| Provenance               | short commit SHA; "SBOM ready" when `sbom_storage_key` is set | `/v1/builds/{id}/provenance`           | `provenance`: `ReleaseProvenance`                                                                         |
+| Release command (dashed) | its status + duration                                         | `deployment.release`                   | `release-command`: `ReleaseCommand`                                                                       |
+| Canary health (dashed)   | "Step n of m" + its verdict                                   | deployment canary fields               | `canary`: `CanaryHealth`                                                                                  |
+| Activity (2)             | latest audit row ("Deployed by you via the CLI · 12 min ago") | `/v1/deployments/{id}/audit`           | `activity`: `ResourceActivityTimeline` + `DeploymentAudit`                                                |
+| (facts strip link)       | —                                                             | deployment + build                     | `details`: the two `EvidenceFields` lists from today's Overview                                           |
 
 Gates kept as today: `release-approvals` and `scheduled-releases` sections stay inside
 `WhenCapable`. Capability-hidden content stays hidden; a tile whose whole popup is hidden is
@@ -224,7 +224,7 @@ Split `release-detail.tsx` into:
   tile grid, each tile, and the popup bodies. Keep each file under ~200 lines.
 - **Build-only details:** keep a slim `BuildDetailPanel` popup for the Releases page's Builds view
   (`?build=` with no deployment): build facts, build output and provenance, which is what
-  the panel shows today when no deployment is attached. When the build *has* a deployment,
+  the panel shows today when no deployment is attached. When the build _has_ a deployment,
   the Builds view links to the release page instead.
 - Delete `ReleaseDetailPanel` and the `DeploymentDetailPanel` re-export once nothing imports
   them. `RELEASE_SECTIONS` and `ReleaseSection` stay only for the redirect mapping.
