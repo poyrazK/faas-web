@@ -260,6 +260,8 @@ type ProjectPreviewsProps = {
   projectSlug: string;
   parents: string[];
   selected?: string;
+  /** Start with the list showing: the panel has a page of its own. */
+  defaultOpen?: boolean;
   onSelect: (slug?: string) => void;
 };
 /**
@@ -285,11 +287,12 @@ function CompanyProjectPreviews({
   projectSlug,
   parents,
   selected,
+  defaultOpen = false,
   onSelect,
   org,
   label,
 }: ProjectPreviewsProps & { org: string; label: string }) {
-  const [open, setOpen] = useState(Boolean(selected));
+  const [open, setOpen] = useState(Boolean(selected) || defaultOpen);
   const [limit, setLimit] = useState(10);
   const shown = open || Boolean(selected);
   const query = useOrgApps(shown ? org : null);
@@ -308,18 +311,20 @@ function CompanyProjectPreviews({
       title="PR previews"
       help={`${label}’s previews of this project's apps. The list names each preview; select one for its pull request state and expiry.`}
     >
-      <div className="space-y-4 p-4">
-        <Button
-          size="sm"
-          variant="outline"
-          aria-expanded={shown}
-          onClick={() => {
-            setOpen(!open);
-            if (selected) onSelect(undefined);
-          }}
-        >
-          {shown ? 'Hide previews' : 'Browse previews'}
-        </Button>
+      <div className="space-y-4">
+        {!defaultOpen && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-expanded={shown}
+            onClick={() => {
+              setOpen(!open);
+              if (selected) onSelect(undefined);
+            }}
+          >
+            {shown ? 'Hide previews' : 'Browse previews'}
+          </Button>
+        )}
         {shown &&
           (query.isError ? (
             <ErrorState error={query.error} onRetry={() => void query.refetch()} />
@@ -386,9 +391,10 @@ function PersonalProjectPreviews({
   projectSlug,
   parents,
   selected,
+  defaultOpen = false,
   onSelect,
 }: ProjectPreviewsProps) {
-  const [open, setOpen] = useState(Boolean(selected));
+  const [open, setOpen] = useState(Boolean(selected) || defaultOpen);
   const [limit, setLimit] = useState(10);
   const query = useProjectPreviewApps(accountId, projectSlug, open || Boolean(selected));
   const candidates = [
@@ -406,18 +412,20 @@ function PersonalProjectPreviews({
   const app = candidates.find((item) => item.slug === selected);
   return (
     <Panel title="PR previews">
-      <div className="space-y-4 p-4">
-        <Button
-          size="sm"
-          variant="outline"
-          aria-expanded={open || Boolean(selected)}
-          onClick={() => {
-            setOpen(!open);
-            if (selected) onSelect(undefined);
-          }}
-        >
-          {open || selected ? 'Hide previews' : 'Browse previews'}
-        </Button>
+      <div className="space-y-4">
+        {!defaultOpen && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-expanded={open || Boolean(selected)}
+            onClick={() => {
+              setOpen(!open);
+              if (selected) onSelect(undefined);
+            }}
+          >
+            {open || selected ? 'Hide previews' : 'Browse previews'}
+          </Button>
+        )}
         {(open || selected) &&
           (query.isError ? (
             <ErrorState error={query.error} onRetry={() => void query.refetch()} />

@@ -43,21 +43,24 @@ export interface OverviewStatsProps {
   };
 }
 
-const UNKNOWN = <span className="text-muted-foreground">—</span>;
+export const UNKNOWN = <span className="text-muted-foreground">—</span>;
 const gbh = (v: number) => v.toLocaleString('en', { maximumFractionDigits: 2 });
-const Unit = ({ children }: { children: ReactNode }) => (
+export const Unit = ({ children }: { children: ReactNode }) => (
   <span className="ml-1 text-sm font-normal text-muted-foreground">{children}</span>
 );
 
-function StatCard({
+export function StatCard({
   label,
   hint,
   sub,
   large,
+  tone,
   className,
   children,
 }: {
   label: string;
+  /** The card's verdict on its own figure: a faint glow in that colour, as on app tiles. */
+  tone?: 'good' | 'warning' | 'critical';
   /** What the figure is, for a hover; the card itself says only the number. */
   hint: string;
   /** The quiet last line — real context, so the card ends composed. */
@@ -70,8 +73,9 @@ function StatCard({
     <section
       aria-label={label}
       title={hint}
+      data-tone={tone}
       className={cn(
-        'surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card p-5',
+        'stat-card surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card p-5',
         large && 'min-h-36',
         className
       )}
