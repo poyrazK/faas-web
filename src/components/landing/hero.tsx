@@ -9,6 +9,10 @@ import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
 import { HeroHeadline } from './hero-headline';
 import { CompatibilityEntry } from './compatibility-entry';
+import frosted600Avif from '@/assets/landing/gregale-frosted-600.avif';
+import frosted1040Avif from '@/assets/landing/gregale-frosted-1040.avif';
+import frosted600Webp from '@/assets/landing/gregale-frosted-600.webp';
+import frosted1040Webp from '@/assets/landing/gregale-frosted-1040.webp';
 
 /**
  * The hero: one full screen of light with the words alone in the middle of
@@ -24,7 +28,19 @@ import { CompatibilityEntry } from './compatibility-entry';
  * on the light the way the reference overlays its flare. Overlay over paper
  * is paper, so at rest the mark is barely there; it shows where the shader's
  * beam passes through it, and only then.
+ *
+ * It draws at 300px on phones and 520px from `sm` up, so it ships at twice
+ * those widths, as AVIF with a WebP fallback, content-hashed under /assets/.
+ * The 1254px `public/gregale-frosted.png` (1.9 MB) is the master the variants
+ * are cut from; regenerate them with ImageMagick:
+ *
+ *   convert public/gregale-frosted.png -strip -resize 600x600 -quality 60 src/assets/landing/gregale-frosted-600.avif
+ *   convert public/gregale-frosted.png -strip -resize 600x600 -quality 75 -define webp:alpha-quality=80 src/assets/landing/gregale-frosted-600.webp
+ *
+ * and the same at 1040x1040.
  */
+const EMBLEM_SIZES = '(min-width: 640px) 520px, 300px';
+
 function Emblem() {
   return (
     <div
@@ -33,13 +49,23 @@ function Emblem() {
       className="pointer-events-none absolute inset-x-0 top-[72px] flex justify-center sm:top-[96px]"
       style={{ mixBlendMode: 'overlay', opacity: 1 }}
     >
-      <img
-        src="/gregale-frosted.png"
-        alt=""
-        width={1246}
-        height={1246}
-        className="h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]"
-      />
+      <picture>
+        <source
+          type="image/avif"
+          srcSet={`${frosted600Avif} 600w, ${frosted1040Avif} 1040w`}
+          sizes={EMBLEM_SIZES}
+        />
+        <img
+          src={frosted1040Webp}
+          srcSet={`${frosted600Webp} 600w, ${frosted1040Webp} 1040w`}
+          sizes={EMBLEM_SIZES}
+          alt=""
+          width={1040}
+          height={1040}
+          decoding="async"
+          className="h-[300px] w-[300px] sm:h-[520px] sm:w-[520px]"
+        />
+      </picture>
     </div>
   );
 }
