@@ -21,7 +21,7 @@ const environments = ['production', 'staging'].map((slug) => ({
   created_at: '2026-10-01T00:00:00Z',
   updated_at: '2026-10-01T00:00:00Z',
 }));
-function mount(environment?: string) {
+function mount(environment = 'production') {
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -71,12 +71,8 @@ it('selects production only when registered, and reads its exact state', async (
     });
   });
   mount();
-  // Few environments are a row of segments, with production chosen.
-  const picker = await screen.findByRole('group', { name: 'Environment' });
-  expect(within(picker).getByRole('button', { name: 'production' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  // No picker here: the top bar chose production (no ?env=).
+  expect(screen.queryByRole('group', { name: 'Environment' })).not.toBeInTheDocument();
   // The answer for the environment comes first, from what the API returned.
   expect(await screen.findByText('production is protected.')).toBeInTheDocument();
   expect(screen.getByText('No apps in this environment.')).toBeInTheDocument();
@@ -185,4 +181,12 @@ it('shows no comparison for a project with one environment', async () => {
   await screen.findByText(/production is protected/i);
   expect(screen.queryByText(/compared with/)).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Compare from')).not.toBeInTheDocument();
+});
+
+it('shows the environment the URL is in, with no picker of its own', async () => {
+  answerEnvironments();
+  mount('staging');
+  expect(await screen.findByText(/staging is not protected/i)).toBeInTheDocument();
+  expect(screen.queryByRole('radiogroup', { name: 'Environment' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Environment')).not.toBeInTheDocument();
 });

@@ -8,7 +8,6 @@ import {
 import { Refresh } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState, LoadingState, Panel } from '../primitives';
-import { SegmentedControl } from '../tabs';
 import { DisclosureSection } from './disclosure';
 import { EnvironmentStateView, liveSentence } from './environment-state';
 import { EnvironmentDifferences } from './environment-diff';
@@ -21,17 +20,16 @@ import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { Select } from '@/components/ui/field';
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring';
-/** More environments than this and the picker is a menu, not a row of segments. */
-const SEGMENT_LIMIT = 5;
 type Props = {
   accountId: string;
   plan: components['schemas']['CapabilitiesResponse']['plan'];
   projectId: string;
   slug: string;
-  environment?: string;
+  /** The top bar's environment (`?env=`, production when absent). */
+  environment: string;
   compare?: string;
   queueWorkload?: string;
-  onChange: (next: { environment?: string; compare?: string }) => void;
+  onChange: (next: { compare?: string }) => void;
   onSelectQueueWorkload: (slug?: string) => void;
   readinessSearch?: ReadinessSearch;
   onReadinessSearch?: (patch: ReadinessSearch) => void;
@@ -152,7 +150,7 @@ function SelectedEnvironment({
           environment={environment}
           from={from}
           choices={others}
-          onCompare={(next) => onChange({ environment, compare: next })}
+          onCompare={(next) => onChange({ compare: next })}
         />
       )}
       <DisclosureSection
@@ -167,7 +165,7 @@ function SelectedEnvironment({
             identity={{ accountId, projectId, project: slug, target: environment }}
             source={compare}
             previewSource={!compare && from ? environmentName(from) : undefined}
-            onPreview={from ? () => onChange({ environment, compare: from }) : undefined}
+            onPreview={from ? () => onChange({ compare: from }) : undefined}
             operation={readinessSearch?.promotion}
             approval={readinessSearch?.approval}
             before={readinessSearch?.promotionBefore}
@@ -255,84 +253,25 @@ export function ProjectEnvironments(props: Props) {
 }
 
 function PersonalProjectEnvironments(props: Props) {
-  const { accountId, projectId, slug, environment, compare, onChange } = props;
+  const { accountId, projectId, slug, environment, compare } = props;
   const query = useProjectEnvironments(accountId, slug);
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (query.isPending) return <LoadingState message="Loading environments…" />;
   const items = (query.data ?? []).filter(
     (item) => item.project_id === projectId && validEnvironment(item.slug)
   );
-  const selected = environment ?? items.find((item) => item.slug === 'production')?.slug;
+  // The environment is the top bar's; this tab has no picker of its own.
+  const selected = items.length ? environment : undefined;
   const invalid =
-    environment !== undefined &&
+    items.length > 0 &&
     (!validEnvironment(environment) || !items.some((item) => item.slug === environment));
   const invalidComparison =
     compare !== undefined &&
     (!validEnvironment(compare) ||
       compare === selected ||
       !items.some((item) => item.slug === compare));
-  const segments = items.length > 0 && items.length <= SEGMENT_LIMIT && !invalid;
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        {segments ? (
-          <SegmentedControl
-            label="Environment"
-            value={selected ?? ''}
-            options={items.map((item) => ({ key: item.slug, label: item.slug }))}
-            onChange={(next) =>
-              onChange({ environment: next, compare: compare === next ? undefined : compare })
-            }
-          />
-        ) : (
-          <label className="flex min-w-40 flex-col gap-1.5 text-xs text-muted-foreground">
-            Environment
-            <Select
-              aria-label="Environment"
-              className={selectClass}
-              value={selected ?? ''}
-              onChange={(event) =>
-                onChange({
-                  environment: event.target.value || undefined,
-                  compare: compare === event.target.value ? undefined : compare,
-                })
-              }
-            >
-              <option value="">Select an environment</option>
-              {invalid && <option value={environment}>{environment} (unavailable)</option>}
-              {items.map((item) => (
-                <option value={item.slug} key={item.id}>
-                  {item.slug}
-                </option>
-              ))}
-            </Select>
-          </label>
-        )}
-        {items.length > 1 && (
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            Compare with
-            <Select
-              aria-label="Compare from"
-              className={selectClass}
-              value={compare ?? ''}
-              disabled={!selected || invalid}
-              onChange={(event) =>
-                onChange({ environment: selected, compare: event.target.value || undefined })
-              }
-            >
-              <option value="">Nothing</option>
-              {invalidComparison && <option value={compare}>{compare} (unavailable)</option>}
-              {items
-                .filter((item) => item.slug !== selected)
-                .map((item) => (
-                  <option value={item.slug} key={item.id}>
-                    {item.slug}
-                  </option>
-                ))}
-            </Select>
-          </label>
-        )}
-      </div>
       {!items.length && <p className="text-sm text-muted-foreground">No environments</p>}
       {invalid && (
         <p role="alert" className="text-sm text-destructive">
