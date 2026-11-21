@@ -30,6 +30,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sparks,
   Timer,
   Upload,
   ViewGrid,
@@ -228,6 +229,14 @@ export const NAV_HUBS: NavHub[] = [
     icon: Journal,
   },
   {
+    // Account-wide: an agent is a key on the account (or the company), and
+    // its approvals, budget and undo are a person's to decide, not an app's.
+    // Core (catalog `api-keys`), so the row carries no capability gate.
+    to: '/dashboard/agents',
+    label: 'Agents',
+    icon: Sparks,
+  },
+  {
     to: '/dashboard/usage',
     label: 'Billing',
     icon: GraphUp,
@@ -285,7 +294,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   // The Debugger is per app (the app's Observe section); its account route is
   // an app picker, reachable from ⌘K rather than a rail row of its own.
   { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
-  { title: 'Account', hubs: ['Billing', 'Support', 'Settings'] },
+  { title: 'Account', hubs: ['Billing', 'Agents', 'Support', 'Settings'] },
 ];
 
 type GroupSpec = { title?: string; hubs: string[]; shared?: boolean; bottom?: boolean };
@@ -314,7 +323,11 @@ export const NAV_GROUPS: NavGroup[] = groupsOf(SIDEBAR_GROUPS);
  */
 export const ACCOUNT_NAV_GROUPS: NavGroup[] = groupsOf([
   { hubs: ['Overview', 'Projects'] },
-  { title: 'Account', hubs: ['Billing', 'Audit log', 'Support', 'Settings'], bottom: true },
+  {
+    title: 'Account',
+    hubs: ['Billing', 'Agents', 'Audit log', 'Support', 'Settings'],
+    bottom: true,
+  },
 ]);
 
 /**

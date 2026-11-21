@@ -27,6 +27,8 @@
 # The built 404.html handles every unmatched URL on Netlify and Cloudflare Pages.
 /dashboard    /index.html   200
 /dashboard/account    /index.html   200
+/dashboard/agents    /index.html   200
+/dashboard/agents/:agentId    /index.html   200
 /dashboard/alerts    /index.html   200
 /dashboard/analytics    /index.html   200
 /dashboard/apis    /index.html   200

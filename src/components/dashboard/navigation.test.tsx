@@ -257,6 +257,7 @@ const RAIL = [
   'Budgets',
   'Invoices',
   'Plans',
+  'Agents',
   'Audit log',
   'Support',
   'Settings',
