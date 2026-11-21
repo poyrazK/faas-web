@@ -19,7 +19,7 @@ import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
 import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
-import { EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
+import { EnvironmentLine, EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
 import { ProjectScopeProvider, isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
@@ -593,7 +593,10 @@ function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+    >
       <WorkspaceSwitcher />
       <ProjectSwitcher />
       <EnvironmentSwitcher />
@@ -915,6 +918,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               >
                 Skip to content
               </a>
+              {/* Outside production, a thin line across the top says so. */}
+              <EnvironmentLine />
               {/* Desktop sidebar */}
               <aside
                 ref={railRef}

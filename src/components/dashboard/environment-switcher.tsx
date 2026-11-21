@@ -32,10 +32,13 @@ const TINT: Record<EnvironmentKind, string> = {
 function Pill({
   kind,
   label,
+  compact = false,
   className,
 }: {
   kind: EnvironmentKind;
   label: string;
+  /** On a phone the top bar is full: show the tinted icon, keep the name for sm and up. */
+  compact?: boolean;
   className?: string;
 }) {
   const Icon = ICON[kind];
@@ -48,7 +51,7 @@ function Pill({
       )}
     >
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      <span className="truncate">{label}</span>
+      <span className={cn('truncate', compact && 'hidden sm:inline')}>{label}</span>
     </span>
   );
 }
@@ -94,9 +97,10 @@ export function EnvironmentSwitcher() {
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`Environment: ${env.name}. Switch environment`}
-          className="pressable flex min-w-0 items-center gap-1 rounded-full outline-none focus-visible:outline-2 focus-visible:outline-brand"
+          className="pressable flex shrink-0 items-center gap-1 rounded-full outline-none focus-visible:outline-2 focus-visible:outline-brand"
         >
-          <Pill kind={unavailable ? 'stage' : env.kind} label={label} className="min-w-0" />
+          {/* Never squeezed away: on a phone the other crumbs give way first. */}
+          <Pill kind={unavailable ? 'stage' : env.kind} label={label} compact />
           <NavArrowDown aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
@@ -159,5 +163,26 @@ export function EnvironmentSwitcher() {
         </DropdownMenuContent>
       </DropdownMenu>
     </>
+  );
+}
+
+/**
+ * A 2px line across the very top of the console whenever you are not in
+ * production: amber in a stage, quiet in a preview, so nobody edits staging
+ * thinking it is production (or the reverse). The pill carries the meaning for
+ * assistive tech; the line is decoration.
+ */
+export function EnvironmentLine() {
+  const env = useEnvironmentScope();
+  if (!env.applies || env.kind === 'production') return null;
+  return (
+    <div
+      aria-hidden
+      data-testid="environment-line"
+      className={cn(
+        'pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5',
+        env.kind === 'stage' ? 'bg-status-warning' : 'bg-muted-foreground/60'
+      )}
+    />
   );
 }

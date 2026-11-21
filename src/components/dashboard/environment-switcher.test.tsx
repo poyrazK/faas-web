@@ -30,7 +30,7 @@ vi.mock('@/lib/project-scope', async (original) => ({
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'a' } }) }));
 
-const { EnvironmentSwitcher } = await import('./environment-switcher');
+const { EnvironmentSwitcher, EnvironmentLine } = await import('./environment-switcher');
 
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const environment = (slug: string) =>
@@ -80,6 +80,7 @@ async function mount(entry = '/dashboard/releases?project=shop') {
     path: '$',
     component: () => (
       <>
+        <EnvironmentLine />
         <EnvironmentSwitcher />
         <Location />
       </>
@@ -192,4 +193,30 @@ it('renders nothing where environments do not apply', async () => {
   env.current = scope({ applies: false });
   await mount('/dashboard/usage');
   expect(screen.queryByRole('button', { name: /Switch environment/ })).toBeNull();
+});
+
+it('draws the amber line in staging and nothing in production or on account pages', async () => {
+  env.current = staging();
+  await mount('/dashboard/releases?project=shop&env=staging');
+  const line = screen.getByTestId('environment-line');
+  expect(line).toHaveClass('bg-status-warning');
+  expect(line).toHaveAttribute('aria-hidden', 'true');
+});
+
+it('draws a quiet line for a preview and none for production', async () => {
+  env.current = scope({ environment: 'pr-42', kind: 'preview', name: 'Pr-42' });
+  await mount('/dashboard/releases?project=shop&env=pr-42');
+  expect(screen.getByTestId('environment-line')).not.toHaveClass('bg-status-warning');
+});
+
+it('draws no line in production', async () => {
+  env.current = scope();
+  await mount();
+  expect(screen.queryByTestId('environment-line')).toBeNull();
+});
+
+it('draws no line where environments do not apply', async () => {
+  env.current = staging({ applies: false });
+  await mount('/dashboard/usage?env=staging');
+  expect(screen.queryByTestId('environment-line')).toBeNull();
 });

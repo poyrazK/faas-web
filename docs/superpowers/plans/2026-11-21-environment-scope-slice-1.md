@@ -33,11 +33,13 @@
 ### Task 1: The `?env=` URL contract
 
 **Files:**
+
 - Create: `src/lib/environment-scope.ts`
 - Create: `src/lib/environment-scope.test.ts`
 - Modify: `src/routes/dashboard.tsx` (the `validateSearch` and `search.middlewares` of the `/dashboard` route)
 
 **Interfaces:**
+
 - Produces:
   - `validateEnvironmentSearch(search: Record<string, unknown>): { env?: string }`: keeps `env` only when `validEnvironment(env)` (from `@/lib/api/projects`) holds and `env !== 'production'`. Production is the absence of the param, so `?env=production` normalises away.
   - `retainEnvironment: SearchMiddleware<{ project?: string; env?: string }>`: keeps the current `env` on a navigation unless the navigation (a) sets `env` explicitly (including to `undefined`), (b) explicitly clears `project`, or (c) sets `project` to a defined value different from a defined current `project`. A current `project` of `undefined` (a project page path) counts as "same project", so links out of `/dashboard/projects/shop?env=staging` keep it.
@@ -105,10 +107,12 @@ git commit -m "feat(console): ?env= scope that stays inside a project"
 ### Task 2: `useEnvironmentScope()`
 
 **Files:**
+
 - Modify: `src/lib/environment-scope.ts`
 - Test: `src/lib/environment-scope.test.ts`
 
 **Interfaces:**
+
 - Consumes: `useProjectScope()` (`@/lib/project-scope`), `isAccountPath`, `STANDALONE`, `useProjectEnvironments(accountId, slug)` (`@/lib/api/projects`), `useAuth()`, `useWorkspaceTarget()`, `useRouterState`.
 - Produces:
 
@@ -169,15 +173,18 @@ git commit -m "feat(console): useEnvironmentScope reads the environment in force
 ### Task 3: The environment pill and its dropdown
 
 **Files:**
+
 - Create: `src/components/dashboard/environment-switcher.tsx`
 - Create: `src/components/dashboard/environment-switcher.test.tsx`
 - Modify: `src/components/dashboard/shell.tsx` (`Breadcrumbs`: render `<EnvironmentSwitcher />` right after `<ProjectSwitcher />`)
 
 **Interfaces:**
+
 - Consumes: `useEnvironmentScope()`, `environmentKind`, `environmentName` (Task 1 and 2), `useEnvironmentState(accountId, slug, environment)` (`@/lib/api/projects`) for each dropdown item's status, `DropdownMenu*` from `@/components/ui/dropdown-menu`.
 - Produces: `export function EnvironmentSwitcher(): JSX.Element | null`, which renders nothing when `!applies`.
 
 The pill (variant A):
+
 - **Trigger:** a `/` separator as `ProjectSwitcher` draws one, then a rounded-full pill, `h-7`, `gap-1.5`, 13px text, containing an icon, the name and a chevron.
   - **Icons:** `ShieldCheck` for production, `Flask` for stages, `GitFork` for previews, all from `iconoir-react`.
   - **Tint:** production `bg-status-good/12 text-status-good ring-1 ring-status-good/30`; stages the same with `status-warning`; previews `bg-muted text-muted-foreground ring-border`.
@@ -228,11 +235,13 @@ git commit -m "feat(console): environment pill in the top bar"
 ### Task 4: The amber line, and a look in the mock
 
 **Files:**
+
 - Modify: `src/components/dashboard/environment-switcher.tsx` (export `EnvironmentLine`)
 - Modify: `src/components/dashboard/shell.tsx` (render `<EnvironmentLine />` once at the top of the shell, before the sidebar)
 - Test: `src/components/dashboard/environment-switcher.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `useEnvironmentScope()`.
 - Produces: `export function EnvironmentLine(): JSX.Element | null`, a `<div aria-hidden data-testid="environment-line" className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 bg-status-warning" />`. It renders when `applies && kind === 'stage'`. For a preview it renders in `bg-muted-foreground/60`; for production it renders nothing.
 
@@ -259,6 +268,7 @@ Expected: types clean, lint shows the 2 known warnings, Prettier clean, every te
 - [ ] **Step 5: Check in the mock**
 
 Run `MOCK_API=1 npx vite --port 3017 --strictPort`, then open `/dashboard/projects/acme-shop` and `/dashboard/releases?project=acme-shop&env=staging` at 1440 and 390 px. The mock seeds `production` and `staging` for acme-shop. Expect:
+
 - **Production:** a green pill and no line.
 - **Staging:** an amber pill and a 2px amber line above the top bar.
 - **Dropdown:** both environments with their statuses.
@@ -292,4 +302,5 @@ git commit -m "feat(console): amber line across the top outside production"
    - **Protected stages are read-only.**
    - **Apps follow the environment's state.** An app the environment lacks shows "isn't in Staging yet".
    - **API pull first,** if any route needs a newer spec.
+
 4. **The "This shows production" banner** and "Save to production" on pages with no environment.
