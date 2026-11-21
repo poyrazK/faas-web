@@ -22,6 +22,8 @@ import { ReleasePanelHost, useReleasePanel, type ReleasePanelSpec } from './pane
 import type { ReleasePanel } from './panels';
 import { ReleaseTileGrid } from './tile';
 import { RELEASE_TILES } from './tiles';
+import { ReleaseMainAction } from './main-action-button';
+import type { RolloutGroup } from './rollout-popup';
 
 export type Build = components['schemas']['BuildResponse'];
 
@@ -93,6 +95,8 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
     return <p className="text-sm text-muted-foreground">This release is not part of this app.</p>;
   if (!ctx) return <ErrorState error={detail.error} onRetry={retry} />;
 
+  const openRollout = (focus?: RolloutGroup) =>
+    open('rollout', focus ? `rollout-${focus}` : undefined);
   const failed =
     deploymentPhase(ctx.deployment.status) === 'failed' &&
     ctx.deployment.status.toLowerCase() !== 'cancelled';
@@ -100,7 +104,10 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
 
   return (
     <div className="flex flex-col gap-6">
-      <ReleaseHeader deployment={ctx.deployment} />
+      <ReleaseHeader
+        deployment={ctx.deployment}
+        actions={<ReleaseMainAction ctx={ctx} onOpenRollout={openRollout} />}
+      />
       {(failed || failedBuild) && (
         <FailurePanel
           summary={failureSummary({
@@ -108,6 +115,7 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
             build: failedBuild ? build : undefined,
           })}
           onViewOutput={() => open('output')}
+          onRetryOptions={failed ? () => openRollout('recover') : undefined}
         />
       )}
       <section aria-label="Process" className="well flex flex-col gap-3 rounded-xl bg-muted/40 p-4">

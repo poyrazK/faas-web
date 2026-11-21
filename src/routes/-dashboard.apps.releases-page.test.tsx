@@ -14,6 +14,8 @@ import { Route as ReleasePageRoute } from './dashboard.apps.$appSlug_.releases.$
 import { spyApi } from '@/test/api';
 
 const fixtures = vi.hoisted(() => ({
+  hiddenCapabilities: [] as string[],
+  summary: undefined as Record<string, unknown> | undefined,
   app: { id: 'app-1', slug: 'alpha' },
   deployment: {} as Record<string, unknown>,
   build: {
@@ -34,9 +36,13 @@ vi.mock('@/lib/project-scope', async (importOriginal) => ({
 vi.mock('@/lib/api/capabilities', async (original) => ({
   ...(await original<typeof import('@/lib/api/capabilities')>()),
   useCapabilityRegistry: () => ({ query: { data: undefined }, phase: 'loading' }),
-  useCapabilityAccess: () => ({ access: 'on', refresh: () => {} }),
+  useCapabilityAccess: (capability: string) => ({
+    access: fixtures.hiddenCapabilities.includes(capability) ? 'hidden' : 'on',
+    refresh: () => {},
+  }),
 }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => vi.fn().mockResolvedValue(true) }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { plan: 'pro' }, loading: false }) }));
 vi.mock('@/lib/api/queries', async (original) => {
   const actual = await original<object>();
@@ -46,7 +52,7 @@ vi.mock('@/lib/api/queries', async (original) => {
     useApp: () => ok(fixtures.app),
     useApps: () => ok([fixtures.app]),
     useBuild: (id: string) => ok(id ? fixtures.build : undefined),
-    useDeploymentSummary: () => ok(undefined),
+    useDeploymentSummary: () => ok(fixtures.summary),
     useDeploymentPreviewUrl: () => ok({ url: '' }),
   };
 });
@@ -100,6 +106,8 @@ async function mount(entry = '/dashboard/apps/alpha/releases/dep-1') {
 beforeEach(() => {
   fixtures.app = { id: 'app-1', slug: 'alpha' };
   fixtures.deployment = deployment();
+  fixtures.summary = undefined;
+  fixtures.hiddenCapabilities = [];
   vi.stubGlobal(
     'EventSource',
     class {
@@ -284,5 +292,51 @@ describe('Release tiles', () => {
     });
     await mount();
     await waitFor(() => expect(tile('Activity')).toHaveTextContent('Created by ada@example.test'));
+  });
+});
+
+describe('Release main action and rollout', () => {
+  it('leads with one rollback that the What changed popup does not repeat', async () => {
+    fixtures.summary = {
+      deployment: fixtures.deployment,
+      previous: null,
+      changes: [],
+      rollback_target_id: 'dep-0',
+      rollback_target_revision: 13,
+    };
+    await mount('/dashboard/apps/alpha/releases/dep-1?panel=changes');
+    await screen.findByRole('dialog', { name: 'What changed' });
+    expect(screen.getAllByRole('button', { name: 'Roll back to v13' })).toHaveLength(1);
+  });
+
+  it('leads a failed release with Retry, which opens the recovery controls', async () => {
+    fixtures.deployment = deployment({ status: 'failed', traffic_percent: 0 });
+    const router = await mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    expect(within(dialog).getByRole('heading', { name: 'Recover' })).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({ panel: 'rollout' });
+  });
+
+  it('groups the rollout controls under plain headings, in order', async () => {
+    await mount('/dashboard/apps/alpha/releases/dep-1?panel=rollout');
+    const dialog = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    const headings = within(dialog)
+      .getAllByRole('heading', { level: 3 })
+      .map((h) => h.textContent);
+    expect(headings).toEqual(['Now', 'Move traffic', 'Approval', 'Recover', 'Stages', 'Aliases']);
+  });
+
+  it('leaves out Approval when release approvals are hidden for the account', async () => {
+    fixtures.hiddenCapabilities = ['release-approvals'];
+    await mount('/dashboard/apps/alpha/releases/dep-1?panel=rollout');
+    const dialog = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    expect(within(dialog).queryByRole('heading', { name: 'Approval' })).not.toBeInTheDocument();
+  });
+
+  it('opens the rollout popup from More', async () => {
+    await mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'More' }));
+    expect(await screen.findByRole('dialog', { name: 'Traffic & rollout' })).toBeInTheDocument();
   });
 });

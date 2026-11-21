@@ -17,17 +17,18 @@ export interface ReleasePanelSpec {
  */
 export function useReleasePanel(): {
   panel?: ReleasePanel;
-  open: (panel: ReleasePanel) => void;
+  open: (panel: ReleasePanel, hash?: string) => void;
   close: () => void;
 } {
   const search = useSearch({ strict: false }) as ReleasePageSearch;
   const navigate = useNavigate();
   return {
     panel: search.panel,
-    open: (panel) =>
+    open: (panel, hash) =>
       void navigate({
         to: '.',
         search: ((prev: ReleasePageSearch) => ({ ...prev, panel })) as never,
+        hash: hash ?? '',
         resetScroll: false,
       }),
     close: () =>
@@ -38,6 +39,7 @@ export function useReleasePanel(): {
           delete rest.panel;
           return rest;
         }) as never,
+        hash: '',
         replace: true,
         resetScroll: false,
       }),

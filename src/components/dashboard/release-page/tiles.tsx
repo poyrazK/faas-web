@@ -21,6 +21,7 @@ import { ResourceActivityTimeline } from '../resource-activity';
 import { relativeTime } from './facts';
 import type { ReleaseContext } from './release-page';
 import { ReleaseTile, type ReleaseTileSpec } from './tile';
+import { RolloutPopup } from './rollout-popup';
 
 const notFound = (error: unknown) =>
   error instanceof ApiError && (error.code === 'not_found' || error.status === 404);
@@ -261,7 +262,11 @@ export const RELEASE_TILES: ReleaseTileSpec[] = [
     Tile: ChangesTile,
     Popup: ({ ctx }) => (
       <div className="flex flex-col gap-5">
-        <DeploymentReleaseSummary appSlug={ctx.slug} deploymentId={ctx.deployment.id} />
+        <DeploymentReleaseSummary
+          appSlug={ctx.slug}
+          deploymentId={ctx.deployment.id}
+          showRollback={false}
+        />
         <DeploymentDiff
           deploymentId={ctx.deployment.id}
           slug={ctx.slug}
@@ -282,8 +287,7 @@ export const RELEASE_TILES: ReleaseTileSpec[] = [
     panel: 'rollout',
     title: 'Traffic & rollout',
     Tile: RolloutTile,
-    // Task 5 groups the lifecycle controls here.
-    Popup: () => null,
+    Popup: RolloutPopup,
   },
   {
     panel: 'runtime',
