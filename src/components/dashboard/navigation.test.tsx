@@ -364,6 +364,15 @@ describe('dashboard navigation foundation', () => {
     );
   });
 
+  it('takes the logo to the account Overview, leaving the project, not the landing page', async () => {
+    const router = await renderShell('/dashboard/releases?project=shop');
+    const logo = screen.getByRole('link', { name: 'Gregale — go to Overview' });
+    expect(logo).toHaveAttribute('href', '/dashboard');
+    await userEvent.click(logo);
+    await waitFor(() => expect(screen.getByTestId('page').textContent).toBe('/dashboard'));
+    expect(router.state.location.search).not.toHaveProperty('project');
+  });
+
   it('keeps every account destination visible before a project, desktop and mobile', async () => {
     await renderShell();
     const main = screen.getByRole('navigation', { name: 'Main' });
