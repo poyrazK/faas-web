@@ -268,31 +268,53 @@ describe('PostgresDatabases', () => {
     expect(screen.getByText('credentials v2')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /connect an app/i }));
     expect(
-      within(await screen.findByRole('dialog')).getByText(/never shown in the console/i)
+      within(await screen.findByRole('dialog', { name: 'Connect an app to orders' })).getByText(
+        /never shown in the console/i
+      )
     ).toBeInTheDocument();
   });
 
   it('opens a database with its sentence, one primary action, and the restore form tucked away', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
-    const detail = (await screen.findByRole('heading', { name: 'orders', level: 2 })).closest(
-      'section'
-    ) as HTMLElement;
+    // The database opens in a drawer titled with its name; the list stays behind it.
+    const detail = await screen.findByRole('dialog', { name: 'orders' });
+    expect(screen.getByRole('button', { name: /orders/i, hidden: true })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog'
+    );
     expect(within(detail).getByText(/apps bound to it can connect/i)).toBeInTheDocument();
     expect(within(detail).getByRole('button', { name: /connect an app/i })).toBeInTheDocument();
     expect(screen.queryByLabelText('Restored database name')).toBeNull();
     expect(screen.queryByText('conditions section')).toBeNull();
     await userEvent.click(within(detail).getByRole('button', { name: /restore a copy/i }));
     expect(
-      within(await screen.findByRole('dialog')).getByLabelText('Restored database name')
+      within(
+        await screen.findByRole('dialog', { name: 'Restore a copy of orders' })
+      ).getByLabelText('Restored database name')
     ).toBeInTheDocument();
+  });
+
+  it('opens and closes the drawer through the page’s selection (the ?db= URL)', async () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<PostgresDatabases selected="db1" onSelect={onSelect} />);
+    const drawer = await screen.findByRole('dialog', { name: 'orders' });
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+    rerender(<PostgresDatabases selected={null} onSelect={onSelect} />);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'orders' })).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+    expect(onSelect).toHaveBeenLastCalledWith('db1');
+    // An id that is no longer listed opens nothing.
+    rerender(<PostgresDatabases selected="gone" onSelect={onSelect} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('binds an app under the chosen secret name', async () => {
     render(<PostgresDatabases />);
     await userEvent.click(screen.getByRole('button', { name: /orders/i }));
     await userEvent.click(await screen.findByRole('button', { name: /connect an app/i }));
-    const sheet = await screen.findByRole('dialog');
+    const sheet = await screen.findByRole('dialog', { name: 'Connect an app to orders' });
     const key = within(sheet).getByLabelText('Environment key');
     await userEvent.clear(key);
     await userEvent.type(key, 'ORDERS_DB_URL');
@@ -636,8 +658,13 @@ describe('PostgresDatabases', () => {
       expect(await screen.findByText('compute section following nothing')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'start a change' }));
       expect(screen.getByText('compute section following r-1')).toBeInTheDocument();
-      await userEvent.click(row);
-      expect(screen.queryByText(/compute section/)).toBeNull();
+      // Close the drawer, then open the same database again.
+      await userEvent.click(
+        within(screen.getByRole('dialog', { name: 'orders' })).getByRole('button', {
+          name: 'Close',
+        })
+      );
+      await waitFor(() => expect(screen.queryByText(/compute section/)).toBeNull());
       await userEvent.click(row);
       expect(await screen.findByText('compute section following r-1')).toBeInTheDocument();
     });
