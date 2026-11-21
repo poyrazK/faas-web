@@ -71,6 +71,8 @@ import { Route as DocsSplatRouteImport } from './routes/docs.$'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
+import { Route as DashboardAgentsAgentIdRouteImport } from './routes/dashboard.agents.$agentId'
 import { Route as DashboardAppsIndexRouteImport } from './routes/dashboard.apps.index'
 import { Route as DashboardAppsAppSlugRouteImport } from './routes/dashboard.apps.$appSlug'
 import { Route as DashboardAppsNewRouteImport } from './routes/dashboard.apps.new'
@@ -399,6 +401,16 @@ const StatusIndexRoute = StatusIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StatusRoute,
 } as any)
+const DashboardAgentsIndexRoute = DashboardAgentsIndexRouteImport.update({
+  id: '/agents/',
+  path: '/agents/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAgentsAgentIdRoute = DashboardAgentsAgentIdRouteImport.update({
+  id: '/agents/$agentId',
+  path: '/agents/$agentId',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardAppsIndexRoute = DashboardAppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
@@ -553,6 +565,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -562,6 +575,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/agents/': typeof DashboardAgentsIndexRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/support/': typeof DashboardSupportIndexRoute
@@ -630,6 +644,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/status': typeof StatusIndexRoute
+  '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -639,6 +654,7 @@ export interface FileRoutesByTo {
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/agents': typeof DashboardAgentsIndexRoute
   '/dashboard/apps': typeof DashboardAppsIndexRoute
   '/dashboard/projects': typeof DashboardProjectsIndexRoute
   '/dashboard/support': typeof DashboardSupportIndexRoute
@@ -712,6 +728,7 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -721,6 +738,7 @@ export interface FileRoutesById {
   '/dashboard/workflows/$': typeof DashboardWorkflowsSplatRoute
   '/docs/api/$group': typeof DocsApiGroupRoute
   '/status/incidents/$id': typeof StatusIncidentsIdRoute
+  '/dashboard/agents/': typeof DashboardAgentsIndexRoute
   '/dashboard/apps/': typeof DashboardAppsIndexRoute
   '/dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/dashboard/support/': typeof DashboardSupportIndexRoute
@@ -795,6 +813,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/agents/$agentId'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -804,6 +823,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows/$'
     | '/docs/api/$group'
     | '/status/incidents/$id'
+    | '/dashboard/agents/'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
     | '/dashboard/support/'
@@ -872,6 +892,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/docs'
     | '/status'
+    | '/dashboard/agents/$agentId'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -881,6 +902,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows/$'
     | '/docs/api/$group'
     | '/status/incidents/$id'
+    | '/dashboard/agents'
     | '/dashboard/apps'
     | '/dashboard/projects'
     | '/dashboard/support'
@@ -953,6 +975,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/docs/'
     | '/status/'
+    | '/dashboard/agents/$agentId'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -962,6 +985,7 @@ export interface FileRouteTypes {
     | '/dashboard/workflows/$'
     | '/docs/api/$group'
     | '/status/incidents/$id'
+    | '/dashboard/agents/'
     | '/dashboard/apps/'
     | '/dashboard/projects/'
     | '/dashboard/support/'
@@ -1421,6 +1445,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
     }
+    '/dashboard/agents/': {
+      id: '/dashboard/agents/'
+      path: '/agents'
+      fullPath: '/dashboard/agents/'
+      preLoaderRoute: typeof DashboardAgentsIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/agents/$agentId': {
+      id: '/dashboard/agents/$agentId'
+      path: '/agents/$agentId'
+      fullPath: '/dashboard/agents/$agentId'
+      preLoaderRoute: typeof DashboardAgentsAgentIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/apps/': {
       id: '/dashboard/apps/'
       path: '/apps'
@@ -1618,10 +1656,12 @@ interface DashboardRouteChildren {
   DashboardWebhooksRoute: typeof DashboardWebhooksRoute
   DashboardWorkersRoute: typeof DashboardWorkersRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
+  DashboardAgentsAgentIdRoute: typeof DashboardAgentsAgentIdRoute
   DashboardAppsAppSlugRoute: typeof DashboardAppsAppSlugRoute
   DashboardAppsNewRoute: typeof DashboardAppsNewRoute
   DashboardSupportTicketRoute: typeof DashboardSupportTicketRoute
   DashboardWorkflowsSplatRoute: typeof DashboardWorkflowsSplatRoute
+  DashboardAgentsIndexRoute: typeof DashboardAgentsIndexRoute
   DashboardAppsIndexRoute: typeof DashboardAppsIndexRoute
   DashboardSupportIndexRoute: typeof DashboardSupportIndexRoute
   DashboardWorkflowsIndexRoute: typeof DashboardWorkflowsIndexRoute
@@ -1679,10 +1719,12 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardWebhooksRoute: DashboardWebhooksRoute,
   DashboardWorkersRoute: DashboardWorkersRoute,
   DashboardIndexRoute: DashboardIndexRoute,
+  DashboardAgentsAgentIdRoute: DashboardAgentsAgentIdRoute,
   DashboardAppsAppSlugRoute: DashboardAppsAppSlugRoute,
   DashboardAppsNewRoute: DashboardAppsNewRoute,
   DashboardSupportTicketRoute: DashboardSupportTicketRoute,
   DashboardWorkflowsSplatRoute: DashboardWorkflowsSplatRoute,
+  DashboardAgentsIndexRoute: DashboardAgentsIndexRoute,
   DashboardAppsIndexRoute: DashboardAppsIndexRoute,
   DashboardSupportIndexRoute: DashboardSupportIndexRoute,
   DashboardWorkflowsIndexRoute: DashboardWorkflowsIndexRoute,

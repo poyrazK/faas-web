@@ -1061,8 +1061,8 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Gregale management MCP server: AI agents manage Gregale over MCP, with an OAuth server',
     status: 'cli',
     surfaces: [],
-    cli: 'gregale mcp serve',
-    gap: 'Agents manage Gregale through the MCP server; no console surface',
+    cli: 'gregale mcp connect',
+    gap: 'The agents it connects are on /dashboard/agents (the GA api-keys routes: approvals, budgets, activity, undo); the MCP server itself, its toolsets and tool publishing have no console surface',
     wave: 3,
   },
   // I161 · GA
