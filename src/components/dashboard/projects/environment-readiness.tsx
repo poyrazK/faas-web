@@ -31,6 +31,8 @@ function Identity({ label, value }: { label: string; value: string | number | un
 export function EnvironmentReadiness({
   identity,
   source,
+  previewSource,
+  onPreview,
   operation,
   approval,
   before,
@@ -38,7 +40,11 @@ export function EnvironmentReadiness({
   onSearch,
 }: {
   identity: EnvironmentIdentity;
+  /** The explicit comparison: it also filters the promotion history. */
   source?: string;
+  /** The environment compared above, offered as a one-click preview. */
+  previewSource?: string;
+  onPreview?: () => void;
   operation?: string;
   approval?: string;
   before?: string;
@@ -86,7 +92,13 @@ export function EnvironmentReadiness({
             enforcement are done with the <code>gregale environment</code> CLI commands.
           </p>
           {!source ? (
-            <p>Choose an environment under Compare with to see what promoting it would change.</p>
+            previewSource && onPreview ? (
+              <Button size="sm" variant="outline" className="self-start" onClick={onPreview}>
+                Preview promoting from {previewSource}
+              </Button>
+            ) : (
+              <p>Choose an environment under Compare with to see what promoting it would change.</p>
+            )
           ) : preview.error ? (
             <div role="alert">
               <p>

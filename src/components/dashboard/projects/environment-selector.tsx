@@ -11,7 +11,8 @@ import { ErrorState, LoadingState, Panel } from '../primitives';
 import { SegmentedControl } from '../tabs';
 import { DisclosureSection } from './disclosure';
 import { EnvironmentStateView, liveSentence } from './environment-state';
-import { EnvironmentDiffView } from './environment-diff';
+import { EnvironmentDifferences } from './environment-diff';
+import { environmentName } from './environment-words';
 import { StageQueueOverview } from './stage-queue-bindings';
 import { EnvironmentReadiness, type ReadinessSearch } from './environment-readiness';
 import { ProjectVerificationRuns } from './project-verification-runs';
@@ -46,11 +47,12 @@ function SelectedEnvironment({
   onSelectQueueWorkload,
   readinessSearch,
   onReadinessSearch,
-}: Props & { environment: string }) {
+  others,
+  onChange,
+}: Props & { environment: string; others: string[] }) {
   const detail = useProjectEnvironment(accountId, slug, environment);
   const state = useEnvironmentState(accountId, slug, environment);
-  const diff = useEnvironmentDiff(accountId, slug, environment, compare ?? '');
-  const error = detail.error || state.error || (compare ? diff.error : null);
+  const error = detail.error || state.error;
   if (error)
     return (
       <ErrorState
@@ -58,28 +60,31 @@ function SelectedEnvironment({
         onRetry={() => {
           void detail.refetch();
           void state.refetch();
-          if (compare) void diff.refetch();
         }}
       />
     );
-  if (detail.isPending || state.isPending || (compare && diff.isPending))
+  if (detail.isPending || state.isPending)
     return <LoadingState message="Loading environment details…" />;
   if (
     detail.data?.project_id !== projectId ||
     detail.data?.slug !== environment ||
     state.data?.project_slug !== slug ||
     state.data?.environment !== environment ||
-    state.data?.configuration.environment !== environment ||
-    (compare &&
-      (diff.data?.project_slug !== slug ||
-        diff.data?.from_environment !== compare ||
-        diff.data?.to_environment !== environment))
+    state.data?.configuration.environment !== environment
   )
     return (
       <p role="alert" className="text-sm text-destructive">
         Environment details do not match this selection.
       </p>
     );
+  // Compared with production by default, or, in production, with the first
+  // other environment; an explicit ?compare= wins.
+  const from =
+    compare && others.includes(compare)
+      ? compare
+      : environment !== 'production' && others.includes('production')
+        ? 'production'
+        : others[0];
   const readiness = readinessSearch ?? {};
   // Someone who arrived with a comparison, a promotion or an approval in the
   // URL came for the release tooling, so it starts open for them.
@@ -113,11 +118,10 @@ function SelectedEnvironment({
           size="sm"
           variant="outline"
           className="gap-1.5"
-          disabled={detail.isFetching || state.isFetching || diff.isFetching}
+          disabled={detail.isFetching || state.isFetching}
           onClick={() => {
             void detail.refetch();
             void state.refetch();
-            if (compare) void diff.refetch();
           }}
         >
           <Refresh aria-hidden className="h-3.5 w-3.5" />
@@ -140,7 +144,17 @@ function SelectedEnvironment({
           onSelectWorkload={onSelectQueueWorkload}
         />
       )}
-      {compare && diff.data && <EnvironmentDiffView data={diff.data} />}
+      {from && (
+        <Differences
+          key={`diff:${accountId}:${slug}:${environment}:${from}`}
+          accountId={accountId}
+          slug={slug}
+          environment={environment}
+          from={from}
+          choices={others}
+          onCompare={(next) => onChange({ environment, compare: next })}
+        />
+      )}
       <DisclosureSection
         key={`tooling:${toolingAsked}`}
         title="Promotions and verification"
@@ -152,6 +166,8 @@ function SelectedEnvironment({
             key={`readiness:${accountId}:${projectId}:${environment}:${compare ?? ''}`}
             identity={{ accountId, projectId, project: slug, target: environment }}
             source={compare}
+            previewSource={!compare && from ? environmentName(from) : undefined}
+            onPreview={from ? () => onChange({ environment, compare: from }) : undefined}
             operation={readinessSearch?.promotion}
             approval={readinessSearch?.approval}
             before={readinessSearch?.promotionBefore}
@@ -169,6 +185,56 @@ function SelectedEnvironment({
     </>
   );
 }
+/** Two environments compared in words; the select beside the heading changes the other side. */
+function Differences({
+  accountId,
+  slug,
+  environment,
+  from,
+  choices,
+  onCompare,
+}: {
+  accountId: string;
+  slug: string;
+  environment: string;
+  from: string;
+  choices: string[];
+  onCompare: (from: string) => void;
+}) {
+  const diff = useEnvironmentDiff(accountId, slug, environment, from);
+  const control = (
+    <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      Compare with
+      <Select
+        aria-label="Compare from"
+        className={selectClass}
+        value={from}
+        onChange={(event) => onCompare(event.target.value)}
+      >
+        {choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {environmentName(choice)}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+  if (diff.error) return <ErrorState error={diff.error} onRetry={() => void diff.refetch()} />;
+  if (diff.isPending) return <LoadingState message="Comparing environments…" />;
+  if (
+    !diff.data ||
+    diff.data.project_slug !== slug ||
+    diff.data.from_environment !== from ||
+    diff.data.to_environment !== environment
+  )
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        Comparison details do not match this selection.
+      </p>
+    );
+  return <EnvironmentDifferences data={diff.data} control={control} />;
+}
+
 /**
  * Environment routes resolve the project under the signed-in account
  * (faas ProjectBySlug(acct.ID, slug)), so in a company workspace they would
@@ -283,6 +349,7 @@ function PersonalProjectEnvironments(props: Props) {
           key={`${accountId}:${slug}:${selected}:${compare ?? ''}`}
           {...props}
           environment={selected}
+          others={items.filter((item) => item.slug !== selected).map((item) => item.slug)}
         />
       )}
     </>

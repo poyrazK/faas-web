@@ -123,3 +123,66 @@ it("reads no environments for a company's project, and says why", async () => {
     workspace.label = 'Personal';
   }
 });
+
+/** Answers every environment read for shop, with each environment's own slug. */
+function answerEnvironments(list = environments) {
+  return spyApi('GET').mockImplementation(async (path, init) => {
+    const name = (init as { params?: { path?: { environment?: string } } })?.params?.path
+      ?.environment;
+    const query = (init as { params?: { query?: { from?: string; source?: string } } })?.params
+      ?.query;
+    if (path === '/v1/projects/{slug}/environments') return ok(list);
+    if (path === '/v1/projects/{slug}/environments/{environment}')
+      return ok(list.find((e) => e.slug === name));
+    if (path === '/v1/projects/{slug}/environments/{environment}/diff')
+      return ok({
+        project_slug: 'shop',
+        from_environment: query?.from ?? query?.source,
+        to_environment: name,
+        generated_at: '2026-10-09T10:00:00Z',
+        configuration: {
+          project_slug: 'shop',
+          from_environment: query?.from ?? query?.source,
+          to_environment: name,
+          from_version: 1,
+          to_version: 1,
+          from_hash: 'a'.repeat(64),
+          to_hash: 'a'.repeat(64),
+          changes: [],
+        },
+        workloads: [],
+        shared_resources: [],
+      });
+    if (path === '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs')
+      return ok({ runs: [], observed_at: '2026-10-09T10:00:00Z' });
+    return ok({
+      project_slug: 'shop',
+      environment: name,
+      protected: name === 'production',
+      configuration: {
+        project_slug: 'shop',
+        environment: name,
+        version: 0,
+        config_hash: 'a'.repeat(64),
+        values: {},
+      },
+      workloads: [],
+      shared_resources: [],
+      generated_at: '2026-10-09T10:00:00Z',
+    });
+  });
+}
+
+it('compares production against staging by default when staging is selected', async () => {
+  answerEnvironments();
+  mount('staging');
+  expect(await screen.findByText('Production compared with Staging')).toBeInTheDocument();
+});
+
+it('shows no comparison for a project with one environment', async () => {
+  answerEnvironments([environments[0]]);
+  mount('production');
+  await screen.findByText(/production is protected/i);
+  expect(screen.queryByText(/compared with/)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Compare from')).not.toBeInTheDocument();
+});
