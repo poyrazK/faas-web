@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Releases } from './dashboard.releases';
 import { Route as Builds } from './dashboard.builds';
 import { Route as App } from './dashboard.apps.$appSlug';
+import { Route as ReleaseShortcut } from './dashboard.releases_.$deploymentId';
 import { api } from '@/lib/api/client';
 import { spyApi } from '@/test/api';
 
@@ -227,6 +228,21 @@ async function mount(entry = '/dashboard/releases') {
       component: route.options.component,
       validateSearch: route.options.validateSearch,
       beforeLoad: (context) => route.options.beforeLoad?.(context as never),
+    })
+  );
+  // Where old release links now land; the pages themselves are tested elsewhere.
+  routes.push(
+    createRoute({
+      getParentRoute: () => dashboard,
+      path: 'releases/$deploymentId',
+      component: () => <p>release shortcut</p>,
+      validateSearch: ReleaseShortcut.options.validateSearch,
+    }),
+    createRoute({
+      getParentRoute: () => dashboard,
+      path: 'apps/$appSlug/releases/$deploymentId',
+      component: () => <p>release page</p>,
+      validateSearch: ReleaseShortcut.options.validateSearch,
     })
   );
   const router = createRouter({
@@ -826,5 +842,28 @@ describe('Releases hub', () => {
         deployment: 'dep-1',
       })
     );
+  });
+});
+
+describe('old release links', () => {
+  it('send a Releases selection to the release, opening the popup its section became', async () => {
+    const router = await mount('/dashboard/releases?deployment=dep-1&releaseSection=scans');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard/releases/dep-1'));
+    expect(router.state.location.search).toEqual({ panel: 'security' });
+  });
+
+  it('send an app page selection straight to the app’s release page', async () => {
+    const router = await mount(
+      '/dashboard/apps/alpha?tab=Deployments&deployment=dep-1&releaseSection=lifecycle'
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1')
+    );
+    expect(router.state.location.search).toEqual({ panel: 'rollout' });
+  });
+
+  it('leave a build-only selection on the Releases page', async () => {
+    const router = await mount('/dashboard/releases?view=builds&build=build-only');
+    expect(router.state.location.pathname).toBe('/dashboard/releases');
   });
 });

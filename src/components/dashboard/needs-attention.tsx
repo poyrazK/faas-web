@@ -10,6 +10,7 @@ import { formatRelative } from '@/lib/mock-data';
 import { queryPhase, type QueryPhase } from './primitives';
 import { useWorkspaceUsageSummary, type WorkspaceUsageSummary } from '@/lib/api/org-billing';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 const DAY = 86_400_000;
 const DISPLAY_LIMIT = 3;
@@ -262,8 +263,7 @@ export function NeedsAttentionContent({
                     >
                       <Link
                         onClick={onNavigate}
-                        to="/dashboard/releases"
-                        search={{ deployment: deployment.id }}
+                        {...releaseLink(deployment.id)}
                         aria-label={`View deployment ${deployment.id}`}
                         title={deployment.id}
                         className={ACTION_CLASS}

@@ -25,6 +25,7 @@ import {
   namesActor,
   outcomeMark,
 } from './activity-words';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -295,8 +296,7 @@ function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string
           )}
           {release ? (
             <Link
-              to="/dashboard/releases"
-              search={{ deployment: row.deployment_id, releaseSection: 'audit' }}
+              {...releaseLink(row.deployment_id!, { slug: appSlug, panel: 'activity' })}
               className={QUIET_LINK}
             >
               View release

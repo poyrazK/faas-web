@@ -20,6 +20,8 @@ import {
 } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
 import { releaseProcess, type ReleasePhase } from '@/lib/release-process';
+import { releaseLink } from '@/components/dashboard/release-page/links';
+import type { ReleasePanel } from '@/components/dashboard/release-page/panels';
 import { Link, getRouteApi } from '@tanstack/react-router';
 import { inScope } from '@/lib/project-scope';
 import { scopedIn, useScopeGate } from '@/components/dashboard/scope-gate';
@@ -93,6 +95,13 @@ export function DeploymentsPage() {
     () => inScope(allBuilds, scope, (b) => appOfDeployment.get(b.deployment_id) ?? ''),
     [allBuilds, scope, appOfDeployment]
   );
+  // A release opens its own page; its app comes from the loaded deployments.
+  const openRelease = (deploymentId: string, panel?: ReleasePanel) => {
+    const appId = allDeployments.find((d) => d.id === deploymentId)?.app_id;
+    void navigate(
+      releaseLink(deploymentId, { slug: appId ? appById.get(appId) : undefined, panel })
+    );
+  };
   const unplacedBuilds = scoped
     ? allBuilds.filter((b) => !appOfDeployment.get(b.deployment_id)).length
     : 0;
@@ -285,19 +294,12 @@ export function DeploymentsPage() {
         ))}
       </TabNav>
       {view === 'releases' && (
-        <DeployQueue
-          scope={gate}
-          onOpen={(deployment) =>
-            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
-          }
-        />
+        <DeployQueue scope={gate} onOpen={(deployment) => openRelease(deployment, 'rollout')} />
       )}
       {view === 'releases' && (
         <WorkspaceReleaseGuards
           scope={gate}
-          onOpen={(deployment) =>
-            select({ deployment, build: undefined, releaseSection: 'lifecycle' })
-          }
+          onOpen={(deployment) => openRelease(deployment, 'rollout')}
         />
       )}
       <ResourceTable
@@ -387,11 +389,9 @@ export function DeploymentsPage() {
           </>
         }
         onRowClick={(row) =>
-          select({
-            deployment: row.deploymentId,
-            build: row.deploymentId ? undefined : row.buildId,
-            releaseSection: undefined,
-          })
+          row.deploymentId
+            ? openRelease(row.deploymentId)
+            : select({ deployment: undefined, build: row.buildId, releaseSection: undefined })
         }
       />
       {view === 'builds' && unplacedBuilds > 0 && (

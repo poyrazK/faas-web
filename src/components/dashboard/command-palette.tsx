@@ -263,8 +263,8 @@ export function CommandPalette({
           `Deployment ${row.id}`,
           'Deployments',
           `${resources.appName(row.appId)} · ${row.status} · ${row.digest ?? ''}`,
-          '/dashboard/releases',
-          { deployment: row.id, releaseSection: 'overview' }
+          `/dashboard/releases/${encodeURIComponent(row.id)}`,
+          {}
         )
       ),
       ...resources.domains.map((row) =>

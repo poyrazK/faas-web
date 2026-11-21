@@ -283,11 +283,7 @@ describe('App Overview', () => {
         name: /^Open release/,
       })
     );
-    expect(router.state.location.search).toMatchObject({
-      tab: 'Deployments',
-      deployment: 'release-new',
-      releaseSection: 'overview',
-    });
+    expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/release-new');
   });
 
   it('keeps app state distinct from a failed latest release and opens that exact failure', async () => {
@@ -309,13 +305,7 @@ describe('App Overview', () => {
     expect(attention).toHaveTextContent('v44 failed to deploy. v43 is still serving.');
     expect(attention).toHaveTextContent('The start command was not found.');
     await userEvent.click(within(attention).getByRole('button', { name: 'Inspect failure' }));
-    expect(router.state.location.search).toMatchObject({
-      tab: 'Deployments',
-      deployment: 'release-new',
-      releaseSection: 'overview',
-      keep: 'yes',
-    });
-    expect(router.state.location.hash).toBe('context');
+    expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/release-new');
     await act(async () => {
       router.history.back();
     });

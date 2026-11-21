@@ -316,8 +316,7 @@ describe('AppHealthPanel', () => {
     expect(release).toHaveTextContent('A release is serving');
     expect(release).toHaveTextContent('The latest release failed');
     const link = within(release).getByRole('link', { name: 'Inspect release' });
-    expect(link.getAttribute('href')).toContain('tab=Deployments');
-    expect(link.getAttribute('href')).toContain('deployment=dep-failed');
+    expect(link.getAttribute('href')).toBe('/dashboard/apps/api/releases/dep-failed');
     expect(replicas).toHaveTextContent('Fail:0 of 2 ready');
     expect(replicas).toHaveTextContent('2 not ready');
     expect(within(replicas).getByRole('link', { name: 'Inspect logs' })).toBeInTheDocument();

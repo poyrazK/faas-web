@@ -1,10 +1,13 @@
 import { DeploymentsPage } from '@/components/dashboard/pages/releases';
 import { validateReleasesSearch } from '@/components/dashboard/releases-search';
+import { redirectOldReleaseLink } from '@/components/dashboard/release-page/links';
 import { consoleHead } from '@/lib/seo';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/dashboard/releases')({
   component: DeploymentsPage,
   validateSearch: validateReleasesSearch,
+  // A release is a page now; old `?deployment=` links open it there.
+  beforeLoad: ({ search }) => redirectOldReleaseLink(search),
   head: () => consoleHead('releases'),
 });
