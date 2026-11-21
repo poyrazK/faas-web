@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { deploymentPhase, isDeploymentTerminal } from '@/lib/deployment-status';
 import { AdvanceCanaryButton, ReorderDeploymentControl } from '../deployment-actions';
 import { DeploymentAliasesHere } from '../deployment-aliases';
 import { DeploymentStages } from '../deployment-insights';
@@ -56,7 +57,11 @@ export function RolloutPopup({ ctx }: { ctx: ReleaseContext }) {
       )}
       <Group id="recover" title="Recover" lead="Retry, resume or stop a release that went wrong.">
         <RolloutRecovery slug={slug} deployment={deployment} />
-        <DeploymentLifecycle key={deployment.id} deployment={deployment} />
+        {/* Retry and cancel apply to a failed release or one still in flight. */}
+        {(deploymentPhase(deployment.status) === 'failed' ||
+          !isDeploymentTerminal(deployment.status)) && (
+          <DeploymentLifecycle key={deployment.id} deployment={deployment} />
+        )}
       </Group>
       <Group id="stages" title="Stages" lead="Each step the release went through.">
         <DeploymentStages deploymentId={deployment.id} />
@@ -78,10 +83,25 @@ function Group({
   lead: string;
   children: ReactNode;
 }) {
+  // Most controls decide for themselves whether they apply, some only after
+  // a read, so a group watches what its children render and leaves itself
+  // out while that is nothing.
+  const content = useRef<HTMLDivElement>(null);
+  const [empty, setEmpty] = useState(false);
+  useLayoutEffect(() => {
+    const el = content.current;
+    if (!el) return;
+    const check = () => setEmpty(el.childElementCount === 0 && !el.textContent?.trim());
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
   return (
     <section
       id={`rollout-${id}`}
       aria-labelledby={`rollout-${id}-title`}
+      hidden={empty}
       className="flex flex-col gap-3"
     >
       <div>
@@ -90,7 +110,9 @@ function Group({
         </h3>
         <p className="text-xs text-muted-foreground">{lead}</p>
       </div>
-      {children}
+      <div ref={content} className="flex flex-col gap-3">
+        {children}
+      </div>
     </section>
   );
 }

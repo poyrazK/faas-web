@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { formatRelative } from '@/lib/mock-data';
+import { InlinePhase, type QueryPhase } from '../primitives';
 import { ReleaseStatusLabel } from '../release-status-label';
 import { sourceSize } from '../releases-search';
 import type { Build, ReleaseContext } from './release-page';
@@ -79,7 +80,14 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 export function ReleaseDetailsPopup({
   deployment,
   build,
-}: Pick<ReleaseContext, 'deployment' | 'build'>) {
+  buildPhase,
+  buildError,
+  onRetryBuild,
+}: Pick<ReleaseContext, 'deployment' | 'build'> & {
+  buildPhase: QueryPhase;
+  buildError?: unknown;
+  onRetryBuild?: () => void;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <EvidenceFields
@@ -115,8 +123,15 @@ export function ReleaseDetailsPopup({
       />
       {build ? (
         <BuildFields build={build} />
-      ) : (
+      ) : buildPhase === 'empty' ? (
         <p className="text-sm text-muted-foreground">No build is recorded for this release.</p>
+      ) : (
+        <InlinePhase
+          phase={buildPhase}
+          error={buildError}
+          loadingMessage="Loading build…"
+          onRetry={onRetryBuild}
+        />
       )}
     </div>
   );

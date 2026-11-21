@@ -19,6 +19,7 @@ const f = vi.hoisted(() => ({
   org: null as string | null,
   orgApps: [] as { id: string; slug: string }[],
   deployment: 'ready' as 'ready' | 'missing',
+  orgError: null as Error | null,
 }));
 
 vi.mock('@/lib/api/queries', async (original) => ({
@@ -39,9 +40,11 @@ vi.mock('@/lib/api/workspace-apps', async (original) => ({
   useWorkspaceTarget: () => ({ org: f.org, label: f.org ?? 'Personal', ready: true }),
   // A disabled query reports pending forever; the resolver must not wait on it.
   useOrgApps: (org: string | null) =>
-    org
-      ? { data: { apps: f.orgApps }, isPending: false, error: null }
-      : { data: undefined, isPending: true, error: null },
+    !org
+      ? { data: undefined, isPending: true, error: null, refetch: vi.fn() }
+      : f.orgError
+        ? { data: undefined, isPending: false, error: f.orgError, refetch: vi.fn() }
+        : { data: { apps: f.orgApps }, isPending: false, error: null, refetch: vi.fn() },
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'acct' }, loading: false }) }));
 
@@ -97,6 +100,7 @@ beforeEach(() => {
   f.org = null;
   f.orgApps = [];
   f.deployment = 'ready';
+  f.orgError = null;
 });
 afterEach(cleanup);
 
@@ -128,5 +132,13 @@ describe('the release shortcut', () => {
     f.deployment = 'missing';
     await mount('/dashboard/releases/dep-1');
     expect(await screen.findByText('Not found')).toBeInTheDocument();
+  });
+
+  it('shows the error, not a wrong answer, when the workspace’s apps cannot be read', async () => {
+    f.org = 'acme';
+    f.orgError = new Error('Organization apps failed');
+    await mount('/dashboard/releases/dep-1');
+    expect(await screen.findByText('Organization apps failed')).toBeInTheDocument();
+    expect(screen.queryByText(/outside this workspace/)).not.toBeInTheDocument();
   });
 });

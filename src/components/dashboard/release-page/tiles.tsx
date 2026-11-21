@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/api/errors';
+import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { useDeploymentRuntime, useReleaseDiff } from '@/lib/api/deployment-detail';
 import {
   useBuildProvenance,
@@ -153,7 +154,15 @@ function SecurityTile({ ctx, onOpen }: { ctx: ReleaseContext; onOpen: () => void
   const scan = useDeploymentScan(ctx.deployment.id);
   const secrets = useDeploymentSecretScan(ctx.deployment.id);
   const counts = scan.data?.severity_counts;
-  const found = secrets.data?.findings?.length ?? 0;
+  // Only a secret scan that answered can say what it found.
+  const found = secrets.data?.findings?.length;
+  const secretLine = secrets.isPending
+    ? 'checking secrets…'
+    : found === undefined
+      ? 'secrets not scanned'
+      : found
+        ? `${plural(found, 'secret')} found`
+        : 'no secrets found';
   const scanned = Boolean(counts) && scan.data?.status === 'complete';
   return (
     <ReleaseTile
@@ -166,8 +175,14 @@ function SecurityTile({ ctx, onOpen }: { ctx: ReleaseContext; onOpen: () => void
       error={scan.error}
       onRetry={() => void scan.refetch()}
       value={`${counts?.critical ?? 0} critical`}
-      line={`${counts?.high ?? 0} high · ${found ? `${plural(found, 'secret')} found` : 'no secrets found'}`}
-      emptyMessage={scan.data?.status === 'pending' ? 'Scanning…' : 'Not scanned'}
+      line={`${counts?.high ?? 0} high · ${secretLine}`}
+      emptyMessage={
+        !isDeploymentTerminal(ctx.deployment.status)
+          ? 'Scanned after the build'
+          : scan.data?.status === 'pending'
+            ? 'Scanning…'
+            : 'Not scanned'
+      }
       hint="All findings"
       onOpen={onOpen}
     />
@@ -193,7 +208,11 @@ function ProvenanceTile({ ctx, onOpen }: { ctx: ReleaseContext; onOpen: () => vo
       onRetry={() => void provenance.refetch()}
       value={commit ? <span className="font-mono">{commit}</span> : 'No commit recorded'}
       line={provenance.data?.sbom_storage_key ? 'SBOM ready' : 'No SBOM'}
-      emptyMessage="No provenance recorded"
+      emptyMessage={
+        isDeploymentTerminal(ctx.deployment.status)
+          ? 'No provenance recorded'
+          : 'Recorded when the build finishes'
+      }
       hint="Build inputs and SBOM"
       onOpen={onOpen}
     />

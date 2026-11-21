@@ -306,7 +306,7 @@ describe('DebugRequestEvidence', () => {
     expect(screen.getByText('2026-09-08T09:00:00Z')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open release' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?deployment=dep12345678'
+      '/dashboard/releases/dep12345678'
     );
     expect(screen.getByRole('link', { name: 'Open build' })).toHaveAttribute(
       'href',

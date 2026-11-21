@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { components } from '@/lib/api/schema';
 import {
+  keys,
   useApp,
   useBuild,
   useDeployment,
@@ -46,12 +48,18 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
   const deployment = detail.data;
   const wrongApp = Boolean(app.data && deployment && deployment.app_id !== app.data.id);
   const owned = app.data && deployment && !wrongApp ? deployment : undefined;
-  const build = useBuild(owned?.build_id ?? '').data;
+  const buildQuery = useBuild(owned?.build_id ?? '');
+  const build = buildQuery.data;
+  // A release with no build ID has no build to wait for (a disabled read stays pending).
+  const buildPhase = owned?.build_id
+    ? queryPhase({ error: buildQuery.error, loading: buildQuery.isPending, isEmpty: !build })
+    : 'empty';
   const summary = useDeploymentSummary(owned ? appSlug : '', owned?.id ?? '').data;
   const buildLog = useLogStream(
     { kind: 'build', deploymentId: owned?.id ?? '', limit: 500 },
     Boolean(owned)
   );
+  useRefreshWhenSettled(owned, appSlug);
   const { panel, open, close } = useReleasePanel();
   useDocumentTitle(owned ? `${releaseName(owned)} · ${appSlug}` : undefined);
 
@@ -69,7 +77,15 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
         ),
         details: {
           title: 'All details',
-          render: () => <ReleaseDetailsPopup deployment={ctx.deployment} build={ctx.build} />,
+          render: () => (
+            <ReleaseDetailsPopup
+              deployment={ctx.deployment}
+              build={ctx.build}
+              buildPhase={buildPhase}
+              buildError={buildQuery.error}
+              onRetryBuild={() => void buildQuery.refetch()}
+            />
+          ),
         },
       }
     : {};
@@ -80,8 +96,11 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
     if (unknownPanel) close();
   }, [unknownPanel, close]);
 
+  // A failed refresh of a page already on screen keeps what it shows (and any
+  // open popup); only a read that never answered replaces the page.
+  const blockingError = (!app.data && app.error) || (!detail.data && detail.error) || null;
   const phase = queryPhase({
-    error: app.error ?? detail.error,
+    error: blockingError,
     loading: app.isPending || detail.isPending,
   });
   const retry = () => {
@@ -90,7 +109,7 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
   };
   if (phase === 'unreachable') return <UnreachableState onRetry={retry} />;
   if (phase === 'loading') return <LoadingState message="Loading release…" />;
-  if (phase === 'error') return <ErrorState error={app.error ?? detail.error} onRetry={retry} />;
+  if (phase === 'error') return <ErrorState error={blockingError} onRetry={retry} />;
   if (wrongApp)
     return <p className="text-sm text-muted-foreground">This release is not part of this app.</p>;
   if (!ctx) return <ErrorState error={detail.error} onRetry={retry} />;
@@ -146,4 +165,24 @@ function shippedLine(deployment: Deployment, build?: Build): string {
   const took = build?.duration_seconds == null ? '' : ` · took ${build.duration_seconds}s`;
   const verb = isDeploymentTerminal(deployment.status) ? 'Shipped' : 'Started';
   return `${verb} ${relativeTime(deployment.created_at)}${took}`;
+}
+
+/**
+ * The scan, provenance, diff, runtime and summary of a release only exist once
+ * its build finishes; they are read once, so when the polled release settles
+ * they are read again rather than left saying what was true mid-build.
+ */
+function useRefreshWhenSettled(deployment: Deployment | undefined, slug: string) {
+  const client = useQueryClient();
+  const settled = deployment ? isDeploymentTerminal(deployment.status) : undefined;
+  const was = useRef(settled);
+  useEffect(() => {
+    const before = was.current;
+    was.current = settled;
+    if (!deployment || before !== false || settled !== true) return;
+    void client.invalidateQueries({ queryKey: ['deployments', deployment.id] });
+    void client.invalidateQueries({ queryKey: keys.deploymentSummary(slug, deployment.id) });
+    if (deployment.build_id)
+      void client.invalidateQueries({ queryKey: ['builds', deployment.build_id] });
+  }, [client, deployment, settled, slug]);
 }

@@ -47,8 +47,11 @@ function ReleaseResolver() {
 
   // Only wait on the workspace inventory when there is a workspace to read:
   // a disabled query reports pending forever.
+  // A workspace inventory that failed cannot say the app is outside it.
+  const orgError = target.org ? orgApps.error : null;
+  const error = deployment.error ?? apps.error ?? orgError;
   const phase = queryPhase({
-    error: deployment.error ?? apps.error,
+    error,
     loading:
       deployment.isPending ||
       apps.isPending ||
@@ -58,10 +61,11 @@ function ReleaseResolver() {
   if (phase === 'error' || phase === 'unreachable')
     return (
       <ErrorState
-        error={deployment.error ?? apps.error}
+        error={error}
         onRetry={() => {
           void deployment.refetch();
           void apps.refetch();
+          if (target.org) void orgApps.refetch();
         }}
       />
     );

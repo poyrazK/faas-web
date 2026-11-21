@@ -15,6 +15,7 @@ import { spyApi } from '@/test/api';
 
 const fixtures = vi.hoisted(() => ({
   hiddenCapabilities: [] as string[],
+  buildRead: 'ready' as 'ready' | 'pending' | 'error',
   summary: undefined as Record<string, unknown> | undefined,
   app: { id: 'app-1', slug: 'alpha' },
   deployment: {} as Record<string, unknown>,
@@ -51,7 +52,15 @@ vi.mock('@/lib/api/queries', async (original) => {
     ...actual,
     useApp: () => ok(fixtures.app),
     useApps: () => ok([fixtures.app]),
-    useBuild: (id: string) => ok(id ? fixtures.build : undefined),
+    useBuild: (id: string) =>
+      !id || fixtures.buildRead === 'ready'
+        ? ok(id ? fixtures.build : undefined)
+        : {
+            data: undefined,
+            isPending: fixtures.buildRead === 'pending',
+            error: fixtures.buildRead === 'error' ? new Error('Build read failed') : null,
+            refetch: vi.fn(),
+          },
     useDeploymentSummary: () => ok(fixtures.summary),
     useDeploymentPreviewUrl: () => ok({ url: '' }),
   };
@@ -107,6 +116,7 @@ beforeEach(() => {
   fixtures.app = { id: 'app-1', slug: 'alpha' };
   fixtures.deployment = deployment();
   fixtures.summary = undefined;
+  fixtures.buildRead = 'ready';
   fixtures.hiddenCapabilities = [];
   vi.stubGlobal(
     'EventSource',
@@ -153,6 +163,27 @@ describe('Release page', () => {
     });
     expect(screen.getByRole('dialog', { name: 'All details' })).toBeInTheDocument();
     expect(screen.queryByText('Updating')).not.toBeInTheDocument();
+  });
+
+  it('keeps the page and an open popup when one refresh fails', async () => {
+    fixtures.deployment = deployment({ status: 'building', traffic_percent: 0 });
+    await mount('/dashboard/apps/alpha/releases/dep-1?panel=details');
+    expect(await screen.findByRole('dialog', { name: 'All details' })).toBeInTheDocument();
+    const get = spyApi('GET');
+    const answer = get.getMockImplementation()!;
+    let failed = 0;
+    get.mockImplementation(async (path, init) => {
+      if (path !== '/v1/deployments/{id}') return answer(path, init);
+      failed += 1;
+      return {
+        error: { code: 'internal', status: 500, title: 'Refresh failed' },
+        response: new Response(null, { status: 500 }),
+      } as never;
+    });
+    await waitFor(() => expect(failed).toBeGreaterThan(0), { timeout: 4_000 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole('dialog', { name: 'All details' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'v14' })).toBeInTheDocument();
   });
 
   it('refuses a release from another app', async () => {
@@ -206,11 +237,58 @@ describe('Release page', () => {
     expect(router.state.location.search).toMatchObject({ panel: 'details' });
   });
 
+  it.each([
+    ['pending', 'Loading build…'],
+    ['error', 'Build read failed'],
+  ] as const)(
+    'says the build is %s in All details instead of saying there is none',
+    async (read, text) => {
+      fixtures.buildRead = read;
+      await mount('/dashboard/apps/alpha/releases/dep-1?panel=details');
+      const dialog = await screen.findByRole('dialog', { name: 'All details' });
+      expect(within(dialog).getByText(text)).toBeInTheDocument();
+      expect(within(dialog).queryByText(/No build is recorded/)).not.toBeInTheDocument();
+    }
+  );
+
   it('drops a popup the release does not have', async () => {
     const router = await mount('/dashboard/apps/alpha/releases/dep-1?panel=canary');
     await screen.findByRole('heading', { level: 1, name: 'v14' });
     await waitFor(() => expect(router.state.location.search).not.toHaveProperty('panel'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('A release that finishes deploying', () => {
+  it('refreshes its tiles and leads with the rollback once it is live', async () => {
+    fixtures.deployment = deployment({ status: 'building', traffic_percent: 0 });
+    fixtures.summary = {
+      deployment: fixtures.deployment,
+      previous: null,
+      changes: [],
+      rollback_target_id: 'dep-0',
+      rollback_target_revision: 13,
+    };
+    await mount();
+    const security = await screen.findByRole('group', { name: 'Security' });
+    await waitFor(() => expect(security).toHaveTextContent('Scanned after the build'));
+    expect(screen.getByRole('group', { name: 'Provenance' })).toHaveTextContent(
+      'Recorded when the build finishes'
+    );
+    expect(screen.queryByRole('button', { name: 'Roll back to v13' })).not.toBeInTheDocument();
+    // The build finishes: the scan and provenance now exist.
+    routes.set('/v1/deployments/{id}/scan', {
+      status: 'complete',
+      severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+    });
+    routes.set('/v1/builds/{id}/provenance', { commit_sha: 'abcdef0123456789' });
+    fixtures.deployment = deployment();
+    await waitFor(
+      () => expect(screen.getByRole('group', { name: 'Security' })).toHaveTextContent('0 critical'),
+      { timeout: 4_000 }
+    );
+    expect(screen.getByRole('group', { name: 'Provenance' })).toHaveTextContent('abcdef0');
+    expect(screen.getByRole('button', { name: 'Roll back to v13' })).toBeInTheDocument();
   });
 });
 
@@ -243,6 +321,18 @@ describe('Release tiles', () => {
     const security = await screen.findByRole('group', { name: 'Security' });
     await waitFor(() => expect(within(security).getByText('0 critical')).toBeInTheDocument());
     expect(within(security).getByText('1 high · 2 secrets found')).toBeInTheDocument();
+  });
+
+  it('never says no secrets were found without a secret scan to say so', async () => {
+    routes.set('/v1/deployments/{id}/scan', {
+      status: 'complete',
+      severity_counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+    });
+    await mount();
+    const security = await screen.findByRole('group', { name: 'Security' });
+    await waitFor(() => expect(security).toHaveTextContent('0 critical'));
+    expect(security).toHaveTextContent('0 high · secrets not scanned');
+    expect(security).not.toHaveTextContent(/no secrets found/i);
   });
 
   it('shows the commit and SBOM, and never claims a signature', async () => {
@@ -298,6 +388,29 @@ describe('Release tiles', () => {
     expect(router.state.location.search).toMatchObject({ panel: 'security' });
   });
 
+  it('closes a popup it opened by stepping Back, leaving no duplicate entry', async () => {
+    const router = await mount();
+    const entries = router.history.length;
+    await userEvent.click(await screen.findByRole('button', { name: 'Open Security' }));
+    expect(await screen.findByRole('dialog', { name: 'Security' })).toBeInTheDocument();
+    expect(router.history.length).toBe(entries + 1);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(router.state.location.search).toEqual({});
+    // Forward reopens it: the close was a step back, not a new entry.
+    await act(async () => router.history.forward());
+    expect(await screen.findByRole('dialog', { name: 'Security' })).toBeInTheDocument();
+  });
+
+  it('closes a popup a link opened without leaving the page', async () => {
+    const router = await mount('/dashboard/apps/alpha/releases/dep-1?panel=security');
+    expect(await screen.findByRole('dialog', { name: 'Security' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(router.state.location.pathname).toBe('/dashboard/apps/alpha/releases/dep-1');
+    expect(router.state.location.search).toEqual({});
+  });
+
   it('names the latest audit event on the Activity tile', async () => {
     routes.set('/v1/deployments/{id}/audit', {
       items: [{ kind: 'deploy.created', actor: 'ada@example.test', at: '2026-11-21T10:00:00Z' }],
@@ -332,12 +445,27 @@ describe('Release main action and rollout', () => {
   });
 
   it('groups the rollout controls under plain headings, in order', async () => {
+    fixtures.deployment = deployment({ status: 'failed', traffic_percent: 0 });
     await mount('/dashboard/apps/alpha/releases/dep-1?panel=rollout');
     const dialog = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    const order = ['Now', 'Move traffic', 'Approval', 'Recover', 'Stages', 'Aliases'];
     const headings = within(dialog)
       .getAllByRole('heading', { level: 3 })
-      .map((h) => h.textContent);
-    expect(headings).toEqual(['Now', 'Move traffic', 'Approval', 'Recover', 'Stages', 'Aliases']);
+      .map((h) => h.textContent ?? '');
+    expect(headings).toContain('Recover');
+    expect(headings.map((h) => order.indexOf(h))).toEqual(
+      [...headings.map((h) => order.indexOf(h))].sort((a, b) => a - b)
+    );
+  });
+
+  it('leaves out groups with nothing to show for an ordinary live release', async () => {
+    await mount('/dashboard/apps/alpha/releases/dep-1?panel=rollout');
+    const dialog = await screen.findByRole('dialog', { name: 'Traffic & rollout' });
+    await waitFor(() =>
+      expect(within(dialog).queryByRole('heading', { name: 'Now' })).not.toBeInTheDocument()
+    );
+    expect(within(dialog).queryByRole('heading', { name: 'Recover' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Recovery is unavailable/)).not.toBeInTheDocument();
   });
 
   it('leaves out Approval when release approvals are hidden for the account', async () => {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useNavigate, useRouter, useRouterState, useSearch } from '@tanstack/react-router';
 import { Modal } from '@/components/ui/modal';
 import type { ReleasePageSearch, ReleasePanel } from './panels';
 
@@ -13,7 +13,8 @@ export interface ReleasePanelSpec {
 /**
  * The popup a release page has open, read from and written to `?panel=`.
  * Opening pushes a history entry, so Back closes the popup before it leaves
- * the page; closing replaces it.
+ * the page. Closing a popup this page opened steps back over that entry, so
+ * no duplicate is left behind; one a link opened is closed in place.
  */
 export function useReleasePanel(): {
   panel?: ReleasePanel;
@@ -22,6 +23,10 @@ export function useReleasePanel(): {
 } {
   const search = useSearch({ strict: false }) as ReleasePageSearch;
   const navigate = useNavigate();
+  const router = useRouter();
+  const pushed = useRouterState({
+    select: (state) => Boolean((state.location.state as { releasePanel?: boolean }).releasePanel),
+  });
   return {
     panel: search.panel,
     open: (panel, hash) =>
@@ -29,20 +34,23 @@ export function useReleasePanel(): {
         to: '.',
         search: ((prev: ReleasePageSearch) => ({ ...prev, panel })) as never,
         hash: hash ?? '',
+        state: ((prev: Record<string, unknown>) => ({ ...prev, releasePanel: true })) as never,
         resetScroll: false,
       }),
     close: () =>
-      void navigate({
-        to: '.',
-        search: ((prev: ReleasePageSearch) => {
-          const rest = { ...prev };
-          delete rest.panel;
-          return rest;
-        }) as never,
-        hash: '',
-        replace: true,
-        resetScroll: false,
-      }),
+      pushed
+        ? router.history.back()
+        : void navigate({
+            to: '.',
+            search: ((prev: ReleasePageSearch) => {
+              const rest = { ...prev };
+              delete rest.panel;
+              return rest;
+            }) as never,
+            hash: '',
+            replace: true,
+            resetScroll: false,
+          }),
   };
 }
 
