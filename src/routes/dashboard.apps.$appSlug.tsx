@@ -129,6 +129,11 @@ import { useData } from '@/lib/store';
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { Play, Rocket } from 'iconoir-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ProductionOnlyBanner,
+  appTabShowsProduction,
+  productionNoun,
+} from '@/components/dashboard/production-only-banner';
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -455,6 +460,9 @@ function FunctionDetailPage() {
         <Swap id={tab}>
           <TabCapabilityGate capability={tabCapability} title={tab}>
             <div className="flex flex-col gap-6">
+              {/* Outside production, a tab whose API has no environment says
+                  it shows (and changes) production. */}
+              {appTabShowsProduction(tab) && <ProductionOnlyBanner what={productionNoun(tab)} />}
               {tab === 'Automations' && (
                 <AutomationsBody
                   fixedSlug={appSlug}

@@ -2,10 +2,11 @@ import { createFileRoute } from '@tanstack/react-router';
 import { EventsBody, type EventsView } from '@/components/dashboard/events/events-body';
 import { consoleHead } from '@/lib/seo';
 import { withCapability } from '@/components/dashboard/capability-gate';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/events')({
   // Gated like its nav item: a bookmarked URL explains itself when off.
-  component: withCapability('events', 'Events', EventsPage),
+  component: withProductionBanner('events', withCapability('events', 'Events', EventsPage)),
   head: () => consoleHead('events'),
   validateSearch: (search: Record<string, unknown>): { view?: 'consumers' } =>
     search.view === 'consumers' ? { view: 'consumers' } : {},

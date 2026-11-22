@@ -10,9 +10,10 @@ import { inScope } from '@/lib/project-scope';
 import { scopedIn, useScopeGate } from '@/components/dashboard/scope-gate';
 import { formatRelative } from '@/lib/mock-data';
 import { consoleHead } from '@/lib/seo';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/instances')({
-  component: WorkersPage,
+  component: withProductionBanner('instances', WorkersPage),
   validateSearch: (
     raw: Record<string, unknown>
   ): Record<string, unknown> & { instance?: string; q?: string } => ({
