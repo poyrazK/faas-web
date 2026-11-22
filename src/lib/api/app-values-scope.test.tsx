@@ -6,12 +6,14 @@ import { spyApi } from '@/test/api';
 import {
   keys,
   useAppEnv,
+  useAddUpstream,
   useAppRoutes,
   useAppSecrets,
   useDeleteEnv,
   useRotateSecret,
   useSetEnv,
   useSetSecret,
+  useUpstreams,
 } from './queries';
 import { useRevokeSecret } from './secret-references';
 
@@ -131,5 +133,46 @@ describe('route traffic', () => {
     );
     expect(client.getQueryData(['apps', 'api', 'routes'])).toBeDefined();
     expect(client.getQueryData(['apps', 'api', 'routes', 'staging'])).toBeDefined();
+  });
+});
+
+describe('upstreams', () => {
+  const row = (id: string, deployment_scope?: string) => ({
+    id,
+    kind: 'postgres',
+    host_last4: 'b.io',
+    port: 5432,
+    scope: 'default',
+    ...(deployment_scope ? { deployment_scope } : {}),
+  });
+
+  it('Staging lists with deployment_scope=staging and declares with it', async () => {
+    const get = spyApi('GET').mockResolvedValue(ok({ upstreams: [row('s1', 'staging')] }));
+    const put = spyApi('PUT').mockResolvedValue(ok({}));
+    const { wrapper: w } = wrapper();
+    const list = renderHook(() => useUpstreams('api', 'staging'), { wrapper: w });
+    await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+    const add = renderHook(() => useAddUpstream('api', 'staging'), { wrapper: w });
+    await act(() =>
+      add.result.current.mutateAsync({ kind: 'postgres', host: 'db.example.com', port: 5432 })
+    );
+    expect(paramsOf(get)).toContainEqual([
+      '/v1/apps/{slug}/upstreams',
+      { path: { slug: 'api' }, query: { deployment_scope: 'staging' } },
+    ]);
+    expect(put.mock.calls[0][1]).toMatchObject({ body: { deployment_scope: 'staging' } });
+  });
+
+  it('production lists as before and hides other environments’ rows', async () => {
+    const get = spyApi('GET').mockResolvedValue(
+      ok({
+        upstreams: [row('p1'), row('p2', 'default'), row('p3', 'production'), row('s1', 'staging')],
+      })
+    );
+    const { wrapper: w } = wrapper();
+    const list = renderHook(() => useUpstreams('api'), { wrapper: w });
+    await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+    expect(paramsOf(get)).toContainEqual(['/v1/apps/{slug}/upstreams', { path: { slug: 'api' } }]);
+    expect(list.result.current.data?.upstreams?.map((u) => u.id)).toEqual(['p1', 'p2', 'p3']);
   });
 });

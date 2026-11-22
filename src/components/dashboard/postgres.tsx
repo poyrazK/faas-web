@@ -36,6 +36,8 @@ import {
   type PostgresDatabase,
 } from '@/lib/api/queries';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { useEnvironmentScope } from '@/lib/environment-scope';
+import { EnvironmentNote } from './environment-values-gate';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { absoluteTime } from '@/lib/time';
@@ -469,6 +471,7 @@ function DatabaseDetail({
   const [binding, setBinding] = useState(false);
   const bindings = usePostgresBindings(database.id);
   const apps = useApps();
+  const bindingLock = useBindingLock();
   const appName = (id: string) => apps.data?.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
   const paused = Boolean(database.plan_excess) || (capSuspended && database.state === 'ready');
 
@@ -657,8 +660,15 @@ function DatabaseDetail({
         </p>
       ) : (
         <>
+          {bindingLock.locked && (
+            <EnvironmentNote
+              name={bindingLock.env.name}
+              readOnly={false}
+              lead={`${bindingLock.env.name} is protected: connect apps through a promotion.`}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            {(apps.data?.length ?? 0) > 0 && (
+            {(apps.data?.length ?? 0) > 0 && !bindingLock.locked && (
               <Button
                 size="sm"
                 variant={paused ? 'outline' : 'default'}
@@ -954,6 +964,32 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
   );
 }
 
+/**
+ * Inside a project in another environment, whether binding into that
+ * environment's scope is locked: a protected stage, or one whose protection
+ * isn't known yet. faas's binding handler doesn't check protection (direct
+ * secret writes do), so the console is the guard. Fails closed.
+ */
+function useBindingLock() {
+  const env = useEnvironmentScope();
+  const staged = env.applies && env.environment !== 'production';
+  /**
+   * Whether writing a credential into `scope` is locked: a protected stage of
+   * the project, or any stage while the project's environments are unknown.
+   * Production's scopes stay writable, as they always were; outside a project
+   * nothing is known, so nothing changes.
+   */
+  const isLocked = (scope: string) => {
+    if (!env.applies) return false;
+    const target = scope.trim() || 'default';
+    if (target === 'default' || target === 'production') return false;
+    if (env.choices === null) return true;
+    return Boolean(env.choices.find((choice) => choice.slug === target)?.protected);
+  };
+  const locked = staged && isLocked(env.environment);
+  return { env, staged, locked, isLocked };
+}
+
 function Bindings({
   database,
   appName,
@@ -980,7 +1016,11 @@ function Bindings({
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
-  const [scope, setScope] = useState('default');
+  // Inside a project the credential goes to the top bar's environment's scope
+  // (the scope its deployments read, faas ADR-1139); production is `default`.
+  const { env, staged, locked, isLocked } = useBindingLock();
+  const [scopeRefusal, setScopeRefusal] = useState<string | null>(null);
+  const [scope, setScope] = useState(staged ? env.environment : 'default');
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
@@ -1014,6 +1054,16 @@ function Bindings({
   }, [polled, knownApps, toast]);
 
   const submit = async () => {
+    // The destination scope, not only the top bar's environment: the field is
+    // free text, and faas's binding handler doesn't check protection.
+    const target = scope.trim() || 'default';
+    if (isLocked(target)) {
+      setScopeRefusal(
+        `${target.charAt(0).toUpperCase() + target.slice(1)} is protected: connect apps there through a promotion.`
+      );
+      return;
+    }
+    setScopeRefusal(null);
     try {
       await create.mutateAsync({
         app_id: chosenApp,
@@ -1124,40 +1174,44 @@ function Bindings({
                     Last change failed
                   </span>
                 )}
-                <span className="ml-auto flex items-center gap-1">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
-                    title={
-                      binding.rotation_pending
-                        ? 'A rotation is still refreshing the app; wait for it to finish.'
-                        : `Credentials v${binding.credential_generation}`
-                    }
-                    onClick={() => void onRotate(binding)}
-                    disabled={
-                      rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
-                    }
-                  >
-                    Rotate credentials
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Remove binding for ${appName(binding.app_id)}`}
-                    onClick={() => void onRemove(binding.id, binding.environment_key)}
-                    disabled={remove.isPending}
-                  >
-                    Remove
-                  </Button>
-                </span>
+                {/* Rotating or removing writes the credential secret in the
+                    binding's scope; a locked stage's scope is left alone. */}
+                {!isLocked(binding.scope) && (
+                  <span className="ml-auto flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                      title={
+                        binding.rotation_pending
+                          ? 'A rotation is still refreshing the app; wait for it to finish.'
+                          : `Credentials v${binding.credential_generation}`
+                      }
+                      onClick={() => void onRotate(binding)}
+                      disabled={
+                        rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
+                      }
+                    >
+                      Rotate credentials
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Remove binding for ${appName(binding.app_id)}`}
+                      onClick={() => void onRemove(binding.id, binding.environment_key)}
+                      disabled={remove.isPending}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )
       )}
       <Sheet
-        open={binding}
+        open={binding && !locked}
         onClose={() => setBinding(false)}
         title={`Connect an app to ${database.name}`}
       >
@@ -1206,10 +1260,23 @@ function Bindings({
             <span className="text-xs text-muted-foreground">Scope</span>
             <input
               value={scope}
-              onChange={(e) => setScope(e.target.value)}
+              onChange={(e) => {
+                setScope(e.target.value);
+                setScopeRefusal(null);
+              }}
               aria-label="Binding scope"
               className={FIELD}
             />
+            {scopeRefusal && (
+              <span role="alert" className="text-xs text-destructive">
+                {scopeRefusal}
+              </span>
+            )}
+            {staged && scope.trim() === env.environment && (
+              <span className="text-xs text-muted-foreground">
+                {env.name}’s scope: the credential reaches {env.name}’s deployments.
+              </span>
+            )}
           </label>
           <p className="text-xs text-muted-foreground">
             The connection string reaches the app as this secret and is never shown in the console.

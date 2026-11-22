@@ -742,7 +742,19 @@ function FunctionDetailPage() {
                   appUrl={fn.visibility === 'internal' ? undefined : fn.url}
                 />
               )}
-              {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+              {tab === 'Upstreams' && (
+                // Outside production: the environment's own deployment's hints.
+                <EnvironmentValuesGate slug={fn.id} quiet>
+                  {({ scope, readOnly, name }) => (
+                    <UpstreamsBody
+                      slug={fn.id}
+                      deploymentScope={scope}
+                      environmentName={name}
+                      readOnly={readOnly}
+                    />
+                  )}
+                </EnvironmentValuesGate>
+              )}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
               {tab === 'Services' && (
                 <div className="space-y-5">

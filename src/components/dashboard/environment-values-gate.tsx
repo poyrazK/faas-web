@@ -13,10 +13,13 @@ import { cn } from '@/lib/utils';
  */
 export function EnvironmentValuesGate({
   slug,
+  quiet = false,
   children,
 }: {
   slug: string;
-  children: (env: { scope?: string; readOnly: boolean }) => ReactNode;
+  /** The page draws its own environment note; the gate only gates. */
+  quiet?: boolean;
+  children: (env: { scope?: string; readOnly: boolean; name?: string }) => ReactNode;
 }) {
   const app = useAppEnvironment(slug);
   if (!app.scope) return <>{children({ readOnly: false })}</>;
@@ -56,6 +59,7 @@ export function EnvironmentValuesGate({
         </p>
       </div>
     );
+  if (quiet) return <>{children({ scope: app.scope, readOnly: app.readOnly, name: app.name })}</>;
   return (
     <>
       <EnvironmentNote name={app.name} readOnly={app.readOnly}>
@@ -64,7 +68,7 @@ export function EnvironmentValuesGate({
         {app.deployed === false &&
           ` ${slug} isn’t deployed there yet: these apply on its first deploy (gregale deploy --environment ${app.scope}).`}
       </EnvironmentNote>
-      {children({ scope: app.scope, readOnly: app.readOnly })}
+      {children({ scope: app.scope, readOnly: app.readOnly, name: app.name })}
     </>
   );
 }
