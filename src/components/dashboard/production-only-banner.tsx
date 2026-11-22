@@ -46,6 +46,12 @@ export function ProductionOnlyBanner({ what }: { what: string }) {
   );
 }
 
+/** True outside production, where app-wide actions act on production. */
+export function useShowsProduction(): boolean {
+  const env = useContext(BannerScopeContext);
+  return env.applies && env.environment !== 'production';
+}
+
 /** A route component with the banner above it. */
 export function withProductionBanner<P extends object>(what: string, Page: ComponentType<P>) {
   function WithProductionBanner(props: P) {

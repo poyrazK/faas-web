@@ -1,7 +1,11 @@
 import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { AppActionsMenu, RollbackButton } from '@/components/dashboard/app-actions-menu';
+import {
+  AppActionsMenu,
+  DeployLabel,
+  RollbackButton,
+} from '@/components/dashboard/app-actions-menu';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
   validateAppAnalyticsSearch,
@@ -418,7 +422,7 @@ function FunctionDetailPage() {
               }}
             >
               <Rocket className="h-3.5 w-3.5" />
-              {isDeploying ? 'Deploying…' : 'Deploy'}
+              <DeployLabel deploying={isDeploying} />
             </Button>
             <AppActionsMenu app={fn} />
           </>
