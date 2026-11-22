@@ -9949,7 +9949,18 @@ route('GET', '/v1/apps/{slug}/work-policies', ({ params }) => ({
 route('GET', '/v1/instances', () => ({ instances: db.instances, next_before: null }));
 route('GET', '/v1/audit-log', ({ query }) => {
   const limit = Number(query.get('limit') ?? 50);
-  return { entries: db.audit.slice(0, limit), limit };
+  const kind = query.get('kind_prefix');
+  const since = query.get('since');
+  const before = query.get('before');
+  const matching = db.audit.filter(
+    (entry) =>
+      (!kind || entry.kind.startsWith(kind)) &&
+      (!since || Date.parse(entry.received_at) >= Date.parse(since))
+  );
+  const offset = before ? matching.findIndex((entry) => entry.id === before) + 1 : 0;
+  const entries = matching.slice(offset, offset + limit);
+  const next = offset + entries.length < matching.length ? entries.at(-1)?.id : undefined;
+  return { entries, limit, ...(next ? { next_before: next } : {}) };
 });
 
 route('GET', '/v1/usage/summary', () => db.usage);

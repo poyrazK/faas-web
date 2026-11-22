@@ -32,6 +32,16 @@ export function absoluteTime(
   }).format(ms);
 }
 
+/** Hours and minutes in the viewer's zone, for events grouped under a date. */
+export function clockTime(ms: number, opts: { locale?: string; timeZone?: string } = {}): string {
+  return new Intl.DateTimeFormat(opts.locale, {
+    timeZone: opts.timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(ms);
+}
+
 /**
  * The short form a person reads at a glance: "Today 14:03", "Yesterday 09:41",
  * "Oct 20, 14:03" this year, "Oct 20, 2025" before it. No seconds, no zone —
@@ -50,12 +60,7 @@ export function compactTime(
       month: '2-digit',
       day: '2-digit',
     }).format(t);
-  const clock = new Intl.DateTimeFormat(locale, {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(ms);
+  const clock = clockTime(ms, opts);
   if (day(ms) === day(now)) return `Today ${clock}`;
   if (day(ms) === day(now - DAY)) return `Yesterday ${clock}`;
   const year = (t: number) =>
