@@ -107,8 +107,8 @@ export function AppAnalyticsBody({
       inspect({
         metric: selected,
         app: slug,
-        since: series.data?.from ?? since,
-        until: series.data?.until,
+        // The preset, not the page's exact bounds: the popup runs up to now.
+        since,
         route: hasRouteFilter ? route : undefined,
         method: hasRouteFilter ? method : undefined,
         group: groupBy,

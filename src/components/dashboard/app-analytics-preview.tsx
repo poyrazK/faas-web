@@ -140,8 +140,7 @@ export function AppAnalyticsPreview({
               inspect({
                 metric,
                 app: slug,
-                since: series.data?.from ?? since,
-                until: series.data?.until,
+                since,
               });
           }}
           build={(chosen) =>

@@ -50,11 +50,10 @@ export function MetricInspectorProvider({ children }: { children: ReactNode }) {
         onClose={close}
         title={
           selected
-            ? `${METRIC_LABELS[selected.metric]} · ${selected.app ?? 'All apps'}`
+            ? `${METRIC_LABELS[selected.metric]}${selected.app ? ` · ${selected.app}` : ''}`
             : 'Metric details'
         }
-        width="max-w-5xl"
-        description="Explore this metric without leaving your page."
+        width="max-w-3xl"
       >
         {selected && (
           <Suspense fallback={<p role="status">Loading metric details…</p>}>

@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { withRouter } from '@/test/router';
 import { OverviewStats, type OverviewStatsProps } from './overview-stats';
 
@@ -69,5 +70,32 @@ describe('OverviewStats', () => {
   it('says why a memory figure is missing', async () => {
     await show({ resident: { known: false, partial: true, mb: 0, count: 0 } });
     expect(card('Memory now')).toHaveTextContent('more instances than one page');
+  });
+
+  it('opens each card’s details when the popup is wired', async () => {
+    const onInspect = vi.fn();
+    await show({ onInspect });
+    for (const label of [
+      'Total requests',
+      'Error rate',
+      'Wake p95',
+      'Memory now',
+      'GB-h left',
+      'CPU',
+    ])
+      await userEvent.click(screen.getByRole('button', { name: `See ${label} details` }));
+    expect(onInspect.mock.calls.map(([metric]) => metric)).toEqual([
+      'requests',
+      'error_rate',
+      'wake_p95',
+      'memory',
+      'allowance',
+      'cpu',
+    ]);
+  });
+
+  it('keeps cards as plain figures without the popup', async () => {
+    await show();
+    expect(screen.queryByRole('button', { name: /details/ })).not.toBeInTheDocument();
   });
 });
