@@ -51,6 +51,7 @@ import { cliDeployCommand, cliInitDeployCommand } from '@/lib/cli-commands';
 import { type Runtime } from '@/lib/mock-data';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useData } from '@/lib/store';
+import { useProjects } from '@/lib/api/projects';
 import { useWorkspaceTarget, workspaceCreateError } from '@/lib/api/workspace-apps';
 import {
   useBindRepoFor,
@@ -125,6 +126,7 @@ interface NewAppWizardProps {
   templateSlug?: string;
   /** Removes dashboard chrome and keeps onboarding focused on a real Git deployment. */
   onboarding?: boolean;
+  initialProject?: string;
   /** Compact first-signup presentation; uses the same mutation owner. */
   quickstart?: boolean;
   /** Confirm the onboarding workspace inventory before allowing a mutation. */
@@ -165,6 +167,7 @@ function CreateAppWizard({
   search: urlSearch,
   onSearchChange,
   onboarding = false,
+  initialProject,
   quickstart = false,
   deploymentDisabled = false,
   suggestedName,
@@ -180,6 +183,19 @@ function CreateAppWizard({
   const { addWorkflow } = useData();
   const { account, loading: authLoading } = useAuth();
   const workspace = useWorkspaceTarget();
+  const projects = useProjects(onboarding ? '' : (account?.id ?? ''));
+  const [projectChoice, setProjectChoice] = useState<{ org: string | null; id: string }>();
+  const projectList = projects.data ?? [];
+  const inheritedProject = initialProject && initialProject !== '_standalone' ? initialProject : '';
+  const projectId =
+    projectChoice?.org === workspace.org
+      ? projectChoice.id
+      : inheritedProject
+        ? (projectList.find((item) => item.slug === inheritedProject)?.id ?? null)
+        : '';
+  const project = projectList.find((item) => item.id === projectId && !item.repo_full_name);
+  const projectUnavailable =
+    projectId === null || Boolean(projectId && (!project || projects.error));
   const privateCapability = useCapability('private-apps');
   const [localSearch, setLocalSearch] = useState<NewAppSearch>({
     source: onboarding ? 'git' : undefined,
@@ -300,6 +316,7 @@ function CreateAppWizard({
     visibility,
     source,
     workspace: workspace.org,
+    projectId,
   });
   const createController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
@@ -310,8 +327,9 @@ function CreateAppWizard({
       visibility,
       source,
       workspace: workspace.org,
+      projectId,
     };
-  }, [account?.id, name, visibility, source, workspace.org]);
+  }, [account?.id, name, visibility, source, workspace.org, projectId]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -336,7 +354,8 @@ function CreateAppWizard({
     !quickstart &&
       !createdId &&
       (Boolean(repo.trim() || (name.trim() && name !== initialName)) ||
-        (source === 'function' && fnEdited)),
+        (source === 'function' && fnEdited) ||
+        Boolean(projectChoice)),
     undefined,
     onboarding ? '/onboarding' : '/dashboard/apps/new'
   );
@@ -513,6 +532,7 @@ function CreateAppWizard({
         Boolean(knownApps.error))) ||
     limitsLoading ||
     quotaExceeded ||
+    projectUnavailable ||
     !memoryAllowed(account, selectedMemoryMb) ||
     (visibility === 'internal' && !privateAvailable);
 
@@ -522,8 +542,9 @@ function CreateAppWizard({
 
   // A disabled Deploy always says why. The plan-limit case already has its
   // own alert in the review panel, so it is not repeated here.
-  const blockedReason =
-    quickstart && (deploymentDisabled || knownApps.isPending || knownApps.error)
+  const blockedReason = projectUnavailable
+    ? 'Go back and choose an available project before creating the app.'
+    : quickstart && (deploymentDisabled || knownApps.isPending || knownApps.error)
       ? 'Confirm your app inventory before deploying. Retry the app lookup if it failed.'
       : limitsLoading
         ? 'Checking your plan limits before creating the app…'
@@ -547,6 +568,7 @@ function CreateAppWizard({
     name,
     workspaceLabel: workspace.label,
     workspaceIsOrg: Boolean(workspace.org),
+    projectLabel: project?.slug,
     appType,
     runtimeLabel: RUNTIMES.find((r) => r.id === runtime)?.label,
     memoryMb: selectedMemoryMb,
@@ -621,6 +643,7 @@ function CreateAppWizard({
         ...(appType === 'function' ? { type: 'function', runtime } : { type: 'app' }),
         visibility,
         org: workspace.org,
+        ...(project ? { projectId: project.id } : {}),
       });
       if (quickstart && !mounted.current) return;
       if (quickstart && appNameError(created.id))
@@ -1018,7 +1041,14 @@ function CreateAppWizard({
       </Button>
     );
     if (source === 'container' || source === 'worker')
-      return <ImageDeployForm kind={source === 'worker' ? 'worker' : 'http'} />;
+      return (
+        <ImageDeployForm
+          kind={source === 'worker' ? 'worker' : 'http'}
+          project={project}
+          projectField={renderProject()}
+          projectUnavailable={projectUnavailable}
+        />
+      );
     if (source === 'function')
       return (
         <div className="flex flex-col gap-8">
@@ -1200,6 +1230,54 @@ function CreateAppWizard({
     );
   }
 
+  function renderProject() {
+    if (onboarding) return null;
+    const id = uid + '-project';
+    return (
+      <SettingRow
+        label="Project"
+        htmlFor={id}
+        hint={
+          projects.error
+            ? 'Projects could not be loaded.'
+            : 'Choose where this app belongs. Its first deployment uses Production.'
+        }
+      >
+        <Select
+          id={id}
+          value={projectId ?? 'inherited'}
+          onChange={(event) => setProjectChoice({ org: workspace.org, id: event.target.value })}
+          className={CONTROL}
+        >
+          <option value="">Standalone app</option>
+          {projectId === null && (
+            <option value="inherited" disabled>
+              {inheritedProject} {projects.isPending ? '(loading)' : '(unavailable)'}
+            </option>
+          )}
+          {projectUnavailable &&
+            projectId &&
+            !projectList.some((item) => item.id === projectId) && (
+              <option value={projectId} disabled>
+                Project unavailable
+              </option>
+            )}
+          {projectList.map((item) => (
+            <option key={item.id} value={item.id} disabled={Boolean(item.repo_full_name)}>
+              {item.slug}
+              {item.repo_full_name ? ' (managed by repository)' : ''}
+            </option>
+          ))}
+        </Select>
+        {Boolean(projects.error) && (
+          <Button variant="ghost" size="xs" type="button" onClick={() => void projects.refetch()}>
+            Retry projects
+          </Button>
+        )}
+      </SettingRow>
+    );
+  }
+
   function renderConfigure() {
     const nameShown = (nameTouched || configureValidation.submitAttempted) && nameError;
     return (
@@ -1242,6 +1320,7 @@ function CreateAppWizard({
             )}
           </SettingRow>
 
+          {renderProject()}
           {quickstart && source === 'function' && (
             <details className="well rounded-xl bg-muted/40 p-4">
               <summary className="cursor-pointer text-sm">View sample code</summary>

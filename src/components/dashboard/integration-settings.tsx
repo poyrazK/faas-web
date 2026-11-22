@@ -1,3 +1,4 @@
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useEffect } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowRight, Check, OpenNewWindow } from 'iconoir-react';
@@ -143,12 +144,18 @@ export function AccountDetails() {
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="label-mono text-muted-foreground">Email</dt>
-            <dd className="mt-1 text-sm [overflow-wrap:anywhere]">{account?.email ?? '—'}</dd>
+            <dd className="mt-1 text-sm [overflow-wrap:anywhere]">
+              {account?.email ? (
+                <CopyableId value={account.email} label="account email" full />
+              ) : (
+                '—'
+              )}
+            </dd>
           </div>
           <div>
             <dt className="label-mono text-muted-foreground">Account ID</dt>
             <dd className="mt-1 font-mono text-xs [overflow-wrap:anywhere]">
-              {account?.id ?? '—'}
+              {account?.id ? <CopyableId value={account.id} label="account ID" full /> : '—'}
             </dd>
           </div>
           <div>

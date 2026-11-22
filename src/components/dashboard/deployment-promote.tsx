@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState } from 'react';
 import { Pin, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -98,7 +99,9 @@ export function ServingNote({
     );
   const split =
     pin.kind === 'split'
-      ? pin.serving.map((d) => `${deploymentLabel(d)} ${d.traffic_percent ?? 0}%`).join(', ')
+      ? pin.serving
+          .map((d) => `${deploymentLabel(d)} ${formatPercent(d.traffic_percent ?? 0)}`)
+          .join(', ')
       : '';
   return (
     <p className="text-xs text-muted-foreground">
@@ -211,7 +214,7 @@ export function PromoteDeployment({ slug, deployment }: { slug: string; deployme
           : `${label} now serves all traffic`,
         description: result.already_promoted
           ? 'Nothing moved; the bindings check still passed.'
-          : `Moved from ${result.from_percent}% to ${result.to_percent}%.`,
+          : `Moved from ${formatPercent(result.from_percent)} to ${formatPercent(result.to_percent)}.`,
       });
     } catch (err) {
       const code = err instanceof ApiError ? err.code : '';

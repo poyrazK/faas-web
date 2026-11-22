@@ -108,6 +108,23 @@ beforeEach(() => {
 describe('the answer first', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('shows the compute allowance split by app without hiding unattributed usage', () => {
+    usage.compute = { ...COMPUTE, used_gb_hours: 10 };
+    usage.apps = [
+      { id: 'app-a', slug: 'api' },
+      { id: 'app-b', slug: 'worker' },
+    ];
+    usage.rows = [
+      { app_id: 'app-a', mb_seconds: 6 * 1024 * 3600, requests: 0, cold_boots: 0 },
+      { app_id: 'app-b', mb_seconds: 3 * 1024 * 3600, requests: 0, cold_boots: 0 },
+    ];
+    render(<UsagePage />);
+    const breakdown = screen.getByRole('list', { name: 'Compute allowance by app' });
+    expect(breakdown).toHaveTextContent('api 6 GB-h');
+    expect(breakdown).toHaveTextContent('worker 3 GB-h');
+    expect(breakdown).toHaveTextContent('Unattributed 1 GB-h');
+  });
+
   it('opens with one plain sentence and no action when nothing needs doing', () => {
     render(<UsagePage />);
     expect(screen.getByRole('status', { name: 'Usage this month' })).toHaveTextContent(

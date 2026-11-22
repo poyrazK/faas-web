@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import type { ReactNode } from 'react';
 import { RefreshDouble } from 'iconoir-react';
 import { PageHeader } from '../primitives';
@@ -27,7 +28,7 @@ export function ReleaseHeader({
         <>
           {live ? (
             <span className="text-sm font-medium text-[color:var(--status-good)]">
-              Live · {deployment.traffic_percent ?? 0}% of traffic
+              Live · {formatPercent(deployment.traffic_percent ?? 0)} of traffic
             </span>
           ) : (
             <ReleaseStatusLabel status={deployment.status} />

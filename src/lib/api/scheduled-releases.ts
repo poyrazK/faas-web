@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { ApiError } from './errors';
@@ -52,7 +53,8 @@ export function scheduleBlocker(d: Deployment): string | undefined {
   if (['failed', 'cancelled', 'superseded', 'stopped'].includes(status))
     return `It is ${status}; only a release that waits without traffic can be scheduled.`;
   if (d.canary_total_steps) return 'It already rolls out through a canary.';
-  if ((d.traffic_percent ?? 0) > 0) return `It already takes ${d.traffic_percent}% of traffic.`;
+  if ((d.traffic_percent ?? 0) > 0)
+    return `It already takes ${formatPercent(d.traffic_percent)} of traffic.`;
   if (status !== 'live')
     return 'It is still building. Once it is live without traffic it can be scheduled.';
   return undefined;

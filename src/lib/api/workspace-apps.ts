@@ -51,21 +51,30 @@ export function useWorkspaceTarget(accountId?: string): WorkspaceTarget {
 export const orgAppsKey = (org: string) => ['orgs', org, 'apps'] as const;
 
 /** Creates through the workspace when one is chosen, so the app is attributed to it. */
-export function createWorkspaceApp(
+export async function createWorkspaceApp(
   org: string | null,
   body: CreateAppRequest,
   idempotencyKey?: string
 ) {
   const headers = idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined;
-  return org
-    ? unwrap(
+  const app = org
+    ? await unwrap(
         api.POST('/v1/orgs/{slug}/apps', {
           params: { path: { slug: org } },
           body,
           ...(headers ? { headers } : {}),
         })
       )
-    : unwrap(api.POST('/v1/apps', { body, ...(headers ? { headers } : {}) }));
+    : await unwrap(api.POST('/v1/apps', { body, ...(headers ? { headers } : {}) }));
+  if (body.project_id && app.project_id !== body.project_id)
+    throw new Error(
+      'Could not confirm the selected project. Check your app inventory before retrying.'
+    );
+  return app;
+}
+
+export function invalidateProjectApps(cache: ReturnType<typeof useQueryClient>) {
+  void cache.invalidateQueries({ queryKey: ['projects'] });
 }
 
 export function useCreateWorkspaceApp() {
@@ -74,7 +83,8 @@ export function useCreateWorkspaceApp() {
     retry: false,
     mutationFn: ({ org, body }: { org: string | null; body: CreateAppRequest }) =>
       createWorkspaceApp(org, body),
-    onSuccess: (_app, { org }) => {
+    onSuccess: (_app, { org, body }) => {
+      if (body.project_id) invalidateProjectApps(qc);
       void qc.invalidateQueries({ queryKey: keys.account });
       void qc.invalidateQueries({ queryKey: keys.apps });
       if (org) void qc.invalidateQueries({ queryKey: orgAppsKey(org) });

@@ -7,6 +7,7 @@ const confirm = vi.fn(async () => true);
 const revokeAll = vi.fn(async () => ({ revoked: 2 }));
 const revoke = vi.fn(async () => undefined);
 const toast = vi.fn();
+let extraDevices = 0;
 const now = Date.now();
 const ago = (minutes: number) => new Date(now - minutes * 60e3).toISOString();
 
@@ -25,7 +26,7 @@ vi.mock('@/lib/api/queries', () => ({
           issued_ip: '185.93.2.14',
           issued_ua: 'Chrome 128 · macOS',
           issued_at: ago(120),
-          last_seen_at: ago(2),
+          last_seen_at: ago(extraDevices ? 150 : 2),
           current_session: true,
         },
         {
@@ -36,6 +37,14 @@ vi.mock('@/lib/api/queries', () => ({
           last_seen_at: ago(30),
           current_session: false,
         },
+        ...Array.from({ length: extraDevices }, (_, i) => ({
+          id: `extra-${i}`,
+          issued_ip: `10.0.0.${i}`,
+          issued_ua: 'Chrome 128 · macOS',
+          issued_at: ago(150 + i),
+          last_seen_at: ago(100 + i),
+          current_session: false,
+        })),
       ],
     },
     isPending: false,
@@ -86,6 +95,7 @@ vi.mock('@/lib/api/queries', () => ({
 const { SecuritySettings } = await import('./security-settings');
 
 beforeEach(() => {
+  extraDevices = 0;
   openMfa.mockReset();
   confirm.mockClear();
   revokeAll.mockClear();
@@ -116,6 +126,16 @@ describe('Security in plain words', () => {
       expect.objectContaining({ title: 'Sign out everywhere?', destructive: true })
     );
     await waitFor(() => expect(revokeAll).toHaveBeenCalledTimes(1));
+  });
+
+  it('limits the initial device list and makes older devices reachable', async () => {
+    extraDevices = 9;
+    render(<SecuritySettings />);
+    expect(screen.getByText('This browser')).toBeInTheDocument();
+    expect(screen.queryByText('10.0.0.8')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^Show 5 more/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Show 1 more/ }));
+    expect(screen.getByText('10.0.0.8')).toBeInTheDocument();
   });
 
   it('names devices in words, keeps the raw agent on hover and signs one out after a confirm', async () => {

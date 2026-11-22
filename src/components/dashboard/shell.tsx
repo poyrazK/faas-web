@@ -58,7 +58,7 @@ import { AppRail, appOfPath } from './app-rail';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
-import { useCapabilityOff } from './nav-access';
+import { NavMaturity, useCapabilityOff } from './nav-access';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
@@ -137,6 +137,7 @@ function NavRow({
   scope?: { project?: string; env?: string };
 }) {
   const { to, label, icon: Icon, exact } = item;
+  const maturityCapability = item.maturityCapability ?? item.capability;
   const onThisPath = matchesNavPath(pathname, { to, exact: true });
   const search = scope
     ? onThisPath
@@ -180,6 +181,7 @@ function NavRow({
         <span aria-hidden={collapsed} className={labelCls}>
           {label}
         </span>
+        {!collapsed && maturityCapability && <NavMaturity capabilities={[maturityCapability]} />}
       </>
     </Link>
   );
@@ -259,6 +261,9 @@ function NavDisclosure({
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
+          {!collapsed && hub.capability && (
+            <NavMaturity capabilities={[hub.capability]} className="ml-0" />
+          )}
           {/* The chevron rides the panel's own curve and direction rather than
               a CSS transition of its own, so the two read as one gesture
               instead of two things that happen to start together. */}

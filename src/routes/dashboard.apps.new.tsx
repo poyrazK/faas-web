@@ -17,6 +17,7 @@ function NewAppPage() {
   return (
     <NewAppWizard
       search={search}
+      initialProject={typeof search.project === 'string' ? search.project : undefined}
       onSearchChange={(next, options) => void navigate({ search: next, ...options })}
     />
   );
