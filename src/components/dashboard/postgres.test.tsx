@@ -20,7 +20,12 @@ const undeleteDb = vi.fn();
 const purgeDb = vi.fn();
 const computeAccess = vi.hoisted(() => ({ value: 'on' }));
 // Inside a project the binding scope follows the top bar's environment.
-const envScope = vi.hoisted(() => ({ applies: false, environment: 'production' }));
+const envScope = vi.hoisted(() => ({
+  applies: false,
+  environment: 'production',
+  protectedStage: false,
+  listLoaded: true,
+}));
 vi.mock('@/lib/environment-scope', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
   useEnvironmentScope: () => ({
@@ -28,7 +33,12 @@ vi.mock('@/lib/environment-scope', async (importOriginal) => ({
     environment: envScope.environment,
     name: envScope.environment.charAt(0).toUpperCase() + envScope.environment.slice(1),
     kind: envScope.environment === 'production' ? 'production' : 'stage',
-    choices: null,
+    choices: envScope.listLoaded
+      ? [
+          { id: 'p', slug: 'production', protected: true },
+          { id: 's', slug: envScope.environment, protected: envScope.protectedStage },
+        ]
+      : null,
     available: true,
     list: { isPending: false, isError: false, refetch: () => undefined },
   }),
@@ -361,6 +371,32 @@ describe('PostgresDatabases', () => {
     } finally {
       envScope.applies = false;
       envScope.environment = 'production';
+    }
+  });
+
+  it('in a protected Staging, offers no way to write a credential there', async () => {
+    Object.assign(envScope, { applies: true, environment: 'staging', protectedStage: true });
+    try {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      expect(
+        await screen.findByText(/Staging is protected: connect apps through a promotion/)
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /connect an app/i })).toBeNull();
+    } finally {
+      Object.assign(envScope, { applies: false, environment: 'production', protectedStage: false });
+    }
+  });
+
+  it('stays locked while it is unknown whether Staging is protected', async () => {
+    Object.assign(envScope, { applies: true, environment: 'staging', listLoaded: false });
+    try {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await screen.findByRole('button', { name: /restore a copy/i });
+      expect(screen.queryByRole('button', { name: /connect an app/i })).toBeNull();
+    } finally {
+      Object.assign(envScope, { applies: false, environment: 'production', listLoaded: true });
     }
   });
 

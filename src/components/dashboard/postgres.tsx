@@ -37,6 +37,7 @@ import {
 } from '@/lib/api/queries';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 import { useEnvironmentScope } from '@/lib/environment-scope';
+import { EnvironmentNote } from './environment-values-gate';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { absoluteTime } from '@/lib/time';
@@ -470,6 +471,7 @@ function DatabaseDetail({
   const [binding, setBinding] = useState(false);
   const bindings = usePostgresBindings(database.id);
   const apps = useApps();
+  const bindingLock = useBindingLock();
   const appName = (id: string) => apps.data?.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
   const paused = Boolean(database.plan_excess) || (capSuspended && database.state === 'ready');
 
@@ -658,8 +660,15 @@ function DatabaseDetail({
         </p>
       ) : (
         <>
+          {bindingLock.locked && (
+            <EnvironmentNote
+              name={bindingLock.env.name}
+              readOnly={false}
+              lead={`${bindingLock.env.name} is protected: connect apps through a promotion.`}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            {(apps.data?.length ?? 0) > 0 && (
+            {(apps.data?.length ?? 0) > 0 && !bindingLock.locked && (
               <Button
                 size="sm"
                 variant={paused ? 'outline' : 'default'}
@@ -955,6 +964,22 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
   );
 }
 
+/**
+ * Inside a project in another environment, whether binding into that
+ * environment's scope is locked: a protected stage, or one whose protection
+ * isn't known yet. faas's binding handler doesn't check protection (direct
+ * secret writes do), so the console is the guard. Fails closed.
+ */
+function useBindingLock() {
+  const env = useEnvironmentScope();
+  const staged = env.applies && env.environment !== 'production';
+  const locked =
+    staged &&
+    (env.choices === null ||
+      Boolean(env.choices.find((choice) => choice.slug === env.environment)?.protected));
+  return { env, staged, locked };
+}
+
 function Bindings({
   database,
   appName,
@@ -983,8 +1008,7 @@ function Bindings({
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
   // Inside a project the credential goes to the top bar's environment's scope
   // (the scope its deployments read, faas ADR-1139); production is `default`.
-  const env = useEnvironmentScope();
-  const staged = env.applies && env.environment !== 'production';
+  const { env, staged, locked } = useBindingLock();
   const [scope, setScope] = useState(staged ? env.environment : 'default');
 
   const items = bindings.data?.items ?? [];
@@ -1129,40 +1153,44 @@ function Bindings({
                     Last change failed
                   </span>
                 )}
-                <span className="ml-auto flex items-center gap-1">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
-                    title={
-                      binding.rotation_pending
-                        ? 'A rotation is still refreshing the app; wait for it to finish.'
-                        : `Credentials v${binding.credential_generation}`
-                    }
-                    onClick={() => void onRotate(binding)}
-                    disabled={
-                      rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
-                    }
-                  >
-                    Rotate credentials
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Remove binding for ${appName(binding.app_id)}`}
-                    onClick={() => void onRemove(binding.id, binding.environment_key)}
-                    disabled={remove.isPending}
-                  >
-                    Remove
-                  </Button>
-                </span>
+                {/* Rotating or removing writes the credential secret in the
+                    binding's scope; a locked stage's scope is left alone. */}
+                {!(locked && binding.scope === env.environment) && (
+                  <span className="ml-auto flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                      title={
+                        binding.rotation_pending
+                          ? 'A rotation is still refreshing the app; wait for it to finish.'
+                          : `Credentials v${binding.credential_generation}`
+                      }
+                      onClick={() => void onRotate(binding)}
+                      disabled={
+                        rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
+                      }
+                    >
+                      Rotate credentials
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Remove binding for ${appName(binding.app_id)}`}
+                      onClick={() => void onRemove(binding.id, binding.environment_key)}
+                      disabled={remove.isPending}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )
       )}
       <Sheet
-        open={binding}
+        open={binding && !locked}
         onClose={() => setBinding(false)}
         title={`Connect an app to ${database.name}`}
       >
