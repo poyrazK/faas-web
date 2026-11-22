@@ -43,11 +43,21 @@ describe('docs manifest', () => {
     // Preview and internal capabilities; the capability registry still sends
     // `docs_url` for them, and the dashboard drops the link
     // (`safeCapabilityDocs`) rather than 404 on it.
-    for (const slug of ['object-storage', 'executions']) {
+    for (const slug of ['executions']) {
       expect(findDoc(slug), slug).toBeUndefined();
       expect(UNPUBLISHED_DOCS[slug], slug).toMatch(/(preview|internal) capability/);
     }
     expect(findDoc('runtime-go')).toBeUndefined();
+  });
+
+  it('publishes the pages upstream released to every customer', () => {
+    // Object storage went GA, stored workflows and outbound integrations
+    // shipped to every account (poyrazK/faas#7815, #7766): upstream's catalog
+    // no longer holds them, so the site must serve them.
+    for (const slug of ['object-storage', 'stored-workflows', 'outbound-integrations']) {
+      expect(findDoc(slug), slug).toBeDefined();
+      expect(UNPUBLISHED_DOCS[slug], slug).toBeUndefined();
+    }
   });
 
   it('uses unique slugs', () => {
