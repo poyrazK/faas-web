@@ -269,7 +269,15 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
     (env.choices === null ||
       Boolean(env.choices.find((choice) => choice.slug === env.environment)?.protected));
 
-  const [creating, setCreating] = useState(false);
+  // A dialog belongs to the environment it was opened in: switching the top
+  // bar, or the stage turning protected, closes it rather than letting its
+  // submit write somewhere the page no longer shows. faas doesn't check
+  // protection on cron writes, so the console is the only guard.
+  const here = env.applies ? env.environment : '';
+  const [creatingIn, setCreatingIn] = useState<string | null>(null);
+  const creating = creatingIn === here && !readOnly;
+  const setCreating = (open: boolean) => setCreatingIn(open ? here : null);
+  const [editingIn, setEditingIn] = useState<string | null>(null);
   const [creationError, setCreationError] = useState<string | null>(null);
   const [appId, setAppId] = useState('');
   const [schedule, setSchedule] = useState('');
@@ -328,7 +336,8 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       : scoped;
   }, [data, appQuery.data, scope, now, env.applies, env.environment]);
   const history = rows.find((cron) => cron.id === search.schedule) ?? null;
-  const editing = rows.find((cron) => cron.id === editingId) ?? null;
+  const editing =
+    editingIn === here && !readOnly ? (rows.find((cron) => cron.id === editingId) ?? null) : null;
 
   const setEnabled = (c: CronRow, enabled: boolean) =>
     void updateCron
@@ -421,7 +430,10 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             <IconButton
               type="button"
               aria-label={`Edit scheduled request ${c.schedule}`}
-              onClick={() => setEditingId(c.id)}
+              onClick={() => {
+                setEditingId(c.id);
+                setEditingIn(here);
+              }}
               className="text-muted-foreground transition-colors hover:text-foreground"
             >
               <EditPencil className="h-3.5 w-3.5" />
@@ -539,6 +551,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             onSubmit={(e) => {
               e.preventDefault();
               if (
+                readOnly ||
                 !validation.validate({ schedule: scheduleError }, e.currentTarget) ||
                 !targetApp ||
                 appsPending ||

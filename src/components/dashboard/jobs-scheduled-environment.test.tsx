@@ -210,3 +210,35 @@ describe('Scheduled requests follow the environment', () => {
     expect(screen.getAllByRole('button', { name: /^Run .* now$/ }).length).toBeGreaterThan(0);
   });
 });
+
+describe('an open dialog follows the lock and the environment', () => {
+  it('closes the create dialog when the stage turns protected, and creates nothing', async () => {
+    inStaging();
+    const view = render(<Scheduled />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'New scheduled request' })[0]);
+    expect(screen.getByRole('dialog', { name: 'New scheduled request' })).toBeInTheDocument();
+    inStaging(true);
+    view.rerender(<Scheduled />);
+    expect(screen.queryByRole('dialog', { name: 'New scheduled request' })).toBeNull();
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('closes the create dialog when the top bar switches environment', async () => {
+    inStaging();
+    const view = render(<Scheduled />);
+    await userEvent.click(screen.getAllByRole('button', { name: 'New scheduled request' })[0]);
+    m.env = { applies: true, environment: 'qa', name: 'Qa', protected: false, listLoaded: true };
+    view.rerender(<Scheduled />);
+    expect(screen.queryByRole('dialog', { name: 'New scheduled request' })).toBeNull();
+  });
+
+  it('closes the edit dialog when the stage turns protected', async () => {
+    inStaging();
+    const view = render(<Scheduled />);
+    await userEvent.click(screen.getByRole('button', { name: /^Edit scheduled request / }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    inStaging(true);
+    view.rerender(<Scheduled />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
