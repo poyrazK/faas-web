@@ -84,6 +84,7 @@ import { QueuesBody } from '@/components/dashboard/pages/queues';
 import { RoutesBody } from '@/components/dashboard/pages/routes';
 import { SecretsBody } from '@/components/dashboard/pages/secrets';
 import { EnvironmentValuesGate } from '@/components/dashboard/environment-values-gate';
+import { useAppEnvironment } from '@/lib/environment-scope';
 import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
 import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
 import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
@@ -680,7 +681,7 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Routes' && (
-                <RoutesBody
+                <AppRoutesTab
                   slug={fn.id}
                   baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
                 />
@@ -889,5 +890,18 @@ function TabCapabilityGate({
     <CapabilityGate capability={capability} title={title}>
       {children}
     </CapabilityGate>
+  );
+}
+
+/** The Routes tab, showing the top bar's environment's traffic outside production. */
+function AppRoutesTab({ slug, baseUrl }: { slug: string; baseUrl?: string }) {
+  const app = useAppEnvironment(slug);
+  return (
+    <RoutesBody
+      slug={slug}
+      baseUrl={baseUrl}
+      environment={app.scope}
+      environmentName={app.scope ? app.name : undefined}
+    />
   );
 }

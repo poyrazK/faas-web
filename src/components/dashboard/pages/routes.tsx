@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CopyIconButton } from '@/components/ui/copy-button';
 import { useApp, useAppRoutes, useDomains } from '@/lib/api/queries';
+import { EnvironmentNote } from '@/components/dashboard/environment-values-gate';
 import { appRouteUrl, publicAppUrl } from '@/lib/app-url';
 import { parseRoute, routesSentence, type RouteLabel } from './route-words';
 
@@ -41,8 +42,19 @@ const isTemplate = (path: string) => /[{}*]|\/:/.test(path);
  * the two can never drift into two different implementations of the
  * same resource.
  */
-export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }) {
-  const { data, isPending, error, refetch } = useAppRoutes(slug);
+export function RoutesBody({
+  slug,
+  baseUrl,
+  environment,
+  environmentName,
+}: {
+  slug: string;
+  baseUrl?: string;
+  /** The top bar's environment, outside production: its own route traffic. */
+  environment?: string;
+  environmentName?: string;
+}) {
+  const { data, isPending, error, refetch } = useAppRoutes(slug, environment);
   const app = useApp(slug).data;
   const domains = useDomains().data;
   const [query, setQuery] = useState('');
@@ -111,6 +123,13 @@ export function RoutesBody({ slug, baseUrl }: { slug: string; baseUrl?: string }
 
   return (
     <div className="flex flex-col gap-6">
+      {environment && (
+        <EnvironmentNote
+          name={environmentName ?? environment}
+          readOnly={false}
+          lead={`Route traffic in ${environmentName ?? environment}.`}
+        />
+      )}
       <section
         aria-label="Routes at a glance"
         className="well flex flex-col gap-3 rounded-2xl bg-muted/40 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 sm:px-6"

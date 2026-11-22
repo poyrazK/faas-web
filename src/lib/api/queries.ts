@@ -1029,10 +1029,17 @@ export function useAppSlo(
  * is plan-gated and Free always reads false — so an empty list there means
  * "not measured", not "no routes".
  */
-export function useAppRoutes(slug: string) {
+export function useAppRoutes(slug: string, environment?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'routes'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/routes', { params: { path: { slug } } })),
+    // Production keeps today's request (no selector); another environment
+    // reads its own traffic with ?environment= and caches apart.
+    queryKey: environment ? ['apps', slug, 'routes', environment] : ['apps', slug, 'routes'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/routes', {
+          params: environment ? { path: { slug }, query: { environment } } : { path: { slug } },
+        })
+      ),
     enabled: Boolean(slug),
   });
 }
