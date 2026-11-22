@@ -362,6 +362,16 @@ describe('dashboard navigation foundation', () => {
     );
   });
 
+  it('takes the logo to the account Overview, leaving the project, not the landing page', async () => {
+    const router = await renderShell('/dashboard/releases?project=shop&env=staging');
+    const logo = screen.getByRole('link', { name: 'Gregale — go to Overview' });
+    expect(logo).toHaveAttribute('href', '/dashboard');
+    await userEvent.click(logo);
+    await waitFor(() => expect(screen.getByTestId('page').textContent).toBe('/dashboard'));
+    expect(router.state.location.search).not.toHaveProperty('project');
+    expect(router.state.location.search).not.toHaveProperty('env');
+  });
+
   it('keeps the environment on the way back to the project overview', async () => {
     await renderShell('/dashboard/releases?project=shop&env=staging');
     const main = screen.getByRole('navigation', { name: 'Main' });
