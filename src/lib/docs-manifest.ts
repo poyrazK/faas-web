@@ -256,12 +256,18 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'What the platform stores per app: VM snapshots, image layers, and what you pay for.',
       },
-      // `docs/object-storage.md` (slug `object-storage`) and `docs/executions.md`
-      // (slug `executions`) were published here until 2026-10-20. Both carry an
-      // operator half — install procedure, Ansible/systemd paths, loopback
-      // listeners, migration order, daemon flags — that upstream has not split
-      // out yet (poyrazK/faas#5023). They are listed in `UNPUBLISHED_DOCS`
-      // with the reason, and come back as manifest entries once cut.
+      {
+        slug: 'object-storage',
+        source: 'docs/object-storage.md',
+        title: 'Object storage',
+        summary:
+          'Private S3-compatible buckets for your app: signed URLs, any S3 SDK, and the plan limits.',
+      },
+      // `docs/executions.md` (slug `executions`) was published here until
+      // 2026-10-20. Upstream marks it an internal capability, so it stays in
+      // `UNPUBLISHED_DOCS` with that reason. `object-storage` came back once
+      // upstream cut its operator half and shipped it to every customer
+      // (poyrazK/faas#7815, general availability 2026-11-22).
       {
         slug: 'custom-domains',
         source: 'docs/domains.md',
@@ -336,6 +342,12 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Code-first workflows',
         summary: 'Durable workflows written as ordinary async functions.',
       },
+      {
+        slug: 'stored-workflows',
+        source: 'docs/stored-workflow-authoring.md',
+        title: 'Stored workflows',
+        summary: 'Steps against an app with a manual, scheduled or event start, retries and run history.',
+      },
     ],
   },
   {
@@ -347,6 +359,12 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/networking.md',
         title: 'Networking',
         summary: 'Outbound rules, WebSockets, gRPC, internal services and service bindings.',
+      },
+      {
+        slug: 'outbound-integrations',
+        source: 'docs/outbound-integrations.md',
+        title: 'Outbound integrations',
+        summary: "Call a third-party API through Gregale's relay without putting its key in your app.",
       },
       {
         slug: 'internal-services',
