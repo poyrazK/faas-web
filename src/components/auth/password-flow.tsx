@@ -23,7 +23,6 @@ import {
   useAuth,
 } from '@/lib/auth';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { selectReferralCode } from '@/lib/api/referrals';
 
 /**
  * Email + password against `POST /login` and `POST /signup`.
@@ -85,29 +84,20 @@ function SsoButton({
   label,
   provider,
   returnTo,
-  beforeOAuth,
   disabled,
 }: {
   label: string;
   provider: 'google' | 'github';
   returnTo?: string;
-  beforeOAuth?: () => Promise<boolean>;
   disabled?: boolean;
 }) {
   return (
     <a
       href={ssoHref(provider)}
       aria-disabled={disabled || undefined}
-      onClick={async (event) => {
+      onClick={(event) => {
         if (disabled) {
           event.preventDefault();
-          return;
-        }
-        if (beforeOAuth) {
-          event.preventDefault();
-          if (!(await beforeOAuth())) return;
-          markOAuthPending(returnTo);
-          window.location.assign(ssoHref(provider));
           return;
         }
         markOAuthPending(returnTo);
@@ -156,7 +146,6 @@ export function PasswordFlow({
   const [step, setStep] = useState<Step>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [referralCode, setReferralCode] = useState('');
   const [reveal, setReveal] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,17 +160,11 @@ export function PasswordFlow({
   const canSubmit = emailValid && password.length > 0 && !passwordTooShort;
 
   const submit = async () => {
-    if (mode === 'signup' && referralCode && !/^[A-Z0-9]{6}$/.test(referralCode)) {
-      setError('Enter a six-character referral code, or leave it blank.');
-      return;
-    }
     setPending(true);
     setError(null);
     try {
       const user =
-        mode === 'signup'
-          ? await signUp(email, password, referralCode)
-          : await signIn(email, password);
+        mode === 'signup' ? await signUp(email, password) : await signIn(email, password);
       toast({ kind: 'success', title: `Welcome, ${user.name.split(' ')[0]}` });
       if (redirectTo) {
         // A full navigation is intentional: the CLI authorization page is a
@@ -204,19 +187,6 @@ export function PasswordFlow({
       setPassword('');
     } finally {
       setPending(false);
-    }
-  };
-
-  const prepareOAuth = async () => {
-    setPending(true);
-    setError(null);
-    try {
-      await selectReferralCode(referralCode);
-      return true;
-    } catch (err) {
-      setError(errorMessage(err));
-      setPending(false);
-      return false;
     }
   };
 
@@ -361,20 +331,8 @@ export function PasswordFlow({
       <p className="mt-2 text-sm text-muted-foreground">{description ?? copy.subtitle}</p>
 
       <div className="mt-7 flex gap-2">
-        <SsoButton
-          label="GitHub"
-          provider="github"
-          returnTo={redirectTo}
-          beforeOAuth={mode === 'signup' ? prepareOAuth : undefined}
-          disabled={pending}
-        />
-        <SsoButton
-          label="Google"
-          provider="google"
-          returnTo={redirectTo}
-          beforeOAuth={mode === 'signup' ? prepareOAuth : undefined}
-          disabled={pending}
-        />
+        <SsoButton label="GitHub" provider="github" returnTo={redirectTo} disabled={pending} />
+        <SsoButton label="Google" provider="google" returnTo={redirectTo} disabled={pending} />
       </div>
 
       <div className="my-6 flex items-center gap-3">
@@ -449,31 +407,6 @@ export function PasswordFlow({
               At least {MIN_PASSWORD_LENGTH} characters. Length is the only rule.
             </span>
           </p>
-        )}
-
-        {mode === 'signup' && (
-          <div className="mt-5">
-            <label htmlFor="referral-code" className="label-mono text-muted-foreground">
-              Referral code (optional)
-            </label>
-            <input
-              id="referral-code"
-              name="referral_code"
-              type="text"
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              maxLength={6}
-              value={referralCode}
-              onChange={(event) => setReferralCode(event.target.value.trim().toUpperCase())}
-              placeholder="POJU43"
-              aria-describedby="referral-code-hint"
-              className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3.5 font-mono text-sm uppercase outline-none transition-all placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/25"
-            />
-            <p id="referral-code-hint" className="mt-2 text-xs text-muted-foreground">
-              Enter the code shared by your salesperson or a Gregale customer.
-            </p>
-          </div>
         )}
 
         {error && <FormError message={error} />}

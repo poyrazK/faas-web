@@ -228,7 +228,7 @@ interface AuthValue {
   /** True while the initial session check is in flight. */
   loading: boolean;
   signIn: (email: string, password: string) => Promise<User>;
-  signUp: (email: string, password: string, referralCode?: string) => Promise<User>;
+  signUp: (email: string, password: string) => Promise<User>;
   signOut: () => Promise<void>;
   /** Always resolves — the server answers identically whether or not the address exists. */
   requestPasswordReset: (email: string) => Promise<void>;
@@ -374,14 +374,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signUp = useCallback(
-    async (email: string, password: string, referralCode?: string) => {
+    async (email: string, password: string) => {
       await unwrap(
         api.POST('/signup', {
-          body: {
-            email: email.trim(),
-            password,
-            referral_code: referralCode?.trim().toUpperCase() || undefined,
-          },
+          body: { email: email.trim(), password },
         })
       );
       const next = userFor(email);
