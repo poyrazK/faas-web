@@ -3,6 +3,20 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
+// The page follows the top bar's environment; these tests are about
+// production, where it lists and creates exactly as before.
+vi.mock('@/lib/environment-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
+  useEnvironmentScope: () => ({
+    applies: false,
+    environment: 'production',
+    name: 'Production',
+    kind: 'production',
+    choices: null,
+    available: true,
+    list: { isPending: false, isError: false, refetch: () => undefined },
+  }),
+}));
 
 // No project chosen: these pages behave as they did before project scoping.
 vi.mock('@/lib/project-scope', async (importOriginal) => ({

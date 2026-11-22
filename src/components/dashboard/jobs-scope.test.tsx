@@ -3,6 +3,20 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProjectScope } from '@/lib/project-scope';
+// The page follows the top bar's environment; these tests are about
+// production, where it lists and creates exactly as before.
+vi.mock('@/lib/environment-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
+  useEnvironmentScope: () => ({
+    applies: false,
+    environment: 'production',
+    name: 'Production',
+    kind: 'production',
+    choices: null,
+    available: true,
+    list: { isPending: false, isError: false, refetch: () => undefined },
+  }),
+}));
 
 const m = vi.hoisted(() => ({ scope: null as unknown as ProjectScope }));
 vi.mock('@/lib/project-scope', async (importOriginal) => ({

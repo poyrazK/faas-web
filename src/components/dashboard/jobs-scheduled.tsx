@@ -23,6 +23,8 @@ import {
 } from '@/lib/api/queries';
 import { slugIndex } from '@/lib/api/adapters';
 import { inScope } from '@/lib/project-scope';
+import { useEnvironmentScope } from '@/lib/environment-scope';
+import { EnvironmentNote } from './environment-values-gate';
 import { scopedIn, useScopeGate } from './scope-gate';
 import type { components } from '@/lib/api/schema';
 import { errorMessage } from '@/lib/api/errors';
@@ -95,6 +97,14 @@ interface CronRow {
   timezone: string;
   /** The API row, for the edit dialog to prefill from. */
   source: components['schemas']['CronResponse'];
+}
+
+/**
+ * Whether a cron runs in `environment`. A cron's environment is fixed when it
+ * is created; omitted (or `production`) is the app's production environment.
+ */
+export function cronInEnvironment(cron: { environment?: string }, environment: string): boolean {
+  return (cron.environment || 'production') === environment;
 }
 
 function formatWhen(value: string | null | undefined): string {
@@ -246,6 +256,13 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   const deleteCron = useDeleteCron();
   const updateCron = useUpdateCron();
   const createCron = useCreateCron();
+  // Inside a project the page follows the top bar's environment: it lists
+  // that environment's crons and creates new ones there. A protected stage is
+  // read-only. Outside a project nothing changes.
+  const env = useEnvironmentScope();
+  const staged = env.applies && env.environment !== 'production';
+  const readOnly =
+    staged && Boolean(env.choices?.find((choice) => choice.slug === env.environment)?.protected);
 
   const [creating, setCreating] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);
@@ -300,8 +317,11 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           ? (upcomingCronRuns(c.schedule, new Date(now), 1)?.[0]?.toISOString() ?? null)
           : null,
     }));
-    return inScope(all, scope, (row) => row.app);
-  }, [data, appQuery.data, scope, now]);
+    const scoped = inScope(all, scope, (row) => row.app);
+    return env.applies
+      ? scoped.filter((row) => cronInEnvironment(row.source, env.environment))
+      : scoped;
+  }, [data, appQuery.data, scope, now, env.applies, env.environment]);
   const history = rows.find((cron) => cron.id === search.schedule) ?? null;
   const editing = rows.find((cron) => cron.id === editingId) ?? null;
 
@@ -340,15 +360,18 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       key: 'enabled',
       label: 'Enabled',
       width: 'w-24',
-      render: (c) => (
-        <Switch
-          size="sm"
-          checked={c.enabled}
-          onCheckedChange={(on) => setEnabled(c, on)}
-          aria-label={`${c.enabled ? 'Pause' : 'Resume'} ${c.schedule}`}
-          className="data-[state=checked]:bg-brand"
-        />
-      ),
+      render: (c) =>
+        readOnly ? (
+          <span className="text-xs text-muted-foreground">{c.enabled ? 'On' : 'Paused'}</span>
+        ) : (
+          <Switch
+            size="sm"
+            checked={c.enabled}
+            onCheckedChange={(on) => setEnabled(c, on)}
+            aria-label={`${c.enabled ? 'Pause' : 'Resume'} ${c.schedule}`}
+            className="data-[state=checked]:bg-brand"
+          />
+        ),
     },
     {
       key: 'nextRunAt',
@@ -389,14 +412,16 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
       width: 'w-36',
       render: (c) => (
         <span className="flex items-center gap-3">
-          <IconButton
-            type="button"
-            aria-label={`Edit scheduled request ${c.schedule}`}
-            onClick={() => setEditingId(c.id)}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <EditPencil className="h-3.5 w-3.5" />
-          </IconButton>
+          {!readOnly && (
+            <IconButton
+              type="button"
+              aria-label={`Edit scheduled request ${c.schedule}`}
+              onClick={() => setEditingId(c.id)}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <EditPencil className="h-3.5 w-3.5" />
+            </IconButton>
+          )}
           <IconButton
             type="button"
             aria-label={`Run history for ${c.schedule}`}
@@ -405,54 +430,62 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
           >
             <Clock className="h-3.5 w-3.5" />
           </IconButton>
-          <IconButton
-            type="button"
-            aria-label={`Run ${c.schedule} now`}
-            onClick={() => {
-              void runCron
-                .mutateAsync(c.id)
-                .then((fired) => {
-                  toast({ kind: 'success', title: 'Cron fired', description: 'Watching the run…' });
-                  // The 202 carries a request id; the watcher polls it and
-                  // reports the terminal state instead of dropping it.
-                  setFireRequest(fired.request_id);
-                })
-                .catch((err: unknown) =>
-                  toast({ kind: 'error', title: 'Could not fire', error: err })
-                );
-            }}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Play className="h-3.5 w-3.5" />
-          </IconButton>
-          <IconButton
-            type="button"
-            aria-label={`Delete cron ${c.id}`}
-            onClick={async () => {
-              if (
-                !(await confirm({
-                  title: 'Delete this cron?',
-                  description: `${c.schedule} → ${c.target} stops firing. This cannot be undone.`,
-                  confirmLabel: 'Delete cron',
-                  destructive: true,
-                }))
-              )
-                return;
-              void deleteCron
-                .mutateAsync(c.id)
-                .then(() => toast({ kind: 'success', title: 'Cron deleted' }))
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not delete',
-                    error: err,
-                  })
-                );
-            }}
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Trash className="h-3.5 w-3.5" />
-          </IconButton>
+          {!readOnly && (
+            <>
+              <IconButton
+                type="button"
+                aria-label={`Run ${c.schedule} now`}
+                onClick={() => {
+                  void runCron
+                    .mutateAsync(c.id)
+                    .then((fired) => {
+                      toast({
+                        kind: 'success',
+                        title: 'Cron fired',
+                        description: 'Watching the run…',
+                      });
+                      // The 202 carries a request id; the watcher polls it and
+                      // reports the terminal state instead of dropping it.
+                      setFireRequest(fired.request_id);
+                    })
+                    .catch((err: unknown) =>
+                      toast({ kind: 'error', title: 'Could not fire', error: err })
+                    );
+                }}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Play className="h-3.5 w-3.5" />
+              </IconButton>
+              <IconButton
+                type="button"
+                aria-label={`Delete cron ${c.id}`}
+                onClick={async () => {
+                  if (
+                    !(await confirm({
+                      title: 'Delete this cron?',
+                      description: `${c.schedule} → ${c.target} stops firing. This cannot be undone.`,
+                      confirmLabel: 'Delete cron',
+                      destructive: true,
+                    }))
+                  )
+                    return;
+                  void deleteCron
+                    .mutateAsync(c.id)
+                    .then(() => toast({ kind: 'success', title: 'Cron deleted' }))
+                    .catch((err: unknown) =>
+                      toast({
+                        kind: 'error',
+                        title: 'Could not delete',
+                        error: err,
+                      })
+                    );
+                }}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Trash className="h-3.5 w-3.5" />
+              </IconButton>
+            </>
+          )}
         </span>
       ),
     },
@@ -467,12 +500,21 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
         title="Scheduled requests"
         help="Firing one by hand does not change its schedule."
         actions={
-          <Button type="button" onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" />
-            New scheduled request
-          </Button>
+          readOnly ? undefined : (
+            <Button type="button" onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" />
+              New scheduled request
+            </Button>
+          )
         }
       />
+      {staged && (
+        <EnvironmentNote
+          name={env.name}
+          readOnly={readOnly}
+          lead={`Showing ${env.name}’s scheduled requests.`}
+        />
+      )}
       {search.schedule && data && !scopeLoading && !history && (
         <p role="status">Scheduled request not found</p>
       )}
@@ -505,6 +547,9 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
                   app_id: targetApp,
                   schedule: schedule.trim(),
                   path: path.trim() || '/',
+                  // A cron's environment is fixed at creation; production is
+                  // the default, so it is sent only for another environment.
+                  ...(staged ? { environment: env.environment } : {}),
                   // Defaults are left out so the API's own defaults apply.
                   ...(timezone.trim() && timezone.trim() !== 'UTC'
                     ? { timezone: timezone.trim() }
@@ -631,7 +676,7 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
             : 'No scheduled requests yet.'
         }
         emptyAction={
-          appsPending || appQuery.error ? undefined : targetApp ? (
+          readOnly || appsPending || appQuery.error ? undefined : targetApp ? (
             <Button size="sm" onClick={() => setCreating(true)}>
               Create your first scheduled request
             </Button>
