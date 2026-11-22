@@ -85,6 +85,9 @@ export function TimeChart({
   className,
   compact = false,
   onInspect,
+  marked,
+  picked,
+  onPick,
 }: {
   data: Record<string, unknown>[];
   x: string;
@@ -94,6 +97,12 @@ export function TimeChart({
   className?: string;
   compact?: boolean;
   onInspect?: () => void;
+  /** A point called out on the chart, such as the busiest hour. */
+  marked?: { index: number; label: string };
+  /** The point the reader picked, drawn as a solid line. */
+  picked?: number | null;
+  /** Click or Enter picks the point under the pointer (or the arrow-key point). */
+  onPick?: (index: number) => void;
 }) {
   const keys = useMemo(() => Object.keys(series), [series]);
   const { max, paths } = useGeometry(data, keys, kind === 'area');
@@ -109,6 +118,14 @@ export function TimeChart({
 
   const last = data.length - 1;
   const hoverLeft = hover === null ? 0 : (hover / Math.max(1, last)) * 100;
+  const leftOf = (index: number) => (data.length === 1 ? 50 : (index / Math.max(1, last)) * 100);
+  const markedValue = marked ? Number(data[marked.index]?.[keys[0]]) : NaN;
+  const pickAt = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width || !data.length) return;
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    onPick?.(Math.round(ratio * last));
+  };
 
   return (
     <figure className={cn('flex flex-col gap-1.5', className)}>
@@ -141,12 +158,15 @@ export function TimeChart({
         <div
           tabIndex={compact ? undefined : 0}
           role={onInspect ? 'button' : compact ? undefined : 'group'}
-          aria-label={`${onInspect ? 'Open details for ' : 'Explore '}${keys.map((k) => series[k].label).join(', ')}. Arrow keys read values.`}
-          onClick={onInspect}
+          aria-label={`${onInspect ? 'Open details for ' : 'Explore '}${keys.map((k) => series[k].label).join(', ')}. Arrow keys read values${onPick ? ', Enter picks an hour' : ''}.`}
+          onClick={onInspect ?? (onPick ? pickAt : undefined)}
           onKeyDown={(event) => {
             if ((event.key === 'Enter' || event.key === ' ') && onInspect) {
               event.preventDefault();
               onInspect();
+            } else if ((event.key === 'Enter' || event.key === ' ') && onPick && hover !== null) {
+              event.preventDefault();
+              onPick(hover);
             } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
               event.preventDefault();
               setHover((previous) =>
@@ -165,7 +185,10 @@ export function TimeChart({
             }
           }}
           onBlur={() => setHover(null)}
-          className="relative min-w-0 flex-1 rounded focus-visible:outline-2 focus-visible:outline-brand"
+          className={cn(
+            'relative min-w-0 flex-1 rounded focus-visible:outline-2 focus-visible:outline-brand',
+            onPick && 'cursor-pointer'
+          )}
           onPointerMove={compact ? undefined : onMove}
           onPointerLeave={() => setHover(null)}
         >
@@ -225,6 +248,32 @@ export function TimeChart({
                 }}
               />
             ))
+          )}
+          {picked != null && data[picked] && (
+            <span
+              aria-hidden="true"
+              data-testid="chart-picked"
+              className="pointer-events-none absolute inset-y-0 w-px bg-foreground/60"
+              style={{ left: `${leftOf(picked)}%` }}
+            />
+          )}
+          {marked && Number.isFinite(markedValue) && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-full flex-col items-center pb-1"
+              style={{
+                left: `${leftOf(marked.index)}%`,
+                top: `${100 - (markedValue / max) * 100}%`,
+              }}
+            >
+              <span className="rounded bg-popover px-1.5 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground ring-1 ring-border">
+                {marked.label}
+              </span>
+              <span
+                className="mt-0.5 size-2 rounded-full ring-2 ring-card"
+                style={{ background: COLOR[series[keys[0]].color] }}
+              />
+            </span>
           )}
           {hover !== null && (
             <>

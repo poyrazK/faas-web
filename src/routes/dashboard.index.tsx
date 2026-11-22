@@ -18,6 +18,7 @@ import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { OverviewStats } from '@/components/dashboard/overview-analytics/overview-stats';
+import { useMetricInspector } from '@/components/dashboard/metric-inspector';
 import { fleetMetrics } from '@/components/dashboard/overview-analytics/overview-stats-data';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { useData } from '@/lib/store';
@@ -268,6 +269,7 @@ function OverviewPage() {
   const { workflows, deployments, loading, error, refresh } = useData();
   const { account, user } = useAuth();
   const { range = '24h' } = Route.useSearch();
+  const inspect = useMetricInspector();
   const navigate = Route.useNavigate();
   // The workspace's allowance: the company's in a company workspace.
   const usage = useWorkspaceUsageSummary();
@@ -501,6 +503,7 @@ function OverviewPage() {
           showPlanGate={Boolean(account) && !paidAccess}
           appCount={workflows.length}
           rangeDescription={RANGE_DESCRIPTION[range]}
+          onInspect={(metric) => inspect({ metric, since: range, source: 'rollup' })}
           metrics={{ unavailable: metricsUnavailable, degraded: metricsDegraded, figures }}
           resident={{
             known: residentKnown,
