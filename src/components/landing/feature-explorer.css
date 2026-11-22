@@ -215,18 +215,6 @@
   margin-top: auto;
   padding-top: 1.4rem;
 }
-.feature-diagram {
-  display: block;
-  width: 100%;
-  max-width: 310px;
-  height: 165px;
-  stroke: #81938a;
-  stroke-width: 1.25;
-}
-.feature-diagram .feature-node {
-  fill: var(--brand-fill);
-  stroke: var(--brand);
-}
 .feature-illustration p {
   margin-top: 6px;
   color: var(--muted-foreground);
