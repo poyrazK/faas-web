@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Flask, Lock } from 'iconoir-react';
+import { Button } from '@/components/ui/button';
 import { useAppEnvironment } from '@/lib/environment-scope';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,21 @@ export function EnvironmentValuesGate({
 }) {
   const app = useAppEnvironment(slug);
   if (!app.scope) return <>{children({ readOnly: false })}</>;
+  if (app.unavailable)
+    return (
+      <p role="alert" className="text-sm text-muted-foreground">
+        {app.name} isn’t one of this project’s environments. Choose another in the top bar.
+      </p>
+    );
+  if (app.failed)
+    return (
+      <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        {app.name} could not be read.
+        <Button size="xs" variant="outline" onClick={app.retry}>
+          Try again
+        </Button>
+      </div>
+    );
   if (app.present === null)
     return (
       <p role="status" className="text-sm text-muted-foreground">
@@ -51,9 +67,15 @@ export function EnvironmentValuesGate({
         )}
       >
         <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-        {app.readOnly
-          ? `${app.name} is protected: changes go through a promotion.`
-          : `Editing ${app.name}. Production keeps its own values.`}
+        <span>
+          {app.readOnly
+            ? `${app.name} is protected: changes go through a promotion.`
+            : `Editing ${app.name}. Production keeps its own values.`}
+          {/* Values can be set before the first deploy, which is often when
+              they're needed (a database URL, a token). */}
+          {app.deployed === false &&
+            ` ${slug} isn’t deployed there yet: these apply on its first deploy (gregale deploy --environment ${app.scope}).`}
+        </span>
       </p>
       {children({ scope: app.scope, readOnly: app.readOnly })}
     </>

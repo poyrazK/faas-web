@@ -130,43 +130,64 @@ export interface AppEnvironment {
   scope: string | undefined;
   name: string;
   kind: EnvironmentKind;
-  /** Whether the environment in force has this app; null while unknown; always true in production. */
+  /** Whether the environment lists this app at all; null while unknown; always true in production. */
   present: boolean | null;
+  /** Whether the app has a release there; null while unknown; always true in production. */
+  deployed: boolean | null;
   /** True for a protected non-production environment: read-only in the console. */
   readOnly: boolean;
+  /** The environment's state could not be read. */
+  failed: boolean;
+  /** The URL names an environment this project doesn't have. */
+  unavailable: boolean;
+  retry: () => void;
 }
+
+const PRODUCTION_APP: AppEnvironment = {
+  scope: undefined,
+  name: 'Production',
+  kind: 'production',
+  present: true,
+  deployed: true,
+  readOnly: false,
+  failed: false,
+  unavailable: false,
+  retry: () => undefined,
+};
 
 /**
  * One app's place in the environment in force: the scope its values are read
- * and written under, whether the environment runs it at all, and whether the
- * console may edit it there. Where environments don't apply, or in
- * production, it is exactly today: no scope, present, editable.
+ * and written under, whether the environment lists it and has deployed it,
+ * and whether the console may edit it there. Presence, deployment and
+ * protection all come from the one environment-state read, so they arrive
+ * together. Where environments don't apply, or in production, it is exactly
+ * today: no scope, present, editable.
  */
 export function useAppEnvironment(slug: string): AppEnvironment {
   const env = useEnvironmentScope();
   const { project } = useProjectScope();
   const { account } = useAuth();
   const staged = env.applies && env.environment !== 'production';
+  const unavailable = staged && env.available === false;
   const state = useEnvironmentState(
-    staged ? (account?.id ?? '') : '',
-    staged ? (project ?? '') : '',
-    staged ? env.environment : ''
+    staged && !unavailable ? (account?.id ?? '') : '',
+    staged && !unavailable ? (project ?? '') : '',
+    staged && !unavailable ? env.environment : ''
   );
-  if (!staged)
-    return {
-      scope: undefined,
-      name: 'Production',
-      kind: 'production',
-      present: true,
-      readOnly: false,
-    };
-  const workloads = state.data?.environment === env.environment ? state.data.workloads : undefined;
-  const current = env.choices?.find((choice) => choice.slug === env.environment);
+  if (!staged) return PRODUCTION_APP;
+  const data = state.data?.environment === env.environment ? state.data : undefined;
+  // faas lists every project app in an environment's state; one it never
+  // deployed there has `release.status: 'not_deployed'`.
+  const workload = data?.workloads.find((w) => w.workload_slug === slug);
   return {
     scope: env.environment,
     name: env.name,
     kind: env.kind,
-    present: workloads ? workloads.some((w) => w.workload_slug === slug) : null,
-    readOnly: Boolean(current?.protected),
+    present: data ? Boolean(workload) : null,
+    deployed: workload ? workload.release.status !== 'not_deployed' : data ? false : null,
+    readOnly: Boolean(data?.protected),
+    failed: !unavailable && state.isError,
+    unavailable,
+    retry: () => void state.refetch(),
   };
 }

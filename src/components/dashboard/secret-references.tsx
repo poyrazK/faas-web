@@ -58,7 +58,17 @@ function explain(error: unknown, { key, source, environment, quota }: Context): 
  * this app's secrets in that same environment can be named; a reference never
  * reaches another app, the project's shared secrets, or an outside store.
  */
-export function SecretReferences({ slug }: { slug: string }) {
+export function SecretReferences({
+  slug,
+  environment,
+  readOnly = false,
+}: {
+  slug: string;
+  /** The top bar's environment, when the page follows one: the picker is locked to it. */
+  environment?: string;
+  /** A protected environment: references are listed, nothing can be changed. */
+  readOnly?: boolean;
+}) {
   const { account } = useAuth();
   const accountId = account?.id ?? '';
   const membership = useProjectMembership(accountId);
@@ -80,7 +90,13 @@ export function SecretReferences({ slug }: { slug: string }) {
         />
         {phase === 'ready' &&
           (project ? (
-            <ProjectReferences accountId={accountId} project={project} slug={slug} />
+            <ProjectReferences
+              accountId={accountId}
+              project={project}
+              slug={slug}
+              fixed={environment}
+              readOnly={readOnly}
+            />
           ) : (
             <p className="text-muted-foreground">
               {slug} is not in a project, so it receives each secret under its own name.
@@ -95,10 +111,14 @@ function ProjectReferences({
   accountId,
   project,
   slug,
+  fixed,
+  readOnly,
 }: {
   accountId: string;
   project: string;
   slug: string;
+  fixed?: string;
+  readOnly: boolean;
 }) {
   const environments = useProjectEnvironments(accountId, project);
   // default and pr-preview are scopes, not registered environments: the API refuses both.
@@ -107,8 +127,11 @@ function ProjectReferences({
     .filter((name) => validEnvironment(name) && name !== 'pr-preview');
   const [picked, setPicked] = useState('');
   const [creating, setCreating] = useState(false);
-  const environment =
-    picked && choices.includes(picked)
+  // A page that follows the top bar fixes the environment, so a Staging page
+  // can never write production's references.
+  const environment = fixed
+    ? fixed
+    : picked && choices.includes(picked)
       ? picked
       : choices.includes('production')
         ? 'production'
@@ -135,6 +158,7 @@ function ProjectReferences({
           <span className="label-mono text-muted-foreground">Environment</span>
           <Select
             value={environment}
+            disabled={Boolean(fixed)}
             onChange={(e) => setPicked(e.target.value)}
             className={cn(FIELD, 'min-w-44 font-sans')}
           >
@@ -145,10 +169,12 @@ function ProjectReferences({
             ))}
           </Select>
         </label>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Add reference
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add reference
+          </Button>
+        )}
       </div>
       <EnvironmentReferences
         key={environment}
@@ -156,6 +182,7 @@ function ProjectReferences({
         environment={environment}
         creating={creating}
         onCreatingChange={setCreating}
+        readOnly={readOnly}
       />
     </>
   );
@@ -166,11 +193,13 @@ function EnvironmentReferences({
   environment,
   creating,
   onCreatingChange,
+  readOnly,
 }: {
   slug: string;
   environment: string;
   creating: boolean;
   onCreatingChange: (open: boolean) => void;
+  readOnly: boolean;
 }) {
   const references = useSecretReferences(slug, environment);
   const sources = useScopedSecretNames(slug, environment);
@@ -334,15 +363,17 @@ function EnvironmentReferences({
                   {reference.replace(/^secret:/, '')}
                 </span>
               </span>
-              <RowMenu label={`Actions for reference ${destination}`}>
-                <DropdownMenuItem
-                  className={DANGER_ITEM}
-                  onSelect={() => void removeReference(destination, reference)}
-                >
-                  <Trash aria-hidden="true" className="size-4" />
-                  Remove reference
-                </DropdownMenuItem>
-              </RowMenu>
+              {!readOnly && (
+                <RowMenu label={`Actions for reference ${destination}`}>
+                  <DropdownMenuItem
+                    className={DANGER_ITEM}
+                    onSelect={() => void removeReference(destination, reference)}
+                  >
+                    <Trash aria-hidden="true" className="size-4" />
+                    Remove reference
+                  </DropdownMenuItem>
+                </RowMenu>
+              )}
             </li>
           ))}
         </ul>
@@ -367,19 +398,21 @@ function EnvironmentReferences({
               with the same name. Sidecars keep their own grants. Deliver it again to restore it.
             </HelpTip>
           </p>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {suppressed.map((name) => (
-              <button
-                key={name}
-                type="button"
-                aria-label={`Deliver ${name} again`}
-                onClick={() => deliverAgain(name)}
-                className="pressable w-fit rounded text-[13px] text-brand underline underline-offset-4"
-              >
-                {suppressed.length === 1 ? 'Deliver again' : `Deliver ${name} again`}
-              </button>
-            ))}
-          </div>
+          {!readOnly && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {suppressed.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-label={`Deliver ${name} again`}
+                  onClick={() => deliverAgain(name)}
+                  className="pressable w-fit rounded text-[13px] text-brand underline underline-offset-4"
+                >
+                  {suppressed.length === 1 ? 'Deliver again' : `Deliver ${name} again`}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

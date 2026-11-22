@@ -15,14 +15,22 @@ const production: AppEnvironment = {
   name: 'Production',
   kind: 'production',
   present: true,
+  deployed: true,
   readOnly: false,
+  failed: false,
+  unavailable: false,
+  retry: vi.fn(),
 };
 const staging = (over: Partial<AppEnvironment> = {}): AppEnvironment => ({
   scope: 'staging',
   name: 'Staging',
   kind: 'stage',
   present: true,
+  deployed: true,
   readOnly: false,
+  failed: false,
+  unavailable: false,
+  retry: vi.fn(),
   ...over,
 });
 const body = vi.fn((env: { scope?: string; readOnly: boolean }) => (
@@ -68,4 +76,32 @@ it('marks a protected stage read-only', () => {
     'Staging is protected: changes go through a promotion.'
   );
   expect(screen.getByTestId('body')).toHaveTextContent('"readOnly":true');
+});
+
+it('lets an app not yet deployed to Staging be set up, and says so', () => {
+  app.current = staging({ deployed: false });
+  render(<EnvironmentValuesGate slug="api">{body}</EnvironmentValuesGate>);
+  expect(screen.getByRole('note')).toHaveTextContent(
+    'Editing Staging. Production keeps its own values. api isn’t deployed there yet: these apply on its first deploy (gregale deploy --environment staging).'
+  );
+  expect(screen.getByTestId('body')).toHaveTextContent('"scope":"staging"');
+});
+
+it('offers a retry when Staging could not be read, instead of spinning', async () => {
+  const retry = vi.fn();
+  app.current = staging({ present: null, failed: true, retry });
+  render(<EnvironmentValuesGate slug="api">{body}</EnvironmentValuesGate>);
+  expect(screen.getByRole('alert')).toHaveTextContent('Staging could not be read.');
+  screen.getByRole('button', { name: 'Try again' }).click();
+  expect(retry).toHaveBeenCalled();
+  expect(body).not.toHaveBeenCalled();
+});
+
+it('says when the project has no such environment', () => {
+  app.current = staging({ name: 'Gone', scope: 'gone', present: null, unavailable: true });
+  render(<EnvironmentValuesGate slug="api">{body}</EnvironmentValuesGate>);
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Gone isn’t one of this project’s environments.'
+  );
+  expect(body).not.toHaveBeenCalled();
 });

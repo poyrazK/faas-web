@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
+import { ApiError } from '@/lib/api/errors';
 import type { ProjectScope } from './project-scope';
 
 const scope = vi.hoisted(() => ({ current: null as unknown as ProjectScope }));
@@ -151,19 +152,31 @@ async function mountApp(entry: string, slug = 'api', project: string | null = 's
   );
 }
 const app = () => JSON.parse(screen.getByTestId('app').textContent ?? '{}');
-function answer(protectedStaging = false, workloads = ['api']) {
+function answer(
+  protectedStaging = false,
+  workloads: string[] | Record<string, string> = ['api'],
+  listProtected = protectedStaging
+) {
+  const entries = Array.isArray(workloads)
+    ? workloads.map((w) => [w, 'live'] as const)
+    : Object.entries(workloads);
   get.mockImplementation(async (path: string) => {
     if (path === '/v1/projects/{slug}/environments')
       return ok(
         ['staging', 'production'].map((slug) => ({
           ...environment(slug),
-          protected: slug === 'production' || (slug === 'staging' && protectedStaging),
+          protected: slug === 'production' || (slug === 'staging' && listProtected),
         }))
       );
     return ok({
       project_slug: 'shop',
       environment: 'staging',
-      workloads: workloads.map((w) => ({ workload_slug: w, workload_name: w, release: {} })),
+      protected: protectedStaging,
+      workloads: entries.map(([w, status]) => ({
+        workload_slug: w,
+        workload_name: w,
+        release: { workload_slug: w, workload_name: w, status },
+      })),
     });
   });
 }
@@ -204,4 +217,36 @@ it('where environments do not apply it behaves as production', async () => {
   await mountApp('/dashboard/apps/api?project=_standalone&env=staging', 'api', '_standalone');
   expect(app()).toMatchObject({ present: true, readOnly: false });
   expect(app()).not.toHaveProperty('scope');
+});
+
+it('an app listed but never deployed to Staging is present, not deployed', async () => {
+  answer(false, { api: 'not_deployed' });
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().present).toBe(true));
+  expect(app().deployed).toBe(false);
+});
+
+it('takes protection from the environment state, so it arrives with presence', async () => {
+  // The list says unprotected; the state (the source the gate waits on) says protected.
+  answer(true, ['api'], false);
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().present).toBe(true));
+  expect(app().readOnly).toBe(true);
+});
+
+it('reports a failed state read instead of waiting forever', async () => {
+  get.mockImplementation(async (path: string) => {
+    if (path === '/v1/projects/{slug}/environments')
+      return ok(['staging', 'production'].map(environment));
+    // A 403 is not retried (retryPolicy), so the failure surfaces at once.
+    throw new ApiError({ status: 403, code: 'forbidden', title: 'Forbidden' });
+  });
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().failed).toBe(true));
+});
+
+it('says when the URL names an environment the project lacks', async () => {
+  answer();
+  await mountApp('/dashboard/apps/api?project=shop&env=gone');
+  await waitFor(() => expect(app().unavailable).toBe(true));
 });

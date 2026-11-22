@@ -447,7 +447,8 @@ export function SecretsBody({
         />
       </Modal>
 
-      <SecretReferences slug={slug} />
+      {/* Outside production the references follow the top bar's environment. */}
+      <SecretReferences slug={slug} environment={scope} readOnly={readOnly} />
     </div>
   );
 }
