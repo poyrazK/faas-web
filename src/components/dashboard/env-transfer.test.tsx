@@ -144,7 +144,7 @@ describe('environment transfer review', () => {
     expect(screen.getByRole('button', { name: 'Apply valid updates' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('exceed the app quota');
     fireEvent.change(screen.getByLabelText('Transfer scope'), { target: { value: '__all__' } });
-    expect(screen.getByText(/Use a scope of 3–40 lowercase letters/)).toBeInTheDocument();
+    expect(screen.getByText(/Use a scope of 1–40 lowercase letters/)).toBeInTheDocument();
     // apid has never served an env export; the panel offers import only.
     expect(screen.queryByRole('button', { name: 'Export .env' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Transfer scope'), { target: { value: 'staging' } });

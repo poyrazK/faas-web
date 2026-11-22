@@ -1,7 +1,12 @@
 import type { EnvEntry } from './env-parse';
 
 export const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
-export const ENV_SCOPE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+/**
+ * An env-var scope, exactly faas's `EnvScopePattern` (pkg/api/env_scope.go):
+ * 1–40 lowercase letters, digits and inner hyphens. Environment names are
+ * 1–33 characters, so a stage called `qa` is a valid scope.
+ */
+export const ENV_SCOPE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 export const ENV_IMPORT_MAX_BYTES = 1024 * 1024;
 export interface EnvDiagnostic {
   line: number;

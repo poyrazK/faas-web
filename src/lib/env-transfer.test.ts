@@ -72,3 +72,16 @@ describe('safe env transfer', () => {
     expect(() => serializeEnvExport({ A: '\0' })).toThrow();
   });
 });
+
+describe('ENV_SCOPE matches faas (EnvScopePattern: 1–40 characters)', () => {
+  it('accepts short environment names like qa and a single letter', async () => {
+    const { ENV_SCOPE } = await import('./env-transfer');
+    for (const scope of ['q', 'qa', 'default', 'pr-42', 'a'.repeat(40)])
+      expect(ENV_SCOPE.test(scope)).toBe(true);
+  });
+  it('rejects what faas rejects', async () => {
+    const { ENV_SCOPE } = await import('./env-transfer');
+    for (const scope of ['', '-qa', 'qa-', 'QA', 'q_a', 'a'.repeat(41), '__all__'])
+      expect(ENV_SCOPE.test(scope)).toBe(false);
+  });
+});
