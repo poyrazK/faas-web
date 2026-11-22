@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
+import { findDoc } from '@/lib/docs-manifest';
 import { FeatureExplorer } from './feature-explorer';
 
 function renderFeatures() {
@@ -138,5 +139,41 @@ describe('feature explorer', () => {
         expect(within(panel!).getAllByRole('heading', { level: 3 })).toHaveLength(1);
       }
     }
+  });
+
+  it.each([
+    ['Service connections', '/docs/internal-services', 'payments.internal'],
+    ['Background jobs', '/docs/jobs', 'Attempt 2'],
+    ['Workflows', '/docs/code-workflows', 'Callback'],
+    ['Release coordination', '/docs/service-release-graphs', 'Dependency check'],
+  ])('draws %s and links to its guide', async (name, href, figureText) => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await user.click(await screen.findByRole('tab', { name: /connected work/i }));
+    await user.click(screen.getByRole('tab', { name }));
+    const panel = screen.getByRole('tabpanel', { name });
+    expect(panel.querySelector('svg.hosting-diagram')).toHaveTextContent(figureText);
+    expect(within(panel).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
+      'href',
+      href
+    );
+  });
+
+  it('links every guide to a published doc page', async () => {
+    const user = userEvent.setup();
+    renderFeatures();
+    await screen.findByRole('tab', { name: 'Source deploys' });
+    const slugs: string[] = [];
+    for (const group of [/hosting/i, /connected work/i]) {
+      await user.click(screen.getByRole('tab', { name: group }));
+      const list = screen.getByRole('tablist', { name: 'Features' });
+      for (const tab of within(list).getAllByRole('tab')) {
+        await user.click(tab);
+        const link = screen.queryByRole('link', { name: /read the guide/i });
+        if (link) slugs.push(link.getAttribute('href')!.replace('/docs/', ''));
+      }
+    }
+    expect(slugs).toContain('secrets');
+    for (const slug of slugs) expect(findDoc(slug), slug).toBeDefined();
   });
 });

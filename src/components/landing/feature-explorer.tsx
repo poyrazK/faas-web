@@ -2,11 +2,12 @@ import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 're
 import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { HostingDiagram, type HostingDiagramKind } from './hosting-diagrams';
+import { ConnectedDiagram, type ConnectedDiagramKind } from './connected-diagrams';
 import './feature-explorer.css';
 
 /** Shown only when a feature is not yet in beta; the hero states the beta once. */
 type Availability = 'Preview' | 'In development';
-type Diagram = 'deploy' | 'flow' | 'orbit' | HostingDiagramKind;
+type Diagram = 'deploy' | HostingDiagramKind | ConnectedDiagramKind;
 interface Feature {
   id: string;
   title: string;
@@ -73,7 +74,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
           'Keep secrets out of your repository. Gregale seals stored values and injects them into your runtime as environment variables.',
         diagram: 'secrets',
         caption: 'Configuration outside your source.',
-        doc: 'storage',
+        doc: 'secrets',
       },
       {
         id: 'previews',
@@ -104,8 +105,9 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         description:
           'Declare your service dependencies. Gregale provides stable addresses, checks permitted callers and can wake parked dependencies on request.',
         availability: 'Preview',
-        diagram: 'orbit',
-        caption: 'Services connected by declared dependencies.',
+        diagram: 'services',
+        caption: 'A declared caller reaches its dependency by name.',
+        doc: 'internal-services',
       },
       {
         id: 'jobs',
@@ -113,8 +115,9 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         description:
           'Schedule work and retry failed attempts. Gregale tracks timers and attempts; your handlers own the business logic and external effects.',
         availability: 'Preview',
-        diagram: 'flow',
-        caption: 'Schedule → handler → result',
+        diagram: 'jobs',
+        caption: 'Schedule → attempt → retry → result',
+        doc: 'jobs',
       },
       {
         id: 'workflows',
@@ -122,8 +125,9 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         description:
           'Run handlers across multiple steps and wait for callbacks. Gregale keeps workflow state; your code defines the steps and access rules.',
         availability: 'Preview',
-        diagram: 'flow',
-        caption: 'Run a step. Wait. Continue.',
+        diagram: 'workflows',
+        caption: 'Run a step. Wait for a callback. Continue.',
+        doc: 'code-workflows',
       },
       {
         id: 'releases',
@@ -131,8 +135,9 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         description:
           'In development: revision context across managed calls and queued work, plus dependency checks before traffic moves to a deployment.',
         availability: 'In development',
-        diagram: 'flow',
-        caption: 'Connected changes, with revision context.',
+        diagram: 'releases',
+        caption: 'Dependencies checked before traffic moves.',
+        doc: 'service-release-graphs',
       },
     ],
   },
@@ -158,48 +163,12 @@ function Wiring() {
   );
 }
 
+const CONNECTED: ReadonlySet<Diagram> = new Set(['services', 'jobs', 'workflows', 'releases']);
+
 function FeatureDiagram({ kind }: { kind: Diagram }) {
   if (kind === 'deploy') return <DeploymentDiagram />;
-  if (kind !== 'flow' && kind !== 'orbit') return <HostingDiagram kind={kind} />;
-  return (
-    <svg viewBox="0 0 300 120" fill="none" aria-hidden="true" className="feature-diagram">
-      {kind === 'flow' && (
-        <>
-          <path d="M 42 60 H 258" strokeDasharray="3 5" />
-          {[42, 150, 258].map((x, index) => (
-            <g key={x}>
-              <rect x={x - 19} y="41" width="38" height="38" rx="8" />
-              <circle
-                cx={x}
-                cy="60"
-                r={index === 1 ? 8 : 4}
-                className={index === 1 ? 'feature-node' : ''}
-              />
-            </g>
-          ))}
-          <path d="m 98 55 5 5 -5 5 M 204 55 l 5 5 -5 5" />
-        </>
-      )}
-      {kind === 'orbit' && (
-        <>
-          {[0, 60, 120].map((angle) => (
-            <ellipse
-              key={angle}
-              cx="150"
-              cy="60"
-              rx="78"
-              ry="30"
-              transform={`rotate(${angle} 150 60)`}
-            />
-          ))}
-          <rect x="137" y="47" width="26" height="26" rx="6" className="feature-node" />
-          <circle cx="73" cy="60" r="5" />
-          <circle cx="188" cy="9" r="5" />
-          <circle cx="188" cy="111" r="5" />
-        </>
-      )}
-    </svg>
-  );
+  if (CONNECTED.has(kind)) return <ConnectedDiagram kind={kind as ConnectedDiagramKind} />;
+  return <HostingDiagram kind={kind as HostingDiagramKind} />;
 }
 
 /** An illustrative deployment, never presented as live account activity. */
