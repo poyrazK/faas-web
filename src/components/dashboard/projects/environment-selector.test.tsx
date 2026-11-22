@@ -190,3 +190,25 @@ it('shows the environment the URL is in, with no picker of its own', async () =>
   expect(screen.queryByRole('radiogroup', { name: 'Environment' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Environment')).not.toBeInTheDocument();
 });
+
+it('ignores a comparison equal to the selected environment instead of a dead end', async () => {
+  answerEnvironments();
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ProjectEnvironments
+        accountId="a"
+        plan="pro"
+        projectId="p"
+        slug="shop"
+        environment="production"
+        compare="production"
+        onChange={vi.fn()}
+        onSelectQueueWorkload={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  expect(await screen.findByText(/production is protected/i)).toBeInTheDocument();
+  expect(screen.queryByText('Selected comparison is unavailable.')).not.toBeInTheDocument();
+});

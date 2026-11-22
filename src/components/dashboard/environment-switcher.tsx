@@ -136,9 +136,17 @@ export function EnvironmentSwitcher() {
                     if (selected) return;
                     void navigate({
                       to: '.',
+                      // A comparison, promotion or approval belongs to the
+                      // environment it was chosen in; it doesn't follow.
                       search: (current: Record<string, unknown>) => ({
                         ...current,
                         env: choice.slug === 'production' ? undefined : choice.slug,
+                        compare: undefined,
+                        promotion: undefined,
+                        approval: undefined,
+                        promotionBefore: undefined,
+                        promotionStatus: undefined,
+                        queueWorkload: undefined,
                       }),
                     } as never);
                   }}

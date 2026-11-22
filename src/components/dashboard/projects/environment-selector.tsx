@@ -253,7 +253,10 @@ export function ProjectEnvironments(props: Props) {
 }
 
 function PersonalProjectEnvironments(props: Props) {
-  const { accountId, projectId, slug, environment, compare } = props;
+  const { accountId, projectId, slug, environment } = props;
+  // A comparison with itself (an environment switched to the one it compared
+  // with) means no comparison, not a dead end.
+  const compare = props.compare === environment ? undefined : props.compare;
   const query = useProjectEnvironments(accountId, slug);
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (query.isPending) return <LoadingState message="Loading environments…" />;
@@ -287,6 +290,7 @@ function PersonalProjectEnvironments(props: Props) {
         <SelectedEnvironment
           key={`${accountId}:${slug}:${selected}:${compare ?? ''}`}
           {...props}
+          compare={compare}
           environment={selected}
           others={items.filter((item) => item.slug !== selected).map((item) => item.slug)}
         />
