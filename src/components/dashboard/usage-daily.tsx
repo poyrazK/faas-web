@@ -184,7 +184,7 @@ function DayReadout({
         <p className="mt-1">No rollup for this day yet.</p>
       )}
       <p className="mt-2 border-t border-border pt-2 text-muted-foreground tabular-nums">
-        Month so far: {formatUsageNumber(detail.monthSoFar)} GB-h
+        {detail.soFarLabel}: {formatUsageNumber(detail.monthSoFar)} GB-h
         {detail.allowancePct != null ? ` · ${detail.allowancePct}% of your allowance` : ''}
       </p>
     </div>

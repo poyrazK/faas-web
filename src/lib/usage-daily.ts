@@ -117,7 +117,12 @@ export interface DayDetail {
   versus: string | null;
   /** Rollups summed from the first bar through this day. */
   monthSoFar: number;
-  /** `monthSoFar` as a share of the plan's included GB-hours, when there is one. */
+  /**
+   * What `monthSoFar` covers: "Month so far", or "Since Nov 2" once the
+   * 30-day window no longer reaches the 1st and the sum would understate it.
+   */
+  soFarLabel: string;
+  /** `monthSoFar` as a share of the plan's included GB-hours; only when it is the whole month. */
   allowancePct: number | null;
 }
 
@@ -162,8 +167,9 @@ export function dayDetail(
             ? 'Quieter than a usual day'
             : 'About a usual day',
     monthSoFar,
+    soFarLabel: usage.fromFirst ? 'Month so far' : `Since ${dayLabel(usage.days[0].date)}`,
     allowancePct:
-      includedGbHours && includedGbHours > 0
+      usage.fromFirst && includedGbHours && includedGbHours > 0
         ? Math.round((monthSoFar / includedGbHours) * 100)
         : null,
   };

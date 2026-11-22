@@ -98,6 +98,7 @@ describe('dayDetail', () => {
       top: { slug: 'engine', gbHours: 0.66, pct: 73 },
       versus: null,
       monthSoFar: 1.2,
+      soFarLabel: 'Month so far',
       allowancePct: 12,
     });
   });
@@ -133,5 +134,21 @@ describe('dayDetail', () => {
       versus: null,
       monthSoFar: 0.3,
     });
+  });
+
+  it('never calls a window that misses the 1st the month so far', () => {
+    // On Oct 31 the 30-day window starts Oct 2, so apid sends nothing for Oct 1.
+    const late = dailyUsage(
+      [
+        { date: '2026-10-02', gb_hours: 1 },
+        { date: '2026-10-31', gb_hours: 2 },
+      ],
+      '2026-10',
+      at('2026-10-31T12:00:00Z')
+    );
+    const last = late.days.length - 1;
+    expect(
+      dayDetail(late, last, { now: at('2026-10-31T12:00:00Z'), includedGbHours: 10 })
+    ).toMatchObject({ soFarLabel: 'Since Oct 2', monthSoFar: 3, allowancePct: null });
   });
 });
