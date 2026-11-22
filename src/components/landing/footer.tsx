@@ -6,25 +6,9 @@ import { SweepLink } from '@/components/sweep-link';
 import { Reveal } from './reveal';
 import { TextReveal } from './text-reveal';
 import { FloorGlow } from './floor-glow';
+import { FooterStatusLink } from './footer-status';
 
-/**
- * Footer directory — a wide six-column index, logo at the far left.
- *
- * **Every href here resolves.** This was twenty links pointing at `#`, naming
- * pages that do not exist — Careers, Blog, Brand kit, DPA, Sub-processors,
- * Containers. A dead link in a footer is worse than a missing one: it reads as
- * a real page right up until someone clicks it.
- *
- * So the columns are filled from what exists rather than from the shape of the
- * grid: the landing anchors, the app's own routes, the fourteen published docs
- * (titles taken from `docs-manifest.ts`, so a renamed page renames itself
- * here), and the OpenAPI document the API serves on this origin. A column is
- * short when the material is short.
- *
- * Still absent: Privacy and Terms, which remain unwritten; social accounts,
- * which the site does not have; and a language selector, because there is one
- * language. Each of those is a link this footer would have to invent.
- */
+// The directory uses landing anchors, public routes, and published docs.
 interface FooterLink {
   label: string;
   href: string;
@@ -33,7 +17,7 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status' | '/docs/api' | '/contact';
+  publicRoute?: '/status' | '/docs/api' | '/contact' | '/will-it-run';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -44,8 +28,9 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: 'Deploy your API', href: '#deploy' },
       { label: 'Features', href: '#why' },
-      { label: 'Practical questions', href: '#questions' },
       { label: 'Pricing', href: '#pricing' },
+      { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
+      { label: 'FAQ', href: '#questions' },
       ...(featureFlags.salesIntake
         ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
         : []),
@@ -54,9 +39,8 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Runtimes',
     links: [
-      { label: 'Node 24', href: '/docs/runtime-node', doc: 'runtime-node' },
-      { label: 'Python 3.13', href: '/docs/runtime-python', doc: 'runtime-python' },
-      { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
+      { label: 'Node.js', href: '/docs/runtime-node', doc: 'runtime-node' },
+      { label: 'Python', href: '/docs/runtime-python', doc: 'runtime-python' },
     ],
   },
   {
@@ -69,6 +53,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/docs/preview-environments',
         doc: 'preview-environments',
       },
+      { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
       { label: 'Egress denylist', href: '/docs/egress-denylist', doc: 'egress-denylist' },
     ],
   },
@@ -76,8 +61,9 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Developers',
     links: [
       { label: 'Documentation', href: '/docs', doc: true },
+      { label: 'Quickstart', href: '/docs/quickstart', doc: 'quickstart' },
       {
-        label: 'Deploying from source',
+        label: 'Deploy from GitHub',
         href: '/docs/deploy-from-github',
         doc: 'deploy-from-github',
       },
@@ -88,10 +74,10 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Trust & safety',
     links: [
-      { label: 'Status', href: '/status', publicRoute: '/status' },
+      { label: 'System status', href: '/status', publicRoute: '/status' },
       { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
-      { label: 'Sub-processors', href: '/docs/subprocessors', doc: 'subprocessors' },
+      { label: 'Subprocessors', href: '/docs/subprocessors', doc: 'subprocessors' },
       {
         label: 'Responsible disclosure',
         href: '/docs/responsible-disclosure',
@@ -143,6 +129,10 @@ function FooterAnchor({ link }: { link: FooterLink }) {
         {link.label}
       </Link>
     );
+  }
+
+  if (link.publicRoute === '/status') {
+    return <FooterStatusLink className={LINK_CLASS}>{link.label}</FooterStatusLink>;
   }
 
   if (link.publicRoute) {
