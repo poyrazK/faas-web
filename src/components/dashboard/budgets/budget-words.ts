@@ -1,5 +1,4 @@
-import type { Budget } from '@/lib/budgets';
-import { formatMillicents } from '@/lib/money';
+import { budgetUnit, formatBudgetAmount, type Budget } from '@/lib/budgets';
 
 /**
  * The Budgets page's answer in one plain sentence (docs/console-plain-english.md):
@@ -16,6 +15,8 @@ export interface BudgetsAnswer {
 }
 
 const quoted = (budget: Budget) => `“${budget.spec.name}”`;
+const limit = (budget: Budget) =>
+  formatBudgetAmount(budget.spec.limit_millicents, budgetUnit(budget.spec.meters));
 
 /** One budget by name, or a count of them. */
 function name(list: Budget[], one: string, many: string): string {
@@ -53,7 +54,7 @@ export function budgetsAnswer(budgets: readonly Budget[]): BudgetsAnswer {
       tone: 'warning',
       sentence:
         over.length === 1
-          ? `${quoted(over[0])} has passed its ${formatMillicents(over[0].spec.limit_millicents)} limit this month.`
+          ? `${quoted(over[0])} has passed its ${limit(over[0])} limit this month.`
           : `${over.length} budgets have passed their limits this month.`,
     };
   const pacing = active.filter((b) => (projected(b) ?? -1) >= b.spec.limit_millicents);
@@ -62,7 +63,7 @@ export function budgetsAnswer(budgets: readonly Budget[]): BudgetsAnswer {
       tone: 'warning',
       sentence:
         pacing.length === 1
-          ? `${quoted(pacing[0])} is on pace to pass its ${formatMillicents(pacing[0].spec.limit_millicents)} limit by month end.`
+          ? `${quoted(pacing[0])} is on pace to pass its ${limit(pacing[0])} limit by month end.`
           : `${pacing.length} budgets are on pace to pass their limits by month end.`,
     };
 
