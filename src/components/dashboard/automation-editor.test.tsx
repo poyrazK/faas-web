@@ -158,8 +158,11 @@ describe('new automation dialog', () => {
       'Daily at 09:00 UTC'
     );
     const zone = screen.getByLabelText('Timezone');
-    await userEvent.clear(zone);
-    await userEvent.type(zone, 'Europe/Istanbul');
+    expect(zone).toHaveValue('UTC');
+    for (const name of ['America/New_York', 'Asia/Kolkata', 'Europe/Istanbul', 'Pacific/Chatham']) {
+      expect(within(zone).getByRole('option', { name })).toBeInTheDocument();
+    }
+    await userEvent.selectOptions(zone, 'Europe/Istanbul');
     expect(screen.getByLabelText('Schedule preset')).toHaveValue('0 9 * * *');
     expect(
       screen.getByRole('option', { name: 'Daily at 09:00 Europe/Istanbul' })
@@ -168,7 +171,30 @@ describe('new automation dialog', () => {
     expect(screen.getByLabelText('Schedule summary')).toHaveTextContent(
       /Daily at 09:00 Europe\/Istanbul.*Validate to get the next start in Europe\/Istanbul/
     );
+    await userEvent.selectOptions(zone, '');
+    expect(screen.getByLabelText('IANA time zone')).toHaveValue('Europe/Istanbul');
+    await userEvent.selectOptions(zone, 'UTC');
+    expect(screen.queryByLabelText('IANA time zone')).not.toBeInTheDocument();
     expect(mocks.validate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a saved timezone outside the list editable', async () => {
+    mount({
+      ...automation,
+      draft: {
+        ...automation.draft!,
+        trigger: { type: 'schedule', schedule: '0 9 * * *', timezone: 'Custom/Local' },
+      },
+    });
+
+    const customZone = screen.getByLabelText('IANA time zone');
+    expect(customZone).toHaveValue('Custom/Local');
+    await userEvent.clear(customZone);
+    await userEvent.type(customZone, 'Asia/Kolkata');
+    expect(customZone).toHaveValue('Asia/Kolkata');
+    expect(screen.getByLabelText('Schedule summary')).toHaveTextContent(
+      'Daily at 09:00 Asia/Kolkata'
+    );
   });
 
   it('keeps customized steps when replacement is cancelled and preserves the name on acceptance', async () => {

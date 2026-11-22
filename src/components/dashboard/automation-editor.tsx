@@ -7,8 +7,8 @@ import { Timestamp } from '@/components/ui/timestamp';
 import { Modal } from '@/components/ui/modal';
 import { Panel } from './primitives';
 import { ScheduleField } from './schedule-field';
+import { TimezoneField } from './cron-fields';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
-import { TIME_ZONES } from '@/lib/timezones';
 import { useAppRoutes } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import {
@@ -464,7 +464,6 @@ export function AutomationEditor({
   const validate = useValidateAutomation(slug);
   const simulate = useSimulateAutomation(slug);
   const appRoutes = useAppRoutes(slug);
-  const timeZoneList = useId();
   const routeList = useId();
   const routes = useMemo(
     () => ({ list: routeList, observed: observedRoutes(appRoutes.data?.routes) }),
@@ -772,27 +771,15 @@ export function AutomationEditor({
                     })
                   }
                 />
-                <div className="flex flex-col gap-1.5">
-                  <TextField
-                    label="Timezone"
-                    value={draft.spec.trigger.timezone ?? 'UTC'}
-                    list={TIME_ZONES.length ? timeZoneList : undefined}
-                    hint="IANA name, such as Europe/Istanbul. The schedule runs in this zone."
-                    onChange={(timezone) =>
-                      edit({
-                        ...draft,
-                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
-                      })
-                    }
-                  />
-                  {TIME_ZONES.length > 0 && (
-                    <datalist id={timeZoneList}>
-                      {TIME_ZONES.map((zone) => (
-                        <option key={zone} value={zone} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
+                <TimezoneField
+                  value={draft.spec.trigger.timezone ?? 'UTC'}
+                  onChange={(timezone) =>
+                    edit({
+                      ...draft,
+                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                    })
+                  }
+                />
                 <details
                   className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}
