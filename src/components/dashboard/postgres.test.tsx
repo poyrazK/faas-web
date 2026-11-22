@@ -25,6 +25,8 @@ const envScope = vi.hoisted(() => ({
   environment: 'production',
   protectedStage: false,
   listLoaded: true,
+  // Another stage of the project, protected: the free-text scope can name it.
+  otherProtected: '' as string,
 }));
 vi.mock('@/lib/environment-scope', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
@@ -37,6 +39,9 @@ vi.mock('@/lib/environment-scope', async (importOriginal) => ({
       ? [
           { id: 'p', slug: 'production', protected: true },
           { id: 's', slug: envScope.environment, protected: envScope.protectedStage },
+          ...(envScope.otherProtected
+            ? [{ id: 'o', slug: envScope.otherProtected, protected: true }]
+            : []),
         ]
       : null,
     available: true,
@@ -385,6 +390,40 @@ describe('PostgresDatabases', () => {
       expect(screen.queryByRole('button', { name: /connect an app/i })).toBeNull();
     } finally {
       Object.assign(envScope, { applies: false, environment: 'production', protectedStage: false });
+    }
+  });
+
+  it('refuses a typed scope that names another protected stage', async () => {
+    Object.assign(envScope, { applies: true, environment: 'staging', otherProtected: 'qa' });
+    try {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /connect an app/i }));
+      const sheet = await screen.findByRole('dialog', { name: 'Connect an app to orders' });
+      const scope = within(sheet).getByLabelText('Binding scope');
+      await userEvent.clear(scope);
+      await userEvent.type(scope, 'qa');
+      await userEvent.click(within(sheet).getByRole('button', { name: /bind app/i }));
+      expect(within(sheet).getByRole('alert')).toHaveTextContent(
+        'Qa is protected: connect apps there through a promotion.'
+      );
+      expect(createBinding).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(envScope, { applies: false, environment: 'production', otherProtected: '' });
+    }
+  });
+
+  it('hides rotate and remove for a binding in another protected stage', async () => {
+    Object.assign(envScope, { applies: true, environment: 'staging', otherProtected: 'qa' });
+    usePostgresBindings.mockReturnValue(ready({ items: [binding({ scope: 'qa' })] }));
+    try {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await screen.findByRole('button', { name: /connect an app/i });
+      expect(screen.queryByRole('button', { name: /^Rotate credentials for/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Remove binding for/ })).toBeNull();
+    } finally {
+      Object.assign(envScope, { applies: false, environment: 'production', otherProtected: '' });
     }
   });
 

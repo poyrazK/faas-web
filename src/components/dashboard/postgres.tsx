@@ -973,11 +973,21 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
 function useBindingLock() {
   const env = useEnvironmentScope();
   const staged = env.applies && env.environment !== 'production';
-  const locked =
-    staged &&
-    (env.choices === null ||
-      Boolean(env.choices.find((choice) => choice.slug === env.environment)?.protected));
-  return { env, staged, locked };
+  /**
+   * Whether writing a credential into `scope` is locked: a protected stage of
+   * the project, or any stage while the project's environments are unknown.
+   * Production's scopes stay writable, as they always were; outside a project
+   * nothing is known, so nothing changes.
+   */
+  const isLocked = (scope: string) => {
+    if (!env.applies) return false;
+    const target = scope.trim() || 'default';
+    if (target === 'default' || target === 'production') return false;
+    if (env.choices === null) return true;
+    return Boolean(env.choices.find((choice) => choice.slug === target)?.protected);
+  };
+  const locked = staged && isLocked(env.environment);
+  return { env, staged, locked, isLocked };
 }
 
 function Bindings({
@@ -1008,7 +1018,8 @@ function Bindings({
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
   // Inside a project the credential goes to the top bar's environment's scope
   // (the scope its deployments read, faas ADR-1139); production is `default`.
-  const { env, staged, locked } = useBindingLock();
+  const { env, staged, locked, isLocked } = useBindingLock();
+  const [scopeRefusal, setScopeRefusal] = useState<string | null>(null);
   const [scope, setScope] = useState(staged ? env.environment : 'default');
 
   const items = bindings.data?.items ?? [];
@@ -1043,6 +1054,16 @@ function Bindings({
   }, [polled, knownApps, toast]);
 
   const submit = async () => {
+    // The destination scope, not only the top bar's environment: the field is
+    // free text, and faas's binding handler doesn't check protection.
+    const target = scope.trim() || 'default';
+    if (isLocked(target)) {
+      setScopeRefusal(
+        `${target.charAt(0).toUpperCase() + target.slice(1)} is protected: connect apps there through a promotion.`
+      );
+      return;
+    }
+    setScopeRefusal(null);
     try {
       await create.mutateAsync({
         app_id: chosenApp,
@@ -1155,7 +1176,7 @@ function Bindings({
                 )}
                 {/* Rotating or removing writes the credential secret in the
                     binding's scope; a locked stage's scope is left alone. */}
-                {!(locked && binding.scope === env.environment) && (
+                {!isLocked(binding.scope) && (
                   <span className="ml-auto flex items-center gap-1">
                     <Button
                       size="xs"
@@ -1239,10 +1260,18 @@ function Bindings({
             <span className="text-xs text-muted-foreground">Scope</span>
             <input
               value={scope}
-              onChange={(e) => setScope(e.target.value)}
+              onChange={(e) => {
+                setScope(e.target.value);
+                setScopeRefusal(null);
+              }}
               aria-label="Binding scope"
               className={FIELD}
             />
+            {scopeRefusal && (
+              <span role="alert" className="text-xs text-destructive">
+                {scopeRefusal}
+              </span>
+            )}
             {staged && scope.trim() === env.environment && (
               <span className="text-xs text-muted-foreground">
                 {env.name}’s scope: the credential reaches {env.name}’s deployments.
