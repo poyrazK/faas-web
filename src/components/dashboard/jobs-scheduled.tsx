@@ -261,8 +261,13 @@ export function ScheduledRequestsBody({ search, onSelection }: JobsSelectionProp
   // read-only. Outside a project nothing changes.
   const env = useEnvironmentScope();
   const staged = env.applies && env.environment !== 'production';
+  // Fails closed: until the list says this stage isn't protected (or if it
+  // can't be read), no write control shows. faas doesn't check protection on
+  // cron writes, so the console is the only guard.
   const readOnly =
-    staged && Boolean(env.choices?.find((choice) => choice.slug === env.environment)?.protected);
+    staged &&
+    (env.choices === null ||
+      Boolean(env.choices.find((choice) => choice.slug === env.environment)?.protected));
 
   const [creating, setCreating] = useState(false);
   const [creationError, setCreationError] = useState<string | null>(null);

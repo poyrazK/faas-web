@@ -82,6 +82,7 @@ export function RoutesBody({
     count: real.length,
     other: routes.some((r) => r.other),
     capHit: data?.cap_hit === true,
+    environment: environment ? (environmentName ?? environment) : undefined,
   });
 
   // The addresses that reach this app: its own, then its verified custom domains.

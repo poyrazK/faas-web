@@ -6,7 +6,13 @@ import type { ProjectScope } from '@/lib/project-scope';
 
 const m = vi.hoisted(() => ({
   scope: null as unknown as ProjectScope,
-  env: { applies: true, environment: 'production', name: 'Production', protected: false },
+  env: {
+    applies: true,
+    environment: 'production',
+    name: 'Production',
+    protected: false,
+    listLoaded: true,
+  },
   create: vi.fn(),
 }));
 vi.mock('@/lib/environment-scope', async (importOriginal) => ({
@@ -17,10 +23,12 @@ vi.mock('@/lib/environment-scope', async (importOriginal) => ({
     name: m.env.name,
     kind: m.env.environment === 'production' ? 'production' : 'stage',
     available: true,
-    choices: [
-      { id: 'p', slug: 'production', protected: true },
-      { id: 's', slug: m.env.environment, protected: m.env.protected },
-    ],
+    choices: m.env.listLoaded
+      ? [
+          { id: 'p', slug: 'production', protected: true },
+          { id: 's', slug: m.env.environment, protected: m.env.protected },
+        ]
+      : null,
     list: { isPending: false, isError: false, refetch: vi.fn() },
   }),
 }));
@@ -101,12 +109,32 @@ const inProject: ProjectScope = {
   choices: [],
 };
 const Scheduled = () => <ScheduledRequestsBody search={{}} onSelection={vi.fn()} />;
-const inStaging = (protectedStage = false) => {
-  m.env = { applies: true, environment: 'staging', name: 'Staging', protected: protectedStage };
+const inStaging = (protectedStage = false, listLoaded = true) => {
+  m.env = {
+    applies: true,
+    environment: 'staging',
+    name: 'Staging',
+    protected: protectedStage,
+    listLoaded,
+  };
 };
+/** Every write control the page draws for a cron row or in its header. */
+const writeControls = () => [
+  ...screen.queryAllByRole('button', { name: 'New scheduled request' }),
+  ...screen.queryAllByRole('button', { name: /^Edit scheduled request / }),
+  ...screen.queryAllByRole('button', { name: /^Run .* now$/ }),
+  ...screen.queryAllByRole('button', { name: /^Delete cron / }),
+  ...screen.queryAllByRole('switch'),
+];
 beforeEach(() => {
   m.scope = inProject;
-  m.env = { applies: true, environment: 'production', name: 'Production', protected: false };
+  m.env = {
+    applies: true,
+    environment: 'production',
+    name: 'Production',
+    protected: false,
+    listLoaded: true,
+  };
   m.create.mockReset().mockResolvedValue({ schedule: '0 3 * * *', path: '/' });
 });
 
@@ -166,10 +194,19 @@ describe('Scheduled requests follow the environment', () => {
     expect(screen.getByRole('note')).toHaveTextContent(
       'Staging is protected: changes go through a promotion.'
     );
-    expect(screen.queryByRole('button', { name: 'New scheduled request' })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /^(Edit|Run now|Delete|Pause|Resume)/ })
-    ).toBeNull();
-    expect(screen.queryByRole('switch')).toBeNull();
+    expect(writeControls()).toEqual([]);
+  });
+
+  it('stays read-only until the environment list says Staging isn’t protected', () => {
+    inStaging(false, false);
+    render(<Scheduled />);
+    expect(screen.getByText('/staging-tick')).toBeInTheDocument();
+    expect(writeControls()).toEqual([]);
+  });
+
+  it('a Staging the list says is unprotected is editable', () => {
+    inStaging();
+    render(<Scheduled />);
+    expect(screen.getAllByRole('button', { name: /^Run .* now$/ }).length).toBeGreaterThan(0);
   });
 });
