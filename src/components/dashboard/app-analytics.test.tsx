@@ -15,8 +15,17 @@ vi.mock('@/lib/api/queries', () => ({
     useAppAnalyticsTimeseries(slug, since, options) as unknown,
 }));
 vi.mock('@/components/dashboard/kit/chart', () => ({
-  TimeChart: ({ series }: { series: Record<string, unknown> }) => (
-    <div data-testid={'value' in series ? 'metric-chart' : 'chart'}>
+  TimeChart: ({
+    series,
+    data,
+  }: {
+    series: Record<string, unknown>;
+    data: Record<string, unknown>[];
+  }) => (
+    <div
+      data-testid={'value' in series ? 'metric-chart' : 'chart'}
+      data-failure-rates={JSON.stringify(data.map((point) => point.error_rate_pct))}
+    >
       {Object.keys(series).map((key) => (
         <span key={key} data-testid={'value' in series ? 'metric-series' : 'series'}>
           {key}
@@ -135,6 +144,35 @@ describe('AppAnalyticsPanel', () => {
     expect(series()).toEqual(['p50_ms', 'p95_ms', 'p99_ms']);
     await userEvent.click(screen.getByRole('button', { name: 'Cold starts' }));
     expect(series()).toEqual(['cold_boots']);
+  });
+
+  it('keeps a measured zero failure rate and leaves idle hours undefined', async () => {
+    useAppAnalyticsTimeseries.mockReturnValue(
+      ready({
+        bucket: '1h',
+        points: [100, 0, 100].map((requests, index) => ({
+          start: `2026-09-08T0${index}:00:00Z`,
+          requests,
+          error_requests: index === 0 ? 1 : 0,
+          error_rate_pct: index === 0 ? 1 : 0,
+          cold_boots: 0,
+          p50_ms: 40,
+          p95_ms: 100,
+          p99_ms: 200,
+        })),
+      })
+    );
+    render(<Panel slug="api" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Failure rate' }));
+    expect(screen.getByTestId('series')).toHaveTextContent('error_rate_pct');
+    expect(screen.getByTestId('chart')).toHaveAttribute('data-failure-rates', '[1,null,0]');
+  });
+
+  it('uses an empty chart state when the API returns no hours', () => {
+    useAppAnalyticsTimeseries.mockReturnValue(ready({ bucket: '1h', points: [] }));
+    render(<Panel slug="api" />);
+    expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
+    expect(screen.getByText('No hourly samples for this window.')).toBeInTheDocument();
   });
 
   it('never plots a zero-filled idle hour as a 0 ms latency', async () => {

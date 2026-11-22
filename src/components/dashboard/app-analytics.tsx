@@ -39,6 +39,10 @@ const CHART_METRICS = {
       error_requests: { label: 'Errors', color: 'red' as const },
     },
   },
+  failureRate: {
+    label: 'Failure rate',
+    config: { error_rate_pct: { label: 'Requests failed', color: 'chart-2' as const } },
+  },
   latency: {
     label: 'Latency',
     config: {
@@ -53,6 +57,16 @@ const CHART_METRICS = {
   },
 } as const;
 type ChartMetric = keyof typeof CHART_METRICS;
+const CHART_DETAILS = {
+  traffic: 'requests',
+  failureRate: 'error_rate',
+  latency: 'p95',
+  cold: 'cold_boots',
+} as const;
+const count = new Intl.NumberFormat('en');
+const decimal = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
+const rate = new Intl.NumberFormat('en', { maximumSignificantDigits: 3 });
+const percentage = (value: number) => `${rate.format(value)}%`;
 
 export type AppAnalyticsBodyProps = {
   slug: string;
@@ -93,15 +107,28 @@ export function AppAnalyticsBody({
   const planGateError = [analytics.error, series.error].find(isPlanGate);
   const [metric, setMetric] = useState<ChartMetric>('traffic');
   const [picking, setPicking] = useState(false);
+  const [traceLight, setTraceLight] = useState(true);
   const points = (series.data?.points ?? []).map((point) => ({
     at: hourLabel(point.start),
     requests: point.requests,
     error_requests: point.error_requests,
+    error_rate_pct: point.requests ? point.error_rate_pct : null,
     p50_ms: point.requests ? point.p50_ms : null,
     p95_ms: point.requests ? point.p95_ms : null,
     p99_ms: point.requests ? point.p99_ms : null,
     cold_boots: point.cold_boots,
   }));
+  const seriesIncomplete = incompleteTelemetry(series.data);
+  const hasRequests = points.some((point) => point.requests > 0);
+  const hasChartData =
+    hasRequests ||
+    (points.length > 0 && !seriesIncomplete && (metric === 'traffic' || metric === 'cold'));
+  const formatValue =
+    metric === 'failureRate'
+      ? percentage
+      : metric === 'latency'
+        ? (value: number) => `${decimal.format(value)} ms`
+        : count.format;
   const inspectMetric = (selected: string) => {
     if (isDetailMetric(selected))
       inspect({
@@ -309,10 +336,10 @@ export function AppAnalyticsBody({
               </div>
             )}
 
-            {seriesPhase === 'ready' ? (
+            {seriesPhase === 'ready' || seriesPhase === 'empty' ? (
               <div>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="label-mono text-muted-foreground">Hourly</p>
+                  <p className="label-mono text-muted-foreground">Hourly · UTC</p>
                   <SegmentedControl
                     label="Chart metric"
                     value={metric}
@@ -323,30 +350,56 @@ export function AppAnalyticsBody({
                     onChange={setMetric}
                   />
                 </div>
-                {points.some((point) => point.requests > 0) ? (
-                  <TimeChart
-                    onInspect={() =>
-                      inspectMetric(
-                        metric === 'traffic'
-                          ? 'requests'
-                          : metric === 'latency'
-                            ? 'p95'
-                            : 'cold_boots'
-                      )
-                    }
-                    data={points}
-                    x="at"
-                    series={chart.config}
-                    kind={metric === 'latency' ? 'line' : 'area'}
-                    className="h-48"
-                  />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {metric === 'latency'
-                      ? 'No requests in this window.'
-                      : 'No hourly points in this window yet.'}
-                  </p>
-                )}
+                <div className="well rounded-xl border border-border p-3 sm:p-4">
+                  {hasChartData ? (
+                    <>
+                      <TimeChart
+                        key={`${slug}:${since}:${route}:${method}:${metric}`}
+                        data={points}
+                        x="at"
+                        series={chart.config}
+                        kind={metric === 'latency' ? 'line' : 'area'}
+                        format={metric === 'failureRate' ? percentage : undefined}
+                        inspection={{
+                          traceLight,
+                          fractionalAxis: metric === 'failureRate',
+                          formatTime: (point) => `${String(point.at)} UTC`,
+                          formatValue,
+                          describePoint: (point) => {
+                            if (metric !== 'traffic' && metric !== 'failureRate') return '';
+                            if (!point.requests) return 'No requests recorded.';
+                            return `${count.format(Number(point.error_requests))} of ${count.format(Number(point.requests))} requests failed.`;
+                          },
+                        }}
+                        className="h-48"
+                      />
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2.5 text-xs">
+                        <label className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={traceLight}
+                            onChange={(event) => setTraceLight(event.target.checked)}
+                            className="accent-brand"
+                          />
+                          Trace light
+                        </label>
+                        <button
+                          type="button"
+                          className="text-brand underline-offset-2 hover:underline"
+                          onClick={() => inspectMetric(CHART_DETAILS[metric])}
+                        >
+                          View metric details
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="grid min-h-36 place-items-center text-sm text-muted-foreground">
+                      {!points.length || seriesIncomplete
+                        ? 'No hourly samples for this window.'
+                        : 'No requests in this window.'}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <InlinePhase
