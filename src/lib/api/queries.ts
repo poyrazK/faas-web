@@ -515,17 +515,17 @@ export function useDeleteTrustedSigner(slug: string) {
 
 /** Re-seal a secret under the current host identity — the value crosses the
  * wire once, exactly like create, and is never echoed back. */
-export function useRotateSecret(slug: string) {
+export function useRotateSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { key: string; value: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/secrets/{key}/rotate', {
-          params: { path: { slug, key: input.key } },
+          params: scoped({ slug, key: input.key }, scope),
           body: { value: input.value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) }),
   });
 }
 
@@ -2168,87 +2168,113 @@ export function useInfiniteInstances(limit = 50) {
  * and "update" are one operation.
  * ------------------------------------------------------------------ */
 
-export function useAppSecrets(slug: string) {
+/**
+ * An app's variables or secrets in one environment. Production (`scope`
+ * undefined) keeps today's key and requests; any other environment is its own
+ * entry under the same prefix, so a production write still refreshes every
+ * environment and a Staging write never touches production's list.
+ */
+export function appValuesKey(kind: 'env' | 'secrets', slug: string, scope?: string) {
+  const base = kind === 'env' ? keys.appEnv(slug) : keys.appSecrets(slug);
+  return scope ? ([...base, 'scope', scope] as const) : base;
+}
+
+/** `{ path }`, plus `query: { scope }` outside production. */
+const scoped = <P extends Record<string, string>>(path: P, scope?: string) =>
+  scope ? { path, query: { scope } } : { path };
+
+export function useAppSecrets(slug: string, scope?: string) {
   return useQuery({
-    queryKey: keys.appSecrets(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/secrets', { params: { path: { slug } } })),
+    queryKey: appValuesKey('secrets', slug, scope),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/secrets', { params: scoped({ slug }, scope) })),
     enabled: Boolean(slug),
   });
 }
 
-export function useSetSecret(slug: string) {
+export function useSetSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       unwrap(
         api.PUT('/v1/apps/{slug}/secrets/{key}', {
-          params: { path: { slug, key } },
+          params: scoped({ slug, key }, scope),
           body: { value },
         })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) });
     },
   });
 }
 
-export function useDeleteSecret(slug: string) {
+export function useDeleteSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (key: string) =>
-      unwrap(api.DELETE('/v1/apps/{slug}/secrets/{key}', { params: { path: { slug, key } } })),
+      unwrap(api.DELETE('/v1/apps/{slug}/secrets/{key}', { params: scoped({ slug, key }, scope) })),
     onMutate: (key) =>
-      applyOptimistic<SecretsList>(qc, { queryKey: keys.appSecrets(slug) }, (old) => ({
-        ...old,
-        secrets: old.secrets?.filter((s) => s.key !== key),
-      })),
+      applyOptimistic<SecretsList>(
+        qc,
+        { queryKey: appValuesKey('secrets', slug, scope), exact: true },
+        (old) => ({
+          ...old,
+          secrets: old.secrets?.filter((s) => s.key !== key),
+        })
+      ),
     onError: (_err, _key, rollback) => rollback?.(),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) });
     },
   });
 }
 
 type SecretsList = NonNullable<ReturnType<typeof useAppSecrets>['data']>;
 
-export function useAppEnv(slug: string) {
+export function useAppEnv(slug: string, scope?: string) {
   return useQuery({
-    queryKey: keys.appEnv(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env', { params: { path: { slug } } })),
+    queryKey: appValuesKey('env', slug, scope),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env', { params: scoped({ slug }, scope) })),
     enabled: Boolean(slug),
   });
 }
 
-export function useSetEnv(slug: string) {
+export function useSetEnv(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       unwrap(
-        api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
+        api.PUT('/v1/apps/{slug}/env/{key}', {
+          params: scoped({ slug, key }, scope),
+          body: { value },
+        })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('env', slug, scope) });
     },
   });
 }
 
-export function useDeleteEnv(slug: string) {
+export function useDeleteEnv(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (key: string) =>
-      unwrap(api.DELETE('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } } })),
+      unwrap(api.DELETE('/v1/apps/{slug}/env/{key}', { params: scoped({ slug, key }, scope) })),
     onMutate: (key) =>
-      applyOptimistic<EnvList>(qc, { queryKey: keys.appEnv(slug) }, (old) => ({
-        ...old,
-        env: old.env?.filter((v) => v.key !== key),
-      })),
+      applyOptimistic<EnvList>(
+        qc,
+        { queryKey: appValuesKey('env', slug, scope), exact: true },
+        (old) => ({
+          ...old,
+          env: old.env?.filter((v) => v.key !== key),
+        })
+      ),
     onError: (_err, _key, rollback) => rollback?.(),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('env', slug, scope) });
     },
   });
 }

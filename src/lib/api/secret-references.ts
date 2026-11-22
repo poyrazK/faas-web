@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from './client';
-import { keys, retryPolicy } from './queries';
+import { appValuesKey, keys, retryPolicy } from './queries';
 import type { components } from './schema';
 
 export type SecretReferenceList = components['schemas']['AppSecretReferenceListResponse'];
@@ -84,20 +84,20 @@ export function useRemoveSecretReference(slug: string, environment: string) {
  * (handlers_secrets.go `prefersSecretRevocationRepresentation`), so an older
  * server resolves to `undefined`.
  */
-export function useRevokeSecret(slug: string) {
+export function useRevokeSecret(slug: string, scope?: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (key: string): Promise<SecretRevocation | undefined> =>
       (await unwrap(
         api.DELETE('/v1/apps/{slug}/secrets/{key}', {
-          params: { path: { slug, key } },
+          params: scope ? { path: { slug, key }, query: { scope } } : { path: { slug, key } },
           headers: { Prefer: 'return=representation' },
         })
       )) ?? undefined,
     // The row leaves the list at once, so a second click cannot delete it again
     // (secret_not_found). `exact` keeps the per-environment source lists apart.
     onMutate: async (key) => {
-      const queryKey = keys.appSecrets(slug);
+      const queryKey = appValuesKey('secrets', slug, scope);
       await client.cancelQueries({ queryKey, exact: true });
       const previous = client.getQueryData<SecretList>(queryKey);
       if (previous)
@@ -108,12 +108,13 @@ export function useRevokeSecret(slug: string) {
       return { previous };
     },
     onError: (_error, _key, context) => {
-      if (context?.previous) client.setQueryData(keys.appSecrets(slug), context.previous);
+      if (context?.previous)
+        client.setQueryData(appValuesKey('secrets', slug, scope), context.previous);
     },
     onSuccess: (revocation) => {
       if (revocation) client.setQueryData(revocationKey(slug, revocation.id), revocation);
     },
-    onSettled: () => client.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSettled: () => client.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) }),
   });
 }
 
