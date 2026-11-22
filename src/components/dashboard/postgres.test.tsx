@@ -19,6 +19,20 @@ const usePostgresUsage = vi.fn();
 const undeleteDb = vi.fn();
 const purgeDb = vi.fn();
 const computeAccess = vi.hoisted(() => ({ value: 'on' }));
+// Inside a project the binding scope follows the top bar's environment.
+const envScope = vi.hoisted(() => ({ applies: false, environment: 'production' }));
+vi.mock('@/lib/environment-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
+  useEnvironmentScope: () => ({
+    applies: envScope.applies,
+    environment: envScope.environment,
+    name: envScope.environment.charAt(0).toUpperCase() + envScope.environment.slice(1),
+    kind: envScope.environment === 'production' ? 'production' : 'stage',
+    choices: null,
+    available: true,
+    list: { isPending: false, isError: false, refetch: () => undefined },
+  }),
+}));
 const workspace = vi.hoisted(() => ({
   org: null as string | null,
   label: 'Personal',
@@ -327,6 +341,27 @@ describe('PostgresDatabases', () => {
         access: 'read_write',
       })
     );
+  });
+
+  it('in Staging, connecting an app writes Staging’s scope by default', async () => {
+    envScope.applies = true;
+    envScope.environment = 'staging';
+    try {
+      render(<PostgresDatabases />);
+      await userEvent.click(screen.getByRole('button', { name: /orders/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /connect an app/i }));
+      const sheet = await screen.findByRole('dialog', { name: 'Connect an app to orders' });
+      expect(
+        within(sheet).getByText(/the credential reaches Staging’s deployments/)
+      ).toBeInTheDocument();
+      await userEvent.click(within(sheet).getByRole('button', { name: /bind app/i }));
+      await waitFor(() =>
+        expect(createBinding).toHaveBeenCalledWith(expect.objectContaining({ scope: 'staging' }))
+      );
+    } finally {
+      envScope.applies = false;
+      envScope.environment = 'production';
+    }
   });
 
   it('restores into a new database, saying the original is untouched', async () => {

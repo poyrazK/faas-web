@@ -36,6 +36,7 @@ import {
   type PostgresDatabase,
 } from '@/lib/api/queries';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { useEnvironmentScope } from '@/lib/environment-scope';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { absoluteTime } from '@/lib/time';
@@ -980,7 +981,11 @@ function Bindings({
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
-  const [scope, setScope] = useState('default');
+  // Inside a project the credential goes to the top bar's environment's scope
+  // (the scope its deployments read, faas ADR-1139); production is `default`.
+  const env = useEnvironmentScope();
+  const staged = env.applies && env.environment !== 'production';
+  const [scope, setScope] = useState(staged ? env.environment : 'default');
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
@@ -1210,6 +1215,11 @@ function Bindings({
               aria-label="Binding scope"
               className={FIELD}
             />
+            {staged && scope.trim() === env.environment && (
+              <span className="text-xs text-muted-foreground">
+                {env.name}’s scope: the credential reaches {env.name}’s deployments.
+              </span>
+            )}
           </label>
           <p className="text-xs text-muted-foreground">
             The connection string reaches the app as this secret and is never shown in the console.
