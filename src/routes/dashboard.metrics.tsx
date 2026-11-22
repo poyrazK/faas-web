@@ -18,11 +18,12 @@ import { useAuth } from '@/lib/auth';
 import { isPaidPlan } from '@/lib/plan';
 import { PlanGate } from '@/components/dashboard/plan-gate';
 import { consoleHead } from '@/lib/seo';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 const RANGES: MetricsRange[] = ['5m', '15m', '1h', '6h', '24h', '7d', '15d'];
 
 export const Route = createFileRoute('/dashboard/metrics')({
-  component: MetricsPage,
+  component: withProductionBanner('metrics', MetricsPage),
   head: () => consoleHead('metrics'),
   // The window lives in the URL, so a reload keeps it and a pasted link
   // shows the same figures. Optional: the default leaves no query string.

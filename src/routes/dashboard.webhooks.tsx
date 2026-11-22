@@ -9,9 +9,10 @@ import { useAuth } from '@/lib/auth';
 import { consoleHead } from '@/lib/seo';
 import { createFileRoute } from '@tanstack/react-router';
 import { useId } from 'react';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/webhooks')({
-  component: WebhooksPage,
+  component: withProductionBanner('webhooks', WebhooksPage),
   head: () => consoleHead('webhooks'),
   validateSearch: validateWebhookSearch,
 });

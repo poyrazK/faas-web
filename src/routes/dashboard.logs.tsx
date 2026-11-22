@@ -33,9 +33,10 @@ import { consoleHead } from '@/lib/seo';
 import { DeploymentGate, NotLiveNotice } from '@/components/dashboard/deployment-gate';
 import { hasLogSource, hasRunnableDeployment } from '@/lib/deployment-status';
 import { LogsBody } from '@/components/dashboard/pages/logs';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/logs')({
-  component: LogsPage,
+  component: withProductionBanner('logs', LogsPage),
   head: () => consoleHead('logs'),
   validateSearch: validateLogsSearch,
 });

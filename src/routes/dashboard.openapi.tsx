@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { consoleHead } from '@/lib/seo';
 import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/openapi')({
-  component: OpenAPIPage,
+  component: withProductionBanner('OpenAPI spec', OpenAPIPage),
   head: () => consoleHead('openapi'),
 });
 

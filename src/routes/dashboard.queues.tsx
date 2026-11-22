@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { consoleHead } from '@/lib/seo';
 import { QueuesBody } from '@/components/dashboard/pages/queues';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/queues')({
-  component: QueuesPage,
+  component: withProductionBanner('queues', QueuesPage),
   head: () => consoleHead('queues'),
 });
 
