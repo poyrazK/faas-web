@@ -368,7 +368,7 @@ describe('the account usage projection', () => {
     // Aug 1 to Aug 3: the day without a rollup keeps its place at zero.
     const chart = screen.getByRole('figure', { name: 'Daily compute usage in GB-hours' });
     expect(within(chart).getAllByRole('img')).toHaveLength(3);
-    expect(within(chart).getByRole('img', { name: 'Aug 2: 0 GB-h' })).toBeInTheDocument();
+    expect(within(chart).getByRole('img', { name: 'Aug 2: no rollup' })).toBeInTheDocument();
     expect(screen.getByText(/Your busiest day was/)).toHaveTextContent(
       'Your busiest day was Aug 3, at 0.5 GB-hours, mostly api (0.4 GB-hours).'
     );

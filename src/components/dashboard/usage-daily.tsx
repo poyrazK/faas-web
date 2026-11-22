@@ -1,6 +1,8 @@
+import { useState, type KeyboardEvent } from 'react';
 import type { components } from '@/lib/api/schema';
-import { dailyUsage, dayLabel } from '@/lib/usage-daily';
+import { dailyUsage, dayDetail, dayLabel, type DailyUsage } from '@/lib/usage-daily';
 import { formatUsageNumber } from '@/lib/usage-format';
+import { cn } from '@/lib/utils';
 import { Panel } from './primitives';
 
 type DailyUsagePoint = components['schemas']['DailyUsagePoint'];
@@ -16,15 +18,37 @@ export function DailyUsagePanel({
   daily,
   month,
   usedGbHours,
+  includedGbHours,
   now,
 }: {
   daily: readonly DailyUsagePoint[] | undefined;
   month: string;
   usedGbHours: number;
+  /** The plan's included GB-hours, so a day can say where the month stood. */
+  includedGbHours?: number | null;
   /** Injected for tests; the window edge depends on today's UTC date. */
   now?: number;
 }) {
-  const { days, rolledUp, missing, fromFirst, peak } = dailyUsage(daily, month, now);
+  const usage = dailyUsage(daily, month, now);
+  const { days, rolledUp, missing, fromFirst, peak } = usage;
+  const [active, setActive] = useState<number | null>(null);
+  const max = Math.max(...days.map((d) => d.gbHours), 0);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const last = days.length - 1;
+    setActive((previous) =>
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? last
+          : previous === null
+            ? event.key === 'ArrowRight'
+              ? 0
+              : last
+            : Math.max(0, Math.min(last, previous + (event.key === 'ArrowRight' ? 1 : -1)))
+    );
+  };
   return (
     <Panel title="Day by day" help="GB-hours per UTC day this month, from daily rollups.">
       {days.length === 0 ? (
@@ -32,23 +56,46 @@ export function DailyUsagePanel({
       ) : (
         <div className="flex flex-col gap-3">
           <figure aria-label="Daily compute usage in GB-hours" className="flex h-44 flex-col gap-2">
-            <div className="flex min-h-0 flex-1 items-end gap-1 border-b border-border">
-              {days.map((day) => (
+            <div
+              role="group"
+              tabIndex={0}
+              aria-label="Days of the month. Hover a bar, or use the arrow keys, to read a day."
+              onKeyDown={onKeyDown}
+              onBlur={() => setActive(null)}
+              onPointerLeave={() => setActive(null)}
+              className="relative flex min-h-0 flex-1 items-end gap-1 rounded-sm border-b border-border focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              {days.map((day, index) => (
                 <div
                   key={day.date}
-                  className="flex h-full min-w-0 flex-1 items-end"
+                  className="flex h-full min-w-0 flex-1 cursor-default items-end"
                   role="img"
-                  aria-label={`${dayLabel(day.date)}: ${formatUsageNumber(day.gbHours)} GB-h`}
-                  title={`${dayLabel(day.date)}: ${formatUsageNumber(day.gbHours)} GB-h`}
+                  aria-label={`${dayLabel(day.date)}: ${day.reported ? `${formatUsageNumber(day.gbHours)} GB-h` : 'no rollup'}`}
+                  onPointerEnter={() => setActive(index)}
                 >
                   <span
-                    className="w-full rounded-t-sm bg-[var(--status-good)]"
+                    className={cn(
+                      'w-full rounded-t-sm bg-[var(--status-good)] transition-opacity duration-150',
+                      active !== null && active !== index && 'opacity-35'
+                    )}
                     style={{
-                      height: `${(day.gbHours / Math.max(1, ...days.map((d) => d.gbHours))) * 100}%`,
+                      // A small but real day keeps a sliver, so it can be found and hovered.
+                      height:
+                        day.gbHours > 0 && max > 0
+                          ? `max(3px, ${(day.gbHours / max) * 100}%)`
+                          : '0',
                     }}
                   />
                 </div>
               ))}
+              {active !== null && days[active] && (
+                <DayReadout
+                  usage={usage}
+                  index={active}
+                  now={now}
+                  includedGbHours={includedGbHours}
+                />
+              )}
             </div>
             <figcaption className="flex justify-between text-xs text-muted-foreground">
               <span>{dayLabel(days[0].date)}</span>
@@ -93,5 +140,53 @@ export function DailyUsagePanel({
         </div>
       )}
     </Panel>
+  );
+}
+
+/** The hovered (or arrow-key) day, beside its bar. */
+function DayReadout({
+  usage,
+  index,
+  now,
+  includedGbHours,
+}: {
+  usage: DailyUsage;
+  index: number;
+  now?: number;
+  includedGbHours?: number | null;
+}) {
+  const detail = dayDetail(usage, index, { now, includedGbHours });
+  const left = ((index + 0.5) / usage.days.length) * 100;
+  return (
+    <div
+      role="status"
+      className={cn(
+        'pointer-events-none absolute top-0 z-10 w-56 rounded-md border border-border bg-popover px-3 py-2 text-xs shadow-elevation-3',
+        left > 55 ? '-translate-x-[calc(100%+10px)]' : 'translate-x-2.5'
+      )}
+      style={{ left: `${left}%` }}
+    >
+      <p className="text-muted-foreground">{detail.title}</p>
+      {detail.reported ? (
+        <>
+          <p className="mt-1 text-sm font-medium text-foreground tabular-nums">
+            {formatUsageNumber(detail.gbHours)} GB-hours
+          </p>
+          {detail.top && (
+            <p className="mt-1">
+              Mostly <span className="font-mono text-foreground">{detail.top.slug}</span>,{' '}
+              {detail.top.pct}% of the day
+            </p>
+          )}
+          {detail.versus && <p className="mt-1 text-muted-foreground">{detail.versus}</p>}
+        </>
+      ) : (
+        <p className="mt-1">No rollup for this day yet.</p>
+      )}
+      <p className="mt-2 border-t border-border pt-2 text-muted-foreground tabular-nums">
+        Month so far: {formatUsageNumber(detail.monthSoFar)} GB-h
+        {detail.allowancePct != null ? ` · ${detail.allowancePct}% of your allowance` : ''}
+      </p>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dailyUsage, dayLabel } from './usage-daily';
+import { dailyUsage, dayDetail, dayLabel } from './usage-daily';
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -75,5 +75,63 @@ describe('dailyUsage', () => {
 describe('dayLabel', () => {
   it('names the UTC calendar day', () => {
     expect(dayLabel('2026-11-02')).toBe('Nov 2');
+  });
+});
+
+describe('dayDetail', () => {
+  const usage = dailyUsage(
+    [
+      { date: '2026-11-01', gb_hours: 0.1 },
+      { date: '2026-11-02', gb_hours: 0.2, top_app_slug: 'api', top_app_gb_hours: 0.15 },
+      { date: '2026-11-04', gb_hours: 0.9, top_app_slug: 'engine', top_app_gb_hours: 0.66 },
+    ],
+    '2026-11',
+    at('2026-11-04T09:00:00Z')
+  );
+  const now = at('2026-11-04T09:00:00Z');
+
+  it('reads a day: its hours, the app behind them, against a usual day and the month so far', () => {
+    expect(dayDetail(usage, 3, { now, includedGbHours: 10 })).toEqual({
+      title: 'Wed, Nov 4 · today so far',
+      gbHours: 0.9,
+      reported: true,
+      top: { slug: 'engine', gbHours: 0.66, pct: 73 },
+      versus: null,
+      monthSoFar: 1.2,
+      allowancePct: 12,
+    });
+  });
+
+  it('compares a finished day with a usual one', () => {
+    expect(dayDetail(usage, 3, { now: at('2026-11-05T01:00:00Z') })).toMatchObject({
+      title: 'Wed, Nov 4',
+      versus: '2.2× a usual day',
+    });
+  });
+
+  it('calls a small day quieter, and a middling one usual', () => {
+    expect(dayDetail(usage, 0, { now }).versus).toBe('Quieter than a usual day');
+    expect(dayDetail(usage, 1, { now }).versus).toBe('Quieter than a usual day');
+    const flat = dailyUsage(
+      [
+        { date: '2026-11-01', gb_hours: 1 },
+        { date: '2026-11-02', gb_hours: 1.1 },
+      ],
+      '2026-11',
+      at('2026-11-03T00:00:00Z')
+    );
+    expect(dayDetail(flat, 1, { now: at('2026-11-03T00:00:00Z') }).versus).toBe(
+      'About a usual day'
+    );
+  });
+
+  it('says a day without a rollup has none, rather than reading it as zero use', () => {
+    expect(dayDetail(usage, 2, { now })).toMatchObject({
+      title: 'Tue, Nov 3',
+      reported: false,
+      top: null,
+      versus: null,
+      monthSoFar: 0.3,
+    });
   });
 });
