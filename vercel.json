@@ -70,6 +70,21 @@
       "dest": "https://api.gregale.dev/logout"
     },
     {
+      "src": "^/terms$",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://api.gregale.dev/terms"
+    },
+    {
+      "src": "^/privacy$",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://api.gregale.dev/privacy"
+    },
+    {
+      "src": "^/acceptable-use$",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://api.gregale.dev/acceptable-use"
+    },
+    {
       "src": "^/(.*)$",
       "headers": {
         "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self' https://github.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://s3.gregale.dev; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests",

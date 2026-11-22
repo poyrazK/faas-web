@@ -64,8 +64,15 @@ function heading(level: 2 | 3 | 4) {
   };
 }
 
-function DocLink({ href, children }: { href?: string; children?: ReactNode }) {
-  const target = href ?? '';
+// Keep the canonical URLs in the copied agreement and use this site's routes
+// when a reader follows them, including on a preview deployment.
+const LEGAL_LINKS = new Map([
+  ['https://gregale.dev/terms', '/terms'],
+  ['https://gregale.dev/docs/dpa/subprocessors', '/docs/subprocessors'],
+]);
+
+function DocLink({ href = '', children }: { href?: string; children?: ReactNode }) {
+  const target = LEGAL_LINKS.get(href) ?? href;
   // Docs cross-reference each other by slug; those go through the router so
   // they preload and do not reload the document.
   if (target.startsWith('/docs/')) {
