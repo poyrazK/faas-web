@@ -52,8 +52,10 @@ describe('verified capability destinations', () => {
     expect(safeCapabilityDocs('/docs/custom-domains#verify')).toBe('/docs/custom-domains#verify');
     expect(safeCapabilityDocs('https://gregale.dev/docs/security')).toBe('/docs/security');
     // Registry pages held back from the site (docs-catalog.ts UNPUBLISHED_DOCS).
-    expect(safeCapabilityDocs('/docs/object-storage#limits')).toBeUndefined();
+    expect(safeCapabilityDocs('/docs/executions#limits')).toBeUndefined();
     expect(safeCapabilityDocs('https://gregale.dev/docs/executions')).toBeUndefined();
+    // Object storage went GA (poyrazK/faas#7815) and is published now.
+    expect(safeCapabilityDocs('/docs/object-storage#limits')).toBe('/docs/object-storage#limits');
     for (const url of [
       'javascript:alert(1)',
       '//evil.test/docs/executions',
