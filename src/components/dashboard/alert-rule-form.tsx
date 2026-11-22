@@ -16,6 +16,8 @@ import {
 import { keys } from '@/lib/api/queries';
 import { cliSloCreateCommand, cliSyntheticCheckCreateCommand } from '@/lib/cli-commands';
 import { cn } from '@/lib/utils';
+import { AlertAnomalyPreview } from './alert-anomaly-preview';
+import { AlertRecoveryChecks, AlertRuleMode } from './alert-observation';
 import {
   FAILURE_SOURCES,
   availableMetrics,
@@ -51,7 +53,7 @@ export function useCapabilityCheck() {
   return (id: string) => capabilityAccess(query.data, id, phase) === 'on';
 }
 
-type Field = 'name' | 'threshold' | 'target' | 'webhookUrl' | 'secret' | 'cooldown';
+type Field = 'name' | 'threshold' | 'target' | 'webhookUrl' | 'secret' | 'cooldown' | 'mode';
 
 /**
  * Starting values, for a form opened from one SLO or synthetic check: the
@@ -94,6 +96,9 @@ export function AlertRuleForm({
   const [chosenMetric, setMetric] = useState<AlertMetric>(initial?.metric ?? 'error_rate_pct');
   const [chosenComparison, setComparison] = useState<AlertComparison>(initial?.comparison ?? 'gt');
   const [threshold, setThreshold] = useState(initial?.threshold ?? '5');
+  const [observeOnly, setObserveOnly] = useState(false);
+  const [recoveryConfirmationChecks, setRecoveryConfirmationChecks] = useState<1 | 2>(1);
+  const [environmentScope, setEnvironmentScope] = useState('');
   const [chosenWindow, setWindow] = useState<AlertWindow>('15m');
   const [failureSource, setFailureSource] = useState<FailureSource>('any');
   const [sloId, setSloId] = useState(initial?.sloId ?? '');
@@ -133,8 +138,18 @@ export function AlertRuleForm({
   const parsedThreshold = Number(threshold);
   const parsedCooldown = Number(cooldown);
   const range = baselineRange(comparison);
+  const scopedMetric =
+    metric === 'request_count' || metric === 'error_rate_pct' || metric === 'latency_p95_ms';
   const errors: Record<Field, string | undefined> = {
     name: name.trim() ? undefined : 'Enter a name for this rule.',
+    mode:
+      (observeOnly || environmentScope) && !isBaseline(comparison)
+        ? observeOnly
+          ? 'Choose a baseline comparison for Observe only.'
+          : 'Choose a baseline comparison for this environment.'
+        : environmentScope && !scopedMetric
+          ? 'Choose request count, error rate, or p95 latency, or clear the environment.'
+          : undefined,
     threshold:
       threshold === '' || !Number.isFinite(parsedThreshold)
         ? 'Enter a numeric threshold.'
@@ -153,7 +168,7 @@ export function AlertRuleForm({
               : undefined,
     // A rule needs somewhere to deliver: a channel, a webhook, or both.
     webhookUrl:
-      channelIds.length === 0 && !url
+      !observeOnly && channelIds.length === 0 && !url
         ? 'Choose a channel or enter a webhook URL.'
         : url && !isHttpsUrl(url)
           ? 'Enter a complete HTTPS webhook URL.'
@@ -180,6 +195,11 @@ export function AlertRuleForm({
       window_spec: window,
       cooldown_minutes: parsedCooldown,
       action: 'webhook',
+      ...(observeOnly ? { observe_only: true } : {}),
+      ...(isBaseline(comparison) && recoveryConfirmationChecks === 2
+        ? { recovery_confirmation_checks: 2 }
+        : {}),
+      ...(environmentScope ? { environment_scope: environmentScope } : {}),
       ...(target === 'failure_source' ? { failure_source: failureSource } : {}),
       ...(target === 'slo' ? { slo_id: slo } : {}),
       ...(target === 'synthetic_check' ? { synthetic_check_id: check } : {}),
@@ -347,20 +367,53 @@ export function AlertRuleForm({
               : `${alertWindowLabel(window)} evaluation window. Checks the metric across this rolling period.`}
           </p>
         </div>
+        {scopedMetric && isBaseline(comparison) && !errors.threshold && (
+          <AlertAnomalyPreview
+            slug={slug}
+            query={{
+              comparison,
+              threshold: parsedThreshold,
+              window_spec: window,
+              ...(metric === 'request_count' ? {} : { metric }),
+            }}
+            cooldownMinutes={errors.cooldown ? undefined : parsedCooldown}
+            recoveryConfirmationChecks={recoveryConfirmationChecks}
+            ruleEnvironment={environmentScope}
+            onUseEnvironment={(scope) => {
+              setEnvironmentScope(scope);
+              setObserveOnly(true);
+            }}
+          />
+        )}
+        {(isBaseline(comparison) || observeOnly) && (
+          <AlertRuleMode
+            observeOnly={observeOnly}
+            onChange={setObserveOnly}
+            environmentScope={environmentScope}
+            onClearEnvironment={() => setEnvironmentScope('')}
+            error={shown('mode')}
+          />
+        )}
+        {isBaseline(comparison) && (
+          <AlertRecoveryChecks
+            value={recoveryConfirmationChecks}
+            onChange={setRecoveryConfirmationChecks}
+          />
+        )}
       </section>
       <section
         className="flex flex-col gap-4 border-t border-border pt-5"
         aria-labelledby={`${formId}-delivery`}
       >
         <h3 id={`${formId}-delivery`} className="text-sm font-medium">
-          2. Choose where to notify you
+          {observeOnly ? '2. Prepare delivery' : '2. Choose where to notify you'}
         </h3>
         <div className="min-w-0">
           <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="rule-channel" />
         </div>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">
-            Webhook URL{channelIds.length > 0 && ' (optional)'}
+            Webhook URL{(channelIds.length > 0 || observeOnly) && ' (optional)'}
           </span>
           <input
             name="webhookUrl"

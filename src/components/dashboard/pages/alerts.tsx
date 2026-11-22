@@ -122,7 +122,7 @@ export function AlertsBody({ slug }: { slug: string }) {
             )}
             <span className="md:hidden">
               {a.enabled ? (
-                <AlertState state={a.state} />
+                <AlertState state={a.state} observeOnly={a.rule.observe_only} />
               ) : (
                 <span className="text-xs text-muted-foreground">Paused</span>
               )}
@@ -156,7 +156,7 @@ export function AlertsBody({ slug }: { slug: string }) {
       width: 'w-28',
       render: (a) =>
         a.enabled ? (
-          <AlertState state={a.state} />
+          <AlertState state={a.state} observeOnly={a.rule.observe_only} />
         ) : (
           <span className="text-xs text-muted-foreground">Paused</span>
         ),

@@ -256,7 +256,7 @@ export function comparisonsFor(metric: string, baselines: boolean): AlertCompari
   return fixed;
 }
 
-export function isBaseline(comparison: string): boolean {
+export function isBaseline(comparison: string): comparison is 'above_baseline' | 'below_baseline' {
   return comparison === 'above_baseline' || comparison === 'below_baseline';
 }
 

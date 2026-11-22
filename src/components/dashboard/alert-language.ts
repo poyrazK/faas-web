@@ -16,6 +16,13 @@ export function alertWindowLabel(window: string): string {
   return `${match[1]} ${unit}${match[1] === '1' ? '' : 's'}`;
 }
 
+export function formatAnomalyValue(metric: string, value: number): string {
+  const unit = metricSpec(metric)?.unit;
+  const suffix = unit === '%' ? '%' : unit ? ` ${unit}` : '';
+  const options = Number.isInteger(value) ? undefined : { maximumSignificantDigits: 6 };
+  return `${value.toLocaleString('en-US', options)}${suffix}`;
+}
+
 export interface AlertConditionInput {
   metric: string;
   comparison: string;

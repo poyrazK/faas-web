@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { Pill } from '@/components/dashboard/resource-table';
 import { InlinePhase, queryPhase } from '@/components/dashboard/primitives';
 import { useAlertDeliveries } from '@/lib/api/queries';
+import type { components } from '@/lib/api/schema';
 import { shortTime } from '@/lib/time';
+import { alertWindowLabel } from './alert-language';
+import { metricLabel, metricSpec } from './alert-metrics';
 
 /**
  * Did this rule actually reach its webhook?
@@ -27,6 +30,29 @@ function formatWhen(value: string | undefined): string {
   if (!value) return '—';
   const ms = Date.parse(value);
   return Number.isNaN(ms) ? '—' : shortTime(ms);
+}
+
+const fractionalEvidenceNumber = new Intl.NumberFormat('en-US', {
+  maximumSignificantDigits: 4,
+});
+
+function formatEvidenceNumber(value: number): string {
+  return Number.isInteger(value)
+    ? value.toLocaleString('en-US')
+    : fractionalEvidenceNumber.format(value);
+}
+
+function describeAnomaly(
+  anomaly: components['schemas']['AlertDeliveryAnomalyEvidence'],
+  observed: number
+): string {
+  const unit = metricSpec(anomaly.metric)?.unit;
+  const suffix = unit === '%' ? '%' : unit === 'ms' ? ' ms' : '';
+  const bound = anomaly.comparison === 'below_baseline' ? 'or lower' : 'or higher';
+  const summary = `${metricLabel(anomaly.metric)} ${formatEvidenceNumber(observed)}${suffix} vs. ${formatEvidenceNumber(anomaly.baseline)}${suffix} usual over ${alertWindowLabel(anomaly.window)}.`;
+  const comparison = `${formatEvidenceNumber(anomaly.ratio)}× usual, with a trigger at ${formatEvidenceNumber(anomaly.threshold)}× ${bound}.`;
+  const history = `${anomaly.baseline_days} historical windows qualified.`;
+  return `${summary} ${comparison} ${history}`;
 }
 
 export function AlertDeliveries({ slug, ruleId }: { slug: string; ruleId: string }) {
@@ -67,11 +93,19 @@ export function AlertDeliveries({ slug, ruleId }: { slug: string; ruleId: string
                 <Pill label={d.status} color={STATUS_COLOR[d.status]} />
                 {d.is_test && <span className="label-mono text-muted-foreground">test</span>}
                 <span className="text-xs text-muted-foreground">{formatWhen(d.fired_at)}</span>
-                <span className="font-mono text-xs">observed {d.observed_value}</span>
+                {!d.anomaly && (
+                  <span className="font-mono text-xs">observed {d.observed_value}</span>
+                )}
                 {d.attempt_count > 1 && (
                   <span className="text-xs text-muted-foreground">{d.attempt_count} attempts</span>
                 )}
               </div>
+
+              {d.anomaly && (
+                <p className="text-xs text-muted-foreground">
+                  {describeAnomaly(d.anomaly, d.observed_value)}
+                </p>
+              )}
 
               {d.status === 'failed' && (
                 <p className="text-xs text-[color:var(--status-critical)]">

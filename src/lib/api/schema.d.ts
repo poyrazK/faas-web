@@ -26502,6 +26502,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/alerts/anomaly-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Test a request-count, error-rate, or p95 latency anomaly rule on recent traffic.
+         * @description Previews seven days of hourly checkpoints by default. An incident replay previews a selected two-hour period at one-minute resolution and groups breaches into incidents with notification eligibility. Either mode can compare a different multiplier. Request-count rules can compare a same-weekday baseline. Error-rate rules can compare a zero-baseline fallback. Error-rate and p95 latency rules use the live traffic and minimum-value guards. P95 uses successful requests only. An incident replay can also compare two-check recovery confirmation. The preview is read-only.
+         */
+        get: operations["previewAlertAnomaly"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/alerts/{id}": {
         parameters: {
             query?: never;
@@ -79222,11 +79245,256 @@ export interface components {
             /** @description Staging or enqueue error message; partial-failure rows carry this in lieu of IDs. */
             error?: string;
         };
+        /** @description One preview checkpoint that met the anomaly comparison and minimum impact requirement. */
+        AlertAnomalyPreviewBreach: {
+            /** Format: date-time */
+            evaluated_at: string;
+            /**
+             * Format: double
+             * @description Observed request count, error rate in percent, or p95 latency in milliseconds.
+             */
+            observed: number;
+            /**
+             * Format: double
+             * @description Median metric value of qualifying historical windows at the same time of day.
+             */
+            baseline: number;
+            /**
+             * Format: double
+             * @description Baseline-derived trigger or the absolute rate threshold for a zero-baseline fallback.
+             */
+            trigger_value: number;
+            /**
+             * Format: int64
+             * @description Eligible request count for an error-rate or p95 latency check. For p95 this counts successful requests only.
+             */
+            eligible_requests?: number;
+            /**
+             * Format: int64
+             * @description Failed requests for a zero-baseline fallback breach.
+             */
+            failed_requests?: number;
+            /** @description True when the absolute fallback threshold triggered this breach. */
+            zero_baseline_fallback?: boolean;
+        };
+        AlertAnomalyPreviewCandidate: {
+            /**
+             * Format: double
+             * @description Candidate baseline multiplier.
+             */
+            threshold: number;
+            breaches: components["schemas"]["AlertAnomalyPreviewBreach"][];
+            weekday_baseline?: components["schemas"]["AlertAnomalyWeekdayPreview"];
+            zero_baseline_fallback?: components["schemas"]["AlertAnomalyZeroBaselineFallback"];
+        };
+        AlertAnomalyZeroBaselineFallback: {
+            /**
+             * Format: double
+             * @description Minimum absolute error rate expressed as a percent.
+             */
+            minimum_error_rate_pct: number;
+            /**
+             * Format: int64
+             * @description Minimum failed requests in the evaluation window.
+             */
+            minimum_failed_requests: number;
+        };
+        AlertAnomalyPreviewSkippedWindow: {
+            /** Format: date-time */
+            evaluated_at: string;
+            /** @enum {string} */
+            reason: "telemetry_missing_or_stale" | "insufficient_history" | "insufficient_traffic";
+            /**
+             * Format: int64
+             * @description Eligible request count when error-rate or p95 latency telemetry is covered. For p95 this counts successful requests only.
+             */
+            eligible_requests?: number;
+            /** @description Minimum eligible request count for a check skipped for insufficient traffic. */
+            required_requests?: number;
+        };
+        /** @description Coverage for the same-weekday candidate. */
+        AlertAnomalyWeekdayPreview: {
+            /** @description Checks the candidate could evaluate, including checks using the seven-day fallback. */
+            evaluated: number;
+            skipped_windows: components["schemas"]["AlertAnomalyPreviewSkippedWindow"][];
+            /** @description Covered check times where fewer than three usable matching weekdays caused the candidate to use the seven-day baseline. Includes any checks with insufficient seven-day history. */
+            fallback_at: string[];
+        };
+        AlertAnomalyIncidentReplay: {
+            cooldown_minutes: number;
+            /** @description Incidents for the selected multiplier, newest first. An incident is open at the end of the replay when ended_at is absent. */
+            incidents: components["schemas"]["AlertObservedIncident"][];
+            /** @description Incidents for the candidate, newest first. Omitted when the candidate has no incidents or is absent. */
+            candidate_incidents?: components["schemas"]["AlertObservedIncident"][];
+            recovery_confirmation?: components["schemas"]["AlertAnomalyRecoveryComparison"];
+            deployment_context?: components["schemas"]["AlertAnomalyDeploymentContext"];
+        };
+        /** @description Recorded full-traffic promotions for the selected environment. An app-wide replay includes default-environment promotions. */
+        AlertAnomalyDeploymentContext: {
+            /** @description Deployment environment scope. */
+            scope: string;
+            /** @description Recorded promotions, newest first. Includes up to 100 in the selected two hours and the latest one before the window when available. */
+            promotions: components["schemas"]["AlertAnomalyDeploymentPromotion"][];
+            /** @description True when more than 100 recorded promotions fall within the replay window. */
+            truncated?: boolean;
+        };
+        AlertAnomalyDeploymentPromotion: {
+            /** Format: uuid */
+            deployment_id: string;
+            /** @description Upstream commit SHA when recorded. */
+            commit_sha?: string;
+            /**
+             * Format: date-time
+             * @description When a traffic change last took this deployment to 100 percent of the scope.
+             */
+            promoted_at: string;
+        };
+        AlertAnomalyRecoveryComparison: {
+            /** @enum {integer} */
+            required_healthy_checks: 2;
+            /** @description Incidents for the selected multiplier with recovery confirmation, newest first. */
+            incidents: components["schemas"]["AlertObservedIncident"][];
+            /** @description Incidents for the candidate with recovery confirmation, newest first. Omitted when the candidate has no incidents or is absent. */
+            candidate_incidents?: components["schemas"]["AlertObservedIncident"][];
+        };
+        AlertAnomalyPreviewResponse: {
+            /** @description Environment used for both observed traffic and historical baselines. Present for environment-specific replays. */
+            environment_scope?: string;
+            /** @description Environments available for incident replay. Present in the hourly overview. Recent telemetry may still be unavailable. */
+            environment_scopes?: string[];
+            /** Format: date-time */
+            first_check_at: string;
+            /** Format: date-time */
+            last_check_at: string;
+            /** @enum {integer} */
+            step_seconds: 60 | 3600;
+            /** @description Windows with enough data to evaluate */
+            evaluated: number;
+            /** @description Checks with missing telemetry, insufficient baseline history, or too few eligible requests. */
+            skipped: number;
+            skipped_windows: components["schemas"]["AlertAnomalyPreviewSkippedWindow"][];
+            breaches: components["schemas"]["AlertAnomalyPreviewBreach"][];
+            candidate?: components["schemas"]["AlertAnomalyPreviewCandidate"];
+            incident_replay?: components["schemas"]["AlertAnomalyIncidentReplay"];
+        };
+        AlertObservedIncident: {
+            opening_evidence?: components["schemas"]["AlertObservedIncidentOpeningEvidence"];
+            /** @description Environment of this observation when scoped. */
+            environment_scope?: string;
+            /** Format: date-time */
+            opened_at: string;
+            /** Format: date-time */
+            ended_at?: string;
+            /** @enum {string} */
+            outcome?: "recovered" | "observation_ended";
+            /** @description Notification opportunities for this incident under the rule's cooldown. */
+            eligible_notifications: number;
+            /** Format: date-time */
+            last_eligible_at: string;
+        };
+        /** @description Values captured at the first breach of a live observed incident. */
+        AlertObservedIncidentOpeningEvidence: {
+            /** @description Metric the rule evaluated when the incident opened. */
+            metric: string;
+            /** @description Rolling metric window in use when the incident opened. */
+            window: string;
+            /** @enum {string} */
+            comparison: "above_baseline" | "below_baseline";
+            /**
+             * Format: double
+             * @description Observed value in the metric's units.
+             */
+            observed: number;
+            /**
+             * Format: double
+             * @description Historical median in the metric's units.
+             */
+            baseline: number;
+            /**
+             * Format: double
+             * @description Trigger derived from the baseline and rule threshold at opening.
+             */
+            trigger_value: number;
+            /** @description Number of days that qualified for the baseline. */
+            baseline_days?: number;
+        };
+        /** @description Recorded live Observe only checks during the 24 hours before this response. */
+        AlertObservationCoverage: {
+            /** @description Recorded checks including skipped checks. */
+            attempted: number;
+            /** @description Checks that evaluated the condition. */
+            completed: number;
+            /** @description Recorded skips grouped by reason. */
+            skipped?: components["schemas"]["AlertObservationSkipCount"][];
+            /**
+             * Format: date-time
+             * @description Most recent recorded check for this observation even if older than 24 hours.
+             */
+            last_checked_at?: string;
+        };
+        AlertObservationSkipCount: {
+            /** @enum {string} */
+            reason: "insufficient_traffic" | "insufficient_history" | "telemetry_missing_or_stale" | "telemetry_unavailable";
+            count: number;
+        };
+        /** @description Why the latest anomaly evaluation did not trigger a fire. */
+        AlertAnomalyEvaluation: {
+            /** @description Number of days that qualified for the baseline when history was evaluated. */
+            baseline_days?: number;
+            /** @enum {string} */
+            reason: "insufficient_traffic" | "insufficient_history" | "telemetry_missing_or_stale" | "telemetry_unavailable" | "threshold_not_reached" | "minimum_impact_not_reached" | "zero_baseline" | "notification_cooldown" | "observed_breach" | "recovery_confirmation_pending" | "recovery_confirmed";
+            /** Format: date-time */
+            evaluated_at: string;
+            /**
+             * Format: int64
+             * @description Eligible requests, qualifying historical windows, or consecutive healthy checks depending on the reason.
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description Required requests, historical windows, or healthy checks when the reason includes a count.
+             */
+            required_count?: number;
+            /**
+             * Format: double
+             * @description Observed value in the rule metric's units for a completed check.
+             */
+            observed?: number;
+            /**
+             * Format: double
+             * @description Historical median in the rule metric's units for a completed check.
+             */
+            baseline?: number;
+            /**
+             * Format: double
+             * @description Baseline multiplied by the rule threshold when a positive baseline is available.
+             */
+            trigger_value?: number;
+            /**
+             * Format: double
+             * @description Minimum required observation for an above-baseline rule, or minimum required baseline for a below-baseline rule. Present when that minimum was not reached.
+             */
+            minimum_value?: number;
+            /**
+             * Format: date-time
+             * @description End of the current incident's notification cooldown when the evaluation suppressed a repeat fire.
+             */
+            next_notification_eligible_at?: string;
+        };
         /**
          * @description A customer-configurable alert rule. Carries the masked webhook
          *     secret; the sealed ciphertext is server-side only.
          */
         AlertRuleResponse: {
+            /** @description The rule records observations on the normal evaluation schedule. */
+            observe_only?: boolean;
+            /** @description Consecutive healthy checks required to recover. */
+            recovery_confirmation_checks?: number;
+            /** @description Environment observed by this rule when scoped. */
+            environment_scope?: string;
+            /** @description Latest observation-only incidents, most recent first. Included in the individual rule response. */
+            observed_incidents?: components["schemas"]["AlertObservedIncident"][];
+            observation_coverage?: components["schemas"]["AlertObservationCoverage"];
             /** @description Immutable readiness environment selector. Omitted or empty means every environment; default selects only default. Valid only for mcp_readiness_unhealthy. */
             mcp_readiness_scope?: string;
             /** @description MCP protocol alerts only. Minimum observations in every rolling window; defaults to 20 on create. Latency uses measured executions. Omit for other metrics. */
@@ -79331,6 +79599,7 @@ export interface components {
             last_fired_at?: string;
             /** Format: date-time */
             last_evaluated_at?: string;
+            anomaly_evaluation?: components["schemas"]["AlertAnomalyEvaluation"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -79338,6 +79607,15 @@ export interface components {
         };
         /** @description Create an alert rule on an app. */
         CreateAlertRuleRequest: {
+            /** @description Record baseline breaches as observations. Defaults to false. */
+            observe_only?: boolean;
+            /**
+             * @description Consecutive healthy checks required to recover. Two checks require an app-scoped baseline comparison.
+             * @default 1
+             */
+            recovery_confirmation_checks?: number;
+            /** @description Scope a request-count, error-rate, or p95 latency baseline rule to default or a named project environment. Scoped Notify supports channels and webhooks. Omitted or empty uses app-wide telemetry. */
+            environment_scope?: string;
             /** @description Readiness environment requested when creating this alert. Immutable readiness environment selector. Omitted or empty means every environment; default selects only default. Valid only for mcp_readiness_unhealthy. */
             mcp_readiness_scope?: string;
             /** @description Observation minimum requested for the new protocol alert. MCP protocol alerts only. Minimum observations in every rolling window; defaults to 20 on create. Latency uses measured executions. Omit for other metrics. */
@@ -79433,6 +79711,12 @@ export interface components {
         };
         /** @description Partial update — every field is optional. Omitted means leave alone. */
         UpdateAlertRuleRequest: {
+            /** @description Switch an app-scoped baseline rule between observing and notifying. */
+            observe_only?: boolean;
+            /** @description Change the number of consecutive healthy checks required to recover. Two checks require an app-scoped baseline comparison. */
+            recovery_confirmation_checks?: number;
+            /** @description Change the environment of an anomaly rule in Observe only mode. Set to the empty string to clear the scope. Omit to keep the saved scope when enabling notifications. */
+            environment_scope?: string;
             /** @description Immutable environment selector. If supplied it must equal the current value; create a new rule to select another environment. */
             mcp_readiness_scope?: string;
             /** @description Replacement observation minimum for the existing protocol alert. MCP protocol alerts only. Minimum observations in every rolling window; defaults to 20 on create. Latency uses measured executions. Omit for other metrics. */
@@ -79483,6 +79767,32 @@ export interface components {
         RotateAlertRuleSecretRequest: {
             webhook_secret: string;
         };
+        /** @description Baseline comparison captured at the time of an anomaly alert fire. */
+        AlertDeliveryAnomalyEvidence: {
+            /** @enum {string} */
+            metric: "error_rate_pct" | "latency_p95_ms" | "latency_p99_ms" | "cold_start_pct" | "request_count";
+            /** @enum {string} */
+            comparison: "above_baseline" | "below_baseline";
+            /**
+             * Format: double
+             * @description Configured multiplier when the alert fired.
+             */
+            threshold: number;
+            /** @enum {string} */
+            window: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
+            /**
+             * Format: double
+             * @description Median value in the metric's units.
+             */
+            baseline: number;
+            /** @description Historical windows used in the baseline. */
+            baseline_days: number;
+            /**
+             * Format: double
+             * @description Observed value divided by baseline.
+             */
+            ratio: number;
+        };
         /**
          * @description One alert_deliveries row as surfaced by
          *     GET /v1/apps/{slug}/alerts/{id}/deliveries.
@@ -79492,6 +79802,7 @@ export interface components {
          *     (?include_test=true) surfaces them.
          */
         AlertDeliveryResponse: {
+            anomaly?: components["schemas"]["AlertDeliveryAnomalyEvidence"];
             /**
              * Format: uuid
              * @description Stable readiness logical event associated with this physical delivery.
@@ -151760,6 +152071,55 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["AlertRuleInvalid"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    previewAlertAnomaly: {
+        parameters: {
+            query: {
+                /** @description Anomaly metric to replay. Error rate and p95 latency require above_baseline. */
+                metric?: "request_count" | "error_rate_pct" | "latency_p95_ms";
+                comparison: "above_baseline" | "below_baseline";
+                /** @description Baseline multiplier for the selected comparison. */
+                threshold: number;
+                /** @description Optional second baseline multiplier for the same comparison and window. */
+                candidate_threshold?: number;
+                /** @description Compare the same multiplier with a baseline experiment. same_weekday requires a 5m or 15m request_count window. zero_baseline_fallback requires an above_baseline error_rate_pct rule and tests a 5 percent and five-failure threshold when the qualified median is zero. Mutually exclusive with candidate_threshold. */
+                candidate_baseline?: "same_weekday" | "zero_baseline_fallback";
+                /** @description Minute-aligned start of a completed two-hour period in the past week. */
+                incident_replay_start?: string;
+                /** @description Replay only this app's default or named project environment. Requires incident_replay_start. Omitted uses app-wide telemetry. */
+                environment_scope?: string;
+                /** @description Minutes between eligible notifications for the same incident. Only supported with incident_replay_start and defaults to 15. */
+                cooldown_minutes?: number;
+                /** @description Compare recovery after two consecutive healthy checks against the default one-check recovery. A skipped check clears the healthy streak. Requires incident_replay_start. */
+                recovery_confirmation_checks?: 2;
+                /** @description Rolling window length at each checkpoint. */
+                window_spec: "5m" | "15m" | "1h" | "6h" | "24h" | "7d" | "15d";
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Historical checks and threshold breaches, with incidents for a minute-level replay. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertAnomalyPreviewResponse"];
+                };
+            };
+            400: components["responses"]["AlertRuleInvalid"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["AlertRuleInvalid"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getAlertRule: {
