@@ -346,7 +346,8 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'stored-workflows',
         source: 'docs/stored-workflow-authoring.md',
         title: 'Stored workflows',
-        summary: 'Steps against an app with a manual, scheduled or event start, retries and run history.',
+        summary:
+          'Steps against an app with a manual, scheduled or event start, retries and run history.',
       },
     ],
   },
@@ -364,7 +365,8 @@ export const DOC_SECTIONS: DocSection[] = [
         slug: 'outbound-integrations',
         source: 'docs/outbound-integrations.md',
         title: 'Outbound integrations',
-        summary: "Call a third-party API through Gregale's relay without putting its key in your app.",
+        summary:
+          "Call a third-party API through Gregale's relay without putting its key in your app.",
       },
       {
         slug: 'internal-services',
