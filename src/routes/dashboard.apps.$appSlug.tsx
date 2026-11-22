@@ -4,6 +4,7 @@ import { ApiConsumers } from '@/components/dashboard/api-consumers';
 import {
   AppActionsMenu,
   DeployLabel,
+  InvokeLabel,
   RollbackButton,
 } from '@/components/dashboard/app-actions-menu';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
@@ -403,7 +404,7 @@ function FunctionDetailPage() {
           <>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setInvoke(true)}>
               <Play className="h-3.5 w-3.5" />
-              Invoke
+              <InvokeLabel />
             </Button>
             {canRollback && (
               <RollbackButton

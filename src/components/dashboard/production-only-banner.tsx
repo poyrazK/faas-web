@@ -39,8 +39,8 @@ export function ProductionOnlyBanner({ what }: { what: string }) {
     >
       <ShieldCheck aria-hidden className="h-3.5 w-3.5 shrink-0" />
       <span>
-        This shows production. Changes here apply to production; {env.name} doesn’t have its own{' '}
-        {what} yet.
+        This shows production. Changes here apply to production, and this page can’t show {env.name}
+        ’s {what} yet.
       </span>
     </p>
   );
@@ -73,5 +73,16 @@ export function appTabShowsProduction(tab: string): boolean {
   return !SCOPED_APP_TABS.has(tab);
 }
 
+/** Tabs whose name isn't a plain plural noun, or keeps an acronym. */
+const NOUNS: Record<string, string> = {
+  General: 'settings',
+  'Health and releases': 'health checks',
+  MCP: 'MCP setup',
+  SLOs: 'SLOs',
+  OpenAPI: 'OpenAPI spec',
+  'TCP listeners': 'TCP listeners',
+  'UDP listeners': 'UDP listeners',
+};
+
 /** The page's noun for the banner: "Edge rules" → "edge rules". */
-export const productionNoun = (tab: string) => tab.toLowerCase();
+export const productionNoun = (tab: string) => NOUNS[tab] ?? tab.toLowerCase();

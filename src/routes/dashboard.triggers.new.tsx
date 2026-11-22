@@ -11,9 +11,10 @@ import { useApps } from '@/lib/api/queries';
 import { consoleHead } from '@/lib/seo';
 import { inScope } from '@/lib/project-scope';
 import { useScopeGate } from '@/components/dashboard/scope-gate';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/triggers/new')({
-  component: NewTriggerPage,
+  component: withProductionBanner('triggers', NewTriggerPage),
   head: () => consoleHead('new trigger'),
 });
 

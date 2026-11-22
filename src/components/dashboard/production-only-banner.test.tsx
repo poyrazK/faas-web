@@ -31,7 +31,7 @@ afterEach(() => Object.assign(env, { applies: true, environment: 'staging', name
 it('says Staging shows production for this page, and that changes apply there', () => {
   inShell(<ProductionOnlyBanner what="alerts" />);
   expect(screen.getByRole('note')).toHaveTextContent(
-    'This shows production. Changes here apply to production; Staging doesn’t have its own alerts yet.'
+    'This shows production. Changes here apply to production, and this page can’t show Staging’s alerts yet.'
   );
 });
 
@@ -53,12 +53,20 @@ it('scoped app tabs have no banner; production-only ones do', () => {
   for (const tab of ['Logs', 'Alerts', 'Overview', 'Deployments', 'Webhooks'])
     expect(appTabShowsProduction(tab)).toBe(true);
   expect(productionNoun('Edge rules')).toBe('edge rules');
+  // Tabs whose name isn't a plural noun, or carries an acronym, read naturally.
+  expect(productionNoun('Overview')).toBe('overview');
+  expect(productionNoun('MCP')).toBe('MCP setup');
+  expect(productionNoun('SLOs')).toBe('SLOs');
+  expect(productionNoun('OpenAPI')).toBe('OpenAPI spec');
+  expect(productionNoun('TCP listeners')).toBe('TCP listeners');
+  expect(productionNoun('General')).toBe('settings');
+  expect(productionNoun('Health and releases')).toBe('health checks');
 });
 
 it('withProductionBanner renders the page under the banner', () => {
   const Page = withProductionBanner('releases', () => <p>releases page</p>);
   inShell(<Page />);
-  expect(screen.getByRole('note')).toHaveTextContent('own releases yet');
+  expect(screen.getByRole('note')).toHaveTextContent('show Staging’s releases yet');
   expect(screen.getByText('releases page')).toBeInTheDocument();
 });
 
