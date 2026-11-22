@@ -237,3 +237,13 @@ it('reaches Retry with the keyboard alone', async () => {
   await userEvent.keyboard('{Enter}');
   expect(refetch).toHaveBeenCalled();
 });
+
+it('switching environment clears the comparison and promotion selection', async () => {
+  env.current = staging();
+  await mount(
+    '/dashboard/releases?project=shop&env=staging&compare=production&promotion=op-1&approval=ap-1&queueWorkload=api'
+  );
+  await userEvent.click(screen.getByRole('button', { name: /Switch environment/ }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: /Production/ }));
+  await waitFor(() => expect(search()).toEqual({ project: 'shop' }));
+});

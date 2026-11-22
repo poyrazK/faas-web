@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { useEnvironmentScope } from '@/lib/environment-scope';
 import { ArrowUpRight } from 'iconoir-react';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/store';
@@ -85,8 +87,26 @@ function ProjectPage() {
   const { workflows, deployments } = useData();
   const { q } = ProjectsRoute.useSearch();
   const search = Route.useSearch();
-  const { environment, compare, preview, queueWorkload } = search;
+  const { compare, preview, queueWorkload } = search;
   const navigate = Route.useNavigate();
+  // The environment is the top bar's (`?env=`). A link from before that
+  // carried `?environment=`: move it to `?env=` once, replacing the entry.
+  const environment = useEnvironmentScope().environment;
+  const legacy = search.environment;
+  useEffect(() => {
+    if (legacy === undefined) return;
+    void navigate({
+      replace: true,
+      resetScroll: false,
+      search: (current) =>
+        ({
+          ...current,
+          environment: undefined,
+          env: legacy === 'production' || legacy === '__invalid__' ? undefined : legacy,
+          tab: 'environments',
+        }) as never,
+    });
+  }, [legacy, navigate]);
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   if (!account || query.isPending) return <LoadingState message="Loading project…" />;
   const project = query.data;
@@ -99,7 +119,7 @@ function ProjectPage() {
     );
   const tab: ProjectTab =
     search.tab ??
-    (environment || compare || search.promotion || search.approval
+    (legacy || compare || search.promotion || search.approval
       ? 'environments'
       : preview
         ? 'previews'
@@ -227,9 +247,7 @@ function ProjectPage() {
               void navigate({
                 search: (current) => ({
                   ...current,
-                  ...next,
-                  queueWorkload:
-                    current.environment === next.environment ? current.queueWorkload : undefined,
+                  compare: next.compare,
                   promotion: undefined,
                   approval: undefined,
                   promotionBefore: undefined,

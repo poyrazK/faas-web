@@ -189,6 +189,14 @@ it('keeps the standalone way in when every app belongs to a project', async () =
   expect(await screen.findByText('Every app belongs to a project.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Open standalone apps' })).toBeInTheDocument();
 });
+it('rewrites a legacy ?environment= link to ?env= and opens the Environments tab', async () => {
+  extraGet['/v1/projects/{slug}/environments'] = [];
+  const { router } = await mount('/dashboard/projects/shop?environment=staging');
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ env: 'staging', tab: 'environments' })
+  );
+  expect(router.state.location.search).not.toHaveProperty('environment');
+});
 it('bounds the project list and expands on request', async () => {
   await mount(
     '/dashboard/projects',
