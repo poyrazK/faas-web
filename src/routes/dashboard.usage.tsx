@@ -548,6 +548,7 @@ function PersonalUsage() {
               daily={projection.compute.daily}
               month={projection.month}
               usedGbHours={used}
+              includedGbHours={data?.included_gb_hours}
             />
           ) : (
             <BreakdownPhase

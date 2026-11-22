@@ -99,3 +99,78 @@ const DAY_LABEL = new Intl.DateTimeFormat('en-US', {
 export function dayLabel(date: string): string {
   return DAY_LABEL.format(Date.parse(`${date}T00:00:00Z`));
 }
+
+const WEEKDAY_LABEL = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
+export interface DayDetail {
+  /** "Wed, Nov 4", with "· today so far" while the UTC day is still running. */
+  title: string;
+  gbHours: number;
+  reported: boolean;
+  top: { slug: string; gbHours: number; pct: number } | null;
+  /** Against the average reported day in view; null without a rollup, and for today. */
+  versus: string | null;
+  /** Rollups summed from the first bar through this day. */
+  monthSoFar: number;
+  /**
+   * What `monthSoFar` covers: "Month so far", or "Since Nov 2" once the
+   * 30-day window no longer reaches the 1st and the sum would understate it.
+   */
+  soFarLabel: string;
+  /** `monthSoFar` as a share of the plan's included GB-hours; only when it is the whole month. */
+  allowancePct: number | null;
+}
+
+/**
+ * What one bar means, for its hover and keyboard readout: the day's hours,
+ * the app behind most of them, how it compares with a usual day, and where
+ * the month stood by then. Everything comes from the same rollups as the bars.
+ */
+export function dayDetail(
+  usage: DailyUsage,
+  index: number,
+  { now = Date.now(), includedGbHours }: { now?: number; includedGbHours?: number | null } = {}
+): DayDetail {
+  const day = usage.days[index];
+  const today = new Date(now).toISOString().slice(0, 10);
+  const reported = usage.days.filter((d) => d.reported);
+  const average = reported.length
+    ? reported.reduce((sum, d) => sum + d.gbHours, 0) / reported.length
+    : 0;
+  const ratio = average > 0 ? day.gbHours / average : null;
+  const monthSoFar =
+    Math.round(usage.days.slice(0, index + 1).reduce((sum, d) => sum + d.gbHours, 0) * 1e4) / 1e4;
+  return {
+    title: `${WEEKDAY_LABEL.format(Date.parse(`${day.date}T00:00:00Z`))}${day.date === today ? ' · today so far' : ''}`,
+    gbHours: day.gbHours,
+    reported: day.reported,
+    top:
+      day.reported && day.topAppSlug && day.topAppGbHours != null
+        ? {
+            slug: day.topAppSlug,
+            gbHours: day.topAppGbHours,
+            pct: day.gbHours > 0 ? Math.round((day.topAppGbHours / day.gbHours) * 100) : 0,
+          }
+        : null,
+    // Today is still running, so it isn't compared with whole days yet.
+    versus:
+      !day.reported || ratio === null || day.date === today
+        ? null
+        : ratio >= 1.5
+          ? `${ratio.toFixed(1)}× a usual day`
+          : ratio <= 2 / 3
+            ? 'Quieter than a usual day'
+            : 'About a usual day',
+    monthSoFar,
+    soFarLabel: usage.fromFirst ? 'Month so far' : `Since ${dayLabel(usage.days[0].date)}`,
+    allowancePct:
+      usage.fromFirst && includedGbHours && includedGbHours > 0
+        ? Math.round((monthSoFar / includedGbHours) * 100)
+        : null,
+  };
+}
