@@ -169,7 +169,7 @@ function EnvTransferBody({
       </div>
       {!scopeValid && (
         <p role="alert" className="text-sm">
-          Use a scope of 3–40 lowercase letters, digits, or hyphens, with no leading or trailing
+          Use a scope of 1–40 lowercase letters, digits, or hyphens, with no leading or trailing
           hyphen.
         </p>
       )}

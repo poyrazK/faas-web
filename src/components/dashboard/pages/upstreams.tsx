@@ -15,6 +15,8 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useAddUpstream, useDeleteUpstream, useUpstreams } from '@/lib/api/queries';
 import { UpstreamHistoryPanel } from '@/components/dashboard/upstream-history';
 import { EnvironmentNote } from '@/components/dashboard/environment-values-gate';
+// Upstream scopes share faas's env-scope rule (pkg/api/upstreams.go).
+import { ENV_SCOPE } from '@/lib/env-transfer';
 
 interface UpstreamRow {
   id: string;
@@ -64,7 +66,6 @@ const DEFAULT_PORT: Partial<Record<(typeof KINDS)[number], number>> = {
 const UPSTREAM_HOST =
   /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-const UPSTREAM_SCOPE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 /**
  * The upstreams body, without the page chrome around it.
@@ -111,9 +112,9 @@ export function UpstreamsBody({
       ? undefined
       : 'Enter a whole-number port from 1 to 65535.';
   const scopeError =
-    !cleanScope || UPSTREAM_SCOPE.test(cleanScope)
+    !cleanScope || ENV_SCOPE.test(cleanScope)
       ? undefined
-      : 'Use 3–40 lowercase letters, numbers, or dashes.';
+      : 'Use 1–40 lowercase letters, numbers, or dashes.';
   const shownHostError = validation.submitAttempted ? hostError : undefined;
   const shownPortError = validation.submitAttempted ? portError : undefined;
   const shownScopeError = validation.submitAttempted ? scopeError : undefined;
