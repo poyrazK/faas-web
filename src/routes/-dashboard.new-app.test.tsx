@@ -506,7 +506,9 @@ describe('New App source flow', () => {
     // "All apps" is on the first page; the import draft stays mounted there.
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('link', { name: 'All apps' }));
-    expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible()
+    );
     expect(window.confirm).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
