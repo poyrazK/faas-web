@@ -56,28 +56,51 @@ export function EnvironmentValuesGate({
         </p>
       </div>
     );
-  const Icon = app.readOnly ? Lock : Flask;
   return (
     <>
-      <p
-        role="note"
-        className={cn(
-          'flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ring-1',
-          'bg-status-warning/10 text-status-warning ring-status-warning/25'
-        )}
-      >
-        <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          {app.readOnly
-            ? `${app.name} is protected: changes go through a promotion.`
-            : `Editing ${app.name}. Production keeps its own values.`}
-          {/* Values can be set before the first deploy, which is often when
-              they're needed (a database URL, a token). */}
-          {app.deployed === false &&
-            ` ${slug} isn’t deployed there yet: these apply on its first deploy (gregale deploy --environment ${app.scope}).`}
-        </span>
-      </p>
+      <EnvironmentNote name={app.name} readOnly={app.readOnly}>
+        {/* Values can be set before the first deploy, which is often when
+            they're needed (a database URL, a token). */}
+        {app.deployed === false &&
+          ` ${slug} isn’t deployed there yet: these apply on its first deploy (gregale deploy --environment ${app.scope}).`}
+      </EnvironmentNote>
       {children({ scope: app.scope, readOnly: app.readOnly })}
     </>
+  );
+}
+
+/**
+ * The stage-tinted line that says which environment a page shows or edits:
+ * "Editing Staging. Production keeps its own values." by default, the
+ * read-only sentence for a protected stage, or `lead` instead of the default.
+ */
+export function EnvironmentNote({
+  name,
+  readOnly,
+  lead,
+  children,
+}: {
+  name: string;
+  readOnly: boolean;
+  lead?: string;
+  children?: ReactNode;
+}) {
+  const Icon = readOnly ? Lock : Flask;
+  return (
+    <p
+      role="note"
+      className={cn(
+        'flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ring-1',
+        'bg-status-warning/10 text-status-warning ring-status-warning/25'
+      )}
+    >
+      <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      <span>
+        {readOnly
+          ? `${name} is protected: changes go through a promotion.`
+          : (lead ?? `Editing ${name}. Production keeps its own values.`)}
+        {children}
+      </span>
+    </p>
   );
 }

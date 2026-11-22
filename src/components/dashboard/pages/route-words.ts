@@ -53,6 +53,12 @@ export interface RoutesState {
   /** The overflow bucket is in the list. */
   other: boolean;
   capHit: boolean;
+  /**
+   * The environment's name, when the tab shows one environment's traffic.
+   * faas marks every per-environment read `partial` (it counts from that
+   * environment's deployment history), which is not servers failing to report.
+   */
+  environment?: string;
 }
 
 /** The tab's answer: what reaches the app, and whether the list is whole. */
@@ -74,7 +80,12 @@ export function routesSentence(s: RoutesState): {
       rest: 'The servers that record routes didn’t answer. That isn’t a problem with your app.',
     };
   const notes: string[] = [];
-  if (s.source === 'partial') notes.push('Some servers didn’t report, so a few may be missing.');
+  if (s.source === 'partial')
+    notes.push(
+      s.environment
+        ? `Counted from ${s.environment}’s deployments.`
+        : 'Some servers didn’t report, so a few may be missing.'
+    );
   if (s.capHit)
     notes.push(
       `Tracking stops at ${ROUTE_CAP} routes, so later ones are counted together as other routes.`

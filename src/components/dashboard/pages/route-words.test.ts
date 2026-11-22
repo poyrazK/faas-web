@@ -78,3 +78,15 @@ describe('listWords', () => {
     expect(listWords(['a', 'b', 'c'])).toBe('a, b and c');
   });
 });
+
+describe('routesSentence in an environment', () => {
+  const base = { slug: 'api', tracking: true, count: 2, other: false, capHit: false };
+  it('does not call per-environment counts partial: they come from that environment’s deployments', () => {
+    const words = routesSentence({ ...base, source: 'partial', environment: 'Staging' });
+    expect(words.rest).not.toMatch(/didn’t report/);
+    expect(words.rest).toMatch(/from Staging’s deployments/);
+  });
+  it('still warns about a partial read in production', () => {
+    expect(routesSentence({ ...base, source: 'partial' }).rest).toMatch(/didn’t report/);
+  });
+});

@@ -6,6 +6,7 @@ import { spyApi } from '@/test/api';
 import {
   keys,
   useAppEnv,
+  useAppRoutes,
   useAppSecrets,
   useDeleteEnv,
   useRotateSecret,
@@ -111,5 +112,24 @@ describe('env and secrets in Staging', () => {
     expect(client.getQueryData(keys.appSecrets('api'))).toEqual(productionSecrets);
     expect(client.getQueryState(keys.appEnv('api'))?.isInvalidated).toBe(false);
     expect(client.getQueryState(keys.appSecrets('api'))?.isInvalidated).toBe(false);
+  });
+});
+
+describe('route traffic', () => {
+  it('reads Staging with environment=staging, production as before, cached apart', async () => {
+    const get = spyApi('GET').mockResolvedValue(ok({ routes: [], source: 'prometheus' }));
+    const { client, wrapper: w } = wrapper();
+    const production = renderHook(() => useAppRoutes('api'), { wrapper: w });
+    const staging = renderHook(() => useAppRoutes('api', 'staging'), { wrapper: w });
+    await waitFor(() => expect(production.result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(staging.result.current.isSuccess).toBe(true));
+    expect(paramsOf(get)).toEqual(
+      expect.arrayContaining([
+        ['/v1/apps/{slug}/routes', { path: { slug: 'api' } }],
+        ['/v1/apps/{slug}/routes', { path: { slug: 'api' }, query: { environment: 'staging' } }],
+      ])
+    );
+    expect(client.getQueryData(['apps', 'api', 'routes'])).toBeDefined();
+    expect(client.getQueryData(['apps', 'api', 'routes', 'staging'])).toBeDefined();
   });
 });
