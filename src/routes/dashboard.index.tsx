@@ -31,6 +31,7 @@ import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -192,8 +193,7 @@ function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
             return (
               <li key={d.id}>
                 <Link
-                  to="/dashboard/releases"
-                  search={{ deployment: d.id }}
+                  {...releaseLink(d.id)}
                   className="pressable group flex items-center gap-2.5 rounded py-2.5"
                 >
                   {/* Colour plus text, never hue alone; in-flight breathes. */}

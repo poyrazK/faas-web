@@ -38,6 +38,7 @@ import { CapabilityGate } from './capability-gate';
 import { MaturityLabel } from './maturity-label';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { HelpTip } from './kit/help-tip';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 /* ------------------------------------------------------------------ *
  * apid's observed health for one app (faas docs/app-health.md,
@@ -175,15 +176,13 @@ const number = (value: number) => value.toLocaleString('en-US');
 /** Where a check's `action` points: the app tab, opened on the release it names. */
 function actionTarget(slug: string, check: Check) {
   const action = check.action ? ACTIONS[check.action] : undefined;
+  // A check about one release opens that release's page.
+  if (action?.tab === 'Deployments' && check.deployment_id)
+    return { ...releaseLink(check.deployment_id, { slug }), resetScroll: false };
   return {
     to: '/dashboard/apps/$appSlug' as const,
     params: { appSlug: slug },
-    search: {
-      tab: action?.tab,
-      ...(action?.tab === 'Deployments' && check.deployment_id
-        ? { deployment: check.deployment_id, releaseSection: 'overview' as const }
-        : {}),
-    },
+    search: { tab: action?.tab },
     resetScroll: false,
   };
 }

@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectEnvironments } from './environment-selector';
@@ -70,12 +71,26 @@ it('selects production only when registered, and reads its exact state', async (
     });
   });
   mount();
-  expect(await screen.findByLabelText('Environment')).toHaveValue('production');
-  await waitFor(() => expect(screen.getByText('Release graph unavailable')).toBeInTheDocument());
+  // Few environments are a row of segments, with production chosen.
+  const picker = await screen.findByRole('group', { name: 'Environment' });
+  expect(within(picker).getByRole('button', { name: 'production' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  // The answer for the environment comes first, from what the API returned.
+  expect(await screen.findByText('production is protected.')).toBeInTheDocument();
+  expect(screen.getByText('No apps in this environment.')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText(/release set unavailable/)).toBeInTheDocument());
   expect(get).toHaveBeenCalledWith(
     '/v1/projects/{slug}/environments/{environment}/state',
     expect.objectContaining({ params: { path: { slug: 'shop', environment: 'production' } } })
   );
+  // Release tooling is read only once someone opens it.
+  expect(get).not.toHaveBeenCalledWith(
+    '/v1/projects/{slug}/environments/{environment}/release-sets/verification-runs',
+    expect.anything()
+  );
+  await userEvent.click(screen.getByRole('button', { name: /Promotions and verification/ }));
   // The environment's project-wide binding verification graphs.
   expect(
     await screen.findByText('No graph verification runs are retained for production.')

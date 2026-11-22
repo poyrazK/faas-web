@@ -22,6 +22,7 @@ import {
   type WebhookScope,
 } from '@/lib/api/release-webhooks';
 import { InlinePhase, queryPhase } from './primitives';
+import { normalizeId } from '@/lib/ids';
 
 type Tone = { label: string; color: string; icon: typeof CheckCircle };
 const GOOD = 'var(--status-good)';
@@ -223,8 +224,6 @@ function DeliveryRow({
   );
 }
 
-const normalize = (id: string) => id.replace(/-/g, '').toLowerCase();
-
 /**
  * One receiver's delivery health and its deliveries, each with its attempt
  * history. An account receiver's deliveries span every app, so each row names
@@ -237,7 +236,7 @@ export function WebhookDeliveries({ scope }: { scope: WebhookScope }) {
   const page = useWebhookDeliveryPage(scope, token);
   const account = !('slug' in scope);
   const apps = useApps({ enabled: account });
-  const appNames = new Map((apps.data ?? []).map((a) => [normalize(a.id), a.slug]));
+  const appNames = new Map((apps.data ?? []).map((a) => [normalizeId(a.id), a.slug]));
   const list = page.data?.deliveries ?? [];
   const healthPhase = queryPhase({ error: health.error, loading: health.isPending });
   const listPhase = queryPhase({
@@ -281,7 +280,9 @@ export function WebhookDeliveries({ scope }: { scope: WebhookScope }) {
                 scope={scope}
                 delivery={d}
                 appName={
-                  account && d.app_id ? (appNames.get(normalize(d.app_id)) ?? d.app_id) : undefined
+                  account && d.app_id
+                    ? (appNames.get(normalizeId(d.app_id)) ?? d.app_id)
+                    : undefined
                 }
               />
             ))}

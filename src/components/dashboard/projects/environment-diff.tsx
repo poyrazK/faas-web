@@ -14,7 +14,7 @@ export function EnvironmentDiffView({ data }: { data: EnvironmentDiff }) {
       help="A missing fingerprint does not mean the values are equal."
       actions={<span className="text-xs text-muted-foreground">Snapshot {data.generated_at}</span>}
     >
-      <div className="space-y-4 p-4 text-sm">
+      <div className="space-y-4 text-sm">
         <p>
           Configuration versions: {data.configuration.from_version} /{' '}
           {data.configuration.to_version}

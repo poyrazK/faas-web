@@ -19,6 +19,8 @@ import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
 import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
+import { EnvironmentLine, EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
+import { useEnvironmentScope } from '@/lib/environment-scope';
 import { ProjectScopeProvider, isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
@@ -131,7 +133,7 @@ function NavRow({
   hash: string;
   current: boolean;
   /** The project the link should carry: a slug inside a project, undefined to leave one. */
-  scope?: { project?: string };
+  scope?: { project?: string; env?: string };
 }) {
   const { to, label, icon: Icon, exact } = item;
   const onThisPath = matchesNavPath(pathname, { to, exact: true });
@@ -322,6 +324,17 @@ function SidebarBody({
   // across all apps).
   const linkScope = { project: scope.project ?? undefined };
   const home = scope.project ? projectHome(scope.project) : null;
+  // The project's own page names the project in its path (`project:
+  // undefined`), which the environment middleware would read as leaving the
+  // project; carry the environment explicitly so the way back keeps it.
+  const environment = useEnvironmentScope();
+  const homeScope = home && {
+    ...home.search,
+    env:
+      environment.applies && environment.environment !== 'production'
+        ? environment.environment
+        : undefined,
+  };
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -437,7 +450,7 @@ function SidebarBody({
                   pathname={pathname}
                   hash={hash}
                   current={matchesNavPath(pathname, { to: home.to, exact: true })}
-                  scope={home.search}
+                  scope={homeScope ?? home.search}
                 />
               </li>
             </ul>
@@ -563,7 +576,7 @@ function Breadcrumbs() {
   const project = appPage && !scope.project ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
-  const trail: { label: string; to?: string; search?: { scope: 'personal' } }[] = [];
+  const trail: { label: string; to?: string; search?: Record<string, string> }[] = [];
   const projectPage = section === 'projects' && Boolean(detail);
   // Inside a project, its own page and its apps' pages hang off the switcher.
   if (hub && (hub.label !== pageLabel || detail) && !(scope.project && (projectPage || appPage))) {
@@ -573,10 +586,21 @@ function Breadcrumbs() {
   if (projectPage && !scope.project) trail.push({ label: detail });
   if (project)
     trail.push({ label: project, to: `/dashboard/projects/${encodeURIComponent(project)}` });
+  // A release page trails through its app and the app's Deployments tab.
+  const releasePage = appPage && segments[2] === 'releases' && Boolean(segments[3]);
   if (section === 'apps' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
+      ...(releasePage ? { to: `/dashboard/apps/${encodeURIComponent(detail)}` } : {}),
     });
+  }
+  if (releasePage) {
+    trail.push({
+      label: 'Deployments',
+      to: `/dashboard/apps/${encodeURIComponent(detail)}`,
+      search: { tab: 'Deployments' },
+    });
+    trail.push({ label: 'Release' });
   }
   const orgSupport = section === 'orgs' && segments[2] === 'support';
   if (section === 'support' || orgSupport) {
@@ -596,9 +620,13 @@ function Breadcrumbs() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+    >
       <WorkspaceSwitcher />
       <ProjectSwitcher />
+      <EnvironmentSwitcher />
 
       {trail.map(({ label, to, search }, i) => {
         const last = i === trail.length - 1;
@@ -917,6 +945,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               >
                 Skip to content
               </a>
+              {/* Outside production, a thin line across the top says so. */}
+              <EnvironmentLine />
               {/* Desktop sidebar */}
               <aside
                 ref={railRef}
