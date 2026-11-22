@@ -1,3 +1,4 @@
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Copy, EditPencil, NavArrowDown, Plus, Trash, Upload } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -165,7 +166,7 @@ export function EnvBody({
           className="font-mono text-xs [overflow-wrap:anywhere]"
           title={`scope: ${v.scope || 'default'}`}
         >
-          {v.key}
+          <CopyableId value={v.key} label="variable name" full />
         </span>
       ),
     },

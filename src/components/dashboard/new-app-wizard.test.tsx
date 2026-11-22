@@ -43,6 +43,9 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
   Link: ({ children }: { children: ReactNode }) => <a>{children}</a>,
   useNavigate: () => mocks.navigate,
 }));
+vi.mock('@/lib/api/projects', () => ({
+  useProjects: () => ({ data: [], isPending: false }),
+}));
 vi.mock('@/lib/use-unsaved-guard', () => ({ useUnsavedGuard: vi.fn() }));
 vi.mock('./image-deploy-form', () => ({
   ImageDeployForm: ({ kind }: { kind?: string }) => (

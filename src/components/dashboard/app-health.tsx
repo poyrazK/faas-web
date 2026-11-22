@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import {
   useEffect,
   useId,
@@ -431,9 +432,10 @@ function Thresholds({
         </span>
       )}
       <span>
-        Default thresholds, not your SLO: a warning at {requests.policy.warning_error_rate_pct}%
-        server errors and a failure at {requests.policy.unhealthy_error_rate_pct}%, once there are
-        at least {number(requests.policy.minimum_requests)} requests and{' '}
+        Default thresholds, not your SLO: a warning at{' '}
+        {formatPercent(requests.policy.warning_error_rate_pct)} server errors and a failure at{' '}
+        {formatPercent(requests.policy.unhealthy_error_rate_pct)}, once there are at least{' '}
+        {number(requests.policy.minimum_requests)} requests and{' '}
         {number(requests.policy.minimum_server_errors)} server errors.
       </span>
     </>

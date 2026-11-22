@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -399,7 +400,7 @@ function NowWell({
     explanation.push(
       percent == null || percent === 100
         ? `Serving all traffic${where}.`
-        : `Serving ${percent}% of traffic${where}.`
+        : `Serving ${formatPercent(percent)} of traffic${where}.`
     );
     if (subject.newer) {
       const newerPhase = deploymentPhase(subject.newer.status);

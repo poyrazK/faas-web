@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useId, useState, type ComponentType, type SVGProps } from 'react';
 import {
   CheckCircle,
@@ -194,7 +195,9 @@ function StatusDetails({
             {data.deployments.map((dep) => (
               <li key={dep.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <CopyableId value={dep.id} label="deployment ID" />
-                <span className="tabular-nums">{dep.traffic_percent}% of traffic</span>
+                <span className="tabular-nums">
+                  {formatPercent(dep.traffic_percent)} of traffic
+                </span>
                 {dep.commit_sha && (
                   <span className="font-mono text-muted-foreground">
                     commit {dep.commit_sha.slice(0, 8)}

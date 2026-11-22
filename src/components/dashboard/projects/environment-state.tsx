@@ -1,5 +1,6 @@
 import { ArrowUpRight } from 'iconoir-react';
 import type { EnvironmentState } from '@/lib/api/projects';
+import { CopyIconButton } from '@/components/ui/copy-button';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { Timestamp } from '@/components/ui/timestamp';
 import { publicAppUrl } from '@/lib/app-url';
@@ -130,9 +131,12 @@ function WorkloadFacts({ workload }: { workload: Workload }) {
           <dl className="mt-1.5 space-y-1.5 text-sm">
             {workload.variables.map((variable) => (
               <div key={variable.key} className="flex flex-wrap gap-x-2">
-                <dt className="font-mono text-xs leading-5">{variable.key}</dt>
+                <dt className="text-xs leading-5">
+                  <CopyableId value={variable.key} label="variable name" full />
+                </dt>
                 <dd className="min-w-0 break-all whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">
-                  {variable.value}
+                  <span>{variable.value}</span>
+                  <CopyIconButton text={variable.value} label={'value of ' + variable.key} />
                 </dd>
               </div>
             ))}
@@ -150,12 +154,21 @@ function WorkloadFacts({ workload }: { workload: Workload }) {
           <ul className="mt-1.5 space-y-1.5 text-sm">
             {workload.secrets.map((secret) => (
               <li key={secret.key} className="break-all">
-                <span className="font-mono text-xs">{secret.key}</span>{' '}
+                <CopyableId value={secret.key} label="secret name" full />{' '}
                 <span className="text-xs text-muted-foreground">
-                  fingerprint {secret.value_hash || 'unknown'}, version{' '}
-                  {secret.version ?? 'unknown'}
+                  fingerprint{' '}
+                  {secret.value_hash ? (
+                    <CopyableId value={secret.value_hash} label="secret fingerprint" />
+                  ) : (
+                    'unknown'
+                  )}
+                  , version {secret.version ?? 'unknown'}
                   {secret.managed_by && `, managed by ${secret.managed_by}`}
-                  {secret.binding_id && `, binding ${secret.binding_id}`}
+                  {secret.binding_id && (
+                    <>
+                      , binding <CopyableId value={secret.binding_id} label="binding ID" />
+                    </>
+                  )}
                   {secret.credential_generation !== undefined &&
                     `, generation ${secret.credential_generation}`}
                 </span>
@@ -174,8 +187,9 @@ function WorkloadFacts({ workload }: { workload: Workload }) {
               <li key={binding.binding_id} className="break-all">
                 {binding.kind}{' '}
                 <span className="text-xs text-muted-foreground">
-                  {binding.binding_id}, generation {binding.credential_generation ?? 'unknown'},
-                  keys {binding.secret_keys.join(', ')}
+                  <CopyableId value={binding.binding_id} label="binding ID" />, generation{' '}
+                  {binding.credential_generation ?? 'unknown'}, keys{' '}
+                  {binding.secret_keys.join(', ')}
                 </span>
               </li>
             ))}

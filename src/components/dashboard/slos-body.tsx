@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState, type FormEvent } from 'react';
 import { CheckCircle, Circle, Plus, Trash, WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -50,8 +51,8 @@ export function describeObjective(
   slo: Pick<SLO, 'sli' | 'objective_pct' | 'latency_threshold_ms'>
 ) {
   return slo.sli === 'latency'
-    ? `${slo.objective_pct}% within ${slo.latency_threshold_ms ?? '?'} ms`
-    : `${slo.objective_pct}% available`;
+    ? `${formatPercent(slo.objective_pct)} within ${slo.latency_threshold_ms ?? '?'} ms`
+    : `${formatPercent(slo.objective_pct)} available`;
 }
 
 /** A percentage as the CLI prints it, or why there is none (commands_slos_status.go:62-67). */

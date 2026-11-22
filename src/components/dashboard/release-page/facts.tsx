@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import type { ReactNode } from 'react';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { formatRelative } from '@/lib/mock-data';
@@ -111,14 +112,26 @@ export function ReleaseDetailsPopup({
             ),
           ],
           ['Created', relativeTime(deployment.created_at)],
-          ['Error code', deployment.error_code ?? '—'],
+          [
+            'Error code',
+            deployment.error_code ? (
+              <CopyableId value={deployment.error_code} label="error code" full />
+            ) : (
+              '—'
+            ),
+          ],
           [
             'Canary',
             deployment.canary_total_steps
               ? `${deployment.canary_preset ?? ''} step ${deployment.canary_step ?? 0}/${deployment.canary_total_steps} · ${deployment.rollout_state ?? ''}`.trim()
               : '—',
           ],
-          ['Traffic', deployment.traffic_percent != null ? `${deployment.traffic_percent}%` : '—'],
+          [
+            'Traffic',
+            deployment.traffic_percent != null
+              ? `${formatPercent(deployment.traffic_percent)}`
+              : '—',
+          ],
         ]}
       />
       {build ? (

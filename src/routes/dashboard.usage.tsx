@@ -91,7 +91,15 @@ function Figure({ label, value, title }: { label: string; value: string; title?:
  * the one action that fits, and the month's figures, smaller, under it.
  * Wording lives in `usage-words.ts`.
  */
-function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap: () => void }) {
+function UsageAnswerCard({
+  data,
+  appUsage,
+  onRaiseCap,
+}: {
+  data: UsageSummary;
+  appUsage: AppUsageRow[];
+  onRaiseCap: () => void;
+}) {
   const { account } = useAuth();
   const cap = useOverageCap();
   const forecast = useBillingForecast();
@@ -116,6 +124,26 @@ function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap:
   // Guard the divide: a plan with no included allowance would otherwise
   // render the bar as NaN% wide.
   const share = (v: number) => (included > 0 ? Math.min(100, (v / included) * 100) : 0);
+  const reported = appUsage.reduce((total, app) => total + app.gbHours, 0);
+  const hasAppUsage = reported > 0 && used > 0 && included > 0;
+  const leadingApps = appUsage.filter((app) => app.gbHours > 0).slice(0, 3);
+  const leadingUsage = leadingApps.reduce((total, app) => total + app.gbHours, 0);
+  const segments = [
+    ...leadingApps.map((app, i) => ({
+      id: app.id,
+      name: app.slug,
+      gbHours: app.gbHours,
+      color: 'var(--chart-' + (i + 1) + ')',
+    })),
+    {
+      id: 'other',
+      name: 'Other apps',
+      gbHours: reported - leadingUsage,
+      color: 'var(--foreground)',
+    },
+    { id: 'unattributed', name: 'Unattributed', gbHours: used - reported, color: tone },
+  ].filter(({ gbHours }) => gbHours > 1e-9);
+  const segmentTotal = Math.max(used, reported);
   const capLabel =
     cap.data === undefined
       ? undefined
@@ -179,9 +207,19 @@ function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap:
             />
           )}
           <div
-            className="absolute inset-y-0 left-0 rounded-full"
+            className="absolute inset-y-0 left-0 flex overflow-hidden rounded-full"
             style={{ width: `${share(used)}%`, background: tone }}
-          />
+          >
+            {hasAppUsage &&
+              segments.map(({ id, gbHours, color }) => (
+                <span
+                  key={id}
+                  aria-hidden="true"
+                  className="h-full"
+                  style={{ width: `${(gbHours / segmentTotal) * 100}%`, background: color }}
+                />
+              ))}
+          </div>
         </div>
         <p className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">
           <span>
@@ -193,6 +231,24 @@ function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap:
             none. The faint bar is a straight line from the month so far, not a forecast model.
           </HelpTip>
         </p>
+        {hasAppUsage && (
+          <ul
+            aria-label="Compute allowance by app"
+            className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
+          >
+            {segments.map(({ id, name, gbHours, color }) => (
+              <li key={id} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: color }}
+                />
+                <span>{name}</span>{' '}
+                <span className="tabular-nums">{formatUsageNumber(gbHours)} GB-h</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <dl className="well grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-muted/40 px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -231,18 +287,25 @@ function UsageAnswerCard({ data, onRaiseCap }: { data: UsageSummary; onRaiseCap:
   );
 }
 
-/** The month, app by app — the detail the roll-up hides. */
-function PerAppUsagePanel() {
-  const [expanded, setExpanded] = useState(false);
-  const tableId = useId();
-  const q = usePerAppUsage();
+type AppUsageRow = {
+  id: string;
+  slug: string;
+  known: boolean;
+  gbHours: number;
+  requests: number;
+  coldBoots: number;
+  egressBytes: number;
+};
+
+function useAppUsageRows() {
+  const query = usePerAppUsage();
   const { data: apps } = useApps();
-  const rows = useMemo(() => {
+  const rows = useMemo<AppUsageRow[]>(() => {
     const bySlug = slugIndex(apps ?? []);
-    return (q.data ?? [])
+    return (query.data ?? [])
       .map((u) => ({
+        id: u.app_id,
         slug: bySlug.get(u.app_id) ?? u.app_id.slice(0, 8),
-        // A deleted app still has usage this month but no page to open.
         known: bySlug.has(u.app_id),
         gbHours: (u.mb_seconds ?? 0) / 1024 / 3600,
         requests: u.requests ?? 0,
@@ -250,9 +313,16 @@ function PerAppUsagePanel() {
         egressBytes: (u.tx_bytes ?? 0) + (u.net_tx_bytes ?? 0),
       }))
       .sort((a, b) => b.gbHours - a.gbHours);
-  }, [q.data, apps]);
+  }, [query.data, apps]);
+  const phase = queryPhase({ error: query.error, loading: query.isPending, isEmpty: !rows.length });
+  return { rows, phase, error: query.error };
+}
+
+/** The month, app by app. */
+function PerAppUsagePanel({ rows, phase, error }: ReturnType<typeof useAppUsageRows>) {
+  const [expanded, setExpanded] = useState(false);
+  const tableId = useId();
   const totalGbHours = useMemo(() => rows.reduce((sum, r) => sum + r.gbHours, 0), [rows]);
-  const phase = queryPhase({ error: q.error, loading: q.isPending, isEmpty: rows.length === 0 });
 
   return (
     <Panel
@@ -276,7 +346,7 @@ function PerAppUsagePanel() {
       {phase !== 'ready' ? (
         <InlinePhase
           phase={phase}
-          error={q.error}
+          error={error}
           loadingMessage="Reading per-app usage…"
           emptyMessage="No usage recorded this period."
         />
@@ -307,7 +377,7 @@ function PerAppUsagePanel() {
             </thead>
             <tbody className="divide-y divide-border">
               {(expanded ? rows : rows.slice(0, 5)).map((r) => (
-                <tr key={r.slug} className="transition-colors hover:bg-muted/40">
+                <tr key={r.id} className="transition-colors hover:bg-muted/40">
                   <td className="px-5 py-2.5 font-mono text-xs">
                     {r.known ? (
                       <Link
@@ -434,6 +504,7 @@ function PersonalUsage() {
   // Compute, the allowance and overage come from the usage summary, which
   // stands on its own; the account projection only adds to it.
   const { data, isPending, error, refetch } = useUsageSummary();
+  const appUsage = useAppUsageRows();
   const breakdown = useAccountUsage();
   const breakdownPhase = queryPhase({ error: breakdown.error, loading: breakdown.isPending });
   // A failed refetch keeps stale data; show the notice rather than old figures.
@@ -462,7 +533,11 @@ function PersonalUsage() {
         <LoadingState message="Loading usage…" />
       ) : (
         <>
-          <UsageAnswerCard data={data} onRaiseCap={() => setEditingCap(true)} />
+          <UsageAnswerCard
+            data={data}
+            appUsage={appUsage.phase === 'ready' ? appUsage.rows : []}
+            onRaiseCap={() => setEditingCap(true)}
+          />
           <SpendControl
             overageCents={data.overage_cents}
             editing={editingCap}
@@ -481,7 +556,7 @@ function PersonalUsage() {
               onRetry={() => void breakdown.refetch()}
             />
           )}
-          <PerAppUsagePanel />
+          <PerAppUsagePanel {...appUsage} />
 
           {/* Secondary, so grouped and compact. Absent blocks mean the service
               is not enabled for the account. */}

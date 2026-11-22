@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import type { ReactNode } from 'react';
 import type { Deployment } from '@/lib/api/queries';
 import type { RolloutDecision, ScheduledRelease } from '@/lib/api/deployment-detail';
@@ -125,7 +126,7 @@ function DecisionBody({ decision }: { decision: RolloutDecision }) {
         {decision.summary && <span className="text-muted-foreground">{decision.summary}</span>}
       </p>
       <p className="text-xs text-muted-foreground">
-        Step {decision.step + 1} at {decision.traffic_percent}% of traffic · decided{' '}
+        Step {decision.step + 1} at {formatPercent(decision.traffic_percent)} of traffic · decided{' '}
         {when(decision.decided_at)}
       </p>
       {(decision.candidate || decision.stable) && (

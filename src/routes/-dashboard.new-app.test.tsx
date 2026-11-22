@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as NewAppRoute } from './dashboard.apps.new';
 import { Route as TemplatesRoute } from './dashboard.templates';
 import { Route as ImportRoute } from './dashboard.import';
+import { ConfirmProvider } from '@/components/ui/confirm';
+import { validateProjectSearch } from '@/lib/project-scope';
 import type { ProjectPlan } from '@/lib/api/queries';
 
 const mocks = vi.hoisted(() => ({
@@ -22,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   scan: vi.fn(),
   apply: vi.fn(),
   toast: vi.fn(),
+  projects: [] as { id: string; slug: string; repo_full_name?: string }[],
   templateRead: 'ready',
   templateRetry: vi.fn(),
   sourceScan: { plan: undefined, error: null, scanning: false } as {
@@ -44,6 +47,9 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
   useWorkspaceTarget: () => mocks.workspace,
+}));
+vi.mock('@/lib/api/projects', () => ({
+  useProjects: () => ({ data: mocks.projects, isPending: false }),
 }));
 vi.mock('@/lib/store', () => ({ useData: () => ({ addWorkflow: mocks.create }) }));
 vi.mock('@/lib/api/capabilities', () => ({
@@ -103,6 +109,7 @@ async function mount(entry = '/dashboard/apps/new') {
   const dashboard = createRoute({
     getParentRoute: () => root,
     path: '/dashboard',
+    validateSearch: validateProjectSearch,
     component: Outlet,
   });
   const newApp = createRoute({
@@ -134,13 +141,18 @@ async function mount(entry = '/dashboard/apps/new') {
     history: createMemoryHistory({ initialEntries: [entry] }),
   });
   await router.load();
-  render(<RouterProvider router={router} />);
+  render(
+    <ConfirmProvider>
+      <RouterProvider router={router} />
+    </ConfirmProvider>
+  );
   return router;
 }
 
 beforeEach(() => {
   mocks.workspace = { org: null, label: 'Personal' };
   vi.clearAllMocks();
+  mocks.projects = [];
   mocks.templateRead = 'ready';
   mocks.sourceScan = { plan: undefined, error: null, scanning: false };
   vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -208,6 +220,32 @@ describe('New App source flow', () => {
     });
     expect(mocks.bind).not.toHaveBeenCalled();
     expect(mocks.deploy).not.toHaveBeenCalled();
+  });
+
+  it('sends the chosen project to app creation and shows it on review', async () => {
+    mocks.projects = [{ id: 'project-1', slug: 'tools' }];
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty');
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    await user.type(screen.getByLabelText('App name'), 'team-api');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Project' }), 'project-1');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getAllByText('tools').some((element) => element.tagName !== 'OPTION')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Create app' }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1' }));
+  });
+
+  it('asks for another destination when opened from a repository-managed project', async () => {
+    mocks.projects = [{ id: 'project-1', slug: 'tools', repo_full_name: 'acme/tools' }];
+    const user = userEvent.setup();
+    await mount('/dashboard/apps/new?source=empty&project=tools');
+    await user.click(screen.getByRole('button', { name: 'Empty app' }));
+    const project = screen.getByRole('combobox', { name: 'Project' });
+    expect(project).toHaveValue('project-1');
+    await user.type(screen.getByLabelText('App name'), 'team-api');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(await screen.findByRole('button', { name: 'Create app' })).toBeDisabled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it('names the shared workspace in review and creates the app in it', async () => {
@@ -468,7 +506,9 @@ describe('New App source flow', () => {
     // "All apps" is on the first page; the import draft stays mounted there.
     await user.click(screen.getByRole('button', { name: 'Back to Sources' }));
     await user.click(await screen.findByRole('link', { name: 'All apps' }));
-    expect(window.confirm).toHaveBeenCalledWith('Discard unsaved changes?');
+    expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
+    expect(window.confirm).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(router.state.location.pathname).toBe('/dashboard/apps/new');
   });
 

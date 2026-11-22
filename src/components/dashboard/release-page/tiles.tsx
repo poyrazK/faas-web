@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { ApiError } from '@/lib/api/errors';
 import { isDeploymentTerminal } from '@/lib/deployment-status';
 import { useDeploymentRuntime, useReleaseDiff } from '@/lib/api/deployment-detail';
@@ -115,7 +116,7 @@ function RolloutTile({ ctx, onOpen }: { ctx: ReleaseContext; onOpen: () => void 
     <ReleaseTile
       title="Traffic & rollout"
       phase="ready"
-      value={`${d.traffic_percent ?? 0}%`}
+      value={`${formatPercent(d.traffic_percent ?? 0)}`}
       line={
         d.canary_total_steps
           ? `Canary step ${d.canary_step ?? 0} of ${d.canary_total_steps}`

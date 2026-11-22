@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { CheckCircle, Clock, Refresh, WarningTriangle } from 'iconoir-react';
@@ -60,7 +61,7 @@ export function DebugReplayAction({
   const run = async () => {
     const ok = await confirm({
       title: `Replay ${method ?? 'this request'} ${route ?? ''} through its mirror?`.trim(),
-      description: `Gregale queues a new invocation that reissues this request's method and route through ${target ? `the mirror rule sending ${target.percent}% of this deployment's traffic to deployment ${target.mirror_deployment_id.slice(0, 8)}` : 'the enabled mirror rule of the deployment that served it'}. The mirror target runs it for real, with an empty body and no credentials, because neither was kept, so anything that route does can happen again there.`,
+      description: `Gregale queues a new invocation that reissues this request's method and route through ${target ? `the mirror rule sending ${formatPercent(target.percent)} of this deployment's traffic to deployment ${target.mirror_deployment_id.slice(0, 8)}` : 'the enabled mirror rule of the deployment that served it'}. The mirror target runs it for real, with an empty body and no credentials, because neither was kept, so anything that route does can happen again there.`,
       confirmLabel: 'Replay request',
     });
     if (ok) replay.mutate({ reqId, mirrorDeploymentId: target?.mirror_deployment_id });
@@ -91,7 +92,7 @@ export function DebugReplayAction({
             >
               {rules.map((rule) => (
                 <option key={rule.id} value={rule.mirror_deployment_id}>
-                  {rule.mirror_deployment_id.slice(0, 8)} · {rule.percent}%
+                  {rule.mirror_deployment_id.slice(0, 8)} · {formatPercent(rule.percent)}
                 </option>
               ))}
             </select>

@@ -1,3 +1,4 @@
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Copy, Plus, RefreshDouble, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -199,7 +200,7 @@ export function SecretsBody({
             className="font-mono text-xs [overflow-wrap:anywhere]"
             title={s.kid ? `Sealed under host key ${s.kid}` : 'Sealed'}
           >
-            {s.key}
+            <CopyableId value={s.key} label="secret name" full />
           </span>
           {s.secret.secret_class === 'ephemeral' && (
             <span

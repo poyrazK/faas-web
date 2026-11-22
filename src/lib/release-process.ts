@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import type { components, paths } from './api/schema';
 import { deploymentPhase } from './deployment-status';
 
@@ -262,7 +263,7 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
         : undefined;
       const traffic =
         deployment.traffic_percent != null
-          ? `${deployment.traffic_percent}% of traffic`
+          ? `${formatPercent(deployment.traffic_percent)} of traffic`
           : undefined;
       return {
         key: 'rollout',
@@ -300,7 +301,7 @@ export function releaseProcess(deployment: Deployment): ReleasePhase[] {
         state: rollout.state === 'active' ? 'active' : 'done',
         detail:
           deployment.traffic_percent != null
-            ? `${deployment.traffic_percent}% of traffic`
+            ? `${formatPercent(deployment.traffic_percent)} of traffic`
             : 'Serving',
       };
     if (phase === 'failed') {
