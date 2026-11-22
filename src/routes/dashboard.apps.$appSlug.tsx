@@ -83,6 +83,7 @@ import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
 import { QueuesBody } from '@/components/dashboard/pages/queues';
 import { RoutesBody } from '@/components/dashboard/pages/routes';
 import { SecretsBody } from '@/components/dashboard/pages/secrets';
+import { EnvironmentValuesGate } from '@/components/dashboard/environment-values-gate';
 import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
 import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
 import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
@@ -685,40 +686,53 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Environment' && (
-                <>
-                  <EnvironmentSummary slug={fn.id} />
-                  <EnvironmentSection title="Variables">
-                    <EnvBody
-                      slug={fn.id}
-                      header={(actions) => (
-                        <SectionHeading
-                          title="Variables"
-                          help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
-                          actions={actions}
+                // In another environment the values are that environment's own
+                // (?scope=); production is exactly as before.
+                <EnvironmentValuesGate slug={fn.id}>
+                  {({ scope, readOnly }) => (
+                    <>
+                      <EnvironmentSummary slug={fn.id} scope={scope} />
+                      <EnvironmentSection title="Variables">
+                        <EnvBody
+                          slug={fn.id}
+                          scope={scope}
+                          readOnly={readOnly}
+                          header={(actions) => (
+                            <SectionHeading
+                              title="Variables"
+                              help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
+                              actions={actions}
+                            />
+                          )}
                         />
-                      )}
-                    />
-                  </EnvironmentSection>
-                  <EnvironmentSection title="Secrets">
-                    <SecretsBody
-                      slug={fn.id}
-                      header={(actions) => (
-                        <SectionHeading
-                          title="Secrets"
-                          help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
-                          actions={actions}
+                      </EnvironmentSection>
+                      <EnvironmentSection title="Secrets">
+                        <SecretsBody
+                          slug={fn.id}
+                          scope={scope}
+                          readOnly={readOnly}
+                          header={(actions) => (
+                            <SectionHeading
+                              title="Secrets"
+                              help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
+                              actions={actions}
+                            />
+                          )}
                         />
+                      </EnvironmentSection>
+                      {/* Config history is production's revisions. */}
+                      {!scope && (
+                        <EnvironmentSection title="History">
+                          <SectionHeading
+                            title="History"
+                            help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
+                          />
+                          <ConfigHistory slug={fn.id} />
+                        </EnvironmentSection>
                       )}
-                    />
-                  </EnvironmentSection>
-                  <EnvironmentSection title="History">
-                    <SectionHeading
-                      title="History"
-                      help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
-                    />
-                    <ConfigHistory slug={fn.id} />
-                  </EnvironmentSection>
-                </>
+                    </>
+                  )}
+                </EnvironmentValuesGate>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Realtime' && (

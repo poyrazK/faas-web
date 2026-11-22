@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useRouterState, type SearchMiddleware } from '@tanstack/react-router';
 import {
+  useEnvironmentState,
   useProjectEnvironments,
   validEnvironment,
   type ProjectEnvironment,
@@ -121,5 +122,72 @@ export function useEnvironmentScope(): EnvironmentScope {
       isError: query.isError,
       refetch: () => void query.refetch(),
     },
+  };
+}
+
+export interface AppEnvironment {
+  /** The scope to send: undefined in production (today's requests). */
+  scope: string | undefined;
+  name: string;
+  kind: EnvironmentKind;
+  /** Whether the environment lists this app at all; null while unknown; always true in production. */
+  present: boolean | null;
+  /** Whether the app has a release there; null while unknown; always true in production. */
+  deployed: boolean | null;
+  /** True for a protected non-production environment: read-only in the console. */
+  readOnly: boolean;
+  /** The environment's state could not be read. */
+  failed: boolean;
+  /** The URL names an environment this project doesn't have. */
+  unavailable: boolean;
+  retry: () => void;
+}
+
+const PRODUCTION_APP: AppEnvironment = {
+  scope: undefined,
+  name: 'Production',
+  kind: 'production',
+  present: true,
+  deployed: true,
+  readOnly: false,
+  failed: false,
+  unavailable: false,
+  retry: () => undefined,
+};
+
+/**
+ * One app's place in the environment in force: the scope its values are read
+ * and written under, whether the environment lists it and has deployed it,
+ * and whether the console may edit it there. Presence, deployment and
+ * protection all come from the one environment-state read, so they arrive
+ * together. Where environments don't apply, or in production, it is exactly
+ * today: no scope, present, editable.
+ */
+export function useAppEnvironment(slug: string): AppEnvironment {
+  const env = useEnvironmentScope();
+  const { project } = useProjectScope();
+  const { account } = useAuth();
+  const staged = env.applies && env.environment !== 'production';
+  const unavailable = staged && env.available === false;
+  const state = useEnvironmentState(
+    staged && !unavailable ? (account?.id ?? '') : '',
+    staged && !unavailable ? (project ?? '') : '',
+    staged && !unavailable ? env.environment : ''
+  );
+  if (!staged) return PRODUCTION_APP;
+  const data = state.data?.environment === env.environment ? state.data : undefined;
+  // faas lists every project app in an environment's state; one it never
+  // deployed there has `release.status: 'not_deployed'`.
+  const workload = data?.workloads.find((w) => w.workload_slug === slug);
+  return {
+    scope: env.environment,
+    name: env.name,
+    kind: env.kind,
+    present: data ? Boolean(workload) : null,
+    deployed: workload ? workload.release.status !== 'not_deployed' : data ? false : null,
+    readOnly: Boolean(data?.protected),
+    failed: !unavailable && state.isError,
+    unavailable,
+    retry: () => void state.refetch(),
   };
 }

@@ -16,7 +16,16 @@ import {
 import { useAuth } from '@/lib/auth';
 
 /** `framed={false}` drops the panel, for use inside a sheet that has its own title. */
-export function EnvTransferPanel({ slug, framed = true }: { slug: string; framed?: boolean }) {
+export function EnvTransferPanel({
+  slug,
+  framed = true,
+  scope,
+}: {
+  slug: string;
+  framed?: boolean;
+  /** Starts the import in this environment's scope instead of `default`. */
+  scope?: string;
+}) {
   const { account } = useAuth();
   if (!account?.id)
     return (
@@ -30,6 +39,7 @@ export function EnvTransferPanel({ slug, framed = true }: { slug: string; framed
       slug={slug}
       accountId={account.id}
       framed={framed}
+      initialScope={scope}
     />
   );
 }
@@ -38,14 +48,16 @@ function EnvTransferBody({
   slug,
   accountId,
   framed,
+  initialScope,
 }: {
   slug: string;
   accountId: string;
   framed: boolean;
+  initialScope?: string;
 }) {
   const confirm = useConfirm();
   const client = useQueryClient();
-  const [scope, setScope] = useState('default');
+  const [scope, setScope] = useState(initialScope ?? 'default');
   const [text, setText] = useState('');
   const [reviewed, setReviewed] = useState(false);
   const [pending, setPending] = useState(false);
