@@ -12,6 +12,15 @@ export type PublicStatusUpdate = S['PublicStatusUpdate'];
 export type PublicStatusEvent = S['PublicStatusEvent'];
 export type PublicStatusOverview = S['PublicStatusOverview'];
 
+export const PUBLIC_STATUS_LABELS: Record<PublicStatusState, string> = {
+  operational: 'All systems operational',
+  maintenance: 'Maintenance in progress',
+  degraded: 'Degraded performance',
+  partial_outage: 'Partial outage',
+  major_outage: 'Major outage',
+  unknown: 'Status unavailable',
+};
+
 export function statusRefetchInterval(): 30000 | false {
   if (typeof document === 'undefined' || document.visibilityState !== 'visible') return false;
   return 30_000;
@@ -26,9 +35,10 @@ export const getPublicStatusIncident = (id: string) =>
     })
   );
 
-export function usePublicStatus() {
+export function usePublicStatus(enabled = true) {
   return useQuery({
     queryKey: ['public-status'],
+    enabled,
     queryFn: getPublicStatus,
     staleTime: 15_000,
     retry: false,

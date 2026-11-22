@@ -2,12 +2,13 @@ import { CheckCircle, Clock, HelpCircle, NavArrowRight, WarningTriangle } from '
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import type {
-  PublicStatusComponent,
-  PublicStatusDaily,
-  PublicStatusEvent,
-  PublicStatusOverview,
-  PublicStatusState,
+import {
+  PUBLIC_STATUS_LABELS,
+  type PublicStatusComponent,
+  type PublicStatusDaily,
+  type PublicStatusEvent,
+  type PublicStatusOverview,
+  type PublicStatusState,
 } from '@/lib/api/status';
 
 const stateLabels: Record<PublicStatusState, string> = {
@@ -23,15 +24,6 @@ const stateLabels: Record<PublicStatusState, string> = {
 const dayLabels: Record<PublicStatusDaily['status'], string> = {
   ...stateLabels,
   pre_release: 'Before launch',
-};
-
-const overallLabels: Record<PublicStatusState, string> = {
-  operational: 'All systems operational',
-  maintenance: 'Maintenance in progress',
-  degraded: 'Degraded performance',
-  partial_outage: 'Partial outage',
-  major_outage: 'Major outage',
-  unknown: 'Status unavailable',
 };
 
 const componentLabels: Record<string, string> = {
@@ -102,7 +94,7 @@ export function StatusOverview({
           </div>
           <div className="status-overall-copy">
             <p>Current platform status</p>
-            <h1>{overallLabels[snapshot.overall_status]}</h1>
+            <h1>{PUBLIC_STATUS_LABELS[snapshot.overall_status]}</h1>
           </div>
           <div className="status-freshness">
             <strong>{dataStatusLabel(snapshot.data_status)}</strong>
