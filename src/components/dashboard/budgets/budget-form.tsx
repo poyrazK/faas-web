@@ -7,13 +7,16 @@ import { usePreviewBudget } from '@/lib/api/budgets';
 import { useProjectEnvironments, useProjects } from '@/lib/api/projects';
 import { useApps, useJobs } from '@/lib/api/queries';
 import {
+  COMPUTE_BUDGET_RATE,
   LEVELS,
   METERS,
   SCOPE_KINDS,
+  budgetDraftUnit,
   draftErrors,
   draftFromSpec,
   emptyDraft,
   specFromDraft,
+  updateBudgetDraft,
   type Budget,
   type BudgetDraft,
   type BudgetLevel,
@@ -22,6 +25,7 @@ import {
   type DraftField,
   type ScopeKind,
 } from '@/lib/budgets';
+import { formatMillicentRate } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { InlinePhase, queryPhase } from '../primitives';
 import { ProblemHelp } from '../problem-help';
@@ -183,7 +187,7 @@ export function BudgetForm({
   const errors = draftErrors(draft);
   const shown = (field: DraftField) => (attempted ? errors[field] : undefined);
   const set = (patch: Partial<BudgetDraft>) => {
-    setDraft((prev) => ({ ...prev, ...patch }));
+    setDraft((prev) => updateBudgetDraft(prev, patch));
     setFailure(null);
   };
   // What would be saved, as if turned on: a preview of a draft would select
@@ -247,6 +251,7 @@ export function BudgetForm({
   };
 
   const level = draft.level;
+  const limitUnit = budgetDraftUnit(draft);
   const account = draft.scopeKind === 'account';
 
   return (
@@ -356,7 +361,7 @@ export function BudgetForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor={`${formId}-limit`} className={LABEL}>
-            Limit (USD a month)
+            Limit ({limitUnit} a month)
           </label>
           <input
             id={`${formId}-limit`}
@@ -381,7 +386,7 @@ export function BudgetForm({
         {level !== 'strict' && (
           <div className="flex min-w-0 flex-col gap-1.5">
             <label htmlFor={`${formId}-thresholds`} className={LABEL}>
-              Earlier alerts (USD, optional)
+              Earlier alerts ({limitUnit}, optional)
             </label>
             <input
               id={`${formId}-thresholds`}
@@ -401,6 +406,13 @@ export function BudgetForm({
           </div>
         )}
       </div>
+
+      {limitUnit === 'GB-hours' && (
+        <p className={HINT}>
+          Converted at {formatMillicentRate(COMPUTE_BUDGET_RATE)} per GB-hour and saved as a USD
+          budget.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {level === 'alert' && (

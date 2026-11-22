@@ -1,6 +1,7 @@
 import type { components } from './api/schema';
 import { ApiError, errorMessage } from './api/errors';
-import { ACCOUNT_CURRENCY, formatMillicents, parseUsdMillicents } from './money';
+import { ACCOUNT_CURRENCY, formatMillicentRate } from './money';
+import { PLAN_CATALOG } from './plan-catalog';
 
 /**
  * Budgets (faas ADR-566, ADR-1750, ADR-20261019193500; docs/billing.md
@@ -36,6 +37,49 @@ export type BudgetRevision = S['FinancialBudgetRevisionResponse'];
 export type ScopeKind = BudgetSpec['scope']['kind'];
 export type Meter = BudgetSpec['meters'][number];
 export type BudgetLevel = 'alert' | 'stop-previews' | 'strict';
+export type BudgetUnit = 'GB-hours' | 'USD';
+
+const MILLICENTS_PER_DOLLAR = 100_000n;
+// The budget API stores money. The catalog rate provides a compute equivalent.
+export const COMPUTE_BUDGET_RATE = Math.round(
+  PLAN_CATALOG.overagePerGbHour * Number(MILLICENTS_PER_DOLLAR)
+);
+
+export function budgetUnit(meters: readonly Meter[]): BudgetUnit {
+  return meters.length === 1 && meters[0] === 'compute' ? 'GB-hours' : 'USD';
+}
+
+const amountRate = (unit: BudgetUnit) =>
+  unit === 'GB-hours' ? BigInt(COMPUTE_BUDGET_RATE) : MILLICENTS_PER_DOLLAR;
+
+function parseBudgetAmount(text: string, unit: BudgetUnit): number | undefined {
+  const input = unit === 'USD' ? text.trim().replace(/^\$/, '') : text.trim();
+  const match = /^(\d{1,16})(?:\.(\d{1,5}))?$/.exec(input);
+  if (!match) return undefined;
+  const scaled = BigInt(match[1] + (match[2] ?? '').padEnd(5, '0'));
+  const product = scaled * amountRate(unit);
+  const value = Number((product + MILLICENTS_PER_DOLLAR / 2n) / MILLICENTS_PER_DOLLAR);
+  if (!Number.isSafeInteger(value) || (scaled > 0n && value === 0)) return undefined;
+  return value;
+}
+
+function amountText(millicents: number, unit: BudgetUnit): string {
+  const rate = amountRate(unit);
+  const sign = millicents < 0 ? '-' : '';
+  const scaled = (BigInt(Math.abs(millicents)) * MILLICENTS_PER_DOLLAR + rate / 2n) / rate;
+  const whole = scaled / MILLICENTS_PER_DOLLAR;
+  const fraction = String(scaled % MILLICENTS_PER_DOLLAR)
+    .padStart(5, '0')
+    .replace(/0+$/, '');
+  return sign + (fraction ? whole + '.' + fraction : String(whole));
+}
+
+export function formatBudgetAmount(millicents: number, unit: BudgetUnit): string {
+  if (unit === 'USD') return formatMillicentRate(millicents);
+  const [whole, fraction] = amountText(millicents, unit).split('.');
+  const grouped = whole.replace(/\B(?=(?:\d{3})+$)/g, ',');
+  return grouped + (fraction ? '.' + fraction : '') + ' GB-hours';
+}
 
 export const SCOPE_KINDS: { kind: ScopeKind; label: string }[] = [
   { kind: 'account', label: 'Whole account' },
@@ -118,9 +162,9 @@ export interface BudgetDraft {
   level: BudgetLevel;
   scopeKind: ScopeKind;
   scopeId: string;
-  /** USD, as typed. */
+  /** Amount as typed, in the unit of the effective meters. */
   limit: string;
-  /** USD amounts, comma separated, as typed. Ignored on a strict cap. */
+  /** Amounts in the same unit as the limit, comma separated. */
   thresholds: string;
   meters: Meter[];
   basis: BudgetSpec['basis'];
@@ -145,25 +189,52 @@ export function emptyDraft(): BudgetDraft {
   };
 }
 
-/** Millicents as the dollars a person would type back: "10", "8.50". */
-function dollarsText(millicents: number): string {
-  // A sub-cent amount (written through the API) is shown as is; the form then
-  // asks for whole cents rather than silently rounding it.
-  if (millicents % 1000 !== 0) return String(millicents / 100_000);
-  const cents = millicents / 1000;
-  const whole = Math.floor(cents / 100);
-  return cents % 100 ? `${whole}.${String(cents % 100).padStart(2, '0')}` : String(whole);
+function draftMeters(draft: BudgetDraft): Meter[] {
+  if (draft.level === 'stop-previews') return ['compute'];
+  if (draft.level === 'strict')
+    return draft.scopeKind === 'account' && draft.meters.includes('egress')
+      ? ['compute', 'egress']
+      : ['compute'];
+
+  // Storage costs have account attribution only.
+  return METERS.map(({ meter }) => meter).filter(
+    (meter) =>
+      draft.meters.includes(meter) && (meter !== 'object_storage' || draft.scopeKind === 'account')
+  );
+}
+
+export const budgetDraftUnit = (draft: BudgetDraft) => budgetUnit(draftMeters(draft));
+
+/** Preserve budget amounts when a meter or response changes the unit. */
+export function updateBudgetDraft(draft: BudgetDraft, patch: Partial<BudgetDraft>): BudgetDraft {
+  const next = { ...draft, ...patch };
+  const from = budgetDraftUnit(draft);
+  const to = budgetDraftUnit(next);
+  if (from === to) return next;
+
+  function convert(text: string) {
+    const millicents = parseBudgetAmount(text, from);
+    if (millicents !== undefined) return amountText(millicents, to);
+    return parseBudgetAmount(text, to) === undefined ? text.trim() : text.trim() + ' ' + from;
+  }
+
+  return {
+    ...next,
+    limit: convert(next.limit),
+    thresholds: next.thresholds.split(',').map(convert).join(', '),
+  };
 }
 
 export function draftFromSpec(spec: BudgetSpec): BudgetDraft {
   const level = budgetLevel(spec);
+  const unit = budgetUnit(spec.meters);
   return {
     name: spec.name,
     level: level === 'api' ? 'alert' : level,
     scopeKind: spec.scope.kind,
     scopeId: spec.scope.id ?? '',
-    limit: dollarsText(spec.limit_millicents),
-    thresholds: spec.notify_millicents.map(dollarsText).join(', '),
+    limit: amountText(spec.limit_millicents, unit),
+    thresholds: spec.notify_millicents.map((amount) => amountText(amount, unit)).join(', '),
     meters: [...spec.meters],
     basis: spec.basis,
     drainSeconds: String(spec.drain_seconds),
@@ -172,12 +243,12 @@ export function draftFromSpec(spec: BudgetSpec): BudgetDraft {
   };
 }
 
-function parseThresholds(text: string): number[] | undefined {
+function parseThresholds(text: string, unit: BudgetUnit): number[] | undefined {
   const parts = text
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-  const amounts = parts.map(parseUsdMillicents);
+  const amounts = parts.map((part) => parseBudgetAmount(part, unit));
   return amounts.every((amount): amount is number => amount !== undefined) ? amounts : undefined;
 }
 
@@ -187,23 +258,24 @@ export function specFromDraft(draft: BudgetDraft): BudgetSpec {
     draft.scopeKind === 'account'
       ? { kind: draft.scopeKind }
       : { kind: draft.scopeKind, id: draft.scopeId };
+  const meters = draftMeters(draft);
+  const unit = budgetUnit(meters);
   const base = {
     name: draft.name.trim(),
+    meters,
     scope,
     // New writes are USD only (FinancialBudgetSpec.currency).
     currency: ACCOUNT_CURRENCY,
-    limit_millicents: parseUsdMillicents(draft.limit) ?? 0,
+    limit_millicents: parseBudgetAmount(draft.limit, unit) ?? 0,
     resume_rule: draft.resumeRule,
     enabled: draft.enabled,
   } as const;
-  const order = METERS.map((m) => m.meter);
   if (draft.level === 'strict') {
     const account = draft.scopeKind === 'account';
     return {
       ...base,
       // Strict account budgets may add egress under the same paid limit; a
       // resource cap covers compute alone, on gross usage (budget.go:94-107).
-      meters: account && draft.meters.includes('egress') ? ['compute', 'egress'] : ['compute'],
       basis: account ? 'net_usage' : 'gross_usage',
       notify_millicents: [],
       mode: 'strict',
@@ -211,26 +283,18 @@ export function specFromDraft(draft: BudgetDraft): BudgetSpec {
       drain_seconds: 0,
     };
   }
-  const thresholds = parseThresholds(draft.thresholds) ?? [];
+  const thresholds = parseThresholds(draft.thresholds, unit) ?? [];
   if (draft.level === 'stop-previews')
     return {
       ...base,
-      meters: ['compute'],
       basis: draft.basis,
       notify_millicents: thresholds,
       mode: 'monitored',
       action: 'stop_previews',
       drain_seconds: Number(draft.drainSeconds) || 0,
     };
-  // Object storage carries no app, job, project or environment attribution
-  // (ADR-20261020160000), so only an account budget may count it.
-  const meters = order.filter(
-    (meter) =>
-      draft.meters.includes(meter) && (meter !== 'object_storage' || draft.scopeKind === 'account')
-  );
   return {
     ...base,
-    meters,
     basis: draft.basis,
     notify_millicents: thresholds,
     mode: 'monitored',
@@ -252,19 +316,25 @@ export function draftErrors(draft: BudgetDraft): Partial<Record<DraftField, stri
     errors.scope = 'A job has no previews to stop. Choose another scope or Alert.';
   else if (draft.scopeKind !== 'account' && !draft.scopeId)
     errors.scope = `Choose the ${draft.scopeKind} this budget covers.`;
-  const limit = parseUsdMillicents(draft.limit);
-  if (limit === undefined) errors.limit = 'Enter whole dollars and cents, such as 25 or 25.50.';
+  const meters = draftMeters(draft);
+  const unit = budgetUnit(meters);
+  const limit = parseBudgetAmount(draft.limit, unit);
+  if (limit === undefined)
+    errors.limit =
+      unit === 'GB-hours'
+        ? 'Enter GB-hours as a number, such as 25 or 25.5.'
+        : 'Enter a dollar amount, such as 25 or 25.50.';
   if (draft.level !== 'strict') {
-    const thresholds = parseThresholds(draft.thresholds);
-    if (!thresholds) errors.thresholds = 'Enter dollar amounts separated by commas, such as 5, 8.';
+    const thresholds = parseThresholds(draft.thresholds, unit);
+    if (!thresholds)
+      errors.thresholds = 'Enter ' + unit + ' amounts separated by commas, such as 5, 8.';
     else if (thresholds.length > BUDGET_LIMITS.thresholds)
       errors.thresholds = `At most ${BUDGET_LIMITS.thresholds} thresholds.`;
     else if (thresholds.some((t, i) => i > 0 && t <= thresholds[i - 1]))
       errors.thresholds = 'Each threshold must increase on the one before it.';
     else if (limit !== undefined && thresholds.some((t) => t > limit))
       errors.thresholds = 'Thresholds must be at or below the limit.';
-    if (draft.level === 'alert' && !draft.meters.length)
-      errors.meters = 'Choose at least one meter.';
+    if (draft.level === 'alert' && !meters.length) errors.meters = 'Choose at least one meter.';
   }
   if (draft.level === 'stop-previews') {
     const drain = Number(draft.drainSeconds);
@@ -422,7 +492,7 @@ export function stopSummary(
   scopeLabel: string,
   preview: Pick<BudgetPreview, 'targets' | 'continuing_targets'> | undefined
 ): string {
-  const limit = formatMillicents(spec.limit_millicents);
+  const limit = formatBudgetAmount(spec.limit_millicents, budgetUnit(spec.meters));
   const strict = spec.mode === 'strict';
   const release =
     spec.resume_rule === 'next_period'
