@@ -43,9 +43,9 @@ interface EnvRow {
  * has and, from each secret's delivery status, whether the app has started
  * with the newest values. Shares its reads with the two bodies below it.
  */
-export function EnvironmentSummary({ slug }: { slug: string }) {
-  const env = useAppEnv(slug);
-  const secrets = useAppSecrets(slug);
+export function EnvironmentSummary({ slug, scope }: { slug: string; scope?: string }) {
+  const env = useAppEnv(slug, scope);
+  const secrets = useAppSecrets(slug, scope);
   if (env.isPending && secrets.isPending)
     return (
       <section
@@ -93,16 +93,22 @@ const ownRow = (actions: ReactNode) => <div className="flex justify-end gap-2">{
 export function EnvBody({
   slug,
   header,
+  scope,
+  readOnly = false,
 }: {
   slug: string;
   header?: (actions: ReactNode) => ReactNode;
+  /** The environment the values belong to; undefined is production (today's requests). */
+  scope?: string;
+  /** A protected environment: values are shown, nothing can be changed. */
+  readOnly?: boolean;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { copy } = useCopy();
-  const { data, isPending, error, refetch } = useAppEnv(slug);
-  const setEnv = useSetEnv(slug);
-  const deleteEnv = useDeleteEnv(slug);
+  const { data, isPending, error, refetch } = useAppEnv(slug, scope);
+  const setEnv = useSetEnv(slug, scope);
+  const deleteEnv = useDeleteEnv(slug, scope);
 
   // `null` is closed; `''` adds a new variable; a name changes that one.
   const [editing, setEditing] = useState<string | null>(null);
@@ -176,16 +182,18 @@ export function EnvBody({
   return (
     <div className="flex flex-col gap-3">
       {(header ?? ownRow)(
-        <>
-          <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-            <Upload className="h-3.5 w-3.5" />
-            Import .env
-          </Button>
-          <Button size="sm" onClick={() => open('')}>
-            <Plus className="h-3.5 w-3.5" />
-            Add variable
-          </Button>
-        </>
+        readOnly ? null : (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              <Upload className="h-3.5 w-3.5" />
+              Import .env
+            </Button>
+            <Button size="sm" onClick={() => open('')}>
+              <Plus className="h-3.5 w-3.5" />
+              Add variable
+            </Button>
+          </>
+        )
       )}
       {!error && !isPending && <Lead>{variablesLead(rows.length, data?.quota_max)}</Lead>}
       <Sheet
@@ -265,7 +273,7 @@ export function EnvBody({
         size="lg"
       >
         <p className="mb-4 text-xs text-muted-foreground">Credentials belong in Secrets.</p>
-        <EnvTransferPanel key={slug} slug={slug} framed={false} />
+        <EnvTransferPanel key={slug} slug={slug} framed={false} scope={scope} />
       </Sheet>
 
       <ResourceTable
@@ -279,50 +287,58 @@ export function EnvBody({
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
-        rowActions={(v) => (
-          <RowMenu label={`Actions for ${v.key}`}>
-            <DropdownMenuItem onSelect={() => open(v.key)}>
-              <EditPencil aria-hidden="true" className="size-4" />
-              Change value
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() =>
-                void copy(v.key).then((ok) =>
-                  toast(
-                    ok
-                      ? { kind: 'success', title: `Copied ${v.key}` }
-                      : { kind: 'error', title: 'Could not copy the name' }
-                  )
-                )
-              }
-            >
-              <Copy aria-hidden="true" className="size-4" />
-              Copy name
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className={DANGER_ITEM} onSelect={() => void remove(v.key)}>
-              <Trash aria-hidden="true" className="size-4" />
-              Delete variable
-            </DropdownMenuItem>
-          </RowMenu>
-        )}
+        rowActions={
+          readOnly
+            ? undefined
+            : (v) => (
+                <RowMenu label={`Actions for ${v.key}`}>
+                  <DropdownMenuItem onSelect={() => open(v.key)}>
+                    <EditPencil aria-hidden="true" className="size-4" />
+                    Change value
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void copy(v.key).then((ok) =>
+                        toast(
+                          ok
+                            ? { kind: 'success', title: `Copied ${v.key}` }
+                            : { kind: 'error', title: 'Could not copy the name' }
+                        )
+                      )
+                    }
+                  >
+                    <Copy aria-hidden="true" className="size-4" />
+                    Copy name
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className={DANGER_ITEM} onSelect={() => void remove(v.key)}>
+                    <Trash aria-hidden="true" className="size-4" />
+                    Delete variable
+                  </DropdownMenuItem>
+                </RowMenu>
+              )
+        }
       />
 
-      <div className="flex flex-col gap-3">
-        <button
-          type="button"
-          aria-expanded={comparing}
-          onClick={() => setComparing((v) => !v)}
-          className="pressable inline-flex w-fit items-center gap-1 rounded text-[13px] text-muted-foreground hover:text-foreground"
-        >
-          <NavArrowDown
-            aria-hidden="true"
-            className={cn('size-3.5 transition-transform', comparing && 'rotate-180')}
-          />
-          {comparing ? 'Hide the comparison' : 'Compare with other environments'}
-        </button>
-        {comparing && <EnvDiffPanel slug={slug} />}
-      </div>
+      {/* The comparison reads production's scopes (env-diff takes no
+          environment), so it is offered only there. */}
+      {!scope && (
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            aria-expanded={comparing}
+            onClick={() => setComparing((v) => !v)}
+            className="pressable inline-flex w-fit items-center gap-1 rounded text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <NavArrowDown
+              aria-hidden="true"
+              className={cn('size-3.5 transition-transform', comparing && 'rotate-180')}
+            />
+            {comparing ? 'Hide the comparison' : 'Compare with other environments'}
+          </button>
+          {comparing && <EnvDiffPanel slug={slug} />}
+        </div>
+      )}
     </div>
   );
 }

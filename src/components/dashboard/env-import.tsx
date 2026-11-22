@@ -28,14 +28,17 @@ export function EnvImportButton({
   slug,
   existingKeys,
   onChanged,
+  scope,
 }: {
   slug: string;
   existingKeys: string[];
+  /** The environment the imported secrets belong to; undefined is production. */
+  scope?: string;
   /** Called once an import has written at least one value. */
   onChanged?: () => void;
 }) {
   const { toast } = useToast();
-  const setSecret = useSetSecret(slug);
+  const setSecret = useSetSecret(slug, scope);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [open, setOpen] = useState(false);
