@@ -44,19 +44,21 @@ export type Verdict = { tone: Tone; label: string } | null;
 /**
  * A count's change across equal groups of complete hours (`compareRequestHalves`).
  * Within ±15% reads as steady. Latency and rates get no before/after verdict.
+ * "No failures" is decided by the window's total, never by the halves: they
+ * leave out the current partial hour, where an incident shows up first.
  */
 export function countVerdict(
   metric: DetailMetric,
-  comparison: { before: number; after: number; delta: number | null } | null
+  comparison: { before: number; after: number; delta: number | null } | null,
+  total?: number | null
 ): Verdict {
-  if (!comparison) return null;
   const errors = metric === 'errors';
-  if (errors && comparison.before === 0 && comparison.after === 0)
-    return { tone: 'good', label: 'No failures' };
-  if (!['requests', 'errors', 'cold_boots'].includes(metric) || comparison.delta === null)
-    return null;
-  if (Math.abs(comparison.delta) < 15)
-    return { tone: errors ? 'good' : 'neutral', label: 'Steady' };
+  if (errors && total === 0) return { tone: 'good', label: 'No failures' };
+  if (!comparison || !['requests', 'errors', 'cold_boots'].includes(metric)) return null;
+  if (errors && comparison.before === 0 && comparison.after > 0)
+    return { tone: 'warning', label: 'New failures' };
+  if (comparison.delta === null) return null;
+  if (Math.abs(comparison.delta) < 15) return { tone: 'neutral', label: 'Steady' };
   const up = comparison.delta > 0;
   if (errors)
     return up
@@ -92,7 +94,7 @@ export function busiestHour(
   return best && best.value > 0 ? best : null;
 }
 
-const DEBUG_WINDOW = (since: string): NonNullable<DebugSearch['debugWindow']> => {
+export const DEBUG_WINDOW = (since: string): NonNullable<DebugSearch['debugWindow']> => {
   const m = minutes(since);
   if (!m) return '24h';
   if (m <= 60) return '1h';
@@ -120,14 +122,19 @@ export function debuggerSearch(metric: DetailMetric, since: string, route?: stri
   };
 }
 
-/** The action's words for that same view. */
-export function debuggerLabel(metric: DetailMetric): string {
-  const filter = debuggerSearch(metric, '24h').debugFilter;
-  return filter === 'failed'
-    ? 'See failed requests'
-    : filter === 'slow'
-      ? 'See slow requests'
-      : filter === 'cold'
-        ? 'See requests that woke the app'
-        : 'See these requests';
+/**
+ * The action's words for that same view. The Debugger looks back 3 days at
+ * most, so a longer window says so rather than implying all of it.
+ */
+export function debuggerLabel(metric: DetailMetric, since = '24h'): string {
+  const filter = debuggerSearch(metric, since).debugFilter;
+  const words =
+    filter === 'failed'
+      ? 'See failed requests'
+      : filter === 'slow'
+        ? 'See slow requests'
+        : filter === 'cold'
+          ? 'See requests that woke the app'
+          : 'See these requests';
+  return minutes(since) > 4320 ? `${words} from the last 3 days` : words;
 }

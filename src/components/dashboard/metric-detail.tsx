@@ -220,7 +220,7 @@ function AppDetail({
   const group = route ? 'route' : (request.group ?? 'route');
   const series = useAppAnalyticsTimeseries(app, since, { until, route, method, groupBy: group });
   const summary = useAppAnalytics(app, since, group, until);
-  const [picked, setPicked] = useState<{ window: string; index: number } | null>(null);
+  const [picked, setPicked] = useState<{ window: string; start: string } | null>(null);
   const seriesPhase = queryPhase({ error: series.error, loading: series.isPending });
   const summaryPhase = queryPhase({ error: summary.error, loading: summary.isPending });
   const data = summaryPhase === 'ready' ? summary.data : undefined;
@@ -248,17 +248,21 @@ function AppDetail({
     metric === 'error_rate'
       ? rateVerdict(requests ? value : null)
       : COUNT_METRICS.includes(metric)
-        ? countVerdict(metric, comparison)
+        ? countVerdict(metric, comparison, value)
         : null;
   const peak = busiestHour(metric, points);
   const hasSample = points.some((point) => point.requests > 0);
   // A pick belongs to the window it was made in.
-  const windowKey = `${since}|${until ?? ''}|${route ?? ''}`;
-  const pickedIndex = picked?.window === windowKey ? picked.index : null;
-  const pickedPoint = pickedIndex == null ? undefined : points[pickedIndex];
+  // Stored by hour, not index: a live window shifts its points as hours roll over.
+  const windowKey = `${since}|${until ?? ''}|${method ?? ''} ${route ?? ''}`;
+  const pickedIndex =
+    picked?.window === windowKey ? points.findIndex((point) => point.start === picked.start) : -1;
+  const pickedPoint = pickedIndex < 0 ? undefined : points[pickedIndex];
 
   const sentence: ReactNode[] = [];
-  if (summaryPhase === 'ready' && !requests) sentence.push('No requests in this window.');
+  // A focused route outside the top groups has no window total: unknown, not zero.
+  if (summaryPhase === 'ready' && aggregate && !requests)
+    sentence.push('No requests in this window.');
   else if (metric === 'error_rate' && aggregate)
     sentence.push(`${count(aggregate.error_requests)} of ${count(requests)} requests failed.`);
   else if (metric === 'cold_rate' && aggregate)
@@ -276,7 +280,7 @@ function AppDetail({
                 : 'down from'
           } ${count(comparison.before)} before.`
     );
-  if (peak && requests)
+  if (peak)
     sentence.push(
       ` ${PEAK[metric]}: ${utcLabel(peak.start)} UTC, ${metricValue(metric, peak.value)}${
         COUNT_METRICS.includes(metric) ? ' that hour' : ''
@@ -366,23 +370,24 @@ function AppDetail({
                 }}
                 format={(n) => metricValue(metric, n, true)}
                 marked={peak ? { index: peak.index, label: PEAK[metric] ?? 'Peak' } : undefined}
-                picked={pickedIndex}
-                onPick={(index) => setPicked({ window: windowKey, index })}
+                picked={pickedIndex < 0 ? null : pickedIndex}
+                onPick={(index) =>
+                  points[index] && setPicked({ window: windowKey, start: points[index].start })
+                }
                 className="h-56 sm:h-64"
               />
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>Hours in UTC. Pick an hour to see it.</span>
               </div>
               {pickedPoint && (
-                <p
-                  role="status"
-                  className="well mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2 text-xs"
-                >
-                  <span>
+                <div className="well mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/40 px-3 py-2 text-xs">
+                  <p role="status">
                     {utcLabel(pickedPoint.start)} UTC · {count(pickedPoint.requests)} requests ·{' '}
                     {count(pickedPoint.error_requests)} failed
-                    {pickedPoint.requests ? ` · p95 ${metricValue('p95', pickedPoint.p95_ms)}` : ''}
-                  </span>
+                    {pickedPoint.requests
+                      ? ` · 95% answered within ${metricValue('p95', pickedPoint.p95_ms)}`
+                      : ''}
+                  </p>
                   <button
                     type="button"
                     className="text-muted-foreground underline hover:text-foreground"
@@ -390,7 +395,7 @@ function AppDetail({
                   >
                     Clear
                   </button>
-                </p>
+                </div>
               )}
             </>
           )}
@@ -432,7 +437,7 @@ function AppDetail({
               error={summary.error}
               onRetry={() => void summary.refetch()}
             />
-          ) : (
+          ) : route && !aggregate ? null : (
             <AnalyticsBreakdown
               rows={groups}
               label={SOURCES_TITLE[metric] ?? 'Breakdown'}
@@ -503,10 +508,7 @@ function Details({
       onToggle={(event) => setOpen(event.currentTarget.open)}
       className="min-w-0 flex-1 text-xs"
     >
-      <summary
-        tabIndex={0}
-        className="cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"
-      >
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand">
         Exact window and hourly numbers
       </summary>
       {open && (
@@ -800,14 +802,14 @@ function ResourceDetail({ metric }: { metric: DetailMetric }) {
         ? 'You have more instances than one page holds, so the full total isn’t available here.'
         : `Held by ${resident.length} running ${resident.length === 1 ? 'instance' : 'instances'} right now. Sleeping apps hold none.`
       : metric === 'cpu'
-        ? 'CPU time your apps used this month. It’s measured, not billed.'
+        ? 'CPU time your apps used this billing period. It’s measured, not billed.'
         : !data
           ? null
           : over
-            ? `You’ve used ${gbh(data.used_gb_hours)} GB-hours this month, past the ${gbh(data.included_gb_hours ?? 0)} included.`
+            ? `You’ve used ${gbh(data.used_gb_hours)} GB-hours this billing period, past the ${gbh(data.included_gb_hours ?? 0)} included.`
             : left != null
-              ? `${gbh(data.used_gb_hours)} of ${gbh(data.included_gb_hours!)} GB-hours used this month. A GB-hour is 1 GB of memory running for an hour.`
-              : 'GB-hours used this month. A GB-hour is 1 GB of memory running for an hour.';
+              ? `${gbh(data.used_gb_hours)} of ${gbh(data.included_gb_hours!)} GB-hours used this billing period. A GB-hour is 1 GB of memory running for an hour.`
+              : 'GB-hours used this billing period. A GB-hour is 1 GB of memory running for an hour.';
   return (
     <div className="flex flex-col gap-5">
       <Answer
@@ -823,12 +825,16 @@ function ResourceDetail({ metric }: { metric: DetailMetric }) {
       {phase !== 'ready' && (
         <InlinePhase phase={phase} error={query.error} onRetry={() => void query.refetch()} />
       )}
-      {metric === 'memory' && phase === 'ready' && !partial && memoryRows.length > 0 && (
-        <section aria-label="Apps using the most memory">
-          <h3 className="text-sm font-medium">Apps using the most memory</h3>
-          <AnalyticsBreakdown rows={memoryRows} label="Apps using the most memory" />
-        </section>
-      )}
+      {metric === 'memory' &&
+        phase === 'ready' &&
+        apps.isSuccess &&
+        !partial &&
+        memoryRows.length > 0 && (
+          <section aria-label="Apps using the most memory">
+            <h3 className="text-sm font-medium">Apps using the most memory</h3>
+            <AnalyticsBreakdown rows={memoryRows} label="Apps using the most memory" />
+          </section>
+        )}
       <div className="flex justify-end">
         <Button asChild size="sm" variant="outline">
           {metric === 'memory' ? (

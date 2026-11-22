@@ -75,8 +75,18 @@ export function StatCard({
   className?: string;
   children: ReactNode;
 }) {
-  const body = (
-    <>
+  return (
+    <section
+      aria-label={label}
+      title={hint}
+      data-tone={tone}
+      className={cn(
+        'stat-card surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card p-5',
+        onOpen && 'relative transition-colors hover:bg-muted/30',
+        large && 'min-h-36',
+        className
+      )}
+    >
       <h3 className="text-xs text-muted-foreground">{label}</h3>
       <p
         className={cn(
@@ -87,31 +97,14 @@ export function StatCard({
         {children}
       </p>
       {sub != null && <p className="mt-auto pt-3 text-xs text-muted-foreground">{sub}</p>}
-    </>
-  );
-  return (
-    <section
-      aria-label={label}
-      title={hint}
-      data-tone={tone}
-      className={cn(
-        'stat-card surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card',
-        !onOpen && 'p-5',
-        large && 'min-h-36',
-        className
-      )}
-    >
-      {onOpen ? (
+      {onOpen && (
+        // Laid over the card, so the heading and figure stay readable content.
         <button
           type="button"
           onClick={onOpen}
-          aria-label={`See ${label.toLowerCase()} details`}
-          className="pressable flex h-full w-full flex-col rounded-[1.25rem] p-5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-2 focus-visible:outline-brand"
-        >
-          {body}
-        </button>
-      ) : (
-        body
+          aria-label={`See ${label} details`}
+          className="pressable absolute inset-0 rounded-[1.25rem] focus-visible:outline-2 focus-visible:outline-brand"
+        />
       )}
     </section>
   );

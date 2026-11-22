@@ -68,7 +68,13 @@ const summary = {
   groups_truncated: false,
 };
 const request: MetricDetailRequest = { metric: 'requests', app: 'api', since: '24h' };
-const ready = (data: unknown) => ({ data, error: null, isPending: false, refetch: mocks.retry });
+const ready = (data: unknown) => ({
+  data,
+  error: null,
+  isPending: false,
+  isSuccess: true,
+  refetch: mocks.retry,
+});
 
 async function show(ui: React.ReactNode) {
   const view = render(withRouter(ui));
@@ -207,6 +213,8 @@ it('says when history is limited or still counting, without inventing a route to
   expect(screen.getByText(/plan keeps a limited history/)).toBeInTheDocument();
   expect(screen.getByText(/still being counted/)).toBeInTheDocument();
   expect(screen.getByText(/isn’t among the busiest/)).toBeInTheDocument();
+  // Its hours have traffic, so the answer must not claim there were none.
+  expect(screen.queryByText(/No requests in this window/)).not.toBeInTheDocument();
   expect(screen.getByText('—')).toBeInTheDocument();
 });
 

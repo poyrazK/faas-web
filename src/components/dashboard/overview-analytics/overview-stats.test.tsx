@@ -76,12 +76,12 @@ describe('OverviewStats', () => {
     const onInspect = vi.fn();
     await show({ onInspect });
     for (const label of [
-      'total requests',
-      'error rate',
-      'wake p95',
-      'memory now',
-      'gb-h left',
-      'cpu',
+      'Total requests',
+      'Error rate',
+      'Wake p95',
+      'Memory now',
+      'GB-h left',
+      'CPU',
     ])
       await userEvent.click(screen.getByRole('button', { name: `See ${label} details` }));
     expect(onInspect.mock.calls.map(([metric]) => metric)).toEqual([

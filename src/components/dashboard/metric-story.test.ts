@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   busiestHour,
   countVerdict,
+  debuggerLabel,
   debuggerSearch,
   rateVerdict,
   windowLabel,
@@ -59,9 +60,22 @@ describe('verdicts', () => {
       label: 'More failures than earlier',
     });
     expect(countVerdict('errors', comparison(20, 4))?.tone).toBe('good');
-    expect(countVerdict('errors', comparison(0, 0))).toEqual({
+    expect(countVerdict('errors', comparison(0, 0), 0)).toEqual({
       tone: 'good',
       label: 'No failures',
+    });
+    expect(countVerdict('errors', comparison(20, 21))).toEqual({
+      tone: 'neutral',
+      label: 'Steady',
+    });
+  });
+
+  it('never calls failures in the current hour "No failures"', () => {
+    // Both complete halves are clean, but the partial hour has 12 failures.
+    expect(countVerdict('errors', comparison(0, 0), 12)).toBeNull();
+    expect(countVerdict('errors', comparison(0, 7), 7)).toEqual({
+      tone: 'warning',
+      label: 'New failures',
     });
   });
 
@@ -109,5 +123,10 @@ describe('debuggerSearch', () => {
       debugWindow: '6h',
     });
     expect(debuggerSearch('requests', '2026-11-02T00:00:00Z').debugWindow).toBe('24h');
+  });
+
+  it('says when the Debugger covers less than the window', () => {
+    expect(debuggerLabel('errors', '24h')).toBe('See failed requests');
+    expect(debuggerLabel('errors', '7d')).toBe('See failed requests from the last 3 days');
   });
 });

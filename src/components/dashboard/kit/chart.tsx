@@ -113,7 +113,8 @@ export function TimeChart({
     const rect = e.currentTarget.getBoundingClientRect();
     if (!rect.width || data.length < 2) return;
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    setHover(Math.round(ratio * (data.length - 1)));
+    // Steps run from their point to the next, so the step under the pointer is floor().
+    setHover(Math.min(data.length - 1, Math.floor(ratio * (data.length - 1))));
   };
 
   const last = data.length - 1;
@@ -124,7 +125,7 @@ export function TimeChart({
     const rect = e.currentTarget.getBoundingClientRect();
     if (!rect.width || !data.length) return;
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    onPick?.(Math.round(ratio * last));
+    onPick?.(Math.min(last, Math.floor(ratio * last)));
   };
 
   return (
