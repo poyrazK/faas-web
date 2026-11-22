@@ -1,7 +1,12 @@
 import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { AppActionsMenu, RollbackButton } from '@/components/dashboard/app-actions-menu';
+import {
+  AppActionsMenu,
+  DeployLabel,
+  InvokeLabel,
+  RollbackButton,
+} from '@/components/dashboard/app-actions-menu';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
   validateAppAnalyticsSearch,
@@ -129,6 +134,11 @@ import { useData } from '@/lib/store';
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { Play, Rocket } from 'iconoir-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ProductionOnlyBanner,
+  appTabShowsProduction,
+  productionNoun,
+} from '@/components/dashboard/production-only-banner';
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -394,7 +404,7 @@ function FunctionDetailPage() {
           <>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setInvoke(true)}>
               <Play className="h-3.5 w-3.5" />
-              Invoke
+              <InvokeLabel />
             </Button>
             {canRollback && (
               <RollbackButton
@@ -413,7 +423,7 @@ function FunctionDetailPage() {
               }}
             >
               <Rocket className="h-3.5 w-3.5" />
-              {isDeploying ? 'Deploying…' : 'Deploy'}
+              <DeployLabel deploying={isDeploying} />
             </Button>
             <AppActionsMenu app={fn} />
           </>
@@ -455,6 +465,9 @@ function FunctionDetailPage() {
         <Swap id={tab}>
           <TabCapabilityGate capability={tabCapability} title={tab}>
             <div className="flex flex-col gap-6">
+              {/* Outside production, a tab whose API has no environment says
+                  it shows (and changes) production. */}
+              {appTabShowsProduction(tab) && <ProductionOnlyBanner what={productionNoun(tab)} />}
               {tab === 'Automations' && (
                 <AutomationsBody
                   fixedSlug={appSlug}

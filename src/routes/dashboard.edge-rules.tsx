@@ -2,9 +2,10 @@ import { EdgeRulesBody } from '@/components/dashboard/pages/edge-rules';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { consoleHead } from '@/lib/seo';
 import { createFileRoute } from '@tanstack/react-router';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/edge-rules')({
-  component: EdgeRulesPage,
+  component: withProductionBanner('edge rules', EdgeRulesPage),
   head: () => consoleHead('edge-rules'),
 });
 

@@ -3,9 +3,10 @@ import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { consoleHead } from '@/lib/seo';
 import { MirrorsBody } from '@/components/dashboard/pages/mirrors';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/mirrors')({
-  component: MirrorsPage,
+  component: withProductionBanner('mirrors', MirrorsPage),
   head: () => consoleHead('mirrors'),
 });
 

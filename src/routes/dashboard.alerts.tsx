@@ -12,9 +12,10 @@ import { useCapability } from '@/lib/api/capabilities';
 import { consoleHead } from '@/lib/seo';
 import { createFileRoute } from '@tanstack/react-router';
 import { useId } from 'react';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/alerts')({
-  component: AlertsPage,
+  component: withProductionBanner('alerts', AlertsPage),
   head: () => consoleHead('alerts'),
   validateSearch: validateAlertsSearch,
 });

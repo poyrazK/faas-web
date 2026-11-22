@@ -7,9 +7,13 @@ import { validateDebugSearch } from '@/components/dashboard/debug-search';
 import { WakeDrawer } from '@/components/dashboard/wake-drawer';
 import { withCapability } from '@/components/dashboard/capability-gate';
 import { consoleHead } from '@/lib/seo';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/debug')({
-  component: withCapability('debug', 'Debugger', DebugPage),
+  component: withProductionBanner(
+    'debugging sessions',
+    withCapability('debug', 'Debugger', DebugPage)
+  ),
   validateSearch: validateDebugSearch,
   // Explicit deep links can redirect immediately. A remembered selection
   // must first be checked against the current inventory in DebugPage.

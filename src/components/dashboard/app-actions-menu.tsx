@@ -15,6 +15,7 @@ import { useParkApp, useWakeApp } from '@/lib/api/queries';
 import { RESTORE_CONTEXT, RESTORE_TARGET } from '@/lib/platform-claims';
 import { useData } from '@/lib/store';
 import { useRestartAction } from './app-lifecycle';
+import { useShowsProduction } from './production-only-banner';
 import { useTearDownPreview } from './preview-actions';
 
 /**
@@ -83,6 +84,9 @@ export function RollbackButton({
 }) {
   const rollback = useRollbackAction(app, target);
   const [pending, setPending] = useState(false);
+  // Outside production the top bar names another environment, but rollback
+  // acts on the app's production lane: say so on the button.
+  const showsProduction = useShowsProduction();
   return (
     <Button
       size="sm"
@@ -102,9 +106,20 @@ export function RollbackButton({
       }}
     >
       <Undo aria-hidden className="h-4 w-4" />
-      Roll back
+      {showsProduction ? 'Roll back production' : 'Roll back'}
     </Button>
   );
+}
+
+/** The header's Invoke label: it calls production's deployment, which outside production it names. */
+export function InvokeLabel() {
+  return <>{useShowsProduction() ? 'Invoke production' : 'Invoke'}</>;
+}
+
+/** The header's Deploy label: it deploys production, which outside production it names. */
+export function DeployLabel({ deploying }: { deploying: boolean }) {
+  const showsProduction = useShowsProduction();
+  return <>{deploying ? 'Deploying…' : showsProduction ? 'Deploy to production' : 'Deploy'}</>;
 }
 
 export function AppActionsMenu({ app }: { app: Workflow }) {
@@ -118,6 +133,8 @@ export function AppActionsMenu({ app }: { app: Workflow }) {
   // remembers the vanished item as the place to return focus to and drops it
   // on the page body. Put it back on the trigger once the action settles.
   const trigger = useRef<HTMLButtonElement>(null);
+  // Park, wake and restart act on the app's production lane.
+  const suffix = useShowsProduction() ? ' production' : '';
   const run = (action: () => Promise<void>) =>
     void action().finally(() => trigger.current?.focus());
 
@@ -160,18 +177,18 @@ export function AppActionsMenu({ app }: { app: Workflow }) {
         {app.state === 'running' && (
           <DropdownMenuItem disabled={park.isPending} onSelect={() => run(onPark)}>
             <Pause aria-hidden className="h-3.5 w-3.5" />
-            Park
+            {`Park${suffix}`}
           </DropdownMenuItem>
         )}
         {app.state === 'idle' && (
           <DropdownMenuItem disabled={wake.isPending} onSelect={() => run(onWake)}>
             <Play aria-hidden className="h-3.5 w-3.5" />
-            Wake
+            {`Wake${suffix}`}
           </DropdownMenuItem>
         )}
         <DropdownMenuItem disabled={restart.pending} onSelect={() => run(restart.run)}>
           <Refresh aria-hidden className="h-3.5 w-3.5" />
-          Restart
+          {`Restart${suffix}`}
         </DropdownMenuItem>
         {tearDown.available && (
           <>
