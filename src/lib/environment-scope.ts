@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useRouterState, type SearchMiddleware } from '@tanstack/react-router';
 import {
+  useEnvironmentState,
   useProjectEnvironments,
   validEnvironment,
   type ProjectEnvironment,
@@ -121,5 +122,51 @@ export function useEnvironmentScope(): EnvironmentScope {
       isError: query.isError,
       refetch: () => void query.refetch(),
     },
+  };
+}
+
+export interface AppEnvironment {
+  /** The scope to send: undefined in production (today's requests). */
+  scope: string | undefined;
+  name: string;
+  kind: EnvironmentKind;
+  /** Whether the environment in force has this app; null while unknown; always true in production. */
+  present: boolean | null;
+  /** True for a protected non-production environment: read-only in the console. */
+  readOnly: boolean;
+}
+
+/**
+ * One app's place in the environment in force: the scope its values are read
+ * and written under, whether the environment runs it at all, and whether the
+ * console may edit it there. Where environments don't apply, or in
+ * production, it is exactly today: no scope, present, editable.
+ */
+export function useAppEnvironment(slug: string): AppEnvironment {
+  const env = useEnvironmentScope();
+  const { project } = useProjectScope();
+  const { account } = useAuth();
+  const staged = env.applies && env.environment !== 'production';
+  const state = useEnvironmentState(
+    staged ? (account?.id ?? '') : '',
+    staged ? (project ?? '') : '',
+    staged ? env.environment : ''
+  );
+  if (!staged)
+    return {
+      scope: undefined,
+      name: 'Production',
+      kind: 'production',
+      present: true,
+      readOnly: false,
+    };
+  const workloads = state.data?.environment === env.environment ? state.data.workloads : undefined;
+  const current = env.choices?.find((choice) => choice.slug === env.environment);
+  return {
+    scope: env.environment,
+    name: env.name,
+    kind: env.kind,
+    present: workloads ? workloads.some((w) => w.workload_slug === slug) : null,
+    readOnly: Boolean(current?.protected),
   };
 }

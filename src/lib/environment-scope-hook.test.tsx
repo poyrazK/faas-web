@@ -24,7 +24,7 @@ vi.mock('./project-scope', async (original) => ({
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ account: { id: 'a' } }) }));
 vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
 
-const { useEnvironmentScope } = await import('./environment-scope');
+const { useAppEnvironment, useEnvironmentScope } = await import('./environment-scope');
 
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const environment = (slug: string) => ({
@@ -123,4 +123,85 @@ it('does not apply in a company workspace', async () => {
   await mount('/dashboard/releases?project=shop&env=staging');
   expect(read().applies).toBe(false);
   expect(get).not.toHaveBeenCalled();
+});
+
+function AppProbe({ slug }: { slug: string }) {
+  const app = useAppEnvironment(slug);
+  return <pre data-testid="app">{JSON.stringify(app)}</pre>;
+}
+async function mountApp(entry: string, slug = 'api', project: string | null = 'shop') {
+  scope.current = { project, label: project ?? '', appSlugs: null, settled: true, choices: [] };
+  const root = createRootRoute();
+  const page = createRoute({
+    getParentRoute: () => root,
+    path: '$',
+    component: () => <AppProbe slug={slug} />,
+  });
+  const router = createRouter({
+    routeTree: root.addChildren([page]),
+    history: createMemoryHistory({ initialEntries: [entry] }),
+  });
+  await router.load();
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <RouterProvider router={router as never} />
+    </QueryClientProvider>
+  );
+}
+const app = () => JSON.parse(screen.getByTestId('app').textContent ?? '{}');
+function answer(protectedStaging = false, workloads = ['api']) {
+  get.mockImplementation(async (path: string) => {
+    if (path === '/v1/projects/{slug}/environments')
+      return ok(
+        ['staging', 'production'].map((slug) => ({
+          ...environment(slug),
+          protected: slug === 'production' || (slug === 'staging' && protectedStaging),
+        }))
+      );
+    return ok({
+      project_slug: 'shop',
+      environment: 'staging',
+      workloads: workloads.map((w) => ({ workload_slug: w, workload_name: w, release: {} })),
+    });
+  });
+}
+
+it('production: no scope, present, editable', async () => {
+  answer();
+  await mountApp('/dashboard/apps/api?project=shop');
+  expect(app()).toMatchObject({ present: true, readOnly: false, name: 'Production' });
+  expect(app()).not.toHaveProperty('scope');
+});
+
+it('staging: scope=staging, present when the environment runs the app', async () => {
+  answer();
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().present).toBe(true));
+  expect(app()).toMatchObject({
+    scope: 'staging',
+    name: 'Staging',
+    kind: 'stage',
+    readOnly: false,
+  });
+});
+
+it('staging without the app: present false', async () => {
+  answer(false, ['web']);
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().present).toBe(false));
+});
+
+it('a protected stage is read-only', async () => {
+  answer(true);
+  await mountApp('/dashboard/apps/api?project=shop&env=staging');
+  await waitFor(() => expect(app().readOnly).toBe(true));
+});
+
+it('where environments do not apply it behaves as production', async () => {
+  answer();
+  await mountApp('/dashboard/apps/api?project=_standalone&env=staging', 'api', '_standalone');
+  expect(app()).toMatchObject({ present: true, readOnly: false });
+  expect(app()).not.toHaveProperty('scope');
 });
