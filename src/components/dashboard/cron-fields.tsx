@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { FIELD, Select } from '@/components/ui/field';
 import type { components } from '@/lib/api/schema';
 import { isCronSchedule, upcomingCronRuns } from '@/lib/cron-schedule';
@@ -17,7 +17,7 @@ export function cronScheduleError(schedule: string, now: number): string | undef
   return undefined;
 }
 
-/** IANA zone, with the runtime's list as suggestions; free text still works. */
+/** Keep draft values outside the catalog editable, including when tzdata changes. */
 export function TimezoneField({
   value,
   onChange,
@@ -25,33 +25,48 @@ export function TimezoneField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const listId = useId();
-  const hintId = useId();
+  const [manual, setManual] = useState(false);
+  const custom = manual || !TIME_ZONES.includes(value);
+
   return (
     <div className="flex flex-col gap-1.5">
       <label className="flex flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Timezone</span>
-        <input
-          name="timezone"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          list={TIME_ZONES.length ? listId : undefined}
-          autoComplete="off"
-          spellCheck={false}
-          aria-describedby={hintId}
-          className={`${FIELD} w-full`}
-        />
-      </label>
-      {TIME_ZONES.length > 0 && (
-        <datalist id={listId}>
+        <Select
+          className="w-full"
+          name={custom ? undefined : 'timezone'}
+          value={custom ? '' : value}
+          onChange={(event) => {
+            const zone = event.target.value;
+            setManual(!zone);
+            if (zone) onChange(zone);
+          }}
+        >
+          <option value="">Enter another time zone…</option>
           {TIME_ZONES.map((zone) => (
-            <option key={zone} value={zone} />
+            <option key={zone} value={zone}>
+              {zone}
+            </option>
           ))}
-        </datalist>
+        </Select>
+      </label>
+      {custom && (
+        <label className="flex flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">IANA time zone</span>
+          <input
+            className={`${FIELD} w-full`}
+            name="timezone"
+            value={value}
+            placeholder="Europe/Istanbul"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => {
+              setManual(true);
+              onChange(event.target.value);
+            }}
+          />
+        </label>
       )}
-      <p id={hintId} className="text-xs text-muted-foreground">
-        IANA name, such as Europe/Istanbul. The schedule runs in this zone; leave UTC if unsure.
-      </p>
     </div>
   );
 }
