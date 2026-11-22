@@ -211,6 +211,7 @@ function PersonalPlans() {
   const [requested, setRequested] = useState<{ plan: Plan; effectiveAt?: string } | null>(null);
 
   const current = account?.plan;
+  const isCheckout = current === 'free' && pending !== null && pending !== 'free';
   const awaiting = requested !== null && requested.plan !== current;
 
   // Once the account reports the requested plan the note has done its job.
@@ -334,7 +335,7 @@ function PersonalPlans() {
   const confirm = () => {
     if (!pending) return;
     const plan = pending;
-    const code = current === 'free' && plan !== 'free' ? salespersonCode.trim().toUpperCase() : '';
+    const code = isCheckout ? salespersonCode.trim().toUpperCase() : '';
     if (code && !/^[A-Z0-9]{6}$/.test(code)) {
       setSalespersonError('Enter a six-character salesperson code, or leave it blank.');
       return;
@@ -465,15 +466,12 @@ function PersonalPlans() {
       <Modal
         open={pending !== null}
         onClose={() => setPending(null)}
-        title={`Switch to ${pending ?? ''}?`}
+        title={isCheckout ? `Upgrade to ${planName(pending)}` : `Switch to ${pending ?? ''}?`}
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            {current === 'free' && pending !== 'free' ? (
-              <>
-                Continue to payment to upgrade your personal account. Your plan changes only after
-                payment is confirmed.
-              </>
+            {isCheckout ? (
+              'Your personal plan changes once payment is confirmed.'
             ) : (
               <>
                 This updates your subscription straight away and may charge your payment method.
@@ -482,7 +480,7 @@ function PersonalPlans() {
               </>
             )}
           </p>
-          {pending !== null && pending !== 'free' && current === 'free' && (
+          {isCheckout && (
             <CheckoutSalespersonCode
               accountId={account?.id ?? ''}
               value={salespersonCode}
@@ -498,7 +496,7 @@ function PersonalPlans() {
               Cancel
             </Button>
             <Button size="sm" onClick={confirm}>
-              Confirm switch
+              {isCheckout ? 'Continue to payment' : 'Confirm switch'}
             </Button>
           </div>
         </div>
