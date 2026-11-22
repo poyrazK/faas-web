@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm';
 import { useAddUpstream, useDeleteUpstream, useUpstreams } from '@/lib/api/queries';
 import { UpstreamHistoryPanel } from '@/components/dashboard/upstream-history';
+import { EnvironmentNote } from '@/components/dashboard/environment-values-gate';
 
 interface UpstreamRow {
   id: string;
@@ -73,12 +74,24 @@ const UPSTREAM_SCOPE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
  * one and there was none — the API takes a PUT, and declaring an upstream
  * is how its RTT gets probed before the first cold request needs it.
  */
-export function UpstreamsBody({ slug }: { slug: string }) {
+export function UpstreamsBody({
+  slug,
+  deploymentScope,
+  environmentName,
+  readOnly = false,
+}: {
+  slug: string;
+  /** The top bar's environment, outside production: its own deployment's hints. */
+  deploymentScope?: string;
+  environmentName?: string;
+  /** A protected environment: hints are listed, none can be declared or removed. */
+  readOnly?: boolean;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { data, isPending, error, refetch } = useUpstreams(slug);
-  const add = useAddUpstream(slug);
-  const remove = useDeleteUpstream(slug);
+  const { data, isPending, error, refetch } = useUpstreams(slug, deploymentScope);
+  const add = useAddUpstream(slug, deploymentScope);
+  const remove = useDeleteUpstream(slug, deploymentScope);
 
   const [creating, setCreating] = useState(false);
   const [kind, setKind] = useState<(typeof KINDS)[number]>('postgres');
@@ -156,47 +169,61 @@ export function UpstreamsBody({ slug }: { slug: string }) {
       key: 'id',
       label: '',
       width: 'w-12',
-      render: (u) => (
-        <button
-          type="button"
-          aria-label={`Remove ${u.kind} upstream`}
-          onClick={async () => {
-            if (
-              !(await confirm({
-                title: `Remove this ${u.kind} upstream?`,
-                description:
-                  u.source === 'explicit'
-                    ? 'It stops being probed. Traffic to it is unaffected; it will be rediscovered from egress if the app keeps talking to it.'
-                    : 'It was discovered from egress, so it comes back the next time the app reaches it. Removing it only clears the record.',
-                confirmLabel: 'Remove',
-                destructive: true,
-              }))
-            )
-              return;
-            void remove
-              .mutateAsync(u.id)
-              .then(() => toast({ kind: 'success', title: 'Upstream removed' }))
-              .catch((err: unknown) =>
-                toast({ kind: 'error', title: 'Could not remove', error: err })
-              );
-          }}
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <Trash className="h-3.5 w-3.5" />
-        </button>
-      ),
+      render: (u) =>
+        readOnly ? null : (
+          <button
+            type="button"
+            aria-label={`Remove ${u.kind} upstream`}
+            onClick={async () => {
+              if (
+                !(await confirm({
+                  title: `Remove this ${u.kind} upstream?`,
+                  description:
+                    u.source === 'explicit'
+                      ? 'It stops being probed. Traffic to it is unaffected; it will be rediscovered from egress if the app keeps talking to it.'
+                      : 'It was discovered from egress, so it comes back the next time the app reaches it. Removing it only clears the record.',
+                  confirmLabel: 'Remove',
+                  destructive: true,
+                }))
+              )
+                return;
+              void remove
+                .mutateAsync(u.id)
+                .then(() => toast({ kind: 'success', title: 'Upstream removed' }))
+                .catch((err: unknown) =>
+                  toast({ kind: 'error', title: 'Could not remove', error: err })
+                );
+            }}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Trash className="h-3.5 w-3.5" />
+          </button>
+        ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Declare upstream
-        </Button>
-      </div>
-      <Sheet open={creating} onClose={() => setCreating(false)} title="Declare upstream">
+      {deploymentScope && (
+        <EnvironmentNote
+          name={environmentName ?? deploymentScope}
+          readOnly={readOnly}
+          lead={`Showing ${environmentName ?? deploymentScope}’s upstreams.`}
+        />
+      )}
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Declare upstream
+          </Button>
+        </div>
+      )}
+      <Sheet
+        open={creating && !readOnly}
+        onClose={() => setCreating(false)}
+        title="Declare upstream"
+      >
         <form
           noValidate
           className="flex flex-col gap-4"

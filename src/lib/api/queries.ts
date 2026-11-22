@@ -3052,10 +3052,27 @@ export function useDeleteAppRegistryCredential(slug: string) {
  * platform observed the egress. Hostnames are only ever returned hashed, so the
  * console can show that an app reaches *a* Postgres without leaking which one.
  */
-export function useUpstreams(slug: string) {
+export function useUpstreams(slug: string, deploymentScope?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'upstreams'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/upstreams', { params: { path: { slug } } })),
+    queryKey: upstreamKey(slug, deploymentScope),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/upstreams', {
+          params: deploymentScope
+            ? { path: { slug }, query: { deployment_scope: deploymentScope } }
+            : { path: { slug } },
+        })
+      ),
+    // Production's request is unchanged (every deployment); a hint another
+    // environment declared for its own deployment isn't production's.
+    select: deploymentScope
+      ? undefined
+      : (data) => ({
+          ...data,
+          upstreams: data.upstreams?.filter((u) =>
+            ['', 'default', 'production'].includes(u.deployment_scope ?? '')
+          ),
+        }),
     enabled: Boolean(slug),
   });
 }
@@ -3405,23 +3422,36 @@ export function useRotateWebhookSecret(slug: string) {
   });
 }
 
-const upstreamKey = (slug: string) => ['apps', slug, 'upstreams'] as const;
+/**
+ * Upstreams per deployment scope (faas ADR-098): production is the app's own
+ * key; another environment's hints sit under it, filtered by
+ * `deployment_scope`, which is part of faas's dedupe key.
+ */
+const upstreamKey = (slug: string, deploymentScope?: string) =>
+  deploymentScope
+    ? (['apps', slug, 'upstreams', deploymentScope] as const)
+    : (['apps', slug, 'upstreams'] as const);
 
-export function useAddUpstream(slug: string) {
+export function useAddUpstream(slug: string, deploymentScope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: components['schemas']['PutDataUpstreamRequest']) =>
-      unwrap(api.PUT('/v1/apps/{slug}/upstreams', { params: { path: { slug } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug) }),
+      unwrap(
+        api.PUT('/v1/apps/{slug}/upstreams', {
+          params: { path: { slug } },
+          body: deploymentScope ? { ...body, deployment_scope: deploymentScope } : body,
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug, deploymentScope) }),
   });
 }
 
-export function useDeleteUpstream(slug: string) {
+export function useDeleteUpstream(slug: string, deploymentScope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}/upstreams/{id}', { params: { path: { slug, id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug, deploymentScope) }),
   });
 }
 
