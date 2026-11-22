@@ -1395,35 +1395,39 @@ export const instances: S['InstanceResponse'][] = apps.flatMap((a) => {
   }));
 });
 
+const auditKinds = [
+  'api_key.created',
+  'secret.set',
+  'account.email_change_requested',
+  'auth.login.failed',
+  'app.created',
+  'env.set',
+  'domain.added',
+  'key.deleted',
+  'account.mfa_confirmed',
+  'auth.session.created',
+];
+
 export const audit: S['AuditLogEntry'][] = Array.from({ length: 30 }, (_, i) => {
-  const kind = pick([
-    'deployment.created',
-    'deployment.succeeded',
-    'secret.set',
-    'env.set',
-    'key.created',
-    'auth.login',
-    'domain.verified',
-    'app.parked',
-    'app.woken',
-    'cron.fired',
-  ]);
+  const kind = auditKinds[i % auditKinds.length];
   const app = pick(apps);
+  const payloads: Record<string, Record<string, unknown>> = {
+    'api_key.created': { key_id: id(), scopes: ['apps:read'] },
+    'key.deleted': { key_id: id() },
+    'secret.set': { name: 'DATABASE_URL', app_id: app.id, scope: 'staging' },
+    'app.created': { slug: app.slug, app_id: app.id },
+    'env.set': { name: 'LOG_LEVEL', app_id: app.id, scope: 'default' },
+    'domain.added': { domain: 'api.example.test', app_id: app.id, environment: 'production' },
+    'auth.session.created': { method: 'github' },
+  };
   return {
     id: id(),
     kind,
     account_id: ACCOUNT_ID,
     account_email: account.email,
-    actor:
-      kind === 'cron.fired' || kind === 'app.parked'
-        ? 'system'
-        : pick([account.email, 'ci@acme.dev']),
+    actor: kind === 'api_key.created' ? 'ci@acme.dev' : 'apid',
     received_at: iso(i * 3.7 * H + int(0, H)),
-    data: {
-      app: app.slug,
-      ...(kind.startsWith('secret') ? { key: 'DATABASE_URL' } : {}),
-      ...(kind === 'auth.login' ? { ip: '185.93.2.14', ua: 'Chrome/128 macOS' } : {}),
-    },
+    data: payloads[kind],
   };
 });
 

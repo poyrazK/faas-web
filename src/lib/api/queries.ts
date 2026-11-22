@@ -2544,13 +2544,19 @@ export function useAuditLog() {
  * cursor. The audit page keeps already loaded entries visible if an older
  * page fails, so a transient history read never hides evidence already shown.
  */
-export function useInfiniteAuditLog(limit = 50) {
+export function useInfiniteAuditLog(
+  accountId: string,
+  limit = 50,
+  filters?: { since?: string; kind_prefix?: string }
+) {
   return useInfiniteQuery({
-    queryKey: [...keys.auditLog, 'history', limit],
-    queryFn: ({ pageParam }) =>
+    queryKey: [...keys.auditLog, 'history', accountId, limit, ...(filters ? [filters] : [])],
+    enabled: Boolean(accountId),
+    queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET('/v1/audit-log', {
-          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+          params: { query: { limit, ...filters, ...(pageParam ? { before: pageParam } : {}) } },
+          signal,
         })
       ),
     initialPageParam: undefined as string | undefined,
