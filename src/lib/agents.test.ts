@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentBudget, AgentConnection } from '@/lib/api/agents';
+import type { AgentBudget, AgentConnection, AgentPolicy } from '@/lib/api/agents';
 import {
   accessLevel,
   activityOutcome,
@@ -10,6 +10,13 @@ import {
   asksBefore,
   budgetWords,
   listWords,
+  POLICY_CAPABILITIES,
+  policyAnswer,
+  policyCapabilities,
+  policyChange,
+  policyDisconnects,
+  policyDraft,
+  policyRules,
   reachWords,
   scopePhrases,
   timeLeft,
@@ -204,5 +211,145 @@ describe('undo', () => {
       '1 change undone. 1 change could not be undone.'
     );
     expect(undoResultSentence({ undone: 0, failed: 0 })).toBe('Nothing was undone.');
+  });
+});
+
+describe('organization agent policy', () => {
+  const EVERY = POLICY_CAPABILITIES.map((c) => c.scope);
+  const policy = (over: Partial<AgentPolicy> = {}): AgentPolicy => ({
+    agents_allowed: true,
+    allowed_scopes: EVERY,
+    approval_categories: [],
+    approval_channels: [],
+    ...over,
+  });
+
+  it('offers the seven capabilities apid grants, and keeps one it does not know', () => {
+    expect(EVERY).toEqual([
+      'deploy:write',
+      'env:write',
+      'secrets:request',
+      'storage:manage',
+      'postgres:manage',
+      'usage:read',
+      'data:read',
+    ]);
+    expect(policyCapabilities(['deploy:write', 'future:scope']).at(-1)).toEqual({
+      scope: 'future:scope',
+      label: 'future:scope',
+      detail: '',
+    });
+  });
+
+  it('answers whether agents may act, naming the shorter side', () => {
+    expect(policyAnswer(policy(), 'Acme')).toEqual({
+      tone: 'good',
+      sentence: 'Agents may act in Acme, with every capability.',
+    });
+    expect(policyAnswer(policy({ agents_allowed: false }), 'Acme')).toEqual({
+      tone: 'none',
+      sentence: 'Agents are not allowed in Acme.',
+    });
+    expect(policyAnswer(policy({ allowed_scopes: [] }), 'Acme').sentence).toBe(
+      'Agents may only inspect apps in Acme.'
+    );
+    expect(policyAnswer(policy({ allowed_scopes: ['deploy:write'] }), 'Acme').sentence).toBe(
+      'Agents in Acme may inspect apps, and deploy and change apps.'
+    );
+    expect(
+      policyAnswer(
+        policy({
+          allowed_scopes: EVERY.filter((s) => !['postgres:manage', 'data:read'].includes(s)),
+        }),
+        'Acme'
+      ).sentence
+    ).toBe('Agents may act in Acme, but may not manage databases or read app data.');
+  });
+
+  it('sums up the approvals and the ceiling, and says nothing without them', () => {
+    expect(policyRules(policy())).toBe('');
+    expect(
+      policyRules(
+        policy({ approval_categories: ['delete', 'production'], max_agent_budget_cents: 10000 })
+      )
+    ).toBe(
+      "Every agent asks a person before deletes and production changes. No agent's always-on budget can pass $100.00 a month."
+    );
+  });
+
+  it('previews the agents a stricter policy disconnects, as apid decides it', () => {
+    const cursor = agent({ id: 'cursor', scopes: ['apps:read', 'deploy:write'] });
+    const codex = agent({
+      id: 'codex',
+      scopes: ['apps:read', 'deploy:write', 'postgres:manage', 'postgres:read'],
+    });
+    const reader = agent({ id: 'reader', scopes: ['agent', 'apps:read'] });
+    const all = [cursor, codex, reader];
+    expect(policyDisconnects(policy(), all)).toEqual([]);
+    expect(policyDisconnects(policy({ allowed_scopes: ['deploy:write'] }), all)).toEqual([codex]);
+    // A read-only agent carries nothing a policy can take away.
+    expect(policyDisconnects(policy({ allowed_scopes: [] }), all)).toEqual([cursor, codex]);
+    expect(policyDisconnects(policy({ agents_allowed: false }), all)).toEqual(all);
+  });
+
+  it('sends nothing when nothing changed', () => {
+    const saved = policy({ approval_categories: ['delete'], max_agent_budget_cents: 5000 });
+    expect(policyChange(saved, policyDraft(saved))).toEqual({});
+  });
+
+  it('sends only what changed beside the two required fields', () => {
+    const saved = policy();
+    const draft = policyDraft(saved);
+    expect(
+      policyChange(saved, {
+        ...draft,
+        scopes: ['data:read', 'deploy:write'],
+        approvals: ['billing', 'delete'],
+      })
+    ).toEqual({
+      change: {
+        agents_allowed: true,
+        allowed_scopes: ['deploy:write', 'data:read'],
+        approval_categories: ['delete', 'billing'],
+      },
+    });
+    expect(policyChange(saved, { ...draft, channels: ['ops-slack'] }).change).toEqual({
+      agents_allowed: true,
+      allowed_scopes: EVERY,
+      approval_channels: ['ops-slack'],
+    });
+  });
+
+  it('sets a ceiling in whole cents, clears it, and refuses what is not money', () => {
+    const saved = policy();
+    const draft = policyDraft(saved);
+    expect(
+      policyChange(saved, { ...draft, ceiling: 'amount', amount: '12.50' }).change
+    ).toMatchObject({ max_agent_budget_cents: 1250 });
+    expect(policyChange(saved, { ...draft, ceiling: 'amount', amount: 'lots' }).error).toMatch(
+      /Enter a dollar amount/
+    );
+    const capped = policy({ max_agent_budget_cents: 5000 });
+    expect(policyDraft(capped)).toMatchObject({ ceiling: 'amount', amount: '50.00' });
+    expect(policyChange(capped, { ...policyDraft(capped), ceiling: 'none' }).change).toEqual({
+      agents_allowed: true,
+      allowed_scopes: EVERY,
+      clear_max_agent_budget: true,
+    });
+  });
+
+  it('turns agents off without touching the rest of the policy', () => {
+    const saved = policy({ allowed_scopes: ['deploy:write', 'future:scope'] });
+    expect(
+      policyChange(saved, { ...policyDraft(saved), allowed: false, scopes: [], amount: 'x' })
+    ).toEqual({
+      change: { agents_allowed: false, allowed_scopes: ['deploy:write', 'future:scope'] },
+    });
+    const off = policy({ agents_allowed: false });
+    expect(policyChange(off, policyDraft(off))).toEqual({});
+    // Turning them back on keeps a scope the console does not know.
+    expect(
+      policyChange(off, { ...policyDraft(saved), allowed: true }).change?.allowed_scopes
+    ).toEqual(['deploy:write', 'future:scope']);
   });
 });

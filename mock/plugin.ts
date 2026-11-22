@@ -10088,6 +10088,18 @@ route('POST', '/v1/orgs/{slug}/agent-connections/{id}/undo/plan', ({ params, bod
 route('POST', '/v1/orgs/{slug}/agent-connections/{id}/undo', ({ params, body }) =>
   agentCall(() => agentMock.applyUndo(params.id, body, params.slug))
 );
+route('GET', '/v1/orgs/{slug}/agent-policy', ({ params }) =>
+  agentCall(() => agentMock.getPolicy(params.slug))
+);
+route('PUT', '/v1/orgs/{slug}/agent-policy', ({ params, body }) =>
+  agentCall(() =>
+    agentMock.setPolicy(
+      params.slug,
+      body,
+      channelMock.channels.map((channel) => channel.name)
+    )
+  )
+);
 
 const orgMembers = new Map(
   db.orgs.map((org) => [

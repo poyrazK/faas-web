@@ -8,6 +8,7 @@ type Approval = S['AgentApprovalResponse'];
 type Budget = S['AgentBudgetResponse'];
 type Entry = S['AgentActivityEntry'];
 type UndoItem = S['AgentUndoItem'];
+type Policy = S['OrgAgentPolicyResponse'];
 
 /**
  * Connected agents (faas pkg/apid/agentconnections). The personal account has
@@ -245,10 +246,17 @@ export function budget(id: string): Budget {
     spent_cents: spent.get(id) ?? 0,
     month: new Date().toISOString().slice(0, 7),
   };
-  if (set?.unlimited) return { ...base, source: 'unlimited', key_unlimited: true };
-  if (set?.cents !== undefined)
-    return { ...base, source: 'key', monthly_cents: set.cents, key_monthly_cents: set.cents };
-  return { ...base, source: 'plan_default', monthly_cents: PLAN_DEFAULT_CENTS };
+  const answer: Budget = set?.unlimited
+    ? { ...base, source: 'unlimited', key_unlimited: true }
+    : set?.cents !== undefined
+      ? { ...base, source: 'key', monthly_cents: set.cents, key_monthly_cents: set.cents }
+      : { ...base, source: 'plan_default', monthly_cents: PLAN_DEFAULT_CENTS };
+  // An organization's ceiling bounds its agents: the lower of the two applies.
+  const ceiling = org.some((c) => c.id === id) ? policy.max_agent_budget_cents : undefined;
+  if (ceiling === undefined) return answer;
+  return answer.monthly_cents === undefined || answer.monthly_cents > ceiling
+    ? { ...answer, source: 'org_ceiling', monthly_cents: ceiling, org_max_cents: ceiling }
+    : { ...answer, org_max_cents: ceiling };
 }
 
 export function setBudget(id: string, body: Record<string, unknown>): Budget {
@@ -500,4 +508,94 @@ export function applyUndo(id: string, body: Record<string, unknown>, slug?: stri
     return { ...item, status: 'undone', result: 'undone' };
   });
   return { items, undone: items.filter((i) => i.result === 'undone').length, failed: 0 };
+}
+
+// --- Organization agent policy (org.go GetPolicy, PutPolicy). ---
+
+/** apid's api.MCPGrantableScopes, in its order. */
+const GRANTABLE = [
+  'deploy:write',
+  'secrets:request',
+  'storage:manage',
+  'postgres:manage',
+  'env:write',
+  'usage:read',
+  'data:read',
+];
+
+/** Acme Corp never set one: agents allowed, with every capability. */
+let policy: Policy = {
+  agents_allowed: true,
+  allowed_scopes: [...GRANTABLE],
+  approval_categories: [],
+  approval_channels: [],
+};
+
+const noOrg = () => new AgentProblem(404, 'not_found', 'no such organization');
+const invalid = (detail: string) => new AgentProblem(400, 'validation', detail);
+
+export function getPolicy(slug: string): Policy {
+  if (!isOrg(slug)) throw noOrg();
+  return policy;
+}
+
+export function setPolicy(
+  slug: string,
+  body: Record<string, unknown>,
+  knownChannels: readonly string[]
+): Policy {
+  if (!isOrg(slug)) throw noOrg();
+  const scopes = body.allowed_scopes;
+  if (
+    typeof body.agents_allowed !== 'boolean' ||
+    !Array.isArray(scopes) ||
+    scopes.some((scope, i) => !GRANTABLE.includes(String(scope)) || scopes.indexOf(scope) !== i)
+  )
+    throw invalid(
+      `agents_allowed and allowed_scopes are required; allowed_scopes lists grantable scopes once each: ${GRANTABLE.join(', ')}`
+    );
+  let approvals = policy.approval_categories ?? [];
+  if (body.approval_categories !== undefined) {
+    const asked = (body.approval_categories as unknown[]).map(String);
+    const unknown = asked.find((kind) => !(ALL_APPROVALS as string[]).includes(kind));
+    if (unknown)
+      throw invalid(
+        `unknown approval category "${unknown}": use ${ALL_APPROVALS.join(', ')}, all or none`
+      );
+    approvals = ALL_APPROVALS.filter((kind) => asked.includes(kind));
+  }
+  let ceiling = policy.max_agent_budget_cents;
+  const max = body.max_agent_budget_cents;
+  if (body.clear_max_agent_budget === true && max !== undefined)
+    throw invalid('set max_agent_budget_cents or clear_max_agent_budget, not both');
+  if (body.clear_max_agent_budget === true) ceiling = undefined;
+  else if (max !== undefined) {
+    const value = Number(max);
+    if (!Number.isInteger(value) || value < 0 || value > MAX_BUDGET_CENTS)
+      throw invalid('max_agent_budget_cents must be between 0 and the maximum');
+    ceiling = value;
+  }
+  let channels = policy.approval_channels ?? [];
+  if (body.approval_channels !== undefined) {
+    const names = (body.approval_channels as unknown[]).map(String);
+    if (names.length > 5) throw invalid('at most 5 approval channels');
+    const missing = names.find((name) => !knownChannels.includes(name));
+    if (missing) throw invalid(`no notification channel named "${missing}"`);
+    channels = [...new Set(names)];
+  }
+  policy = {
+    agents_allowed: body.agents_allowed,
+    allowed_scopes: scopes.map(String),
+    approval_categories: approvals,
+    approval_channels: channels,
+    ...(ceiling === undefined ? {} : { max_agent_budget_cents: ceiling }),
+    updated_at: new Date().toISOString(),
+  };
+  // Connections the new policy no longer allows are revoked in the same request.
+  const exceeds = (c: Connection) =>
+    !policy.agents_allowed ||
+    c.scopes.some((scope) => GRANTABLE.includes(scope) && !policy.allowed_scopes.includes(scope));
+  const gone = org.filter(exceeds);
+  for (const c of gone) revoke(c.id, slug);
+  return { ...policy, revoked: gone.length };
 }

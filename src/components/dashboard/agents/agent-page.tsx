@@ -47,7 +47,7 @@ import { formatCents, parseUsdMillicents } from '@/lib/money';
 import { useDocumentTitle } from '@/lib/seo';
 import { InlinePhase, PageHeader, Panel, RangeSelector, queryPhase } from '../primitives';
 import { Pill } from '../resource-table';
-import { Answer, BudgetMeter, ToneLabel } from './agent-bits';
+import { Answer, BACK_LINK, BudgetMeter, ToneLabel } from './agent-bits';
 import { useDisconnectFlow } from './agents-page';
 
 /** What the agent may do and where, then what it has to ask about. */
@@ -570,9 +570,6 @@ function UndoPanel({ org, agent }: { org: AgentWorkspace; agent: AgentConnection
     </Panel>
   );
 }
-
-const BACK_LINK =
-  'inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground';
 
 function AgentBody({ org, agentId }: { org: AgentWorkspace; agentId: string }) {
   const navigate = useNavigate();

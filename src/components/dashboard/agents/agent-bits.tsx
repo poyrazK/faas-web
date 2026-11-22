@@ -13,6 +13,10 @@ export const TONE_COLOR: Record<AgentTone, string> = {
   none: 'var(--muted-foreground)',
 };
 
+/** The quiet link above a page that hangs off the Agents list. */
+export const BACK_LINK =
+  'inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground';
+
 /** The page's opening sentence: the state, and whether anything needs doing. */
 export function Answer({
   label,

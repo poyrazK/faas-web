@@ -73,6 +73,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
 import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
 import { Route as DashboardAgentsAgentIdRouteImport } from './routes/dashboard.agents.$agentId'
+import { Route as DashboardAgentsPolicyRouteImport } from './routes/dashboard.agents.policy'
 import { Route as DashboardAppsIndexRouteImport } from './routes/dashboard.apps.index'
 import { Route as DashboardAppsAppSlugRouteImport } from './routes/dashboard.apps.$appSlug'
 import { Route as DashboardAppsNewRouteImport } from './routes/dashboard.apps.new'
@@ -411,6 +412,11 @@ const DashboardAgentsAgentIdRoute = DashboardAgentsAgentIdRouteImport.update({
   path: '/agents/$agentId',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardAgentsPolicyRoute = DashboardAgentsPolicyRouteImport.update({
+  id: '/agents/policy',
+  path: '/agents/policy',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardAppsIndexRoute = DashboardAppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
@@ -566,6 +572,7 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
+  '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -645,6 +652,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/status': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
+  '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -729,6 +737,7 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
+  '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
   '/dashboard/apps/new': typeof DashboardAppsNewRoute
   '/dashboard/projects/$projectSlug': typeof DashboardProjectsProjectSlugRoute
@@ -814,6 +823,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/status/'
     | '/dashboard/agents/$agentId'
+    | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -893,6 +903,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/status'
     | '/dashboard/agents/$agentId'
+    | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -976,6 +987,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/status/'
     | '/dashboard/agents/$agentId'
+    | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
     | '/dashboard/apps/new'
     | '/dashboard/projects/$projectSlug'
@@ -1459,6 +1471,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardAgentsAgentIdRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/agents/policy': {
+      id: '/dashboard/agents/policy'
+      path: '/agents/policy'
+      fullPath: '/dashboard/agents/policy'
+      preLoaderRoute: typeof DashboardAgentsPolicyRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/apps/': {
       id: '/dashboard/apps/'
       path: '/apps'
@@ -1657,6 +1676,7 @@ interface DashboardRouteChildren {
   DashboardWorkersRoute: typeof DashboardWorkersRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DashboardAgentsAgentIdRoute: typeof DashboardAgentsAgentIdRoute
+  DashboardAgentsPolicyRoute: typeof DashboardAgentsPolicyRoute
   DashboardAppsAppSlugRoute: typeof DashboardAppsAppSlugRoute
   DashboardAppsNewRoute: typeof DashboardAppsNewRoute
   DashboardSupportTicketRoute: typeof DashboardSupportTicketRoute
@@ -1720,6 +1740,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardWorkersRoute: DashboardWorkersRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DashboardAgentsAgentIdRoute: DashboardAgentsAgentIdRoute,
+  DashboardAgentsPolicyRoute: DashboardAgentsPolicyRoute,
   DashboardAppsAppSlugRoute: DashboardAppsAppSlugRoute,
   DashboardAppsNewRoute: DashboardAppsNewRoute,
   DashboardSupportTicketRoute: DashboardSupportTicketRoute,
