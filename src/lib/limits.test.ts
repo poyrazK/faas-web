@@ -23,7 +23,7 @@ describe('billStatus', () => {
   it('fine: names the cap use and the closest other limit', () => {
     expect(billStatus(base)).toEqual({
       tone: 'good',
-      headline: 'Nothing is stopped',
+      headline: 'Nothing on your bill is stopped',
       detail: '$12.40 of your $50.00 overage cap used. Egress is at 41% of 500 GiB.',
     });
   });
@@ -123,16 +123,17 @@ describe('billStatus', () => {
         egress: ready({ enabled: false, electable: true }),
       })
     ).toEqual({
-      tone: 'good',
-      headline: 'No other limit is stopped',
+      tone: 'neutral',
+      headline: 'Nothing reported stopped',
       detail:
-        'Gregale doesn’t report this organization’s overage here, so the spend cap’s use isn’t shown.',
+        'Gregale doesn’t report this organization’s overage or egress use here, so only storage was checked.',
     });
   });
 
   it('never says "Nothing is stopped" when a read failed', () => {
     const status = billStatus({ ...base, egress: { state: 'unknown' } });
-    expect(status).toMatchObject({ tone: 'good', headline: 'Nothing reported stopped' });
+    // Not mint: a read that failed is never shown as fine.
+    expect(status).toMatchObject({ tone: 'neutral', headline: 'Nothing reported stopped' });
     expect(status.detail).toMatch(/Egress couldn’t be read\.$/);
   });
 
@@ -155,5 +156,64 @@ describe('row sentences', () => {
     expect(egressSentence({ enabled: true, includedGb: 500, priceMillicentsPerGib: 3000 })).toBe(
       'Pays $0.03 per GiB beyond 500 GiB, counted toward your spend cap.'
     );
+  });
+});
+
+describe('review fixes', () => {
+  it('never calls the bill fine while the usage summary could not be read', () => {
+    const status = billStatus({ ...base, usageUnknown: true });
+    expect(status).toMatchObject({ tone: 'neutral', headline: 'Nothing reported stopped' });
+    expect(status.detail).toMatch(/Your usage couldn’t be read\.$/);
+  });
+
+  it('still stops at the egress allowance while egress billing is off', () => {
+    const saved = ready({
+      enabled: true,
+      billingOff: true,
+      electable: true,
+      usedGb: 500,
+      includedGb: 500,
+    });
+    expect(billStatus({ ...base, egress: saved })).toMatchObject({
+      tone: 'critical',
+      detail: 'Egress reached 500 GiB.',
+    });
+    expect(egressSentence({ enabled: true, billingOff: true, includedGb: 500 })).toBe(
+      'Saved. Until egress billing starts, apps still stop at 500 GiB.'
+    );
+  });
+
+  it('stops a company with a $0 cap, without its overage', () => {
+    expect(
+      billStatus({
+        ...base,
+        workspace: 'org',
+        cap: ready({ capCents: 0 }),
+        egress: ready({ enabled: false, electable: true }),
+      })
+    ).toMatchObject({
+      tone: 'critical',
+      headline: 'Your apps are stopped',
+      detail: 'This organization’s spend cap is $0, which pauses every workload.',
+      action: 'cap',
+    });
+  });
+
+  it('stops Free at its included compute, and warns from 80%', () => {
+    const free = { ...base, plan: 'free' as const, cap: ready({ capCents: null }) };
+    expect(
+      billStatus({ ...free, compute: { usedGbHours: 100, includedGbHours: 100 } })
+    ).toMatchObject({
+      tone: 'critical',
+      headline: 'Your apps are stopped',
+      detail: 'Free’s included compute is used up for this month.',
+      action: 'plans',
+    });
+    expect(
+      billStatus({ ...free, compute: { usedGbHours: 85, includedGbHours: 100 } })
+    ).toMatchObject({
+      tone: 'warning',
+      detail: 'Compute is at 85% of Free’s 100 GB-hours.',
+    });
   });
 });

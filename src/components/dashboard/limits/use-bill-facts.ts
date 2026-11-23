@@ -27,7 +27,7 @@ export interface BillData {
   settled: boolean;
   egress?: Egress;
   showPostgres: boolean;
-  sections: { cap: Section; egress: Section; storage: Section };
+  sections: { cap: Section; egress: Section; storage: Section; usage: Section };
 }
 
 const PLANS: readonly Plan[] = ['free', 'hobby', 'pro', 'scale'];
@@ -46,7 +46,11 @@ export function useBillFacts(): BillData {
   const bound = workspace.ready;
   const org = workspace.org;
   const personal = bound && !org;
-  const storageOn = useCapabilityAccess('object-storage').access === 'on';
+  // Storage counts only once the registry says it's on; while the registry
+  // loads the strip waits, and a registry that failed leaves storage unknown.
+  const storageAccess = useCapabilityAccess('object-storage').access;
+  const storageOn = storageAccess === 'on';
+  const storageUnsure = storageAccess === 'loading' || storageAccess === 'registry-error';
   const showPostgres = useCapabilityAccess('managed-postgres').access === 'on';
 
   const personalCap = useOverageCap({ enabled: personal });
@@ -75,7 +79,13 @@ export function useBillFacts(): BillData {
     error: query.error,
     retry: () => void query.refetch(),
   });
-  const sections = { cap: section(cap), egress: section(egress), storage: section(storageQuery) };
+  const sections = {
+    cap: section(cap),
+    egress: section(egress),
+    storage: section(storageQuery),
+    // Overage, egress use and compute come from the personal usage summary.
+    usage: section(org ? { error: null, isPending: false, refetch: () => undefined } : summary),
+  };
 
   const plan = org
     ? asPlan(orgs.data?.orgs.find((entry) => entry.slug === org)?.plan)
@@ -98,13 +108,16 @@ export function useBillFacts(): BillData {
         ? {
             state: 'ready',
             enabled: egress.data.enabled,
+            ...(egress.data.billing === 'off' ? { billingOff: true } : {}),
             electable: egress.data.electable,
             includedGb: summaryData?.included_egress_gb ?? egress.data.included_gib,
             ...(summaryData ? { usedGb: summaryData.used_egress_gb } : {}),
           }
         : { state: 'unknown' },
     storage: !storageOn
-      ? { state: 'hidden' }
+      ? storageUnsure
+        ? { state: 'unknown' }
+        : { state: 'hidden' }
       : sections.storage.phase === 'ready' && storage
         ? {
             state: 'ready',
@@ -120,14 +133,30 @@ export function useBillFacts(): BillData {
               : {}),
           }
         : { state: 'unknown' },
+    ...(summaryData
+      ? {
+          compute: {
+            usedGbHours: summaryData.used_gb_hours,
+            includedGbHours: summaryData.included_gb_hours,
+          },
+        }
+      : {}),
+    ...(!org && (sections.usage.phase === 'error' || sections.usage.phase === 'unreachable')
+      ? { usageUnknown: true }
+      : {}),
   };
 
-  const shown = [sections.cap, sections.egress, ...(storageOn ? [sections.storage] : [])];
+  const shown = [
+    sections.cap,
+    sections.egress,
+    ...(org ? [] : [sections.usage]),
+    ...(storageOn ? [sections.storage] : []),
+  ];
   return {
     facts,
     org,
     workspaceLabel: workspace.label,
-    settled: bound && shown.every((s) => s.phase !== 'loading'),
+    settled: bound && storageAccess !== 'loading' && shown.every((s) => s.phase !== 'loading'),
     ...(egress.data ? { egress: egress.data } : {}),
     showPostgres,
     sections,

@@ -7,6 +7,8 @@ export const TONE_COLOR: Record<LimitTone, string> = {
   good: 'var(--status-good)',
   warning: 'var(--status-warning)',
   critical: 'var(--status-critical)',
+  // Unsure, not fine: a read failed or isn't reported.
+  neutral: 'var(--muted-foreground)',
 };
 
 /**

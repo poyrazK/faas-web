@@ -20,6 +20,7 @@ import { mockedApi, spyApi } from '@/test/api';
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: {
+      id: 'acct-1',
       plan: 'pro',
       app_count: 1,
       limits: { deployed_apps: 25, ram_mb: 2048, included_gb_hours: 100 },
@@ -53,41 +54,43 @@ beforeEach(() => {
       overage_cents: 0,
     };
     const data =
-      path === '/v1/account/egress-overage'
-        ? { enabled: false, electable: true, included_gib: 100, billing: 'live' }
-        : path === '/v1/usage/summary'
-          ? compute
-          : path === '/v1/account/usage'
-            ? { month: '2026-09', compute }
-            : path === '/v1/billing/forecast'
-              ? {
-                  period_start: '2026-09-01T00:00:00Z',
-                  period_end: '2026-10-01T00:00:00Z',
-                  as_of: '2026-09-15T00:00:00Z',
-                  currency: 'EUR',
-                  meters: [],
-                  bill_estimate_available: false,
-                  missing_bill_components: [],
-                }
-              : path === '/v1/audit-events'
-                ? { events: [], limit: 20 }
-                : path === '/v1/billing/costs'
-                  ? {
-                      account_id: 'acct-1',
-                      currency: 'USD',
-                      period_start: '2026-09-01T00:00:00Z',
-                      period_end: '2026-10-01T00:00:00Z',
-                      as_of: '2026-09-15T00:00:00Z',
-                      retained_from: '2026-09-01T00:00:00Z',
-                      evidence_through_id: 1,
-                      known_usage_millicents: 0,
-                      meters: [],
-                      scope: 'retained_compute_and_interface_egress',
-                      invoices: [],
-                      invoice_reconciliation: 'not_reconciled',
-                      missing_bill_components: [],
-                    }
-                  : [];
+      path === '/v1/capabilities'
+        ? { plan: 'pro', capabilities: [] }
+        : path === '/v1/account/egress-overage'
+          ? { enabled: false, electable: true, included_gib: 100, billing: 'live' }
+          : path === '/v1/usage/summary'
+            ? compute
+            : path === '/v1/account/usage'
+              ? { month: '2026-09', compute }
+              : path === '/v1/billing/forecast'
+                ? {
+                    period_start: '2026-09-01T00:00:00Z',
+                    period_end: '2026-10-01T00:00:00Z',
+                    as_of: '2026-09-15T00:00:00Z',
+                    currency: 'EUR',
+                    meters: [],
+                    bill_estimate_available: false,
+                    missing_bill_components: [],
+                  }
+                : path === '/v1/audit-events'
+                  ? { events: [], limit: 20 }
+                  : path === '/v1/billing/costs'
+                    ? {
+                        account_id: 'acct-1',
+                        currency: 'USD',
+                        period_start: '2026-09-01T00:00:00Z',
+                        period_end: '2026-10-01T00:00:00Z',
+                        as_of: '2026-09-15T00:00:00Z',
+                        retained_from: '2026-09-01T00:00:00Z',
+                        evidence_through_id: 1,
+                        known_usage_millicents: 0,
+                        meters: [],
+                        scope: 'retained_compute_and_interface_egress',
+                        invoices: [],
+                        invoice_reconciliation: 'not_reconciled',
+                        missing_bill_components: [],
+                      }
+                    : [];
     return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
@@ -180,8 +183,10 @@ it('does not claim there is no cap when reading fails and permits retry', async 
   await mount('/dashboard/limits');
   await waitFor(() => expect(capRow()).toHaveTextContent('Cap read unavailable'));
   expect(screen.queryByText(/No cap is set/)).not.toBeInTheDocument();
-  expect(screen.getByRole('status', { name: 'Spending limits status' })).toHaveTextContent(
-    'The spend cap couldn’t be read.'
+  await waitFor(() =>
+    expect(screen.getByRole('status', { name: 'Spending limits status' })).toHaveTextContent(
+      'The spend cap couldn’t be read.'
+    )
   );
   readFails = false;
   await userEvent.click(within(capRow()).getByRole('button', { name: 'Try again' }));

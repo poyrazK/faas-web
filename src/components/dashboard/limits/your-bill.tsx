@@ -69,11 +69,25 @@ export function YourBill({
                     }
                   : undefined
               }
-              tone={!org && cap?.capCents === 0 ? 'critical' : undefined}
+              tone={cap?.capCents === 0 ? 'critical' : undefined}
               note={
-                data.showPostgres && !free
-                  ? 'Managed Postgres overage counts toward this cap, and databases stop at it.'
-                  : undefined
+                <>
+                  {!org &&
+                    (sections.usage.phase === 'error' ||
+                      sections.usage.phase === 'unreachable') && (
+                      <span className="flex flex-wrap items-center gap-2">
+                        This month’s overage couldn’t be read.
+                        <Button size="xs" variant="outline" onClick={sections.usage.retry}>
+                          Try again
+                        </Button>
+                      </span>
+                    )}
+                  {data.showPostgres && !free && (
+                    <span className="block">
+                      Managed Postgres overage counts toward this cap, and databases stop at it.
+                    </span>
+                  )}
+                </>
               }
               action={
                 free ? undefined : (
@@ -110,6 +124,7 @@ export function YourBill({
               name="Egress"
               sentence={egressSentence({
                 enabled: egress.enabled,
+                billingOff: egress.billingOff,
                 electable: egress.electable,
                 includedGb: egress.includedGb,
                 priceMillicentsPerGib: data.egress?.price_millicents_per_gib,
@@ -123,7 +138,7 @@ export function YourBill({
                     }
                   : undefined
               }
-              tone={egress.enabled ? 'good' : undefined}
+              tone={egress.enabled && !egress.billingOff ? 'good' : undefined}
               action={
                 egress.electable ? (
                   <EgressChoice

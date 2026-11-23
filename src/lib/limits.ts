@@ -6,11 +6,12 @@ import { formatCents, formatMillicentRate } from './money';
  *
  * Precedence (spec 2026-11-23-spending-limits-design.md): data about to be
  * deleted, then stopped workloads, then a limit that is close, then fine. A
- * read that failed is never counted as fine, and an organization never gets a
- * spend-cap verdict, because faas reports no organization overage.
+ * read that failed is never counted as fine (it reads neutral, not mint), and
+ * an organization gets a spend-cap verdict only for a $0 cap, because faas
+ * reports no organization overage or egress use.
  */
 
-export type LimitTone = 'good' | 'warning' | 'critical';
+export type LimitTone = 'good' | 'warning' | 'critical' | 'neutral';
 
 /** Amber from 80% of the limit, red at it. */
 export function meterTone(used: number, limit: number): LimitTone {
@@ -26,12 +27,26 @@ export interface BillFacts {
   plan?: 'free' | 'hobby' | 'pro' | 'scale';
   /** An organization's `overageCents` is always undefined: faas doesn't report it. */
   cap: Read<{ capCents: number | null; overageCents?: number }>;
-  egress: Read<{ enabled: boolean; electable: boolean; usedGb?: number; includedGb?: number }>;
+  /**
+   * `enabled` is the saved election; `billingOff` means egress billing isn't
+   * live yet, so the allowance still holds even with the election on.
+   */
+  egress: Read<{
+    enabled: boolean;
+    billingOff?: boolean;
+    electable: boolean;
+    usedGb?: number;
+    includedGb?: number;
+  }>;
   storage: Read<{
     usedBytes: number;
     ceilingBytes: number;
     overCeiling?: { excessBytes: number; deletionAt: string };
   }>;
+  /** Personal compute this month; Free stops at its included hours. */
+  compute?: { usedGbHours: number; includedGbHours: number };
+  /** The personal usage summary (overage, egress and compute use) failed to load. */
+  usageUnknown?: boolean;
 }
 
 export interface BillStatus {
@@ -43,7 +58,7 @@ export interface BillStatus {
 
 const GIB = 2 ** 30;
 /** Whole GiB, or one decimal below 10. */
-const gib = (n: number) => `${n >= 10 ? Math.round(n) : Math.round(n * 10) / 10} GiB`;
+export const gib = (n: number) => `${n >= 10 ? Math.round(n) : Math.round(n * 10) / 10} GiB`;
 const pct = (used: number, limit: number) => Math.round((used / limit) * 100);
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -62,20 +77,32 @@ export function capSentence(facts: BillFacts): string {
 /** The egress row's sentence. */
 export function egressSentence(e: {
   enabled: boolean;
+  billingOff?: boolean;
   electable?: boolean;
   includedGb?: number;
   priceMillicentsPerGib?: number;
 }): string {
   const allowance = e.includedGb != null ? gib(e.includedGb) : 'your plan’s egress allowance';
+  if (e.enabled && e.billingOff)
+    return `Saved. Until egress billing starts, apps still stop at ${allowance}.`;
   if (e.enabled)
     return `Pays ${e.priceMillicentsPerGib != null ? formatMillicentRate(e.priceMillicentsPerGib) : 'the egress rate'} per GiB beyond ${allowance}, counted toward your spend cap.`;
   if (e.electable === false) return `Apps stop at ${allowance}. Paid plans can pay beyond it.`;
   return `Apps stop at ${allowance}. Or pay for egress beyond it.`;
 }
 
+const stopped = (detail: string, action?: BillStatus['action']): BillStatus => ({
+  tone: 'critical',
+  headline: 'Your apps are stopped',
+  detail,
+  ...(action ? { action } : {}),
+});
+
 export function billStatus(facts: BillFacts): BillStatus {
   const { cap, egress, storage } = facts;
-  const personalCap = facts.workspace === 'personal' && facts.plan !== 'free';
+  const org = facts.workspace === 'org';
+  const free = !org && facts.plan === 'free';
+  const personalCap = !org && !free;
 
   // 1. Data about to be deleted.
   if (storage.state === 'ready' && storage.overCeiling)
@@ -86,14 +113,14 @@ export function billStatus(facts: BillFacts): BillStatus {
       action: 'storage',
     };
 
-  // 2. Stopped workloads.
-  if (personalCap && cap.state === 'ready' && cap.capCents === 0)
-    return {
-      tone: 'critical',
-      headline: 'Your apps are stopped',
-      detail: 'Your spend cap is $0, which pauses every workload.',
-      action: 'cap',
-    };
+  // 2. Stopped workloads. A $0 cap is reached at once, whatever the overage.
+  if (!free && cap.state === 'ready' && cap.capCents === 0)
+    return stopped(
+      org
+        ? 'This organization’s spend cap is $0, which pauses every workload.'
+        : 'Your spend cap is $0, which pauses every workload.',
+      'cap'
+    );
   if (
     personalCap &&
     cap.state === 'ready' &&
@@ -101,34 +128,34 @@ export function billStatus(facts: BillFacts): BillStatus {
     cap.overageCents != null &&
     cap.overageCents >= cap.capCents
   )
-    return {
-      tone: 'critical',
-      headline: 'Your apps are stopped',
-      detail: `Overage reached your ${formatCents(cap.capCents)} cap.`,
-      action: 'cap',
-    };
+    return stopped(`Overage reached your ${formatCents(cap.capCents)} cap.`, 'cap');
+  const compute = free && facts.compute?.includedGbHours ? facts.compute : null;
+  if (compute && compute.usedGbHours >= compute.includedGbHours)
+    return stopped('Free’s included compute is used up for this month.', 'plans');
+  // Paying beyond the allowance only lifts it once egress billing is live.
   const egressMeter =
     egress.state === 'ready' &&
-    !egress.enabled &&
+    (!egress.enabled || egress.billingOff) &&
     egress.usedGb != null &&
     egress.includedGb != null &&
     egress.includedGb > 0
       ? { used: egress.usedGb, limit: egress.includedGb }
       : null;
   if (egress.state === 'ready' && egressMeter && egressMeter.used >= egressMeter.limit)
-    return {
-      tone: 'critical',
-      headline: 'Your apps are stopped',
-      detail: `Egress reached ${gib(egressMeter.limit)}.`,
-      action: egress.electable ? 'egress' : 'plans',
-    };
+    return stopped(
+      `Egress reached ${gib(egressMeter.limit)}.`,
+      egress.electable && !egress.enabled ? 'egress' : egress.electable ? undefined : 'plans'
+    );
 
   // 3. Close to a limit.
   const unread = [
+    facts.usageUnknown && 'Your usage couldn’t be read.',
     egress.state === 'unknown' && 'Egress couldn’t be read.',
     storage.state === 'unknown' && 'Storage couldn’t be read.',
     cap.state === 'unknown' && 'The spend cap couldn’t be read.',
   ].filter(Boolean) as string[];
+  // Keep the usage note last, as it qualifies everything above.
+  if (facts.usageUnknown) unread.push(unread.shift()!);
   const storageMeter =
     storage.state === 'ready' && storage.ceilingBytes > 0
       ? { used: storage.usedBytes / GIB, limit: storage.ceilingBytes / GIB }
@@ -141,6 +168,10 @@ export function billStatus(facts: BillFacts): BillStatus {
         `Overage is at ${pct(cap.overageCents, cap.capCents)}% of your ${formatCents(cap.capCents)} cap.`
       );
   }
+  if (compute && meterTone(compute.usedGbHours, compute.includedGbHours) === 'warning')
+    close.push(
+      `Compute is at ${pct(compute.usedGbHours, compute.includedGbHours)}% of Free’s ${Math.round(compute.includedGbHours).toLocaleString('en')} GB-hours.`
+    );
   if (egressMeter && meterTone(egressMeter.used, egressMeter.limit) === 'warning')
     close.push(
       `Egress is at ${pct(egressMeter.used, egressMeter.limit)}% of ${gib(egressMeter.limit)}.`
@@ -156,11 +187,13 @@ export function billStatus(facts: BillFacts): BillStatus {
       detail: [...close, ...unread].join(' '),
     };
 
-  // 4. Fine, with what couldn't be read named.
+  // 4. Fine, saying only what was checked, with what couldn't be read named.
   const parts: string[] = [];
-  if (facts.workspace === 'org')
+  if (org)
     parts.push(
-      'Gregale doesn’t report this organization’s overage here, so the spend cap’s use isn’t shown.'
+      storage.state === 'ready'
+        ? 'Gregale doesn’t report this organization’s overage or egress use here, so only storage was checked.'
+        : 'Gregale doesn’t report this organization’s overage or egress use here, so neither was checked.'
     );
   else if (personalCap && cap.state === 'ready' && cap.capCents && cap.overageCents != null)
     parts.push(
@@ -180,15 +213,13 @@ export function billStatus(facts: BillFacts): BillStatus {
   ]
     .filter((m): m is { pct: number; text: string; limit: number } => Boolean(m))
     .sort((a, b) => b.pct - a.pct)[0];
-  if (closest && facts.workspace === 'personal')
+  if (closest && !org)
     parts.push(`${closest.text} is at ${closest.pct}% of ${gib(closest.limit)}.`);
+  const unsure = unread.length > 0 || org;
   return {
-    tone: 'good',
-    headline: unread.length
-      ? 'Nothing reported stopped'
-      : facts.workspace === 'org'
-        ? 'No other limit is stopped'
-        : 'Nothing is stopped',
+    tone: unsure ? 'neutral' : 'good',
+    // "on your bill": budgets below can still stop previews on their own.
+    headline: unsure ? 'Nothing reported stopped' : 'Nothing on your bill is stopped',
     detail: [...parts, ...unread].join(' '),
   };
 }

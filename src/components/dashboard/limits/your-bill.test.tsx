@@ -148,6 +148,61 @@ describe('useBillFacts', () => {
   });
 });
 
+describe('useBillFacts review fixes', () => {
+  const pending = () => ({
+    data: undefined,
+    error: null,
+    isPending: true,
+    isSuccess: false,
+    refetch: vi.fn(),
+  });
+
+  it('waits for the usage summary before settling', () => {
+    h.usageSummary.mockReturnValue(pending());
+    const { result } = renderHook(() => useBillFacts());
+    expect(result.current.settled).toBe(false);
+  });
+
+  it('marks usage unknown when the summary fails', () => {
+    h.usageSummary.mockReturnValue(failed());
+    const { result } = renderHook(() => useBillFacts());
+    expect(result.current.settled).toBe(true);
+    expect(result.current.facts.usageUnknown).toBe(true);
+  });
+
+  it('knows a saved election does not lift the allowance while egress billing is off', () => {
+    h.egress.mockReturnValue(ok(election({ enabled: true, billing: 'off' })));
+    const { result } = renderHook(() => useBillFacts());
+    expect(result.current.facts.egress).toMatchObject({ enabled: true, billingOff: true });
+  });
+
+  it('waits for the capability registry, and counts storage unknown when it fails', () => {
+    h.access.mockImplementation((id: string) => (id === 'object-storage' ? 'loading' : 'on'));
+    expect(renderHook(() => useBillFacts()).result.current.settled).toBe(false);
+    h.access.mockImplementation((id: string) =>
+      id === 'object-storage' ? 'registry-error' : 'on'
+    );
+    expect(renderHook(() => useBillFacts()).result.current.facts.storage).toEqual({
+      state: 'unknown',
+    });
+  });
+
+  it('carries Free compute into the facts', () => {
+    h.plan = 'free';
+    h.usageSummary.mockReturnValue(
+      ok({
+        overage_cents: 0,
+        used_gb_hours: 100,
+        included_gb_hours: 100,
+        used_egress_gb: 1,
+        included_egress_gb: 10,
+      })
+    );
+    const { result } = renderHook(() => useBillFacts());
+    expect(result.current.facts.compute).toEqual({ usedGbHours: 100, includedGbHours: 100 });
+  });
+});
+
 describe('Your bill', () => {
   it('shows the spend cap, egress and storage rows with meters', async () => {
     await show(<Bill />);
@@ -222,6 +277,29 @@ describe('Your bill', () => {
     expect(screen.queryByText(/Managed Postgres overage/)).toBeNull();
   });
 
+  it('says a saved election waits for egress billing', async () => {
+    h.egress.mockReturnValue(ok(election({ enabled: true, billing: 'off' })));
+    await show(<Bill />);
+    expect(row('Egress')).toHaveTextContent(
+      'Saved. Until egress billing starts, apps still stop at 500 GiB.'
+    );
+  });
+
+  it('shows a company’s $0 cap as stopped', async () => {
+    h.workspace.mockReturnValue({ org: 'acme', label: 'Acme', ready: true });
+    h.orgOverageCap.mockReturnValue(ok({ overage_cap_cents: 0 }));
+    await show(<Bill />);
+    expect(row('Spend cap')).toHaveTextContent('A $0 cap pauses every workload');
+  });
+
+  it('says when this month’s usage could not be read, with a retry', async () => {
+    h.usageSummary.mockReturnValue(failed());
+    await show(<Bill />);
+    expect(within(row('Spend cap')).queryByRole('meter')).toBeNull();
+    expect(row('Spend cap')).toHaveTextContent('This month’s overage couldn’t be read.');
+    expect(within(row('Spend cap')).getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+
   it('shows a failed egress read in its own row', async () => {
     h.egress.mockReturnValue(failed());
     await show(<Bill />);
@@ -238,7 +316,7 @@ describe('StatusStrip', () => {
   it('answers first: nothing is stopped', async () => {
     await show(<Strip />);
     expect(screen.getByRole('status', { name: 'Spending limits status' })).toHaveTextContent(
-      'Nothing is stopped'
+      'Nothing on your bill is stopped'
     );
   });
 
@@ -254,7 +332,7 @@ describe('StatusStrip', () => {
     h.workspace.mockReturnValue({ org: 'acme', label: 'Acme', ready: true });
     await show(<Strip />);
     expect(screen.getByRole('status', { name: 'Spending limits status' })).toHaveTextContent(
-      'No other limit is stopped'
+      'Nothing reported stopped'
     );
   });
 
