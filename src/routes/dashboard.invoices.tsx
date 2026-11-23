@@ -1,17 +1,16 @@
 import { useMemo } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { OpenNewWindow } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { InlinePhase, PageHeader, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
-import { useToast } from '@/components/ui/toast';
-import { useBillingPortal, useInfiniteInvoices } from '@/lib/api/queries';
+import { useInfiniteInvoices } from '@/lib/api/queries';
 import { ApiError } from '@/lib/api/errors';
 import { consoleHead } from '@/lib/seo';
 import { FocusExport } from '@/components/dashboard/focus-export';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { orgBillingMessage } from '@/components/dashboard/org-billing';
 import { InvoiceSource } from '@/components/dashboard/invoice-source';
+import { BillingPortalButton } from '@/components/dashboard/billing-portal-button';
 import { BillingIdentityPanel } from '@/components/dashboard/billing-identity';
 import { InvoiceRefreshButton } from '@/components/dashboard/invoice-refresh';
 import { useBillingStatus } from '@/lib/api/billing-identity';
@@ -81,11 +80,9 @@ function InvoicesPage() {
 }
 
 function InvoicesBody() {
-  const { toast } = useToast();
   // A company workspace reads the organization's billing subject (same handler).
   const { org, label } = useWorkspaceTarget();
   const invoices = useInfiniteInvoices();
-  const portal = useBillingPortal();
   // Shared with InvoiceSource's read; it decides where per-invoice refresh can
   // be answered. Company invoices are never refreshable (see below).
   const billing = useBillingStatus({ enabled: !org });
@@ -190,30 +187,7 @@ function InvoicesBody() {
               {label}'s owner opens its billing portal.
             </p>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              disabled={portal.isPending}
-              onClick={() => {
-                void portal
-                  .mutateAsync()
-                  .then((result) => {
-                    // A full-page navigation, not a fetch — it is another origin.
-                    if (result.url) window.location.href = result.url;
-                  })
-                  .catch((err: unknown) =>
-                    toast({
-                      kind: 'error',
-                      title: 'Could not open the billing portal',
-                      error: err,
-                    })
-                  );
-              }}
-            >
-              <OpenNewWindow className="h-3.5 w-3.5" />
-              Billing portal
-            </Button>
+            <BillingPortalButton />
           )
         }
       />
