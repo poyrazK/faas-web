@@ -324,6 +324,32 @@ it('keeps cleanup available when the operator disables storage', async () => {
     'true'
   );
 });
+it('calls object storage generally available, without a stage or a billing caveat', async () => {
+  mocks.capability.mockReturnValue({
+    state: 'available',
+    capability: { maturity: 'ga' },
+    refresh: vi.fn(),
+  });
+  show();
+  const heading = screen.getByRole('heading', { name: 'Object storage' });
+  expect(heading.parentElement).not.toHaveTextContent(/Preview|Beta/);
+  await limits();
+  expect(screen.queryByText(/billing is not integrated/i)).toBeNull();
+  expect(screen.queryByText(/^Preview\./)).toBeNull();
+  expect(
+    screen.getByText(/On paid plans, storage beyond the included amount is billed by the GiB-month/)
+  ).toBeInTheDocument();
+});
+it('still shows the stage the catalog names', () => {
+  mocks.capability.mockReturnValue({
+    state: 'available',
+    capability: { maturity: 'beta' },
+    refresh: vi.fn(),
+  });
+  show();
+  const heading = screen.getByRole('heading', { name: 'Object storage' });
+  expect(heading.parentElement).toHaveTextContent('Beta');
+});
 it('describes a custom direct-upload limit without rounding it upward', async () => {
   mocks.buckets.mockReturnValue({
     data: { ...capabilities, max_upload_bytes: 1088 * 1024 ** 2 },
@@ -885,6 +911,32 @@ it('keeps the access map one click away and sends Manage access to the code tab'
     { app: 'demo', bucket: 'bucket-one', tab: 'code' },
     undefined
   );
+});
+
+it('reads grants and app connections only where the account has them', async () => {
+  const user = userEvent.setup();
+  const off = new Set(['bucket-access-grants', 'object-storage-compute']);
+  mocks.access.mockImplementation((id: string) => ({
+    access: off.has(id) ? 'off' : 'on',
+    refresh: vi.fn(),
+  }));
+  // apid answers a hidden capability's routes 404.
+  const notFound = (_slug: string, bucket: string) =>
+    bucket
+      ? { data: undefined, isPending: false, error: new Error('not found') }
+      : { data: undefined, isPending: true, error: null };
+  mocks.grants.mockImplementation(notFound);
+  mocks.bindings.mockImplementation(notFound);
+  const change = vi.fn();
+  render(<Routed onChange={change} start={{ bucket: 'bucket-one' }} />);
+  expect(await screen.findByRole('button', { name: 'Upload files' })).toBeInTheDocument();
+  expect(screen.queryByText(/Could not read everything/)).toBeNull();
+  expect(screen.queryByText(/Checking who can reach/i)).toBeNull();
+  for (const hook of [mocks.grants, mocks.bindings])
+    expect(hook.mock.calls.every(([, bucket]) => !bucket)).toBe(true);
+  await user.click(screen.getByRole('tab', { name: 'Use from code' }));
+  expect(screen.getByText('API-key grants')).toBeInTheDocument();
+  expect(screen.queryByText(/couldn.t read|could not read/i)).toBeNull();
 });
 
 it('opens a file menu from the keyboard', async () => {

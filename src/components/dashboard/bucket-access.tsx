@@ -21,6 +21,7 @@ import {
 import { useApiKeys } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
 import { InlinePhase } from '@/components/dashboard/primitives';
+import { CapabilityGate } from '@/components/dashboard/capability-gate';
 
 /**
  * Who may reach one bucket, in the two ways the platform allows.
@@ -86,7 +87,9 @@ export function BucketAccess({
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <AccessGrants slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
+      <CapabilityGate capability="bucket-access-grants" title="API-key grants">
+        <AccessGrants slug={slug} bucket={bucketId} provisioningEnabled={provisioningEnabled} />
+      </CapabilityGate>
       <S3Credentials
         slug={slug}
         bucket={bucketId}

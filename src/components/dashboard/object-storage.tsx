@@ -112,16 +112,17 @@ function uploadLimits(data: BucketCatalog, multipartOn: boolean) {
   return { direct, parts };
 }
 
-/** The preview's limits, in the page's "?" rather than as a line under it. */
+/** The bucket and upload limits, in the page's "?" rather than as a line under it. */
 function Limits({ data, multipartOn }: { data: BucketCatalog; multipartOn: boolean }) {
   const { direct, parts } = uploadLimits(data, multipartOn);
   return (
     <>
-      Preview. Up to {data.max_buckets_per_app} buckets per app.{' '}
+      Up to {data.max_buckets_per_app} buckets per app.{' '}
       {parts
         ? `Single uploads up to ${formatUploadLimit(direct)}; larger files upload in parts, up to ${formatUploadLimit(parts)}.`
         : `Direct uploads up to ${formatUploadLimit(direct)}.`}{' '}
-      Storage billing is not integrated yet.
+      On paid plans, storage beyond the included amount is billed by the GiB-month; Free stops at
+      its included storage.
     </>
   );
 }
@@ -146,11 +147,11 @@ export function ObjectStorage({
   const availability = useCapability('object-storage');
   const multipartOn = useCapabilityAccess('multipart-uploads').access === 'on';
   // The same read the bucket list makes (one request, shared by key): the
-  // header's "?" carries the preview's limits once they are known.
+  // header's "?" carries the limits once they are known.
   const catalog = useObjectBuckets(app.slug);
   const maturity = availability.capability?.maturity;
-  // The page has always called itself a preview; the catalog decides once it says.
-  const stage = maturity ? capabilityStage(maturity) : 'Preview';
+  // Object storage is GA (faas ADR-20261121230052); the catalog can still say otherwise.
+  const stage = capabilityStage(maturity);
   const [local, setLocal] = useState<StorageSelection>({});
   const current = selection ?? local;
   const emit: SelectionChange = onSelectionChange ?? setLocal;
@@ -590,8 +591,15 @@ function BucketDetail({
   const titleId = useId();
   const [uploading, setUploading] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
-  const bindings = useBucketBindings(slug, bucket.id);
-  const grants = useBucketAccessGrants(slug, bucket.id);
+  // Grants (preview) and app connections (paid plans) are their own
+  // capabilities; apid answers their routes 404 while they're off, so they're
+  // read only behind them and left out of the summary otherwise.
+  const grantsAccess = useCapabilityAccess('bucket-access-grants').access;
+  const bindingsAccess = useCapabilityAccess('object-storage-compute').access;
+  const grantsOn = grantsAccess === 'on';
+  const bindingsOn = bindingsAccess === 'on';
+  const bindings = useBucketBindings(slug, bindingsOn ? bucket.id : '');
+  const grants = useBucketAccessGrants(slug, grantsOn ? bucket.id : '');
   const credentials = useBucketS3Credentials(slug, bucket.id);
   const connections = useMemo(
     () =>
@@ -645,8 +653,16 @@ function BucketDetail({
           bucket={bucket.name}
           app={slug}
           connections={connections}
-          loading={bindings.isPending || grants.isPending || credentials.isPending}
-          failed={Boolean(bindings.error || grants.error || credentials.error)}
+          loading={
+            grantsAccess === 'loading' ||
+            bindingsAccess === 'loading' ||
+            (bindingsOn && bindings.isPending) ||
+            (grantsOn && grants.isPending) ||
+            credentials.isPending
+          }
+          failed={Boolean(
+            (bindingsOn && bindings.error) || (grantsOn && grants.error) || credentials.error
+          )}
           onManage={() => onChange({ tab: 'code' })}
         />
         <div className="border-t border-border pt-2 sm:pt-4">
@@ -715,7 +731,9 @@ function BucketDetail({
           )}
           {tab === 'code' && (
             <div className="flex flex-col gap-10">
-              <CodeAccess slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
+              <CapabilityGate capability="object-storage-compute" title={`Connect ${slug}`}>
+                <CodeAccess slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
+              </CapabilityGate>
               <section className="flex flex-col gap-4">
                 <div>
                   <h3 className="text-base font-medium">From outside Gregale</h3>

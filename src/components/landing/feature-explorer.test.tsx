@@ -53,12 +53,7 @@ describe('feature explorer', () => {
 
   it.each([
     ['PR previews', null, '/docs/preview-environments', /separate allowance/],
-    [
-      'Object storage',
-      'Preview',
-      '/docs/object-storage',
-      /availability depends on the storage rollout/,
-    ],
+    ['Object storage', null, '/docs/object-storage', /S3-compatible buckets/],
   ] as const)(
     'explains %s availability, and links to the published guide',
     async (name, status, href, qualification) => {

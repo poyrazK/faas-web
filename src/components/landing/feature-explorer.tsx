@@ -88,8 +88,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         id: 'objects',
         title: 'Object storage',
         description:
-          'Store files in private buckets outside your app’s runtime; availability depends on the storage rollout.',
-        availability: 'Preview',
+          'Store files in private, S3-compatible buckets outside your app’s runtime. Share them with signed URLs and use any S3 SDK.',
         diagram: 'objects',
         doc: 'object-storage',
         caption: 'Object buckets, not persistent VM disks.',
