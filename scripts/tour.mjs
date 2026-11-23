@@ -199,9 +199,31 @@ const slug = await page.evaluate(async (base) => {
   return Array.isArray(apps) && apps.length ? apps[0].slug : '';
 }, BASE);
 
+let releasePages = 0;
 if (slug && !OVERVIEW_ONLY) {
   for (const tab of APP_TABS)
     await visit(`${BASE}/dashboard/apps/${slug}?tab=${tab}`, `app.${tab}`);
+  // A release is its own page: the app's newest, one of its popups, and the
+  // ID-only shortcut that finds its app.
+  const release = await page.evaluate(
+    async ({ base, app }) => {
+      const res = await fetch(`${base}/v1/apps/${app}/deployments?limit=1`, {
+        credentials: 'include',
+      });
+      const body = await res.json();
+      return body?.items?.[0]?.id ?? '';
+    },
+    { base: BASE, app: slug }
+  );
+  if (release) {
+    const pages = [
+      [`apps/${slug}/releases/${release}`, 'release'],
+      [`apps/${slug}/releases/${release}?panel=security`, 'release.security'],
+      [`releases/${release}`, 'release.shortcut'],
+    ];
+    for (const [path, name] of pages) await visit(`${BASE}/dashboard/${path}`, name);
+    releasePages = pages.length;
+  }
 } else if (!OVERVIEW_ONLY) {
   console.log(
     'tour: no apps in this workspace — skipped the app tabs (expected under MOCK_EMPTY=1)'
@@ -223,5 +245,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `tour: ok — ${tourPages.length} pages${slug && !OVERVIEW_ONLY ? ` + ${APP_TABS.length} app tabs` : ''}, no errors`
+  `tour: ok — ${tourPages.length} pages${slug && !OVERVIEW_ONLY ? ` + ${APP_TABS.length} app tabs` : ''}${releasePages ? ` + ${releasePages} release pages` : ''}, no errors`
 );

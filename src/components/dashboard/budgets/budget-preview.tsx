@@ -2,13 +2,14 @@ import { CheckCircle, Clock, Pause, WarningTriangle } from 'iconoir-react';
 import { Timestamp } from '@/components/ui/timestamp';
 import {
   budgetLevel,
+  budgetUnit,
+  formatBudgetAmount,
   effectText,
   guaranteeText,
   reasonText,
   type BudgetPreview,
   type BudgetTarget,
 } from '@/lib/budgets';
-import { formatMillicents } from '@/lib/money';
 import { Fact, SpendMeter, ToneLabel } from './budget-bits';
 
 const GOOD = 'var(--status-good)';
@@ -46,6 +47,7 @@ function Targets({ title, targets }: { title: string; targets: BudgetTarget[] })
  */
 export function BudgetPreviewResult({ preview }: { preview: BudgetPreview }) {
   const level = budgetLevel(preview.spec);
+  const unit = budgetUnit(preview.spec.meters);
   const stops = preview.spec.action !== 'notify' && preview.spec.action !== 'reject_traffic';
   const stopping =
     level === 'alert'
@@ -65,11 +67,12 @@ export function BudgetPreviewResult({ preview }: { preview: BudgetPreview }) {
         known={preview.known_millicents}
         limit={preview.spec.limit_millicents}
         label="Known spending against the limit"
+        unit={unit}
       />
       {preview.known_limit_reached && (
         <ToneLabel tone={{ label: '', color: WARN, icon: WarningTriangle }}>
-          Known spending is already at or over the {formatMillicents(preview.spec.limit_millicents)}{' '}
-          limit.
+          Known spending is already at or over the{' '}
+          {formatBudgetAmount(preview.spec.limit_millicents, unit)} limit.
         </ToneLabel>
       )}
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">

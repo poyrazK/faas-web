@@ -28,6 +28,8 @@ import {
   LEVELS,
   METERS,
   budgetLevel,
+  budgetUnit,
+  formatBudgetAmount,
   budgetRefusal,
   reasonText,
   type Budget,
@@ -378,7 +380,7 @@ function BudgetHistory({ accountId, id }: { accountId: string; id: string }) {
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {level === 'api' ? row.spec.action.replace(/_/g, ' ') : LEVELS[level].label} ·{' '}
-                      {formatMillicents(row.spec.limit_millicents)} ·{' '}
+                      {formatBudgetAmount(row.spec.limit_millicents, budgetUnit(row.spec.meters))} ·{' '}
                       {row.spec.enabled ? 'on' : 'draft'}
                     </span>
                   </span>
@@ -455,6 +457,7 @@ export function BudgetDetail({
     );
 
   const spec = budget.spec;
+  const unit = budgetUnit(spec.meters);
   const level = budgetLevel(spec);
   const deleted = budget.status === 'deleted';
   const evaluation = budget.runtime?.evaluation;
@@ -564,13 +567,13 @@ export function BudgetDetail({
               <Fact label="Response">
                 {level === 'api' ? 'Set through the API' : LEVELS[level].label}
               </Fact>
-              <Fact label="Limit">{formatMillicents(spec.limit_millicents)} a month</Fact>
+              <Fact label="Limit">{formatBudgetAmount(spec.limit_millicents, unit)} a month</Fact>
               <Fact label="Alerts at">
                 {spec.mode === 'strict'
                   ? 'None: strict caps send no alerts'
                   : [...new Set([...spec.notify_millicents, spec.limit_millicents])]
                       .sort((a, b) => a - b)
-                      .map(formatMillicents)
+                      .map((amount) => formatBudgetAmount(amount, unit))
                       .join(', ')}
               </Fact>
               <Fact label="Meters">{meterNames(spec.meters)}</Fact>
@@ -609,10 +612,11 @@ export function BudgetDetail({
                     limit={spec.limit_millicents}
                     projected={evaluation.projected_millicents}
                     label={`${spec.name}: known spending against the limit`}
+                    unit={unit}
                   />
                   <p className="text-xs text-muted-foreground">
                     {evaluation.projected_millicents !== undefined
-                      ? `Projected month end: ${formatMillicents(evaluation.projected_millicents)} at this month's rate. An estimate, not an invoice.`
+                      ? `Projected month end: ${formatBudgetAmount(evaluation.projected_millicents, unit)} at this month's rate. An estimate, not an invoice.`
                       : `No projection yet${evaluation.projection_reason ? `: ${reasonText(evaluation.projection_reason).toLowerCase()}` : ''}.`}{' '}
                     {evaluation.coverage_complete
                       ? ''

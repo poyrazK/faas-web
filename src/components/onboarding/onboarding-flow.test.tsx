@@ -74,7 +74,7 @@ it('offers the Free CLI starter alongside the established deploy paths', async (
   render(<Setup />);
   expect(await screen.findByRole('button', { name: 'Try a sample' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Choose a repository' })).toBeVisible();
-  expect(screen.getByRole('link', { name: 'Private Node quickstart' })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Quickstart' })).toBeVisible();
   expect(screen.queryByText('Verify email')).not.toBeInTheDocument();
   expect(mocks.inventory).toHaveBeenCalledWith({ account: 'actor-a', workspace: null });
   fireEvent.click(screen.getByRole('button', { name: 'Try a sample' }));
@@ -89,7 +89,7 @@ it('leaves the Free starter out of paid onboarding', async () => {
   mocks.account.plan = 'pro';
   render(<Setup />);
   expect(await screen.findByRole('button', { name: 'Try a sample' })).toBeVisible();
-  expect(screen.queryByRole('link', { name: 'Private Node quickstart' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Quickstart' })).not.toBeInTheDocument();
 });
 it('respects a supplied repository and immutable ref instead of forcing a choice', async () => {
   const ref = 'a'.repeat(40);

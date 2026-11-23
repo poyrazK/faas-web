@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { CheckCircle, HelpCircle, WarningTriangle } from 'iconoir-react';
 import { useRouteHealthHistory, useRouteHealthReport } from '@/lib/api/route-health';
 import { InlinePhase, queryPhase } from './primitives';
@@ -137,9 +138,9 @@ export function CanaryHealth({ slug, deploymentId }: { slug: string; deploymentI
                 >
                   <Verdict status={entry.decision.status} />
                   <span className="text-xs text-muted-foreground">
-                    at {entry.traffic_percent}% traffic
+                    at {formatPercent(entry.traffic_percent)} traffic
                     {entry.requested_traffic_percent !== entry.traffic_percent &&
-                      ` → ${entry.requested_traffic_percent}%`}
+                      ` → ${formatPercent(entry.requested_traffic_percent)}`}
                   </span>
                   <span className="min-w-0 flex-1 text-xs">{entry.decision.reason}</span>
                   <time dateTime={entry.checked_at} className="text-xs text-muted-foreground">

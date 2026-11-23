@@ -1,7 +1,12 @@
 import { AppAnalyticsPreview } from '@/components/dashboard/app-analytics-preview';
 import { ApiConsumerPlans } from '@/components/dashboard/api-consumer-plans';
 import { ApiConsumers } from '@/components/dashboard/api-consumers';
-import { AppActionsMenu, RollbackButton } from '@/components/dashboard/app-actions-menu';
+import {
+  AppActionsMenu,
+  DeployLabel,
+  InvokeLabel,
+  RollbackButton,
+} from '@/components/dashboard/app-actions-menu';
 import { AppAnalyticsPanel } from '@/components/dashboard/app-analytics';
 import {
   validateAppAnalyticsSearch,
@@ -83,6 +88,8 @@ import { OpenAPIBody } from '@/components/dashboard/pages/openapi';
 import { QueuesBody } from '@/components/dashboard/pages/queues';
 import { RoutesBody } from '@/components/dashboard/pages/routes';
 import { SecretsBody } from '@/components/dashboard/pages/secrets';
+import { EnvironmentValuesGate } from '@/components/dashboard/environment-values-gate';
+import { useAppEnvironment } from '@/lib/environment-scope';
 import { TenantSurfacesBody } from '@/components/dashboard/pages/tenant-surfaces';
 import { UpstreamsBody } from '@/components/dashboard/pages/upstreams';
 import { WebhooksHub } from '@/components/dashboard/pages/webhooks';
@@ -98,7 +105,7 @@ import {
   UnreachableState,
 } from '@/components/dashboard/primitives';
 import { PreviewDiscovery } from '@/components/dashboard/projects/preview-workload-set';
-import { ReleaseDetailPanel } from '@/components/dashboard/release-detail';
+import { releaseLink, redirectOldReleaseLink } from '@/components/dashboard/release-page/links';
 import {
   validateReleasesSearch,
   type ReleaseSection,
@@ -127,6 +134,11 @@ import { useData } from '@/lib/store';
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { Play, Rocket } from 'iconoir-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ProductionOnlyBanner,
+  appTabShowsProduction,
+  productionNoun,
+} from '@/components/dashboard/production-only-banner';
 
 /**
  * Every resource that hangs off one app, in the order an operator reaches for
@@ -235,13 +247,15 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug')({
     workflowRun:
       typeof search.workflowRun === 'string' && search.workflowRun ? search.workflowRun : undefined,
   }),
+  // A release is a page now; old `?deployment=` links open it there.
+  beforeLoad: ({ search, params }) => redirectOldReleaseLink(search, params.appSlug),
   component: FunctionDetailPage,
 });
 
 function FunctionDetailPage() {
   const { appSlug } = useParams({ from: '/dashboard/apps/$appSlug' });
   const search = Route.useSearch();
-  const { tab = 'Overview', deployment: selectedDeploymentId, releaseSection } = search;
+  const { tab = 'Overview' } = search;
   // Tabs whose capability apid hides for this account (faas capgate, #5319).
   const registry = useCapabilityRegistry();
   const visibleTabs = visibleAppTabs((id) =>
@@ -325,14 +339,6 @@ function FunctionDetailPage() {
     }
     return byDeployment;
   }, [buildRecords]);
-  const buildIdsByDeployment = useMemo(() => {
-    const byDeployment = new Map<string, string>();
-    for (const result of buildRecords) {
-      const build = result.data;
-      if (build) byDeployment.set(build.deployment_id, build.id);
-    }
-    return byDeployment;
-  }, [buildRecords]);
 
   const deployments = useMemo(() => {
     const appId = deploymentItems[0]?.app_id;
@@ -398,7 +404,7 @@ function FunctionDetailPage() {
           <>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setInvoke(true)}>
               <Play className="h-3.5 w-3.5" />
-              Invoke
+              <InvokeLabel />
             </Button>
             {canRollback && (
               <RollbackButton
@@ -417,7 +423,7 @@ function FunctionDetailPage() {
               }}
             >
               <Rocket className="h-3.5 w-3.5" />
-              {isDeploying ? 'Deploying…' : 'Deploy'}
+              <DeployLabel deploying={isDeploying} />
             </Button>
             <AppActionsMenu app={fn} />
           </>
@@ -459,6 +465,9 @@ function FunctionDetailPage() {
         <Swap id={tab}>
           <TabCapabilityGate capability={tabCapability} title={tab}>
             <div className="flex flex-col gap-6">
+              {/* Outside production, a tab whose API has no environment says
+                  it shows (and changes) production. */}
+              {appTabShowsProduction(tab) && <ProductionOnlyBanner what={productionNoun(tab)} />}
               {tab === 'Automations' && (
                 <AutomationsBody
                   fixedSlug={appSlug}
@@ -534,15 +543,13 @@ function FunctionDetailPage() {
                         : 'restricted'
                   }
                   onNavigate={(next, id) =>
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        tab: next,
-                        ...(id ? { deployment: id, releaseSection: 'overview' as const } : {}),
-                      }),
-                      hash: true,
-                      resetScroll: false,
-                    })
+                    void (id
+                      ? navigate(releaseLink(id, { slug: fn.id }))
+                      : navigate({
+                          search: (current) => ({ ...current, tab: next }),
+                          hash: true,
+                          resetScroll: false,
+                        }))
                   }
                   onDeploy={() => {
                     setDeploySubmissionError(null);
@@ -613,36 +620,13 @@ function FunctionDetailPage() {
                   <ImageDeploymentPanel key={appSlug} slug={appSlug} />
                   <DeploymentHistoryPanel
                     slug={fn.id}
-                    selectedDeploymentId={selectedDeploymentId}
                     buildTimings={buildTimings}
-                    onSelect={(id) =>
-                      void navigate({
-                        search: (current) => ({
-                          ...current,
-                          tab: 'Deployments',
-                          deployment: id,
-                          releaseSection: undefined,
-                        }),
-                        hash: true,
-                        resetScroll: false,
-                      })
-                    }
+                    onSelect={(id) => void navigate(releaseLink(id, { slug: fn.id }))}
                     cleanup={<ClearObsoleteDeploymentsButton slug={fn.id} />}
                   />
                   <DeploymentAliasesPanel
                     slug={fn.id}
-                    onOpenDeployment={(id) =>
-                      void navigate({
-                        search: (current) => ({
-                          ...current,
-                          tab: 'Deployments',
-                          deployment: id,
-                          releaseSection: undefined,
-                        }),
-                        hash: true,
-                        resetScroll: false,
-                      })
-                    }
+                    onOpenDeployment={(id) => void navigate(releaseLink(id, { slug: fn.id }))}
                   />
                   <Panel
                     title="Deploy an archive"
@@ -651,48 +635,10 @@ function FunctionDetailPage() {
                     <TarballDeploy
                       slug={fn.id}
                       onDeployed={(id) =>
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            tab: 'Deployments',
-                            deployment: id,
-                            releaseSection: undefined,
-                          }),
-                          hash: true,
-                          replace: true,
-                        })
+                        void navigate({ ...releaseLink(id, { slug: fn.id }), replace: true })
                       }
                     />
                   </Panel>
-                  {selectedDeploymentId && (
-                    <ReleaseDetailPanel
-                      key={selectedDeploymentId}
-                      deploymentId={selectedDeploymentId}
-                      appSlug={fn.id}
-                      timing={buildTimings.get(selectedDeploymentId)}
-                      fallbackBuildId={buildIdsByDeployment.get(selectedDeploymentId)}
-                      section={releaseSection ?? 'overview'}
-                      onSectionChange={(next) =>
-                        void navigate({
-                          search: (current) => ({ ...current, releaseSection: next }),
-                          hash: true,
-                          resetScroll: false,
-                        })
-                      }
-                      onClose={() =>
-                        void navigate({
-                          search: (current) => ({
-                            ...current,
-                            tab: 'Deployments',
-                            deployment: undefined,
-                            releaseSection: undefined,
-                          }),
-                          hash: true,
-                          resetScroll: false,
-                        })
-                      }
-                    />
-                  )}
                 </>
               )}
 
@@ -700,16 +646,7 @@ function FunctionDetailPage() {
                 <ReleaseSafety
                   slug={fn.id}
                   onOpenDeployment={(id) =>
-                    void navigate({
-                      search: (current) => ({
-                        ...current,
-                        tab: 'Deployments',
-                        deployment: id,
-                        releaseSection: 'lifecycle',
-                      }),
-                      hash: true,
-                      resetScroll: false,
-                    })
+                    void navigate(releaseLink(id, { slug: fn.id, panel: 'rollout' }))
                   }
                 />
               )}
@@ -757,46 +694,59 @@ function FunctionDetailPage() {
                 />
               )}
               {tab === 'Routes' && (
-                <RoutesBody
+                <AppRoutesTab
                   slug={fn.id}
                   baseUrl={fn.visibility === 'internal' ? undefined : fn.url}
                 />
               )}
               {tab === 'Environment' && (
-                <>
-                  <EnvironmentSummary slug={fn.id} />
-                  <EnvironmentSection title="Variables">
-                    <EnvBody
-                      slug={fn.id}
-                      header={(actions) => (
-                        <SectionHeading
-                          title="Variables"
-                          help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
-                          actions={actions}
+                // In another environment the values are that environment's own
+                // (?scope=); production is exactly as before.
+                <EnvironmentValuesGate slug={fn.id}>
+                  {({ scope, readOnly }) => (
+                    <>
+                      <EnvironmentSummary slug={fn.id} scope={scope} />
+                      <EnvironmentSection title="Variables">
+                        <EnvBody
+                          slug={fn.id}
+                          scope={scope}
+                          readOnly={readOnly}
+                          header={(actions) => (
+                            <SectionHeading
+                              title="Variables"
+                              help="Plain settings your code reads when it starts, stored as written: values are visible to anyone with access to this app. Passwords and tokens belong in Secrets."
+                              actions={actions}
+                            />
+                          )}
                         />
-                      )}
-                    />
-                  </EnvironmentSection>
-                  <EnvironmentSection title="Secrets">
-                    <SecretsBody
-                      slug={fn.id}
-                      header={(actions) => (
-                        <SectionHeading
-                          title="Secrets"
-                          help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
-                          actions={actions}
+                      </EnvironmentSection>
+                      <EnvironmentSection title="Secrets">
+                        <SecretsBody
+                          slug={fn.id}
+                          scope={scope}
+                          readOnly={readOnly}
+                          header={(actions) => (
+                            <SectionHeading
+                              title="Secrets"
+                              help="Sealed and write-only: a value can be replaced or rotated, never read back. Each row says whether the app has started with its current value (delivery status)."
+                              actions={actions}
+                            />
+                          )}
                         />
+                      </EnvironmentSection>
+                      {/* Config history is production's revisions. */}
+                      {!scope && (
+                        <EnvironmentSection title="History">
+                          <SectionHeading
+                            title="History"
+                            help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
+                          />
+                          <ConfigHistory slug={fn.id} />
+                        </EnvironmentSection>
                       )}
-                    />
-                  </EnvironmentSection>
-                  <EnvironmentSection title="History">
-                    <SectionHeading
-                      title="History"
-                      help="Every change to a variable or secret is a revision you can roll back to; the newest 100 are kept. The config guard watches the first 10 minutes after a change and restores the previous values if the app starts failing."
-                    />
-                    <ConfigHistory slug={fn.id} />
-                  </EnvironmentSection>
-                </>
+                    </>
+                  )}
+                </EnvironmentValuesGate>
               )}
               {tab === 'Queues' && <QueuesBody slug={fn.id} />}
               {tab === 'Realtime' && (
@@ -805,7 +755,19 @@ function FunctionDetailPage() {
                   appUrl={fn.visibility === 'internal' ? undefined : fn.url}
                 />
               )}
-              {tab === 'Upstreams' && <UpstreamsBody slug={fn.id} />}
+              {tab === 'Upstreams' && (
+                // Outside production: the environment's own deployment's hints.
+                <EnvironmentValuesGate slug={fn.id} quiet>
+                  {({ scope, readOnly, name }) => (
+                    <UpstreamsBody
+                      slug={fn.id}
+                      deploymentScope={scope}
+                      environmentName={name}
+                      readOnly={readOnly}
+                    />
+                  )}
+                </EnvironmentValuesGate>
+              )}
               {tab === 'Outbound' && <AppOutboundBindings slug={fn.id} />}
               {tab === 'Services' && (
                 <div className="space-y-5">
@@ -931,16 +893,7 @@ function FunctionDetailPage() {
         onSubmissionError={setDeploySubmissionError}
         onAccepted={(deployment) => {
           setActiveDeployment(deployment);
-          void navigate({
-            search: (current) => ({
-              ...current,
-              tab: 'Deployments',
-              deployment: deployment.id,
-              releaseSection: undefined,
-            }),
-            hash: true,
-            replace: true,
-          });
+          void navigate({ ...releaseLink(deployment.id, { slug: fn.id }), replace: true });
         }}
       />
     </div>
@@ -962,5 +915,18 @@ function TabCapabilityGate({
     <CapabilityGate capability={capability} title={title}>
       {children}
     </CapabilityGate>
+  );
+}
+
+/** The Routes tab, showing the top bar's environment's traffic outside production. */
+function AppRoutesTab({ slug, baseUrl }: { slug: string; baseUrl?: string }) {
+  const app = useAppEnvironment(slug);
+  return (
+    <RoutesBody
+      slug={slug}
+      baseUrl={baseUrl}
+      environment={app.scope}
+      environmentName={app.scope ? app.name : undefined}
+    />
   );
 }

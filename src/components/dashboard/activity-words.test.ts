@@ -37,6 +37,11 @@ describe('dayLabel', () => {
   });
 });
 
+it('uses the previous calendar date across a daylight-saving transition', () => {
+  const springForward = { now: Date.parse('2026-03-09T04:15:00Z'), timeZone: 'America/New_York' };
+  expect(dayLabel(Date.parse('2026-03-08T15:00:00Z'), springForward)).toBe('Yesterday');
+});
+
 describe('groupByDay', () => {
   it('keeps newest-first order and puts an undated event where it falls', () => {
     const groups = groupByDay(

@@ -164,6 +164,12 @@ describe('readingMinutes', () => {
 });
 
 describe('vendored content', () => {
+  it.each(['dpa', 'subprocessors'])('publishes %s without maintainer comments', (slug) => {
+    const source = docSource(slug);
+    expect(source).toBeDefined();
+    expect(source).not.toContain('<!--');
+  });
+
   it('serves LF regardless of checkout line endings', () => {
     // `stripTitle` and the heading scan both assume `\n`; a CRLF checkout
     // (Windows, autocrlf) would otherwise render every title twice.

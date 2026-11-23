@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { Select } from '@/components/ui/field';
@@ -71,7 +72,9 @@ export function AdvanceCanaryButton({
         kind: 'success',
         title: 'Canary advanced',
         description:
-          percent != null ? `${percent}% of traffic now reaches this deployment.` : undefined,
+          percent != null
+            ? `${formatPercent(percent)} of traffic now reaches this deployment.`
+            : undefined,
       });
     } catch (err) {
       const gate = bindingsGateRefusal(err);

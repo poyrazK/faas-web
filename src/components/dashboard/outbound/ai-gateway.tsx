@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState } from 'react';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import {
@@ -256,7 +257,7 @@ function AIGatewayContent({
                   className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
                 >
                   <span>
-                    {BUDGET_LABELS[alert.budget]} reached {alert.threshold_percent}%
+                    {BUDGET_LABELS[alert.budget]} reached {formatPercent(alert.threshold_percent)}
                     {alert.end_user ? ` for ${alert.end_user}` : ''}
                   </span>
                   <span className="text-xs text-muted-foreground [font-variant-numeric:tabular-nums]">

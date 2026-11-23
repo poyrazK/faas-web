@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { api, unwrap } from '@/lib/api/client';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { keys, retryPolicy, useApp } from '@/lib/api/queries';
 import { createImageApp, deployImage } from '@/lib/api/image-deployments';
-import { orgAppsKey, useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { invalidateProjectApps, orgAppsKey, useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useCapability } from '@/lib/api/capabilities';
 import { readPrivateAppCreateContext } from '@/lib/api/bindings';
 import { readWorkerCreateContext } from '@/lib/api/worker-create';
@@ -62,13 +62,20 @@ function definitivelyRejected(error: unknown) {
   );
 }
 
+interface ImageProjectProps {
+  project?: { id: string; slug: string };
+  projectField?: ReactNode;
+  projectUnavailable?: boolean;
+}
+
 export function ImageDeployForm({
   slug,
   kind = 'http',
+  ...projectProps
 }: {
   slug?: string;
   kind?: ImageWorkloadKind;
-}) {
+} & ImageProjectProps) {
   const { account } = useAuth();
   if (!account) return <p role="status">Verifying your account…</p>;
   return (
@@ -79,6 +86,7 @@ export function ImageDeployForm({
       maxMemory={account.limits.ram_mb}
       slug={slug ?? ''}
       kind={kind}
+      {...projectProps}
     />
   );
 }
@@ -105,13 +113,16 @@ function ImageJourney({
   maxMemory,
   slug,
   kind,
+  project,
+  projectField,
+  projectUnavailable,
 }: {
   accountId: string;
   plan: components['schemas']['CapabilitiesResponse']['plan'];
   maxMemory: number;
   slug: string;
   kind: ImageWorkloadKind;
-}) {
+} & ImageProjectProps) {
   const [recovery] = useState(() => {
     try {
       return { operation: readImageOperation(accountId, slug, kind), error: null };
@@ -261,6 +272,8 @@ function ImageJourney({
     );
     if (app.id !== current.appId || app.type !== 'app')
       throw new Error('The app identity or type has changed. Inspect the app before resuming.');
+    if (current.createRequest.project_id && app.project_id !== current.createRequest.project_id)
+      throw new Error('The app is no longer in the selected project. Inspect it before deploying.');
     if (kind === 'worker' && app.manifest?.execution_mode !== 'worker')
       throw new Error(
         'Worker execution mode is not confirmed on this app. Inspect it before deploying.'
@@ -401,10 +414,13 @@ function ImageJourney({
     });
     void cache.invalidateQueries({ queryKey: keys.apps });
     if (current.org) void cache.invalidateQueries({ queryKey: orgAppsKey(current.org) });
+    if (current.createRequest.project_id) invalidateProjectApps(cache);
     if (current.needsCredentials) await saveCredentialAndDeploy(current);
     else await submitDeployment(current);
   }
   async function start() {
+    if (!fixedApp && projectUnavailable)
+      throw new Error('Go back and choose an available project before creating the app.');
     const request = imageRequest(
       image,
       kind === 'worker' ? '' : port,
@@ -439,14 +455,16 @@ function ImageJourney({
     const current = persist({
       ...newImageOperation(
         accountId,
-        editingApp?.createRequest ??
-          createRequest ?? {
+        editingApp?.createRequest ?? {
+          ...(createRequest ?? {
             slug: fixedApp || name,
             type: 'app',
             ram_mb: memory,
             idle_timeout_s: 0,
             visibility,
-          },
+          }),
+          ...(!fixedApp && project ? { project_id: project.id } : {}),
+        },
         request,
         editingApp?.existingSlug ?? slug,
         kind
@@ -766,7 +784,7 @@ function ImageJourney({
                       <li key={item.id} className="break-all text-sm">
                         <a
                           className="text-brand underline"
-                          href={`/dashboard/releases?deployment=${encodeURIComponent(item.id)}`}
+                          href={`/dashboard/releases/${encodeURIComponent(item.id)}`}
                         >
                           {item.id}
                         </a>{' '}
@@ -880,6 +898,7 @@ function ImageJourney({
                   />
                   {fieldError('app-name')}
                 </SettingRow>
+                {!frozen && projectField}
                 {kind === 'http' && (
                   <SettingRow
                     label="Who can reach this app?"
@@ -1141,6 +1160,9 @@ function ImageJourney({
                   ...(!fixedApp
                     ? [
                         { key: 'workspace', label: 'Workspace', value: workspace.label },
+                        ...(project
+                          ? [{ key: 'project', label: 'Project', value: project.slug }]
+                          : []),
                         { key: 'memory', label: 'Memory', value: `${memory} MB` },
                       ]
                     : []),

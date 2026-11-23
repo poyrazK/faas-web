@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState } from 'react';
 import { Plus, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -271,7 +272,9 @@ function MirrorRuleCard({
         {endpoint(rule.mirror_deployment_id, 'Mirror')}
         <span className="flex flex-col gap-0.5">
           <span className="label-mono text-muted-foreground">Share</span>
-          <span className="text-sm [font-variant-numeric:tabular-nums]">{rule.percent}%</span>
+          <span className="text-sm [font-variant-numeric:tabular-nums]">
+            {formatPercent(rule.percent)}
+          </span>
         </span>
         <span className="flex flex-col gap-0.5">
           <span className="label-mono text-muted-foreground">Bodies</span>

@@ -20,7 +20,7 @@ function budget(
   return {
     id: name,
     status: overrides.status ?? 'active',
-    spec: { name, limit_millicents: overrides.limit ?? 2_500_000 },
+    spec: { name, meters: ['compute'], limit_millicents: overrides.limit ?? 2_500_000 },
     runtime: {
       evaluation,
       compute: overrides.held ? { held: true } : undefined,
@@ -53,11 +53,11 @@ describe('budgetsAnswer', () => {
 
   it('names a passed limit, then one on pace to pass', () => {
     expect(budgetsAnswer([budget('monthly', { known: 3_000_000 })]).sentence).toBe(
-      '“monthly” has passed its $25.00 limit this month.'
+      '“monthly” has passed its 500 GB-hours limit this month.'
     );
     expect(
       budgetsAnswer([budget('monthly', { known: 1_000_000, projected: 2_600_000 })]).sentence
-    ).toBe('“monthly” is on pace to pass its $25.00 limit by month end.');
+    ).toBe('“monthly” is on pace to pass its 500 GB-hours limit by month end.');
   });
 
   it('never counts an unevaluated budget as within its limit', () => {

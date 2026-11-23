@@ -12,6 +12,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route as Jobs } from './dashboard.jobs';
 import { Route as Crons } from './dashboard.crons';
 import { Route as Triggers } from './dashboard.triggers';
+// The page follows the top bar's environment; these tests are about
+// production, where it lists and creates exactly as before.
+vi.mock('@/lib/environment-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
+  useEnvironmentScope: () => ({
+    applies: false,
+    environment: 'production',
+    name: 'Production',
+    kind: 'production',
+    choices: null,
+    available: true,
+    list: { isPending: false, isError: false, refetch: () => undefined },
+  }),
+}));
 
 // No project chosen: these pages behave as they did before project scoping.
 vi.mock('@/lib/project-scope', async (importOriginal) => ({

@@ -18,11 +18,12 @@ import { resourceId } from '@/lib/resource-id';
 import { inScope, useProjectScope } from '@/lib/project-scope';
 import { consoleHead } from '@/lib/seo';
 import type { Invocation } from '@/lib/api/async-invocations';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 type InvocationState = Invocation['state'];
 
 export const Route = createFileRoute('/dashboard/invocations')({
-  component: InvocationsPage,
+  component: withProductionBanner('invocations', InvocationsPage),
   validateSearch: (raw: Record<string, unknown>) => ({ invocation: resourceId(raw.invocation) }),
   head: () => consoleHead('invocations'),
 });

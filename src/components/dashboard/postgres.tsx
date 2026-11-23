@@ -36,14 +36,15 @@ import {
   type PostgresDatabase,
 } from '@/lib/api/queries';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { useEnvironmentScope } from '@/lib/environment-scope';
+import { EnvironmentNote } from './environment-values-gate';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { cliPostgresRestoreCommand } from '@/lib/cli-commands';
 import { absoluteTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { Link } from '@tanstack/react-router';
 import { Clock, Pause, Plus, Trash, Undo } from 'iconoir-react';
-import { useReducedMotion } from 'motion/react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sheet } from './kit/sheet';
 import { DetailDisclosure } from './detail-disclosure';
 import { DatabaseCompute, type ComputeOperation } from './postgres-compute';
@@ -139,22 +140,27 @@ function hours(seconds: number): string {
   return h >= 48 ? `${Math.round(h / 24)} days` : `${Math.round(h)} h`;
 }
 
-export function PostgresDatabases() {
+export function PostgresDatabases({
+  selected: selectedProp,
+  onSelect,
+}: {
+  /** The open database, when the page keeps it in the URL (`?db=`). */
+  selected?: string | null;
+  onSelect?: (id: string | null) => void;
+} = {}) {
   const databases = usePostgresDatabases();
   // The same read as the usage panel's: the cap holds every database at once.
   const capSuspended = usePostgresUsage().data?.compute_cap_state === 'suspended';
   const { org, label } = useWorkspaceTarget();
   // Resize lives in the detail, behind its capability; offer it only where it is.
   const canResize = useCapabilityAccess('postgres-compute-policy').access === 'on';
-  const reduce = useReducedMotion();
   // Read once: tiles count days, and a stale "3 more days" is corrected by the
   // next poll or render long before it matters.
   const [now] = useState(() => Date.now());
-  const [selected, setSelected] = useState<string | null>(null);
+  const [localSelected, setLocalSelected] = useState<string | null>(null);
+  const selected = selectedProp !== undefined ? selectedProp : localSelected;
+  const setSelected = onSelect ?? setLocalSelected;
   const [creating, setCreating] = useState(false);
-  // A fix that lives in the detail opens it and brings it into view.
-  const [reveal, setReveal] = useState(0);
-  const detail = useRef<HTMLDivElement>(null);
   // The resize or policy change started for each database, kept here so it is
   // still followed after its detail is closed and opened again: the API has no
   // list of a database's changes to find it by.
@@ -163,11 +169,6 @@ export function PostgresDatabases() {
   const items = databases.data?.items ?? [];
   const open = items.find((d) => d.id === selected);
   const context = { capSuspended, whose: org ? `${label}’s` : 'your', canResize, now };
-
-  useEffect(() => {
-    if (reveal === 0) return;
-    detail.current?.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-  }, [reveal, reduce]);
 
   const create = (
     <Button size="sm" onClick={() => setCreating(true)}>
@@ -230,10 +231,7 @@ export function PostgresDatabases() {
                     now={now}
                     open={database.id === selected}
                     onToggle={() => setSelected(database.id === selected ? null : database.id)}
-                    onReveal={() => {
-                      setSelected(database.id);
-                      setReveal((n) => n + 1);
-                    }}
+                    onReveal={() => setSelected(database.id)}
                   />
                 </li>
               ))}
@@ -244,10 +242,16 @@ export function PostgresDatabases() {
           <CreateDatabase onDone={() => setCreating(false)} />
         </Sheet>
 
-        {/* Keyed on the database: the restore and binding forms belong to the
-            one that is open, and must not carry over to the next. */}
-        {open && (
-          <div ref={detail} className="scroll-mt-6">
+        {/* The open database slides in from the right, so the list stays in
+            view behind it. Keyed on the database: the restore and binding
+            forms belong to the one that is open, and must not carry over. */}
+        <Sheet
+          open={Boolean(open)}
+          onClose={() => setSelected(null)}
+          title={open?.name ?? 'Database'}
+          size="lg"
+        >
+          {open && (
             <DatabaseDetail
               key={open.id}
               database={open}
@@ -258,8 +262,8 @@ export function PostgresDatabases() {
                 setOperations((all) => ({ ...all, [open.id]: operation }))
               }
             />
-          </div>
-        )}
+          )}
+        </Sheet>
       </div>
     </PlanGated>
   );
@@ -388,7 +392,7 @@ function DatabaseTile({
           <button
             type="button"
             onClick={onToggle}
-            aria-expanded={open}
+            aria-haspopup="dialog"
             className="text-left outline-none after:absolute after:inset-0 after:rounded-[1.25rem] focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-brand hover:underline hover:decoration-muted-foreground/50 hover:underline-offset-4"
           >
             {database.name}
@@ -467,8 +471,8 @@ function DatabaseDetail({
   const [binding, setBinding] = useState(false);
   const bindings = usePostgresBindings(database.id);
   const apps = useApps();
+  const bindingLock = useBindingLock();
   const appName = (id: string) => apps.data?.find((a) => a.id === id)?.slug ?? id.slice(0, 8);
-  const titleId = useId();
   const paused = Boolean(database.plan_excess) || (capSuspended && database.state === 'ready');
 
   const onDelete = async () => {
@@ -590,20 +594,10 @@ function DatabaseDetail({
   const items = bindings.data?.items ?? [];
 
   return (
-    <section
-      aria-labelledby={titleId}
-      className="flex flex-col gap-5 surface rounded-[1.25rem] bg-card p-5 sm:p-6"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <h2
-            id={titleId}
-            className="min-w-0 text-2xl leading-tight font-semibold tracking-[-0.01em] break-words"
-          >
-            {database.name}
-          </h2>
-          <StatusWord words={words} />
-        </div>
+    // The drawer around it carries the name as its title.
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <StatusWord words={words} />
         {!scheduled && (
           <Button
             size="xs"
@@ -639,8 +633,8 @@ function DatabaseDetail({
         capSuspended &&
         database.state === 'ready' && (
           <Suspension>
-            This database refuses connections until the compute cap lifts; Usage this month, above,
-            says when and how. Its data is kept.
+            This database refuses connections until the compute cap lifts; Usage this month, on this
+            page, says when and how. Its data is kept.
           </Suspension>
         )
       )}
@@ -666,8 +660,15 @@ function DatabaseDetail({
         </p>
       ) : (
         <>
+          {bindingLock.locked && (
+            <EnvironmentNote
+              name={bindingLock.env.name}
+              readOnly={false}
+              lead={`${bindingLock.env.name} is protected: connect apps through a promotion.`}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            {(apps.data?.length ?? 0) > 0 && (
+            {(apps.data?.length ?? 0) > 0 && !bindingLock.locked && (
               <Button
                 size="sm"
                 variant={paused ? 'outline' : 'default'}
@@ -734,7 +735,7 @@ function DatabaseDetail({
       >
         {restoreForm}
       </Sheet>
-    </section>
+    </div>
   );
 }
 
@@ -963,6 +964,32 @@ function ScheduledDeletion({ database }: { database: PostgresDatabase }) {
   );
 }
 
+/**
+ * Inside a project in another environment, whether binding into that
+ * environment's scope is locked: a protected stage, or one whose protection
+ * isn't known yet. faas's binding handler doesn't check protection (direct
+ * secret writes do), so the console is the guard. Fails closed.
+ */
+function useBindingLock() {
+  const env = useEnvironmentScope();
+  const staged = env.applies && env.environment !== 'production';
+  /**
+   * Whether writing a credential into `scope` is locked: a protected stage of
+   * the project, or any stage while the project's environments are unknown.
+   * Production's scopes stay writable, as they always were; outside a project
+   * nothing is known, so nothing changes.
+   */
+  const isLocked = (scope: string) => {
+    if (!env.applies) return false;
+    const target = scope.trim() || 'default';
+    if (target === 'default' || target === 'production') return false;
+    if (env.choices === null) return true;
+    return Boolean(env.choices.find((choice) => choice.slug === target)?.protected);
+  };
+  const locked = staged && isLocked(env.environment);
+  return { env, staged, locked, isLocked };
+}
+
 function Bindings({
   database,
   appName,
@@ -989,7 +1016,11 @@ function Bindings({
   const [appId, setAppId] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('DATABASE_URL');
   const [access, setAccess] = useState<'read_write' | 'read_only'>('read_write');
-  const [scope, setScope] = useState('default');
+  // Inside a project the credential goes to the top bar's environment's scope
+  // (the scope its deployments read, faas ADR-1139); production is `default`.
+  const { env, staged, locked, isLocked } = useBindingLock();
+  const [scopeRefusal, setScopeRefusal] = useState<string | null>(null);
+  const [scope, setScope] = useState(staged ? env.environment : 'default');
 
   const items = bindings.data?.items ?? [];
   const appList = apps.data ?? [];
@@ -1023,6 +1054,16 @@ function Bindings({
   }, [polled, knownApps, toast]);
 
   const submit = async () => {
+    // The destination scope, not only the top bar's environment: the field is
+    // free text, and faas's binding handler doesn't check protection.
+    const target = scope.trim() || 'default';
+    if (isLocked(target)) {
+      setScopeRefusal(
+        `${target.charAt(0).toUpperCase() + target.slice(1)} is protected: connect apps there through a promotion.`
+      );
+      return;
+    }
+    setScopeRefusal(null);
     try {
       await create.mutateAsync({
         app_id: chosenApp,
@@ -1133,40 +1174,44 @@ function Bindings({
                     Last change failed
                   </span>
                 )}
-                <span className="ml-auto flex items-center gap-1">
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
-                    title={
-                      binding.rotation_pending
-                        ? 'A rotation is still refreshing the app; wait for it to finish.'
-                        : `Credentials v${binding.credential_generation}`
-                    }
-                    onClick={() => void onRotate(binding)}
-                    disabled={
-                      rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
-                    }
-                  >
-                    Rotate credentials
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Remove binding for ${appName(binding.app_id)}`}
-                    onClick={() => void onRemove(binding.id, binding.environment_key)}
-                    disabled={remove.isPending}
-                  >
-                    Remove
-                  </Button>
-                </span>
+                {/* Rotating or removing writes the credential secret in the
+                    binding's scope; a locked stage's scope is left alone. */}
+                {!isLocked(binding.scope) && (
+                  <span className="ml-auto flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Rotate credentials for ${appName(binding.app_id)}`}
+                      title={
+                        binding.rotation_pending
+                          ? 'A rotation is still refreshing the app; wait for it to finish.'
+                          : `Credentials v${binding.credential_generation}`
+                      }
+                      onClick={() => void onRotate(binding)}
+                      disabled={
+                        rotate.isPending || binding.rotation_pending || binding.state !== 'ready'
+                      }
+                    >
+                      Rotate credentials
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label={`Remove binding for ${appName(binding.app_id)}`}
+                      onClick={() => void onRemove(binding.id, binding.environment_key)}
+                      disabled={remove.isPending}
+                    >
+                      Remove
+                    </Button>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )
       )}
       <Sheet
-        open={binding}
+        open={binding && !locked}
         onClose={() => setBinding(false)}
         title={`Connect an app to ${database.name}`}
       >
@@ -1215,10 +1260,23 @@ function Bindings({
             <span className="text-xs text-muted-foreground">Scope</span>
             <input
               value={scope}
-              onChange={(e) => setScope(e.target.value)}
+              onChange={(e) => {
+                setScope(e.target.value);
+                setScopeRefusal(null);
+              }}
               aria-label="Binding scope"
               className={FIELD}
             />
+            {scopeRefusal && (
+              <span role="alert" className="text-xs text-destructive">
+                {scopeRefusal}
+              </span>
+            )}
+            {staged && scope.trim() === env.environment && (
+              <span className="text-xs text-muted-foreground">
+                {env.name}’s scope: the credential reaches {env.name}’s deployments.
+              </span>
+            )}
           </label>
           <p className="text-xs text-muted-foreground">
             The connection string reaches the app as this secret and is never shown in the console.

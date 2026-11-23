@@ -16,6 +16,24 @@ const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
 };
 
 describe('public hosting contract', () => {
+  it.each(['/terms', '/privacy', '/acceptable-use'])(
+    'serves %s from apid before the site fallbacks',
+    (path) => {
+      for (const method of ['GET', 'HEAD']) {
+        const route = config.routes.find(
+          (candidate) =>
+            candidate.src &&
+            !candidate.continue &&
+            (!candidate.methods || candidate.methods.includes(method)) &&
+            new RegExp(candidate.src).test(path)
+        );
+
+        expect(route?.dest).toBe(`https://api.gregale.dev${path}`);
+        expect(route?.status).toBeUndefined();
+      }
+    }
+  );
+
   it.each(['GET', 'POST'])('sends the MFA %s to apid before any app or 404 fallback', (method) => {
     const request = new URL(
       '/dashboard/mfa?next=%2Fcli-auth%3Fcode%3Dfixture%26return%3Dmcp',
@@ -103,16 +121,12 @@ function fallbackFor(path: string) {
     .find((route) => route.src && new RegExp(route.src).test(path));
 }
 
-it.each([
-  '/privacy',
-  '/terms',
-  '/not-a-page',
-  '/dashboard/not-a-page',
-  '/assets/missing.js',
-  '/docs/not-a-page',
-])('returns 404 for an unpublished URL %s', (path) => {
-  expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
-});
+it.each(['/not-a-page', '/dashboard/not-a-page', '/assets/missing.js', '/docs/not-a-page'])(
+  'returns 404 for an unpublished URL %s',
+  (path) => {
+    expect(fallbackFor(path)).toMatchObject({ status: 404, dest: '/404.html' });
+  }
+);
 
 it('preserves every registered app route as a deep link', () => {
   const source = readFileSync('src/routeTree.gen.ts', 'utf8');

@@ -31,7 +31,7 @@ const STAGE_LABEL: Record<string, string> = {
   readiness: 'Readiness',
 };
 
-const AUDIT_LABEL: Record<string, string> = {
+export const AUDIT_LABEL: Record<string, string> = {
   'deploy.created': 'Created',
   'deploy.traffic_changed': 'Traffic changed',
   'deploy.rolled_back': 'Rolled back',

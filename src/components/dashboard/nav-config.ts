@@ -48,6 +48,7 @@ export interface NavItem {
   search?: Record<string, string>;
   /** Catalog id (faas pkg/productcap/catalog.json); the item hides when apid hides it. */
   capability?: string;
+  maturityCapability?: string;
 }
 
 export interface NavGroup {
@@ -172,6 +173,7 @@ export const NAV_HUBS: NavHub[] = [
     to: '/dashboard/edge-rules',
     sidebarIconClassName: 'text-cat-network/80',
     label: 'Edge rules',
+    maturityCapability: 'edge-rules',
     icon: FilterList,
   },
   {

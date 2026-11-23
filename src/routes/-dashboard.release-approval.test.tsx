@@ -13,9 +13,21 @@ vi.mock('@tanstack/react-router', () => ({
     useParams: () => ({ deploymentId: 'd'.repeat(32) }),
     useSearch: () => ({ intent: m.intent }),
   }),
-  Link: ({ children }: { children: unknown }) => (
-    <a href="/dashboard/releases">{children as string}</a>
-  ),
+  Link: ({
+    children,
+    to,
+    params = {},
+    search = {},
+  }: {
+    children: unknown;
+    to: string;
+    params?: Record<string, string>;
+    search?: Record<string, string>;
+  }) => {
+    const path = to.replace(/\$(\w+)/g, (_, key: string) => params[key] ?? '');
+    const query = new URLSearchParams(search).toString();
+    return <a href={query ? `${path}?${query}` : path}>{children as string}</a>;
+  },
 }));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapabilityAccess: () => ({ access: m.access, refresh: vi.fn() }),
@@ -44,7 +56,8 @@ vi.mock('@/components/dashboard/deployment-diff', () => ({
   DeploymentDiff: ({ slug }: { slug?: string }) => <p>diff of {slug}</p>,
 }));
 
-const { ReleaseApprovalPage, Route } = await import('./dashboard.releases_.$deploymentId.approval');
+const { ReleaseApprovalPage, Route } =
+  await import('./dashboard.releases_.$deploymentId_.approval');
 
 beforeEach(() => {
   m.access = 'on';
@@ -65,6 +78,24 @@ describe('the release approval page', () => {
     render(<ReleaseApprovalPage />);
     expect(screen.getByText('Not enabled for this account')).toBeInTheDocument();
     expect(screen.queryByText(/deciding/)).toBeNull();
+    expect(m.approvalRead).not.toHaveBeenCalled();
+  });
+
+  it('opens the release on its own page, named by its app', () => {
+    render(<ReleaseApprovalPage />);
+    expect(screen.getByRole('link', { name: 'Open the release' })).toHaveAttribute(
+      'href',
+      `/dashboard/apps/shop/releases/${'d'.repeat(32)}?panel=rollout`
+    );
+  });
+
+  it('opens the release through its ID while approvals are off', () => {
+    m.access = 'off';
+    render(<ReleaseApprovalPage />);
+    expect(screen.getByRole('link', { name: 'Open the release' })).toHaveAttribute(
+      'href',
+      `/dashboard/releases/${'d'.repeat(32)}?panel=rollout`
+    );
     expect(m.approvalRead).not.toHaveBeenCalled();
   });
 

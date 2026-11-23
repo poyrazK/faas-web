@@ -982,7 +982,7 @@ const workerImageReads = new Map<string, number>();
  * Shared by `POST /v1/apps` and `POST /v1/orgs/{slug}/apps`: the request body
  * is the same CreateAppRequest, and only the attribution differs.
  */
-function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
+function createMockApp(body: Record<string, unknown>, req: IncomingMessage, org?: string) {
   const key = String(req.headers['idempotency-key'] ?? '');
   const receipt = key && imageAppReceipts.get(key);
   if (receipt && Date.now() - receipt.at < 24 * 60 * 60 * 1000) {
@@ -1018,12 +1018,25 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
     throw new Problem(400, 'invalid_slug', 'Slugs are lowercase letters, digits, and dashes.');
   if (db.appBySlug(slug) || [...deletedApps.values()].some((r) => r.app.slug === slug))
     throw new Problem(409, 'app_exists', `"${slug}" already exists.`);
+  const project =
+    typeof body.project_id === 'string'
+      ? projects.find(
+          (item) => item.id === body.project_id && item.org_id === (org ? db.ORG_ID : undefined)
+        )
+      : undefined;
+  if (body.project_id && !project)
+    throw new Problem(404, 'not_found', 'Choose a project in this workspace.');
+  if (project?.repo_full_name)
+    throw new Problem(
+      422,
+      'validation_failed',
+      "Add the app through the project's repository or release workflow."
+    );
   const created: db.App = {
     ...db.apps[0],
     id: db.id(),
     slug,
-    // A created app is standalone; the seed it copies may be in a project.
-    project_id: undefined,
+    project_id: project?.id,
     type: (body.type as db.App['type']) ?? 'function',
     runtime: (body.runtime as db.App['runtime']) ?? 'node24',
     ram_mb: Number(body.ram_mb ?? 256),
@@ -1073,6 +1086,12 @@ function createMockApp(body: Record<string, unknown>, req: IncomingMessage) {
   // Newest first in a workspace inventory, like apid.
   Object.assign(created, { created_at: new Date().toISOString() });
   db.apps.push(created);
+  if (project)
+    project.workloads.push({
+      slug: created.slug,
+      workload_name: created.slug,
+      status: created.status,
+    });
   if (key) imageAppReceipts.set(key, { body: JSON.stringify(body), app: created, at: Date.now() });
   return status(201, created);
 }
@@ -9950,7 +9969,18 @@ route('GET', '/v1/apps/{slug}/work-policies', ({ params }) => ({
 route('GET', '/v1/instances', () => ({ instances: db.instances, next_before: null }));
 route('GET', '/v1/audit-log', ({ query }) => {
   const limit = Number(query.get('limit') ?? 50);
-  return { entries: db.audit.slice(0, limit), limit };
+  const kind = query.get('kind_prefix');
+  const since = query.get('since');
+  const before = query.get('before');
+  const matching = db.audit.filter(
+    (entry) =>
+      (!kind || entry.kind.startsWith(kind)) &&
+      (!since || Date.parse(entry.received_at) >= Date.parse(since))
+  );
+  const offset = before ? matching.findIndex((entry) => entry.id === before) + 1 : 0;
+  const entries = matching.slice(offset, offset + limit);
+  const next = offset + entries.length < matching.length ? entries.at(-1)?.id : undefined;
+  return { entries, limit, ...(next ? { next_before: next } : {}) };
 });
 
 route('GET', '/v1/usage/summary', () => db.usage);
@@ -10252,7 +10282,7 @@ route('GET', '/v1/orgs/{slug}/apps', ({ params }) => ({
 }));
 route('POST', '/v1/orgs/{slug}/apps', ({ params, body, req }) => {
   requireOrgRole(params.slug, ['owner', 'admin', 'developer']);
-  const result = createMockApp(body, req);
+  const result = createMockApp(body, req, params.slug);
   appWorkspace.set((result.body as db.App).slug, params.slug);
   return result;
 });

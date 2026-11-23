@@ -355,7 +355,7 @@ export function DebugRequestEvidence({
                   <a href={`/dashboard/apps/${encodeURIComponent(slug)}`}>Open app</a>
                   {data.request.deployment_id && (
                     <a
-                      href={`/dashboard/releases?${new URLSearchParams({ deployment: data.request.deployment_id })}`}
+                      href={`/dashboard/releases/${encodeURIComponent(data.request.deployment_id)}`}
                     >
                       Open release
                     </a>

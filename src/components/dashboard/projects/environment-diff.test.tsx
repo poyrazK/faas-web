@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
-import { EnvironmentDiffView } from './environment-diff';
+import { EnvironmentDifferences } from './environment-diff';
 import { EnvironmentStateView } from './environment-state';
 import type { EnvironmentDiff, EnvironmentState } from '@/lib/api/projects';
 const config = {
@@ -16,7 +17,7 @@ const routes = {
   declared_routes: [],
 };
 const policies = { ownership: 'application' as const, rules: [] };
-it('keeps unknown secret fingerprints and version drift distinct from equality', () => {
+it('keeps unknown secret fingerprints and version drift distinct from equality', async () => {
   const data: EnvironmentDiff = {
     project_slug: 'shop',
     from_environment: 'production',
@@ -61,14 +62,30 @@ it('keeps unknown secret fingerprints and version drift distinct from equality',
       },
     ],
   };
-  render(<EnvironmentDiffView data={data} />);
+  render(<EnvironmentDifferences data={data} />);
+  // Plain words first: a missing fingerprint is "can't tell", never "the same".
+  expect(
+    screen.getByText(
+      "Can't tell whether secret LEGACY matches: neither side reports a fingerprint."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Secret TOKEN is on a different version (1 in Production, 2 in Staging).')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Releases, variables, routes, headers and domains are the same.')
+  ).toBeInTheDocument();
+  expect(screen.queryByText('No differences Gregale can see.')).not.toBeInTheDocument();
+  // The raw comparison is one click away.
+  expect(screen.queryByText('version_drift', { exact: true })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /technical details/i }));
   expect(screen.getByText('unknown', { exact: true })).toBeInTheDocument();
   expect(screen.getByText('version_drift', { exact: true })).toBeInTheDocument();
   expect(screen.getByText('Fingerprint unknown', { exact: false })).toBeInTheDocument();
   expect(screen.getByText('Shared across environments')).toBeInTheDocument();
   expect(screen.queryByText('Environments match')).not.toBeInTheDocument();
 });
-it('shows no published graph separately from a workload live release and safe metadata', () => {
+it('shows no published graph separately from a workload live release and safe metadata', async () => {
   const data: EnvironmentState = {
     project_slug: 'shop',
     environment: 'staging',
@@ -86,7 +103,7 @@ it('shows no published graph separately from a workload live release and safe me
           workload_slug: 'api',
           workload_name: 'API',
           status: 'live',
-          deployment_id: 'dep-1',
+          deployment_id: 'dep-1234567890',
           image_digest: 'sha256:abc',
         },
         variables: [{ key: 'REGION', value: 'eu' }],
@@ -114,11 +131,20 @@ it('shows no published graph separately from a workload live release and safe me
     ],
   };
   render(<EnvironmentStateView data={data} />);
-  expect(screen.getByText('No active release graph')).toBeInTheDocument();
-  expect(screen.getByText('dep-1')).toBeInTheDocument();
+  // Each app is one line with its short release; ids and metadata wait behind
+  // one "Technical details" for the whole environment, not one per app.
+  expect(screen.getByText('release dep-123')).toBeInTheDocument();
+  expect(screen.getByText(/no release set active/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Show details' })).not.toBeInTheDocument();
+  expect(screen.queryByText('dep-1234567890')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Technical details/ }));
+  expect(screen.getByText('dep-1234567890')).toBeInTheDocument();
   expect(screen.getByText('REGION')).toBeInTheDocument();
   expect(screen.getByText('eu')).toBeInTheDocument();
   expect(screen.getAllByText(/generation 3/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Snapshot/)).toHaveTextContent('2026-10-09T10:00:00Z');
+  expect(screen.getByText(/^Read/).querySelector('time')).toHaveAttribute(
+    'datetime',
+    '2026-10-09T10:00:00.000Z'
+  );
   expect(screen.queryByRole('button', { name: /promote|clone|save/i })).not.toBeInTheDocument();
 });

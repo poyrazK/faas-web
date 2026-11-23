@@ -7,6 +7,7 @@ import { deploymentRecovery } from '@/lib/deployment-recovery';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useApps, useCancelDeployment, useRetryDeployment } from '@/lib/api/queries';
 import type { components } from '@/lib/api/schema';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 /** Recovery always acts on the selected record, never on the configuration editor. */
 export function DeploymentLifecycle({
@@ -227,8 +228,7 @@ function RecoveryActions({
         <div role="status" className="mt-3 rounded-md border border-brand/25 p-3 text-sm">
           <p>The retry was accepted as a new deployment. This failed record is unchanged.</p>
           <Link
-            to="/dashboard/releases"
-            search={{ deployment: resultId, releaseSection: 'overview' }}
+            {...releaseLink(resultId, { slug })}
             className="mt-2 inline-block text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
           >
             View new deployment

@@ -176,7 +176,7 @@ describe('global Needs attention dropdown', () => {
     expect(screen.queryByRole('button', { name: 'Close dialog' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('link', { name: 'View deployment dep-api' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?deployment=dep-api'
+      '/dashboard/releases/dep-api'
     );
     expect(within(dialog).getByRole('link', { name: 'Review usage' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -191,9 +191,7 @@ describe('global Needs attention dropdown', () => {
     const router = await renderShell('/dashboard', undefined, attentionClient());
     await user.click(screen.getByRole('button', { name: 'Needs attention' }));
     await user.click(screen.getByRole('link', { name: 'View deployment dep-api' }));
-    await waitFor(() =>
-      expect(router.state.location.href).toBe('/dashboard/releases?deployment=dep-api')
-    );
+    await waitFor(() => expect(router.state.location.href).toBe('/dashboard/releases/dep-api'));
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Needs attention' })).not.toBeInTheDocument()
     );
@@ -363,6 +361,27 @@ describe('dashboard navigation foundation', () => {
       'href',
       '/dashboard'
     );
+  });
+
+  it('takes the logo to the account Overview, leaving the project, not the landing page', async () => {
+    const router = await renderShell('/dashboard/releases?project=shop&env=staging');
+    const logo = screen.getByRole('link', { name: 'Gregale — go to Overview' });
+    expect(logo).toHaveAttribute('href', '/dashboard');
+    await userEvent.click(logo);
+    await waitFor(() => expect(screen.getByTestId('page').textContent).toBe('/dashboard'));
+    expect(router.state.location.search).not.toHaveProperty('project');
+    expect(router.state.location.search).not.toHaveProperty('env');
+  });
+
+  it('keeps the environment on the way back to the project overview', async () => {
+    await renderShell('/dashboard/releases?project=shop&env=staging');
+    const main = screen.getByRole('navigation', { name: 'Main' });
+    const home = within(main).getByRole('link', { name: 'Project overview' });
+    expect(home.getAttribute('href')).toContain('env=staging');
+    // Leaving the project still drops it.
+    expect(
+      within(main).getByRole('link', { name: 'Back to Overview' }).getAttribute('href')
+    ).not.toContain('env=');
   });
 
   it('keeps every account destination visible before a project, desktop and mobile', async () => {
@@ -631,6 +650,17 @@ describe('dashboard navigation foundation', () => {
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(breadcrumb).getByText('Releases')).toHaveAttribute('aria-current', 'page');
     expect(within(breadcrumb).queryByText('Deployments')).not.toBeInTheDocument();
+  });
+
+  it('trails a release page through its app and Deployments', async () => {
+    await renderShell('/dashboard/apps/api/releases/dep-1');
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByRole('link', { name: 'Deployments' })).toHaveAttribute(
+      'href',
+      '/dashboard/apps/api?tab=Deployments'
+    );
+    expect(within(breadcrumb).getByText('Release')).toHaveAttribute('aria-current', 'page');
+    expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it('preserves a Projects bookmark when its primary destination is reselected', async () => {

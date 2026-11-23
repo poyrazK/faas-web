@@ -1,4 +1,4 @@
-import { absoluteTime, compactTime, parseTime, relativeTime } from '@/lib/time';
+import { absoluteTime, clockTime, compactTime, parseTime, relativeTime } from '@/lib/time';
 
 /**
  * One way to show a time: "5m ago" (or "in 6d"), or with `mode="absolute"` the
@@ -12,16 +12,18 @@ export function Timestamp({
   className,
 }: {
   value: string | number | Date | null | undefined;
-  mode?: 'relative' | 'absolute';
+  mode?: 'relative' | 'absolute' | 'clock';
   className?: string;
 }) {
   const ms = parseTime(value);
   if (ms === undefined) return <span className={className}>—</span>;
 
   const exact = absoluteTime(ms);
+  const display =
+    mode === 'clock' ? clockTime(ms) : mode === 'absolute' ? compactTime(ms) : relativeTime(ms);
   return (
     <time dateTime={new Date(ms).toISOString()} title={exact} className={className}>
-      {mode === 'absolute' ? compactTime(ms) : relativeTime(ms)}
+      {display}
     </time>
   );
 }

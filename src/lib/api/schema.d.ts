@@ -63240,6 +63240,11 @@ export interface components {
         };
         /** @description App creation payload: slug, type (app|function), runtime (required for function; must be omitted for app), RAM MB, max concurrency, idle timeout, and optional manifest. */
         CreateAppRequest: {
+            /**
+             * Format: uuid
+             * @description Existing project in the selected workspace. Projects managed by a repository or an active release set require their project release workflow.
+             */
+            project_id?: string;
             profiling?: components["schemas"]["ProfilingConfig"];
             tracing?: components["schemas"]["TracingConfig"];
             /**

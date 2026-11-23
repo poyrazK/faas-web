@@ -21,6 +21,7 @@ export interface SummaryInput {
   name: string;
   workspaceLabel: string;
   workspaceIsOrg: boolean;
+  projectLabel?: string;
   appType: 'function' | 'app';
   runtimeLabel?: string;
   memoryMb: number;
@@ -49,6 +50,8 @@ export function summaryRows(i: SummaryInput): SummaryRow[] {
   if (i.name) rows.push({ key: 'name', label: 'Name', value: i.name, mono: true });
   if (i.workspaceIsOrg || i.step >= 2)
     rows.push({ key: 'workspace', label: 'Workspace', value: i.workspaceLabel });
+
+  if (i.projectLabel) rows.push({ key: 'project', label: 'Project', value: i.projectLabel });
   if (i.step >= 1) {
     rows.push({
       key: 'type',

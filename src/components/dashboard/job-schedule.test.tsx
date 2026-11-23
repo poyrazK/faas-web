@@ -119,9 +119,7 @@ describe('JobScheduleDialog', () => {
   it('adds a schedule with its zone and policy', async () => {
     render(<JobScheduleDialog job={job()} onClose={vi.fn()} />);
     await userEvent.type(screen.getByLabelText('Schedule'), '0 3 * * *');
-    const zone = screen.getByLabelText('Timezone');
-    await userEvent.clear(zone);
-    await userEvent.type(zone, 'Europe/Istanbul');
+    await userEvent.selectOptions(screen.getByLabelText('Timezone'), 'Europe/Istanbul');
     await userEvent.click(screen.getByLabelText(/Apply a schedule policy/));
     await userEvent.selectOptions(screen.getByLabelText('Overlap'), 'replace');
     await userEvent.selectOptions(screen.getByLabelText('Missed runs'), 'coalesce_latest');

@@ -515,17 +515,17 @@ export function useDeleteTrustedSigner(slug: string) {
 
 /** Re-seal a secret under the current host identity — the value crosses the
  * wire once, exactly like create, and is never echoed back. */
-export function useRotateSecret(slug: string) {
+export function useRotateSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { key: string; value: string }) =>
       unwrap(
         api.POST('/v1/apps/{slug}/secrets/{key}/rotate', {
-          params: { path: { slug, key: input.key } },
+          params: scoped({ slug, key: input.key }, scope),
           body: { value: input.value },
         })
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.appSecrets(slug) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) }),
   });
 }
 
@@ -1029,10 +1029,17 @@ export function useAppSlo(
  * is plan-gated and Free always reads false — so an empty list there means
  * "not measured", not "no routes".
  */
-export function useAppRoutes(slug: string) {
+export function useAppRoutes(slug: string, environment?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'routes'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/routes', { params: { path: { slug } } })),
+    // Production keeps today's request (no selector); another environment
+    // reads its own traffic with ?environment= and caches apart.
+    queryKey: environment ? ['apps', slug, 'routes', environment] : ['apps', slug, 'routes'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/routes', {
+          params: environment ? { path: { slug }, query: { environment } } : { path: { slug } },
+        })
+      ),
     enabled: Boolean(slug),
   });
 }
@@ -2168,87 +2175,113 @@ export function useInfiniteInstances(limit = 50) {
  * and "update" are one operation.
  * ------------------------------------------------------------------ */
 
-export function useAppSecrets(slug: string) {
+/**
+ * An app's variables or secrets in one environment. Production (`scope`
+ * undefined) keeps today's key and requests; any other environment is its own
+ * entry under the same prefix, so a production write still refreshes every
+ * environment and a Staging write never touches production's list.
+ */
+export function appValuesKey(kind: 'env' | 'secrets', slug: string, scope?: string) {
+  const base = kind === 'env' ? keys.appEnv(slug) : keys.appSecrets(slug);
+  return scope ? ([...base, 'scope', scope] as const) : base;
+}
+
+/** `{ path }`, plus `query: { scope }` outside production. */
+const scoped = <P extends Record<string, string>>(path: P, scope?: string) =>
+  scope ? { path, query: { scope } } : { path };
+
+export function useAppSecrets(slug: string, scope?: string) {
   return useQuery({
-    queryKey: keys.appSecrets(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/secrets', { params: { path: { slug } } })),
+    queryKey: appValuesKey('secrets', slug, scope),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/secrets', { params: scoped({ slug }, scope) })),
     enabled: Boolean(slug),
   });
 }
 
-export function useSetSecret(slug: string) {
+export function useSetSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       unwrap(
         api.PUT('/v1/apps/{slug}/secrets/{key}', {
-          params: { path: { slug, key } },
+          params: scoped({ slug, key }, scope),
           body: { value },
         })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) });
     },
   });
 }
 
-export function useDeleteSecret(slug: string) {
+export function useDeleteSecret(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (key: string) =>
-      unwrap(api.DELETE('/v1/apps/{slug}/secrets/{key}', { params: { path: { slug, key } } })),
+      unwrap(api.DELETE('/v1/apps/{slug}/secrets/{key}', { params: scoped({ slug, key }, scope) })),
     onMutate: (key) =>
-      applyOptimistic<SecretsList>(qc, { queryKey: keys.appSecrets(slug) }, (old) => ({
-        ...old,
-        secrets: old.secrets?.filter((s) => s.key !== key),
-      })),
+      applyOptimistic<SecretsList>(
+        qc,
+        { queryKey: appValuesKey('secrets', slug, scope), exact: true },
+        (old) => ({
+          ...old,
+          secrets: old.secrets?.filter((s) => s.key !== key),
+        })
+      ),
     onError: (_err, _key, rollback) => rollback?.(),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appSecrets(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('secrets', slug, scope) });
     },
   });
 }
 
 type SecretsList = NonNullable<ReturnType<typeof useAppSecrets>['data']>;
 
-export function useAppEnv(slug: string) {
+export function useAppEnv(slug: string, scope?: string) {
   return useQuery({
-    queryKey: keys.appEnv(slug),
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env', { params: { path: { slug } } })),
+    queryKey: appValuesKey('env', slug, scope),
+    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/env', { params: scoped({ slug }, scope) })),
     enabled: Boolean(slug),
   });
 }
 
-export function useSetEnv(slug: string) {
+export function useSetEnv(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       unwrap(
-        api.PUT('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } }, body: { value } })
+        api.PUT('/v1/apps/{slug}/env/{key}', {
+          params: scoped({ slug, key }, scope),
+          body: { value },
+        })
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('env', slug, scope) });
     },
   });
 }
 
-export function useDeleteEnv(slug: string) {
+export function useDeleteEnv(slug: string, scope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (key: string) =>
-      unwrap(api.DELETE('/v1/apps/{slug}/env/{key}', { params: { path: { slug, key } } })),
+      unwrap(api.DELETE('/v1/apps/{slug}/env/{key}', { params: scoped({ slug, key }, scope) })),
     onMutate: (key) =>
-      applyOptimistic<EnvList>(qc, { queryKey: keys.appEnv(slug) }, (old) => ({
-        ...old,
-        env: old.env?.filter((v) => v.key !== key),
-      })),
+      applyOptimistic<EnvList>(
+        qc,
+        { queryKey: appValuesKey('env', slug, scope), exact: true },
+        (old) => ({
+          ...old,
+          env: old.env?.filter((v) => v.key !== key),
+        })
+      ),
     onError: (_err, _key, rollback) => rollback?.(),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.appConfig(slug) });
-      return qc.invalidateQueries({ queryKey: keys.appEnv(slug) });
+      return qc.invalidateQueries({ queryKey: appValuesKey('env', slug, scope) });
     },
   });
 }
@@ -2511,13 +2544,19 @@ export function useAuditLog() {
  * cursor. The audit page keeps already loaded entries visible if an older
  * page fails, so a transient history read never hides evidence already shown.
  */
-export function useInfiniteAuditLog(limit = 50) {
+export function useInfiniteAuditLog(
+  accountId: string,
+  limit = 50,
+  filters?: { since?: string; kind_prefix?: string }
+) {
   return useInfiniteQuery({
-    queryKey: [...keys.auditLog, 'history', limit],
-    queryFn: ({ pageParam }) =>
+    queryKey: [...keys.auditLog, 'history', accountId, limit, ...(filters ? [filters] : [])],
+    enabled: Boolean(accountId),
+    queryFn: ({ pageParam, signal }) =>
       unwrap(
         api.GET('/v1/audit-log', {
-          params: { query: { limit, ...(pageParam ? { before: pageParam } : {}) } },
+          params: { query: { limit, ...filters, ...(pageParam ? { before: pageParam } : {}) } },
+          signal,
         })
       ),
     initialPageParam: undefined as string | undefined,
@@ -3019,10 +3058,27 @@ export function useDeleteAppRegistryCredential(slug: string) {
  * platform observed the egress. Hostnames are only ever returned hashed, so the
  * console can show that an app reaches *a* Postgres without leaking which one.
  */
-export function useUpstreams(slug: string) {
+export function useUpstreams(slug: string, deploymentScope?: string) {
   return useQuery({
-    queryKey: ['apps', slug, 'upstreams'],
-    queryFn: () => unwrap(api.GET('/v1/apps/{slug}/upstreams', { params: { path: { slug } } })),
+    queryKey: upstreamKey(slug, deploymentScope),
+    queryFn: () =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/upstreams', {
+          params: deploymentScope
+            ? { path: { slug }, query: { deployment_scope: deploymentScope } }
+            : { path: { slug } },
+        })
+      ),
+    // Production's request is unchanged (every deployment); a hint another
+    // environment declared for its own deployment isn't production's.
+    select: deploymentScope
+      ? undefined
+      : (data) => ({
+          ...data,
+          upstreams: data.upstreams?.filter((u) =>
+            ['', 'default', 'production'].includes(u.deployment_scope ?? '')
+          ),
+        }),
     enabled: Boolean(slug),
   });
 }
@@ -3372,23 +3428,36 @@ export function useRotateWebhookSecret(slug: string) {
   });
 }
 
-const upstreamKey = (slug: string) => ['apps', slug, 'upstreams'] as const;
+/**
+ * Upstreams per deployment scope (faas ADR-098): production is the app's own
+ * key; another environment's hints sit under it, filtered by
+ * `deployment_scope`, which is part of faas's dedupe key.
+ */
+const upstreamKey = (slug: string, deploymentScope?: string) =>
+  deploymentScope
+    ? (['apps', slug, 'upstreams', deploymentScope] as const)
+    : (['apps', slug, 'upstreams'] as const);
 
-export function useAddUpstream(slug: string) {
+export function useAddUpstream(slug: string, deploymentScope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: components['schemas']['PutDataUpstreamRequest']) =>
-      unwrap(api.PUT('/v1/apps/{slug}/upstreams', { params: { path: { slug } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug) }),
+      unwrap(
+        api.PUT('/v1/apps/{slug}/upstreams', {
+          params: { path: { slug } },
+          body: deploymentScope ? { ...body, deployment_scope: deploymentScope } : body,
+        })
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug, deploymentScope) }),
   });
 }
 
-export function useDeleteUpstream(slug: string) {
+export function useDeleteUpstream(slug: string, deploymentScope?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       unwrap(api.DELETE('/v1/apps/{slug}/upstreams/{id}', { params: { path: { slug, id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: upstreamKey(slug, deploymentScope) }),
   });
 }
 

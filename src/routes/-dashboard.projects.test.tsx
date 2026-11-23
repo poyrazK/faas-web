@@ -123,6 +123,7 @@ async function mount(
     getParentRoute: () => projects,
     path: '$projectSlug',
     component: Detail.options.component,
+    validateSearch: Detail.options.validateSearch,
   });
   const router = createRouter({
     routeTree: root.addChildren([dashboard.addChildren([projects.addChildren([index, detail])])]),
@@ -188,6 +189,14 @@ it('keeps the standalone way in when every app belongs to a project', async () =
   expect(await screen.findByText('Every app belongs to a project.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Open standalone apps' })).toBeInTheDocument();
 });
+it('rewrites a legacy ?environment= link to ?env= and opens the Environments tab', async () => {
+  extraGet['/v1/projects/{slug}/environments'] = [];
+  const { router } = await mount('/dashboard/projects/shop?environment=staging');
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ env: 'staging', tab: 'environments' })
+  );
+  expect(router.state.location.search).not.toHaveProperty('environment');
+});
 it('bounds the project list and expands on request', async () => {
   await mount(
     '/dashboard/projects',
@@ -215,14 +224,42 @@ it('offers an import and the standalone way in when nothing is deployed', async 
 it('loads a direct detail URL with actual partial status, not invented Ready', async () => {
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   await mount('/dashboard/projects/shop');
-  const table = await screen.findByRole('table', { name: 'Project workloads' });
-  expect(within(table).getByText('failed')).toBeInTheDocument();
-  expect(within(table).getByText('Unknown')).toBeInTheDocument();
-  expect(within(table).getByRole('link', { name: 'api' })).toHaveAttribute(
+  // The answer first: what the project is, where it deploys from, what failed.
+  expect(await screen.findByRole('heading', { level: 1, name: 'shop' })).toBeInTheDocument();
+  expect(screen.getByText('1 app.')).toBeInTheDocument();
+  expect(screen.getByText(/Pushes to main in team\/shop deploy it\./)).toBeInTheDocument();
+  // What failed is red, not the amber of a deploy that is only under way.
+  expect(screen.getByText("web's latest deploy failed")).toHaveClass('text-status-critical');
+  // The app is a tile. Its state is what the project reported, since the app
+  // itself is not loaded; the failed deploy is named, and nothing is invented.
+  const tiles = screen.getByRole('list', { name: 'Apps in shop' });
+  expect(within(tiles).getByRole('link', { name: 'api' })).toHaveAttribute(
     'href',
     '/dashboard/apps/api'
   );
+  expect(within(tiles).getByText('Parked')).toBeInTheDocument();
+  expect(within(tiles).getByText(/deploy failed/)).toBeInTheDocument();
   expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Every latest deploy is live|Its latest deploy is live/)).toBeNull();
+  // Status: a Free account has no request metrics, so it is told once and
+  // still gets what is running and the last deploy; unknowns are dashes.
+  const status = screen.getByRole('heading', { name: 'Status' }).closest('section')!;
+  expect(within(status).getByText('Metrics is available on Hobby and above')).toBeInTheDocument();
+  expect(within(status).queryByRole('region', { name: 'Requests' })).not.toBeInTheDocument();
+  expect(within(status).getByRole('region', { name: 'Last deploy' })).toHaveTextContent(
+    'No deployments yet'
+  );
+  // Settings and the danger zone are a tab away, not on the front page.
+  expect(screen.queryByRole('button', { name: 'Delete project' })).not.toBeInTheDocument();
+  const tabs = screen.getByRole('navigation', { name: 'Project sections' });
+  expect(within(tabs).getByRole('link', { name: 'Overview' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  );
+  expect(within(tabs).getByRole('link', { name: 'Settings' })).toHaveAttribute(
+    'href',
+    '/dashboard/projects/shop?tab=settings'
+  );
   expect(
     within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('shop')
   ).toBeInTheDocument();
@@ -274,7 +311,7 @@ it('edits the source and deletes the project from its page, then returns to the 
     data: undefined,
     response: new Response(null, { status: 204 }),
   } as never);
-  const { router } = await mount('/dashboard/projects/shop');
+  const { router } = await mount('/dashboard/projects/shop?tab=settings');
   expect(await screen.findByRole('textbox', { name: 'Production branch' })).toHaveValue('main');
   expect(await screen.findByText(/detaches its app, api\./)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Delete project' }));

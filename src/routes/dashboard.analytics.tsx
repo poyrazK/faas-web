@@ -8,6 +8,7 @@ import { validateAppAnalyticsSearch } from '@/components/dashboard/app-analytics
 import { PageHeader } from '@/components/dashboard/primitives';
 import { useProjectScope } from '@/lib/project-scope';
 import { consoleHead } from '@/lib/seo';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 /** A link from before one app's analytics moved to its Metrics section. */
 type LegacyAppLink = {
@@ -19,7 +20,7 @@ type LegacyAppLink = {
 };
 
 export const Route = createFileRoute('/dashboard/analytics')({
-  component: AnalyticsPage,
+  component: withProductionBanner('analytics', AnalyticsPage),
   head: () => consoleHead('analytics'),
   validateSearch: (search: Record<string, unknown>): AccountAnalyticsSearch & LegacyAppLink => {
     const window = search.window === '24h' || search.window === '7d' ? search.window : undefined;
