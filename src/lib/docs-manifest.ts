@@ -369,6 +369,18 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Steps against an app with a manual, scheduled or event start, retries and run history.',
       },
+      {
+        slug: 'stored-workflows-testing',
+        source: 'docs/stored-workflow-testing.md',
+        title: 'Test stored workflows',
+        summary: 'Test cases, verification suites, baselines, simulation and publishing checks.',
+      },
+      {
+        slug: 'stored-workflows-operations',
+        source: 'docs/stored-workflow-operations.md',
+        title: 'Run and recover stored workflows',
+        summary: 'Find and cancel runs, health, alerts, and recovering failed runs.',
+      },
     ],
   },
   {
