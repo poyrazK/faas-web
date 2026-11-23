@@ -368,10 +368,10 @@ describe('AlertRuleForm', () => {
     expect(breaches.getAllByRole('cell', { name: '50 or lower' })).toHaveLength(2);
     expect(result.getByText('165 of 168')).toBeInTheDocument();
     await userEvent.click(
-      result.getByText(/3 skipped \(1 with missing or stale telemetry, 2 with insufficient/)
+      result.getByText(/3 skipped \(1 with missing or stale request data, 2 with insufficient/)
     );
     const skips = within(result.getByRole('table', { name: 'Skipped windows' }));
-    expect(skips.getByRole('cell', { name: 'Missing or stale telemetry' })).toBeInTheDocument();
+    expect(skips.getByRole('cell', { name: 'Missing or stale request data' })).toBeInTheDocument();
     expect(skips.getAllByRole('cell', { name: 'Insufficient baseline history' })).toHaveLength(2);
     expect(spies.GET).toHaveBeenCalledWith(
       path,
@@ -870,7 +870,9 @@ describe('AlertRuleForm', () => {
       expect(
         skipped.getByText(`${sparse} ${requestsLabel.toLowerCase()} (minimum 50)`)
       ).toBeInTheDocument();
-      expect(skipped.getByRole('cell', { name: 'Missing or stale telemetry' })).toBeInTheDocument();
+      expect(
+        skipped.getByRole('cell', { name: 'Missing or stale request data' })
+      ).toBeInTheDocument();
       expect(spies.GET.mock.calls.filter(([url]) => url === path)).toHaveLength(2);
       expect(spies.GET).toHaveBeenCalledWith(
         path,

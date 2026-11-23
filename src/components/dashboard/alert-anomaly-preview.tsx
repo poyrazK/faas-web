@@ -27,7 +27,7 @@ type ReplayIncidentLists = Pick<
 >;
 
 const SKIP_LABEL: Record<SkippedWindow['reason'], string> = {
-  telemetry_missing_or_stale: 'Missing or stale telemetry',
+  telemetry_missing_or_stale: 'Missing or stale request data',
   insufficient_history: 'Insufficient baseline history',
   insufficient_traffic: 'Insufficient traffic',
 };
@@ -154,7 +154,8 @@ export function AlertAnomalyPreview({
         </label>
       )}
       <p className="text-xs text-muted-foreground">
-        One check per hour over the past seven days. Short breaches may fall between checks.
+        The weekly preview checks traffic across all environments once an hour. Short breaches may
+        fall between checks.
       </p>
       {!candidateError && preview.isFetching && (
         <InlinePhase phase="loading" loadingMessage="Checking recent traffic…" />
@@ -406,8 +407,9 @@ function IncidentReplay({
             <Timestamp value={result.last_check_at} mode="absolute" />.
           </p>
           <p aria-live="polite" className="text-xs text-muted-foreground">
-            {result.evaluated} of {result.evaluated + result.skipped} minute checks evaluated.
-            Eligibility uses the {replay.cooldown_minutes}-minute cooldown within this window.
+            {result.evaluated} of {result.evaluated + result.skipped} minute checks evaluated. The
+            replay shows which notifications would be eligible with a {replay.cooldown_minutes}
+            -minute cooldown.
           </p>
           {result.environment_scope &&
             result.evaluated === 0 &&
@@ -677,7 +679,7 @@ function SkippedWindows({
     <details className="text-xs">
       <summary className="cursor-pointer text-muted-foreground">
         {label && <span>{label} · </span>}
-        {windows.length} skipped ({missing} with missing or stale telemetry,{' '}
+        {windows.length} skipped ({missing} with missing or stale request data,{' '}
         {windows.length - missing - lowTraffic} with insufficient baseline history
         {lowTraffic > 0 && `, ${lowTraffic} with insufficient traffic`})
       </summary>

@@ -11,8 +11,8 @@ type ObservationCoverage = components['schemas']['AlertObservationCoverage'];
 const SKIP_LABEL: Record<components['schemas']['AlertObservationSkipCount']['reason'], string> = {
   insufficient_traffic: 'too few eligible requests',
   insufficient_history: 'insufficient baseline history',
-  telemetry_missing_or_stale: 'missing or stale telemetry',
-  telemetry_unavailable: 'telemetry unavailable',
+  telemetry_missing_or_stale: 'missing or stale request data',
+  telemetry_unavailable: 'request data unavailable',
 };
 
 export function describeObservationCoverage(coverage: ObservationCoverage | undefined): string {

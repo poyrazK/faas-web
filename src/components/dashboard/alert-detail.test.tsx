@@ -112,9 +112,14 @@ describe('AlertDetail', () => {
       'telemetry_missing_or_stale',
       0,
       undefined,
-      'Request telemetry is missing or stale for this window.',
+      'Request data is missing or stale for this window.',
     ],
-    ['telemetry_unavailable', 0, undefined, 'Gregale couldn’t read telemetry for this evaluation.'],
+    [
+      'telemetry_unavailable',
+      0,
+      undefined,
+      'Gregale couldn’t read request data for this evaluation.',
+    ],
   ])('explains a skipped anomaly evaluation for %s', async (reason, count, required, message) => {
     rule = {
       ...RULE,
@@ -355,7 +360,7 @@ describe('AlertDetail', () => {
     ).toBeInTheDocument();
     expect(coverage.getByText(/Last check at/)).toBeInTheDocument();
     if (completed === 0) {
-      expect(coverage.getByText(/2 with missing or stale telemetry/)).toBeInTheDocument();
+      expect(coverage.getByText(/2 with missing or stale request data/)).toBeInTheDocument();
     }
     expect(screen.getByText('No observed incidents yet.')).toBeInTheDocument();
   });
@@ -462,6 +467,8 @@ describe('AlertDetail', () => {
       threshold: 3,
       observe_only: true,
       environment_scope: 'staging',
+      action: 'rollback',
+      post_deploy_rollback_window_seconds: 600,
       observation_coverage: {
         attempted: 480,
         completed: 420,
@@ -494,17 +501,65 @@ describe('AlertDetail', () => {
     ).toBeInTheDocument();
     expect(dialog.getByText(/420 of 480 attempted checks completed/)).toBeInTheDocument();
     expect(
-      dialog.getByText(/40 with missing or stale telemetry, 20 with too few eligible requests/)
+      dialog.getByText(/from “Notify and roll back to the last live deployment” to “Notify only”/)
+    ).toBeInTheDocument();
+    expect(dialog.getByText(/rollback window will also be cleared/)).toBeInTheDocument();
+    expect(
+      dialog.getByText(/40 with missing or stale request data, 20 with too few eligible requests/)
     ).toBeInTheDocument();
     expect(spies.PATCH).not.toHaveBeenCalled();
-    await userEvent.click(dialog.getByRole('button', { name: 'Enable notifications' }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+    expect(spies.PATCH).not.toHaveBeenCalled();
+    await userEvent.click(form.getByRole('button', { name: 'Save changes' }));
+    const reopened = within(
+      await screen.findByRole('dialog', { name: 'Enable notifications for staging?' })
+    );
+    await userEvent.click(reopened.getByRole('button', { name: 'Enable notifications' }));
     await waitFor(() =>
       expect(spies.PATCH).toHaveBeenCalledWith('/v1/apps/{slug}/alerts/{id}', {
         params: { path: { slug: 'api', id: RULE.id } },
-        body: { observe_only: false, environment_scope: 'staging' },
+        body: {
+          observe_only: false,
+          environment_scope: 'staging',
+          action: 'webhook',
+          post_deploy_rollback_window_seconds: 0,
+        },
       })
     );
   });
+
+  it.each(['cooldown', 'recovery'])(
+    'withholds saved coverage after editing %s during promotion',
+    async (setting) => {
+      rule = {
+        ...RULE,
+        metric: 'request_count',
+        comparison: 'above_baseline',
+        threshold: 3,
+        observe_only: true,
+        observation_coverage: { attempted: 10, completed: 8 },
+      };
+      api();
+      renderWithProviders(<AlertDetail slug="api" ruleId={RULE.id} onClose={vi.fn()} />);
+      await userEvent.click(await screen.findByRole('button', { name: /edit/i }));
+      const form = within(screen.getByRole('form', { name: 'Edit rule' }));
+      if (setting === 'cooldown') {
+        const input = form.getByRole('spinbutton', { name: /cooldown/i });
+        await userEvent.clear(input);
+        await userEvent.type(input, '60');
+      } else {
+        await userEvent.selectOptions(
+          form.getByRole('combobox', { name: 'Healthy checks to recover' }),
+          '2'
+        );
+      }
+      await userEvent.selectOptions(form.getByRole('combobox', { name: /mode/i }), 'notify');
+      await userEvent.click(form.getByRole('button', { name: 'Save changes' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Enable notifications?' });
+      expect(dialog).toHaveTextContent('Live coverage is unavailable for these edited settings.');
+      expect(dialog).not.toHaveTextContent('8 of 10');
+    }
+  );
 
   it('shows pending recovery progress and saves a changed confirmation setting', async () => {
     rule = {

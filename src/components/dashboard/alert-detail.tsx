@@ -78,9 +78,9 @@ function describeAnomalyEvaluation(
         return `${evaluation.baseline_days} of ${evaluation.required_count} required baseline days qualified.`;
       return `${evaluation.count} of ${evaluation.required_count} required historical windows qualified.`;
     case 'telemetry_missing_or_stale':
-      return 'Request telemetry is missing or stale for this window.';
+      return 'Request data is missing or stale for this window.';
     case 'telemetry_unavailable':
-      return 'Gregale couldn’t read telemetry for this evaluation.';
+      return 'Gregale couldn’t read request data for this evaluation.';
     case 'threshold_not_reached':
       return 'The observed value hasn’t reached the baseline threshold.';
     case 'minimum_impact_not_reached': {
@@ -594,35 +594,41 @@ function EditRule({
     setSaving(true);
     try {
       if (rule.observe_only && !observeOnly) {
-        const sameCondition =
+        const sameSettings =
           !scopeChanged &&
           rule.window_spec === window &&
           rule.comparison === comparison &&
-          rule.threshold === parsedThreshold;
-        const currentCoverage = sameCondition ? rule.observation_coverage : undefined;
-        const lastCheckedAt = currentCoverage
-          ? currentCoverage.last_checked_at
-          : rule.last_evaluated_at;
-        const lastCheck = sameCondition ? parseTime(lastCheckedAt) : undefined;
-        const days = sameCondition ? rule.anomaly_evaluation?.baseline_days : undefined;
-        const check =
-          lastCheck === undefined
-            ? 'No check recorded for this condition and environment.'
-            : `Last check at ${absoluteTime(lastCheck)}.`;
-        const baseline =
-          days === undefined
-            ? 'Baseline coverage is unavailable.'
-            : `${days} ${days === 1 ? 'day' : 'days'} qualified for the baseline.`;
-        const coverage = sameCondition
-          ? describeObservationCoverage(currentCoverage)
-          : 'The edited condition and environment have no observation coverage.';
-        const action = clearAction ? ' The deployment action will be cleared.' : '';
+          rule.threshold === parsedThreshold &&
+          rule.cooldown_minutes === parsedCooldown &&
+          (rule.recovery_confirmation_checks ?? 1) === recoveryChecks;
+        let coverage = 'Live coverage is unavailable for these edited settings.';
+        if (sameSettings) {
+          const current = rule.observation_coverage;
+          const lastCheck = parseTime(current ? current.last_checked_at : rule.last_evaluated_at);
+          const check =
+            lastCheck === undefined
+              ? 'No check recorded for this condition and environment.'
+              : `Last check at ${absoluteTime(lastCheck)}.`;
+          const days = rule.anomaly_evaluation?.baseline_days;
+          const baseline =
+            days === undefined
+              ? 'Baseline coverage is unavailable.'
+              : `${days} ${days === 1 ? 'day' : 'days'} qualified for the baseline.`;
+          coverage = `${check} ${baseline} ${describeObservationCoverage(current)}`;
+        }
+        const action = clearAction
+          ? ` The action will change from “${ACTION[rule.action] ?? rule.action}” to “Notify only”.`
+          : '';
+        const rollback =
+          body.post_deploy_rollback_window_seconds === 0
+            ? ' The rollback window will also be cleared.'
+            : '';
         if (
           !(await confirm({
             title: environmentScope
               ? `Enable notifications for ${environmentScope}?`
               : 'Enable notifications?',
-            description: `${check} ${baseline} ${coverage}${action}`,
+            description: `${coverage}${action}${rollback}`,
             confirmLabel: 'Enable notifications',
           }))
         )
