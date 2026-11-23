@@ -1,18 +1,14 @@
 import { useEffect, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
-import { Check, OpenNewWindow } from 'iconoir-react';
+import { Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
-import { useMfa, type MfaMethod } from '@/components/auth/mfa-provider';
+import { useAuthenticatorStepUp } from '@/components/auth/use-authenticator-step-up';
 import { PageHeader } from '@/components/dashboard/primitives';
+import { BillingPortalButton } from '@/components/dashboard/billing-portal-button';
 import { AppCapacity } from '@/components/dashboard/app-capacity';
 import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
-import {
-  useBillingPortal,
-  useChangePlan,
-  useCancelBilling,
-  useRetryBilling,
-} from '@/lib/api/queries';
+import { useChangePlan, useCancelBilling, useRetryBilling } from '@/lib/api/queries';
 import { useAuth, type Plan } from '@/lib/auth';
 import { Panel } from '@/components/dashboard/primitives';
 import { useConfirm } from '@/components/ui/confirm';
@@ -37,8 +33,7 @@ export const Route = createFileRoute('/dashboard/plans')({
  * **No prices are shown here.** The API exposes the four plans and their
  * quotas but not what they cost, and the page it replaced listed invented
  * dollar figures. Quoting a number the server cannot confirm is the one thing a
- * billing screen must not do, so pricing links out to the provider's portal,
- * which is authoritative.
+ * billing screen must not do, so the page links to the published pricing.
  *
  * Switching plans changes a live subscription and can bill immediately, so it
  * goes through a confirmation rather than firing on click.
@@ -200,9 +195,8 @@ function PlansPage() {
 function PersonalPlans() {
   const { toast } = useToast();
   const { account, refreshAccount } = useAuth();
-  const { openMfa } = useMfa();
+  const stepUp = useAuthenticatorStepUp();
   const changePlan = useChangePlan();
-  const portal = useBillingPortal();
   const [pending, setPending] = useState<Plan | null>(null);
   const [salespersonCode, setSalespersonCode] = useState('');
   const [salespersonError, setSalespersonError] = useState<string | null>(null);
@@ -228,38 +222,6 @@ function PersonalPlans() {
       window.removeEventListener('focus', reread);
     };
   }, [awaiting, refreshAccount]);
-
-  const openStep = (mode: 'choose' | 'verify', reason: string) =>
-    new Promise<MfaMethod | null>((resolve) =>
-      openMfa(mode, {
-        reason,
-        allowRecovery: false,
-        onVerified: (via) => resolve(via),
-        onDismissed: () => resolve(null),
-      })
-    );
-
-  /**
-   * Plan changes sit behind a five-minute step-up that only an authenticator
-   * code satisfies, and every browser session starts without one — including
-   * accounts with no MFA at all (middleware.go requireStepUp; WithStepUp is
-   * always applied to cookie sessions). No API response says whether MFA is
-   * enrolled, so the first prompt is the provider's "set up or enter a code"
-   * choice, which already falls through to verification when enrolment answers
-   * 409. Finishing enrolment and a recovery code both reissue the cookie
-   * without a stamp (handlers_mfa.go: only mfaVerify stamps), so enrolment is
-   * followed by a code and the recovery option is not offered at all.
-   */
-  const stepUp = async (): Promise<'confirmed' | 'dismissed'> => {
-    let via = await openStep('choose', 'Plan changes need multi-factor authentication.');
-    if (via === 'enrolment') {
-      via = await openStep(
-        'verify',
-        'Authenticator set up. Enter a new code from your authenticator to confirm this change.'
-      );
-    }
-    return via === 'authenticator' ? 'confirmed' : 'dismissed';
-  };
 
   const apply = (plan: Plan, retried = false, code = ''): Promise<void> =>
     changePlan
@@ -298,7 +260,8 @@ function PersonalPlans() {
             });
             return;
           }
-          if ((await stepUp()) === 'confirmed') return apply(plan, true, code);
+          if (await stepUp('Plan changes need multi-factor authentication.'))
+            return apply(plan, true, code);
           toast({
             kind: 'error',
             title: 'Could not change plan',
@@ -349,31 +312,14 @@ function PersonalPlans() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Plans"
-        help="Pricing and payment methods live in the billing portal."
+        help="Manage payment methods in the billing portal."
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
-            disabled={portal.isPending}
-            onClick={() => {
-              void portal
-                .mutateAsync()
-                .then((result) => {
-                  if (result.url) window.location.href = result.url;
-                })
-                .catch((err: unknown) =>
-                  toast({
-                    kind: 'error',
-                    title: 'Could not open the billing portal',
-                    error: err,
-                  })
-                );
-            }}
-          >
-            <OpenNewWindow className="h-3.5 w-3.5" />
-            Pricing & payment
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <a href="/docs/plans">View pricing</a>
+            </Button>
+            <BillingPortalButton />
+          </div>
         }
       />
       {account && (

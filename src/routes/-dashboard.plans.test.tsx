@@ -6,6 +6,7 @@ import { Route } from './dashboard.plans';
 
 const mocks = vi.hoisted(() => ({
   changePlan: vi.fn(),
+  billingPortal: vi.fn(),
   refreshAccount: vi.fn(),
   toast: vi.fn(),
   goToExternal: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock('@/lib/api/workspace-apps', () => ({
 }));
 vi.mock('@/lib/api/queries', () => ({
   useChangePlan: () => ({ mutateAsync: mocks.changePlan, isPending: false }),
-  useBillingPortal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useBillingPortal: () => ({ mutateAsync: mocks.billingPortal, isPending: false }),
   useCancelBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryBilling: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -70,6 +71,7 @@ async function switchToPro() {
 
 beforeEach(() => {
   mocks.changePlan.mockReset();
+  mocks.billingPortal.mockReset();
   mocks.refreshAccount.mockReset().mockResolvedValue(undefined);
   mocks.toast.mockReset();
   mocks.goToExternal.mockReset();
@@ -77,6 +79,97 @@ beforeEach(() => {
   mocks.account = { id: 'account', plan: 'free', status: 'active', limits: {} };
   mocks.billingStatus = { data: undefined, isError: false };
   mocks.checkoutReferral = { data: null, isLoading: false, isError: false, refetch: vi.fn() };
+});
+
+describe('Pricing and billing portal', () => {
+  async function clickPortal() {
+    const view = render(<PlansPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Billing portal' }));
+    return view;
+  }
+
+  const stepUpRequired = () =>
+    new ApiError({ status: 403, code: 'step_up_required', title: 'Step-up required' });
+
+  it('links to public pricing without requesting a billing session', () => {
+    render(<PlansPage />);
+    expect(screen.getByRole('link', { name: 'View pricing' })).toHaveAttribute(
+      'href',
+      '/docs/plans'
+    );
+    expect(mocks.billingPortal).not.toHaveBeenCalled();
+  });
+
+  it('opens the provider URL returned by the API', async () => {
+    mocks.billingPortal.mockResolvedValue({ url: 'https://billing.example/portal' });
+    await clickPortal();
+    expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/portal');
+  });
+
+  it('explains when the API has no portal URL', async () => {
+    mocks.billingPortal.mockResolvedValue({});
+    await clickPortal();
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Billing portal unavailable' })
+    );
+    expect(mocks.goToExternal).not.toHaveBeenCalled();
+  });
+
+  it('verifies with a fresh code after enrolment and retries the portal', async () => {
+    mocks.billingPortal
+      .mockRejectedValueOnce(stepUpRequired())
+      .mockResolvedValueOnce({ url: 'https://billing.example/portal' });
+    mocks.openMfa
+      .mockImplementationOnce((_mode, opts) => opts.onVerified('enrolment'))
+      .mockImplementationOnce((_mode, opts) => opts.onVerified('authenticator'));
+    await clickPortal();
+    expect(mocks.openMfa).toHaveBeenNthCalledWith(
+      1,
+      'choose',
+      expect.objectContaining({ allowRecovery: false })
+    );
+    expect(mocks.openMfa).toHaveBeenNthCalledWith(
+      2,
+      'verify',
+      expect.objectContaining({ allowRecovery: false })
+    );
+    expect(mocks.billingPortal).toHaveBeenCalledTimes(2);
+    expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/portal');
+  });
+
+  it('stops after a second step-up refusal', async () => {
+    mocks.billingPortal.mockRejectedValue(stepUpRequired());
+    mocks.openMfa.mockImplementationOnce((_mode, opts) => opts.onVerified('authenticator'));
+    await clickPortal();
+    expect(mocks.billingPortal).toHaveBeenCalledTimes(2);
+    expect(mocks.openMfa).toHaveBeenCalledTimes(1);
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'error', title: 'Could not open the billing portal' })
+    );
+  });
+
+  it('lets the customer try again after dismissing verification', async () => {
+    mocks.billingPortal.mockRejectedValueOnce(stepUpRequired());
+    mocks.openMfa.mockImplementationOnce((_mode, opts) => opts.onDismissed());
+    await clickPortal();
+    expect(mocks.billingPortal).toHaveBeenCalledTimes(1);
+    expect(mocks.goToExternal).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Billing portal' })).toBeEnabled();
+  });
+
+  it('ignores a portal response after the customer leaves Plans', async () => {
+    let resolvePortal!: (result: { url: string }) => void;
+    mocks.billingPortal.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePortal = resolve;
+      })
+    );
+    const view = await clickPortal();
+    expect(mocks.billingPortal).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await act(async () => resolvePortal({ url: 'https://billing.example/portal' }));
+    expect(mocks.goToExternal).not.toHaveBeenCalled();
+  });
 });
 
 describe('Subscription controls', () => {
