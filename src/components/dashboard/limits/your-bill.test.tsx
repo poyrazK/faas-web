@@ -220,7 +220,7 @@ describe('before the workspace is known', () => {
     }
     await show(<Strip />);
     const strip = screen.getByRole('status', { name: 'Spending limits status' });
-    expect(strip).toHaveTextContent('Checking your limits…');
+    expect(strip).toHaveTextContent('Checking the limits…');
     expect(strip.querySelector('.shimmer')).not.toBeNull();
   });
 });
@@ -411,7 +411,7 @@ describe('leftovers', () => {
     render(withRouter(<Strip />));
     const before = await screen.findByRole('status', { name: 'Spending limits status' });
     expect(before).toHaveAttribute('aria-live', 'polite');
-    expect(before).toHaveTextContent('Checking your limits…');
+    expect(before).toHaveTextContent('Checking the limits…');
     h.overageCap.mockReturnValue(ok({ overage_cap_cents: 5000 }));
     await userEvent.click(screen.getByRole('button', { name: 'Again' }));
     await waitFor(() => expect(before).toHaveTextContent('Nothing on your bill is stopped'));

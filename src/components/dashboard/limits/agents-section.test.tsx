@@ -267,6 +267,6 @@ describe('the status strip with agents', () => {
     renderWithProviders(withRouter(<AgentAwareStrip data={data} onAction={vi.fn()} />));
     const strip = await screen.findByRole('status', { name: 'Spending limits status' });
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(strip).toHaveTextContent('Checking your limits…');
+    expect(strip).toHaveTextContent('Checking the limits…');
   });
 });

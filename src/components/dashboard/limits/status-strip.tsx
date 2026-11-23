@@ -73,7 +73,7 @@ export function StatusStrip({
           </>
         ) : (
           <>
-            <span className="sr-only">Checking your limits…</span>
+            <span className="sr-only">Checking the limits…</span>
             <Skeleton className="h-3.5 w-40" />
             <Skeleton className="h-3 w-2/3 max-w-md" />
           </>

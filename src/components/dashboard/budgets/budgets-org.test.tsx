@@ -328,25 +328,75 @@ describe('leftovers', () => {
     workspace.org = 'acme';
     workspace.label = 'Acme';
     again();
+    // Not even for a moment after the switch.
+    expect(screen.queryByText('Personal one')).toBeNull();
     expect(await screen.findByText('Billing app')).toBeInTheDocument();
     expect(screen.queryByText('Personal one')).toBeNull();
 
     workspace.org = null;
     workspace.label = 'Personal';
     again();
+    expect(screen.queryByText('Billing app')).toBeNull();
     expect(await screen.findByText('Personal one')).toBeInTheDocument();
     expect(screen.queryByText('Billing app')).toBeNull();
   });
 
-  it('a #budgets link scrolls to the section once its budgets have loaded', async () => {
-    const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
-    window.history.replaceState(null, '', '#budgets');
+  describe('a #budgets link', () => {
+    const original = Element.prototype.scrollIntoView;
+    let scroll: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll as unknown as Element['scrollIntoView'];
+      window.history.replaceState(null, '', '#budgets');
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+      window.history.replaceState(null, '', window.location.pathname);
+    });
+
+    it('scrolls to the section once its budgets have loaded', async () => {
+      api();
+      renderWithProviders(<BudgetsSection />);
+      await screen.findByText('Billing app');
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+      expect(scroll.mock.contexts[0]).toBe(document.getElementById('budgets'));
+    });
+
+    it('scrolls even when the list failed, so its error is seen', async () => {
+      api({ 'GET /v1/orgs/{slug}/billing/budgets': () => problem(422, 'validation_failed', 'no') });
+      renderWithProviders(<BudgetsSection />);
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    });
+
+    it('doesn’t scroll again after a workspace switch', async () => {
+      workspace.org = null;
+      api({ 'GET /v1/billing/budgets': () => ({ budgets: [] }) });
+      const view = renderWithProviders(<BudgetsSection />);
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+      workspace.org = 'acme';
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <ToastProvider>
+            <ConfirmProvider>
+              <BudgetsSection />
+            </ConfirmProvider>
+          </ToastProvider>
+        </QueryClientProvider>
+      );
+      await screen.findByText('Billing app');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(scroll).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('a company’s budgets answer never says “your” for the organization', async () => {
+    orgBudgets = [{ ...ORG_BUDGET, status: 'draft' } as Budget];
     api();
     renderWithProviders(<BudgetsSection />);
-    await screen.findByText('Billing app');
-    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
-    expect(scroll.mock.contexts[0]).toBe(document.getElementById('budgets'));
-    window.history.replaceState(null, '', '#');
+    const answer = await screen.findByRole('status', { name: 'Budgets status' });
+    await waitFor(() => expect(answer.textContent).not.toBe(''));
+    expect(answer.textContent?.replace('Nothing needs your attention.', '')).not.toMatch(
+      /\byour\b/i
+    );
   });
 });

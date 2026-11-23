@@ -23,13 +23,17 @@ function name(list: Budget[], one: string, many: string): string {
   return list.length === 1 ? `${quoted(list[0])} ${one}` : `${list.length} budgets ${many}`;
 }
 
-export function budgetsAnswer(budgets: readonly Budget[]): BudgetsAnswer {
+export function budgetsAnswer(
+  budgets: readonly Budget[],
+  { org = false }: { org?: boolean } = {}
+): BudgetsAnswer {
   const live = budgets.filter((b) => b.status !== 'deleted');
   if (live.length === 0)
     return {
       tone: 'none',
-      sentence:
-        'You have no budgets yet. A budget emails you, or stops previews, when this month’s usage passes a limit you set.',
+      sentence: org
+        ? 'This organization has no budgets yet. A budget alerts its billing contact, or stops previews, when this month’s usage passes a limit you set.'
+        : 'You have no budgets yet. A budget emails you, or stops previews, when this month’s usage passes a limit you set.',
     };
 
   const active = live.filter((b) => b.status !== 'draft' && b.status !== 'unavailable');
@@ -82,8 +86,8 @@ export function budgetsAnswer(budgets: readonly Budget[]): BudgetsAnswer {
       tone: 'none',
       sentence:
         live.length === 1
-          ? 'Your only budget is a draft, so it neither alerts nor stops anything.'
-          : 'Your budgets are drafts, so none of them alerts or stops anything.',
+          ? `${org ? 'The' : 'Your'} only budget is a draft, so it neither alerts nor stops anything.`
+          : `${org ? 'This organization’s' : 'Your'} budgets are drafts, so none of them alerts or stops anything.`,
     };
 
   const evaluated = active.filter((b) => known(b) !== undefined);
@@ -92,7 +96,7 @@ export function budgetsAnswer(budgets: readonly Budget[]): BudgetsAnswer {
       tone: 'good',
       sentence:
         active.length === 1
-          ? 'Your active budget is within its limit. Nothing needs your attention.'
+          ? `${org ? 'The' : 'Your'} active budget is within its limit. Nothing needs your attention.`
           : `All ${active.length} active budgets are within their limits. Nothing needs your attention.`,
     };
   return {

@@ -24,7 +24,7 @@ export function LimitsSummary() {
           </>
         ) : (
           <span className="flex items-center">
-            <span className="sr-only">Checking your limits…</span>
+            <span className="sr-only">Checking the limits…</span>
             <Skeleton className="h-3 w-64 max-w-full" />
           </span>
         )}

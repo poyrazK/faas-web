@@ -34,6 +34,6 @@ it('waits rather than guess while reads load', async () => {
   data.current = { settled: false } satisfies Partial<BillData>;
   render(withRouter(<LimitsSummary />));
   expect(await screen.findByRole('status', { name: 'Spending limits' })).toHaveTextContent(
-    'Checking your limits…'
+    'Checking the limits…'
   );
 });
