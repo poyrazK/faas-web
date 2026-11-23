@@ -942,6 +942,17 @@ there, so the console never approves or denies. An agent's own page
 the last 7 days, and undo, which always shows the server's plan before it
 applies that exact plan (`plan_digest`; a 409 plans again). The budget route
 finds only the caller's own keys, so a colleague's agent shows no budget.
-Connecting an agent, toolsets, and an organization's agent policy stay in the
-CLI. A change gets a sentence ("Deployed api") only for paths the API contract
-fixes and only when it went through; otherwise the row shows the request.
+Connecting an agent and toolsets stay in the CLI. A change gets a sentence
+("Deployed api") only for paths the API contract fixes and only when it went
+through; otherwise the row shows the request.
+
+A company workspace also has **Agent policy** (`/dashboard/agents/policy`,
+`/v1/orgs/{slug}/agent-policy`): whether agents may act in it, the capabilities
+they may get, what every agent asks a person before, a ceiling on their
+budgets, and the member's own channels for its approval requests. Every member
+reads it; owners and admins save it, and the page tells them apart by whether
+the agent list answers (the same role guards both). Saving a stricter policy
+revokes the connections it no longer allows in the same request, so the page
+names those agents first and asks. The contract's request enum lists four
+capabilities while apid accepts seven (`api.MCPGrantableScopes`); the page
+offers the seven and keeps any other the policy already carries.

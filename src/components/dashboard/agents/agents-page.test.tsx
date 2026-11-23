@@ -201,10 +201,26 @@ describe('AgentsPage', () => {
       'GET /v1/agent-approvals': () => ({ items: [] }),
       // Another member's agent: its budget is not this person's to read.
       'GET /v1/agent-connections/{id}/budget': () => problem(404, 'not_found'),
+      'GET /v1/orgs/{slug}/agent-policy': () => ({
+        agents_allowed: true,
+        allowed_scopes: ['deploy:write'],
+        approval_categories: ['delete'],
+        max_agent_budget_cents: 10000,
+      }),
     });
     renderWithProviders(<AgentsPage />);
     const row = (await screen.findByText('Claude Code')).closest('tr')!;
     expect(within(row).getByText(/poyraz@acme.dev/)).toBeInTheDocument();
+    // The company's policy, in a sentence, with the way to its page.
+    expect(
+      await screen.findByText('Agents in Acme Corp may inspect apps, and deploy and change apps.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Every agent asks a person before deletes. No agent's always-on budget can pass $100.00 a month."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open policy' })).toBeInTheDocument();
     expect(spies.GET).toHaveBeenCalledWith(
       '/v1/orgs/{slug}/agent-connections',
       expect.objectContaining({ params: { path: { slug: 'acme' } } })
@@ -222,10 +238,13 @@ describe('AgentsPage', () => {
     routeApi({
       'GET /v1/orgs/{slug}/agent-connections': () => problem(403, 'org_role_forbidden'),
       'GET /v1/agent-approvals': () => ({ items: [] }),
+      // Every member may read the policy, whatever their role.
+      'GET /v1/orgs/{slug}/agent-policy': () => ({ agents_allowed: false, allowed_scopes: [] }),
     });
     renderWithProviders(<AgentsPage />);
     expect(
       await screen.findByText(/Only owners and admins of Acme Corp can see the agents/)
     ).toBeInTheDocument();
+    expect(await screen.findByText('Agents are not allowed in Acme Corp.')).toBeInTheDocument();
   });
 });

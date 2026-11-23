@@ -38,6 +38,23 @@ export type AgentUndoRequest = components['schemas']['AgentUndoRequest'];
 export type AgentUndoPlan = components['schemas']['AgentUndoPlan'];
 export type AgentUndoItem = components['schemas']['AgentUndoItem'];
 export type AgentUndoResult = components['schemas']['AgentUndoResult'];
+export type AgentPolicy = components['schemas']['OrgAgentPolicyResponse'];
+
+/**
+ * A policy to save. Scopes and categories are plain strings: the contract's
+ * request enum lists four scopes, while apid accepts seven
+ * (api.MCPGrantableScopes, pkg/api/cliauth.go; content/docs/mcp.md lists them),
+ * and a policy read back may carry one the console does not know, which a
+ * save must keep rather than drop.
+ */
+export interface AgentPolicyChange {
+  agents_allowed: boolean;
+  allowed_scopes: string[];
+  approval_categories?: string[];
+  approval_channels?: string[];
+  max_agent_budget_cents?: number;
+  clear_max_agent_budget?: boolean;
+}
 
 /** The workspace the page reads: null for the personal account, else the org slug. */
 export type AgentWorkspace = string | null;
@@ -49,7 +66,9 @@ export const agentKeys = {
   connections: (org: AgentWorkspace) => ['agents', scope(org), 'connections'] as const,
   approvals: ['agents', 'approvals'] as const,
   channels: ['agents', 'approval-channels'] as const,
+  budgets: ['agents', 'budget'] as const,
   budget: (id: string) => ['agents', 'budget', id] as const,
+  policy: (org: string) => ['agents', org, 'policy'] as const,
   activity: (org: AgentWorkspace, id: string) => ['agents', scope(org), 'activity', id] as const,
 };
 
@@ -232,5 +251,45 @@ export function useSetAgentApprovalChannels() {
     mutationFn: (channels: string[]) =>
       unwrap(api.PUT('/v1/agent-approvals/channels', { body: { channels } })),
     onSuccess: (saved) => qc.setQueryData(agentKeys.channels, saved.channels),
+  });
+}
+
+/**
+ * What agents may do in a company (faas org.go GetPolicy). Every member may
+ * read it; a company that never set one allows agents with every capability,
+ * and its answer has no `updated_at`.
+ */
+export function useAgentPolicy(org: AgentWorkspace, enabled = true) {
+  return useQuery({
+    queryKey: agentKeys.policy(org ?? ''),
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/orgs/{slug}/agent-policy', { params: { path: { slug: org ?? '' } }, signal })
+      ),
+    enabled: enabled && Boolean(org),
+    retry: retryPolicy,
+  });
+}
+
+/**
+ * Saves the policy (owners and admins). apid revokes, in the same request,
+ * every connection the new policy no longer allows and counts them in
+ * `revoked`; a new ceiling changes what each agent's budget answers.
+ */
+export function useSetAgentPolicy(org: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (change: AgentPolicyChange) =>
+      unwrap(
+        api.PUT('/v1/orgs/{slug}/agent-policy', {
+          params: { path: { slug: org } },
+          body: change as components['schemas']['OrgAgentPolicyRequest'],
+        })
+      ),
+    onSuccess: ({ revoked: _revoked, ...policy }) => {
+      qc.setQueryData(agentKeys.policy(org), policy);
+      void qc.invalidateQueries({ queryKey: agentKeys.connections(org) });
+      void qc.invalidateQueries({ queryKey: agentKeys.budgets });
+    },
   });
 }

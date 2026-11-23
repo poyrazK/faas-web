@@ -16,6 +16,7 @@ import {
   useAgentApprovals,
   useAgentBudgets,
   useAgentConnections,
+  useAgentPolicy,
   useDisconnectAgent,
   useDisconnectAllAgents,
   useSetAgentApprovalChannels,
@@ -34,6 +35,8 @@ import {
   approvalSentence,
   asksBefore,
   kindWords,
+  policyAnswer,
+  policyRules,
   reachWords,
   timeLeft,
 } from '@/lib/agents';
@@ -230,6 +233,33 @@ function ApprovalChannels() {
           />
         )}
       </div>
+    </Panel>
+  );
+}
+
+/** A company's agent policy in a sentence, with the way to its page. */
+function PolicyPanel({ org, label }: { org: string; label: string }) {
+  const policy = useAgentPolicy(org);
+  const phase = queryPhase({ error: policy.error, loading: policy.isPending });
+  const rules = policy.data ? policyRules(policy.data) : '';
+  return (
+    <Panel
+      title="Agent policy"
+      help={`What agents may do in ${label}, whoever connected them. Owners and admins set it; every member can read it.`}
+      actions={
+        <Button asChild size="xs" variant="outline">
+          <Link to="/dashboard/agents/policy">Open policy</Link>
+        </Button>
+      }
+    >
+      {policy.data ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm">{policyAnswer(policy.data, label).sentence}</p>
+          {rules && <p className="text-sm text-muted-foreground">{rules}</p>}
+        </div>
+      ) : (
+        <InlinePhase phase={phase} error={policy.error} onRetry={() => void policy.refetch()} />
+      )}
     </Panel>
   );
 }
@@ -456,7 +486,9 @@ function AgentsBody({
       )}
 
       {/* The account's own setting: a company's channels are part of its agent policy. */}
-      {!org && (
+      {org ? (
+        <PolicyPanel org={org} label={label} />
+      ) : (
         <WhenCapable capability="notification-channels">
           <ApprovalChannels />
         </WhenCapable>
