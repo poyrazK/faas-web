@@ -21,6 +21,12 @@ it('persists frozen non-secret identity before creating an app', () => {
   expect(creationReplayAllowed(operation, operation.createdAt + 24 * 60 * 60 * 1000)).toBe(false);
   expect(creationReplayAllowed(operation, operation.createdAt + 1000)).toBe(true);
 });
+it('preserves the exact project across an interrupted app creation', () => {
+  const project_id = '7e97197a-9d10-4d03-8a72-cf2c65f07ab6';
+  const operation = newImageOperation('a', { slug: 'api', type: 'app', project_id }, request);
+  saveImageOperation(operation);
+  expect(readImageOperation('a', '')?.createRequest.project_id).toEqual(project_id);
+});
 it('retains reviewed internal visibility in the non-secret recovery record', () => {
   const operation = newImageOperation(
     'account-a',

@@ -49,11 +49,10 @@ export function setMfaRequiredHandler(handler: ((requestStartedAt: number) => vo
 const AUTH_ROUTES = ['/login', '/signup', '/v1/auth/'];
 
 /**
- * 401 codes that refuse the credential a request acts on (rotating an expired
- * or revoked deploy token, faas errors.go:5385-5397), not the browser session.
- * Signing out on those would end a healthy session.
+ * These 401 codes reject a deploy token or an MFA code. The browser session
+ * is still valid, so let the caller show the error and offer a retry.
  */
-const OTHER_CREDENTIAL_CODES = new Set(['api_key_expired', 'api_key_revoked']);
+const OTHER_CREDENTIAL_CODES = new Set(['api_key_expired', 'api_key_revoked', 'mfa_invalid_code']);
 
 async function refusesOtherCredential(response: Response): Promise<boolean> {
   try {

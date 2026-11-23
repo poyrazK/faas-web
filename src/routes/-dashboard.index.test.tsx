@@ -311,7 +311,7 @@ it("shows the company's compute allowance in a company workspace, not the signed
 
 describe('overview deployments column', () => {
   it.each(['pointer', 'keyboard'])(
-    'opens a recent deployment in the releases hub using %s',
+    'opens a recent deployment on its release page using %s',
     async (input) => {
       deployments = [
         {
@@ -333,8 +333,8 @@ describe('overview deployments column', () => {
       } as never);
       const releases = createRoute({
         getParentRoute: () => root,
-        path: '/dashboard/releases',
-        component: () => <h1>Releases</h1>,
+        path: '/dashboard/releases/$deploymentId',
+        component: () => <h1>Release</h1>,
       });
       const router = createRouter({
         routeTree: root.addChildren([overview, releases]),
@@ -350,13 +350,13 @@ describe('overview deployments column', () => {
         'section'
       )!;
       const row = within(column).getByRole('link', { name: /api.*failed/i });
-      expect(row).toHaveAttribute('href', '/dashboard/releases?deployment=dep-1');
+      expect(row).toHaveAttribute('href', '/dashboard/releases/dep-1');
       if (input === 'keyboard') {
         row.focus();
         await userEvent.keyboard('{Enter}');
       } else await userEvent.click(row);
-      expect(await screen.findByRole('heading', { name: 'Releases' })).toBeInTheDocument();
-      expect(router.state.location.search).toEqual({ deployment: 'dep-1' });
+      expect(await screen.findByRole('heading', { name: 'Release' })).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe('/dashboard/releases/dep-1');
     }
   );
 });

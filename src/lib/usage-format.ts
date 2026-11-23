@@ -1,3 +1,13 @@
+const percentNumber = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+
+/** Values are already percentages (57 means 57%). Keep the raw value for calculations. */
+export function formatPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  if (value > 0 && value < 0.005) return '<0.01%';
+  if (value < 0 && value > -0.005) return '>-0.01%';
+  return percentNumber.format(value) + '%';
+}
+
 export function formatUsageNumber(value: number | undefined, digits = 2): string {
   if (value == null) return '—';
   if (value !== 0 && Math.abs(value) < 0.01) {

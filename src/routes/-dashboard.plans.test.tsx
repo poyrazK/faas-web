@@ -64,7 +64,8 @@ async function switchToPro() {
   const user = userEvent.setup();
   render(<PlansPage />);
   await user.click(screen.getByRole('button', { name: 'Switch to Pro' }));
-  await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+  const action = mocks.account.plan === 'free' ? 'Continue to payment' : 'Confirm switch';
+  await user.click(screen.getByRole('button', { name: action }));
 }
 
 beforeEach(() => {
@@ -228,7 +229,7 @@ describe('Plan change', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const view = render(<PlansPage />);
       await user.click(screen.getByRole('button', { name: 'Switch to Pro' }));
-      await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+      await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
       await screen.findByRole('status', { name: 'Plan change pending' });
       mocks.refreshAccount.mockClear();
       return view;
@@ -374,8 +375,9 @@ describe('Salesperson codes at first checkout', () => {
       paymentRequired({ checkout_url: 'https://billing.example/new' })
     );
     const user = await openCode();
+    expect(screen.getByRole('dialog', { name: 'Upgrade to Pro' })).toBeInTheDocument();
     await user.type(screen.getByLabelText('Salesperson code (optional)'), 'poju43');
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     await waitFor(() =>
       expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/new')
     );
@@ -388,11 +390,11 @@ describe('Salesperson codes at first checkout', () => {
     );
     const user = await openCode();
     await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJ');
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     expect(mocks.changePlan).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('six-character');
     await user.click(screen.getByRole('button', { name: 'Clear code' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledWith('pro'));
   });
 
@@ -408,11 +410,11 @@ describe('Salesperson codes at first checkout', () => {
       .mockRejectedValue(paymentRequired({ checkout_url: 'https://billing.example/new' }));
     const user = await openCode();
     await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJU43');
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Salesperson code unavailable');
     expect(screen.getByLabelText('Salesperson code (optional)')).toHaveValue('POJU43');
     await user.click(screen.getByRole('button', { name: 'Clear code' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     await waitFor(() =>
       expect(mocks.goToExternal).toHaveBeenCalledWith('https://billing.example/new')
     );
@@ -431,7 +433,7 @@ describe('Salesperson codes at first checkout', () => {
     );
     const user = await openCode();
     await user.type(screen.getByLabelText('Salesperson code (optional)'), 'POJU43');
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     await waitFor(() => expect(mocks.changePlan).toHaveBeenCalledTimes(2));
     expect(mocks.changePlan.mock.calls).toEqual([
       [{ plan: 'pro', salespersonCode: 'POJU43' }],
@@ -449,7 +451,7 @@ describe('Salesperson codes at first checkout', () => {
     await user.click(screen.getByRole('button', { name: 'Switch to Pro' }));
     expect(screen.getByText('Your existing referral will be kept.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Salesperson code (optional)')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Confirm switch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     expect(mocks.changePlan).toHaveBeenCalledWith('pro');
   });
 });

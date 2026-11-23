@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
@@ -90,7 +91,7 @@ export function WakeTimelinePanel({
                 value={data?.at_capacity_count}
                 note={
                   data
-                    ? `${data.at_capacity_pct}% of wakes queued behind a full instance`
+                    ? `${formatPercent(data.at_capacity_pct)} of wakes queued behind a full instance`
                     : undefined
                 }
                 state={state}

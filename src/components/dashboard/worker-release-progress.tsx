@@ -68,7 +68,7 @@ export function WorkerReleaseProgress({
       <div className="flex flex-wrap gap-3">
         <a
           className="text-brand underline"
-          href={`/dashboard/releases?deployment=${encodeURIComponent(deploymentId)}`}
+          href={`/dashboard/releases/${encodeURIComponent(deploymentId)}`}
         >
           Inspect release
         </a>

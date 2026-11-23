@@ -1,6 +1,20 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// The page follows the top bar's environment; these tests are about
+// production, where it lists and creates exactly as before.
+vi.mock('@/lib/environment-scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment-scope')>()),
+  useEnvironmentScope: () => ({
+    applies: false,
+    environment: 'production',
+    name: 'Production',
+    kind: 'production',
+    choices: null,
+    available: true,
+    list: { isPending: false, isError: false, refetch: () => undefined },
+  }),
+}));
 
 // No project chosen: these pages behave as they did before project scoping.
 vi.mock('@/lib/project-scope', async (importOriginal) => ({
@@ -268,8 +282,7 @@ describe('scheduled request editing', () => {
     await userEvent.clear(schedule);
     await userEvent.type(schedule, '30 6 * * *');
     const zone = dialog.getByRole('combobox', { name: 'Timezone' });
-    await userEvent.clear(zone);
-    await userEvent.type(zone, 'Europe/Istanbul');
+    await userEvent.selectOptions(zone, 'Europe/Istanbul');
     await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'allow');
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
@@ -344,7 +357,8 @@ describe('scheduled request editing', () => {
 
   it('resets a cleared timezone to UTC', async () => {
     const dialog = await openEdit(httpCron);
-    await userEvent.clear(dialog.getByRole('combobox', { name: 'Timezone' }));
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Timezone' }), '');
+    await userEvent.clear(dialog.getByRole('textbox', { name: 'IANA time zone' }));
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(updateCron).toHaveBeenCalledWith({ id: 'cron-http', timezone: 'UTC' })
@@ -354,7 +368,8 @@ describe('scheduled request editing', () => {
   it('keeps the dialog open and shows the API refusal inline', async () => {
     updateCron.mockRejectedValueOnce(new Error('Unknown timezone "Mars/Olympus".'));
     const dialog = await openEdit(httpCron);
-    const zone = dialog.getByRole('combobox', { name: 'Timezone' });
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Timezone' }), '');
+    const zone = dialog.getByRole('textbox', { name: 'IANA time zone' });
     await userEvent.clear(zone);
     await userEvent.type(zone, 'Mars/Olympus');
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
@@ -420,13 +435,11 @@ describe('scheduled request creation options', () => {
     expect(dialog.getByRole('combobox', { name: 'Overlap' })).toHaveValue('allow');
   });
 
-  it('offers the shared IANA zone list as suggestions', async () => {
+  it('offers the IANA zones directly in the picker', async () => {
     await openCreation();
-    const input = screen.getByRole('combobox', { name: 'Timezone' });
-    const list = document.getElementById(input.getAttribute('list') ?? 'none');
-    const zones = Array.from(list?.querySelectorAll('option') ?? []).map((o) => o.value);
-    expect(zones[0]).toBe('UTC');
-    expect(zones).toContain('Europe/Istanbul');
+    const picker = screen.getByRole('combobox', { name: 'Timezone' });
+    expect(picker).toHaveValue('UTC');
+    expect(within(picker).getByRole('option', { name: 'Europe/Istanbul' })).toBeInTheDocument();
   });
 
   it('sends a schedule policy for skip', async () => {
@@ -465,8 +478,7 @@ describe('scheduled request creation options', () => {
     const dialog = await openCreation();
     await userEvent.type(dialog.getByRole('textbox', { name: 'Schedule' }), '0 9 * * *');
     const zone = dialog.getByRole('combobox', { name: 'Timezone' });
-    await userEvent.clear(zone);
-    await userEvent.type(zone, 'Europe/Istanbul');
+    await userEvent.selectOptions(zone, 'Europe/Istanbul');
     await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Overlap' }), 'replace');
     await userEvent.click(dialog.getByRole('button', { name: 'Create scheduled request' }));
     await waitFor(() =>
@@ -482,8 +494,7 @@ describe('scheduled request creation options', () => {
 
   it('resets the timezone choice when a draft is discarded', async () => {
     const dialog = await openCreation();
-    await userEvent.clear(dialog.getByRole('combobox', { name: 'Timezone' }));
-    await userEvent.type(dialog.getByRole('combobox', { name: 'Timezone' }), 'Asia/Tokyo');
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Timezone' }), 'Asia/Tokyo');
     await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
     await userEvent.click(screen.getByRole('button', { name: 'New scheduled request' }));
     expect(screen.getByRole('combobox', { name: 'Timezone' })).toHaveValue('UTC');

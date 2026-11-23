@@ -65,7 +65,7 @@ describe('upstream form validation', () => {
     await userEvent.type(port, '5432');
     await userEvent.type(scope, 'Prod{Enter}');
     expect(scope).toHaveFocus();
-    expect(scope).toHaveAccessibleDescription('Use 3–40 lowercase letters, numbers, or dashes.');
+    expect(scope).toHaveAccessibleDescription('Use 1–40 lowercase letters, numbers, or dashes.');
 
     await userEvent.clear(scope);
     await userEvent.type(scope, 'prod{Enter}');

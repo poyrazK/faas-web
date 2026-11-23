@@ -55,23 +55,29 @@ async function openOnboarding(path = '/onboarding') {
   render(<RouterProvider router={router} />);
 }
 
-it('offers the private Node CLI quickstart immediately for a new Free account', async () => {
+it('offers the CLI quickstart immediately for a new Free account', async () => {
   await openOnboarding();
   expect(
-    await screen.findByRole('heading', { name: 'Deploy a private Node app from your terminal' })
+    await screen.findByRole('heading', { name: 'Deploy your first app from your terminal' })
   ).toBeVisible();
   expect(screen.getByText('Verify email')).toBeVisible();
   expect(screen.getByText('gregale start')).toBeVisible();
-  expect(screen.getByRole('link', { name: 'Private Node quickstart' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'Quickstart' })).toHaveAttribute(
     'href',
-    '/docs/quickstart#deploy-a-private-node-app-on-free'
+    '/docs/quickstart'
   );
+  expect(screen.getByRole('link', { name: 'What fits on Free' })).toHaveAttribute(
+    'href',
+    '/docs/plans'
+  );
+  // Start deploys whatever is in the folder; the card names no one starter.
+  expect(screen.queryByText(/Private Node/)).not.toBeInTheDocument();
 });
 
 it('keeps an explicit repository entry focused on that setup', async () => {
   await openOnboarding('/onboarding?source=git&repo=example%2Fapp');
   expect(await screen.findByRole('button', { name: 'Retry original deployment' })).toBeVisible();
-  expect(screen.queryByRole('link', { name: 'Private Node quickstart' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Quickstart' })).not.toBeInTheDocument();
 });
 
 it('provides real recovery confirmation dialogs outside the dashboard shell', async () => {

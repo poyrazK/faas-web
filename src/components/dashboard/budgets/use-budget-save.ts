@@ -11,12 +11,13 @@ import {
 import {
   budgetLevel,
   budgetRefusal,
+  budgetUnit,
+  formatBudgetAmount,
   stopSummary,
   type Budget,
   type BudgetPreview,
   type BudgetSpec,
 } from '@/lib/budgets';
-import { formatMillicents } from '@/lib/money';
 import type { ScopeLabel } from './budget-bits';
 
 export type SaveOutcome =
@@ -54,7 +55,7 @@ export function useBudgetSave(accountId: string, scopeLabel: ScopeLabel) {
       seen ??= await preview.mutateAsync(spec).catch(() => undefined);
       const already =
         level === 'stop-previews' && seen?.known_limit_reached
-          ? `Known compute this month is already ${formatMillicents(seen.known_millicents)}, so this happens at the next evaluation. `
+          ? `Known compute this month is already ${formatBudgetAmount(seen.known_millicents, budgetUnit(spec.meters))}, so this happens at the next evaluation. `
           : '';
       const ok = await confirm({
         title: existing?.spec.enabled ? `Save ${spec.name}?` : `Turn on ${spec.name}?`,

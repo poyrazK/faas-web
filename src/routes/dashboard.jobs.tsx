@@ -12,6 +12,7 @@ import {
   type JobsSection,
 } from '@/components/dashboard/jobs-search';
 import { consoleHead } from '@/lib/seo';
+import { ProductionOnlyBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/jobs')({
   component: JobsPage,
@@ -54,6 +55,18 @@ function JobsPage() {
           </Link>
         ))}
       </TabNav>
+      {/* Scheduled requests follow the environment; the other sections don't yet. */}
+      {section !== 'scheduled' && (
+        <ProductionOnlyBanner
+          what={
+            section === 'workloads'
+              ? 'workloads'
+              : section === 'automations'
+                ? 'automations'
+                : 'triggers'
+          }
+        />
+      )}
       {section === 'workloads' && <WorkloadsBody search={search} onSelection={onSelection} />}
       {section === 'automations' && <AutomationsBody search={search} onSelection={onSelection} />}
       {section === 'scheduled' && (

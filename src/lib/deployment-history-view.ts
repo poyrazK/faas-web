@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import type { components } from './api/schema';
 import { deploymentPhase } from './deployment-status';
 
@@ -47,7 +48,7 @@ export interface VersionStatus {
 }
 
 function serving(percent: number | null | undefined): string {
-  return percent == null ? '' : ` (serving ${percent}%)`;
+  return percent == null ? '' : ` (serving ${formatPercent(percent)})`;
 }
 
 /**
@@ -66,7 +67,7 @@ export function versionStatus(deployment: Deployment): VersionStatus {
         return {
           word:
             deployment.traffic_percent != null
-              ? `New version${scope} (getting ${deployment.traffic_percent}%)`
+              ? `New version${scope} (getting ${formatPercent(deployment.traffic_percent)})`
               : `New version${scope} (rolling out)`,
           tone: 'active',
         };
@@ -153,7 +154,7 @@ export function rolloutView(deployment: Deployment): RolloutView {
     label: ladder
       ? `${ladder[index]}%`
       : index === step && percent != null
-        ? `${percent}%`
+        ? `${formatPercent(percent)}`
         : `Step ${index + 1}`,
     state: index < step ? 'done' : index === step ? 'current' : 'next',
   }));
@@ -171,7 +172,7 @@ export function rolloutView(deployment: Deployment): RolloutView {
 export function rolloutSentence(view: RolloutView): string {
   if (view.deployment.rollout_state === 'pending') return 'A new version is about to roll out';
   return view.percent != null
-    ? `A new version is getting ${view.percent}% of traffic`
+    ? `A new version is getting ${formatPercent(view.percent)} of traffic`
     : 'A new version is rolling out';
 }
 

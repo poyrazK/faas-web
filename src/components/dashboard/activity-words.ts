@@ -27,9 +27,12 @@ export function dayLabel(
 ): string {
   const now = opts.now ?? Date.now();
   const key = dayKey(ms, opts.timeZone);
-  if (key === dayKey(now, opts.timeZone)) return 'Today';
-  if (key === dayKey(now - DAY, opts.timeZone)) return 'Yesterday';
-  const sameYear = key.slice(0, 4) === dayKey(now, opts.timeZone).slice(0, 4);
+  const today = dayKey(now, opts.timeZone);
+  if (key === today) return 'Today';
+  // Step across calendar dates in UTC so a short or long local day still has one yesterday.
+  const yesterday = new Date(Date.parse(today) - DAY).toISOString().slice(0, 10);
+  if (key === yesterday) return 'Yesterday';
+  const sameYear = key.slice(0, 4) === today.slice(0, 4);
   return new Intl.DateTimeFormat(opts.locale ?? 'en-US', {
     timeZone: opts.timeZone,
     weekday: 'short',
@@ -39,10 +42,12 @@ export function dayLabel(
   }).format(ms);
 }
 
-export interface DayGroup {
+type DatedEvent = { occurred_at: string } | { received_at: string };
+
+interface DayGroup<T> {
   key: string;
   label: string;
-  rows: ResourceActivity[];
+  rows: T[];
 }
 
 /**
@@ -50,13 +55,13 @@ export interface DayGroup {
  * order. An event with no readable time gets a "Date unknown" group where it
  * falls rather than being moved or dated.
  */
-export function groupByDay(
-  rows: readonly ResourceActivity[],
+export function groupByDay<T extends DatedEvent>(
+  rows: readonly T[],
   opts: { now?: number; locale?: string; timeZone?: string } = {}
-): DayGroup[] {
-  const groups: (DayGroup & { day: string })[] = [];
+): DayGroup<T>[] {
+  const groups: (DayGroup<T> & { day: string })[] = [];
   for (const row of rows) {
-    const ms = parseTime(row.occurred_at);
+    const ms = parseTime('received_at' in row ? row.received_at : row.occurred_at);
     const day = ms === undefined ? 'unknown' : dayKey(ms, opts.timeZone);
     const last = groups.at(-1);
     if (last && last.day === day) last.rows.push(row);

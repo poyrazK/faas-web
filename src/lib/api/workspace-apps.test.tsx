@@ -61,6 +61,26 @@ it('creates through the workspace URL only when a shared workspace is chosen', a
   expect(post).toHaveBeenLastCalledWith('/v1/apps', { body });
 });
 
+it('requires the app response to confirm the chosen project', async () => {
+  const selected = { ...body, project_id: 'project-1' };
+  const post = spyApi('POST')
+    .mockResolvedValueOnce({
+      data: { id: 'app' },
+      response: new Response(null, { status: 201 }),
+    } as never)
+    .mockResolvedValueOnce({
+      data: { id: 'app', project_id: selected.project_id },
+      response: new Response(null, { status: 201 }),
+    } as never);
+  await expect(createWorkspaceApp(null, selected)).rejects.toThrow(
+    'Could not confirm the selected project'
+  );
+  await expect(createWorkspaceApp(null, selected)).resolves.toMatchObject({
+    project_id: 'project-1',
+  });
+  expect(post).toHaveBeenCalledWith('/v1/apps', { body: selected });
+});
+
 it('targets the personal workspace without reading the org list', () => {
   const get = spyApi('GET');
   const { result } = renderHook(() => useWorkspaceTarget(), wrapper());

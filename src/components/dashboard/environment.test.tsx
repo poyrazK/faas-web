@@ -135,3 +135,60 @@ describe('Secrets', () => {
     expect(screen.queryByRole('status', { name: 'Apply the new values' })).toBeNull();
   });
 });
+
+describe('In Staging', () => {
+  const paramsOf = (method: 'GET', path: string) =>
+    (spies[method].mock.calls as unknown as [string, { params?: unknown }][])
+      .filter(([p]) => p === path)
+      .map(([, init]) => init.params);
+
+  it('reads Staging’s own variables and secrets', async () => {
+    renderWithProviders(
+      <>
+        <EnvBody slug="api" scope="staging" />
+        <SecretsBody slug="api" scope="staging" />
+      </>
+    );
+    await screen.findByText(/2 of 128 slots used/);
+    expect(paramsOf('GET', '/v1/apps/{slug}/env')).toContainEqual({
+      path: { slug: 'api' },
+      query: { scope: 'staging' },
+    });
+    await waitFor(() =>
+      expect(paramsOf('GET', '/v1/apps/{slug}/secrets')).toContainEqual({
+        path: { slug: 'api' },
+        query: { scope: 'staging' },
+      })
+    );
+  });
+
+  it('hides the comparison and the restart, which only act on production', async () => {
+    renderWithProviders(
+      <>
+        <EnvBody slug="api" scope="staging" />
+        <SecretsBody slug="api" scope="staging" />
+      </>
+    );
+    await screen.findByText(/2 of 128 slots used/);
+    await screen.findByText('Applies on next start');
+    expect(screen.queryByRole('button', { name: 'Compare with other environments' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Restart with the new values' })).toBeNull();
+    // The add and import controls stay: they write Staging's own values.
+    expect(screen.getByRole('button', { name: 'Add variable' })).toBeInTheDocument();
+  });
+
+  it('shows values without edit controls in a protected stage', async () => {
+    renderWithProviders(
+      <>
+        <EnvBody slug="api" scope="staging" readOnly />
+        <SecretsBody slug="api" scope="staging" readOnly />
+      </>
+    );
+    await screen.findByText(/2 of 128 slots used/);
+    await screen.findByText('Applies on next start');
+    for (const name of ['Add variable', 'Import .env', 'Add secret'])
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Actions for / })).toBeNull();
+    expect(screen.getByText('LOG_LEVEL')).toBeInTheDocument();
+  });
+});

@@ -60,6 +60,7 @@
 /dashboard/postgres    /index.html   200
 /dashboard/queues    /index.html   200
 /dashboard/releases    /index.html   200
+/dashboard/releases/:deploymentId    /index.html   200
 /dashboard/releases/:deploymentId/approval    /index.html   200
 /dashboard/routes    /index.html   200
 /dashboard/secrets    /index.html   200
@@ -85,6 +86,7 @@
 /dashboard/projects    /index.html   200
 /dashboard/projects/:projectSlug    /index.html   200
 /dashboard/apps/:appSlug    /index.html   200
+/dashboard/apps/:appSlug/releases/:deploymentId    /index.html   200
 /dashboard/apps/new    /index.html   200
 # Old app paths, kept so the console can redirect them to /dashboard/apps.
 /dashboard/workflows/:workflowId    /index.html   200

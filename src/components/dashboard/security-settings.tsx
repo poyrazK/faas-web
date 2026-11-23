@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LogOut, ShieldCheck } from 'iconoir-react';
+import { CopyableId } from '@/components/ui/copyable-id';
 import { Button } from '@/components/ui/button';
 import { InlinePhase, Panel, queryPhase } from '@/components/dashboard/primitives';
 import { Pill, ResourceTable, type Column } from '@/components/dashboard/resource-table';
@@ -55,6 +56,7 @@ const TONE_COLOR: Record<AuthEventWords['tone'], string | undefined> = {
 
 /** How many events show before "Show all". */
 const FIRST_EVENTS = 6;
+const isCurrentDevice = (session: SessionRow) => session.current;
 
 /**
  * The auth audit trail (`/v1/audit-events`) in plain words. Each row says what
@@ -244,7 +246,9 @@ export function SecuritySettings() {
             </span>
             {s.current && <Pill label="This browser" color="var(--brand)" />}
           </span>
-          <span className="font-mono text-xs text-muted-foreground">{s.ip}</span>
+          {s.ip && (
+            <CopyableId value={s.ip} label="IP address" full className="text-muted-foreground" />
+          )}
         </span>
       ),
     },
@@ -306,6 +310,8 @@ export function SecuritySettings() {
       >
         <ResourceTable
           rows={rows}
+          pageSize={5}
+          pinRow={isCurrentDevice}
           columns={columns}
           initialSort={{ key: 'lastSeenAt', dir: 'desc' }}
           searchKeys={['ip', 'agent', 'device']}

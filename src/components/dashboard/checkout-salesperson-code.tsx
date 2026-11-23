@@ -41,13 +41,13 @@ export function CheckoutSalespersonCode({
             autoCapitalize="characters"
             spellCheck={false}
             maxLength={6}
-            placeholder="POJU43"
             aria-invalid={error ? true : undefined}
             aria-describedby={`${id}-hint${error ? ` ${id}-error` : ''}`}
             className="w-full rounded-lg border border-border bg-card px-3 py-2 font-mono text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
           />
           <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-            The code is saved for your first paid purchase, including if you retry checkout.
+            Enter the six-character code from your Gregale salesperson. It stays saved if you retry
+            checkout.
           </p>
         </>
       ) : referral.data?.reason === 'already_attributed' ? (

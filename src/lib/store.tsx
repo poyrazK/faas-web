@@ -43,6 +43,7 @@ export type NewWorkflowInput = {
    * creating it (`useWorkspaceTarget`); null or absent creates it personally.
    */
   org?: string | null;
+  projectId?: string;
 } & ({ type: 'app'; runtime?: never } | { type?: 'function'; runtime: Runtime });
 
 interface DataValue {
@@ -137,6 +138,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           org: input.org ?? null,
           body: {
             slug: input.name,
+            ...(input.projectId ? { project_id: input.projectId } : {}),
             type: input.type ?? 'function',
             ...(input.type === 'app' ? {} : { runtime: input.runtime }),
             ram_mb: input.memoryMb,

@@ -1,3 +1,4 @@
+import { CopyableId } from '@/components/ui/copyable-id';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Copy, Plus, RefreshDouble, Trash } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -68,19 +69,25 @@ const ownRow = (actions: ReactNode) => <div className="flex justify-end gap-2">{
 export function SecretsBody({
   slug,
   header,
+  scope,
+  readOnly = false,
 }: {
   slug: string;
   header?: (actions: ReactNode) => ReactNode;
+  /** The environment the secrets belong to; undefined is production (today's requests). */
+  scope?: string;
+  /** A protected environment: secrets are listed, nothing can be changed. */
+  readOnly?: boolean;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { copy } = useCopy();
-  const { data, isPending, error, refetch } = useAppSecrets(slug);
-  const setSecret = useSetSecret(slug);
-  const deleteSecret = useRevokeSecret(slug);
+  const { data, isPending, error, refetch } = useAppSecrets(slug, scope);
+  const setSecret = useSetSecret(slug, scope);
+  const deleteSecret = useRevokeSecret(slug, scope);
   // The receipt of the last delete: which running instances still hold it.
   const [revocation, setRevocation] = useState<SecretRevocation | null>(null);
-  const rotate = useRotateSecret(slug);
+  const rotate = useRotateSecret(slug, scope);
   const freshRestart = useFreshRestart(slug);
   // A write seals the value and stamps the change, but starts nothing:
   // running instances read their environment once, at boot. Tracked per app so
@@ -193,7 +200,7 @@ export function SecretsBody({
             className="font-mono text-xs [overflow-wrap:anywhere]"
             title={s.kid ? `Sealed under host key ${s.kid}` : 'Sealed'}
           >
-            {s.key}
+            <CopyableId value={s.key} label="secret name" full />
           </span>
           {s.secret.secret_class === 'ephemeral' && (
             <span
@@ -236,22 +243,26 @@ export function SecretsBody({
     <div className="flex flex-col gap-3">
       {/* Migrations arrive as .env files; the importer takes them whole. */}
       {(header ?? ownRow)(
-        <>
-          <EnvImportButton
-            slug={slug}
-            existingKeys={rows.map((r) => r.key)}
-            onChanged={() => setUnappliedFor(slug)}
-          />
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            Add secret
-          </Button>
-        </>
+        readOnly ? null : (
+          <>
+            <EnvImportButton
+              slug={slug}
+              scope={scope}
+              existingKeys={rows.map((r) => r.key)}
+              onChanged={() => setUnappliedFor(slug)}
+            />
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add secret
+            </Button>
+          </>
+        )
       )}
 
       {!error && !isPending && <Lead>{secretsLead(rows.length, data?.quota_max)}</Lead>}
 
-      {(unapplied || pendingCount > 0) && (
+      {/* Restart takes no environment: it would restart production. */}
+      {!scope && (unapplied || pendingCount > 0) && (
         <div
           role="status"
           aria-label="Apply the new values"
@@ -348,38 +359,42 @@ export function SecretsBody({
         loading={isPending}
         error={error}
         onRetry={() => void refetch()}
-        rowActions={(row) => (
-          <RowMenu label={`Actions for ${row.key}`}>
-            <DropdownMenuItem
-              onSelect={() => {
-                setRotating(row.key);
-                setRotateValue('');
-              }}
-            >
-              <RefreshDouble aria-hidden="true" className="size-4" />
-              Rotate value
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() =>
-                void copy(row.key).then((ok) =>
-                  toast(
-                    ok
-                      ? { kind: 'success', title: `Copied ${row.key}` }
-                      : { kind: 'error', title: 'Could not copy the name' }
-                  )
-                )
-              }
-            >
-              <Copy aria-hidden="true" className="size-4" />
-              Copy name
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className={DANGER_ITEM} onSelect={() => void remove(row.key)}>
-              <Trash aria-hidden="true" className="size-4" />
-              Delete secret
-            </DropdownMenuItem>
-          </RowMenu>
-        )}
+        rowActions={
+          readOnly
+            ? undefined
+            : (row) => (
+                <RowMenu label={`Actions for ${row.key}`}>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setRotating(row.key);
+                      setRotateValue('');
+                    }}
+                  >
+                    <RefreshDouble aria-hidden="true" className="size-4" />
+                    Rotate value
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      void copy(row.key).then((ok) =>
+                        toast(
+                          ok
+                            ? { kind: 'success', title: `Copied ${row.key}` }
+                            : { kind: 'error', title: 'Could not copy the name' }
+                        )
+                      )
+                    }
+                  >
+                    <Copy aria-hidden="true" className="size-4" />
+                    Copy name
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className={DANGER_ITEM} onSelect={() => void remove(row.key)}>
+                    <Trash aria-hidden="true" className="size-4" />
+                    Delete secret
+                  </DropdownMenuItem>
+                </RowMenu>
+              )
+        }
       />
 
       {/* Rotation re-seals under the current host identity. The value
@@ -433,7 +448,8 @@ export function SecretsBody({
         />
       </Modal>
 
-      <SecretReferences slug={slug} />
+      {/* Outside production the references follow the top bar's environment. */}
+      <SecretReferences slug={slug} environment={scope} readOnly={readOnly} />
     </div>
   );
 }

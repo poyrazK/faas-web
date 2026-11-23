@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useState, type ReactNode } from 'react';
 import { useCapabilityStage } from '@/lib/api/capabilities';
 import {
@@ -100,7 +101,7 @@ export function DeploymentDiff({
               { key: '', label: 'Release before it' },
               ...choices.map((row) => ({
                 key: row.id,
-                label: `Serving ${cliRef({ deployment_id: row.id.slice(0, 8), revision: row.revision })}${split ? ` · ${row.traffic_percent ?? 0}%` : ''}`,
+                label: `Serving ${cliRef({ deployment_id: row.id.slice(0, 8), revision: row.revision })}${split ? ` · ${formatPercent(row.traffic_percent ?? 0)}` : ''}`,
               })),
             ]}
             onChange={setPicked}

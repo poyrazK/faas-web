@@ -7,11 +7,13 @@ import {
   draftFromSpec,
   effectText,
   emptyDraft,
+  formatBudgetAmount,
   guaranteeText,
   isStrictCompute,
   reasonText,
   specFromDraft,
   stopSummary,
+  updateBudgetDraft,
   type BudgetDraft,
   type BudgetSpec,
 } from './budgets';
@@ -34,7 +36,7 @@ const SPEC: BudgetSpec = {
 const draft = (over: Partial<BudgetDraft> = {}): BudgetDraft => ({
   ...emptyDraft(),
   name: 'Budget',
-  limit: '10',
+  limit: '200',
   ...over,
 });
 
@@ -86,7 +88,7 @@ describe('isStrictCompute', () => {
 
 describe('specFromDraft', () => {
   it('writes an alert as monitored notify with no drain', () => {
-    const spec = specFromDraft(draft({ thresholds: '5, 8' }));
+    const spec = specFromDraft(draft({ thresholds: '100, 160' }));
     expect(spec).toEqual({
       name: 'Budget',
       scope: { kind: 'account' },
@@ -158,6 +160,25 @@ describe('specFromDraft', () => {
     expect(isStrictCompute(account)).toBe(true);
   });
 
+  it('preserves saved amounts when switching between compute and mixed meters', () => {
+    const original = { ...SPEC, limit_millicents: 5001, notify_millicents: [1001] };
+    const compute = draftFromSpec(original);
+    expect(compute).toMatchObject({ limit: '1.0002', thresholds: '0.2002' });
+
+    const mixed = updateBudgetDraft(compute, { meters: ['compute', 'egress'] });
+    expect(mixed).toMatchObject({ limit: '0.05001', thresholds: '0.01001' });
+    expect(draftErrors(mixed)).toEqual({});
+    expect(specFromDraft(mixed)).toEqual({ ...original, meters: ['compute', 'egress'] });
+    expect(updateBudgetDraft(mixed, { meters: ['compute'] })).toEqual(compute);
+  });
+
+  it('keeps the full precision of saved compute amounts in the display', () => {
+    expect(formatBudgetAmount(Number.MAX_SAFE_INTEGER, 'GB-hours')).toBe(
+      '1,801,439,850,948.1982 GB-hours'
+    );
+    expect(formatBudgetAmount(-1, 'GB-hours')).toBe('-0.0002 GB-hours');
+  });
+
   it('round-trips through draftFromSpec', () => {
     expect(specFromDraft(draftFromSpec(SPEC))).toEqual(SPEC);
     const strict: BudgetSpec = {
@@ -181,16 +202,22 @@ describe('draftErrors', () => {
   it('names each rule apid enforces', () => {
     expect(draftErrors(draft({ name: '  ' })).name).toMatch(/name/i);
     expect(draftErrors(draft({ name: 'x'.repeat(129) })).name).toMatch(/128/);
-    expect(draftErrors(draft({ limit: 'ten' })).limit).toMatch(/dollar/i);
+    expect(draftErrors(draft({ limit: 'ten' })).limit).toMatch(/GB-hours/i);
     expect(draftErrors(draft({ scopeKind: 'app' })).scope).toMatch(/choose/i);
-    expect(draftErrors(draft({ thresholds: '8, 5' })).thresholds).toMatch(/increase/i);
-    expect(draftErrors(draft({ thresholds: '12' })).thresholds).toMatch(/limit/i);
+    expect(draftErrors(draft({ thresholds: '160, 100' })).thresholds).toMatch(/increase/i);
+    expect(draftErrors(draft({ thresholds: '240' })).thresholds).toMatch(/limit/i);
     expect(draftErrors(draft({ thresholds: '1,2,3,4,5,6,7,8,9' })).thresholds).toMatch(/8/);
     expect(draftErrors(draft({ meters: [] })).meters).toMatch(/meter/i);
     expect(draftErrors(draft({ level: 'stop-previews', drainSeconds: '301' })).drain).toMatch(
       /300/
     );
   });
+  it('requires an applicable meter when changing a storage-only budget to an app', () => {
+    const storage = draft({ meters: ['object_storage'] });
+    const app = updateBudgetDraft(storage, { scopeKind: 'app', scopeId: 'app-1' });
+    expect(draftErrors(app).meters).toMatch(/choose at least one meter/i);
+  });
+
   it('does not offer a stopping action on a job, which apid refuses (budget.go:80)', () => {
     expect(
       draftErrors(draft({ level: 'stop-previews', scopeKind: 'job', scopeId: 'j' })).scope
@@ -259,7 +286,7 @@ describe('stopSummary', () => {
       draft({ level: 'stop-previews', drainSeconds: '30', resumeRule: 'next_period' })
     );
     const text = stopSummary(spec, 'the whole account', preview);
-    expect(text).toMatch(/\$10\.00/);
+    expect(text).toMatch(/200 GB-hours/);
     expect(text).toMatch(/pr-42-api, pr-43-api/);
     expect(text).toMatch(/30 seconds/);
     expect(text).toMatch(/api keeps running/);

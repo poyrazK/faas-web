@@ -215,7 +215,7 @@ async function pick(user: ReturnType<typeof userEvent.setup>, budget: string, it
 async function fillNew(user: ReturnType<typeof userEvent.setup>, name: string, limit: string) {
   const form = await openForm(user);
   await user.type(within(form).getByLabelText('Name'), name);
-  await user.type(within(form).getByLabelText('Limit (USD a month)'), limit);
+  await user.type(within(form).getByLabelText('Limit (GB-hours a month)'), limit);
   return form;
 }
 
@@ -270,8 +270,8 @@ describe('BudgetsPage', () => {
     expect(within(row).getByText('Stopping previews')).toBeInTheDocument();
     const monthly = screen.getByText('Monthly compute').closest('tr')!;
     expect(within(monthly).getByText('Active')).toBeInTheDocument();
-    expect(within(monthly).getByText('$14.60')).toBeInTheDocument();
-    expect(within(monthly).getByText(/\$31\.00 projected/)).toBeInTheDocument();
+    expect(within(monthly).getByText('292 GB-hours')).toBeInTheDocument();
+    expect(within(monthly).getByText(/620 GB-hours projected/)).toBeInTheDocument();
   });
 
   it('previews a spec without saving, then creates an alert with an Idempotency-Key', async () => {
@@ -284,11 +284,16 @@ describe('BudgetsPage', () => {
     });
     const user = userEvent.setup();
     renderWithProviders(<BudgetsPage />);
-    const form = await fillNew(user, 'Ops alerts', '30');
-    await user.type(within(form).getByLabelText(/Earlier alerts/), '10, 20');
+    const form = await fillNew(user, 'Ops alerts', '600');
+    await user.type(within(form).getByLabelText(/Earlier alerts/), '200, 400');
+    await user.click(within(form).getByRole('checkbox', { name: 'Egress' }));
+    expect(within(form).getByLabelText('Limit (USD a month)')).toHaveValue('30');
+    expect(within(form).getByLabelText('Earlier alerts (USD, optional)')).toHaveValue('10, 20');
+    await user.click(within(form).getByRole('checkbox', { name: 'Egress' }));
+    expect(within(form).getByLabelText('Limit (GB-hours a month)')).toHaveValue('600');
     await user.click(within(form).getByRole('button', { name: 'Preview this month' }));
     const preview = await within(form).findByRole('region', { name: 'Preview' });
-    expect(within(preview).getByText('$14.60')).toBeInTheDocument();
+    expect(within(preview).getByText('292 GB-hours')).toBeInTheDocument();
     expect(within(preview).getByText(/Partial: the total may be higher/)).toBeInTheDocument();
     expect(within(preview).getByText(/some usage could not be attributed/)).toBeInTheDocument();
     expect(created).toHaveLength(0);
@@ -323,7 +328,7 @@ describe('BudgetsPage', () => {
     });
     const user = userEvent.setup();
     renderWithProviders(<BudgetsPage />);
-    const form = await fillNew(user, 'Previews', '5');
+    const form = await fillNew(user, 'Previews', '100');
     await user.click(within(form).getByRole('radio', { name: /Stop previews/ }));
     await user.click(within(form).getByRole('button', { name: 'Create budget' }));
     const dialog = await screen.findByRole('dialog');
@@ -361,7 +366,7 @@ describe('BudgetsPage', () => {
     });
     const user = userEvent.setup();
     renderWithProviders(<BudgetsPage />);
-    const form = await fillNew(user, 'api cap', '40');
+    const form = await fillNew(user, 'api cap', '800');
     await user.click(within(form).getByRole('radio', { name: /Strict cap/ }));
     expect(within(form).queryByLabelText(/Earlier alerts/)).not.toBeInTheDocument();
     await user.selectOptions(within(form).getByLabelText('Scope'), 'app');

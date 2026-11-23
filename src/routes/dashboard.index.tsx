@@ -18,6 +18,7 @@ import { WordReveal } from '@/components/amicro/word-reveal';
 import { LiveDot } from '@/components/ui/live-dot';
 import { SegmentedControl } from '@/components/dashboard/tabs';
 import { OverviewStats } from '@/components/dashboard/overview-analytics/overview-stats';
+import { useMetricInspector } from '@/components/dashboard/metric-inspector';
 import { fleetMetrics } from '@/components/dashboard/overview-analytics/overview-stats-data';
 import { WindFlow } from '@/components/dashboard/wind-flow';
 import { useData } from '@/lib/store';
@@ -31,6 +32,7 @@ import { readRecents, recentLabel } from '@/lib/recents';
 import { consoleHead } from '@/lib/seo';
 import { cn } from '@/lib/utils';
 import { useWorkspaceUsageSummary } from '@/lib/api/org-billing';
+import { releaseLink } from '@/components/dashboard/release-page/links';
 
 export const Route = createFileRoute('/dashboard/')({
   component: OverviewPage,
@@ -192,8 +194,7 @@ function DeploymentsColumn({ recent }: { recent: Deployment[] }) {
             return (
               <li key={d.id}>
                 <Link
-                  to="/dashboard/releases"
-                  search={{ deployment: d.id }}
+                  {...releaseLink(d.id)}
                   className="pressable group flex items-center gap-2.5 rounded py-2.5"
                 >
                   {/* Colour plus text, never hue alone; in-flight breathes. */}
@@ -268,6 +269,7 @@ function OverviewPage() {
   const { workflows, deployments, loading, error, refresh } = useData();
   const { account, user } = useAuth();
   const { range = '24h' } = Route.useSearch();
+  const inspect = useMetricInspector();
   const navigate = Route.useNavigate();
   // The workspace's allowance: the company's in a company workspace.
   const usage = useWorkspaceUsageSummary();
@@ -501,6 +503,7 @@ function OverviewPage() {
           showPlanGate={Boolean(account) && !paidAccess}
           appCount={workflows.length}
           rangeDescription={RANGE_DESCRIPTION[range]}
+          onInspect={(metric) => inspect({ metric, since: range, source: 'rollup' })}
           metrics={{ unavailable: metricsUnavailable, degraded: metricsDegraded, figures }}
           resident={{
             known: residentKnown,

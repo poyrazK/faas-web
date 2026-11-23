@@ -30,6 +30,12 @@ const built = existsSync('dist/index.html');
 const describeBuilt = built ? describe : describe.skip;
 
 describeBuilt('prerendered pages', () => {
+  it('links the DPA to the legal pages on the current origin', () => {
+    const html = readFileSync('dist/docs/dpa/index.html', 'utf8');
+    expect(html).toContain('href="/terms"');
+    expect(html).toContain('href="/docs/subprocessors"');
+  });
+
   for (const page of PAGES) {
     describe(page.route, () => {
       const html = built ? readFileSync(page.file, 'utf8') : '';

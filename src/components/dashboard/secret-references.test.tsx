@@ -180,3 +180,24 @@ it('offers to deliver a removed key again by filling the form', async () => {
   const sheet = await screen.findByRole('dialog');
   expect(within(sheet).getByLabelText('Variable')).toHaveValue('LEGACY_TOKEN');
 });
+
+it('follows the top bar’s environment, locked there, so a Staging page never writes production', async () => {
+  renderWithProviders(<SecretReferences slug="api" environment="staging" />);
+  expect(await screen.findByText(/no references in staging/i)).toBeInTheDocument();
+  expect(screen.getByLabelText('Environment')).toHaveValue('staging');
+  expect(screen.getByLabelText('Environment')).toBeDisabled();
+  expect(spies.GET).not.toHaveBeenCalledWith(
+    '/v1/apps/{slug}/secret-references',
+    expect.objectContaining({
+      params: expect.objectContaining({ query: { environment: 'production' } }),
+    })
+  );
+});
+
+it('offers no add, remove or deliver-again in a protected environment', async () => {
+  renderWithProviders(<SecretReferences slug="api" environment="production" readOnly />);
+  await screen.findByText('DATABASE_URL');
+  expect(screen.queryByRole('button', { name: 'Add reference' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Actions for reference/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Deliver .*again/ })).toBeNull();
+});

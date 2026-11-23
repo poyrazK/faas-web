@@ -19,6 +19,9 @@ import { useData } from '@/lib/store';
 import { useAuth } from '@/lib/auth';
 import { useProjectMembership } from '@/lib/api/projects';
 import { ProjectSwitcher, projectHome } from '@/components/dashboard/project-switcher';
+import { EnvironmentLine, EnvironmentSwitcher } from '@/components/dashboard/environment-switcher';
+import { useEnvironmentScope } from '@/lib/environment-scope';
+import { EnvironmentBannerProvider } from '@/components/dashboard/production-only-banner';
 import { ProjectScopeProvider, isAccountPath, useProjectScope } from '@/lib/project-scope';
 import { WorkspaceSwitcher } from './workspace-switcher';
 import { useSweepNavigate } from '@/components/sweep-link';
@@ -55,7 +58,7 @@ import { AppRail, appOfPath } from './app-rail';
 import { recordVisit } from '@/lib/recents';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/lib/use-focus-trap';
-import { useCapabilityOff } from './nav-access';
+import { NavMaturity, useCapabilityOff } from './nav-access';
 
 const COLLAPSE_KEY = 'gregale.sidebar.collapsed';
 const OPEN_GROUPS_KEY = 'gregale.sidebar.closedGroups';
@@ -131,9 +134,10 @@ function NavRow({
   hash: string;
   current: boolean;
   /** The project the link should carry: a slug inside a project, undefined to leave one. */
-  scope?: { project?: string };
+  scope?: { project?: string; env?: string };
 }) {
   const { to, label, icon: Icon, exact } = item;
+  const maturityCapability = item.maturityCapability ?? item.capability;
   const onThisPath = matchesNavPath(pathname, { to, exact: true });
   const search = scope
     ? onThisPath
@@ -177,6 +181,7 @@ function NavRow({
         <span aria-hidden={collapsed} className={labelCls}>
           {label}
         </span>
+        {!collapsed && maturityCapability && <NavMaturity capabilities={[maturityCapability]} />}
       </>
     </Link>
   );
@@ -256,6 +261,9 @@ function NavDisclosure({
           <span aria-hidden={collapsed} className={labelCls}>
             {hub.label}
           </span>
+          {!collapsed && hub.capability && (
+            <NavMaturity capabilities={[hub.capability]} className="ml-0" />
+          )}
           {/* The chevron rides the panel's own curve and direction rather than
               a CSS transition of its own, so the two read as one gesture
               instead of two things that happen to start together. */}
@@ -322,6 +330,17 @@ function SidebarBody({
   // across all apps).
   const linkScope = { project: scope.project ?? undefined };
   const home = scope.project ? projectHome(scope.project) : null;
+  // The project's own page names the project in its path (`project:
+  // undefined`), which the environment middleware would read as leaving the
+  // project; carry the environment explicitly so the way back keeps it.
+  const environment = useEnvironmentScope();
+  const homeScope = home && {
+    ...home.search,
+    env:
+      environment.applies && environment.environment !== 'production'
+        ? environment.environment
+        : undefined,
+  };
   const [closedGroups, setClosedGroups] = useState<string[]>(readClosedGroups);
   const toggleGroup = useCallback((key: string) => {
     setClosedGroups((previous) => {
@@ -340,10 +359,14 @@ function SidebarBody({
   const labelCls = sidebarLabelClass(collapsed);
   return (
     <>
+      {/* Inside the console the logo is the way home: the account Overview,
+          leaving any project — not the marketing site. */}
       <Link
-        to="/"
+        to="/dashboard"
+        search={{ project: undefined }}
+        onClick={onNavigate}
         className="relative flex h-9 items-center overflow-hidden px-2.5 py-1"
-        aria-label="Gregale home"
+        aria-label="Gregale — go to Overview"
       >
         {/* Mint recolours of the wordmark: the brand green vanishes on the
             console's near-black, so the dark surface gets its own step.
@@ -433,7 +456,7 @@ function SidebarBody({
                   pathname={pathname}
                   hash={hash}
                   current={matchesNavPath(pathname, { to: home.to, exact: true })}
-                  scope={home.search}
+                  scope={homeScope ?? home.search}
                 />
               </li>
             </ul>
@@ -559,7 +582,7 @@ function Breadcrumbs() {
   const project = appPage && !scope.project ? membership.projectOfApp.get(detail) : undefined;
   const hub = findNavHub(pathname);
   const pageLabel = section ? (SECTION_LABELS[section] ?? section) : 'Overview';
-  const trail: { label: string; to?: string; search?: { scope: 'personal' } }[] = [];
+  const trail: { label: string; to?: string; search?: Record<string, string> }[] = [];
   const projectPage = section === 'projects' && Boolean(detail);
   // Inside a project, its own page and its apps' pages hang off the switcher.
   if (hub && (hub.label !== pageLabel || detail) && !(scope.project && (projectPage || appPage))) {
@@ -569,10 +592,21 @@ function Breadcrumbs() {
   if (projectPage && !scope.project) trail.push({ label: detail });
   if (project)
     trail.push({ label: project, to: `/dashboard/projects/${encodeURIComponent(project)}` });
+  // A release page trails through its app and the app's Deployments tab.
+  const releasePage = appPage && segments[2] === 'releases' && Boolean(segments[3]);
   if (section === 'apps' && detail) {
     trail.push({
       label: detail === 'new' ? 'New app' : (workflows.find((w) => w.id === detail)?.name ?? 'App'),
+      ...(releasePage ? { to: `/dashboard/apps/${encodeURIComponent(detail)}` } : {}),
     });
+  }
+  if (releasePage) {
+    trail.push({
+      label: 'Deployments',
+      to: `/dashboard/apps/${encodeURIComponent(detail)}`,
+      search: { tab: 'Deployments' },
+    });
+    trail.push({ label: 'Release' });
   }
   const orgSupport = section === 'orgs' && segments[2] === 'support';
   if (section === 'support' || orgSupport) {
@@ -600,9 +634,13 @@ function Breadcrumbs() {
     );
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+    >
       <WorkspaceSwitcher />
       <ProjectSwitcher />
+      <EnvironmentSwitcher />
 
       {trail.map(({ label, to, search }, i) => {
         const last = i === trail.length - 1;
@@ -911,172 +949,179 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     // works at, on a near-black ground. Set once here rather than per icon;
     // the landing keeps the lighter default, where the sizes are larger.
     <ProjectScopeProvider>
-      <IconoirProvider iconProps={{ strokeWidth: 1.8 }}>
-        <TooltipProvider>
-          <ConfirmProvider>
-            <div className="console min-h-screen bg-background text-foreground">
-              <a
-                href="#main"
-                className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
-              >
-                Skip to content
-              </a>
-              {/* Desktop sidebar */}
-              <aside
-                ref={railRef}
-                onMouseEnter={enterRail}
-                onMouseLeave={leaveRail}
-                onFocus={() => {
-                  clearRailTimer();
-                  if (collapsed) setRailHovered(true);
-                }}
-                onBlur={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      <EnvironmentBannerProvider>
+        <IconoirProvider iconProps={{ strokeWidth: 1.8 }}>
+          <TooltipProvider>
+            <ConfirmProvider>
+              <div className="console min-h-screen bg-background text-foreground">
+                <a
+                  href="#main"
+                  className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
+                >
+                  Skip to content
+                </a>
+                {/* Outside production, a thin line across the top says so. */}
+                <EnvironmentLine />
+                {/* Desktop sidebar */}
+                <aside
+                  ref={railRef}
+                  onMouseEnter={enterRail}
+                  onMouseLeave={leaveRail}
+                  onFocus={() => {
                     clearRailTimer();
-                    if (!railPointerInside.current) setRailHovered(false);
-                  }
-                }}
-                className={cn(
-                  // The stored width is applied before first paint (readCollapsed
-                  // in the state initializer), so this transition only ever runs
-                  // on a real hover or toggle, never on load. Horizontal padding
-                  // is constant across both widths — geometry that never moves
-                  // is what keeps the expansion smooth.
-                  'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-4 transition-[width] lg:flex',
-                  sidebarSizeClass(railCollapsed),
-                  railCollapsed ? 'w-16' : 'w-56',
-                  // Hover-expanded over pinned-collapsed content: a floating
-                  // peek, so it carries elevation the pinned states do not.
-                  collapsed && !railCollapsed && 'shadow-elevation-3'
-                )}
-              >
-                <SidebarBody collapsed={railCollapsed} onOpenSearch={() => setPaletteOpen(true)} />
+                    if (collapsed) setRailHovered(true);
+                  }}
+                  onBlur={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      clearRailTimer();
+                      if (!railPointerInside.current) setRailHovered(false);
+                    }
+                  }}
+                  className={cn(
+                    // The stored width is applied before first paint (readCollapsed
+                    // in the state initializer), so this transition only ever runs
+                    // on a real hover or toggle, never on load. Horizontal padding
+                    // is constant across both widths — geometry that never moves
+                    // is what keeps the expansion smooth.
+                    'fixed inset-y-0 left-0 z-30 hidden flex-col overflow-hidden border-r border-border bg-card px-3 py-4 transition-[width] lg:flex',
+                    sidebarSizeClass(railCollapsed),
+                    railCollapsed ? 'w-16' : 'w-56',
+                    // Hover-expanded over pinned-collapsed content: a floating
+                    // peek, so it carries elevation the pinned states do not.
+                    collapsed && !railCollapsed && 'shadow-elevation-3'
+                  )}
+                >
+                  <SidebarBody
+                    collapsed={railCollapsed}
+                    onOpenSearch={() => setPaletteOpen(true)}
+                  />
 
-                {/* Identity and sign-out live in the top bar's account menu, so the
+                  {/* Identity and sign-out live in the top bar's account menu, so the
             sidebar footer holds only the collapse toggle. */}
-                <div className="mt-auto shrink-0 overflow-hidden border-t border-border pt-2">
-                  <Tooltip
-                    content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
-                    side="right"
-                  >
-                    <button
-                      type="button"
-                      onClick={toggleCollapsed}
-                      aria-label={collapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
-                      aria-keyshortcuts="Meta+B Control+B"
-                      className="pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                  <div className="mt-auto shrink-0 overflow-hidden border-t border-border pt-2">
+                    <Tooltip
+                      content={`${collapsed ? 'Pin sidebar open' : 'Collapse sidebar'} (⌘B)`}
+                      side="right"
                     >
-                      {collapsed ? (
-                        <SidebarExpand className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <SidebarCollapse className="h-4 w-4 shrink-0" />
-                      )}
-                      <span className={sidebarLabelClass(railCollapsed)}>
-                        {collapsed ? 'Pin open' : 'Collapse'}
-                      </span>
-                    </button>
-                  </Tooltip>
-                </div>
-              </aside>
+                      <button
+                        type="button"
+                        onClick={toggleCollapsed}
+                        aria-label={collapsed ? 'Pin sidebar open' : 'Collapse sidebar'}
+                        aria-keyshortcuts="Meta+B Control+B"
+                        className="pressable flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        {collapsed ? (
+                          <SidebarExpand className="h-4 w-4 shrink-0" />
+                        ) : (
+                          <SidebarCollapse className="h-4 w-4 shrink-0" />
+                        )}
+                        <span className={sidebarLabelClass(railCollapsed)}>
+                          {collapsed ? 'Pin open' : 'Collapse'}
+                        </span>
+                      </button>
+                    </Tooltip>
+                  </div>
+                </aside>
 
-              {/* Mobile drawer. The palette, the modal, and the toasts all move —
+                {/* Mobile drawer. The palette, the modal, and the toasts all move —
               the drawer matching them is what makes the chrome feel like one
               surface. Backdrop fades; the panel slides in from the edge it
               belongs to, or cross-fades under reduced motion. */}
-              <AnimatePresence>
-                {mobileOpen && (
-                  <motion.button
-                    key="drawer-backdrop"
-                    aria-hidden="true"
-                    tabIndex={-1}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="fixed inset-0 z-50 bg-overlay/50 backdrop-blur-sm lg:hidden"
-                    onClick={() => setMobileOpen(false)}
-                  />
-                )}
-                {mobileOpen && (
-                  <motion.aside
-                    key="drawer-panel"
-                    ref={drawerRef}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="Navigation"
-                    initial={reduce ? { opacity: 0 } : { x: '-100%' }}
-                    animate={reduce ? { opacity: 1 } : { x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { x: '-100%' }}
-                    transition={{ duration: 0.25, ease: EASE }}
-                    className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card px-3 py-5 lg:hidden"
-                  >
-                    <button
-                      aria-label="Close navigation"
-                      className="pressable absolute right-3 top-4 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                <AnimatePresence>
+                  {mobileOpen && (
+                    <motion.button
+                      key="drawer-backdrop"
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="fixed inset-0 z-50 bg-overlay/50 backdrop-blur-sm lg:hidden"
                       onClick={() => setMobileOpen(false)}
-                    >
-                      <Xmark className="h-4 w-4" />
-                    </button>
-                    <SidebarBody
-                      onNavigate={() => setMobileOpen(false)}
-                      onOpenSearch={() => setPaletteOpen(true)}
                     />
-                  </motion.aside>
-                )}
-              </AnimatePresence>
+                  )}
+                  {mobileOpen && (
+                    <motion.aside
+                      key="drawer-panel"
+                      ref={drawerRef}
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label="Navigation"
+                      initial={reduce ? { opacity: 0 } : { x: '-100%' }}
+                      animate={reduce ? { opacity: 1 } : { x: 0 }}
+                      exit={reduce ? { opacity: 0 } : { x: '-100%' }}
+                      transition={{ duration: 0.25, ease: EASE }}
+                      className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card px-3 py-5 lg:hidden"
+                    >
+                      <button
+                        aria-label="Close navigation"
+                        className="pressable absolute right-3 top-4 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <Xmark className="h-4 w-4" />
+                      </button>
+                      <SidebarBody
+                        onNavigate={() => setMobileOpen(false)}
+                        onOpenSearch={() => setPaletteOpen(true)}
+                      />
+                    </motion.aside>
+                  )}
+                </AnimatePresence>
 
-              <div
-                className={cn(
-                  'min-h-screen transition-[padding]',
-                  sidebarSizeClass(collapsed),
-                  collapsed ? 'lg:pl-16' : 'lg:pl-56'
-                )}
-              >
-                {/* Top bar */}
-                <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
-                  <button
-                    aria-label="Open navigation"
-                    className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-                    onClick={() => setMobileOpen(true)}
-                  >
-                    <Menu className="h-4 w-4" />
-                  </button>
+                <div
+                  className={cn(
+                    'min-h-screen transition-[padding]',
+                    sidebarSizeClass(collapsed),
+                    collapsed ? 'lg:pl-16' : 'lg:pl-56'
+                  )}
+                >
+                  {/* Top bar */}
+                  <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
+                    <button
+                      aria-label="Open navigation"
+                      className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+                      onClick={() => setMobileOpen(true)}
+                    >
+                      <Menu className="h-4 w-4" />
+                    </button>
 
-                  <Breadcrumbs />
+                    <Breadcrumbs />
 
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <NeedsAttentionButton />
-                    <SupportNotificationsButton />
-                    <NewAppButton />
-                    {/* Search lives on the overview as the page's own field;
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <NeedsAttentionButton />
+                      <SupportNotificationsButton />
+                      <NewAppButton />
+                      {/* Search lives on the overview as the page's own field;
                       ⌘K still opens the palette from anywhere. */}
-                    <AccountMenu onSignOut={handleSignOut} />
-                  </div>
-                </header>
-
-                <main id="main" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6">
-                  {/* Wide enough for a dense table, still a measure: past ~1280px
-                a label/value pair stops scanning as a pair. */}
-                  <div className="mx-auto flex max-w-[1280px] flex-col gap-5">
-                    <UnreachableBanner />
-                    <div className="console-page flex flex-col gap-5">
-                      <DashboardSecondaryNavigation />
-                      {children}
+                      <AccountMenu onSignOut={handleSignOut} />
                     </div>
-                  </div>
-                </main>
-              </div>
+                  </header>
 
-              <CommandPalette
-                open={paletteOpen}
-                onOpenChange={setPaletteOpen}
-                onSignOut={handleSignOut}
-                onToggleSidebar={toggleCollapsed}
-              />
-            </div>
-          </ConfirmProvider>
-        </TooltipProvider>
-      </IconoirProvider>
+                  <main id="main" tabIndex={-1} className="px-4 py-6 outline-none sm:px-6">
+                    {/* Wide enough for a dense table, still a measure: past ~1280px
+                a label/value pair stops scanning as a pair. */}
+                    <div className="mx-auto flex max-w-[1280px] flex-col gap-5">
+                      <UnreachableBanner />
+                      <div className="console-page flex flex-col gap-5">
+                        <DashboardSecondaryNavigation />
+                        {children}
+                      </div>
+                    </div>
+                  </main>
+                </div>
+
+                <CommandPalette
+                  open={paletteOpen}
+                  onOpenChange={setPaletteOpen}
+                  onSignOut={handleSignOut}
+                  onToggleSidebar={toggleCollapsed}
+                />
+              </div>
+            </ConfirmProvider>
+          </TooltipProvider>
+        </IconoirProvider>
+      </EnvironmentBannerProvider>
     </ProjectScopeProvider>
   );
 }

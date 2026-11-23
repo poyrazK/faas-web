@@ -4,9 +4,10 @@ import { ErrorState, LoadingState, UnreachableState } from '@/components/dashboa
 import { useApps } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { consoleHead } from '@/lib/seo';
+import { withProductionBanner } from '@/components/dashboard/production-only-banner';
 
 export const Route = createFileRoute('/dashboard/triggers/$triggerId')({
-  component: TriggerDetailPage,
+  component: withProductionBanner('triggers', TriggerDetailPage),
   head: () => consoleHead('trigger'),
 });
 

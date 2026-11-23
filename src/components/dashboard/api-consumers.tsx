@@ -1,3 +1,4 @@
+import { formatPercent } from '@/lib/usage-format';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Xmark } from 'iconoir-react';
@@ -862,7 +863,7 @@ function ConsumerUsage({ slug, consumer }: { slug: string; consumer: Consumer })
           <ul className="flex flex-col gap-1 text-sm">
             {alerts.data?.map((a) => (
               <li key={a.id} className="flex flex-wrap gap-x-3">
-                <span className="font-medium">{a.threshold_percent}%</span>
+                <span className="font-medium">{formatPercent(a.threshold_percent)}</span>
                 <span className="text-muted-foreground">
                   {formatCount(a.used_units)} of {formatCount(a.limit_units)} units in{' '}
                   {formatUtcDate(a.month_start).slice(0, 7)}

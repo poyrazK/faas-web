@@ -1,10 +1,12 @@
 import type { components } from './api/schema';
 import { imageRequest } from './oci-image';
+import { resourceId } from './resource-id';
 type CreateRequest = components['schemas']['CreateAppRequest'];
 export type ImageCreateRequest = Pick<
   CreateRequest,
   | 'slug'
   | 'type'
+  | 'project_id'
   | 'ram_mb'
   | 'idle_timeout_s'
   | 'visibility'
@@ -74,6 +76,7 @@ export function newImageOperation(
 function sanitized(operation: ImageOperation): ImageOperation {
   const {
     slug,
+    project_id,
     ram_mb,
     idle_timeout_s,
     cpu_millicores,
@@ -103,6 +106,7 @@ function sanitized(operation: ImageOperation): ImageOperation {
     attemptAt: operation.attemptAt,
     createRequest: {
       slug,
+      ...(project_id ? { project_id } : {}),
       type: 'app',
       cpu_millicores,
       head_wakes,
@@ -160,6 +164,8 @@ export function readImageOperation(
       !/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(operation.createRequest.slug) ||
       (operation.org !== undefined &&
         (typeof operation.org !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(operation.org))) ||
+      (operation.createRequest.project_id !== undefined &&
+        !resourceId(operation.createRequest.project_id)) ||
       (operation.createRequest.visibility !== undefined &&
         !['public', 'internal'].includes(operation.createRequest.visibility)) ||
       (workloadKind === 'worker' &&

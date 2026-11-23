@@ -96,7 +96,7 @@ describe('recent failed deployments', () => {
     await mount(props);
     expect(panel().getByRole('link', { name: 'View deployment recent' })).toHaveAttribute(
       'href',
-      '/dashboard/releases?deployment=recent'
+      '/dashboard/releases/recent'
     );
     expect(panel().getByRole('link', { name: 'View deployment boundary' })).toBeInTheDocument();
     expect(panel().getAllByRole('link', { name: /View deployment / })).toHaveLength(2);
@@ -116,9 +116,9 @@ describe('recent failed deployments', () => {
     await mount(props);
     const links = panel().getAllByRole('link', { name: /View deployment / });
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/dashboard/releases?deployment=newest',
-      '/dashboard/releases?deployment=second',
-      '/dashboard/releases?deployment=third',
+      '/dashboard/releases/newest',
+      '/dashboard/releases/second',
+      '/dashboard/releases/third',
     ]);
     expect(panel().getByText('Showing 3 of 4 recent failed deployments.')).toBeInTheDocument();
     expect(panel().getByText(/latest 50 deployments/i)).toBeInTheDocument();

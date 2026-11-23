@@ -6,6 +6,7 @@ import { formatCompact } from '@/lib/mock-data';
 import { formatCents } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { PlanGate } from '../plan-gate';
+import type { DetailMetric } from '../metric-detail-search';
 import type { QueryPhase } from '../primitives';
 import type { FleetMetrics } from './overview-stats-data';
 
@@ -32,6 +33,8 @@ export interface OverviewStatsProps {
     figures: FleetMetrics;
   };
   resident: { known: boolean; partial: boolean; mb: number; count: number };
+  /** Opens the metric popup; each card is then a button. */
+  onInspect?: (metric: DetailMetric) => void;
   usage: {
     phase: QueryPhase;
     usedGbHours: number;
@@ -43,21 +46,27 @@ export interface OverviewStatsProps {
   };
 }
 
-const UNKNOWN = <span className="text-muted-foreground">—</span>;
+export const UNKNOWN = <span className="text-muted-foreground">—</span>;
 const gbh = (v: number) => v.toLocaleString('en', { maximumFractionDigits: 2 });
-const Unit = ({ children }: { children: ReactNode }) => (
+export const Unit = ({ children }: { children: ReactNode }) => (
   <span className="ml-1 text-sm font-normal text-muted-foreground">{children}</span>
 );
 
-function StatCard({
+export function StatCard({
   label,
   hint,
   sub,
   large,
+  tone,
   className,
+  onOpen,
   children,
 }: {
   label: string;
+  /** Makes the whole card a button that opens its details. */
+  onOpen?: () => void;
+  /** The card's verdict on its own figure: a faint glow in that colour, as on app tiles. */
+  tone?: 'good' | 'warning' | 'critical';
   /** What the figure is, for a hover; the card itself says only the number. */
   hint: string;
   /** The quiet last line — real context, so the card ends composed. */
@@ -70,8 +79,10 @@ function StatCard({
     <section
       aria-label={label}
       title={hint}
+      data-tone={tone}
       className={cn(
-        'surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card p-5',
+        'stat-card surface animate-item-enter flex h-full flex-col rounded-[1.25rem] bg-card p-5',
+        onOpen && 'relative transition-colors hover:bg-muted/30',
         large && 'min-h-36',
         className
       )}
@@ -86,6 +97,15 @@ function StatCard({
         {children}
       </p>
       {sub != null && <p className="mt-auto pt-3 text-xs text-muted-foreground">{sub}</p>}
+      {onOpen && (
+        // Laid over the card, so the heading and figure stay readable content.
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`See ${label} details`}
+          className="pressable absolute inset-0 rounded-[1.25rem] focus-visible:outline-2 focus-visible:outline-brand"
+        />
+      )}
     </section>
   );
 }
@@ -98,7 +118,9 @@ export function OverviewStats({
   metrics,
   resident,
   usage,
+  onInspect,
 }: OverviewStatsProps) {
+  const open = (metric: DetailMetric) => (onInspect ? () => onInspect(metric) : undefined);
   const m = metrics.figures;
   const metricsNote = metrics.degraded ? 'metrics degraded' : 'metrics unavailable';
   const usageReading = usage.phase === 'loading';
@@ -120,6 +142,7 @@ export function OverviewStats({
           <>
             <StatCard
               label="Total requests"
+              onOpen={open('requests')}
               large
               className="col-span-2"
               hint={`Requests served across your apps over the ${rangeDescription}.`}
@@ -133,6 +156,7 @@ export function OverviewStats({
             </StatCard>
             <StatCard
               label="Error rate"
+              onOpen={open('error_rate')}
               large
               className="col-span-2"
               hint="Share of requests that failed, weighted by each app's traffic."
@@ -152,6 +176,7 @@ export function OverviewStats({
             </StatCard>
             <StatCard
               label="Wake p95"
+              onOpen={open('wake_p95')}
               hint="How long the slowest 5% of wake-ups from sleep took, across all your apps."
               sub="Cold start, fleet-wide"
             >
@@ -168,6 +193,7 @@ export function OverviewStats({
         )}
         <StatCard
           label="Memory now"
+          onOpen={open('memory')}
           hint="Memory held by running instances right now. Sleeping instances hold none."
           sub={
             resident.known
@@ -188,6 +214,7 @@ export function OverviewStats({
         </StatCard>
         <StatCard
           label={over ? 'GB-h over' : remaining != null ? 'GB-h left' : 'GB-h used'}
+          onOpen={open('allowance')}
           hint="Compute this billing period, in GB-hours: memory multiplied by the time your apps ran."
           sub={
             usageReading || usageFailed
@@ -213,6 +240,7 @@ export function OverviewStats({
         </StatCard>
         <StatCard
           label="CPU"
+          onOpen={open('cpu')}
           hint="CPU-hours used this billing period. Measured, not billed."
           sub="Measured this period, not billed"
         >

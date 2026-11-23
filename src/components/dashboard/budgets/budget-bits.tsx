@@ -13,8 +13,15 @@ import {
 import { api, unwrap } from '@/lib/api/client';
 import { projectKeys, useProjects } from '@/lib/api/projects';
 import { retryPolicy, useApps, useJobs } from '@/lib/api/queries';
-import { LEVELS, budgetLevel, type Budget, type BudgetSpec, type ScopeKind } from '@/lib/budgets';
-import { formatMillicents } from '@/lib/money';
+import {
+  LEVELS,
+  budgetLevel,
+  formatBudgetAmount,
+  type Budget,
+  type BudgetSpec,
+  type BudgetUnit,
+  type ScopeKind,
+} from '@/lib/budgets';
 
 type Tone = { label: string; color: string; icon: typeof CheckCircle };
 
@@ -82,18 +89,16 @@ export function SpendMeter({
   limit,
   projected,
   label,
+  unit,
 }: {
   known: number | undefined;
   limit: number;
   projected?: number;
   label: string;
+  unit: BudgetUnit;
 }) {
   if (known === undefined)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Spending could not be evaluated, so it is unknown; it is never read as $0.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">Spending could not be evaluated.</p>;
   const pct = limit > 0 ? Math.min(100, (known / limit) * 100) : 100;
   const color = pct >= 100 ? BAD : pct >= 80 ? WARN : GOOD;
   const mark =
@@ -101,8 +106,8 @@ export function SpendMeter({
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-sm [font-variant-numeric:tabular-nums]">
-        <span className="font-medium">{formatMillicents(known)}</span>
-        <span className="text-muted-foreground"> of {formatMillicents(limit)}</span>
+        <span className="font-medium">{formatBudgetAmount(known, unit)}</span>
+        <span className="text-muted-foreground"> of {formatBudgetAmount(limit, unit)}</span>
       </p>
       <div
         className="relative h-2 w-full overflow-hidden rounded-full bg-muted"

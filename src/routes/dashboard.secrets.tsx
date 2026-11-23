@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { consoleHead } from '@/lib/seo';
+import { EnvironmentValuesGate } from '@/components/dashboard/environment-values-gate';
 import { SecretsBody } from '@/components/dashboard/pages/secrets';
 
 export const Route = createFileRoute('/dashboard/secrets')({
@@ -21,7 +22,9 @@ function SecretsPage() {
       />
 
       <AppScope state={appState} resource="secrets">
-        <SecretsBody slug={slug} />
+        <EnvironmentValuesGate slug={slug}>
+          {({ scope, readOnly }) => <SecretsBody slug={slug} scope={scope} readOnly={readOnly} />}
+        </EnvironmentValuesGate>
       </AppScope>
     </div>
   );

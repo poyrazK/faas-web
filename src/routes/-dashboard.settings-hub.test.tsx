@@ -248,6 +248,13 @@ describe('canonical Settings', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(label);
   });
 
+  it('copies the full account identifier from the Account details panel', async () => {
+    const user = userEvent.setup();
+    await mount('/dashboard/settings');
+    await user.click(await screen.findByRole('button', { name: 'Copy: account ID me' }));
+    await expect(navigator.clipboard.readText()).resolves.toBe('me');
+  });
+
   it('defaults invalid sections to General with read-only account details and no browser-only label', async () => {
     await mount('/dashboard/settings?section=garbage&scope=bad');
     // The workspace is a real organization now, chosen in the breadcrumb.

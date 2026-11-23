@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { PageHeader } from '@/components/dashboard/primitives';
 import { AppScope, AppSelect, useSelectedApp } from '@/components/dashboard/app-select';
 import { consoleHead } from '@/lib/seo';
+import { EnvironmentValuesGate } from '@/components/dashboard/environment-values-gate';
 import { EnvBody } from '@/components/dashboard/pages/env';
 
 export const Route = createFileRoute('/dashboard/env')({
@@ -21,7 +22,9 @@ function EnvPage() {
       />
 
       <AppScope state={appState} resource="environment variables">
-        <EnvBody slug={slug} />
+        <EnvironmentValuesGate slug={slug}>
+          {({ scope, readOnly }) => <EnvBody slug={slug} scope={scope} readOnly={readOnly} />}
+        </EnvironmentValuesGate>
       </AppScope>
     </div>
   );

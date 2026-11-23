@@ -13,8 +13,16 @@ import { useBudgets, useDeleteBudget, useOperationKey } from '@/lib/api/budgets'
 import { useCapability } from '@/lib/api/capabilities';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useAuth } from '@/lib/auth';
-import { BUDGET_LIMITS, budgetLevel, budgetRefusal, type Budget } from '@/lib/budgets';
-import { formatMillicents } from '@/lib/money';
+import {
+  BUDGET_LIMITS,
+  COMPUTE_BUDGET_RATE,
+  budgetLevel,
+  budgetRefusal,
+  budgetUnit,
+  formatBudgetAmount,
+  type Budget,
+} from '@/lib/budgets';
+import { formatMillicentRate } from '@/lib/money';
 import { MaturityLabel } from '../maturity-label';
 import { PageHeader, Panel } from '../primitives';
 import { ResourceTable, type Column } from '../resource-table';
@@ -150,7 +158,7 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
       priority: 'secondary',
       render: (row) => (
         <span className="whitespace-nowrap [font-variant-numeric:tabular-nums]">
-          {formatMillicents(row.limit)}
+          {formatBudgetAmount(row.limit, budgetUnit(row.budget.spec.meters))}
         </span>
       ),
     },
@@ -162,14 +170,15 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
       priority: 'secondary',
       render: (row) => {
         const evaluation = row.budget.runtime?.evaluation;
+        const unit = budgetUnit(row.budget.spec.meters);
         if (evaluation?.known_millicents === undefined)
           return <span className="text-xs text-muted-foreground">Not evaluated</span>;
         return (
           <span className="flex flex-col items-end [font-variant-numeric:tabular-nums]">
-            <span>{formatMillicents(evaluation.known_millicents)}</span>
+            <span>{formatBudgetAmount(evaluation.known_millicents, unit)}</span>
             {evaluation.projected_millicents !== undefined && (
               <span className="text-xs text-muted-foreground">
-                → {formatMillicents(evaluation.projected_millicents)} projected
+                → {formatBudgetAmount(evaluation.projected_millicents, unit)} projected
               </span>
             )}
           </span>
@@ -248,6 +257,12 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
         </Panel>
       )}
 
+      {list.some(({ spec }) => budgetUnit(spec.meters) === 'GB-hours') && (
+        <p className="text-xs text-muted-foreground">
+          Compute-only amounts are GB-hour equivalents at {formatMillicentRate(COMPUTE_BUDGET_RATE)}{' '}
+          per GB-hour.
+        </p>
+      )}
       <ResourceTable
         rows={rows}
         columns={columns}

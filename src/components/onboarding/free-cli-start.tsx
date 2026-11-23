@@ -11,7 +11,7 @@ export function FreeCliStart({ needsEmailVerification }: { needsEmailVerificatio
     >
       <div>
         <h2 id="free-cli-start" className="text-lg font-semibold">
-          Deploy a private Node app from your terminal
+          Deploy your first app from your terminal
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {needsEmailVerification && (
@@ -32,23 +32,25 @@ export function FreeCliStart({ needsEmailVerification }: { needsEmailVerificatio
           </div>
         </li>
         <li>
-          Open a new terminal, change to an empty directory, and run:
+          Open a new terminal in your app’s folder, or an empty one, and run:
           <div className="mt-1 flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-1">
             <code className="min-w-0 break-words">{startCLI}</code>
             <CopyIconButton text={startCLI} label={startCLI} />
           </div>
         </li>
         <li>
-          Choose <strong>Create a starter</strong>, then{' '}
-          <strong>Private Node.js HTTP app (Free plan)</strong>.
+          Follow the prompts. Start deploys the app it finds in the folder; in an empty folder it
+          offers starters to begin from.
         </li>
       </ol>
-      <a
-        href="/docs/quickstart#deploy-a-private-node-app-on-free"
-        className="self-start text-sm text-brand underline"
-      >
-        Private Node quickstart
-      </a>
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <a href="/docs/quickstart" className="text-brand underline">
+          Quickstart
+        </a>
+        <a href="/docs/plans" className="text-brand underline">
+          What fits on Free
+        </a>
+      </p>
     </section>
   );
 }

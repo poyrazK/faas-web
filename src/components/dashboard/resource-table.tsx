@@ -45,6 +45,10 @@ export interface Column<T> {
 
 export interface ResourceTableProps<T> {
   rows: T[];
+  /** Number of rows to reveal at a time. */
+  pageSize?: number;
+  /** A matching row comes first within the current filter. */
+  pinRow?: (row: T) => boolean;
   columns: Column<T>[];
   initialSort?: { key: keyof T & string; dir: 'asc' | 'desc' };
   onRowClick?: (row: T) => void;
@@ -82,6 +86,8 @@ export interface ResourceTableProps<T> {
 
 export function ResourceTable<T extends { id: string }>({
   rows,
+  pageSize = PAGE_SIZE,
+  pinRow,
   columns,
   initialSort,
   onRowClick,
@@ -105,7 +111,7 @@ export function ResourceTable<T extends { id: string }>({
   const query = controlledQuery ?? internalQuery;
   const setQuery = onQueryChange ?? setInternalQuery;
   const [sort, setSort] = useState(initialSort);
-  const [shownCount, setShownCount] = useState(PAGE_SIZE);
+  const [shownCount, setShownCount] = useState(pageSize);
   const flush = useContext(FlushContext);
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
   const secondary = columns.filter((column) => column.priority === 'secondary');
@@ -132,15 +138,17 @@ export function ResourceTable<T extends { id: string }>({
           )
         : rows;
 
-    if (!sort) return filtered;
-    const factor = sort.dir === 'asc' ? 1 : -1;
+    if (!sort && !pinRow) return filtered;
+    const factor = sort?.dir === 'asc' ? 1 : -1;
     return [...filtered].sort((a, b) => {
+      const pinned = Number(pinRow?.(b) ?? false) - Number(pinRow?.(a) ?? false);
+      if (pinned || !sort) return pinned;
       const av = a[sort.key];
       const bv = b[sort.key];
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
       return String(av).localeCompare(String(bv)) * factor;
     });
-  }, [rows, query, sort, stableSearchKeys]);
+  }, [rows, query, sort, stableSearchKeys, pinRow]);
 
   const phase = queryPhase({ error, loading, isEmpty: visible.length === 0 });
   const shown = visible.length > shownCount ? visible.slice(0, shownCount) : visible;
@@ -175,7 +183,7 @@ export function ResourceTable<T extends { id: string }>({
     <div className={cn('flex flex-col', flush ? 'gap-0' : 'gap-3')}>
       {/* Also shown, filterless, once a table is big enough to truncate —
           the count is then the only statement of how much exists. */}
-      {(searchKeys?.length || filters || rows.length > PAGE_SIZE) && (
+      {(searchKeys?.length || filters || rows.length > pageSize) && (
         <div
           className={cn(
             'flex flex-wrap items-center gap-3',
@@ -470,10 +478,10 @@ export function ResourceTable<T extends { id: string }>({
                       <td colSpan={columns.length + (rowActions ? 1 : 0)} className="p-0">
                         <button
                           type="button"
-                          onClick={() => setShownCount((n) => n + PAGE_SIZE)}
+                          onClick={() => setShownCount((n) => n + pageSize)}
                           className="pressable w-full px-3 py-3 text-center text-xs text-muted-foreground hover:text-foreground"
                         >
-                          Show {Math.min(PAGE_SIZE, visible.length - shown.length)} more —{' '}
+                          Show {Math.min(pageSize, visible.length - shown.length)} more —{' '}
                           {visible.length - shown.length} not shown
                         </button>
                       </td>

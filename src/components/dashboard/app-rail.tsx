@@ -46,7 +46,7 @@ import {
   resolveAppTab,
   type AppTab,
 } from './app-tab-navigation';
-import { useCapabilityOff } from './nav-access';
+import { NavMaturity, useCapabilityOff } from './nav-access';
 
 const ICON: Record<AppTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   Overview: ViewGrid,
@@ -222,6 +222,8 @@ export function AppRail({
             {group.tabs.map((tab) => {
               const Icon = ICON[tab];
               const active = tab === current;
+              const capability = tab === 'Edge rules' ? 'edge-rules' : APP_TAB_CAPABILITY[tab];
+              const capabilities = APP_TAB_ANY_CAPABILITY[tab] ?? (capability ? [capability] : []);
               return (
                 <li key={tab}>
                   <Link
@@ -251,6 +253,9 @@ export function AppRail({
                       )}
                     />
                     <span className={labelCls}>{tab}</span>
+                    {!collapsed && capabilities.length > 0 && (
+                      <NavMaturity capabilities={capabilities} />
+                    )}
                   </Link>
                 </li>
               );

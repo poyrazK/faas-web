@@ -1,4 +1,5 @@
 import { useBlocker } from '@tanstack/react-router';
+import { useConfirm } from '@/components/ui/confirm';
 
 /**
  * Warns before edits are silently discarded: blocks in-app navigation while
@@ -6,7 +7,7 @@ import { useBlocker } from '@tanstack/react-router';
  *
  * `ask` supplies the question — usually the shared confirm dialog, so the
  * moment looks like every other destructive confirmation. It resolves true
- * to leave. Without it, the native `window.confirm` stands in.
+ * to leave. Other callers use the same shared dialog by default.
  * `allowWithinPath` keeps a wizard's URL-backed steps navigable while its
  * draft remains mounted; leaving that path still asks before discarding it.
  */
@@ -15,6 +16,7 @@ export function useUnsavedGuard(
   ask?: () => Promise<boolean>,
   allowWithinPath?: string
 ) {
+  const confirm = useConfirm();
   useBlocker({
     shouldBlockFn: async ({ current, next }) => {
       if (!dirty) return false;
@@ -24,7 +26,14 @@ export function useUnsavedGuard(
         next.pathname === allowWithinPath
       )
         return false;
-      const leave = ask ? await ask() : window.confirm('Discard unsaved changes?');
+      const leave = ask
+        ? await ask()
+        : await confirm({
+            title: 'Discard unsaved changes?',
+            description: 'Changes you have not saved will be lost.',
+            confirmLabel: 'Discard changes',
+            destructive: true,
+          });
       return !leave;
     },
     enableBeforeUnload: () => dirty,

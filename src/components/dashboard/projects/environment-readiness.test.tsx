@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { EnvironmentReadiness } from './environment-readiness';
 import {
@@ -73,15 +74,34 @@ function setup() {
   vi.mocked(usePromotionReceipt).mockReturnValue({ ...ready, data: undefined } as never);
   vi.mocked(useApprovalReceipt).mockReturnValue({ ...ready, data: undefined } as never);
 }
-it('shows preview identities without treating can_promote as console authorization', () => {
+it('shows preview identities without treating can_promote as console authorization', async () => {
   setup();
   render(<EnvironmentReadiness identity={identity} source="staging" onSearch={vi.fn()} />);
+  // The console previews; it offers no promote control, working or disabled.
+  expect(screen.queryByRole('button', { name: /^(Promote|Rollback)$/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/done with the/)).toBeVisible();
+  expect(screen.queryByText('exact-source')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Show promotion details' }));
   expect(screen.getByText('exact-source')).toBeVisible();
   expect(screen.getByText(/q · passed/)).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Promote' })).toBeDisabled();
-  expect(screen.getByText(/Promote, rollback, full clone and GitOps/)).toBeVisible();
 });
-it('keeps blockers and missing qualification explicit', () => {
+it('offers the comparison shown above as a one-click preview, loading nothing until asked', () => {
+  setup();
+  const onPreview = vi.fn();
+  render(
+    <EnvironmentReadiness
+      identity={identity}
+      previewSource="Staging"
+      onPreview={onPreview}
+      onSearch={vi.fn()}
+    />
+  );
+  expect(vi.mocked(usePromotionPreview)).toHaveBeenCalledWith(identity, '');
+  expect(screen.queryByText('exact-source')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Preview promoting from Staging' }));
+  expect(onPreview).toHaveBeenCalled();
+});
+it('keeps blockers and missing qualification explicit', async () => {
   setup();
   vi.mocked(usePromotionPreview).mockReturnValue({
     ...ready,
@@ -94,6 +114,7 @@ it('keeps blockers and missing qualification explicit', () => {
   } as never);
   render(<EnvironmentReadiness identity={identity} source="staging" onSearch={vi.fn()} />);
   expect(screen.getByText('Qualification missing')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Show promotion details' }));
   expect(screen.getByText(/No qualification receipt returned/)).toBeVisible();
 });
 it('shows partial application and failed verification/rollback independently', () => {
