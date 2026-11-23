@@ -203,6 +203,27 @@ describe('useBillFacts review fixes', () => {
   });
 });
 
+describe('before the workspace is known', () => {
+  it('loads every section instead of drawing empty rows', () => {
+    h.workspace.mockReturnValue({ org: null, label: 'Personal', ready: false });
+    const { result } = renderHook(() => useBillFacts());
+    expect(result.current.settled).toBe(false);
+    expect(result.current.sections.cap.phase).toBe('loading');
+    expect(result.current.sections.egress.phase).toBe('loading');
+  });
+
+  it('shimmers the strip while it waits', async () => {
+    h.workspace.mockReturnValue({ org: null, label: 'Personal', ready: false });
+    function Strip() {
+      return <StatusStrip data={useBillFacts()} onAction={vi.fn()} />;
+    }
+    await show(<Strip />);
+    const strip = screen.getByRole('status', { name: 'Spending limits status' });
+    expect(strip).toHaveTextContent('Checking your limits…');
+    expect(strip.querySelector('.shimmer')).not.toBeNull();
+  });
+});
+
 describe('Your bill', () => {
   it('shows the spend cap, egress and storage rows with meters', async () => {
     await show(<Bill />);

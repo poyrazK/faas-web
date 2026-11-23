@@ -205,7 +205,7 @@ export function DeploymentProgress({
             ) : failed || unavailable || superseded ? (
               <WarningTriangle className="h-[18px] w-[18px]" />
             ) : (
-              <RefreshDouble className="h-[18px] w-[18px] animate-spin motion-reduce:animate-none" />
+              <RefreshDouble className="shimmer-text h-[18px] w-[18px]" />
             )}
           </span>
           <div className="flex min-w-0 flex-col gap-1">
@@ -262,7 +262,7 @@ export function DeploymentProgress({
                         {state === 'done' ? (
                           <Check className="h-4 w-4 text-brand" />
                         ) : state === 'current' ? (
-                          <RefreshDouble className="h-3.5 w-3.5 animate-spin text-brand motion-reduce:animate-none" />
+                          <RefreshDouble className="shimmer-text h-3.5 w-3.5 text-brand" />
                         ) : (
                           <span className="h-1.5 w-1.5 rounded-full bg-border-secondary" />
                         )}

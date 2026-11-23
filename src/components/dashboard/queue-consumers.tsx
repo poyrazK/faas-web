@@ -6,7 +6,7 @@ import {
   type QueueBinding,
 } from '@/lib/api/queue-bindings';
 import { Button } from '@/components/ui/button';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 import { QueueConsumerControls } from './queue-consumer-controls';
 import { QueueBindingEditor } from './queue-binding-editor';
 import { QueueBindingOrphan } from './queue-binding-orphan';
@@ -37,7 +37,7 @@ function ConsumerStatus({
         {binding.max_concurrency}
       </p>
       {status.isPending ? (
-        <p role="status">Reading consumer state…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading consumer state…" />
       ) : status.error ? (
         <p role="alert">
           Consumer status unavailable.{' '}
@@ -104,7 +104,7 @@ export function QueueConsumers({ slug }: { slug: string }) {
           <p role="status">Worker controls require confirmed worker-pool availability.</p>
         ) : null}
         {list.isPending ? (
-          <p role="status">Loading queue bindings…</p>
+          <InlinePhase phase="loading" loadingMessage="Loading queue bindings…" />
         ) : list.error ? (
           <p role="alert">
             Could not read queue bindings.{' '}

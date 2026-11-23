@@ -2,6 +2,7 @@ import { Modal } from '@/components/ui/modal';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useAuditEvent } from '@/lib/api/queries';
 import { authEventWords, severityWords } from './settings-words';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * One auth audit event in full, behind the security page's list. The list
@@ -25,7 +26,7 @@ export function AuthEventDetail({ id, onClose }: { id: string | null; onClose: (
       width="max-w-lg"
     >
       {event.isPending ? (
-        <p className="text-sm text-muted-foreground">Reading the event…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading the event…" />
       ) : missing ? (
         <p className="text-sm text-muted-foreground">No such event on this account.</p>
       ) : event.error || !data ? (

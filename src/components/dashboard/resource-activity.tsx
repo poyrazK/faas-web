@@ -38,6 +38,7 @@ import {
   outcomeMark,
 } from './activity-words';
 import { releaseLink } from '@/components/dashboard/release-page/links';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /** Resolve the stable app ID only when the Activity tab is opened. */
 export function AppActivityTimeline({ slug }: { slug: string }) {
@@ -173,11 +174,12 @@ function ActivityTimeline({
               disabled={activity.isFetching}
               onClick={() => void activity.refetch()}
             >
-              <RefreshDouble
-                aria-hidden
-                className={`size-3.5 ${activity.isFetching ? 'animate-spin motion-reduce:animate-none' : ''}`}
-              />
-              Refresh
+              <span
+                className={`inline-flex items-center gap-1.5 ${activity.isFetching ? 'shimmer-text' : ''}`}
+              >
+                <RefreshDouble aria-hidden className="size-3.5" />
+                Refresh
+              </span>
             </Button>
           )}
         </div>
@@ -193,9 +195,7 @@ function ActivityTimeline({
           This app’s workspace could not be found, so no activity is shown.
         </p>
       ) : workspace.isPending || activity.isPending ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          Reading resource activity…
-        </p>
+        <InlinePhase phase="loading" loadingMessage="Reading resource activity…" />
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No matching events in the loaded history.</p>
       ) : null}

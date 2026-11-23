@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import { useCapabilityAccess } from '@/lib/api/capabilities';
 import type { CapabilityAccess } from '@/lib/capability-state';
-import { Panel } from './primitives';
+import { InlinePhase, Panel } from './primitives';
 
 /** Same wording as CAPABILITY_LABELS, so every gate reads alike. */
 export const GATE_MESSAGES: Record<Exclude<CapabilityAccess, 'on'>, string> = {
@@ -28,6 +28,12 @@ export function CapabilityGate({
 }) {
   const { access, refresh } = useCapabilityAccess(capability);
   if (access === 'on') return <>{children}</>;
+  if (access === 'loading')
+    return (
+      <Panel title={title}>
+        <InlinePhase phase="loading" loadingMessage={GATE_MESSAGES.loading} />
+      </Panel>
+    );
   return (
     <Panel title={title}>
       <div

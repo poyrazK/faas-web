@@ -12,6 +12,7 @@ import {
 import { activityOutcome } from '@/lib/api/resource-activity';
 import { deploymentPhase } from '@/lib/deployment-status';
 import { formatRelative } from '@/lib/mock-data';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * The three read-only views the deployment detail panel gained after cancel
@@ -92,7 +93,7 @@ export function DeploymentStages({ deploymentId }: { deploymentId: string }) {
 
   let body: React.ReactNode;
   if (stages.isPending) {
-    body = <p className="text-sm text-muted-foreground">Reading the stage summary…</p>;
+    body = <InlinePhase phase="loading" loadingMessage="Reading the stage summary…" />;
   } else if (stages.error && isNotFound(stages.error)) {
     body = (
       <p className="text-sm text-muted-foreground">
@@ -200,7 +201,7 @@ export function DeploymentAudit({ deploymentId }: { deploymentId: string }) {
 
   let body: React.ReactNode;
   if (audit.isPending) {
-    body = <p className="text-sm text-muted-foreground">Reading the audit timeline…</p>;
+    body = <InlinePhase phase="loading" loadingMessage="Reading the audit timeline…" />;
   } else if (audit.error && isNotFound(audit.error)) {
     body = (
       <p className="text-sm text-muted-foreground">

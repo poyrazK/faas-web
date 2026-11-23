@@ -1,5 +1,4 @@
 import type { ComponentType, ReactNode, SVGProps } from 'react';
-import { useReducedMotion } from 'motion/react';
 import { CheckCircle, Circle, Minus, RefreshDouble, WarningTriangle } from 'iconoir-react';
 import { Timestamp } from '@/components/ui/timestamp';
 import { ApiError } from '@/lib/api/errors';
@@ -43,13 +42,15 @@ function seconds(from?: string | null, to?: string | null): string | undefined {
 }
 
 function StatusLabel({ status }: { status: ReleaseRun['status'] | 'unavailable' }) {
-  const reduce = useReducedMotion();
   const view = status === 'unavailable' ? UNAVAILABLE : (STATUS[status] ?? STATUS.pending);
   const Icon = view.icon;
   const spinning = status !== 'unavailable' && RELEASE_IN_FLIGHT.includes(status);
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: view.color }}>
-      <Icon aria-hidden className={cn('h-3.5 w-3.5', spinning && !reduce && 'animate-spin')} />
+    <span
+      className={cn('inline-flex items-center gap-1.5 text-xs', spinning && 'shimmer-text')}
+      style={{ color: view.color }}
+    >
+      <Icon aria-hidden className="h-3.5 w-3.5" />
       {view.label}
     </span>
   );

@@ -25,6 +25,7 @@ import {
   Panel,
   Stats,
   StatTile,
+  InlinePhase,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { SegmentedControl } from '@/components/dashboard/tabs';
@@ -115,7 +116,7 @@ export function TriggerConfiguration({ triggerId }: { triggerId: string }) {
   const missing = trigger.error instanceof ApiError && trigger.error.code === 'trigger_not_found';
 
   if (trigger.isPending)
-    return <p className="text-sm text-muted-foreground">Reading the trigger…</p>;
+    return <InlinePhase phase="loading" loadingMessage="Reading the trigger…" />;
   if (missing)
     return <p className="text-sm text-muted-foreground">This trigger no longer exists.</p>;
   if (trigger.error || !data)

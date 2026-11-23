@@ -4,7 +4,7 @@ import { useCapability } from '@/lib/api/capabilities';
 import { useMcpApp } from '@/lib/api/mcp-app';
 import { errorMessage } from '@/lib/api/errors';
 import { mcpCommands, mcpEndpoint } from '@/lib/mcp-guidance';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 import { CapabilityNotice } from './capability-notice';
 
 function Command({ label, command }: { label: string; command: string }) {
@@ -61,7 +61,7 @@ export function McpGuidance({ slug }: { slug: string }) {
         {metadata.error ? (
           <p role="alert">{errorMessage(metadata.error)}</p>
         ) : metadata.isPending || metadata.isFetching ? (
-          <p role="status">Reading current app configuration…</p>
+          <InlinePhase phase="loading" loadingMessage="Reading current app configuration…" />
         ) : !app ? (
           <p role="status">App metadata is unconfirmed. Refresh the current account and app.</p>
         ) : (

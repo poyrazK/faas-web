@@ -18,6 +18,7 @@ import {
 } from '@/lib/environment-scope';
 import { useProjectScope } from '@/lib/project-scope';
 import { cn } from '@/lib/utils';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 const ICON = { production: ShieldCheck, stage: Flask, preview: GitFork } as const;
 
@@ -122,9 +123,7 @@ export function EnvironmentSwitcher() {
               </DropdownMenuItem>
             </>
           ) : !env.choices ? (
-            <p role="status" className="px-2 py-1.5 text-sm text-muted-foreground">
-              Loading environments…
-            </p>
+            <InlinePhase phase="loading" loadingMessage="Loading environments…" />
           ) : (
             env.choices.map((choice) => {
               const selected = choice.slug === env.environment;

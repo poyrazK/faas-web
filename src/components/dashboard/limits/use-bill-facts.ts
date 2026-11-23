@@ -75,7 +75,8 @@ export function useBillFacts(): BillData {
     isPending: boolean;
     refetch: () => unknown;
   }): Section => ({
-    phase: queryPhase({ error: query.error, loading: bound && query.isPending }),
+    // Before the workspace is known nothing has been read: loading, not empty.
+    phase: queryPhase({ error: query.error, loading: !bound || query.isPending }),
     error: query.error,
     retry: () => void query.refetch(),
   });

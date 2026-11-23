@@ -104,9 +104,7 @@ export function AppAnalyticsPreview({
         </div>
         {sentence && <p className="text-[15px] leading-6">{sentence}</p>}
         {phase === 'loading' && (
-          <p role="status" className="text-xs text-muted-foreground">
-            Loading traffic signals…
-          </p>
+          <InlinePhase phase="loading" loadingMessage="Loading traffic signals…" />
         )}
         {(phase === 'empty' || phase === 'error' || phase === 'unreachable') && (
           <p className="text-xs text-muted-foreground">Traffic metrics are unavailable.</p>

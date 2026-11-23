@@ -13,7 +13,7 @@ import {
 } from '@/lib/api/queue-bindings';
 import { stageQueueFingerprint, stageQueuePayload, type StageBinding } from '@/lib/stage-queue';
 import type { EnvironmentState } from '@/lib/api/projects';
-import { Panel } from '../primitives';
+import { Panel, InlinePhase } from '../primitives';
 import { Select } from '@/components/ui/field';
 
 const fieldClass =
@@ -438,9 +438,7 @@ export function StageQueueBindings({
       help="Production consumers are managed on the app's Queues tab."
     >
       {query.isPending ? (
-        <p role="status" className="p-4">
-          Loading stage queue settings…
-        </p>
+        <InlinePhase phase="loading" loadingMessage="Loading stage queue settings…" />
       ) : query.error ? (
         <div className="p-4">
           <p role="alert">{errorMessage(query.error)}</p>

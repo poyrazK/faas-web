@@ -1,4 +1,4 @@
-import { Stats, StatTile } from '@/components/dashboard/primitives';
+import { Stats, StatTile, InlinePhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { Button } from '@/components/ui/button';
 import { ApiError, errorMessage } from '@/lib/api/errors';
@@ -45,7 +45,7 @@ export function JobDefinition({ name }: { name: string }) {
   const [editingSchedule, setEditingSchedule] = useState(false);
 
   if (job.isPending)
-    return <p className="text-sm text-muted-foreground">Reading the definition…</p>;
+    return <InlinePhase phase="loading" loadingMessage="Reading the definition…" />;
   if (job.error instanceof ApiError && job.error.code === 'job_not_found')
     return <p className="text-sm text-muted-foreground">This job no longer exists.</p>;
   if (job.error || !data)
@@ -127,7 +127,7 @@ export function JobRunDetail({ name, runId }: { name: string; runId: string }) {
   const run = useJobRun(name, runId);
   const data = run.data;
 
-  if (run.isPending) return <p className="text-sm text-muted-foreground">Reading the run…</p>;
+  if (run.isPending) return <InlinePhase phase="loading" loadingMessage="Reading the run…" />;
   if (run.error instanceof ApiError && run.error.code === 'job_run_not_found')
     return <p className="text-sm text-muted-foreground">This run is no longer recorded.</p>;
   if (run.error || !data)

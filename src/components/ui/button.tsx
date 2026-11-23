@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { RefreshDouble } from 'iconoir-react';
 import { Slot } from 'radix-ui';
 
 import { cn } from '@/lib/utils';
@@ -59,9 +58,9 @@ function Button({
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
     /**
-     * An in-flight mutation. The label goes invisible but keeps its box while
-     * a spinner overlays it, so the button — and the row it sits in — never
-     * changes width mid-action the way a "Save" ↔ "Saving…" label swap does.
+     * An in-flight mutation. The label stays and shimmers, so the button —
+     * and the row it sits in — never changes width mid-action the way a
+     * "Save" ↔ "Saving…" label swap does.
      * Also disables and sets `aria-busy`. Not for `asChild`.
      */
     busy?: boolean;
@@ -79,13 +78,10 @@ function Button({
         aria-busy="true"
         {...props}
       >
-        <span aria-hidden className="invisible inline-flex items-center gap-[inherit]">
+        <span aria-hidden className="shimmer-text inline-flex items-center gap-[inherit]">
           {children}
         </span>
-        <span className="absolute inset-0 flex items-center justify-center">
-          <RefreshDouble className="animate-spin motion-reduce:animate-none" />
-          <span className="sr-only">Working…</span>
-        </span>
+        <span className="sr-only">Working…</span>
       </button>
     );
   }

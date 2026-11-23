@@ -619,7 +619,7 @@ type Health = ReturnType<typeof useAutomationHealth>;
 /** One line of health in the header; the tiles live with the run history. */
 function HealthSummary({ health }: { health: Health }) {
   if (health.isPending)
-    return <p className="text-xs text-muted-foreground">Loading automation health…</p>;
+    return <InlinePhase phase="loading" loadingMessage="Loading automation health…" />;
   if (health.error)
     return (
       <button
