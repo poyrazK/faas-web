@@ -10136,9 +10136,23 @@ route('POST', '/v1/orgs/{slug}/billing/budgets', ({ params, body }) => {
   orgBudgetRecord(budget, 'created');
   return status(201, budget);
 });
+/**
+ * What an organization pays for: its own apps, projects and environments, and
+ * no jobs (an organization budget can't scope one). A preview over this world
+ * never counts or names the signed-in account's personal workloads.
+ */
+function orgBudgetWorld(slug: string): budgetMock.World {
+  const orgProjects = orgProjectSummaries(slug).map((p) => ({ id: p.id, slug: p.slug }));
+  return {
+    apps: inventoryForOrg(slug),
+    jobs: [],
+    projects: orgProjects,
+    environments: () => orgProjects.flatMap((p) => environmentInventory(p.slug) ?? []),
+  };
+}
 route('POST', '/v1/orgs/{slug}/billing/budgets/preview', ({ params, body }) => {
   requireOrgBillingRole(params.slug, ANY_MEMBER);
-  return budgetCall(() => budgetMock.preview(budgetWorld, body.spec));
+  return budgetCall(() => budgetMock.preview(orgBudgetWorld(params.slug), body.spec));
 });
 route('GET', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params }) => {
   requireOrgBillingRole(params.slug, ANY_MEMBER);
@@ -12469,15 +12483,19 @@ const teammateProject = {
   workload_count: 1,
   created_at: '2026-10-02T09:00:00Z',
 } as const;
-route('GET', '/v1/orgs/{organization}/projects', ({ params }) => {
-  const org = requireOrgRole(params.organization, ANY_MEMBER);
+/** A workspace's projects, as `/v1/orgs/{organization}/projects` lists them. */
+function orgProjectSummaries(organization: string) {
+  const org = requireOrgRole(organization, ANY_MEMBER);
   if (org.personal) return projectSummaries();
-  return params.organization === 'acme-corp'
+  return organization === 'acme-corp'
     ? [{ ...projectSummaries()[0], ...teammateProject }].filter(
-        (p) => !deletedOrgProjects.has(`${params.organization}/${p.slug}`)
+        (p) => !deletedOrgProjects.has(`${organization}/${p.slug}`)
       )
     : [];
-});
+}
+route('GET', '/v1/orgs/{organization}/projects', ({ params }) =>
+  orgProjectSummaries(params.organization)
+);
 route('GET', '/v1/orgs/{organization}/projects/{slug}', ({ params }) => {
   requireOrgRole(params.organization, ANY_MEMBER);
   return findCompanyProject(params.organization, params.slug);
