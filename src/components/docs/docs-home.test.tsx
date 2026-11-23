@@ -16,7 +16,7 @@ describe('docs home', () => {
     for (const [name, href] of [
       [/Deploy your repository/, '/docs/deploy-from-github'],
       [/Add a Postgres database/, '/docs/postgres'],
-      [/Set secrets and environment variables/, '/docs/secrets'],
+      [/Store API keys and credentials/, '/docs/secrets'],
       [/Connect your domain/, '/docs/custom-domains'],
       [/See your app’s logs/, '/docs/logs'],
       [/Roll back a bad release/, '/docs/releases'],

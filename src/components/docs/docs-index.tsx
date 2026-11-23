@@ -19,8 +19,8 @@ const TASKS = [
   },
   {
     slug: 'secrets',
-    title: 'Set secrets and environment variables',
-    detail: 'Give your app API keys and config without committing them.',
+    title: 'Store API keys and credentials',
+    detail: 'Seal secrets and deliver them only to your app.',
   },
   {
     slug: 'custom-domains',
@@ -35,7 +35,7 @@ const TASKS = [
   {
     slug: 'releases',
     title: 'Roll back a bad release',
-    detail: 'Return to the last good release without rebuilding.',
+    detail: 'Return to the previous release without rebuilding.',
   },
   {
     slug: 'crons',
