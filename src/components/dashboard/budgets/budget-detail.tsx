@@ -51,7 +51,7 @@ import {
   type ScopeLabel,
 } from './budget-bits';
 import { BudgetForm } from './budget-form';
-import { useBudgetSave } from './use-budget-save';
+import { refusalSubject, useBudgetSave } from './use-budget-save';
 
 const GOOD = 'var(--status-good)';
 const WARN = 'var(--status-warning)';
@@ -278,7 +278,9 @@ function BudgetChannels({ subject, budget }: { subject: BudgetSubject; budget: B
           />
           {failure !== null && (
             <div role="alert" className="flex flex-col gap-1 text-xs">
-              <span style={{ color: BAD }}>{budgetRefusal(failure, undefined).message}</span>
+              <span style={{ color: BAD }}>
+                {budgetRefusal(failure, undefined, refusalSubject(subject)).message}
+              </span>
               <ProblemHelp error={failure} className="[&_code]:break-all" />
             </div>
           )}

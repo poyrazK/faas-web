@@ -78,7 +78,12 @@ export function useBudgetSave(subject: BudgetSubject, scopeLabel: ScopeLabel) {
       // A stale revision: read the current one so the next attempt is against it.
       if (existing && error instanceof ApiError && error.code === 'conflict')
         void qc.invalidateQueries({ queryKey: budgetKeys.detail(subject, existing.id) });
-      return { kind: 'refused', error, ...budgetRefusal(error, spec), preview: seen };
+      return {
+        kind: 'refused',
+        error,
+        ...budgetRefusal(error, spec, refusalSubject(subject)),
+        preview: seen,
+      };
     }
   };
 
@@ -87,3 +92,9 @@ export function useBudgetSave(subject: BudgetSubject, scopeLabel: ScopeLabel) {
     pending: preview.isPending || create.isPending || update.isPending,
   };
 }
+
+/** Who an organization's refusal names; undefined for the account. */
+export const refusalSubject = (subject: BudgetSubject) =>
+  subject.kind === 'org'
+    ? { kind: 'org' as const, label: subject.label ?? subject.slug }
+    : undefined;

@@ -40,6 +40,7 @@ import {
 } from './budget-bits';
 import { BudgetDetail } from './budget-detail';
 import { BudgetForm } from './budget-form';
+import { refusalSubject } from './use-budget-save';
 import { budgetsAnswer, type BudgetsTone } from './budget-words';
 
 const TONE_COLOR: Record<BudgetsTone, string> = {
@@ -104,7 +105,7 @@ function useDeleteFlow(subject: BudgetSubject, onDeleted: (budget: Budget) => vo
       toast({
         kind: 'error',
         title: 'Could not delete the budget',
-        description: budgetRefusal(error, budget.spec).message,
+        description: budgetRefusal(error, budget.spec, refusalSubject(subject)).message,
         error,
       });
     }
@@ -331,10 +332,9 @@ export function BudgetsBody({ subject }: { subject: BudgetSubject }) {
 }
 
 /**
- * Alerts and budgets, a section of Billing › Spending limits. Budgets belong
- * to the signed-in account here: `/v1/billing/budgets` ignores X-Active-Org,
- * so a company workspace says so instead of showing personal budgets
- * (organization budgets are the next slice of the Spending limits design).
+ * Alerts and budgets, a section of Billing › Spending limits: the signed-in
+ * account's budgets, or in a company workspace the organization's own
+ * (`/v1/orgs/{slug}/billing/budgets`), never the other subject's.
  */
 export function BudgetsSection() {
   const { capability } = useCapability('budgets');
@@ -359,19 +359,19 @@ export function BudgetsSection() {
         <MaturityLabel capability={capability} />
       </div>
       {!workspace.ready ? null : workspace.org ? (
-        <Panel title="Budgets">
-          <p role="status" className="text-sm text-muted-foreground">
-            Budgets belong to your personal account, and Gregale has none for an organization, so{' '}
-            {workspace.label} has no budgets to show. Switch to Personal to manage yours;{' '}
-            {workspace.label}&apos;s spend cap is{' '}
-            <a className="text-brand underline" href="#your-bill">
-              above
-            </a>
-            .
-          </p>
-        </Panel>
+        // An organization that owns its resources has budgets of its own
+        // (ADR-20261031211500); one that doesn't is told so by apid on save.
+        <BudgetsBody
+          key={`org:${workspace.org}`}
+          subject={{
+            kind: 'org',
+            slug: workspace.org,
+            accountId: account?.id ?? '',
+            label: workspace.label,
+          }}
+        />
       ) : (
-        <BudgetsBody subject={{ kind: 'account', accountId: account?.id ?? '' }} />
+        <BudgetsBody key="account" subject={{ kind: 'account', accountId: account?.id ?? '' }} />
       )}
     </section>
   );

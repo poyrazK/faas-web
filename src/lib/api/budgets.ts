@@ -23,7 +23,8 @@ import type { Budget, BudgetSpec } from '../budgets';
  * channels). The subject picks the routes and keeps the caches apart.
  */
 export type BudgetSubject =
-  { kind: 'account'; accountId: string } | { kind: 'org'; slug: string; accountId: string };
+  | { kind: 'account'; accountId: string }
+  | { kind: 'org'; slug: string; accountId: string; label?: string };
 
 /** Ready once the account (and, for an organization, its slug) is known. */
 export const subjectReady = (s: BudgetSubject) =>

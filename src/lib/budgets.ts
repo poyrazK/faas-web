@@ -370,9 +370,24 @@ export function draftErrors(draft: BudgetDraft): Partial<Record<DraftField, stri
  */
 export function budgetRefusal(
   error: unknown,
-  spec: BudgetSpec | undefined
+  spec: BudgetSpec | undefined,
+  /** An organization's budgets: apid explains its own refusals, and roles are named. */
+  who?: { kind: 'org'; label: string }
 ): { message: string; strictNotReleased: boolean } {
   const code = error instanceof ApiError ? error.code : '';
+  if (who?.kind === 'org') {
+    if (code === 'org_role_forbidden')
+      return {
+        strictNotReleased: false,
+        message: `Only ${who.label}’s owner or billing role can change its budgets.`,
+      };
+    // Ownership, or a strict cap organizations can't have: apid says which.
+    if (code === 'financial_budget_activation_unavailable')
+      return {
+        strictNotReleased: false,
+        message: (error as ApiError).detail ?? errorMessage(error),
+      };
+  }
   if (code === 'financial_budget_activation_unavailable') {
     if (spec && spec.enabled && isStrictCompute(spec))
       return {

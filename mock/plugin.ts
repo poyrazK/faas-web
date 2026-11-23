@@ -10055,6 +10055,131 @@ route('PUT', '/v1/billing/budgets/{id}/channels', ({ params, body, req }) =>
   budgetCall(() => budgetMock.setChannels(params.id, body, budgetKey(req)))
 );
 
+// Organization budgets (ADR-20261031211500): the same bodies over
+// /v1/orgs/{slug}/billing/budgets, kept apart from the account's. Organizations
+// can notify and stop previews; strict caps are refused. MOCK_ORG_UNOWNED=1
+// plays an organization that doesn't own its resources yet.
+type OrgBudget = {
+  id: string;
+  account_id: string;
+  revision: number;
+  spec: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  notification_ready: boolean;
+  enforcement_ready: boolean;
+  reasons: string[];
+  deleted_at?: string;
+};
+const orgBudgets = new Map<string, OrgBudget[]>();
+const orgBudgetRevisions = new Map<
+  string,
+  { revision: number; spec: unknown; at: string; mutation: string }[]
+>();
+const orgBudgetList = (slug: string) => {
+  if (!orgBudgets.has(slug)) orgBudgets.set(slug, []);
+  return orgBudgets.get(slug)!;
+};
+const orgBudgetSpec = (raw: unknown) => {
+  const spec = (raw ?? {}) as Record<string, unknown>;
+  if (process.env.MOCK_ORG_UNOWNED === '1')
+    throw new Problem(
+      422,
+      'financial_budget_activation_unavailable',
+      'This organization does not own its resources yet, so its usage is billed to the members who created it. Budgets follow the subject that pays.'
+    );
+  if (spec.mode === 'strict')
+    throw new Problem(
+      422,
+      'financial_budget_activation_unavailable',
+      'Organization budgets can notify and stop previews. Strict compute and egress budgets remain available to accounts only.'
+    );
+  if ((spec.scope as { kind?: string } | undefined)?.kind === 'job')
+    throw new Problem(400, 'validation_failed', 'an organization budget cannot scope a job');
+  return spec;
+};
+const orgBudgetFind = (slug: string, id: string) => {
+  const found = orgBudgetList(slug).find((b) => b.id === id && !b.deleted_at);
+  if (!found) throw new Problem(404, 'not_found', 'budget not found');
+  return found;
+};
+const orgBudgetRecord = (b: OrgBudget, mutation: string) => {
+  const list = orgBudgetRevisions.get(b.id) ?? [];
+  list.push({ revision: b.revision, spec: b.spec, at: b.updated_at, mutation });
+  orgBudgetRevisions.set(b.id, list);
+};
+const orgBudgetReady = (spec: Record<string, unknown>) => ({
+  status: spec.enabled ? 'active' : 'draft',
+  notification_ready: Boolean(spec.enabled) && spec.action === 'notify',
+  enforcement_ready: Boolean(spec.enabled) && spec.action === 'stop_previews',
+});
+route('GET', '/v1/orgs/{slug}/billing/budgets', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return { budgets: orgBudgetList(params.slug).filter((b) => !b.deleted_at) };
+});
+route('POST', '/v1/orgs/{slug}/billing/budgets', ({ params, body }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  const spec = orgBudgetSpec(body.spec);
+  const now = new Date().toISOString();
+  const budget: OrgBudget = {
+    id: randomUUID(),
+    account_id: `org:${params.slug}`,
+    revision: 1,
+    spec,
+    created_at: now,
+    updated_at: now,
+    reasons: [],
+    ...orgBudgetReady(spec),
+  };
+  orgBudgetList(params.slug).push(budget);
+  orgBudgetRecord(budget, 'created');
+  return status(201, budget);
+});
+route('POST', '/v1/orgs/{slug}/billing/budgets/preview', ({ params, body }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return budgetCall(() => budgetMock.preview(budgetWorld, body.spec));
+});
+route('GET', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return orgBudgetFind(params.slug, params.id);
+});
+route('PUT', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params, body }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  const budget = orgBudgetFind(params.slug, params.id);
+  if (body.expected_revision !== budget.revision)
+    throw new Problem(409, 'conflict', 'the budget changed since it was read');
+  budget.spec = orgBudgetSpec(body.spec);
+  budget.revision += 1;
+  budget.updated_at = new Date().toISOString();
+  Object.assign(budget, orgBudgetReady(budget.spec));
+  orgBudgetRecord(budget, 'updated');
+  return budget;
+});
+route('DELETE', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params, body }) => {
+  requireOrgBillingRole(params.slug, ['owner', 'billing']);
+  const budget = orgBudgetFind(params.slug, params.id);
+  if (body.expected_revision !== budget.revision)
+    throw new Problem(409, 'conflict', 'the budget changed since it was read');
+  budget.revision += 1;
+  budget.deleted_at = budget.updated_at = new Date().toISOString();
+  orgBudgetRecord(budget, 'deleted');
+  return budget;
+});
+route('GET', '/v1/orgs/{slug}/billing/budgets/{id}/revisions', ({ params }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return {
+    revisions: (orgBudgetRevisions.get(params.id) ?? []).map((r) => ({
+      policy_id: params.id,
+      revision: r.revision,
+      actor: `org:${params.slug}`,
+      mutation: r.mutation,
+      spec: r.spec,
+      recorded_at: r.at,
+    })),
+  };
+});
+
 // Connected agents (faas pkg/apid/agentconnections; see mock/agents.ts).
 // Personal routes read the account's agents; the /v1/orgs/{slug} variants read
 // a company's. Approvals are the pending requests the person may decide.

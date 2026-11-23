@@ -64,7 +64,7 @@ function api(extra: Handlers = {}) {
     'GET /v1/orgs/{slug}/billing/budgets/{id}': ({ params }) =>
       orgBudgets.find((b) => b.id === params?.path?.id),
     'GET /v1/orgs/{slug}/billing/budgets/{id}/revisions': () => ({ revisions: [] }),
-    'GET /v1/orgs/{slug}/apps': () => [ORG_APP],
+    'GET /v1/orgs/{slug}/apps': () => ({ apps: [ORG_APP] }),
     'GET /v1/apps': () => [PERSONAL_APP],
     'GET /v1/orgs/{organization}/projects': () => [],
     'POST /v1/orgs/{slug}/billing/budgets/preview': (init) => ({
@@ -113,7 +113,8 @@ describe('organization budgets', () => {
     renderWithProviders(<BudgetsSection />);
     // The existing budget scoped to the org app is named by the org app's slug.
     const row = (await screen.findByText('Billing app')).closest('tr')!;
-    expect(row).toHaveTextContent('billing');
+    await waitFor(() => expect(row).toHaveTextContent(/billing/));
+    expect(row).not.toHaveTextContent('app 55555555');
     const form = await openForm(user);
     await user.selectOptions(within(form).getByLabelText('Scope'), 'app');
     const picker = await within(form).findByRole('combobox', { name: /app/i });
