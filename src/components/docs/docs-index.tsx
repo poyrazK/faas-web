@@ -141,7 +141,14 @@ export function DocsIndex() {
       <aside className="docs-help">
         <div>
           <h2>Stuck on a deployment?</h2>
-          <p>Include the app name, deployment ID, and error message. Don’t send credentials.</p>
+          <p>
+            Start with{' '}
+            <Link to="/docs/$slug" params={{ slug: 'troubleshoot-deploys' }}>
+              Fix a failed deploy
+            </Link>
+            . Still stuck? Email us the app name, deployment ID, and error message. Don’t send
+            credentials.
+          </p>
         </div>
         <a href="mailto:support@gregale.dev">
           Contact support <ArrowRight width={16} aria-hidden="true" />

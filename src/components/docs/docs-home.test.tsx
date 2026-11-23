@@ -25,6 +25,11 @@ describe('docs home', () => {
     ] as const) {
       expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
     }
+    const troubleshoot = screen.getAllByRole('link', { name: 'Fix a failed deploy' });
+    expect(troubleshoot.length).toBeGreaterThanOrEqual(2); // help box and directory
+    for (const link of troubleshoot) {
+      expect(link).toHaveAttribute('href', '/docs/troubleshoot-deploys');
+    }
     expect(screen.getByRole('button', { name: 'Copy commands' })).toBeInTheDocument();
   });
 });

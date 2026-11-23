@@ -84,6 +84,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Pin a branch, tag, or commit for a reproducible CI deployment.',
       },
       {
+        slug: 'troubleshoot-deploys',
+        source: 'docs/troubleshoot-deploys.md',
+        title: 'Fix a failed deploy',
+        summary:
+          'Find why a deploy failed, then fix the common causes: crashes, ports, memory, builds and migrations.',
+      },
+      {
         slug: 'agents',
         source: 'docs/agents.md',
         title: 'Use Gregale from coding agents',
