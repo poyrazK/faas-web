@@ -189,6 +189,13 @@
       }
     },
     {
+      "src": "^/docs/troubleshoot-deploys/?$",
+      "status": 308,
+      "headers": {
+        "Location": "/docs/troubleshooting"
+      }
+    },
+    {
       "src": "^/docs/sidecars/?$",
       "status": 308,
       "headers": {

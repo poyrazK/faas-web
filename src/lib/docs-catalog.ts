@@ -60,7 +60,10 @@ export const DOC_ALIASES: Record<string, string> = {
  * Pages faas-web holds back although upstream would publish them, each with
  * the reason. Upstream's own reasons come from the catalog below.
  */
-const LOCAL_HOLDS: Record<string, string> = {};
+const LOCAL_HOLDS: Record<string, string> = {
+  realtime:
+    'published upstream (docs/realtime.md) but not yet given a site manifest entry; decide where it goes',
+};
 
 /**
  * Catalog paths that resolve to no page, and why. Upstream marks a page

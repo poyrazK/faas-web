@@ -143,8 +143,8 @@ export function DocsIndex() {
           <h2>Stuck on a deployment?</h2>
           <p>
             Start with{' '}
-            <Link to="/docs/$slug" params={{ slug: 'troubleshoot-deploys' }}>
-              Fix a failed deploy
+            <Link to="/docs/$slug" params={{ slug: 'troubleshooting' }} hash="a-deploy-failed">
+              Troubleshooting
             </Link>
             . Still stuck? Email us the app name, deployment ID, and error message. Don’t send
             credentials.

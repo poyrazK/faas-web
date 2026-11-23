@@ -1,7 +1,5 @@
 # Error code reference
 
-<!-- GENERATED — do not edit by hand; regenerate with `make error-codes-md`. -->
-
 Every error Gregale returns carries a stable `code`. [Errors](errors.md) explains how an error is shaped and what to do about the most common ones. This page lists each code with the HTTP status Gregale sends it with, the title and hint Gregale writes for it, and the docs page it points to. A real response's `detail` adds the specifics, such as the observed value, the limit or the field that failed.
 
 The list is generated from the code that builds each error, so a new code appears here when it ships. Codes for features whose docs are not published yet are left out. Each code's name is its anchor: link to `error-codes#plan_limit_apps`, for example.
@@ -82,9 +80,13 @@ HTTP 400 Bad Request · Invalid alert rule
 
 See [Alerts](alerts.md).
 
+### `analytics_cohort_limit`
+
+HTTP 409 Conflict · Cohort limit reached
+
 ### `api_key_expired`
 
-HTTP 401 Unauthorized · API key expired
+HTTP 401 Unauthorized · API key expired; Deploy token expired
 
 See [Authentication](auth.md#expiry-and-rotation).
 
@@ -96,7 +98,7 @@ See [Authentication](auth.md#api-keys).
 
 ### `api_key_revoked`
 
-HTTP 401 Unauthorized · API key revoked
+HTTP 401 Unauthorized · API key revoked; Deploy token revoked
 
 See [Authentication](auth.md#expiry-and-rotation).
 
@@ -104,7 +106,7 @@ See [Authentication](auth.md#expiry-and-rotation).
 
 HTTP 429 Too Many Requests · API rate limit reached
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_admission_unavailable`
 
@@ -148,17 +150,19 @@ See [Managed PostgreSQL](postgres.md).
 
 HTTP 503 Service Unavailable · App health is unavailable
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_healthz_unauthorized`
 
 HTTP 422 Unprocessable Entity · App_healthz_unauthorized; Health endpoint returning 401
 
+See [Troubleshooting](troubleshooting.md).
+
 ### `app_layer_too_large`
 
 HTTP 403 Forbidden · App too large
 
-See [Builds and framework detection](build.md#limits), [Container compatibility](container-compatibility.md).
+See [Builds and framework detection](build.md#limits), [Container compatibility](container-compatibility.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_log_drain_invalid`
 
@@ -176,7 +180,7 @@ See [CLI guide](cli-setup.md), [Logs](logs.md), [Errors](errors.md).
 
 HTTP 422 Unprocessable Entity · App bound to loopback; Application bound to loopback
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_maintenance_mode`
 
@@ -212,13 +216,13 @@ HTTP 409 Conflict · Slug taken
 
 HTTP 422 Unprocessable Entity or 503 Service Unavailable · Container out of memory; App is out of memory; App ran out of memory during startup
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_startup_crash`
 
 HTTP 422 Unprocessable Entity · App exited during startup
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_startup_timeout`
 
@@ -236,7 +240,7 @@ HTTP 503 Service Unavailable · App temporarily unavailable
 
 Retry the request in a few seconds.
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `app_visibility_invalid`
 
@@ -274,7 +278,7 @@ HTTP 503 Service Unavailable · App connection failed; Edge rule compile error
 
 Retry the request; if it still fails, check the app logs.
 
-See [Quickstart](quickstart.md), [Errors](errors.md).
+See [Quickstart](quickstart.md), [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `bad_request`
 
@@ -382,9 +386,13 @@ Verify the exact deployment receiving traffic, then promote, advance its canary,
 
 The response's `title` and `detail` describe the failure.
 
+See [Troubleshooting](troubleshooting.md).
+
 ### `build_infrastructure_failed`
 
 The response's `title` and `detail` describe the failure.
+
+See [Troubleshooting](troubleshooting.md).
 
 ### `build_not_found`
 
@@ -395,6 +403,8 @@ See [Builds and framework detection](build.md).
 ### `build_oom`
 
 HTTP 503 Service Unavailable
+
+See [Troubleshooting](troubleshooting.md).
 
 ### `build_provenance_not_found`
 
@@ -412,11 +422,23 @@ See [Builds and framework detection](build.md).
 
 HTTP 503 Service Unavailable
 
+See [Troubleshooting](troubleshooting.md).
+
 ### `build_undetected`
 
 HTTP 400 Bad Request
 
+See [Troubleshooting](troubleshooting.md).
+
 ## C
+
+### `cache_shrink_needs_evict`
+
+HTTP 409 Conflict · Shrinking needs evict
+
+### `cache_waking`
+
+HTTP 503 Service Unavailable · Redis cache is waking
 
 ### `canary_step_conflict`
 
@@ -576,7 +598,7 @@ HTTP 409 Conflict · Debug replay is unavailable; Mirror replay is unavailable
 
 HTTP 422 Unprocessable Entity · Dependency installation failure
 
-See [Errors](errors.md).
+See [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `deploy_failed`
 
@@ -692,7 +714,7 @@ See [Deploys](deploys.md).
 
 HTTP 503 Service Unavailable
 
-See [Container compatibility](container-compatibility.md).
+See [Container compatibility](container-compatibility.md), [Troubleshooting](troubleshooting.md).
 
 ### `dev_debug_not_developer_environment`
 
@@ -701,6 +723,12 @@ HTTP 409 Conflict · Debugging unavailable
 ### `dev_debug_session_limit`
 
 HTTP 429 Too Many Requests · Too many debugger sessions
+
+### `dev_postgres_database_url_secret`
+
+HTTP 409 Conflict · A database variable is already set in this developer environment
+
+See [`gregale dev`](gregale-dev.md).
 
 ### `dev_session_tearing_down`
 
@@ -916,6 +944,12 @@ HTTP 409 Conflict · Environment work ownership conflict
 
 HTTP 409 Conflict · Stage policy collection unavailable
 
+### `event_envelope_too_large`
+
+HTTP 413 Request Entity Too Large · Event envelope too large
+
+See [Build stored workflows in Gregale](stored-workflow-authoring.md).
+
 ### `event_publish_batch_too_large`
 
 HTTP 413 Request Entity Too Large · Batch too large
@@ -927,6 +961,12 @@ See [Errors](errors.md).
 HTTP 503 Service Unavailable · Event not attempted
 
 See [Errors](errors.md).
+
+### `event_recovery_changed`
+
+HTTP 409 Conflict · Recovery plan changed
+
+See [Build stored workflows in Gregale](stored-workflow-authoring.md).
 
 ### `event_storage_capacity_exhausted`
 
@@ -1016,7 +1056,7 @@ HTTP 503 Service Unavailable · Gateway overloaded
 
 HTTP 403 Forbidden · Country not allowed; Country denied
 
-See [Edge rules](edge-rules.md), [Errors](errors.md).
+See [Edge rules](edge-rules.md), [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `github_account_conflict`
 
@@ -1164,7 +1204,7 @@ HTTP 409 Conflict · Idempotency key conflict
 
 ### `idempotency_key_reused`
 
-HTTP 422 Unprocessable Entity · Idempotency-Key reused
+HTTP 422 Unprocessable Entity · Idempotency key reused; Idempotency-Key reused
 
 See [Errors](errors.md).
 
@@ -1454,7 +1494,7 @@ See [CLI guide](cli-setup.md).
 
 HTTP 403 Forbidden · IP address not allowed; IP denied; IP not allowed
 
-See [Edge rules](edge-rules.md), [Errors](errors.md).
+See [Edge rules](edge-rules.md), [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ## J
 
@@ -1661,6 +1701,18 @@ See [Plans and pricing](plans.md), [Managed PostgreSQL](postgres.md#usage-and-li
 HTTP 503 Service Unavailable · Managed PostgreSQL unavailable
 
 See [Managed PostgreSQL](postgres.md).
+
+### `managed_redis_binding_target_missing`
+
+HTTP 409 Conflict · Cache binding target missing
+
+### `managed_redis_limit`
+
+HTTP 403 Forbidden · Managed Redis cache limit reached
+
+### `managed_redis_not_in_plan`
+
+HTTP 403 Forbidden · Managed Redis is not included in this plan
 
 ### `max_min_instances_exceeded`
 
@@ -1918,11 +1970,209 @@ HTTP 409 Conflict · Organization slug in use
 
 See [Account and organization management](account.md).
 
+### `outbound_account_suspended`
+
+The account is suspended
+
+### `outbound_admission_unavailable`
+
+Outbound admission is temporarily unavailable
+
+### `outbound_app_not_attached`
+
+The app is not attached to this outbound integration
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_binding_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_budget_exhausted`
+
+Outbound integration budget is exhausted
+
+### `outbound_budget_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_circuit_breaker_open`
+
+Outbound provider is temporarily unavailable
+
+### `outbound_circuit_breaker_unavailable`
+
+Outbound circuit breaker is unavailable
+
+### `outbound_credential_key_limit`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_credential_seal_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_credential_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_execution_authorization_unavailable`
+
+Runs outbound authorization is unavailable
+
+### `outbound_execution_not_authorized`
+
+This Run is not authorized for the outbound integration; Runs access is unavailable for this outbound integration
+
+### `outbound_identity_unavailable`
+
+Outbound workload identity is unavailable; Runs workload identity is unavailable
+
+### `outbound_integration_disabled`
+
+Outbound integration is disabled
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_integration_limit`
+
+The response's `title` and `detail` describe the failure.
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_integration_not_found`
+
+Outbound integration not found
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_integration_unavailable`
+
+Outbound integration is unavailable
+
+### `outbound_internal_not_authorized`
+
+The gateway's own call cannot use this outbound integration
+
+### `outbound_method_not_allowed`
+
+AI prompts take POST requests; CONNECT is not supported; Feedback takes POST
+
+### `outbound_policy_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
 ### `outbound_probe_unavailable`
 
 The response's `title` and `detail` describe the failure.
 
 See [Errors](errors.md).
+
+### `outbound_provider_cooldown`
+
+Outbound provider requested a cooldown
+
+### `outbound_provider_cooldown_unavailable`
+
+Outbound provider cooldown state is unavailable
+
+### `outbound_provider_credential_unavailable`
+
+Outbound provider credential is unavailable
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_qualification_not_authorized`
+
+The qualification probe cannot use this outbound integration
+
+### `outbound_relay_not_supported`
+
+This outbound integration is not available through the app relay
+
+### `outbound_replay_not_authorized`
+
+The replay cannot use this outbound integration
+
+### `outbound_request_invalid`
+
+Outbound request could not be constructed
+
+### `outbound_request_too_large`
+
+Outbound request body exceeds the gateway limit; Workflow outbound body exceeds the limit
+
+### `outbound_request_unreadable`
+
+Outbound request body could not be read
+
+### `outbound_response_headers_too_large`
+
+Outbound provider response headers exceed the gateway limit
+
+### `outbound_response_sensitive`
+
+Workflow outbound response contains sensitive authorization data
+
+### `outbound_response_too_large`
+
+Outbound provider response exceeds the gateway limit; Workflow outbound response is incomplete or exceeds the limit
+
+### `outbound_retry_budget_exhausted`
+
+Outbound retry budget is exhausted
+
+### `outbound_route_not_allowed`
+
+Outbound method or path is not allowed
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_route_not_found`
+
+AI route not found
+
+### `outbound_route_requires_relay`
+
+AI prompts are available only through GREGALE_OUTBOUND_URL or an access token; AI routes are available only through GREGALE_OUTBOUND_URL or an access token
+
+### `outbound_route_unavailable`
+
+AI route is temporarily unavailable
+
+### `outbound_runs_binding_ineligible`
+
+The response's `title` and `detail` describe the failure.
+
+See [Outbound integrations](outbound-integrations.md).
+
+### `outbound_stage_not_allowed`
+
+Outbound integrations serve production deployments; a stage calls the provider with its own credentials
+
+### `outbound_target_invalid`
+
+Outbound integration target is invalid
+
+### `outbound_unauthorized`
+
+Outbound identity is ambiguous; Outbound token is invalid; Outbound workload identity is invalid
+
+### `outbound_upstream_unavailable`
+
+Outbound provider could not be reached
+
+### `outbound_usage_unavailable`
+
+The response's `title` and `detail` describe the failure.
+
+### `outbound_workflow_not_authorized`
+
+Workflow access is unavailable for this integration
+
+### `outbound_workflow_unavailable`
+
+Workflow outbound authorization is unavailable
 
 ### `overage_cap_above_max`
 
@@ -2444,6 +2694,16 @@ HTTP 403 Forbidden · Postgres custom roles unavailable
 
 HTTP 422 Unprocessable Entity · Custom roles unsupported
 
+### `postgres_query_failed`
+
+HTTP 422 Unprocessable Entity · Query failed
+
+The statement runs read-only as a login that can read the public schema, for at most 5 seconds. Fix the statement and try again.
+
+### `postgres_query_unsupported`
+
+HTTP 501 Not Implemented · Queries unsupported
+
 ### `pr_preview_resource_unsupported`
 
 HTTP 409 Conflict
@@ -2714,6 +2974,18 @@ HTTP 429 Too Many Requests · Rate limit exceeded; Pre-auth rate limit exceeded
 
 See [Edge rules](edge-rules.md).
 
+### `realtime_connection_limit`
+
+HTTP 429 Too Many Requests · Realtime connection limit reached
+
+See [Managed realtime](realtime.md#fair-use-limits).
+
+### `realtime_group_bound_to_trigger`
+
+HTTP 409 Conflict · Consumer group already bound; Consumer group is bound to a trigger
+
+See [Managed realtime](realtime.md#function-triggers).
+
 ### `realtime_unavailable`
 
 HTTP 503 Service Unavailable · Managed realtime temporarily unavailable
@@ -2721,6 +2993,12 @@ HTTP 503 Service Unavailable · Managed realtime temporarily unavailable
 Retry the connection in a few seconds.
 
 See [Plans and pricing](plans.md#managed-realtime), [Errors](errors.md).
+
+### `realtime_write_rate_limited`
+
+HTTP 429 Too Many Requests · Realtime write rate limited
+
+See [Managed realtime](realtime.md#fair-use-limits).
 
 ### `recent_sign_in_required`
 
@@ -2792,7 +3070,7 @@ See [Deploys](deploys.md#release-approvals).
 
 HTTP 422 Unprocessable Entity
 
-See [Safe releases](releases.md).
+See [Safe releases](releases.md), [Troubleshooting](troubleshooting.md).
 
 ### `release_freeze_limit`
 
@@ -2846,7 +3124,7 @@ HTTP 409 Conflict · Active graph required; History unavailable; Release graph c
 
 The response's `title` and `detail` describe the failure.
 
-See [Deploys](deploys.md), [Safe releases](releases.md).
+See [Deploys](deploys.md), [Safe releases](releases.md), [Troubleshooting](troubleshooting.md).
 
 ### `release_not_parked`
 
@@ -2882,7 +3160,7 @@ See [Functions and runtimes](functions.md).
 
 HTTP 503 Service Unavailable · Request budget exceeded; Request timed out
 
-See [Edge rules](edge-rules.md), [Errors](errors.md).
+See [Edge rules](edge-rules.md), [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `request_too_large`
 
@@ -2936,7 +3214,7 @@ HTTP 409 Conflict · Rollback crosses release commands
 
 If the target is compatible with those changes, retry with acknowledge_releases (CLI: --acknowledge-releases). To undo database changes first, restore each listed database to its restore point.
 
-See [Deploys](deploys.md#releases-that-change-the-database), [Safe releases](releases.md).
+See [Deploys](deploys.md#releases-that-change-the-database), [Safe releases](releases.md), [Troubleshooting](troubleshooting.md).
 
 ### `rollback_deployment_changed`
 
@@ -2993,6 +3271,22 @@ See [Progressive rollouts](rollouts.md#why-a-rollout-advanced-waits-or-stopped).
 ### `route_health_blocked`
 
 HTTP 409 Conflict · Route health gate blocked
+
+### `run_artifact_destination_limit`
+
+HTTP 413 Request Entity Too Large · Artifact exceeds destination limit
+
+### `run_artifact_integrity`
+
+HTTP 422 Unprocessable Entity · Artifact could not be verified
+
+### `run_attribution_denied`
+
+HTTP 403 Forbidden · Run attribution refused
+
+### `run_control_revision_conflict`
+
+HTTP 409 Conflict · Run control changed
 
 ## S
 
@@ -3238,6 +3532,32 @@ See [Static egress IP](static-egress-ip.md).
 
 HTTP 403 Forbidden · Step-up required
 
+### `stored_workflow_events_unavailable`
+
+HTTP 409 Conflict · Custom events are not enabled
+
+See [Build stored workflows in Gregale](stored-workflow-authoring.md#start-on-an-event).
+
+### `stored_workflow_failure_policy_conflict`
+
+HTTP 409 Conflict · Stored workflow failure policy changed
+
+### `stored_workflow_invalid`
+
+HTTP 422 Unprocessable Entity · Invalid stored workflow
+
+### `stored_workflow_ownership_conflict`
+
+HTTP 409 Conflict · Confirm YAML ownership change
+
+### `stored_workflow_publish_check_required`
+
+HTTP 409 Conflict · Publishing checks required
+
+### `stored_workflow_version_conflict`
+
+HTTP 409 Conflict · Stored workflow changed; Suite target changed; Verification target changed
+
 ### `streaming_not_available`
 
 HTTP 413 Request Entity Too Large · Streaming response exceeded plan cap
@@ -3474,7 +3794,7 @@ See [Authentication](auth.md#email-verification), [Errors](errors.md).
 
 HTTP 403 Forbidden · Request blocked
 
-See [Edge rules](edge-rules.md), [Errors](errors.md).
+See [Edge rules](edge-rules.md), [Errors](errors.md), [Troubleshooting](troubleshooting.md).
 
 ### `wait_for_warm`
 

@@ -84,11 +84,11 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Pin a branch, tag, or commit for a reproducible CI deployment.',
       },
       {
-        slug: 'troubleshoot-deploys',
-        source: 'docs/troubleshoot-deploys.md',
-        title: 'Fix a failed deploy',
+        slug: 'troubleshooting',
+        source: 'docs/troubleshooting.md',
+        title: 'Troubleshooting',
         summary:
-          'Find why a deploy failed, then fix the common causes: crashes, ports, memory, builds and migrations.',
+          'Failed deploys, failing requests, slow first requests, domains and missing logs, by symptom.',
       },
       {
         slug: 'agents',
