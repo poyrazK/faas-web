@@ -1,14 +1,6 @@
 import { activityOutcome, type ResourceActivity } from '@/lib/api/resource-activity';
 import { parseTime, relativeTime } from '@/lib/time';
 
-/**
- * The app Activity tab in plain English: events grouped by day, each one the
- * API's own sentence with who did it and when, failures marked. apid writes
- * `summary` as a display-ready sentence ("Bahadir deployed payments",
- * handlers_org_activity.go orgActivitySummary); the console never rewrites it,
- * and only falls back to the raw kind when the summary is empty.
- */
-
 const DAY = 24 * 60 * 60 * 1000;
 
 function dayKey(ms: number, timeZone?: string): string {
@@ -83,6 +75,59 @@ export function activitySentence(row: ResourceActivity): string {
   if (summary) return summary;
   const actor = row.actor.label?.trim() || 'Unknown actor';
   return `${actor}: ${row.kind}`;
+}
+
+const EVENT_TITLES = new Map([
+  ['app.created', 'App created'],
+  ['app.deleted', 'App deleted'],
+  ['app.restored', 'App restored'],
+  ['app.config_updated', 'App settings updated'],
+  ['deploy.requested', 'Deployment requested'],
+  ['app.deployed', 'Deployment completed'],
+  ['deploy.failed', 'Deployment failed'],
+  ['deploy.cancelled', 'Deployment cancelled'],
+  ['deploy.rollback_requested', 'Rollback requested'],
+  ['deploy.rolled_back', 'Rollback completed'],
+  ['deploy.rollback_failed', 'Rollback failed'],
+  ['env.set', 'Environment variable updated'],
+  ['env.deleted', 'Environment variable removed'],
+  ['domain.added', 'Domain added'],
+  ['domain.removed', 'Domain removed'],
+  ['domain.tls_issued', 'TLS certificate issued'],
+]);
+
+const SETTING_LABELS = new Map([
+  ['ram_mb', 'Memory limit'],
+  ['public_auth', 'Public URL access'],
+  ['require_authn', 'API key requirement'],
+  ['idle_timeout_s', 'Idle timeout'],
+  ['min_instances', 'Minimum instances'],
+  ['max_instances', 'Maximum instances'],
+  ['egress_allowlist', 'Outbound access'],
+  ['maintenance_mode', 'Maintenance mode'],
+]);
+
+export function activityTitle(kind: string): string | undefined {
+  return EVENT_TITLES.get(kind);
+}
+
+export function activityContext(row: ResourceActivity): string | undefined {
+  if (row.kind.startsWith('env.') || row.kind.startsWith('domain.')) {
+    return row.resource.label?.trim() || undefined;
+  }
+  if (row.kind !== 'app.config_updated' || !Array.isArray(row.data?.changes)) return undefined;
+
+  const fields = new Set<string>();
+  for (const change of row.data.changes) {
+    if (change && typeof change === 'object' && typeof change.field === 'string') {
+      const field = change.field.trim();
+      if (field) fields.add(SETTING_LABELS.get(field) ?? field.replaceAll('_', ' '));
+    }
+  }
+
+  const labels = [...fields].slice(0, 2);
+  if (fields.size > 2) labels.push(`+${fields.size - 2} more`);
+  return labels.join(' · ') || undefined;
 }
 
 const ACTOR_TYPE: Record<string, string> = {

@@ -4,7 +4,17 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { useApp } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
-import { RefreshDouble } from 'iconoir-react';
+import {
+  Box,
+  Clock,
+  CodeBrackets,
+  Globe,
+  NavArrowRight,
+  RefreshDouble,
+  Rocket,
+  Settings,
+  WarningCircle,
+} from 'iconoir-react';
 import {
   activityResourceId,
   scopedActivity,
@@ -18,8 +28,10 @@ import { Timestamp } from '@/components/ui/timestamp';
 import { HelpTip } from './kit/help-tip';
 import { parseTime } from '@/lib/time';
 import {
+  activityContext,
   activityHeadline,
   activitySentence,
+  activityTitle,
   actorWords,
   groupByDay,
   namesActor,
@@ -100,19 +112,24 @@ function ActivityTimeline({
   const groups = groupByDay(rows);
   return (
     <section aria-label={deploymentId ? 'Release activity' : 'App activity'} className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="flex items-center gap-1 text-base font-medium">
-          {deploymentId ? 'Release activity' : 'Activity'}
-          <HelpTip label="About activity">
-            Newest first.{' '}
-            {deploymentId
-              ? 'Only events naming this release appear; app-wide events are on the app’s Activity tab. '
-              : ''}
-            {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}Coverage can be incomplete
-            for older or deleted resources.
-          </HelpTip>
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-1.5 text-xl font-semibold tracking-tight">
+            {deploymentId ? 'Release activity' : 'Activity'}
+            <HelpTip label="About activity">
+              Newest first.{' '}
+              {deploymentId
+                ? 'Only events naming this release appear; app-wide events are on the app’s Activity tab. '
+                : ''}
+              {workspace.data ? `Recorded in ${workspace.data.name}. ` : ''}Coverage can be
+              incomplete for older or deleted resources.
+            </HelpTip>
+          </h2>
+          {headline && (
+            <p className="mt-1 text-sm text-muted-foreground tabular-nums">{headline}</p>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Select
             aria-label="Event category"
             value={filters.kind_prefix ?? ''}
@@ -122,7 +139,7 @@ function ActivityTimeline({
                 kind_prefix: event.target.value || undefined,
               }))
             }
-            className="h-8 w-auto text-xs"
+            className="max-w-full text-sm"
           >
             <option value="">All events</option>
             <option value="deploy.">Deployments</option>
@@ -139,7 +156,7 @@ function ActivityTimeline({
                 actor_type: (event.target.value || undefined) as ActivityFilters['actor_type'],
               }))
             }
-            className="h-8 w-auto text-xs"
+            className="max-w-full text-sm"
           >
             <option value="">Anyone</option>
             <option value="user">People</option>
@@ -150,8 +167,8 @@ function ActivityTimeline({
           </Select>
           {Boolean(workspace.data) && (
             <Button
-              size="xs"
-              variant="ghost"
+              size="sm"
+              variant="outline"
               aria-label="Refresh activity"
               disabled={activity.isFetching}
               onClick={() => void activity.refetch()}
@@ -165,11 +182,6 @@ function ActivityTimeline({
           )}
         </div>
       </div>
-      {headline && rows.length > 0 && (
-        <p className="text-xl leading-7 font-medium tracking-[-0.01em] tabular-nums text-balance">
-          {headline}
-        </p>
-      )}
       {!accountId ? (
         <p className="text-sm text-muted-foreground">Sign in to read resource activity.</p>
       ) : failure && rows.length === 0 ? (
@@ -190,9 +202,15 @@ function ActivityTimeline({
       {groups.length > 0 && (
         <div className="flex flex-col gap-5">
           {groups.map((group) => (
-            <section key={group.key} aria-label={group.label} className="flex flex-col">
-              <h3 className="bento-label pb-1">{group.label}</h3>
-              <ol className="flex flex-col divide-y divide-border/60">
+            <section
+              key={group.key}
+              aria-label={group.label}
+              className="overflow-hidden rounded-[1.25rem] border border-border bg-card"
+            >
+              <h3 className="border-b border-border bg-muted/30 px-3 py-2.5 text-sm font-medium sm:px-5">
+                {group.label}
+              </h3>
+              <ol className="relative flex flex-col divide-y divide-border/60 before:pointer-events-none before:absolute before:inset-y-6 before:left-7 before:z-10 before:w-px before:bg-border sm:before:left-9">
                 {group.rows.map((row) => (
                   <ActivityRow key={row.id} row={row} appSlug={appSlug} />
                 ))}
@@ -251,81 +269,133 @@ function ActivityTimeline({
 }
 
 const QUIET_LINK =
-  'text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-brand';
+  'rounded-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-brand';
 
-/** One event: the API's sentence and when, then who, its outcome and where it landed. */
+const EVENT_LINK =
+  'rounded-sm font-medium text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-brand';
+
+const ACTIVITY_ICONS = new Map([
+  ['app', <Box />],
+  ['app.config_updated', <Settings />],
+  ['deploy', <Rocket />],
+  ['env', <CodeBrackets />],
+  ['domain', <Globe />],
+]);
+
 function ActivityRow({ row, appSlug }: { row: ResourceActivity; appSlug?: string }) {
-  const release = activityResourceId(row.deployment_id);
+  const release = activityResourceId(row.deployment_id) ? row.deployment_id : undefined;
   const mark = outcomeMark(row.kind);
   const failed = mark?.tone === 'critical';
+  const title = activityTitle(row.kind);
   const sentence = activitySentence(row);
+  const context = title && activityContext(row);
+  const actor = actorWords(row.actor);
+  const category = row.kind === 'app.deployed' ? 'deploy' : row.kind.split('.')[0];
+  const icon = failed ? (
+    <WarningCircle />
+  ) : (
+    (ACTIVITY_ICONS.get(row.kind) ?? ACTIVITY_ICONS.get(category) ?? <Clock />)
+  );
+  const iconTone = failed
+    ? 'border-status-critical/25 bg-status-critical/10 text-status-critical'
+    : category === 'deploy'
+      ? 'border-brand/20 bg-brand/10 text-brand'
+      : 'border-border bg-muted text-muted-foreground';
+
   return (
-    <li className="flex gap-3 py-2.5 [overflow-wrap:anywhere]">
-      <span
-        aria-hidden
-        className="mt-[7px] size-1.5 shrink-0 rounded-full"
-        style={{
-          background: failed
-            ? 'var(--status-critical)'
-            : 'color-mix(in oklch, var(--muted-foreground) 45%, transparent)',
-        }}
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-baseline justify-between gap-4">
-          <p className="text-sm" title={row.kind}>
-            {sentence}
-          </p>
+    <li
+      className={`grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-3 py-3 sm:px-5 ${failed ? 'bg-status-critical/5' : ''}`}
+    >
+      <span aria-hidden className="relative z-20 size-8 shrink-0 rounded-lg bg-card">
+        <span
+          className={`flex size-full items-center justify-center rounded-lg border [&>svg]:size-4 ${iconTone}`}
+        >
+          {icon}
+        </span>
+      </span>
+      <div className="min-w-0 [overflow-wrap:anywhere]">
+        <div className="flex items-start justify-between gap-2 sm:gap-4">
+          <div className="min-w-0">
+            <p
+              className={`text-sm leading-5 font-semibold ${failed ? 'text-status-critical' : ''}`}
+            >
+              {title ?? sentence}
+            </p>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              {context && <span className="font-medium text-foreground/85">{context}</span>}
+              {(title || !namesActor(row)) && (
+                <span>
+                  {failed && title ? 'Requested by' : 'by'} {actor}
+                </span>
+              )}
+              {!title && mark && <span>{mark.word}</span>}
+            </div>
+          </div>
           {parseTime(row.occurred_at) === undefined ? (
             <span className="shrink-0 text-xs text-muted-foreground">Time unknown</span>
           ) : (
             <Timestamp
               value={row.occurred_at}
-              className="shrink-0 text-xs text-muted-foreground tabular-nums"
+              mode="clock"
+              className="shrink-0 pt-0.5 font-mono text-xs text-muted-foreground tabular-nums"
             />
           )}
         </div>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {!namesActor(row) && <span>by {actorWords(row.actor)}</span>}
-          {mark && (
-            <span
-              className={failed ? 'font-medium' : undefined}
-              style={failed ? { color: 'var(--status-critical)' } : undefined}
-            >
-              {mark.word}
-            </span>
-          )}
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs">
           {release ? (
             <Link
-              {...releaseLink(row.deployment_id!, { slug: appSlug, panel: 'activity' })}
-              className={QUIET_LINK}
+              {...releaseLink(release, { slug: appSlug, panel: 'activity' })}
+              className={EVENT_LINK}
             >
               View release
             </Link>
           ) : appSlug && row.kind.startsWith('domain.') ? (
-            <Link to="/dashboard/domains" search={{ q: row.resource.label }} className={QUIET_LINK}>
+            <Link to="/dashboard/domains" search={{ q: row.resource.label }} className={EVENT_LINK}>
               View domain
             </Link>
           ) : appSlug && (row.kind.startsWith('env.') || row.kind === 'app.config_updated') ? (
             <Link
               to="/dashboard/apps/$appSlug"
-              params={{ appSlug: appSlug }}
+              params={{ appSlug }}
               search={{ tab: row.kind.startsWith('env.') ? 'Environment' : 'Runtime' }}
-              className={QUIET_LINK}
+              className={EVENT_LINK}
             >
               {row.kind.startsWith('env.') ? 'View environment' : 'View settings'}
             </Link>
           ) : null}
-          <details className="open:basis-full">
-            <summary className="cursor-pointer hover:text-foreground">Details</summary>
-            <p className="mt-2 font-mono">
-              {row.kind} · {actorWords(row.actor)} · {row.resource.label || row.resource.type} ·
-              event {row.id}
-            </p>
-            {Object.keys(row.data ?? {}).length > 0 && (
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2">
-                {JSON.stringify(row.data, null, 2)}
-              </pre>
-            )}
+          <details className="group min-w-0 open:basis-full">
+            <summary
+              className={`flex w-fit cursor-pointer list-none items-center gap-1 ${QUIET_LINK} [&::-webkit-details-marker]:hidden`}
+            >
+              <NavArrowRight aria-hidden className="size-3 group-open:rotate-90" />
+              Details
+            </summary>
+            <div className="mt-2 rounded-lg border border-border bg-muted/40 p-3 text-muted-foreground">
+              {title && <p className="mb-3 leading-relaxed">{sentence}</p>}
+              <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                <div>
+                  <dt>Event type</dt>
+                  <dd className="font-mono text-foreground">{row.kind}</dd>
+                </div>
+                <div>
+                  <dt>Actor</dt>
+                  <dd className="text-foreground">{actor}</dd>
+                </div>
+                <div>
+                  <dt>Resource</dt>
+                  <dd className="text-foreground">{row.resource.label || row.resource.type}</dd>
+                </div>
+                <div>
+                  <dt>Event ID</dt>
+                  <dd className="font-mono text-foreground">{row.id}</dd>
+                </div>
+              </dl>
+              {Object.keys(row.data ?? {}).length > 0 && (
+                <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-background p-2 whitespace-pre-wrap">
+                  {JSON.stringify(row.data, null, 2)}
+                </pre>
+              )}
+            </div>
           </details>
         </div>
       </div>

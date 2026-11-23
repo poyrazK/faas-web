@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { ApiError } from '@/lib/api/errors';
+import { clockTime } from '@/lib/time';
 import type { ResourceActivity } from '@/lib/api/resource-activity';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -99,7 +100,16 @@ describe('resource activity timeline', () => {
   it('shows deploy/config/domain/TLS events, captured actor, time, failures and affected links', () => {
     state.rows = [
       row('4', 'deploy.failed', { deployment_id: release }),
-      row('3', 'app.config_updated'),
+      row('3', 'app.config_updated', {
+        summary: 'Developer updated api settings (ram_mb, require_authn, public_auth)',
+        data: {
+          changes: [
+            { field: 'ram_mb', old: 256, new: 512 },
+            { field: 'require_authn' },
+            { field: 'public_auth', values_redacted: true },
+          ],
+        },
+      }),
       row('2', 'env.set'),
       row('1', 'domain.tls_issued', {
         actor: { type: 'system', label: 'Certificate manager' },
@@ -111,7 +121,13 @@ describe('resource activity timeline', () => {
     expect(screen.getAllByRole('time')).toHaveLength(4);
     expect(screen.getAllByRole('time')[0]).toHaveAttribute('dateTime', '2026-10-01T12:00:00.000Z');
     expect(screen.getByText('by Certificate manager (system)')).toBeInTheDocument();
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getAllByRole('time')[0]).toHaveTextContent(
+      clockTime(Date.parse('2026-10-01T12:00:00Z'))
+    );
+    expect(screen.getByText('Deployment failed')).toBeInTheDocument();
+    expect(screen.getByText('App settings updated')).toBeInTheDocument();
+    expect(screen.getByText('Memory limit · API key requirement · +1 more')).toBeInTheDocument();
+    expect(screen.getByText('api.example.com', { selector: 'span' })).toBeInTheDocument();
     // Completed is the norm and is not spelled out.
     expect(screen.queryByText(/Completed/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View release' })).toHaveAttribute(
@@ -139,7 +155,7 @@ describe('resource activity timeline', () => {
     expect(screen.getByText('Time unknown')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Date unknown' })).toBeInTheDocument();
   });
-  it('groups events by day under one sentence, never repeating an actor the sentence names', () => {
+  it('groups events by day with short event titles and a separate actor line', () => {
     const now = Date.now();
     const at = (ms: number) => new Date(ms).toISOString();
     const midnight = new Date(now);
@@ -160,10 +176,12 @@ describe('resource activity timeline', () => {
     expect(screen.getByText('2 events today, 1 failed.')).toBeInTheDocument();
     const todayGroup = screen.getByRole('region', { name: 'Today' });
     expect(within(todayGroup).getAllByRole('listitem')).toHaveLength(2);
-    expect(within(todayGroup).getByText('Failed')).toBeInTheDocument();
-    expect(within(todayGroup).queryByText(/^by /)).not.toBeInTheDocument();
+    expect(within(todayGroup).getByText('Deployment failed')).toBeInTheDocument();
+    expect(within(todayGroup).getByText('Requested by Developer')).toBeInTheDocument();
+    expect(within(todayGroup).getByText('Deployment completed')).toBeInTheDocument();
+    expect(within(todayGroup).getByText('by Developer')).toBeInTheDocument();
     const yesterday = screen.getByRole('region', { name: 'Yesterday' });
-    expect(within(yesterday).getByText('env.set summary')).toBeInTheDocument();
+    expect(within(yesterday).getByText('Environment variable updated')).toBeInTheDocument();
     expect(within(yesterday).getByText('by Developer')).toBeInTheDocument();
   });
   it('keeps raw kinds, ids and data behind each event’s details', async () => {
@@ -173,7 +191,11 @@ describe('resource activity timeline', () => {
     expect(details).not.toHaveAttribute('open');
     await userEvent.click(screen.getByText('Details'));
     expect(details).toHaveAttribute('open');
-    expect(details).toHaveTextContent('env.set · Developer · api · event 9');
+    expect(within(details).getByText('env.set summary')).toBeVisible();
+    expect(within(details).getByText('env.set')).toBeVisible();
+    expect(within(details).getByText('Developer')).toBeVisible();
+    expect(within(details).getByText('Event ID')).toBeVisible();
+    expect(within(details).getByText('9')).toBeVisible();
     expect(details).toHaveTextContent('LOG_LEVEL');
   });
   it('shows only the exact release while providing app-wide context navigation', () => {
@@ -183,9 +205,9 @@ describe('resource activity timeline', () => {
       row('3', 'deploy.failed', { deployment_id: 'c'.repeat(32) }),
     ];
     render(<ResourceActivityTimeline appId={app} appSlug="api" deploymentId={release} />);
-    expect(screen.getByText('deploy.requested summary')).toBeInTheDocument();
-    expect(screen.queryByText('env.set summary')).not.toBeInTheDocument();
-    expect(screen.queryByText('deploy.failed summary')).not.toBeInTheDocument();
+    expect(screen.getByText('Deployment requested')).toBeInTheDocument();
+    expect(screen.queryByText('Environment variable updated')).not.toBeInTheDocument();
+    expect(screen.queryByText('Deployment failed')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View all app activity' })).toHaveAttribute(
       'href',
       '/dashboard/apps/api?tab=Activity'
@@ -217,7 +239,7 @@ describe('resource activity timeline', () => {
     state.nextError = true;
     state.error = new Error('Older page unavailable');
     render(<ResourceActivityTimeline appId={app} />);
-    expect(screen.getByText('env.set summary')).toBeInTheDocument();
+    expect(screen.getByText('Environment variable updated')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Loaded events remain available');
     await userEvent.click(screen.getByRole('button', { name: 'Retry activity read' }));
     expect(state.load).toHaveBeenCalledOnce();
