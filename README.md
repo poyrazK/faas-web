@@ -64,7 +64,7 @@ remain available. No request is sent automatically.
 | `npm run api:types`  | Regenerate API types from `api/openapi.yaml`        |
 | `npm run api:pull`   | Re-fetch the spec from upstream, then regenerate    |
 | `npm run docs:pull`  | Re-fetch the vendored docs from upstream            |
-| `npm run og`         | Re-render `public/og.png`, the social preview card  |
+| `npm run og`         | Redraw the generated card over `public/og.png`      |
 | `npm run lint`       | ESLint                                              |
 | `npm run test`       | Vitest, once                                        |
 | `npm run test:watch` | Vitest in watch mode                                |
@@ -742,11 +742,15 @@ markup, `robots.txt`) works without it.
 
 ### og:image
 
-The 1200×630 social card is `public/og.png`. Run `npm run og` to rebuild it
-from the current logo, editable headline, and cropped mint wind silhouette in
-`scripts/og-image.mjs`.
+The 1200×630 social card is `public/og.png`: the end card of the Gregale film
+(the logo, the name and the tagline over the harbour at dawn), rendered without
+grain from [gregale-film](https://github.com/jackthepunished/gregale-film).
 The next build with `SITE_URL` set includes the image in Open Graph and X
-metadata. Commit the rebuilt PNG when changing the card.
+metadata.
+
+`npm run og` redraws the older generated card (the logo, an editable headline
+and a cropped mint wind silhouette, from `scripts/og-image.mjs`) over that file.
+Run it only to go back to the generated card.
 
 ## Tests
 

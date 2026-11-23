@@ -1,4 +1,6 @@
-// Rebuild the 1200×630 social card with `npm run og`.
+// Draw the generated 1200×630 social card with `npm run og`.
+// public/og.png is at present the end card of the Gregale film (README, og:image): running this
+// writes the generated card over it.
 // A cropped wind silhouette, typography, and the current logo are composed here so
 // the whole card remains crisp, editable, and reproducible.
 
