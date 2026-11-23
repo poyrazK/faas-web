@@ -21,6 +21,9 @@ import { InlinePhase, Panel, queryPhase } from '../primitives';
 import { LimitRow } from './limit-row';
 
 type Draft = { tag: string; dollars: string };
+/** apid's tag pattern (OutboundAITagLimit.tag) and list cap. */
+const TAG = /^[a-z][a-z0-9_.-]{0,31}=[A-Za-z0-9._:@+/-]{1,64}$/;
+const MAX_TAGS = 20;
 const toDraft = (limit: AITagLimit): Draft => ({
   tag: limit.tag,
   dollars: (limit.daily_cost_limit_millicents / 100_000).toFixed(2),
@@ -57,14 +60,25 @@ function TagLimitsEditor({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const next: AITagLimit[] = [];
+    const seen = new Set<string>();
     for (const row of rows) {
-      if (!row.tag.trim() && !row.dollars.trim()) continue;
-      const millicents = parseUsdMillicents(row.dollars);
-      if (!row.tag.trim() || !millicents) {
-        setError('Give each tag a name and a dollar amount above $0, such as 12.50.');
+      const tag = row.tag.trim();
+      if (!tag && !row.dollars.trim()) continue;
+      if (!TAG.test(tag)) {
+        setError('Write each tag as key=value, such as feature=search.');
         return;
       }
-      next.push({ tag: row.tag.trim(), daily_cost_limit_millicents: millicents });
+      if (seen.has(tag)) {
+        setError('Use each tag once.');
+        return;
+      }
+      seen.add(tag);
+      const millicents = parseUsdMillicents(row.dollars);
+      if (!millicents) {
+        setError(`Give ${tag} a dollar amount above $0, such as 12.50.`);
+        return;
+      }
+      next.push({ tag, daily_cost_limit_millicents: millicents });
     }
     try {
       await save.mutateAsync(next);
@@ -80,14 +94,19 @@ function TagLimitsEditor({
       className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3"
     >
       <p className="text-xs text-muted-foreground">
-        A call carrying a tag is refused with 429 once that tag’s cost today would pass its limit.
+        A tag is the key=value your app sends in X-Gregale-AI-Tags. A call carrying a tag is refused
+        with 429 once that tag’s cost today would pass its limit.
       </p>
       {rows.length === 0 && <p className="text-sm text-muted-foreground">No tag has a limit.</p>}
       {rows.map((row, index) => (
         <div key={index} className="flex flex-wrap items-end gap-2">
           <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
             Tag
-            <Input value={row.tag} onChange={(e) => change(index, { tag: e.target.value })} />
+            <Input
+              value={row.tag}
+              placeholder="feature=search"
+              onChange={(e) => change(index, { tag: e.target.value })}
+            />
           </label>
           <label className="flex w-32 flex-col gap-1 text-xs">
             Dollars a day
@@ -101,6 +120,7 @@ function TagLimitsEditor({
             type="button"
             size="xs"
             variant="ghost"
+            aria-label={`Remove ${row.tag.trim() || 'empty tag'}`}
             onClick={() => setDraft(rows.filter((_, i) => i !== index))}
           >
             Remove
@@ -117,6 +137,7 @@ function TagLimitsEditor({
           type="button"
           size="xs"
           variant="outline"
+          disabled={rows.length >= MAX_TAGS}
           onClick={() => setDraft([...rows, { tag: '', dollars: '' }])}
         >
           Add a tag
@@ -145,35 +166,48 @@ export function IntegrationsSection() {
   const workspace = useWorkspaceTarget();
   const accountId = useAuth().account?.id ?? '';
   const on = useCapabilityAccess('outbound-integrations').access === 'on';
+  const aiOn = useCapabilityAccess('ai-gateway').access === 'on';
   const personal = workspace.ready && !workspace.org;
   const list = useOutboundIntegrations(on && personal ? accountId : '');
   const integrations = list.data ?? [];
-  const usages = useOutboundUsages(
-    accountId,
-    integrations.map((i) => i.id)
-  );
-  const aiIntegrations = integrations.filter((i) => i.ai_provider);
-  const aiUsages = useOutboundAIUsages(
-    accountId,
-    aiIntegrations.map((i) => i.id)
-  );
+  // Usage and AI usage need session MFA (the list doesn't), so they're read
+  // only once the section is opened, never on page load.
+  const [open, setOpen] = useState(false);
+  const usages = useOutboundUsages(accountId, open ? integrations.map((i) => i.id) : []);
+  const aiIntegrations = aiOn ? integrations.filter((i) => i.ai_provider) : [];
+  const aiUsages = useOutboundAIUsages(accountId, open ? aiIntegrations.map((i) => i.id) : []);
   const [editing, setEditing] = useState<string | null>(null);
-  if (!on || !personal || integrations.length === 0) return null;
-  const rows = integrations.map((integration, index) => {
-    const ai = aiIntegrations.indexOf(integration);
-    return integrationLimitRows(
-      integration,
-      usages[index]?.data,
-      ai >= 0 ? aiUsages[ai]?.data : undefined
+  if (!on || !personal) return null;
+  if (list.error)
+    return (
+      <div id="integrations" className="scroll-mt-24">
+        <Panel title="Integrations and AI">
+          <InlinePhase
+            phase={queryPhase({ error: list.error })}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+          />
+        </Panel>
+      </div>
     );
+  if (integrations.length === 0) return null;
+  const reads = integrations.map((integration, index) => {
+    const ai = aiIntegrations.indexOf(integration);
+    const usage = usages[index];
+    const aiUsage = ai >= 0 ? aiUsages[ai] : undefined;
+    return {
+      rows: integrationLimitRows(integration, usage?.data, aiUsage?.data),
+      failed: Boolean(usage?.error || aiUsage?.error),
+    };
   });
+  const rows = reads.map((read) => read.rows);
   return (
     <div id="integrations" className="scroll-mt-24">
       <Panel
         title="Integrations and AI"
         help="Limits on calls your apps make through Gregale’s gateway. At a limit the gateway refuses the call with 429; nothing else stops. Each app’s own limits are on its Integrations tab."
       >
-        <details>
+        <details onToggle={(event) => setOpen(event.currentTarget.open)}>
           <summary className="w-fit cursor-pointer text-sm text-muted-foreground underline-offset-4 hover:underline">
             {integrationsSummary(rows)}
           </summary>
@@ -182,7 +216,7 @@ export function IntegrationsSection() {
               <section key={integration.id} aria-label={integration.name} className="flex flex-col">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">{integration.name}</h3>
-                  {integration.ai_provider && editing !== integration.id && (
+                  {aiOn && integration.ai_provider && editing !== integration.id && (
                     <Button size="xs" variant="ghost" onClick={() => setEditing(integration.id)}>
                       Per-tag limits
                     </Button>
@@ -194,6 +228,10 @@ export function IntegrationsSection() {
                     name={row.name}
                     sentence={row.sentence}
                     meter={row.meter}
+                    tone={reads[index].failed && !row.meter ? 'neutral' : undefined}
+                    note={
+                      reads[index].failed && !row.meter ? 'Couldn’t read today’s use.' : undefined
+                    }
                     action={
                       row.key === 'requests' ? (
                         <Button asChild size="xs" variant="outline">

@@ -995,8 +995,16 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
       throw new Problem(409, 'conflict', 'Tag limits apply to managed AI integrations only');
     const next = (body.limits ?? []) as S['OutboundAITagLimit'][];
     for (const limit of next)
-      if (!limit.tag?.trim() || !(limit.daily_cost_limit_millicents > 0))
-        throw new Problem(400, 'validation_failed', 'Each tag needs a name and a limit above zero');
+      if (
+        !/^[a-z][a-z0-9_.-]{0,31}=[A-Za-z0-9._:@+/-]{1,64}$/.test(limit.tag ?? '') ||
+        !(limit.daily_cost_limit_millicents > 0)
+      )
+        throw new Problem(
+          400,
+          'validation_failed',
+          'Each tag is key=value with a limit above zero'
+        );
+    if (next.length > 20) throw new Problem(400, 'validation_failed', 'At most 20 tag limits');
     tagLimits.set(found.id, next);
     return noContent;
   });

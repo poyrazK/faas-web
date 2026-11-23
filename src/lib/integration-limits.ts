@@ -45,9 +45,18 @@ export function integrationLimitRows(
   );
   if (!integration.ai_provider) return rows;
 
-  const tokens = ai?.daily_token_limit ?? integration.ai_daily_token_limit;
-  const day = ai?.daily_cost_limit_millicents ?? integration.ai_daily_cost_limit_millicents;
-  const month = ai?.monthly_cost_limit_millicents ?? integration.ai_monthly_cost_limit_millicents;
+  // The usage answer wins where it speaks: its required token limit's null is
+  // a real "no limit"; the optional cost limits fall back to the list only
+  // when the answer leaves them out.
+  const tokens = ai ? ai.daily_token_limit : integration.ai_daily_token_limit;
+  const day =
+    ai?.daily_cost_limit_millicents !== undefined
+      ? ai.daily_cost_limit_millicents
+      : integration.ai_daily_cost_limit_millicents;
+  const month =
+    ai?.monthly_cost_limit_millicents !== undefined
+      ? ai.monthly_cost_limit_millicents
+      : integration.ai_monthly_cost_limit_millicents;
   if (set(tokens))
     rows.push({
       key: 'tokens',
@@ -102,14 +111,14 @@ export function integrationLimitRows(
   return rows;
 }
 
-/** "3 integrations · 1 at its limit · 1 close", for the folded summary. */
+/** "3 integrations · 1 limit reached · 1 close", for the folded summary. */
 export function integrationsSummary(rows: readonly (readonly IntegrationLimitRow[])[]): string {
   const meters = rows.flat().flatMap((row) => (row.meter ? [row.meter] : []));
   const at = meters.filter((m) => meterTone(m.used, m.limit) === 'critical').length;
   const close = meters.filter((m) => meterTone(m.used, m.limit) === 'warning').length;
   return [
     `${rows.length} integration${rows.length === 1 ? '' : 's'}`,
-    at ? `${at} at its limit` : '',
+    at ? `${at} limit${at === 1 ? '' : 's'} reached` : '',
     close ? `${close} close` : '',
   ]
     .filter(Boolean)

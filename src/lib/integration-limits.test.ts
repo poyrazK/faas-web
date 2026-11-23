@@ -86,8 +86,38 @@ describe('integrationsSummary', () => {
     };
     const fine = { key: 'requests' as const, name: 'r', sentence: '' };
     expect(integrationsSummary([[at], [close, fine], [fine]])).toBe(
-      '3 integrations · 1 at its limit · 1 close'
+      '3 integrations · 1 limit reached · 1 close'
     );
     expect(integrationsSummary([[fine]])).toBe('1 integration');
+  });
+
+  it('names two reached limits in the plural', () => {
+    const at = {
+      key: 'requests' as const,
+      name: 'r',
+      sentence: '',
+      meter: { used: 10, limit: 10, label: '' },
+    };
+    expect(integrationsSummary([[at, at]])).toBe('1 integration · 2 limits reached');
+  });
+});
+
+describe('which limit wins', () => {
+  it('a null from ai-usage is a real “no limit”, not a fallback to the list', () => {
+    const rows = integrationLimitRows(ai, undefined, {
+      daily_token_count: 10,
+      daily_token_limit: null,
+      daily_cost_limit_millicents: null,
+      monthly_cost_limit_millicents: null,
+    } as never);
+    expect(rows.map((r) => r.key)).toEqual(['requests', 'ai-none']);
+  });
+
+  it('cost limits the ai-usage answer leaves out fall back to the list', () => {
+    const rows = integrationLimitRows(ai, undefined, {
+      daily_token_count: 10,
+      daily_token_limit: 2_000_000,
+    } as never);
+    expect(rows.map((r) => r.key)).toEqual(['requests', 'tokens', 'cost-day', 'cost-month']);
   });
 });
