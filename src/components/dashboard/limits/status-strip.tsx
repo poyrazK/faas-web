@@ -1,0 +1,76 @@
+import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { billStatus, type BillStatus } from '@/lib/limits';
+import { TONE_COLOR } from './limit-row';
+import type { BillData } from './use-bill-facts';
+
+const ACTION_LABEL: Record<NonNullable<BillStatus['action']>, string> = {
+  cap: 'Change cap',
+  egress: 'Pay beyond',
+  plans: 'View plans',
+  storage: 'See buckets',
+};
+
+/**
+ * The answer first: whether anything is stopped, what is close, or that
+ * nothing is, with the one action that lifts a stop. It waits for every
+ * shown read rather than guess while one is loading.
+ */
+export function StatusStrip({
+  data,
+  onAction,
+}: {
+  data: BillData;
+  onAction: (action: 'cap' | 'egress') => void;
+}) {
+  if (!data.settled)
+    return (
+      <p
+        role="status"
+        aria-label="Spending limits status"
+        className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+      >
+        Checking your limits…
+      </p>
+    );
+  const status = billStatus(data.facts);
+  const color = TONE_COLOR[status.tone];
+  return (
+    <section
+      role="status"
+      aria-label="Spending limits status"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 ring-1"
+      style={{
+        background: `color-mix(in oklab, ${color} 10%, transparent)`,
+        borderColor: color,
+        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 25%, transparent)`,
+      }}
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-semibold" style={{ color }}>
+          {status.headline}
+        </p>
+        {status.detail && (
+          <p className="mt-0.5 text-xs leading-relaxed text-foreground/80">{status.detail}</p>
+        )}
+      </div>
+      {status.action === 'plans' ? (
+        <Button asChild size="sm" variant="outline">
+          <Link to="/dashboard/plans">{ACTION_LABEL.plans}</Link>
+        </Button>
+      ) : status.action === 'storage' ? (
+        <Button asChild size="sm" variant="outline">
+          <Link to="/dashboard/storage">{ACTION_LABEL.storage}</Link>
+        </Button>
+      ) : status.action ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => onAction(status.action as 'cap' | 'egress')}
+        >
+          {ACTION_LABEL[status.action]}
+        </Button>
+      ) : null}
+    </section>
+  );
+}

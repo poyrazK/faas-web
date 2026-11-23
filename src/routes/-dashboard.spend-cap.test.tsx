@@ -14,11 +14,13 @@ import { bindWorkspaceAccount, setActiveOrg } from '@/lib/workspace';
 import { api } from '@/lib/api/client';
 import { Route as Plans } from './dashboard.plans';
 import { Route as Usage } from './dashboard.usage';
+import { Route as Limits } from './dashboard.limits';
 import { mockedApi, spyApi } from '@/test/api';
 
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     account: {
+      id: 'acct-1',
       plan: 'pro',
       app_count: 1,
       limits: { deployed_apps: 25, ram_mb: 2048, included_gb_hours: 100 },
@@ -52,39 +54,43 @@ beforeEach(() => {
       overage_cents: 0,
     };
     const data =
-      path === '/v1/usage/summary'
-        ? compute
-        : path === '/v1/account/usage'
-          ? { month: '2026-09', compute }
-          : path === '/v1/billing/forecast'
-            ? {
-                period_start: '2026-09-01T00:00:00Z',
-                period_end: '2026-10-01T00:00:00Z',
-                as_of: '2026-09-15T00:00:00Z',
-                currency: 'EUR',
-                meters: [],
-                bill_estimate_available: false,
-                missing_bill_components: [],
-              }
-            : path === '/v1/audit-events'
-              ? { events: [], limit: 20 }
-              : path === '/v1/billing/costs'
+      path === '/v1/capabilities'
+        ? { plan: 'pro', capabilities: [] }
+        : path === '/v1/account/egress-overage'
+          ? { enabled: false, electable: true, included_gib: 100, billing: 'live' }
+          : path === '/v1/usage/summary'
+            ? compute
+            : path === '/v1/account/usage'
+              ? { month: '2026-09', compute }
+              : path === '/v1/billing/forecast'
                 ? {
-                    account_id: 'acct-1',
-                    currency: 'USD',
                     period_start: '2026-09-01T00:00:00Z',
                     period_end: '2026-10-01T00:00:00Z',
                     as_of: '2026-09-15T00:00:00Z',
-                    retained_from: '2026-09-01T00:00:00Z',
-                    evidence_through_id: 1,
-                    known_usage_millicents: 0,
+                    currency: 'EUR',
                     meters: [],
-                    scope: 'retained_compute_and_interface_egress',
-                    invoices: [],
-                    invoice_reconciliation: 'not_reconciled',
+                    bill_estimate_available: false,
                     missing_bill_components: [],
                   }
-                : [];
+                : path === '/v1/audit-events'
+                  ? { events: [], limit: 20 }
+                  : path === '/v1/billing/costs'
+                    ? {
+                        account_id: 'acct-1',
+                        currency: 'USD',
+                        period_start: '2026-09-01T00:00:00Z',
+                        period_end: '2026-10-01T00:00:00Z',
+                        as_of: '2026-09-15T00:00:00Z',
+                        retained_from: '2026-09-01T00:00:00Z',
+                        evidence_through_id: 1,
+                        known_usage_millicents: 0,
+                        meters: [],
+                        scope: 'retained_compute_and_interface_egress',
+                        invoices: [],
+                        invoice_reconciliation: 'not_reconciled',
+                        missing_bill_components: [],
+                      }
+                    : [];
     return { data, response: new Response() } as never;
   });
   spyApi('POST').mockImplementation(async (path, options) => {
@@ -104,10 +110,10 @@ async function mount(
     path: 'dashboard',
     component: Outlet,
   });
-  const routes = [Usage, Plans].map((route, i) =>
+  const routes = [Usage, Plans, Limits].map((route, i) =>
     createRoute({
       getParentRoute: () => dashboard,
-      path: ['usage', 'plans'][i],
+      path: ['usage', 'plans', 'limits'][i],
       component: route.options.component,
     })
   );
@@ -125,12 +131,13 @@ async function mount(
   });
   return router;
 }
-it('shows the cap standing on Usage and edits the cap in a modal', async () => {
-  await mount();
-  expect(await screen.findByText('$0.00 of $10.00 overage used.')).toBeInTheDocument();
-  expect(screen.getByText('Within the cap')).toBeInTheDocument();
+const capRow = () => screen.getByRole('group', { name: 'Spend cap' });
+it('shows the cap standing on Spending limits and edits the cap in a modal', async () => {
+  await mount('/dashboard/limits');
+  expect(await screen.findByText('$0.00 of $10.00')).toBeInTheDocument();
+  expect(capRow()).toHaveTextContent('Apps, jobs and databases stop at $10.00 of overage.');
   expect(screen.queryByRole('spinbutton', { name: 'Cap (USD)' })).not.toBeInTheDocument();
-  const manage = screen.getByRole('button', { name: 'Change cap' });
+  const manage = within(capRow()).getByRole('button', { name: 'Change' });
   await userEvent.click(manage);
   expect(
     within(screen.getByRole('dialog', { name: 'Spend cap' })).getByRole('spinbutton', {
@@ -141,7 +148,7 @@ it('shows the cap standing on Usage and edits the cap in a modal', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(manage).toHaveFocus();
 });
-it('edits the same cap on Plans and reflects it back on Usage', async () => {
+it('edits the same cap on Plans and reflects it back on Spending limits', async () => {
   const router = await mount('/dashboard/plans');
   const input = await screen.findByRole('spinbutton', { name: 'Cap (USD)' });
   expect(input).toHaveValue(10);
@@ -154,29 +161,36 @@ it('edits the same cap on Plans and reflects it back on Usage', async () => {
     })
   );
   await act(async () => {
-    await router.navigate({ to: '/dashboard/usage' });
+    await router.navigate({ to: '/dashboard/limits' as never });
   });
-  expect(await screen.findByText('$0.00 of $12.50 overage used.')).toBeInTheDocument();
+  expect(await screen.findByText('$0.00 of $12.50')).toBeInTheDocument();
 });
 it('distinguishes zero overage from no cap and updates after clearing', async () => {
   cap = 0;
-  await mount();
-  expect(await screen.findByText('Workloads paused')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Change cap' }));
+  await mount('/dashboard/limits');
+  expect(await screen.findByText('Your apps are stopped')).toBeInTheDocument();
+  await userEvent.click(within(capRow()).getByRole('button', { name: 'Change' }));
   await userEvent.click(screen.getByRole('button', { name: 'Clear cap' }));
-  expect(await screen.findByText('No cap')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(capRow()).toHaveTextContent('No cap is set, so nothing stops overage.')
+  );
   expect(api.POST).toHaveBeenCalledWith('/v1/account/overage-cap', {
     body: { overage_cap_cents: null },
   });
 });
 it('does not claim there is no cap when reading fails and permits retry', async () => {
   readFails = true;
-  await mount();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Cap read unavailable');
-  expect(screen.queryByText('No cap')).not.toBeInTheDocument();
+  await mount('/dashboard/limits');
+  await waitFor(() => expect(capRow()).toHaveTextContent('Cap read unavailable'));
+  expect(screen.queryByText(/No cap is set/)).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByRole('status', { name: 'Spending limits status' })).toHaveTextContent(
+      'The spend cap couldn’t be read.'
+    )
+  );
   readFails = false;
-  await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(await screen.findByText('$0.00 of $10.00 overage used.')).toBeInTheDocument();
+  await userEvent.click(within(capRow()).getByRole('button', { name: 'Try again' }));
+  expect(await screen.findByText('$0.00 of $10.00')).toBeInTheDocument();
 });
 
 it('refreshes a pristine cached editor but preserves an unsaved draft', async () => {

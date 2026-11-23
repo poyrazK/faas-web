@@ -253,7 +253,7 @@ const RAIL = [
   'Overview',
   'Projects',
   'Usage',
-  'Budgets',
+  'Spending limits',
   'Invoices',
   'Plans',
   // Held back by the `agents` build flag; tests build with it off.
@@ -322,7 +322,7 @@ const GROUPS = [
     anchor: '/dashboard/usage',
     links: [
       ['Usage', '/dashboard/usage'],
-      ['Budgets', '/dashboard/budgets'],
+      ['Spending limits', '/dashboard/limits'],
       ['Invoices', '/dashboard/invoices'],
       ['Plans', '/dashboard/plans'],
     ],
@@ -495,7 +495,9 @@ describe('dashboard navigation foundation', () => {
       within(main)
         .getAllByRole('link')
         .map((link) => link.getAttribute('aria-label'))
-    ).toEqual(RAIL.filter((label) => !['Usage', 'Budgets', 'Invoices', 'Plans'].includes(label)));
+    ).toEqual(
+      RAIL.filter((label) => !['Usage', 'Spending limits', 'Invoices', 'Plans'].includes(label))
+    );
     expect(within(main).getByRole('button', { name: 'Billing' })).toHaveAttribute(
       'aria-expanded',
       'false'

@@ -244,7 +244,7 @@ export const NAV_HUBS: NavHub[] = [
     icon: GraphUp,
     sections: [
       { to: '/dashboard/usage', label: 'Usage', icon: GraphUp },
-      { to: '/dashboard/budgets', label: 'Budgets', icon: PiggyBank, capability: 'budgets' },
+      { to: '/dashboard/limits', label: 'Spending limits', icon: PiggyBank },
       { to: '/dashboard/invoices', label: 'Invoices', icon: Coins },
       { to: '/dashboard/plans', label: 'Plans', icon: CreditCard },
     ],

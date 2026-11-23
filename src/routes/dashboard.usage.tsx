@@ -13,8 +13,9 @@ import {
   UnreachableState,
   type QueryPhase,
 } from '@/components/dashboard/primitives';
-import { SpendCap } from '@/components/dashboard/spend-cap';
-import { SpendControl } from '@/components/dashboard/spend-control';
+import { SpendCap, SpendCapEditor } from '@/components/dashboard/spend-cap';
+import { Modal } from '@/components/ui/modal';
+import { LimitsSummary } from '@/components/dashboard/limits/limits-summary';
 import { DailyUsagePanel } from '@/components/dashboard/usage-daily';
 import {
   computeForecastMillicents,
@@ -512,9 +513,10 @@ function PersonalUsage() {
   // The shared precedence: an unreachable API is an outage to wait out, not a
   // red error — and never a page of zeros.
   const phase = queryPhase({ error, loading: isPending });
-  // The headline's "Raise cap" and the spend control's own button open the
-  // same editor.
+  // The headline's "Raise cap" opens the cap editor here; every other limit
+  // is on Spending limits.
   const [editingCap, setEditingCap] = useState(false);
+  const cap = useOverageCap();
 
   const used = data?.used_gb_hours ?? 0;
 
@@ -538,11 +540,20 @@ function PersonalUsage() {
             appUsage={appUsage.phase === 'ready' ? appUsage.rows : []}
             onRaiseCap={() => setEditingCap(true)}
           />
-          <SpendControl
-            overageCents={data.overage_cents}
-            editing={editingCap}
-            onEditingChange={setEditingCap}
-          />
+          <LimitsSummary />
+          {editingCap && cap.data && (
+            <Modal
+              open
+              onClose={() => setEditingCap(false)}
+              title="Spend cap"
+              description="Set $0 to allow no overage, or clear the cap to remove the ceiling."
+              width="max-w-lg"
+            >
+              <div className="p-1">
+                <SpendCapEditor initialCents={cap.data.overage_cap_cents} />
+              </div>
+            </Modal>
+          )}
           {projection ? (
             <DailyUsagePanel
               daily={projection.compute.daily}
