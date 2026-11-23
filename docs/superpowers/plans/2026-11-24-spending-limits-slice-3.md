@@ -60,6 +60,7 @@
 ### Task 2: The Agents section
 
 **Files:**
+
 - Create `src/components/dashboard/agents/budget-dialog.tsx` (moved `BudgetDialog`), modify `agent-page.tsx` to import it.
 - Modify `src/lib/api/agents.ts`: add `useAgentBudgetReads(ids)` returning `{ reads: Map<id, { data?, error, isPending, refetch }>, settled }`.
 - Create `src/components/dashboard/limits/use-agent-facts.ts` and `limits/agents-section.tsx`.

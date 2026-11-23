@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Modal } from '@/components/ui/modal';
+import { featureFlags } from '@/lib/feature-flags';
 import { BudgetsSection } from '../budgets/budgets-page';
 import { CapabilityGate } from '../capability-gate';
 import { PageHeader } from '../primitives';
 import { SpendCapEditor } from '../spend-cap';
+import { AgentAwareStrip, AgentsSection } from './agents-section';
 import { StatusStrip } from './status-strip';
 import { useBillFacts } from './use-bill-facts';
 import { YourBill } from './your-bill';
@@ -11,7 +13,8 @@ import { YourBill } from './your-bill';
 /**
  * Billing › Spending limits: every limit on what the workspace can be billed,
  * and what happens when one is reached. The answer comes first; then the hard
- * limits on the bill; then budgets. Design: docs/superpowers/specs/
+ * limits on the bill; then budgets; then agents, behind the `agents` build
+ * flag (off, the agent code folds out of the bundle). Design: docs/superpowers/specs/
  * 2026-11-23-spending-limits-design.md.
  */
 export function LimitsPage() {
@@ -19,6 +22,8 @@ export function LimitsPage() {
   const [editingCap, setEditingCap] = useState(false);
   const [egressOpen, setEgressOpen] = useState(false);
   const capCents = data.facts?.cap.state === 'ready' ? data.facts.cap.capCents : undefined;
+  const onStripAction = (action: 'cap' | 'egress') =>
+    action === 'cap' ? setEditingCap(true) : setEgressOpen(true);
 
   return (
     <div className="flex flex-col gap-6">
@@ -26,10 +31,11 @@ export function LimitsPage() {
         title="Spending limits"
         help="Every limit on what you can be billed, and what happens when one is reached."
       />
-      <StatusStrip
-        data={data}
-        onAction={(action) => (action === 'cap' ? setEditingCap(true) : setEgressOpen(true))}
-      />
+      {featureFlags.agents ? (
+        <AgentAwareStrip data={data} onAction={onStripAction} />
+      ) : (
+        <StatusStrip data={data} onAction={onStripAction} />
+      )}
       <YourBill
         data={data}
         onEditCap={() => setEditingCap(true)}
@@ -39,6 +45,7 @@ export function LimitsPage() {
       <CapabilityGate capability="budgets" title="Budgets">
         <BudgetsSection />
       </CapabilityGate>
+      {featureFlags.agents && <AgentsSection />}
       {editingCap && capCents !== undefined && (
         <Modal
           open
