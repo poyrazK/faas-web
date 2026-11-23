@@ -11345,6 +11345,61 @@ route('POST', '/v1/account/overage-cap', ({ body }) => {
   overageCapCents = cap;
   return { ...db.account, app_count: db.apps.length };
 });
+// Egress overage (faas docs/billing.md "Egress overage"): every plan stops at
+// its egress allowance unless a paid subject elects to pay beyond it, which
+// needs a recent step-up like the spend cap. MOCK_PLAN=free shows the refusal.
+const egressElections = new Map<string, { enabled: boolean; at: string }>();
+const EGRESS_INCLUDED_GIB: Record<string, number> = { free: 10, hobby: 100, pro: 500, scale: 2000 };
+const egressOverage = (subject: string, plan: string) => {
+  const election = egressElections.get(subject);
+  return {
+    enabled: election?.enabled ?? false,
+    electable: plan !== 'free',
+    ...(election?.enabled
+      ? { enabled_at: election.at }
+      : election
+        ? { disabled_at: election.at }
+        : {}),
+    included_gib: EGRESS_INCLUDED_GIB[plan] ?? 100,
+    billing: 'live',
+    price_millicents_per_gib: 3000,
+    currency: 'USD',
+  };
+};
+const electEgress = (subject: string, plan: string, enabled: unknown) => {
+  if (typeof enabled !== 'boolean')
+    throw new Problem(400, 'validation_failed', 'enabled must be true or false');
+  if (plan === 'free')
+    throw new Problem(
+      402,
+      'plan_egress_overage_not_allowed',
+      'The Free plan stops at its egress allowance.'
+    );
+  egressElections.set(subject, { enabled, at: new Date().toISOString() });
+  return egressOverage(subject, plan);
+};
+route('GET', '/v1/account/egress-overage', () =>
+  egressOverage(db.account.id, process.env.MOCK_PLAN ?? db.account.plan)
+);
+route('PUT', '/v1/account/egress-overage', ({ body }) => {
+  requireMintStepUp();
+  return electEgress(db.account.id, process.env.MOCK_PLAN ?? db.account.plan, body.enabled);
+});
+route('GET', '/v1/orgs/{slug}/egress-overage', ({ params }) => {
+  const org = requireOrgBillingRole(params.slug, ANY_MEMBER);
+  return egressOverage(`org:${org.slug}`, org.plan);
+});
+route('PUT', '/v1/orgs/{slug}/egress-overage', ({ params, body }) => {
+  requireOrgBillingRole(params.slug, ANY_MEMBER);
+  requireMintStepUp();
+  const org = requireOrgBillingRole(params.slug, ['owner']);
+  return electEgress(`org:${org.slug}`, org.plan, body.enabled);
+});
+// A company's object storage reads like the account's in the mock.
+route('GET', '/v1/orgs/{organization}/object-storage-usage', ({ params }) => {
+  requireOrgBillingRole(params.organization, ANY_MEMBER);
+  return objectStorageUsage();
+});
 route('GET', '/v1/billing/forecast', () => {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
