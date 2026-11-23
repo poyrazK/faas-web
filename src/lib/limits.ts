@@ -88,6 +88,8 @@ export function egressSentence(e: {
   if (e.enabled)
     return `Pays ${e.priceMillicentsPerGib != null ? formatMillicentRate(e.priceMillicentsPerGib) : 'the egress rate'} per GiB beyond ${allowance}, counted toward your spend cap.`;
   if (e.electable === false) return `Apps stop at ${allowance}. Paid plans can pay beyond it.`;
+  if (e.billingOff)
+    return `Apps stop at ${allowance}. You can choose to pay beyond it now; it starts when egress billing does.`;
   return `Apps stop at ${allowance}. Or pay for egress beyond it.`;
 }
 
@@ -144,7 +146,9 @@ export function billStatus(facts: BillFacts): BillStatus {
   if (egress.state === 'ready' && egressMeter && egressMeter.used >= egressMeter.limit)
     return stopped(
       `Egress reached ${gib(egressMeter.limit)}.`,
-      egress.electable && !egress.enabled ? 'egress' : egress.electable ? undefined : 'plans'
+      // Electing to pay lifts the stop only once egress billing is live; until
+      // then a bigger plan is the way past the allowance.
+      egress.electable && !egress.enabled && !egress.billingOff ? 'egress' : 'plans'
     );
 
   // 3. Close to a limit.

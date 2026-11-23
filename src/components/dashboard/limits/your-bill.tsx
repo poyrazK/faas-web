@@ -144,6 +144,7 @@ export function YourBill({
                   <EgressChoice
                     org={org}
                     enabled={egress.enabled}
+                    billingOff={egress.billingOff}
                     includedGb={egress.includedGb}
                     priceMillicentsPerGib={data.egress?.price_millicents_per_gib}
                     open={egressOpen}
