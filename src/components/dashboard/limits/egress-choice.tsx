@@ -59,7 +59,7 @@ export function EgressChoice({
         (err.code === 'step_up_required' || err.code === 'mfa_required')
       ) {
         if (await stepUp(err.code)) return write(true);
-        throw new Error('Two-factor verification is needed to change this.');
+        throw new Error('Two-factor verification is needed to change this.', { cause: err });
       }
       throw err;
     }
