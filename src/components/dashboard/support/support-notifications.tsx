@@ -37,7 +37,7 @@ function SupportUnread({ scope }: { scope: SupportScope }) {
       className="pressable inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       <Headset className="size-4" aria-hidden="true" />
-      <span className="sr-only sm:not-sr-only">Support</span>
+      <span className="sr-only @4xl/topbar:not-sr-only">Support</span>
       {query.error ? (
         <span title="Support updates unavailable" aria-label="Support updates unavailable">
           !

@@ -303,12 +303,34 @@ function BucketManager({
     );
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-6">
       <aside aria-labelledby={listId} className="flex flex-col gap-2.5">
-        <h2 id={listId} className="bento-label">
+        <h2 id={listId} className="bento-label hidden lg:block">
           Buckets
         </h2>
-        <ul className="flex flex-col gap-2">
+        <label className="flex min-w-0 flex-col gap-1.5 lg:hidden">
+          <span className="bento-label">Buckets</span>
+          <Select
+            value={bucket?.id ?? ''}
+            onChange={(event) => select(event.target.value)}
+            className="w-full min-w-0"
+          >
+            <option value="" disabled>
+              Pick a bucket
+            </option>
+            {data.items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <ul
+          className={cn(
+            'flex flex-col gap-2',
+            data.items.every((item) => item.state === 'ready') && 'hidden lg:flex'
+          )}
+        >
           {data.items.map((b) => {
             const open = bucket?.id === b.id;
             const line = `${listId}-${b.id}`;
@@ -316,7 +338,10 @@ function BucketManager({
               <li
                 key={b.id}
                 data-open={open ? '' : undefined}
-                className="storage-bucket relative flex flex-col gap-1 surface rounded-[1.25rem] bg-card px-4 py-3"
+                className={cn(
+                  'storage-bucket relative flex flex-col gap-1 surface rounded-[1.25rem] bg-card px-4 py-3',
+                  b.state === 'ready' && 'hidden lg:flex'
+                )}
               >
                 <button
                   type="button"
@@ -373,7 +398,7 @@ function BucketManager({
           })}
         </ul>
         {data.enabled && (
-          <details className="storage-new group rounded-[1.25rem] px-4 py-2.5 open:well open:bg-muted/40">
+          <details className="storage-new group rounded-[1.25rem] py-1 open:well open:bg-muted/40 open:p-3 lg:px-4 lg:py-2.5">
             <summary className="pressable flex w-fit cursor-pointer list-none items-center gap-1.5 rounded text-sm text-muted-foreground group-open:mb-3 hover:text-foreground [&::-webkit-details-marker]:hidden">
               <Plus aria-hidden="true" className="size-4" />
               New bucket
@@ -589,20 +614,20 @@ function BucketDetail({
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 lg:gap-6">
       <section
         aria-labelledby={titleId}
-        className="flex flex-col gap-4 surface rounded-[1.25rem] bg-card p-5 sm:p-6"
+        className="flex flex-col gap-2 surface rounded-[1.25rem] bg-card p-3 sm:gap-4 sm:p-6"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-4">
+          <div className="flex min-w-0 flex-col gap-1 sm:gap-2">
             <h2
               id={titleId}
-              className="storage-address text-2xl font-semibold leading-tight [overflow-wrap:anywhere] sm:text-3xl"
+              className="storage-address text-xl font-semibold leading-tight [overflow-wrap:anywhere] sm:text-3xl"
             >
               {bucket.name}
             </h2>
-            <p className="max-w-2xl text-lg leading-snug [overflow-wrap:anywhere]">
+            <p className="max-w-2xl text-sm leading-snug [overflow-wrap:anywhere] sm:text-lg">
               {bucketSentence(bucket, slug, firstPage.data)}
             </p>
           </div>
@@ -624,7 +649,7 @@ function BucketDetail({
           failed={Boolean(bindings.error || grants.error || credentials.error)}
           onManage={() => onChange({ tab: 'code' })}
         />
-        <div className="border-t border-border pt-4">
+        <div className="border-t border-border pt-2 sm:pt-4">
           <DetailDisclosure title="Address and ID" summary={`s3://${bucket.name}`}>
             <dl className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-[max-content_minmax(0,1fr)]">
               <dt className="text-muted-foreground">S3 address</dt>
@@ -943,9 +968,9 @@ function ObjectBrowser({
             </button>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {view === 'current' && (
-            <label className="storage-find flex h-9 items-center gap-2 well rounded-xl bg-muted/40 px-3 text-sm">
+            <label className="storage-find flex h-9 min-w-0 max-w-full items-center gap-2 well rounded-xl bg-muted/40 px-3 text-sm">
               <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
               <input
                 aria-label="Find a file"
@@ -953,12 +978,18 @@ function ObjectBrowser({
                 value={find}
                 onChange={(e) => setFind(e.target.value)}
                 spellCheck={false}
-                className="w-36 bg-transparent outline-none placeholder:text-muted-foreground sm:w-44"
+                className="w-36 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground sm:w-44"
               />
             </label>
           )}
           {views.length > 1 && (
-            <SegmentedControl label="View" value={view} options={views} onChange={setView} />
+            <SegmentedControl
+              label="View"
+              value={view}
+              options={views}
+              onChange={setView}
+              className="min-w-0 max-w-full"
+            />
           )}
         </div>
       </div>

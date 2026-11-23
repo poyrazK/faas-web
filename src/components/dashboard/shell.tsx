@@ -645,7 +645,13 @@ function Breadcrumbs() {
       {trail.map(({ label, to, search }, i) => {
         const last = i === trail.length - 1;
         return (
-          <span key={i} className="flex min-w-0 items-center gap-1.5">
+          <span
+            key={i}
+            className={cn(
+              'hidden min-w-0 items-center gap-1.5',
+              last ? '@lg/topbar:flex' : '@3xl/topbar:flex'
+            )}
+          >
             <span aria-hidden className="shrink-0 text-muted-foreground/40">
               /
             </span>
@@ -1077,24 +1083,25 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   )}
                 >
                   {/* Top bar */}
-                  <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
-                    <button
-                      aria-label="Open navigation"
-                      className="pressable rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
-                      onClick={() => setMobileOpen(true)}
-                    >
-                      <Menu className="h-4 w-4" />
-                    </button>
-
-                    <Breadcrumbs />
-
-                    <div className="ml-auto flex items-center gap-1.5">
-                      <NeedsAttentionButton />
-                      <SupportNotificationsButton />
-                      <NewAppButton />
-                      {/* Search lives on the overview as the page's own field;
-                      ⌘K still opens the palette from anywhere. */}
-                      <AccountMenu onSignOut={handleSignOut} />
+                  <header className="@container/topbar sticky top-0 z-20 border-b border-border bg-background px-4 sm:px-6">
+                    <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 py-0.5">
+                      <div className="flex min-w-[min(3.25rem,100%)] flex-1 items-center gap-2">
+                        <button
+                          aria-label="Open navigation"
+                          className="pressable shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+                          onClick={() => setMobileOpen(true)}
+                        >
+                          <Menu className="h-4 w-4" />
+                        </button>
+                        <Breadcrumbs />
+                      </div>
+                      <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1.5">
+                        <NeedsAttentionButton />
+                        <SupportNotificationsButton />
+                        <NewAppButton />
+                        {/* Search lives on the overview; ⌘K also opens the palette. */}
+                        <AccountMenu onSignOut={handleSignOut} />
+                      </div>
                     </div>
                   </header>
 

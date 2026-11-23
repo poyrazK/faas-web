@@ -761,7 +761,9 @@ describe('dashboard navigation foundation', () => {
       await userEvent.keyboard('{Control>}k{/Control}');
       await userEvent.type(await screen.findByRole('combobox', { name: 'Search commands' }), label);
       await userEvent.click(
-        screen.getAllByRole('option').find((option) => option.textContent === label)!
+        within(screen.getByRole('dialog', { name: 'Command palette' })).getByRole('option', {
+          name: label,
+        })
       );
       await waitFor(() =>
         expect(router.state.location.search).toEqual({
@@ -784,6 +786,27 @@ describe('dashboard navigation foundation', () => {
     await act(async () => router.history.forward());
     await waitFor(() => expect(router.state.location.search.section).toBe('api-keys'));
     expect(router.state.location.search.scope).toBe('organization');
+  });
+
+  it('keeps Settings scope and the anchor when using the compact section picker', async () => {
+    const router = await renderShell(
+      '/dashboard/settings?section=organization&org=bravo&scope=organization&campaign=handoff#details'
+    );
+
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Settings section' }),
+      'members'
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        section: 'members',
+        org: 'bravo',
+        scope: 'organization',
+        campaign: 'handoff',
+      })
+    );
+    expect(router.state.location.hash).toBe('details');
   });
 
   it('does not copy another route search or hash into a Settings palette destination', async () => {

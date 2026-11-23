@@ -84,7 +84,7 @@ export function NewAppButton() {
       <span aria-hidden="true" className="depth-foil-l depth-foil-pearl" />
       <span className="depth-label">
         <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">New app</span>
+        <span className="hidden @4xl/topbar:inline">New app</span>
       </span>
       <span aria-hidden="true" className="depth-foil-l depth-foil-shine" />
       <span aria-hidden="true" className="depth-foil-l depth-foil-glare" />

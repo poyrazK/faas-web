@@ -213,8 +213,16 @@ export function AccountAnalytics({
     },
     { id: 'throttled', value: data?.throttled_total, note: 'Requests limited by the platform' },
   ];
+  const tilesGrid =
+    'grid grid-cols-1 gap-2 @min-[21rem]/analytics:grid-cols-2 @min-[56rem]/analytics:grid-cols-4';
+  const tile =
+    'surface grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-[1.25rem] bg-card p-3 text-left @min-[21rem]/analytics:block';
+  const valueClass =
+    'text-xl font-semibold leading-tight tracking-tight tabular-nums @min-[21rem]/analytics:mt-1.5 @min-[56rem]/analytics:text-[26px]';
+  const noteClass =
+    'col-span-2 text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere] @min-[21rem]/analytics:mt-1.5';
   const tiles = (items: typeof traffic) => (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={tilesGrid}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -223,53 +231,53 @@ export function AccountAnalytics({
           onClick={() =>
             inspect({ metric: item.id, since: window, source: scoped ? 'rollup' : 'slo' })
           }
-          className="group surface rounded-[1.25rem] bg-card p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand"
+          className={`${tile} transition-colors focus-visible:outline-2 focus-visible:outline-brand`}
         >
           <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS[item.id]}</p>
-          <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+          <p className={valueClass}>
             {tilePhase === 'loading'
               ? 'Loading…'
               : accountKnown
                 ? metricValue(item.id, item.value, true)
                 : '—'}
           </p>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{item.note}</p>
+          <p className={noteClass}>{item.note}</p>
         </button>
       ))}
     </div>
   );
   const projectLimits = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={tilesGrid}>
       <button
         type="button"
         aria-label="View response time details by app"
         onClick={() => inspect({ metric: 'p95', since: window, source: 'rollup' })}
-        className="group surface rounded-[1.25rem] bg-card p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand"
+        className={`${tile} transition-colors focus-visible:outline-2 focus-visible:outline-brand`}
       >
         <p className="text-xs font-medium text-muted-foreground">Slowest app · p95</p>
-        <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+        <p className={valueClass}>
           {tilePhase === 'loading'
             ? 'Loading…'
             : projectKnown && totals.slowest
               ? `${totals.slowest.p95Ms} ms`
               : '—'}
         </p>
-        <p className="mt-3 truncate text-xs leading-relaxed text-muted-foreground">
+        <p className={noteClass}>
           {projectKnown && totals.slowest
             ? `${totals.slowest.slug}, the slowest of ${appWord(totals.apps)}`
             : 'Response times need traffic'}
         </p>
       </button>
-      <div className="surface rounded-[1.25rem] bg-card p-4">
+      <div className={tile}>
         <p className="text-xs font-medium text-muted-foreground">{METRIC_LABELS.throttled}</p>
-        <p className="mt-3 text-[26px] font-semibold tracking-tight tabular-nums">
+        <p className={valueClass}>
           {throttle.kind === 'loading'
             ? 'Loading…'
             : throttle.kind === 'known'
               ? metricValue('throttled', throttle.total, true)
               : '—'}
         </p>
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+        <p className={noteClass}>
           {throttle.kind === 'unknown' && throttle.reason === 'too-many'
             ? `Not totalled for more than ${MAX_THROTTLE_APPS} apps`
             : throttle.kind === 'unknown'
@@ -293,7 +301,7 @@ export function AccountAnalytics({
       .slice(0, 6);
   return (
     <div className="flex flex-col gap-6">
-      <section aria-label="Account overview" className="flex flex-col gap-5">
+      <section aria-label="Account overview" className="@container/analytics flex flex-col gap-5">
         <PlanGated
           error={scoped ? metrics.error : account.error}
           feature={scoped ? 'Per-app metrics' : 'Account analytics'}

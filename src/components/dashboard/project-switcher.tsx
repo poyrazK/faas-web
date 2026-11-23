@@ -49,7 +49,7 @@ export function ProjectSwitcher() {
 
   return (
     <>
-      <span aria-hidden className="shrink-0 text-muted-foreground/40">
+      <span aria-hidden className="hidden shrink-0 text-muted-foreground/40 @lg/topbar:inline">
         /
       </span>
       <DropdownMenu>
@@ -57,7 +57,15 @@ export function ProjectSwitcher() {
           aria-label={`Project: ${label}. Switch project`}
           className="pressable flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand"
         >
-          <span className={cn('truncate', !scope.project && 'text-muted-foreground')}>{label}</span>
+          <Folder aria-hidden className="size-3.5 shrink-0 @lg/topbar:hidden" />
+          <span
+            className={cn(
+              'hidden truncate @lg/topbar:inline',
+              !scope.project && 'text-muted-foreground'
+            )}
+          >
+            {label}
+          </span>
           <NavArrowDown aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">

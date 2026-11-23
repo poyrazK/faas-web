@@ -375,7 +375,7 @@ export function NeedsAttentionButton() {
             className="pressable inline-flex min-h-9 shrink-0 items-center justify-center gap-2 surface rounded-[1.25rem] bg-card px-2.5 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand data-[state=open]:border-brand/40 data-[state=open]:bg-brand/10"
           >
             <WarningTriangle aria-hidden="true" className="size-4 text-status-warning" />
-            <span className="hidden sm:inline">Needs attention</span>
+            <span className="hidden @4xl/topbar:inline">Needs attention</span>
           </button>
         </PopoverPrimitive.Trigger>
       </Tooltip>
