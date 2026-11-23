@@ -112,16 +112,16 @@ function uploadLimits(data: BucketCatalog, multipartOn: boolean) {
   return { direct, parts };
 }
 
-/** The preview's limits, in the page's "?" rather than as a line under it. */
+/** The bucket and upload limits, in the page's "?" rather than as a line under it. */
 function Limits({ data, multipartOn }: { data: BucketCatalog; multipartOn: boolean }) {
   const { direct, parts } = uploadLimits(data, multipartOn);
   return (
     <>
-      Preview. Up to {data.max_buckets_per_app} buckets per app.{' '}
+      Up to {data.max_buckets_per_app} buckets per app.{' '}
       {parts
         ? `Single uploads up to ${formatUploadLimit(direct)}; larger files upload in parts, up to ${formatUploadLimit(parts)}.`
         : `Direct uploads up to ${formatUploadLimit(direct)}.`}{' '}
-      Storage billing is not integrated yet.
+      Storage beyond your plan's included amount is billed by the GiB-month.
     </>
   );
 }
@@ -146,11 +146,11 @@ export function ObjectStorage({
   const availability = useCapability('object-storage');
   const multipartOn = useCapabilityAccess('multipart-uploads').access === 'on';
   // The same read the bucket list makes (one request, shared by key): the
-  // header's "?" carries the preview's limits once they are known.
+  // header's "?" carries the limits once they are known.
   const catalog = useObjectBuckets(app.slug);
   const maturity = availability.capability?.maturity;
-  // The page has always called itself a preview; the catalog decides once it says.
-  const stage = maturity ? capabilityStage(maturity) : 'Preview';
+  // Object storage is GA (faas ADR-20261121230052); the catalog can still say otherwise.
+  const stage = capabilityStage(maturity);
   const [local, setLocal] = useState<StorageSelection>({});
   const current = selection ?? local;
   const emit: SelectionChange = onSelectionChange ?? setLocal;

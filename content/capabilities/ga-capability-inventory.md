@@ -44,7 +44,7 @@ Columns:
 
 | Tier | Rows | Meaning |
 |---|---|---|
-| `GA` | 47 | Ships in v1.0, billed, held to the "ready to charge" bar. |
+| `GA` | 49 | Ships in v1.0, billed, held to the "ready to charge" bar. |
 | `beta` | 32 | On for every account, labelled beta, may change, no service credits. |
 | `preview` | 46 | Off by default; released per account with a platform flag (design partners). |
 | `internal` | 42 | Hidden from customers; development frozen until after v1.0. |
@@ -61,17 +61,25 @@ Columns:
   Managed Postgres joined GA on 2026-10-31 (ADR-20261031091607) with a
   customer journey against the deployed product; resize and organization
   databases are beta, cutovers stay preview.
+  Object storage joined GA on OVH (ADR-20261121230052, row 108); its
+  acceptance evidence is a customer journey run against production.
+  Versioning, Object Lock, lifecycle rules, encryption keys, CORS and bucket
+  access grants stay preview (row 175).
 - **beta** is what customers expect around that core and what already runs on
   production, but should not hold up the charge bar: canaries,
   jobs and workflows, edge rules, caching, alerts, orgs.
-- **preview** is every large standalone product (object storage,
-  Data API, realtime, live queries, application Auth, AI gateway, durable
-  entities, events and queues, Operations, MCP hosting) and every feature that
+  Core realtime joined beta on 2026-11-23 (ADR-20261123074615, row 112);
+  its acceptance evidence is the realtime journey and a load run against
+  production. Retained history and everything built on it stay preview
+  (row 176).
+- **preview** is every large standalone product (Data API, realtime preview, live
+  queries, application Auth, AI gateway, durable entities, events and queues,
+  Operations, MCP hosting) and every feature that
   is off or flagged today. Resource-holding products need proven backups and
   plan limits before anyone depends on them.
 - **internal** is operator tooling, frozen experiments, and features that
   duplicate or decorate others: the route-analysis family (8 rows, except
-  route monitoring), automations, scenario tests, platform tenants, API
+  route monitoring), stored workflows, scenario tests, platform tenants, API
   consumers and monetization, and the internal CI, hosting and mail systems.
 
 **Calls worth a second look**
@@ -128,7 +136,7 @@ internal hosting service and Gregale Agents are already unreachable.
 | # | Capability | Where it lives | Catalog | Gate today | Tier |
 |---|---|---|---|---|---|
 | 24 | Rollback to a named revision | `rollback`, `gregale rollback` | `progressive-rollouts` beta | — | GA |
-| 25 | Progressive rollouts: canary ladder, traffic split, automatic rollback on 5xx | `rollouts`, `gregale canary` | `progressive-rollouts` beta | — | beta |
+| 25 | Progressive rollouts: canary ladder, traffic split, automatic rollback on 5xx | `rollouts`, `gregale canary`, service-abort acceptance receipts (`/v1/apps/{slug}/service-aborts/{attempt_id}`, Go SDK `service_abort_attempts`) | `progressive-rollouts` beta | — | beta |
 | 26 | Deployment aliases | `deployment-aliases`, `gregale alias` | **MISSING** | — | beta |
 | 27 | Pull-request previews | `previews` | `pr-previews` ga | — | GA |
 | 28 | Release gates on customer signals | `release-gates` | **MISSING** | — | preview |
@@ -140,6 +148,7 @@ internal hosting service and Gregale Agents are already unreachable.
 | 34 | Release commands: a command (e.g. migrations) that must succeed before a deployment takes traffic | `gregale.yaml` `release` | **MISSING** | — | beta |
 | 35 | Traffic mirroring | `mirrors`, `gregale mirror`, `gregale traffic` | **MISSING** | — | preview |
 | 36 | Critical route health during canaries | `route-health` | `route-health-canary-guard` preview | — | preview |
+| 177 | Verification contracts: `gregale.verify.yaml` HTTP, MCP and read-only SQL checks run against a candidate before it takes traffic (ADR-20261122220000) | `verification-contract`, `verification-contracts`, `app_verification_contracts`, `gregale release check` | `verification-contracts` preview | `verification_contracts` platform flag (off) | preview |
 | 37 | Alert-triggered rollbacks | `alert-rollbacks` | **MISSING** | — | preview |
 
 ## C. Runtime and compute
@@ -161,12 +170,12 @@ internal hosting service and Gregale Agents are already unreachable.
 | 50 | Warm pool and warm snapshots | app `warm_pool_size` | **MISSING** | plan: `WarmPoolAllowed` (Hobby+) | beta |
 | 51 | Reserved concurrency and eviction priority | app `eviction_priority` | **MISSING** | plan: `ReservedConcurrencyPerAccount` | preview |
 | 52 | Application companions (sidecars) | `sidecars` | `companions` preview | — | preview |
-| 53 | Disposable isolated runs, execution workflows, artifact grants | `/v1/executions` | `disposable-runs` preview | `env: FAAS_EXECUTION_API_ENABLED=0` | preview |
+| 53 | Disposable isolated runs, execution workflows, artifact grants and durable output delivery | `/v1/executions`, `/v1/apps/{slug}/run-artifact-deliveries` | `disposable-runs` preview | `env: FAAS_EXECUTION_API_ENABLED=0` | preview |
 | 54 | MCP hosting: readiness, catalog monitor, OAuth, tasks | `mcp-*` | `mcp-hosting` preview | — | preview |
 | 55 | Production forks | `forks` | `production-forks` preview | `env: FAAS_APP_FORKS` | preview |
 | 56 | Crash snapshots | `crash-snapshots` | `crash-snapshots` preview | `env: FAAS_CRASH_SNAPSHOTS` | preview |
 | 57 | Dev Bridge: run one service on a laptop | `/v1/dev`, `gregale dev` | `dev-bridge` internal | `faas_dev_bridge_enabled: false` | internal |
-| 58 | Developer environments: expiring `gregale dev` environments, developer session leases, file watch and sync, live source patch without rebuild | `/v1/dev/sessions`, dashboard `developer_environments` | **MISSING** | plan: `DeveloperApps` | preview |
+| 58 | Developer environments: expiring `gregale dev` environments, developer session leases, file watch and sync, live source patch without rebuild | `/v1/dev/sessions`, dashboard `developer_environments` | `developer-environments` preview (journey `TestDevLoop`: edit live in 6.8 s on prod 2026-11-19, fails over 60 s) | plan: `DeveloperApps` | preview |
 | 59 | Scenario tests and release rehearsal: run scenarios against expiring developer environments, record and replay, network fault injection | `/v1/dev/test-runs`, `gregale test`, `gregale chaos` | **MISSING** | — | internal |
 | 60 | Env vars: diff, history and rollback, push / pull, environment clone, secret scanning | `env`, `env-diff`, `gregale env` | **MISSING** | — | GA |
 | 61 | Secrets: sealed values, references, revocations, hot reload without restart, delivery status | `secrets`, `secret-references`, `secret-revocations`, guest `FAAS_SECRETS_RELOAD_*` | **MISSING** | — | GA |
@@ -215,7 +224,7 @@ internal hosting service and Gregale Agents are already unreachable.
 | 94 | Workflows: code workflows SDK, attention/outcomes/performance, recovery policy | `workflows`, `workflow-*`, `recovery-policy` | `workflows-and-jobs` preview | `env: FAAS_WORKFLOWS_ENABLED=1` | beta |
 | 95 | Delayed tasks | `delayed-tasks` | `delayed-execution` preview | — | beta |
 | 96 | Async invocations and results | `invoke`, `invocations` | **MISSING** | — | beta |
-| 97 | Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery | `/v1/triggers` | **MISSING** | batch: `pf: trigger_batch_delivery` | preview |
+| 97 | Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery (broker semantics: [broker-triggers.md](broker-triggers.md)) | `/v1/triggers` | `event-triggers` preview | batch: `pf: trigger_batch_delivery` | preview |
 | 98 | Events: publish, schemas, subscriptions, deliveries, replays, recoveries, DLQ, work policies | `events`, `event-*`, `dlq`, `work-policies` | **MISSING** | — | preview |
 | 99 | Queues: in-platform SQS-compatible HTTP queue, pull leases, queue bindings, queue workloads | `queues`, `queue-bindings`, `queue-workload` | **MISSING** | — | preview |
 | 100 | Worker pools | `workers` | `worker-pools` preview | — | preview |
@@ -223,7 +232,7 @@ internal hosting service and Gregale Agents are already unreachable.
 | 102 | Durable inbound webhooks | `inbound-webhooks` | `durable-inbound-webhooks` preview | — | beta |
 | 103 | Outbound webhooks (account and app) | `/v1/webhooks`, app `webhooks` | **MISSING** | — | beta |
 | 104 | Operations: typed customer work, approvals, schedules, children, signals, milestones, effects | `operations`, `operation-*` | **MISSING** | `pf: operation_schedules`, `pf: operation_children` | preview |
-| 105 | Automations: manual / scheduled / event steps, test suites, baselines | `automations` | **MISSING** | — | internal |
+| 105 | Stored workflows: manual / scheduled / event steps, test suites, baselines | `stored-workflows` | **MISSING** | — | internal |
 | 106 | Managed exclusive operations | | `managed-exclusive-operations` internal | — | internal |
 | 107 | Gregale Commit | `commit-sources` | `gregale-commit` internal | `env: FAAS_COMMIT_RELAY_ENABLED` | internal |
 
@@ -231,11 +240,14 @@ internal hosting service and Gregale Agents are already unreachable.
 
 | # | Capability | Where it lives | Catalog | Gate today | Tier |
 |---|---|---|---|---|---|
-| 108 | Object storage: buckets, signed URLs, upload routes, S3 gateway, versioning, lifecycle rules, object lock, write protection, encryption keys, change notifications, multipart uploads | `buckets`, `upload-routes`, object-storaged, s3-gatewayd | `object-storage` preview | `s3_enabled` | preview |
+| 108 | Object storage: buckets, public buckets, signed URLs, upload routes, S3 gateway and S3 credentials, multipart uploads, app bindings (incl. key-scoped), change notifications and compute triggers | `buckets`, `upload-routes`, object-storaged, s3-gatewayd | `object-storage`, `s3-credentials`, `signed-urls`, `multipart-uploads`, `object-storage-compute`, `object-storage-key-scopes` ga | `s3_enabled`; `pf: object_storage` and its sub-feature flags (stored default closed until the production journey passes, ADR-20261121230052) | GA |
+| 175 | Bucket versioning, Object Lock and write protection, lifecycle rules, encryption keys, bucket CORS and bucket access grants (not served by the OVH backend) | `buckets/{id}/versioning`, `object-lock`, `protection`, `lifecycle`, `encryption`, `cors`, `access-grants` | `object-versioning`, `object-protection`, `object-lifecycle`, `bucket-encryption`, `bucket-cors`, `bucket-access-grants` preview (children of `object-storage`) | platform flags; the parent must be released too | preview |
 | 109 | Managed Postgres (account and org databases): point-in-time restore, scale-to-zero, availability classes, resize, connection pool | `/v1/postgres`, org `postgres` | `managed-postgres`, `postgres-bindings`, `postgres-restore` ga; `postgres-compute-policy`, `org-postgres` beta; `postgres-cutovers` preview | `pf: managed_postgres`; production approval (ADR-20261028103115) | GA |
+| 174 | Managed Redis: Valkey caches on compute nodes with scale to zero, data kept across park, restart and resize (ADR-20261116192126) | `/v1/redis`, `redis`, Compose `redis`/`valkey` services, gateway RESP session | `managed-redis` preview | `pf: managed_redis` (capability flag, default off) | preview |
 | 110 | Data API | `data-api`, `/v1/apps/{slug}/data-api` | `data-api` preview (child of `managed-postgres`) | platform flag; the parent must be released too | preview |
 | 111 | Durable entities and sessions, incl. browser sessions, backup, export and restore | `entities` | **MISSING** | — | preview |
-| 112 | Realtime channels: resume, tickets, access, occupancy | realtimed, app `realtime` (110 routes) | **MISSING** | `pf: realtime_*` | preview |
+| 112 | Realtime channels: endpoints, WebSocket and SSE connections held while the app is parked, live publish, direct and principal send, connection operations | realtimed, `realtime/endpoints`, `channels/{channel}/publish`, `principals:send`, `connections` | `realtime`, `realtime-connections` beta | `pf: realtime`; fair use, outbound budget and usage recording on in the units (ADR-1323) | beta |
+| 176 | Realtime preview: retained history, resume protocol and presence, occupancy, tickets, principal access, consumer groups and workers, push, publisher credentials | `channels/{channel}/groups`, `retained-messages`, `occupancy`, `tickets`, `principals`, `push`, `publish-credentials`, `/v1/realtime/workers` | `realtime-channels`, `realtime-occupancy`, `realtime-tickets`, `realtime-access`, `realtime-workers`, `realtime-push`, `realtime-publishers` preview (children of `realtime`) | `pf: realtime_preview` plus `realtime_*` flags and daemon switches, all off on production | preview |
 | 113 | Live queries | livequeryd | **MISSING** | `pf: live_queries` | preview |
 | 114 | AI gateway | outboundd | `ai-gateway` preview | `pf: ai_gateway` | preview |
 | 115 | Outbound integrations and bindings: key pools, probes | outboundd, `/v1/outbound`, `outbound-bindings` | **MISSING** | — | preview |
@@ -271,6 +283,7 @@ internal hosting service and Gregale Agents are already unreachable.
 | 139 | Operational summary | `operational-summary` | **MISSING** | — | internal |
 | 140 | Per-app costs and cost trend | dashboard `app_costs_*` | **MISSING** | — | GA |
 | 141 | Public status page and incidents | `/v1/status` (active and resolved incidents), `/v1/status/incidents/{public_id}` | **MISSING** | — | GA |
+| 173 | Production protection by default: SLOs, an hourly health check, email alerts and an SLO release gate created for new public apps | `/v1/apps/{slug}/protection`, `app_protection` | `protection-baseline` preview | `pf: protection_baseline` | preview |
 
 ## H. Account, teams and billing
 
@@ -286,10 +299,13 @@ internal hosting service and Gregale Agents are already unreachable.
 | 149 | API consumers: end-customer keys (ADR-120) | `consumers` | **MISSING** | — | internal |
 | 150 | API monetization: rate cards, consumer plans, billing, signup | `consumer-*`, `rate-cards` | `api-monetization` internal | `pf: api_monetization` | internal |
 | 151 | Plans, usage, invoices, overage cap, cost breakdown and forecast, FOCUS 1.4 invoice export | `billing`, `invoices`, `usage`, `gregale billing costs/forecast` | **MISSING** | `faas_billing_mode: disabled` | GA |
-| 152 | Budgets: policies, projections, alerts and channels, automatic stops (strict budgets) | `gregale billing budgets`, `financial_budget_*` tables | **MISSING** | `pf: strict_budgets` | beta |
+| 152 | Budgets: policies, projections, alerts and channels, preview stops (GA, ADR-20261107160000); strict budgets that stop workloads stay beta | `gregale billing budgets`, `financial_budget_*` tables | `budgets` ga, `strict-budgets` beta | `pf: strict_budgets` (strict budgets only) | GA |
 | 153 | GDPR export, account deletion and restore during grace, DPA | `/v1/account/export`, `DELETE /v1/account`, `gregale account restore` | **MISSING** | — | GA |
 | 154 | Customer feature flags | | `feature-flags` internal | `pf: customer_flags` | internal |
 | 155 | Product control | `product-control` | `product-control` internal | env flag | internal |
+
+| 170 | Referral codes and conversion estimates | `/v1/referrals/*`, `referral_*`, `pkg/referrals`; explicit customer and salesperson codes, first-payment estimates, no payouts | **MISSING** | `env: FAAS_SALES_ENABLED=0` | preview |
+| 171 | Website sales inquiries | `/v1/sales/inquiries*`; optional salesperson code, review queue and follow-up tasks | **MISSING** | `env: FAAS_SALES_ENABLED=0`, `FAAS_SALES_INTAKE_ENABLED=0` | preview |
 
 ## I. Developer tools
 
@@ -299,8 +315,10 @@ internal hosting service and Gregale Agents are already unreachable.
 | 157 | Web dashboard | `pkg/dashboard` | **MISSING** | — | GA |
 | 158 | SDKs: Node, Python, Go, Kotlin, Swift; auth and data SDKs; webhook verifier, idempotency helpers | `sdk/` | **MISSING** | — | beta |
 | 159 | Public OpenAPI spec and capabilities endpoint | `/v1/openapi.json`, `/v1/capabilities` | **MISSING** | — | GA |
-| 160 | Gregale management MCP server: AI agents manage Gregale over MCP, with an OAuth server | `gregale mcp serve`, `pkg/mcpmanagement`, `/oauth/*`, `/.well-known/oauth-*` | **MISSING** | — | preview |
+| 160 | Gregale management MCP server: AI agents manage Gregale over MCP, with an OAuth server | `gregale mcp serve`, `pkg/mcpmanagement`, `pkg/docsindex` (shipped docs index for docs search and `gregale guide "<text>"`), `/oauth/*`, `/.well-known/oauth-*`, `/v1/tool-*`, `/v1/delegated-tool-*`, `pkg/toolpublication`, `pkg/toolinvocation`, `pkg/toolgrant`, `pkg/toolconnection` | **MISSING** | — | preview |
 | 161 | Docs site and trust pages: DPA, subprocessors, security reporting, security.txt | `docs/customer-pages.json`, `/.well-known/security.txt` | **MISSING** | — | GA |
+
+| 169 | Native customer support: portal, staff inbox, conversations, target policies, routing, reopening and reviewed staff operations | `/dashboard/support`, `/dashboard/orgs/{org}/support`, `/v1/support`, `/v1/orgs/{org}/support`, `pkg/apid/support` | `customer-support` preview | `pf: customer_support` | preview |
 
 ## J. Operator and internal systems (not customer-facing today)
 
@@ -311,5 +329,5 @@ internal hosting service and Gregale Agents are already unreachable.
 | 164 | Internal mail service | maild, mailctl | **MISSING** | `env: FAAS_INTERNAL_MAIL_*=0` | internal |
 | 165 | Operator admin, compute nodes, `gregalectl` | `/v1/admin`, `/v1/compute-nodes` | n/a | admin auth | internal |
 | 166 | Platform OCI registry: internal snapshot and image storage backend | `pkg/oci/registry.go` (`/v2/`) | n/a | internal | internal |
-| 167 | Gregale Agents: agent runs, the automation agent step, agent triggers | `/v1/agents`, `/v1/agent-runs`, `/v1/agent-callbacks`, `/v1/agent-tools`, agentd | `agents` internal | `pf: agents` | internal |
-| 169 | Native customer support: portal, staff inbox, conversations, target policies, routing, reopening and reviewed staff operations | `/dashboard/support`, `/dashboard/orgs/{org}/support`, `/v1/support`, `/v1/orgs/{org}/support`, `pkg/apid/support` | `customer-support` preview | `pf: customer_support` | preview |
+| 167 | Gregale Agents: agent runs, the stored workflow agent step, agent triggers | `/v1/agents`, `/v1/agent-runs`, `/v1/agent-callbacks`, `/v1/agent-tools`, `/v1/sandboxes`, `/v1/sandbox-snapshots`, `/v1/sandbox-templates`, agentd | `agents` internal | `pf: agents` | internal |
+| 172 | Sales workspace and lead management | `sales.gregale.dev`, `/v1/sales/*`; explicit staff lists, CRM, reports, activity, qualification and message templates | **MISSING** | `env: FAAS_SALES_ENABLED=0`; verified email and session MFA | internal |

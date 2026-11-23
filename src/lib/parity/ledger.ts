@@ -407,7 +407,7 @@ export const LEDGER: LedgerEntry[] = [
   // C53 · preview
   {
     row: 53,
-    name: 'Disposable isolated runs, execution workflows, artifact grants',
+    name: 'Disposable isolated runs, execution workflows, artifact grants and durable output delivery',
     status: 'none',
     surfaces: [],
     gap: 'Disposable runs and execution workflows',
@@ -682,7 +682,7 @@ export const LEDGER: LedgerEntry[] = [
   // E97 · preview
   {
     row: 97,
-    name: 'Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery',
+    name: 'Triggers and event sources: Kafka, NATS JetStream, Redis Streams, AMQP / RabbitMQ, SQS-compatible, bucket events, function webhooks; batch delivery (broker semantics: [broker-triggers.md](broker-triggers.md))',
     status: 'full',
     surfaces: ['/dashboard/triggers'],
     capability: 'event-triggers',
@@ -745,20 +745,36 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Operations and work policies',
     wave: 3,
   },
-  // F108 · preview. Everything on the Storage page, each part behind its own
-  // sub-capability: the versioning toggle and every version (download,
-  // restore, undelete, permanent delete); lifecycle rules; CORS; object tags;
-  // default encryption; Object Lock with default retention, per-version legal
-  // holds, retention and event holds, and a legal hold on new uploads;
-  // uploads in parts with resume and abort; upload routes; change
-  // notifications; and write receipts. Compute-trigger rules come from the
+  // F108 · GA since 2026-11-22 (ADR-20261121230052). Buckets, uploads in
+  // parts with resume and abort, upload routes, S3 credentials and bindings,
+  // change notifications, object tags and write receipts are on the Storage
+  // page. The bucket settings that stay preview are F175. Compute-trigger rules come from the
   // app's manifest on deploy; the page shows them and keeps them on save.
   {
     row: 108,
-    name: 'Object storage: buckets, signed URLs, upload routes, S3 gateway, versioning, lifecycle rules, object lock, write protection, encryption keys, change notifications, multipart uploads',
+    name: 'Object storage: buckets, public buckets, signed URLs, upload routes, S3 gateway and S3 credentials, multipart uploads, app bindings (incl. key-scoped), change notifications and compute triggers',
     status: 'full',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
+    wave: 3,
+  },
+  // F175 · preview (split out of F108 when object storage went GA on
+  // 2026-11-22). Each bucket setting is its own capability and its panel
+  // explains when it's off; the OVH backend doesn't serve them yet.
+  {
+    row: 175,
+    name: 'Bucket versioning, Object Lock and write protection, lifecycle rules, encryption keys, bucket CORS and bucket access grants (not served by the OVH backend)',
+    status: 'full',
+    surfaces: ['/dashboard/storage'],
+    capability: 'object-versioning',
+  },
+  // F174 · preview
+  {
+    row: 174,
+    name: 'Managed Redis: Valkey caches on compute nodes with scale to zero, data kept across park, restart and resize (ADR-20261116192126)',
+    status: 'none',
+    surfaces: [],
+    gap: 'Managed Redis caches',
     wave: 3,
   },
   // F109 · GA (since 2026-10-31; resize and org databases beta, cutovers preview).
@@ -790,15 +806,27 @@ export const LEDGER: LedgerEntry[] = [
     gap: 'Durable entities (run by operators today)',
     wave: 3,
   },
-  // F112 · preview
+  // F112 · beta
   {
     row: 112,
-    name: 'Realtime channels: resume, tickets, access, occupancy',
+    name: 'Realtime channels: endpoints, WebSocket and SSE connections held while the app is parked, live publish, direct and principal send, connection operations',
     status: 'partial',
     surfaces: ['/dashboard/apps/$appSlug?tab=Realtime'],
     capability: 'realtime',
     cli: 'gregale realtime drain',
-    gap: 'Consumer-group controls (create, pause, drain, dead letters, replay, policies); publisher and worker credentials; connection drain (CLI) and subscribe; principal send and inbox; schedules, reducers, snapshots and event schemas; push devices, deliveries and preferences; channel-rule editing',
+    gap: 'Principal send; connection drain (CLI)',
+    wave: 3,
+  },
+  // F176 · preview (split out of F112 on 2026-11-24). Retained messages,
+  // occupancy, tickets, principal access, consumer groups and push providers
+  // are on the Realtime tab.
+  {
+    row: 176,
+    name: 'Realtime preview: retained history, resume protocol and presence, occupancy, tickets, principal access, consumer groups and workers, push, publisher credentials',
+    status: 'partial',
+    surfaces: ['/dashboard/apps/$appSlug?tab=Realtime'],
+    capability: 'realtime-channels',
+    gap: 'Consumer-group controls (create, pause, drain, dead letters, replay, policies); publisher and worker credentials; subscribe and inbox; schedules, reducers, snapshots and event schemas; push devices, deliveries and preferences; channel-rule editing',
     wave: 3,
   },
   // F113 · preview
@@ -1012,10 +1040,10 @@ export const LEDGER: LedgerEntry[] = [
     // The cost breakdown (GET /v1/billing/costs) is on personal Usage; apid
     // has no organization cost route, and a company's Usage page says so.
   },
-  // H152 · beta
+  // H152 · GA (strict budgets beta)
   {
     row: 152,
-    name: 'Budgets: policies, projections, alerts and channels, automatic stops (strict budgets)',
+    name: 'Budgets: policies, projections, alerts and channels, preview stops (GA, ADR-20261107160000); strict budgets that stop workloads stay beta',
     // Alert, Stop previews and Strict cap over every scope, with preview,
     // revisions, channels and recorded stops. Strict caps show apid's "not
     // released" refusal and fall back to a draft; API-only responses
@@ -1072,5 +1100,41 @@ export const LEDGER: LedgerEntry[] = [
     name: 'Docs site and trust pages: DPA, subprocessors, security reporting, security.txt',
     status: 'full',
     surfaces: ['/docs'],
+  },
+  // B177 · preview
+  {
+    row: 177,
+    name: 'Verification contracts: `gregale.verify.yaml` HTTP, MCP and read-only SQL checks run against a candidate before it takes traffic (ADR-20261122220000)',
+    status: 'none',
+    surfaces: [],
+    gap: 'Verification contract results on a release',
+    wave: 3,
+  },
+  // G173 · preview
+  {
+    row: 173,
+    name: 'Production protection by default: SLOs, an hourly health check, email alerts and an SLO release gate created for new public apps',
+    status: 'none',
+    surfaces: [],
+    gap: 'The protection baseline an app was given, and turning it off',
+    wave: 3,
+  },
+  // H170 · preview (no catalog id upstream)
+  {
+    row: 170,
+    name: 'Referral codes and conversion estimates',
+    status: 'none',
+    surfaces: [],
+    gap: 'Referral codes',
+    wave: 3,
+  },
+  // H171 · preview (no catalog id upstream)
+  {
+    row: 171,
+    name: 'Website sales inquiries',
+    status: 'none',
+    surfaces: [],
+    gap: 'Sales inquiry form',
+    wave: 3,
   },
 ];

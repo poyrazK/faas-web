@@ -324,6 +324,30 @@ it('keeps cleanup available when the operator disables storage', async () => {
     'true'
   );
 });
+it('calls object storage generally available, without a stage or a billing caveat', async () => {
+  mocks.capability.mockReturnValue({
+    state: 'available',
+    capability: { maturity: 'ga' },
+    refresh: vi.fn(),
+  });
+  show();
+  const heading = screen.getByRole('heading', { name: 'Object storage' });
+  expect(heading.parentElement).not.toHaveTextContent(/Preview|Beta/);
+  await limits();
+  expect(screen.queryByText(/billing is not integrated/i)).toBeNull();
+  expect(screen.queryByText(/^Preview\./)).toBeNull();
+  expect(screen.getByText(/billed by the GiB-month/)).toBeInTheDocument();
+});
+it('still shows the stage the catalog names', () => {
+  mocks.capability.mockReturnValue({
+    state: 'available',
+    capability: { maturity: 'beta' },
+    refresh: vi.fn(),
+  });
+  show();
+  const heading = screen.getByRole('heading', { name: 'Object storage' });
+  expect(heading.parentElement).toHaveTextContent('Beta');
+});
 it('describes a custom direct-upload limit without rounding it upward', async () => {
   mocks.buckets.mockReturnValue({
     data: { ...capabilities, max_upload_bytes: 1088 * 1024 ** 2 },
