@@ -70,7 +70,7 @@ export function describeCapEvent(event: HistoryEvent): string {
   return event.kind;
 }
 
-function ForecastLine() {
+export function ForecastLine() {
   const forecast = useBillingForecast();
   if (forecast.isPending)
     return <p className="text-xs text-muted-foreground">Reading the charge forecast…</p>;
@@ -117,7 +117,7 @@ function ForecastLine() {
   );
 }
 
-function CapHistory() {
+export function CapHistory() {
   const history = useSpendCapHistory();
   const phase = queryPhase({
     error: history.error,
