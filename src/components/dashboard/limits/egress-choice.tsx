@@ -104,8 +104,8 @@ export function EgressChoice({
               {enabled
                 ? `Apps will stop again when egress reaches ${allowance}. Egress already sent stays billed.`
                 : saveOnly
-                  ? `Egress billing hasn’t started yet, so this saves your choice. Until it starts, apps still stop at ${allowance}. After that, egress above it is billed at ${price} per GiB and counts toward your spend cap.`
-                  : `Egress above ${allowance} is billed at ${price} per GiB and counts toward your spend cap.`}
+                  ? `Egress billing hasn’t started yet, so this saves the choice. Until it starts, apps still stop at ${allowance}. After that, egress above it is billed at ${price} per GiB and counts toward ${org ? 'the organization’s' : 'your'} spend cap.`
+                  : `Egress above ${allowance} is billed at ${price} per GiB and counts toward ${org ? 'the organization’s' : 'your'} spend cap.`}
             </p>
             {error && (
               <p role="alert" className="text-status-critical">

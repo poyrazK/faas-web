@@ -193,7 +193,7 @@ describe('review fixes', () => {
       })
     ).toMatchObject({
       tone: 'critical',
-      headline: 'Your apps are stopped',
+      headline: 'Workloads are stopped',
       detail: 'This organization’s spend cap is $0, which pauses every workload.',
       action: 'cap',
     });
@@ -270,5 +270,32 @@ describe('lines from outside the bill', () => {
 
   it('none leaves the verdict as it was', () => {
     expect(billStatus({ ...base, alsoClose: [] })).toEqual(billStatus(base));
+  });
+});
+
+describe('company wording', () => {
+  it('a company’s $0 cap stops workloads, not “your apps”', () => {
+    const status = billStatus({ ...base, workspace: 'org', cap: ready({ capCents: 0 }) });
+    expect(status.headline).toBe('Workloads are stopped');
+    expect(status.detail).not.toMatch(/\byour\b/i);
+  });
+
+  it('a company’s cap and egress sentences never say “your”', () => {
+    expect(capSentence({ ...base, workspace: 'org', cap: ready({ capCents: 0 }) })).not.toMatch(
+      /\byour\b/i
+    );
+    for (const e of [
+      { enabled: true, org: true },
+      { enabled: false, org: true },
+      { enabled: true, billingOff: true, org: true },
+      { enabled: false, billingOff: true, org: true },
+    ])
+      expect(egressSentence(e)).not.toMatch(/\byour\b/i);
+  });
+
+  it('personal wording is unchanged', () => {
+    expect(egressSentence({ enabled: true, includedGb: 500, priceMillicentsPerGib: 3000 })).toBe(
+      'Pays $0.03 per GiB beyond 500 GiB, counted toward your spend cap.'
+    );
   });
 });

@@ -1,6 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ConfirmProvider } from '@/components/ui/confirm';
+import { ToastProvider } from '@/components/ui/toast';
 import { problem, renderWithProviders, routeApi, type Handlers } from '@/test/monetization';
 import type { Budget, BudgetSpec } from '@/lib/budgets';
 
@@ -294,5 +297,56 @@ describe('organization budgets', () => {
     await waitFor(() => expect(screen.getByText(/Automatic stop/)).toBeInTheDocument());
     await waitFor(() => expect(screen.getAllByText(/billing/).length).toBeGreaterThan(0));
     expect(spies.GET).not.toHaveBeenCalledWith('/v1/apps', expect.anything());
+  });
+});
+
+describe('leftovers', () => {
+  it('switching Personal → company → Personal never shows the other subject’s budgets', async () => {
+    workspace.org = null;
+    workspace.label = 'Personal';
+    const personal = {
+      ...ORG_BUDGET,
+      id: 'p1',
+      account_id: 'acct',
+      spec: { ...SPEC, name: 'Personal one' },
+    };
+    api({ 'GET /v1/billing/budgets': () => ({ budgets: [personal] }) });
+    const view = renderWithProviders(<BudgetsSection />);
+    const again = () =>
+      view.rerender(
+        <QueryClientProvider client={view.client}>
+          <ToastProvider>
+            <ConfirmProvider>
+              <BudgetsSection />
+            </ConfirmProvider>
+          </ToastProvider>
+        </QueryClientProvider>
+      );
+    expect(await screen.findByText('Personal one')).toBeInTheDocument();
+    expect(screen.queryByText('Billing app')).toBeNull();
+
+    workspace.org = 'acme';
+    workspace.label = 'Acme';
+    again();
+    expect(await screen.findByText('Billing app')).toBeInTheDocument();
+    expect(screen.queryByText('Personal one')).toBeNull();
+
+    workspace.org = null;
+    workspace.label = 'Personal';
+    again();
+    expect(await screen.findByText('Personal one')).toBeInTheDocument();
+    expect(screen.queryByText('Billing app')).toBeNull();
+  });
+
+  it('a #budgets link scrolls to the section once its budgets have loaded', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    window.history.replaceState(null, '', '#budgets');
+    api();
+    renderWithProviders(<BudgetsSection />);
+    await screen.findByText('Billing app');
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    expect(scroll.mock.contexts[0]).toBe(document.getElementById('budgets'));
+    window.history.replaceState(null, '', '#');
   });
 });

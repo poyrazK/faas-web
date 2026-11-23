@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MoreHoriz, Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -115,6 +115,14 @@ function useDeleteFlow(subject: BudgetSubject, onDeleted: (budget: Budget) => vo
 /** One subject's budgets (the account's or an organization's): create, list, and one in detail. */
 export function BudgetsBody({ subject }: { subject: BudgetSubject }) {
   const budgets = useBudgets(subject, true);
+  // A #budgets link (the old Budgets page redirects here) lands on the section
+  // once its rows are in, not before the page above it has grown.
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (!budgets.isSuccess || scrolled.current || window.location.hash !== '#budgets') return;
+    scrolled.current = true;
+    document.getElementById('budgets')?.scrollIntoView({ block: 'start' });
+  }, [budgets.isSuccess]);
   const [selected, setSelected] = useState<string | null>(null);
   // The create form is long, so it waits behind "New budget".
   const [creating, setCreating] = useState(false);

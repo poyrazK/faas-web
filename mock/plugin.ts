@@ -10156,7 +10156,10 @@ route('POST', '/v1/orgs/{slug}/billing/budgets/preview', ({ params, body }) => {
 });
 route('GET', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params }) => {
   requireOrgBillingRole(params.slug, ANY_MEMBER);
-  return orgBudgetFind(params.slug, params.id);
+  // A deleted budget stays readable as a tombstone, as the personal mock's is.
+  const found = orgBudgetList(params.slug).find((b) => b.id === params.id);
+  if (!found) throw new Problem(404, 'not_found', 'budget not found');
+  return found.deleted_at ? { ...found, status: 'deleted' } : found;
 });
 route('PUT', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params, body }) => {
   requireOrgBillingRole(params.slug, ['owner', 'billing']);
@@ -10178,7 +10181,7 @@ route('DELETE', '/v1/orgs/{slug}/billing/budgets/{id}', ({ params, body }) => {
   budget.revision += 1;
   budget.deleted_at = budget.updated_at = new Date().toISOString();
   orgBudgetRecord(budget, 'deleted');
-  return budget;
+  return { ...budget, status: 'deleted' };
 });
 route('GET', '/v1/orgs/{slug}/billing/budgets/{id}/revisions', ({ params }) => {
   requireOrgBillingRole(params.slug, ANY_MEMBER);

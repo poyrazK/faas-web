@@ -37,7 +37,10 @@ export function YourBill({
 
   return (
     <div id="your-bill" className="scroll-mt-24">
-      <Panel title="Your bill" help="Hard limits. When one is reached, workloads stop.">
+      <Panel
+        title={org ? `${data.workspaceLabel}’s bill` : 'Your bill'}
+        help="Hard limits. When one is reached, workloads stop."
+      >
         <div className="flex flex-col">
           {/* Spend cap */}
           {sections.cap.phase !== 'ready' && !free ? (
@@ -128,6 +131,7 @@ export function YourBill({
                 electable: egress.electable,
                 includedGb: egress.includedGb,
                 priceMillicentsPerGib: data.egress?.price_millicents_per_gib,
+                org: Boolean(org),
               })}
               meter={
                 egress.usedGb != null && egress.includedGb
@@ -178,7 +182,7 @@ export function YourBill({
               sentence={
                 storage.overCeiling
                   ? `${gib(storage.overCeiling.excessBytes / GIB)} GiB over the ceiling. Files above it will be deleted on ${day(storage.overCeiling.deletionAt)} unless you delete some first. Downloads are paused until then.`
-                  : `Uploads stop at ${gib(storage.ceilingBytes / GIB)} GiB. The ceiling comes from your plan and spend cap.`
+                  : `Uploads stop at ${gib(storage.ceilingBytes / GIB)} GiB. The ceiling comes from the plan and spend cap.`
               }
               meter={{
                 used: storage.usedBytes,

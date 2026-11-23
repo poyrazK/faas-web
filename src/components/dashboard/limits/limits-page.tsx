@@ -31,7 +31,11 @@ export function LimitsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Spending limits"
-        help="Every limit on what you can be billed, and what happens when one is reached."
+        help={
+          data.org
+            ? `Every limit on what ${data.workspaceLabel} can be billed, and what happens when one is reached.`
+            : 'Every limit on what you can be billed, and what happens when one is reached.'
+        }
       />
       {featureFlags.agents ? (
         <AgentAwareStrip data={data} onAction={onStripAction} />

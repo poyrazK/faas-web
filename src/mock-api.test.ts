@@ -1321,3 +1321,48 @@ it('previews an organization budget over the organization’s apps only', async 
   const named = [...preview.targets, ...preview.continuing_targets].map((t) => t.name);
   for (const slug of personalOnly) expect(named).not.toContain(slug);
 });
+
+it('keeps a deleted organization budget as a tombstone, as the personal mock does', async () => {
+  const base = `${origin}/v1/orgs/acme-corp/billing/budgets`;
+  const headers = { 'content-type': 'application/json', 'Idempotency-Key': 'tomb-1' };
+  const created = await fetch(base, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      spec: {
+        name: 'Tombstone',
+        scope: { kind: 'account' },
+        currency: 'USD',
+        meters: ['compute'],
+        basis: 'net_usage',
+        limit_millicents: 1_000_000,
+        notify_millicents: [],
+        mode: 'monitored',
+        action: 'notify',
+        drain_seconds: 0,
+        resume_rule: 'next_period',
+        enabled: true,
+      },
+    }),
+  });
+  expect(created.status).toBe(201);
+  const budget = (await created.json()) as { id: string; revision: number };
+  const removed = await fetch(`${base}/${budget.id}`, {
+    method: 'DELETE',
+    headers: { ...headers, 'Idempotency-Key': 'tomb-2' },
+    body: JSON.stringify({ expected_revision: budget.revision }),
+  });
+  expect(removed.status).toBe(200);
+  expect(await removed.json()).toMatchObject({ status: 'deleted' });
+  const read = await fetch(`${base}/${budget.id}`);
+  expect(read.status).toBe(200);
+  expect(await read.json()).toMatchObject({ status: 'deleted', deleted_at: expect.any(String) });
+  const list = (await (await fetch(base)).json()) as { budgets: { id: string }[] };
+  expect(list.budgets.map((b) => b.id)).not.toContain(budget.id);
+  const again = await fetch(`${base}/${budget.id}`, {
+    method: 'DELETE',
+    headers: { ...headers, 'Idempotency-Key': 'tomb-3' },
+    body: JSON.stringify({ expected_revision: budget.revision + 1 }),
+  });
+  expect(again.status).toBe(404);
+});
