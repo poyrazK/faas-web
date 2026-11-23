@@ -80,6 +80,9 @@ vi.mock('@/components/dashboard/org-billing', () => ({
   OrgUsage: ({ label }: { label: string }) => <p>org usage for {label}</p>,
 }));
 // The breakdown's own reads and states are covered in billing-costs.test.tsx.
+vi.mock('@/components/dashboard/limits/limits-summary', () => ({
+  LimitsSummary: () => <a href="/dashboard/limits">Open spending limits</a>,
+}));
 vi.mock('@/components/dashboard/billing-costs', () => ({
   CostBreakdown: () => <section aria-label="Cost breakdown" />,
   CostBreakdownPersonalOnly: ({ label }: { label: string }) => (
@@ -88,6 +91,7 @@ vi.mock('@/components/dashboard/billing-costs', () => ({
 }));
 
 const { Route } = await import('./dashboard.usage');
+const { SpendCapEditor } = await import('@/components/dashboard/spend-cap');
 const UsagePage = (Route as unknown as { component: React.ComponentType }).component;
 
 beforeEach(() => {
@@ -174,12 +178,14 @@ describe('the answer first', () => {
     expect(within(dialog).getByRole('spinbutton', { name: 'Cap (USD)' })).toHaveValue(5);
   });
 
-  it('keeps the cap history one click away', async () => {
+  it('links to Spending limits instead of a spend control panel', () => {
     render(<UsagePage />);
-    const toggle = screen.getByText('Show cap history');
-    expect(screen.getByText('No cap changes or cap-reached notices yet.')).not.toBeVisible();
-    await userEvent.click(toggle);
-    expect(screen.getByText('No cap changes or cap-reached notices yet.')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Open spending limits' })).toHaveAttribute(
+      'href',
+      '/dashboard/limits'
+    );
+    expect(screen.queryByRole('heading', { name: 'Spend control' })).toBeNull();
+    expect(screen.queryByText('Show cap history')).toBeNull();
   });
 });
 
@@ -297,8 +303,8 @@ describe('compact per-app usage', () => {
 describe('spend-cap validation', () => {
   it('converts decimal euro amounts to exact whole cents', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 110 });
-    render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    // The editor Usage's "Raise cap" and Spending limits both open.
+    render(<SpendCapEditor initialCents={null} />);
     const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0.29{Enter}');
@@ -311,8 +317,8 @@ describe('spend-cap validation', () => {
 
   it('treats zero as a zero-overage ceiling and clears only with null', async () => {
     setCap.mockReset().mockResolvedValue({ overage_cap_cents: 0 });
-    render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    // The editor Usage's "Raise cap" and Spending limits both open.
+    render(<SpendCapEditor initialCents={null} />);
     const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '0{Enter}');
@@ -328,8 +334,8 @@ describe('spend-cap validation', () => {
   });
 
   it('rejects malformed amounts, then preserves the value through API failure and retry', async () => {
-    render(<UsagePage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Set a cap' }));
+    // The editor Usage's "Raise cap" and Spending limits both open.
+    render(<SpendCapEditor initialCents={null} />);
     const cap = screen.getByRole('spinbutton', { name: 'Cap (USD)' });
 
     await userEvent.type(cap, '-1');
