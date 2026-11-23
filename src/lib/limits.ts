@@ -47,6 +47,12 @@ export interface BillFacts {
   compute?: { usedGbHours: number; includedGbHours: number };
   /** The personal usage summary (overage, egress and compute use) failed to load. */
   usageUnknown?: boolean;
+  /**
+   * Plain sentences for limits outside the bill that are reached and now
+   * hold something back (an agent at its budget, while the agents build flag
+   * is on). They join the "close" lines; they never stop anything.
+   */
+  alsoClose?: string[];
 }
 
 export interface BillStatus {
@@ -184,6 +190,7 @@ export function billStatus(facts: BillFacts): BillStatus {
     close.push(
       `Storage is at ${pct(storageMeter.used, storageMeter.limit)}% of ${gib(storageMeter.limit)}.`
     );
+  close.push(...(facts.alsoClose ?? []));
   if (close.length)
     return {
       tone: 'warning',

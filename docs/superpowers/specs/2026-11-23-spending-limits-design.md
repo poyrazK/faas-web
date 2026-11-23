@@ -93,6 +93,8 @@ These are hard limits: at the limit, workloads stop.
 
 ### 3. Agents
 
+Shipped in slice 3 (`docs/superpowers/plans/2026-11-24-spending-limits-slice-3.md`), behind the `agents` flag.
+
 - One row per agent connection (`GET /v1/agent-connections`).
 - The budget comes from `GET /v1/agent-connections/{id}/budget`: `monthly_cents`, `spent_cents`, `source`, `key_unlimited`.
 - The sentence explains `source`, for example "Default: half your plan's default cap". Past the budget, each change waits for a person's approval.

@@ -20,11 +20,17 @@ const ACTION_LABEL: Record<NonNullable<BillStatus['action']>, string> = {
 export function StatusStrip({
   data,
   onAction,
+  alsoClose,
+  waitFor = true,
 }: {
   data: BillData;
   onAction: (action: 'cap' | 'egress') => void;
+  /** Reached limits outside the bill, such as an agent at its budget. */
+  alsoClose?: string[];
+  /** False while another read the strip counts is still answering. */
+  waitFor?: boolean;
 }) {
-  if (!data.settled)
+  if (!data.settled || !waitFor)
     return (
       <div
         role="status"
@@ -36,7 +42,7 @@ export function StatusStrip({
         <Skeleton className="h-3 w-2/3 max-w-md" />
       </div>
     );
-  const status = billStatus(data.facts);
+  const status = billStatus(alsoClose ? { ...data.facts, alsoClose } : data.facts);
   const color = TONE_COLOR[status.tone];
   return (
     <section

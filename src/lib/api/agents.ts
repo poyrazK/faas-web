@@ -126,6 +126,17 @@ export function useAgentBudgets(ids: readonly string[]) {
   });
 }
 
+/**
+ * Every listed agent's budget read in full (data, error, pending, refetch), so
+ * a page can wait for all of them and say which one failed.
+ */
+export function useAgentBudgetReads(ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map((id) => budgetQuery(id)),
+    combine: (results) => new Map(ids.map((id, index) => [id, results[index]])),
+  });
+}
+
 export function useSetAgentBudget(id: string) {
   const qc = useQueryClient();
   return useMutation({

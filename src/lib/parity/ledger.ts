@@ -1092,7 +1092,7 @@ export const LEDGER: LedgerEntry[] = [
     status: 'cli',
     surfaces: [],
     cli: 'gregale mcp connect',
-    gap: 'The agents it connects are on /dashboard/agents and an organization sets its agent policy on /dashboard/agents/policy, both behind the agents build flag until launch (the GA api-keys routes: approvals, budgets, activity, undo); the MCP server itself, its toolsets and tool publishing have no console surface',
+    gap: 'The agents it connects are on /dashboard/agents (their budgets also on Spending limits) and an organization sets its agent policy on /dashboard/agents/policy, all behind the agents build flag until launch (the GA api-keys routes: approvals, budgets, activity, undo); the MCP server itself, its toolsets and tool publishing have no console surface',
     wave: 3,
   },
   // I161 · GA
