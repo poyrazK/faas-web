@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { AccessConnection, Permission } from '@/lib/storage-access';
 import { AccessMap } from './access-map';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 const VERB: Record<Permission, string> = {
   read: 'reads',
@@ -80,7 +81,7 @@ export function AccessSummary({
   return (
     <div className="flex flex-col gap-3">
       {loading ? (
-        <p className="text-sm text-muted-foreground">Checking who can reach these files…</p>
+        <InlinePhase phase="loading" loadingMessage="Checking who can reach these files…" />
       ) : failed ? (
         <p className="text-sm text-muted-foreground">
           Could not read everything that can reach these files. Open Manage access to see each one.

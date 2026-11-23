@@ -180,7 +180,7 @@ function ImportedDocument({ slug }: { slug: string }) {
       }
     >
       {manual.isPending ? (
-        <p className="text-sm text-muted-foreground">Reading the imported document…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading the imported document…" />
       ) : nothingImported && source === 'manual_import' ? (
         <p className="text-sm text-muted-foreground">No document imported yet.</p>
       ) : manual.error && source === 'manual_import' ? (
@@ -462,7 +462,7 @@ function DeploymentDocument({ slug }: { slug: string }) {
           )}
           <PlanGated error={doc.error} feature="Endpoint discovery">
             {doc.isPending ? (
-              <p className="text-sm text-muted-foreground">Reading the captured document…</p>
+              <InlinePhase phase="loading" loadingMessage="Reading the captured document…" />
             ) : doc.error && isNotFound(doc.error) ? (
               <p className="text-sm text-muted-foreground">
                 No /openapi.json was captured for this deployment.

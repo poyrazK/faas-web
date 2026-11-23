@@ -4,16 +4,9 @@ import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Link } from '@tanstack/react-router';
 import { useSweepNavigate } from '@/components/sweep-link';
-import {
-  WarningCircle,
-  ArrowLeft,
-  ArrowRight,
-  Eye,
-  EyeClosed,
-  RefreshDouble,
-  MailOpen,
-} from 'iconoir-react';
+import { WarningCircle, ArrowLeft, ArrowRight, Eye, EyeClosed, MailOpen } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
+import { ShimmerText } from '@/components/ui/shimmer';
 import { useToast } from '@/components/ui/toast';
 import {
   hasOnboarded,
@@ -271,10 +264,7 @@ export function PasswordFlow({
                 className="mt-5 h-11 w-full gap-2 rounded-lg"
               >
                 {pending ? (
-                  <>
-                    <RefreshDouble className="h-4 w-4 animate-spin" />
-                    Sending…
-                  </>
+                  <ShimmerText>Sending…</ShimmerText>
                 ) : (
                   <>
                     Send reset link
@@ -418,10 +408,7 @@ export function PasswordFlow({
           className="mt-5 h-11 w-full gap-2 rounded-lg"
         >
           {pending ? (
-            <>
-              <RefreshDouble className="h-4 w-4 animate-spin" />
-              {copy.pendingLabel}
-            </>
+            <ShimmerText>{copy.pendingLabel}</ShimmerText>
           ) : (
             <>
               {copy.cta}

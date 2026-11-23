@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshDouble } from 'iconoir-react';
+import { ShimmerText } from '@/components/ui/shimmer';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
@@ -71,10 +71,11 @@ export function RollbackStatus({
       className="flex flex-col gap-1.5 rounded-md bg-muted px-3 py-2 text-xs"
     >
       <p className="flex items-start gap-2 text-sm" style={tone ? { color: tone } : undefined}>
-        {!settled && (
-          <RefreshDouble className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+        {settled ? (
+          statusSentence(op, target)
+        ) : (
+          <ShimmerText>{statusSentence(op, target)}</ShimmerText>
         )}
-        {statusSentence(op, target)}
       </p>
       {op.blockers && op.blockers.length > 0 && (
         <ul className="list-disc pl-4">

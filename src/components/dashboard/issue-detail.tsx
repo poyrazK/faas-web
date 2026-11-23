@@ -11,6 +11,7 @@ import {
 } from '@/lib/api/issues';
 import { Select } from '@/components/ui/field';
 import { Timestamp } from '@/components/ui/timestamp';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 type Props = { accountId: string; slug: string; issueId: string; onBack: () => void };
 
@@ -146,7 +147,7 @@ export function IssueDetail({ accountId, slug, issueId, onBack }: Props) {
         Back to issues
       </Button>
       {detail.isPending ? (
-        <p role="status">Loading issue…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading issue…" />
       ) : detail.error ? (
         <p role="alert">
           Could not load this issue.{' '}

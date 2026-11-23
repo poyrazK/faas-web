@@ -31,6 +31,7 @@ import {
   type ReleaseAnswer,
 } from './app-overview-words';
 import { HelpTip } from './kit/help-tip';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 type Read<T> = { data?: T; isPending: boolean; error: unknown };
 type Destination = 'Metrics' | 'Deployments' | 'Logs' | 'Errors' | 'Runtime';
@@ -115,9 +116,7 @@ export function AppOverview({
       <div className="grid min-w-0 items-start gap-5 surface rounded-[1.25rem] bg-card p-5 sm:p-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] xl:gap-8">
         <section aria-label="Latest release" className="flex min-w-0 flex-col gap-3">
           {releases.isPending ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              Loading releases…
-            </p>
+            <InlinePhase phase="loading" loadingMessage="Loading releases…" />
           ) : (
             <>
               {answer && <ReleaseBlock answer={answer} onNavigate={onNavigate} />}
@@ -387,9 +386,7 @@ function TrafficScalars({
         )}
       </div>
       {metricsAccess === 'checking' || (metricsAccess === 'available' && metrics.isPending) ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          Loading traffic signals…
-        </p>
+        <InlinePhase phase="loading" loadingMessage="Loading traffic signals…" />
       ) : metricsAccess === 'restricted' ? (
         <p className="text-sm leading-relaxed text-muted-foreground">
           Request metrics are available on Hobby and above.

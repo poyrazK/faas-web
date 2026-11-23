@@ -443,7 +443,13 @@ function PerAppUsagePanel({ rows, phase, error }: ReturnType<typeof useAppUsageR
 function UsagePage() {
   const { org, label, ready } = useWorkspaceTarget();
   // Until the workspace is bound, a chosen company reads as null: wait.
-  if (!ready) return <PageHeader title="Usage" />;
+  if (!ready)
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title="Usage" />
+        <LoadingState message="Loading usage…" />
+      </div>
+    );
   if (!org) return <PersonalUsage />;
   return (
     <div className="flex flex-col gap-6">

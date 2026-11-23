@@ -9,7 +9,7 @@ import {
   type PromotionFilters,
 } from '@/lib/api/environment-readiness';
 import { Button } from '@/components/ui/button';
-import { Panel } from '../primitives';
+import { Panel, InlinePhase } from '../primitives';
 import { Disclosure } from '../settings-kit';
 import { Select } from '@/components/ui/field';
 
@@ -110,7 +110,7 @@ export function EnvironmentReadiness({
               </Button>
             </div>
           ) : preview.isPending || preview.isFetching ? (
-            <p role="status">Reading current promotion preview…</p>
+            <InlinePhase phase="loading" loadingMessage="Reading current promotion preview…" />
           ) : p ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -265,7 +265,7 @@ export function EnvironmentReadiness({
               </Button>
             </div>
           ) : history.isPending || history.isFetching ? (
-            <p role="status">Reading recorded operations…</p>
+            <InlinePhase phase="loading" loadingMessage="Reading recorded operations…" />
           ) : history.data ? (
             <>
               <ul aria-label="Recorded operations" className="space-y-2">
@@ -328,7 +328,7 @@ export function EnvironmentReadiness({
                   submitted.
                 </p>
               ) : receipt.isPending || receipt.isFetching ? (
-                <p role="status">Reading operation checkpoints…</p>
+                <InlinePhase phase="loading" loadingMessage="Reading operation checkpoints…" />
               ) : r ? (
                 <>
                   <p>
@@ -415,7 +415,7 @@ export function EnvironmentReadiness({
                 Approval could not be read for this target. No token is recovered or recreated.
               </p>
             ) : approvalReceipt.isPending || approvalReceipt.isFetching ? (
-              <p role="status">Reading approval lifecycle…</p>
+              <InlinePhase phase="loading" loadingMessage="Reading approval lifecycle…" />
             ) : a ? (
               <div>
                 <p>Approval state: {a.status}</p>

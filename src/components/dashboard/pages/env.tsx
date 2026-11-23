@@ -17,6 +17,7 @@ import { EnvDiffPanel } from '@/components/dashboard/app-insights';
 import { configChangeNote } from '@/lib/config-history';
 import { environmentHeadline, variablesLead } from '@/components/dashboard/environment-words';
 import { DANGER_ITEM, Lead, RowMenu, ToneDot } from '@/components/dashboard/environment-parts';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /** Mirrors the API's `^[A-Z][A-Z0-9_]*$` CHECK on variable names. */
 const KEY_RULE = /^[A-Z][A-Z0-9_]*$/;
@@ -53,7 +54,7 @@ export function EnvironmentSummary({ slug, scope }: { slug: string; scope?: stri
         aria-label="Environment summary"
         className="well rounded-2xl bg-muted/40 px-5 py-5 sm:px-6"
       >
-        <p className="text-sm text-muted-foreground">Reading the environment…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading the environment…" />
       </section>
     );
   const headline = environmentHeadline({

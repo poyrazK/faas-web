@@ -3,6 +3,7 @@ import { Link, useRouter, type ErrorComponentProps } from '@tanstack/react-route
 import { WarningTriangle, Undo } from 'iconoir-react';
 import { featureFlags } from '@/lib/feature-flags';
 import { reportError } from '@/lib/error-reporting';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * Router-wide error and pending states.
@@ -93,18 +94,21 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
  * `defaultPendingMs` holds this back until the wait is real.
  */
 export function RoutePending() {
+  // A page-shaped shimmer: a title and three cards, so the wait reads as the
+  // page arriving rather than something spinning.
   return (
-    <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+    <div className="flex flex-col gap-5 py-6" role="status" aria-live="polite">
       <span className="sr-only">Loading</span>
-      <span className="flex gap-1.5" aria-hidden="true">
+      <Skeleton className="h-6 w-48" />
+      <div className="grid gap-4 sm:grid-cols-3" aria-hidden="true">
         {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="route-pending-dot h-1.5 w-1.5 rounded-full bg-muted-foreground/60"
-            style={{ animationDelay: `${i * 140}ms` }}
-          />
+          <div key={i} className="flex flex-col gap-3 rounded-[1.25rem] bg-card p-5">
+            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-3 w-3/4" />
+          </div>
         ))}
-      </span>
+      </div>
     </div>
   );
 }

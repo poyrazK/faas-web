@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { FIELD, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { useConfirm } from '@/components/ui/confirm';
-import { Panel } from '@/components/dashboard/primitives';
+import { Panel, InlinePhase } from '@/components/dashboard/primitives';
 import { Sheet } from '@/components/dashboard/kit/sheet';
 import { CapabilityNotice } from '@/components/dashboard/capability-notice';
 import { WebhookAutomationBinding } from '@/components/dashboard/webhook-automation-binding';
@@ -496,7 +496,7 @@ function InboundWebhooksContext({ accountId, slug }: { accountId: string; slug: 
         }
       >
         {endpoints.isPending ? (
-          <p>Loading endpoints…</p>
+          <InlinePhase phase="loading" loadingMessage="Loading endpoints…" />
         ) : endpoints.error ? (
           <div role="alert" className="space-y-2 text-sm">
             <p>Could not load endpoints: {errorMessage(endpoints.error)}</p>

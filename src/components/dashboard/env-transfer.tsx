@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 import { api, unwrap } from '@/lib/api/client';
 import { errorMessage } from '@/lib/api/errors';
 import { applyEnvImport, type EnvBatchResult } from '@/lib/api/env-transfer';
@@ -30,7 +30,7 @@ export function EnvTransferPanel({
   if (!account?.id)
     return (
       <Panel title="Import environment variables">
-        <p className="text-sm text-muted-foreground">Loading account…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading account…" />
       </Panel>
     );
   return (
@@ -174,9 +174,7 @@ function EnvTransferBody({
         </p>
       )}
       {scopeValid && metadata.isPending && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading existing variable names…
-        </p>
+        <InlinePhase phase="loading" loadingMessage="Loading existing variable names…" />
       )}
       {metadata.error && (
         <div role="alert" className="text-sm">

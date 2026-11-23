@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { billStatus } from '@/lib/limits';
 import { TONE_COLOR } from './limit-row';
 import { useBillFacts } from './use-bill-facts';
@@ -22,7 +23,10 @@ export function LimitsSummary() {
             {status.detail && <span className="text-muted-foreground"> · {status.detail}</span>}
           </>
         ) : (
-          <span className="text-muted-foreground">Checking your limits…</span>
+          <span className="flex items-center">
+            <span className="sr-only">Checking your limits…</span>
+            <Skeleton className="h-3 w-64 max-w-full" />
+          </span>
         )}
       </p>
       <Link

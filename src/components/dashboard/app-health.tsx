@@ -229,11 +229,12 @@ function HealthBody({ slug }: { slug: string }) {
               void history.refetch();
             }}
           >
-            <RefreshDouble
-              aria-hidden
-              className={`h-3.5 w-3.5 ${health.isFetching ? 'animate-spin motion-reduce:animate-none' : ''}`}
-            />
-            Refresh
+            <span
+              className={`inline-flex items-center gap-1.5 ${health.isFetching ? 'shimmer-text' : ''}`}
+            >
+              <RefreshDouble aria-hidden className="h-3.5 w-3.5" />
+              Refresh
+            </span>
           </Button>
         </div>
       }

@@ -19,6 +19,7 @@ import {
   type IssueTokenMetadata,
 } from '@/lib/api/issues';
 import { Select } from '@/components/ui/field';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 type Props = { accountId: string; slug: string; onClose: () => void };
 type Disclosure = { token: string; id: string; context: string };
@@ -497,7 +498,7 @@ function SetupContext({ accountId, slug, onClose }: Props) {
       <div className="space-y-2">
         <h4 className="text-sm font-medium">Existing token metadata</h4>
         {tokens.isPending ? (
-          <p role="status">Loading token metadata…</p>
+          <InlinePhase phase="loading" loadingMessage="Loading token metadata…" />
         ) : tokens.error ? (
           <p role="alert">
             Could not load token metadata.{' '}

@@ -489,12 +489,7 @@ function OverviewPage() {
               aria-busy={refreshing}
               className="pressable inline-grid h-8 w-8 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
             >
-              <Refresh
-                className={cn(
-                  'h-4 w-4',
-                  refreshing && 'animate-spin motion-reduce:animate-none motion-reduce:opacity-50'
-                )}
-              />
+              <Refresh className={cn('h-4 w-4', refreshing && 'shimmer-text')} />
             </button>
           </div>
         </header>

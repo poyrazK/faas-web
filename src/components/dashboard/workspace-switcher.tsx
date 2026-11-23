@@ -14,6 +14,7 @@ import { useOrgs } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth';
 import { bindWorkspaceAccount, setActiveOrg, useActiveOrg } from '@/lib/workspace';
 import { cn } from '@/lib/utils';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * The breadcrumb root: which organization the console is working in.
@@ -68,7 +69,7 @@ export function WorkspaceSwitcher() {
           Workspaces
         </DropdownMenuLabel>
         {orgs.isPending ? (
-          <p className="px-2.5 py-2 text-sm text-muted-foreground">Loading organizations…</p>
+          <InlinePhase phase="loading" loadingMessage="Loading organizations…" />
         ) : orgs.isError ? (
           <p className="px-2.5 py-2 text-sm text-muted-foreground">
             Organizations could not be loaded.

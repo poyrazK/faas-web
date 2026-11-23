@@ -1,6 +1,6 @@
 import { formatPercent } from '@/lib/usage-format';
 import type { ReactNode } from 'react';
-import { RefreshDouble } from 'iconoir-react';
+import { ShimmerText } from '@/components/ui/shimmer';
 import { PageHeader } from '../primitives';
 import { ReleaseStatusLabel } from '../release-status-label';
 import { DeploymentPreviewUrl } from '../deployment-insights';
@@ -34,10 +34,7 @@ export function ReleaseHeader({
             <ReleaseStatusLabel status={deployment.status} />
           )}
           {!isDeploymentTerminal(deployment.status) && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <RefreshDouble className="h-3 w-3 animate-spin" />
-              Updating
-            </span>
+            <ShimmerText className="text-xs text-muted-foreground">Updating</ShimmerText>
           )}
           <DeploymentPreviewUrl deploymentId={deployment.id} />
         </>

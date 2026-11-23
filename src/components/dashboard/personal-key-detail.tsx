@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 import { usePaletteKey } from '@/lib/api/palette';
 import { errorMessage } from '@/lib/api/errors';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 export function PersonalKeyDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { account } = useAuth();
@@ -16,7 +17,7 @@ export function PersonalKeyDetail({ id, onClose }: { id: string; onClose: () => 
       description="Metadata only. Stored key values cannot be recovered."
     >
       {q.isPending || q.isFetching ? (
-        <p role="status">Reading API key metadata…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading API key metadata…" />
       ) : q.error ? (
         <div role="alert">
           <p>{errorMessage(q.error)}</p>
