@@ -90,6 +90,7 @@ inlines the value into the compiled client.
 | `VITE_FEATURE_EXAMPLE`         | off     | Reference flag. Gates nothing; proves wiring.                                                                           |
 | `VITE_FEATURE_ONBOARDING_V2`   | off     | Sample/repository quickstart with account-scoped resume and API-confirmed live completion.                              |
 | `VITE_FEATURE_ERROR_REPORTING` | off     | Browser error capture and redaction (`lib/error-reporting.ts`). The transport is a no-op until a destination is chosen. |
+| `VITE_FEATURE_AGENTS`          | off     | The Agents pages (`/dashboard/agents`) and the organization agent policy. Held back until launch.                       |
 
 ### First-signup onboarding preview
 
@@ -928,3 +929,19 @@ previous-period comparison in the current API. Platform latency covers successfu
 error counts from platform rates are labelled. Request charts use UTC and the
 server's retained bounds; partial hours are excluded from within-window comparisons.
 Missing telemetry, empty windows, plan limits and failed reads have distinct states.
+
+### Agents
+
+**Agents** (`/dashboard/agents`, Account in the rail, behind `VITE_FEATURE_AGENTS` until launch) lists the coding agents
+connected through the hosted MCP server or an agent key
+(`/v1/agent-connections`; a company workspace reads
+`/v1/orgs/{slug}/agent-connections`). Requests waiting for a person lead the
+page and link to apid's review page (`review_url`): a person decides only
+there, so the console never approves or denies. An agent's own page
+(`/dashboard/agents/<key id>`) shows its always-on budget, what it changed in
+the last 7 days, and undo, which always shows the server's plan before it
+applies that exact plan (`plan_digest`; a 409 plans again). The budget route
+finds only the caller's own keys, so a colleague's agent shows no budget.
+Connecting an agent, toolsets, and an organization's agent policy stay in the
+CLI. A change gets a sentence ("Deployed api") only for paths the API contract
+fixes and only when it went through; otherwise the row shows the request.

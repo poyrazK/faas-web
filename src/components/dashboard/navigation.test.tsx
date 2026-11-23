@@ -11,6 +11,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { describe, expect, it, vi } from 'vitest';
+import { featureFlags } from '@/lib/feature-flags';
 import { DashboardShell } from './shell';
 import type { Workflow } from '@/lib/mock-data';
 import { validateSettingsSearch } from './settings-search';
@@ -255,6 +256,8 @@ const RAIL = [
   'Budgets',
   'Invoices',
   'Plans',
+  // Held back by the `agents` build flag; tests build with it off.
+  ...(featureFlags.agents ? ['Agents'] : []),
   'Audit log',
   'Support',
   'Settings',

@@ -28,6 +28,7 @@ import * as debugMock from './debug';
 import * as debugEvidence from './debug-evidence';
 import * as realtimeMock from './realtime';
 import * as budgetMock from './budgets';
+import * as agentMock from './agents';
 import * as sloMock from './slos';
 import * as freezeMock from './release-freezes';
 import * as scheduleMock from './scheduled-releases';
@@ -10052,6 +10053,70 @@ route('GET', '/v1/billing/budgets/{id}/channels', ({ params }) =>
 );
 route('PUT', '/v1/billing/budgets/{id}/channels', ({ params, body, req }) =>
   budgetCall(() => budgetMock.setChannels(params.id, body, budgetKey(req)))
+);
+
+// Connected agents (faas pkg/apid/agentconnections; see mock/agents.ts).
+// Personal routes read the account's agents; the /v1/orgs/{slug} variants read
+// a company's. Approvals are the pending requests the person may decide.
+function agentCall<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof agentMock.AgentProblem) throw new Problem(err.status, err.code, err.message);
+    throw err;
+  }
+}
+route('GET', '/v1/agent-connections', () => agentMock.list());
+route('POST', '/v1/agent-connections/revoke_all', () => agentMock.revokeAll());
+route('DELETE', '/v1/agent-connections/{id}', ({ params }) =>
+  agentCall(() => {
+    agentMock.revoke(params.id);
+    return NO_CONTENT;
+  })
+);
+route('GET', '/v1/agent-connections/{id}/budget', ({ params }) =>
+  agentCall(() => agentMock.budget(params.id))
+);
+route('PUT', '/v1/agent-connections/{id}/budget', ({ params, body }) =>
+  agentCall(() => agentMock.setBudget(params.id, body))
+);
+route('GET', '/v1/agent-connections/{id}/activity', ({ params, query }) =>
+  agentCall(() => agentMock.listActivity(params.id, query))
+);
+route('POST', '/v1/agent-connections/{id}/undo/plan', ({ params, body }) =>
+  agentCall(() => agentMock.planUndo(params.id, body))
+);
+route('POST', '/v1/agent-connections/{id}/undo', ({ params, body }) =>
+  agentCall(() => agentMock.applyUndo(params.id, body))
+);
+route('GET', '/v1/agent-approvals', () => agentMock.listApprovals());
+route('GET', '/v1/agent-approvals/channels', () => agentMock.getChannels());
+route('PUT', '/v1/agent-approvals/channels', ({ body }) =>
+  agentCall(() =>
+    agentMock.setChannels(
+      body,
+      channelMock.channels.map((channel) => channel.name)
+    )
+  )
+);
+route('GET', '/v1/orgs/{slug}/agent-connections', ({ params }) => agentMock.list(params.slug));
+route('POST', '/v1/orgs/{slug}/agent-connections/revoke_all', ({ params }) =>
+  agentMock.revokeAll(params.slug)
+);
+route('DELETE', '/v1/orgs/{slug}/agent-connections/{id}', ({ params }) =>
+  agentCall(() => {
+    agentMock.revoke(params.id, params.slug);
+    return NO_CONTENT;
+  })
+);
+route('GET', '/v1/orgs/{slug}/agent-connections/{id}/activity', ({ params, query }) =>
+  agentCall(() => agentMock.listActivity(params.id, query, params.slug))
+);
+route('POST', '/v1/orgs/{slug}/agent-connections/{id}/undo/plan', ({ params, body }) =>
+  agentCall(() => agentMock.planUndo(params.id, body, params.slug))
+);
+route('POST', '/v1/orgs/{slug}/agent-connections/{id}/undo', ({ params, body }) =>
+  agentCall(() => agentMock.applyUndo(params.id, body, params.slug))
 );
 
 const orgMembers = new Map(

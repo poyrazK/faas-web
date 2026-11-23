@@ -1,4 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
+import { featureFlags } from '@/lib/feature-flags';
 import { SETTINGS_SECTIONS } from './settings-search';
 import {
   Activity,
@@ -30,6 +31,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  Sparks,
   Timer,
   Upload,
   ViewGrid,
@@ -229,6 +231,13 @@ export const NAV_HUBS: NavHub[] = [
     label: 'Audit log',
     icon: Journal,
   },
+  // Account-wide: an agent is a key on the account (or the company), and
+  // its approvals, budget and undo are a person's to decide, not an app's.
+  // Core (catalog `api-keys`), so the row carries no capability gate; it is
+  // held back by the `agents` build flag until launch.
+  ...(featureFlags.agents
+    ? [{ to: '/dashboard/agents' as const, label: 'Agents', icon: Sparks }]
+    : []),
   {
     to: '/dashboard/usage',
     label: 'Billing',
@@ -263,6 +272,9 @@ export const NAV_HUBS: NavHub[] = [
   },
 ];
 
+/** The Agents hub, only while the `agents` flag is on. */
+const AGENTS: string[] = featureFlags.agents ? ['Agents'] : [];
+
 /**
  * The sidebar's shape: account-wide destinations, grouped by the kind of
  * resource they manage.
@@ -287,7 +299,7 @@ const SIDEBAR_GROUPS: { title?: string; hubs: string[] }[] = [
   // The Debugger is per app (the app's Observe section); its account route is
   // an app picker, reachable from ⌘K rather than a rail row of its own.
   { title: 'Observe', hubs: ['Analytics', 'Invocations', 'Audit log'] },
-  { title: 'Account', hubs: ['Billing', 'Support', 'Settings'] },
+  { title: 'Account', hubs: ['Billing', ...AGENTS, 'Support', 'Settings'] },
 ];
 
 type GroupSpec = { title?: string; hubs: string[]; shared?: boolean; bottom?: boolean };
@@ -316,7 +328,11 @@ export const NAV_GROUPS: NavGroup[] = groupsOf(SIDEBAR_GROUPS);
  */
 export const ACCOUNT_NAV_GROUPS: NavGroup[] = groupsOf([
   { hubs: ['Overview', 'Projects'] },
-  { title: 'Account', hubs: ['Billing', 'Audit log', 'Support', 'Settings'], bottom: true },
+  {
+    title: 'Account',
+    hubs: ['Billing', ...AGENTS, 'Audit log', 'Support', 'Settings'],
+    bottom: true,
+  },
 ]);
 
 /**

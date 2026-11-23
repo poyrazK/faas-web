@@ -624,6 +624,9 @@ function Breadcrumbs() {
     });
     if (conversation) trail.push({ label: 'Conversation' });
   }
+  // One agent's page hangs off the Agents list, not off a second "Agents".
+  if (section === 'agents' && detail)
+    trail.splice(0, trail.length, { label: 'Agents', to: '/dashboard/agents' }, { label: 'Agent' });
 
   return (
     <nav
