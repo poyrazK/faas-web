@@ -21,6 +21,7 @@
 /docs/managed-postgres    /docs/postgres   301
 /docs/orgs    /docs/account   301
 /docs/sidecars    /docs/companions   301
+/docs/troubleshoot-deploys    /docs/troubleshooting   301
 /docs/:parent/*    /docs/:parent   301
 
 # Only registered client routes receive the app shell.
