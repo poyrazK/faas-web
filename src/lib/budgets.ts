@@ -89,6 +89,23 @@ export const SCOPE_KINDS: { kind: ScopeKind; label: string }[] = [
   { kind: 'job', label: 'Job' },
 ];
 
+/**
+ * What a subject can scope a budget to. An organization covers its apps,
+ * projects and environments and its whole self, but not jobs (faas
+ * docs/billing.md "Organization budgets").
+ */
+export function scopeKindsFor(subject: 'account' | 'org'): { kind: ScopeKind; label: string }[] {
+  if (subject === 'account') return SCOPE_KINDS;
+  return SCOPE_KINDS.filter((k) => k.kind !== 'job').map((k) =>
+    k.kind === 'account' ? { ...k, label: 'Whole organization' } : k
+  );
+}
+
+/** The responses a subject can turn on: organizations have no strict caps. */
+export function levelsFor(subject: 'account' | 'org'): BudgetLevel[] {
+  return subject === 'org' ? ['alert', 'stop-previews'] : ['alert', 'stop-previews', 'strict'];
+}
+
 export const METERS: { meter: Meter; label: string }[] = [
   { meter: 'compute', label: 'Compute' },
   { meter: 'egress', label: 'Egress' },

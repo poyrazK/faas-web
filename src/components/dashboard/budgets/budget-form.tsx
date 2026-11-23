@@ -3,14 +3,16 @@ import { Eye, Lock } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { FIELD, FieldError, Select, fieldErrorProps } from '@/components/ui/field';
 import { useToast } from '@/components/ui/toast';
-import { usePreviewBudget } from '@/lib/api/budgets';
+import { usePreviewBudget, type BudgetSubject } from '@/lib/api/budgets';
+import { useOrgApps } from '@/lib/api/workspace-apps';
 import { useProjectEnvironments, useProjects } from '@/lib/api/projects';
 import { useApps, useJobs } from '@/lib/api/queries';
 import {
   COMPUTE_BUDGET_RATE,
   LEVELS,
   METERS,
-  SCOPE_KINDS,
+  levelsFor,
+  scopeKindsFor,
   budgetDraftUnit,
   draftErrors,
   draftFromSpec,
@@ -19,7 +21,6 @@ import {
   updateBudgetDraft,
   type Budget,
   type BudgetDraft,
-  type BudgetLevel,
   type BudgetPreview,
   type BudgetSpec,
   type DraftField,
@@ -36,32 +37,38 @@ import { sameSpec, useBudgetSave } from './use-budget-save';
 
 const LABEL = 'label-mono text-muted-foreground';
 const HINT = 'text-xs text-muted-foreground';
-const ORDER: BudgetLevel[] = ['alert', 'stop-previews', 'strict'];
 
 /** The picker for one scope's resource; only the list it needs is read. */
 function ScopeResource({
-  accountId,
+  subject,
   kind,
   value,
   onChange,
   error,
 }: {
-  accountId: string;
+  subject: BudgetSubject;
   kind: Exclude<ScopeKind, 'account'>;
   value: string;
   onChange: (id: string) => void;
   error?: string;
 }) {
   const id = useId();
-  const apps = useApps({ enabled: kind === 'app' });
-  const jobs = useJobs(undefined, kind === 'job');
+  const { accountId } = subject;
+  const org = subject.kind === 'org' ? subject.slug : null;
+  // An organization picks from its own apps, never the signed-in account's.
+  const personalApps = useApps({ enabled: !org && kind === 'app' });
+  const orgApps = useOrgApps(org && kind === 'app' ? org : null);
+  const apps = org ? orgApps : personalApps;
+  const appList: { id: string; slug: string; preview_of_slug?: string | null }[] =
+    (org ? orgApps.data?.apps : personalApps.data) ?? [];
+  const jobs = useJobs(undefined, !org && kind === 'job');
   const projects = useProjects(kind === 'project' || kind === 'environment' ? accountId : '');
   const [project, setProject] = useState('');
   const environments = useProjectEnvironments(kind === 'environment' ? accountId : '', project);
 
   const options =
     kind === 'app'
-      ? (apps.data ?? []).map((app) => ({
+      ? appList.map((app) => ({
           id: app.id,
           label: app.preview_of_slug ? `${app.slug} (preview)` : app.slug,
         }))
@@ -146,7 +153,7 @@ function ScopeResource({
  * compute alone, and object storage only counts on an account alert.
  */
 export function BudgetForm({
-  accountId,
+  subject,
   budget,
   scopeLabel,
   strictRefused,
@@ -154,7 +161,7 @@ export function BudgetForm({
   onSaved,
   onCancel,
 }: {
-  accountId: string;
+  subject: BudgetSubject;
   budget?: Budget;
   scopeLabel: ScopeLabel;
   /** apid has refused to turn on a strict cap for this account. */
@@ -177,8 +184,10 @@ export function BudgetForm({
   const [previewed, setPreviewed] = useState<{ spec: BudgetSpec; preview: BudgetPreview } | null>(
     null
   );
-  const preview = usePreviewBudget();
-  const { save, pending } = useBudgetSave(accountId, scopeLabel);
+  const preview = usePreviewBudget(subject);
+  const { save, pending } = useBudgetSave(subject, scopeLabel);
+  const scopeKinds = scopeKindsFor(subject.kind);
+  const levels = levelsFor(subject.kind);
 
   // An enabled strict cap stays editable when the flag is off; apid exempts
   // the revision it replaces (handlers_financial_budgets.go:133-147).
@@ -288,7 +297,7 @@ export function BudgetForm({
             value={draft.scopeKind}
             onChange={(e) => set({ scopeKind: e.target.value as ScopeKind, scopeId: '' })}
           >
-            {SCOPE_KINDS.map((option) => (
+            {scopeKinds.map((option) => (
               <option key={option.kind} value={option.kind}>
                 {option.label}
               </option>
@@ -299,7 +308,7 @@ export function BudgetForm({
           <div className="sm:col-span-2">
             <ScopeResource
               key={draft.scopeKind}
-              accountId={accountId}
+              subject={subject}
               kind={draft.scopeKind as Exclude<ScopeKind, 'account'>}
               value={draft.scopeId}
               onChange={(scopeId) => set({ scopeId })}
@@ -312,7 +321,7 @@ export function BudgetForm({
       <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className={cn(LABEL, 'mb-2')}>Response</legend>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          {ORDER.map((key, index) => {
+          {levels.map((key, index) => {
             const on = level === key;
             return (
               <label

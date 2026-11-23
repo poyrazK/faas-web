@@ -9,7 +9,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/components/ui/confirm';
 import { useToast } from '@/components/ui/toast';
-import { useBudgets, useDeleteBudget, useOperationKey } from '@/lib/api/budgets';
+import {
+  useBudgets,
+  useDeleteBudget,
+  useOperationKey,
+  type BudgetSubject,
+} from '@/lib/api/budgets';
 import { useCapability } from '@/lib/api/capabilities';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { useAuth } from '@/lib/auth';
@@ -72,8 +77,8 @@ function deleteDescription(budget: Budget): string {
 }
 
 /** Deletes at the budget's current revision, after a confirm that says what changes. */
-function useDeleteFlow(accountId: string, onDeleted: (budget: Budget) => void) {
-  const remove = useDeleteBudget(accountId);
+function useDeleteFlow(subject: BudgetSubject, onDeleted: (budget: Budget) => void) {
+  const remove = useDeleteBudget(subject);
   const { keyFor, settle } = useOperationKey();
   const confirm = useConfirm();
   const { toast } = useToast();
@@ -106,9 +111,9 @@ function useDeleteFlow(accountId: string, onDeleted: (budget: Budget) => void) {
   };
 }
 
-/** The personal account's budgets: create, list, and one in detail. */
-export function BudgetsBody({ accountId }: { accountId: string }) {
-  const budgets = useBudgets(accountId, true);
+/** One subject's budgets (the account's or an organization's): create, list, and one in detail. */
+export function BudgetsBody({ subject }: { subject: BudgetSubject }) {
+  const budgets = useBudgets(subject, true);
   const [selected, setSelected] = useState<string | null>(null);
   // The create form is long, so it waits behind "New budget".
   const [creating, setCreating] = useState(false);
@@ -118,13 +123,18 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
   const [strictRefused, setStrictRefused] = useState(false);
   const list = useMemo(() => budgets.data ?? [], [budgets.data]);
   const specs = useMemo(() => list.map((b) => b.spec), [list]);
-  const scopeLabel: ScopeLabel = useScopeLabel(accountId, specs);
-  const askDelete = useDeleteFlow(accountId, (gone) => setSelected(gone.id));
+  const scopeLabel: ScopeLabel = useScopeLabel(subject, specs);
+  const askDelete = useDeleteFlow(subject, (gone) => setSelected(gone.id));
 
   const rows: Row[] = list.map((budget) => ({
     id: budget.id,
     name: budget.spec.name,
-    scope: budget.spec.scope.kind === 'account' ? 'Whole account' : scopeLabel(budget.spec.scope),
+    scope:
+      budget.spec.scope.kind === 'account'
+        ? subject.kind === 'org'
+          ? 'Whole organization'
+          : 'Whole account'
+        : scopeLabel(budget.spec.scope),
     limit: budget.spec.limit_millicents,
     known: budget.runtime?.evaluation?.known_millicents ?? -1,
     level: budgetLevel(budget.spec),
@@ -245,7 +255,7 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
           </p>
 
           <BudgetForm
-            accountId={accountId}
+            subject={subject}
             scopeLabel={scopeLabel}
             strictRefused={strictRefused}
             onStrictRefused={() => setStrictRefused(true)}
@@ -307,7 +317,7 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
       {selected && (
         <BudgetDetail
           key={selected}
-          accountId={accountId}
+          subject={subject}
           id={selected}
           scopeLabel={scopeLabel}
           strictRefused={strictRefused}
@@ -361,7 +371,7 @@ export function BudgetsSection() {
           </p>
         </Panel>
       ) : (
-        <BudgetsBody accountId={account?.id ?? ''} />
+        <BudgetsBody subject={{ kind: 'account', accountId: account?.id ?? '' }} />
       )}
     </section>
   );

@@ -13,6 +13,8 @@ import {
 import { api, unwrap } from '@/lib/api/client';
 import { projectKeys, useProjects } from '@/lib/api/projects';
 import { retryPolicy, useApps, useJobs } from '@/lib/api/queries';
+import { useOrgApps } from '@/lib/api/workspace-apps';
+import type { BudgetSubject } from '@/lib/api/budgets';
 import {
   LEVELS,
   budgetLevel,
@@ -134,13 +136,19 @@ export function SpendMeter({
  * Names for the ids a budget scope carries. Only the lists a budget actually
  * needs are read; an id nothing resolves is shown, never replaced by a guess.
  */
-export function useScopeLabel(accountId: string, specs: BudgetSpec[] | undefined) {
+export function useScopeLabel(subject: BudgetSubject, specs: BudgetSpec[] | undefined) {
+  const { accountId } = subject;
+  const org = subject.kind === 'org' ? subject.slug : null;
   const kinds = useMemo(
     () => new Set<ScopeKind>((specs ?? []).map((spec) => spec.scope.kind)),
     [specs]
   );
-  const apps = useApps({ enabled: kinds.has('app'), retry: retryPolicy });
-  const jobs = useJobs(undefined, kinds.has('job'));
+  // An organization's budgets name its own apps, never the signed-in account's.
+  const personalApps = useApps({ enabled: !org && kinds.has('app'), retry: retryPolicy });
+  const orgApps = useOrgApps(org && kinds.has('app') ? org : null);
+  const appList: { id: string; slug: string }[] =
+    (org ? orgApps.data?.apps : personalApps.data) ?? [];
+  const jobs = useJobs(undefined, !org && kinds.has('job'));
   const needProjects = kinds.has('project') || kinds.has('environment');
   const projects = useProjects(needProjects ? accountId : '');
   const envs = useQueries({
@@ -166,9 +174,9 @@ export function useScopeLabel(accountId: string, specs: BudgetSpec[] | undefined
     const id = scope.id ?? '';
     switch (scope.kind) {
       case 'account':
-        return 'the whole account';
+        return org ? 'the whole organization' : 'the whole account';
       case 'app':
-        return apps.data?.find((app) => app.id === id)?.slug ?? `app ${id.slice(0, 8)}`;
+        return appList.find((app) => app.id === id)?.slug ?? `app ${id.slice(0, 8)}`;
       case 'job':
         return jobs.data?.jobs.find((job) => job.id === id)?.name ?? `job ${id.slice(0, 8)}`;
       case 'project':

@@ -9,7 +9,10 @@ const workspace = vi.hoisted(() => ({
   label: 'Personal',
   ready: true,
 }));
-vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => workspace,
+}));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({
     accountId: 'acct',
