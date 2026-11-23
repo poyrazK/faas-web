@@ -9,23 +9,43 @@ const FIRST_COMMANDS = `${INSTALL_COMMAND}\ngregale login`;
 const TASKS = [
   {
     slug: 'deploy-from-github',
-    title: 'Bring your repository',
-    detail: 'Deploy existing code or connect GitHub.',
+    title: 'Deploy your repository',
+    detail: 'Ship existing code, or deploy on every GitHub push.',
+  },
+  {
+    slug: 'postgres',
+    title: 'Add a Postgres database',
+    detail: 'Create a database and connect your app to it.',
+  },
+  {
+    slug: 'secrets',
+    title: 'Store API keys and credentials',
+    detail: 'Seal secrets and deliver them only to your app.',
   },
   {
     slug: 'custom-domains',
     title: 'Connect your domain',
-    detail: 'Configure DNS and verify your app’s address.',
+    detail: 'Point DNS at your app and verify the address.',
   },
   {
-    slug: 'scale-to-zero',
-    title: 'Understand app lifecycle',
-    detail: 'What happens when an idle app wakes.',
+    slug: 'logs',
+    title: 'See your app’s logs',
+    detail: 'Find the request or error behind a failure.',
   },
   {
-    slug: 'plans',
-    title: 'Check your limits',
-    detail: 'Compute, deployed apps, and plan allowances.',
+    slug: 'releases',
+    title: 'Roll back a bad release',
+    detail: 'Return to the previous release without rebuilding.',
+  },
+  {
+    slug: 'crons',
+    title: 'Run code on a schedule',
+    detail: 'Call a path on your app every minute, hour, or day.',
+  },
+  {
+    slug: 'agents',
+    title: 'Deploy from your coding agent',
+    detail: 'Let Claude Code, Codex, or Cursor deploy and operate apps.',
   },
 ];
 
