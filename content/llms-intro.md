@@ -3,7 +3,7 @@
 > Gregale is a backend platform for product teams without an ops team: APIs, background jobs, workflows, crons, webhooks and managed PostgreSQL in one place, with safe releases and rollbacks, every app in its own Firecracker microVM, and one command from a repository to production.
 
 Gregale is CLI-first (`gregale deploy`), with a full web console for
-everything the API can do. {{BETA_STATUS}}
+everything the API can do. {{PLATFORM_AVAILABILITY}}
 
 From a repository to a live URL, the way a coding agent does it:
 
@@ -44,5 +44,5 @@ Key facts:
   Queues and request tracing are in preview.
 - Privacy: GDPR export and deletion are built into the product.
 - Pricing: monthly plans with included compute and a spend cap you set; see
-  [Plans and pricing](https://gregale.dev/docs/plans.md). Paid plans open
-  after the beta.
+  [Plans and pricing](https://gregale.dev/docs/plans.md). Upgrade from Plans
+  in the console.

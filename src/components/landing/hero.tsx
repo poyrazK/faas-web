@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
 import { RestoreTarget } from '@/components/restore-target';
-import { BETA_STATUS, RESTORE_CONTEXT } from '@/lib/platform-claims';
+import { PLATFORM_AVAILABILITY, RESTORE_CONTEXT, START_FREE_CTA } from '@/lib/platform-claims';
 import { DeployTerminal } from './deploy-terminal';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
@@ -79,12 +79,12 @@ export function Hero() {
               to="/signup"
               className="group inline-flex items-center gap-2 rounded font-medium text-brand hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-brand"
             >
-              Join the beta
+              {START_FREE_CTA}
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
             </SweepLink>
           </div>
           <p className="mt-6 max-w-[34rem] text-center font-mono text-[11px] text-muted-foreground">
-            {BETA_STATUS}
+            {PLATFORM_AVAILABILITY}
           </p>
         </div>
       </section>

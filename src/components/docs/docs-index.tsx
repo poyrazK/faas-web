@@ -42,7 +42,6 @@ export function DocsIndex() {
       </header>
       <section className="docs-start" aria-labelledby="docs-start-title">
         <div>
-          <span className="docs-beta">Hosting · Public beta</span>
           <h2 id="docs-start-title">Your first deployment</h2>
           <p>
             Install the CLI, deploy a starter API, and verify the live URL. A complete path,

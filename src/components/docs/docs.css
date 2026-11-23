@@ -226,10 +226,6 @@
   min-width: 0;
   padding: 28px;
 }
-.docs-beta {
-  font-size: 11px;
-  color: var(--brand);
-}
 .docs-start h2 {
   font-size: 23px;
   font-weight: 500;

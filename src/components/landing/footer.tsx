@@ -1,3 +1,4 @@
+import { START_FREE_CTA } from '@/lib/platform-claims';
 import { featureFlags } from '@/lib/feature-flags';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight, ArrowUpRight, Check } from 'iconoir-react';
@@ -89,7 +90,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Account',
     links: [
       { label: 'Console', href: '/dashboard', route: '/dashboard' },
-      { label: 'Join the beta', href: '/signup', route: '/signup' },
+      { label: START_FREE_CTA, href: '/signup', route: '/signup' },
       { label: 'Sign in', href: '/login', route: '/login' },
     ],
   },
@@ -240,7 +241,7 @@ export function Footer() {
                 className="group h-11 gap-2 rounded-full px-7"
               >
                 <SweepLink to="/signup">
-                  Join the beta
+                  {START_FREE_CTA}
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </SweepLink>
               </Button>

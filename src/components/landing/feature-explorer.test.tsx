@@ -25,7 +25,7 @@ describe('feature explorer', () => {
       'true'
     );
     const detail = within(region).getByRole('tabpanel', { name: 'Source deploys' });
-    // Beta features carry no label: the hero states the beta once for all of them.
+    // Available hosting features need no qualification label.
     expect(detail.querySelector('.feature-availability')).toBeNull();
     expect(within(detail).getByRole('link', { name: /read the guide/i })).toHaveAttribute(
       'href',
@@ -52,10 +52,15 @@ describe('feature explorer', () => {
   });
 
   it.each([
-    ['PR previews', null, '/docs/preview-environments', /deployed-app limit/],
-    ['Object storage', 'Preview', undefined, /availability depends on the storage rollout/],
+    ['PR previews', null, '/docs/preview-environments', /separate allowance/],
+    [
+      'Object storage',
+      'Preview',
+      '/docs/object-storage',
+      /availability depends on the storage rollout/,
+    ],
   ] as const)(
-    'explains %s availability, labelling only what is not in beta, and links to its guide when one is published',
+    'explains %s availability, and links to the published guide',
     async (name, status, href, qualification) => {
       const user = userEvent.setup();
       renderFeatures();
@@ -77,7 +82,15 @@ describe('feature explorer', () => {
     await user.click(screen.getByRole('tab', { name: /connected work/i }));
     expect(screen.queryByRole('tab', { name: 'Custom domains' })).not.toBeInTheDocument();
     const services = screen.getByRole('tabpanel', { name: 'Service connections' });
-    expect(within(services).getByText('Preview')).toBeInTheDocument();
+    expect(services.querySelector('.feature-availability')).toBeNull();
+    expect(within(services).getByRole('link', { name: 'Read the guide' })).toHaveAttribute(
+      'href',
+      '/docs/internal-services'
+    );
+    for (const name of ['Background jobs', 'Workflows']) {
+      await user.click(screen.getByRole('tab', { name }));
+      expect(within(screen.getByRole('tabpanel', { name })).getByText('Beta')).toBeInTheDocument();
+    }
     expect(within(services).queryByText(/coming soon/i)).not.toBeInTheDocument();
     expect(
       within(services).queryByRole('link', { name: /read platform docs/i })

@@ -5,8 +5,7 @@ import { HostingDiagram, type HostingDiagramKind } from './hosting-diagrams';
 import { ConnectedDiagram, type ConnectedDiagramKind } from './connected-diagrams';
 import './feature-explorer.css';
 
-/** Shown only when a feature is not yet in beta; the hero states the beta once. */
-type Availability = 'Preview' | 'In development';
+type Availability = 'Beta' | 'Preview' | 'In development';
 type Diagram = 'deploy' | HostingDiagramKind | ConnectedDiagramKind;
 interface Feature {
   id: string;
@@ -80,7 +79,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         id: 'previews',
         title: 'PR previews',
         description:
-          'Review eligible GitHub pull requests at their own preview URLs. Previews update on push and share your plan’s deployed-app limit.',
+          'Review eligible GitHub pull requests at their own preview URLs. Previews update on push and have a separate allowance on your plan.',
         diagram: 'previews',
         caption: 'A separate preview, before the merge.',
         doc: 'preview-environments',
@@ -92,6 +91,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
           'Store files in private buckets outside your app’s runtime; availability depends on the storage rollout.',
         availability: 'Preview',
         diagram: 'objects',
+        doc: 'object-storage',
         caption: 'Object buckets, not persistent VM disks.',
       },
     ],
@@ -104,7 +104,6 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         title: 'Service connections',
         description:
           'Declare your service dependencies. Gregale provides stable addresses, checks permitted callers and can wake parked dependencies on request.',
-        availability: 'Preview',
         diagram: 'services',
         caption: 'A declared caller reaches its dependency by name.',
         doc: 'internal-services',
@@ -114,7 +113,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         title: 'Background jobs',
         description:
           'Schedule work and retry failed attempts. Gregale tracks timers and attempts; your handlers own the business logic and external effects.',
-        availability: 'Preview',
+        availability: 'Beta',
         diagram: 'jobs',
         caption: 'Schedule → attempt → retry → result',
         doc: 'jobs',
@@ -124,7 +123,7 @@ const GROUPS: { title: string; features: Feature[] }[] = [
         title: 'Workflows',
         description:
           'Run handlers across multiple steps and wait for callbacks. Gregale keeps workflow state; your code defines the steps and access rules.',
-        availability: 'Preview',
+        availability: 'Beta',
         diagram: 'workflows',
         caption: 'Run a step. Wait for a callback. Continue.',
         doc: 'code-workflows',

@@ -1,7 +1,7 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
 import {
-  BETA_STATUS,
+  PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
   RESTORE_CONTEXT,
   RESTORE_TARGET,
@@ -74,7 +74,7 @@ export function markdownPage(entry: DocEntry, source: string, siteUrl: string): 
  * it. An unknown placeholder fails the build instead of shipping braces.
  */
 const INTRO_CLAIMS: Record<string, string> = {
-  BETA_STATUS,
+  PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
   RESTORE_CONTEXT,
   RESTORE_TARGET,
