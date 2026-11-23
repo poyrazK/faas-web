@@ -21,6 +21,7 @@ import { TimeChart } from './kit/chart';
 import { AnalyticsBreakdown, type BreakdownRow } from './analytics-breakdown';
 import { inScope, useProjectScope } from '@/lib/project-scope';
 import {
+  analyticsGroupWords,
   compareRequestHalves,
   appMetricNumber,
   incompleteTelemetry,
@@ -295,7 +296,7 @@ function AppDetail({
       const rowValue = metricNumber(metric, { ...row, start: '' });
       return {
         id: `${row.value}-${row.method}-${index}`,
-        label: `${row.method ? row.method + ' ' : ''}${row.value === '__other__' ? 'Everything else' : row.value}`,
+        label: analyticsGroupWords(group, row.value, row.method).label,
         value: rowValue ?? 0,
         formatted:
           total > 0 && rowValue != null
@@ -309,12 +310,13 @@ function AppDetail({
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
   const failures = metric === 'errors' || metric === 'error_rate';
+  const routeLabel = route ? analyticsGroupWords('route', route, method).label : undefined;
 
   return (
     <PlanGated error={summary.error ?? series.error} feature="Request analytics">
       <div className="flex flex-col gap-5">
         <WindowBar
-          scope={route && method ? `${method} ${route}` : 'All routes'}
+          scope={routeLabel ?? 'All routes'}
           since={since}
           onSince={(next) => onChange({ ...request, since: next, until: undefined })}
         />
@@ -331,10 +333,10 @@ function AppDetail({
             incomplete={incomplete}
           />
         )}
-        {route && (
+        {routeLabel && (
           <p className="flex flex-wrap items-center gap-3 text-xs">
             <span className="rounded-full bg-muted px-2.5 py-1 font-mono break-all">
-              Only {method} {route}
+              Only {routeLabel}
             </span>
             <button
               type="button"

@@ -239,7 +239,7 @@ describe('AppAnalyticsBody', () => {
         slug="api"
         since="24h"
         groupBy="route"
-        route="/orders"
+        route="GET /orders"
         method="GET"
         onSinceChange={vi.fn()}
         onGroupByChange={vi.fn()}
@@ -248,10 +248,12 @@ describe('AppAnalyticsBody', () => {
     );
 
     expect(useAppAnalyticsTimeseries).toHaveBeenLastCalledWith('api', '24h', {
-      route: '/orders',
+      route: 'GET /orders',
       method: 'GET',
       groupBy: 'route',
     });
+    expect(screen.getByLabelText('Active route filter')).toHaveTextContent('GET /orders');
+    expect(screen.getByLabelText('Active route filter')).not.toHaveTextContent('GET GET /orders');
     await userEvent.click(screen.getByRole('button', { name: 'Clear route filter' }));
     expect(onRouteChange).toHaveBeenCalledWith(undefined, undefined);
   });

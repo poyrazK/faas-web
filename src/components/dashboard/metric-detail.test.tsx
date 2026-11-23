@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { withRouter } from '@/test/router';
 import MetricDetail from './metric-detail';
 import type { MetricDetailRequest } from './metric-detail-search';
@@ -130,6 +131,67 @@ it('shows each source’s share and focuses a route without losing the window', 
   expect(within(sources).getByText('75 · 75%')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /GET \/orders/ }));
   expect(change).toHaveBeenCalledWith({ ...request, route: '/orders', method: 'GET' });
+});
+
+it('translates route buckets and keeps the exact backend key for drill-down', async () => {
+  const change = vi.fn();
+  const detail = { ...request, metric: 'error_rate' as const };
+  mocks.summary.mockReturnValue(
+    ready({
+      ...summary,
+      groups: [
+        { ...summary.groups[0], value: 'GET /logo.png' },
+        { ...summary.groups[1], value: '__route_other__' },
+      ],
+    })
+  );
+  function DrillDown() {
+    const [current, setCurrent] = useState<MetricDetailRequest>(detail);
+    return (
+      <MetricDetail
+        request={current}
+        onChange={(next) => {
+          change(next);
+          setCurrent(next);
+        }}
+      />
+    );
+  }
+  await show(<DrillDown />);
+  const breakdown = screen.getByRole('list', { name: 'Where requests fail' });
+  expect(within(breakdown).getByText('GET /logo.png')).toBeInTheDocument();
+  expect(within(breakdown).getByText('GET Other routes')).toBeInTheDocument();
+  await userEvent.click(within(breakdown).getByRole('button', { name: /^GET \/logo\.png/ }));
+  const filtered = { ...detail, route: 'GET /logo.png', method: 'GET' as const };
+  expect(change).toHaveBeenCalledWith(filtered);
+  expect(await screen.findByText('Only GET /logo.png')).toBeInTheDocument();
+  expect(mocks.series).toHaveBeenLastCalledWith(
+    'api',
+    '24h',
+    expect.objectContaining({ route: 'GET /logo.png', method: 'GET' })
+  );
+});
+
+it('shows an unknown country without exposing the telemetry sentinel', async () => {
+  mocks.summary.mockReturnValue(
+    ready({
+      ...summary,
+      groups: [
+        { ...point, value: '__unknown__' },
+        { ...point, value: 'TR' },
+      ],
+    })
+  );
+  await show(
+    <MetricDetail
+      request={{ ...request, metric: 'error_rate', group: 'country' }}
+      onChange={vi.fn()}
+    />
+  );
+  const breakdown = screen.getByRole('list', { name: 'Where requests fail' });
+  expect(within(breakdown).getByText('Unknown')).toBeInTheDocument();
+  expect(within(breakdown).getByText('TR')).toBeInTheDocument();
+  expect(within(breakdown).queryByText('__unknown__')).not.toBeInTheDocument();
 });
 
 it('splits by status, country or more, keeping the metric', async () => {
