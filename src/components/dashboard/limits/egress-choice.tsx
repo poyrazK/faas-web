@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { useSetEgressOverage } from '@/lib/api/limits';
+import { gib } from '@/lib/limits';
 import { formatMillicentRate } from '@/lib/money';
 
 type StepUpCode = 'step_up_required' | 'mfa_required';
@@ -17,6 +18,7 @@ type StepUpCode = 'step_up_required' | 'mfa_required';
 export function EgressChoice({
   org,
   enabled,
+  billingOff = false,
   includedGb,
   priceMillicentsPerGib,
   open: openProp,
@@ -24,6 +26,8 @@ export function EgressChoice({
 }: {
   org: string | null;
   enabled: boolean;
+  /** Egress billing isn't live yet: turning it on only saves the choice. */
+  billingOff?: boolean;
   includedGb?: number;
   priceMillicentsPerGib?: number;
   /** Controlled by the page when the status strip opens the same choice. */
@@ -37,7 +41,8 @@ export function EgressChoice({
   const setOpen = onOpenChange ?? setOpenState;
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
-  const allowance = includedGb != null ? `${includedGb} GiB` : 'the allowance';
+  const allowance = includedGb != null ? gib(includedGb) : 'the allowance';
+  const saveOnly = billingOff && !enabled;
   const price =
     priceMillicentsPerGib != null ? formatMillicentRate(priceMillicentsPerGib) : 'the egress rate';
 
@@ -79,20 +84,28 @@ export function EgressChoice({
   return (
     <>
       <Button size="xs" variant="outline" onClick={() => setOpen(true)}>
-        {enabled ? 'Stop at allowance' : 'Pay beyond'}
+        {enabled ? 'Stop at allowance' : saveOnly ? 'Choose for later' : 'Pay beyond'}
       </Button>
       {open && (
         <Modal
           open
           onClose={() => setOpen(false)}
-          title={enabled ? 'Stop at the egress allowance?' : 'Pay for egress beyond the allowance?'}
+          title={
+            enabled
+              ? 'Stop at the egress allowance?'
+              : saveOnly
+                ? 'Pay beyond the allowance once billing starts?'
+                : 'Pay for egress beyond the allowance?'
+          }
           width="max-w-md"
         >
           <div className="flex flex-col gap-4 text-sm">
             <p>
               {enabled
                 ? `Apps will stop again when egress reaches ${allowance}. Egress already sent stays billed.`
-                : `Egress above ${allowance} is billed at ${price} per GiB and counts toward your spend cap.`}
+                : saveOnly
+                  ? `Egress billing hasn’t started yet, so this saves your choice. Until it starts, apps still stop at ${allowance}. After that, egress above it is billed at ${price} per GiB and counts toward your spend cap.`
+                  : `Egress above ${allowance} is billed at ${price} per GiB and counts toward your spend cap.`}
             </p>
             {error && (
               <p role="alert" className="text-status-critical">
@@ -104,7 +117,7 @@ export function EgressChoice({
                 Cancel
               </Button>
               <Button size="sm" onClick={() => void confirm()} disabled={mutation.isPending}>
-                {enabled ? 'Turn off' : 'Turn on'}
+                {enabled ? 'Turn off' : saveOnly ? 'Save choice' : 'Turn on'}
               </Button>
             </div>
           </div>

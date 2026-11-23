@@ -217,3 +217,28 @@ describe('review fixes', () => {
     });
   });
 });
+
+describe('egress billing not live yet', () => {
+  it('offers to save the choice for later, not to pay beyond', () => {
+    expect(
+      egressSentence({ enabled: false, billingOff: true, electable: true, includedGb: 500 })
+    ).toBe(
+      'Apps stop at 500 GiB. You can choose to pay beyond it now; it starts when egress billing does.'
+    );
+  });
+
+  it('points a stop at plans while egress billing is off, since paying can’t lift it', () => {
+    expect(
+      billStatus({
+        ...base,
+        egress: ready({
+          enabled: false,
+          billingOff: true,
+          electable: true,
+          usedGb: 500,
+          includedGb: 500,
+        }),
+      })
+    ).toMatchObject({ tone: 'critical', detail: 'Egress reached 500 GiB.', action: 'plans' });
+  });
+});

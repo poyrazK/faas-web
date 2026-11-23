@@ -277,6 +277,20 @@ describe('Your bill', () => {
     expect(screen.queryByText(/Managed Postgres overage/)).toBeNull();
   });
 
+  it('saves the choice for later while egress billing is off', async () => {
+    h.egress.mockReturnValue(ok(election({ billing: 'off' })));
+    h.setEgress.mockResolvedValueOnce(election({ enabled: true, billing: 'off' }));
+    await show(<Bill />);
+    expect(within(row('Egress')).queryByRole('button', { name: 'Pay beyond' })).toBeNull();
+    await userEvent.click(within(row('Egress')).getByRole('button', { name: 'Choose for later' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(
+      'Egress billing hasn’t started yet, so this saves your choice. Until it starts, apps still stop at 500 GiB. After that, egress above it is billed at $0.03 per GiB and counts toward your spend cap.'
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save choice' }));
+    expect(h.setEgress).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+  });
+
   it('says a saved election waits for egress billing', async () => {
     h.egress.mockReturnValue(ok(election({ enabled: true, billing: 'off' })));
     await show(<Bill />);
