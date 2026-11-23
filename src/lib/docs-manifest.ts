@@ -320,6 +320,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Deploy a Compose project or several services as one project.',
       },
       {
+        slug: 'mcp-hosting',
+        source: 'docs/mcp-hosting.md',
+        title: 'Host an MCP server',
+        summary:
+          'Build, test and deploy an MCP server that Claude, Cursor and other clients can call.',
+      },
+      {
         slug: 'jobs',
         source: 'docs/jobs.md',
         title: 'Jobs',
@@ -336,6 +343,12 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/event-driven.md',
         title: 'Event-driven workloads',
         summary: 'Async invokes, workflows, delayed tasks and deployment webhooks.',
+      },
+      {
+        slug: 'realtime',
+        source: 'docs/realtime.md',
+        title: 'Managed realtime',
+        summary: 'Push messages to web and mobile clients over WebSocket or Server-Sent Events.',
       },
       {
         slug: 'inbound-webhooks',
@@ -455,7 +468,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'secrets',
         source: 'docs/secrets.md',
-        title: 'Delivered secrets',
+        title: 'Secrets',
         summary: 'Set, rotate and hot-reload secrets without restarting the app.',
       },
       {
