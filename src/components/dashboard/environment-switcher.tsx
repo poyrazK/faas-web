@@ -90,7 +90,7 @@ export function EnvironmentSwitcher() {
 
   return (
     <>
-      <span aria-hidden className="shrink-0 text-muted-foreground/40">
+      <span aria-hidden className="hidden shrink-0 text-muted-foreground/40 @lg/topbar:inline">
         /
       </span>
       <DropdownMenu>

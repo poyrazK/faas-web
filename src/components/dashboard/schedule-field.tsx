@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Ref } from 'react';
+import { useEffect, useMemo, useState, type ReactNode, type Ref } from 'react';
 import { FIELD, FieldError, fieldErrorProps, Select } from '@/components/ui/field';
 import {
   describeCronSchedule,
@@ -22,12 +22,14 @@ export function ScheduleField({
   onChange,
   inputRef,
   error,
+  timezoneControl,
   timezone = 'UTC',
 }: {
   value: string;
   onChange: (value: string) => void;
   inputRef?: Ref<HTMLInputElement>;
   error?: string;
+  timezoneControl?: ReactNode;
   /**
    * The zone the expression is evaluated in. Presets are plain cron strings,
    * so they apply in any zone; next-run previews are computed only for UTC,
@@ -44,24 +46,27 @@ export function ScheduleField({
     [utc, value, now]
   );
   return (
-    <div className="space-y-3">
-      <label className="flex flex-col gap-1.5">
-        <span className="label-mono text-muted-foreground">Schedule preset</span>
-        <Select
-          className="w-full"
-          value={SCHEDULE_PRESETS.some((p) => p.value === value) ? value : ''}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          <option value="" disabled>
-            Custom cron expression
-          </option>
-          {SCHEDULE_PRESETS.map((preset) => (
-            <option key={preset.value} value={preset.value}>
-              {inZone(preset.label)}
+    <div className="min-w-0 space-y-3">
+      <div className={timezoneControl ? 'grid gap-3 sm:grid-cols-2' : undefined}>
+        <label className="flex min-w-0 flex-col gap-1.5">
+          <span className="label-mono text-muted-foreground">Schedule preset</span>
+          <Select
+            className="w-full"
+            value={SCHEDULE_PRESETS.some((p) => p.value === value) ? value : ''}
+            onChange={(event) => onChange(event.target.value)}
+          >
+            <option value="" disabled>
+              Custom cron expression
             </option>
-          ))}
-        </Select>
-      </label>
+            {SCHEDULE_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {inZone(preset.label)}
+              </option>
+            ))}
+          </Select>
+        </label>
+        {timezoneControl}
+      </div>
       <label className="flex flex-col gap-1.5">
         <span className="label-mono text-muted-foreground">Schedule</span>
         <input

@@ -192,7 +192,7 @@ export function OverviewSearch({ workflows }: { workflows: Workflow[] }) {
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={open && results[active] ? `ovs-${active}` : undefined}
-            className="h-full flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <Kbd className="ml-auto shrink-0 px-1.5">⌘K</Kbd>
         </div>

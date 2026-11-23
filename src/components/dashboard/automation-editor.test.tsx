@@ -124,6 +124,9 @@ describe('new automation dialog', () => {
   it('creates a scheduled draft from a template without publishing it', async () => {
     render(<CreationDialog />);
     await userEvent.click(screen.getByRole('button', { name: /Run on a schedule/ }));
+    expect(screen.getByText('Run on a schedule template').closest('details')).not.toHaveAttribute(
+      'open'
+    );
     expect(screen.getByLabelText('Schedule')).toHaveValue('0 * * * *');
     expect(screen.getByLabelText('HTTP method')).toHaveValue('GET');
     expect(mocks.write).not.toHaveBeenCalled();

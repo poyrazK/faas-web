@@ -455,6 +455,8 @@ export function AutomationEditor({
   const [raw, setRaw] = useState('');
   const [rawOpen, setRawOpen] = useState(false);
   const [template, setTemplate] = useState<AutomationTemplate>('handler');
+  const [templatesOpen, setTemplatesOpen] = useState(true);
+  const templateSummary = useRef<HTMLElement>(null);
   const confirm = useConfirm();
   const bypassGuard = useRef(false);
   const closing = useRef(false);
@@ -689,9 +691,19 @@ export function AutomationEditor({
       >
         <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
           {inDialog && !savedName && (
-            <div>
-              <p className="mb-2 text-xs text-muted-foreground">Start from a template.</p>
-              <div className="grid gap-2 sm:grid-cols-3">
+            <details
+              open={templatesOpen}
+              onToggle={(event) => setTemplatesOpen(event.currentTarget.open)}
+            >
+              <summary
+                ref={templateSummary}
+                className="cursor-pointer rounded-md text-xs text-muted-foreground"
+              >
+                {templatesOpen
+                  ? 'Start from a template'
+                  : `${AUTOMATION_TEMPLATES.find((item) => item.id === template)?.title} template`}
+              </summary>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 {AUTOMATION_TEMPLATES.map((item) => (
                   <button
                     type="button"
@@ -699,21 +711,24 @@ export function AutomationEditor({
                     aria-pressed={template === item.id}
                     className="rounded-lg border border-border bg-background/40 p-3 text-left transition-colors hover:border-brand/50 aria-pressed:border-brand/50 aria-pressed:bg-brand/5"
                     onClick={async () => {
-                      if (item.id === template) return;
-                      if (
-                        dirty &&
-                        !(await confirm({
-                          title: 'Replace the current steps?',
-                          description:
-                            'This template replaces the trigger and steps. Your automation name will be kept.',
-                          confirmLabel: 'Use template',
-                        }))
-                      )
-                        return;
-                      const definition = newDefinition(item.id);
-                      edit(definitionDraft({ ...definition, name: draft.spec.name }));
-                      setTemplate(item.id);
-                      setRawOpen(false);
+                      if (item.id !== template) {
+                        if (
+                          dirty &&
+                          !(await confirm({
+                            title: 'Replace the current steps?',
+                            description:
+                              'This template replaces the trigger and steps. Your automation name will be kept.',
+                            confirmLabel: 'Use template',
+                          }))
+                        )
+                          return;
+                        const definition = newDefinition(item.id);
+                        edit(definitionDraft({ ...definition, name: draft.spec.name }));
+                        setTemplate(item.id);
+                        setRawOpen(false);
+                      }
+                      setTemplatesOpen(false);
+                      templateSummary.current?.focus({ preventScroll: true });
                     }}
                   >
                     <span className="block text-sm font-medium">{item.title}</span>
@@ -723,7 +738,7 @@ export function AutomationEditor({
                   </button>
                 ))}
               </div>
-            </div>
+            </details>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField
@@ -761,25 +776,29 @@ export function AutomationEditor({
             </label>
             {draft.spec.trigger?.type === 'schedule' && (
               <>
-                <ScheduleField
-                  value={draft.spec.trigger.schedule ?? ''}
-                  timezone={draft.spec.trigger.timezone ?? 'UTC'}
-                  onChange={(schedule) =>
-                    edit({
-                      ...draft,
-                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
-                    })
-                  }
-                />
-                <TimezoneField
-                  value={draft.spec.trigger.timezone ?? 'UTC'}
-                  onChange={(timezone) =>
-                    edit({
-                      ...draft,
-                      spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
-                    })
-                  }
-                />
+                <div className="min-w-0 sm:col-span-2">
+                  <ScheduleField
+                    value={draft.spec.trigger.schedule ?? ''}
+                    timezone={draft.spec.trigger.timezone ?? 'UTC'}
+                    onChange={(schedule) =>
+                      edit({
+                        ...draft,
+                        spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, schedule } },
+                      })
+                    }
+                    timezoneControl={
+                      <TimezoneField
+                        value={draft.spec.trigger.timezone ?? 'UTC'}
+                        onChange={(timezone) =>
+                          edit({
+                            ...draft,
+                            spec: { ...draft.spec, trigger: { ...draft.spec.trigger!, timezone } },
+                          })
+                        }
+                      />
+                    }
+                  />
+                </div>
                 <details
                   className="well rounded-xl bg-muted/40 p-3 sm:col-span-2"
                   open={draft.spec.trigger.overlap === 'allow' || draft.scheduledInput !== 'null'}

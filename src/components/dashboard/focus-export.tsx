@@ -73,21 +73,21 @@ export function FocusExport() {
           void download();
         }}
       >
-        <label className="flex flex-col gap-1.5 text-xs font-medium">
+        <label className="flex min-w-0 max-w-full flex-col gap-1.5 text-xs font-medium">
           Month
           <input
             type="month"
             value={month}
             onChange={(event) => setMonth(event.target.value)}
-            className={cn(FIELD, 'w-40')}
+            className={cn(FIELD, 'w-40 min-w-0 max-w-full')}
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium">
+        <label className="flex min-w-0 max-w-full flex-col gap-1.5 text-xs font-medium">
           Format
           <Select
             value={format}
             onChange={(event) => setFormat(event.target.value as Format)}
-            className={cn(FIELD, 'w-52')}
+            className="w-52 min-w-0 max-w-full"
           >
             {FORMATS.map((f) => (
               <option key={f.value} value={f.value}>

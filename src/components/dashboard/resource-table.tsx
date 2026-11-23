@@ -191,7 +191,7 @@ export function ResourceTable<T extends { id: string }>({
           )}
         >
           {searchKeys?.length ? (
-            <label className="relative flex min-w-56 flex-1 items-center sm:max-w-xs">
+            <label className="relative flex min-w-0 max-w-full flex-[1_1_14rem] items-center sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3.5 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="search"
@@ -208,7 +208,7 @@ export function ResourceTable<T extends { id: string }>({
                   }
                 }}
                 placeholder={searchPlaceholder}
-                className="rt-search h-9 w-full rounded-full bg-muted pl-9 pr-9 text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
+                className="rt-search h-9 w-full min-w-0 rounded-full bg-muted pl-9 pr-9 text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:appearance-none"
               />
               {query && (
                 <IconButton
@@ -270,7 +270,11 @@ export function ResourceTable<T extends { id: string }>({
             }
           />
         ) : (
-          <div className="rt" data-flush={flush || undefined}>
+          <div
+            className="rt"
+            data-flush={flush || undefined}
+            data-responsive={secondary.length > 0 || undefined}
+          >
             {/* relative: the sr-only (absolute) header text is positioned inside
                 this box, so it is clipped with the table instead of widening the page. */}
             <div className="relative overflow-x-auto">

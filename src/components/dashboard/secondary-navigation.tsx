@@ -1,4 +1,5 @@
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
+import { Select } from '@/components/ui/field';
 import {
   APP_SECTIONS,
   findNavHub,
@@ -70,8 +71,12 @@ export function DashboardSecondaryNavigation() {
   if (hubSections.length === 0 && !showAppSections) return null;
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {hubSections.length > 0 && (
-        <SecondaryNavigation label={`${hub.label} sections`} items={hubSections} />
+      {hub.to === '/dashboard/settings' ? (
+        <SettingsNavigation items={hubSections} />
+      ) : (
+        hubSections.length > 0 && (
+          <SecondaryNavigation label={`${hub.label} sections`} items={hubSections} />
+        )
       )}
       {showAppSections && (
         <details open className="min-w-0">
@@ -81,6 +86,36 @@ export function DashboardSecondaryNavigation() {
           <SecondaryNavigation label="App sections" items={APP_SECTIONS} />
         </details>
       )}
+    </div>
+  );
+}
+
+function SettingsNavigation({ items }: { items: NavItem[] }) {
+  const navigate = useNavigate({ from: '/dashboard/settings' });
+  const { hash, search } = useRouterState({ select: (state) => state.location });
+  const section = validateSettingsSearch(search).section ?? 'general';
+  return (
+    <div className="@container/settings">
+      <label className="flex w-full max-w-xs flex-col gap-1.5 @min-[58rem]/settings:hidden">
+        <span className="label-mono text-muted-foreground">Settings section</span>
+        <Select
+          value={section}
+          onChange={(event) => {
+            const next = validateSettingsSearch({ section: event.target.value }).section;
+            void navigate({ search: (previous) => ({ ...previous, section: next }), hash });
+          }}
+          className="min-w-0"
+        >
+          {items.map((item) => (
+            <option key={item.search?.section} value={item.search?.section}>
+              {item.label}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="hidden @min-[58rem]/settings:block">
+        <SecondaryNavigation label="Settings sections" items={items} />
+      </div>
     </div>
   );
 }

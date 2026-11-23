@@ -230,9 +230,9 @@ export function ProjectInventory() {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">
           {!nothingYet && (
-            <label className="flex h-9 min-w-56 items-center gap-2 rounded-full bg-muted px-3.5 text-muted-foreground">
+            <label className="flex h-9 w-56 min-w-0 max-w-full items-center gap-2 rounded-full bg-muted px-3.5 text-muted-foreground">
               <Search aria-hidden className="h-3.5 w-3.5 shrink-0" />
               <input
                 type="search"

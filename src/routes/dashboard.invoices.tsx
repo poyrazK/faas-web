@@ -138,7 +138,7 @@ function InvoicesBody() {
     {
       key: 'status',
       label: 'Status',
-      width: 'w-32',
+      width: 'md:w-32',
       // A plain word; the provider's status stays in the title.
       render: (i) => (
         <span title={i.status}>
@@ -146,7 +146,7 @@ function InvoicesBody() {
         </span>
       ),
     },
-    { key: 'period', label: 'Period' },
+    { key: 'period', label: 'Period', priority: 'secondary' },
     {
       key: 'total',
       label: 'Total',
@@ -160,6 +160,7 @@ function InvoicesBody() {
     {
       key: 'createdAt',
       label: 'Issued',
+      priority: 'secondary',
       numeric: true,
       render: (i) => (
         <span className="text-xs text-muted-foreground">{formatDay(i.createdAt)}</span>
@@ -167,10 +168,15 @@ function InvoicesBody() {
     },
     {
       key: 'provider',
-      label: '',
+      label: 'Provider',
+      priority: 'secondary',
       sortable: false,
-      width: 'w-12',
-      render: (i) => (refreshable(i) ? <InvoiceRefreshButton id={i.id} number={i.number} /> : null),
+      render: (i) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="capitalize">{i.provider}</span>
+          {refreshable(i) && <InvoiceRefreshButton id={i.id} number={i.number} />}
+        </div>
+      ),
     },
   ];
 
@@ -218,7 +224,7 @@ function InvoicesBody() {
           searchKeys={['number', 'status']}
           searchPlaceholder="Filter by invoice number…"
           emptyMessage="No invoices yet."
-          minWidth="min-w-[760px]"
+          desktopMinWidth="md:min-w-[760px]"
           loading={listLoading}
           error={listError}
           onRetry={() => void invoices.refetch()}

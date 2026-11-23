@@ -89,7 +89,7 @@ export function AppTile({
         {detail && <p className="truncate text-[13px] text-muted-foreground">{detail}</p>}
       </div>
 
-      <p className="mt-auto flex items-center justify-between gap-3 text-xs text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="truncate">{runsOn}</span>
         <span className="shrink-0">
           {app?.lastDeployedAt

@@ -82,10 +82,11 @@ export function AppAnalyticsPreview({
               </span>
             </HelpTip>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {onSinceChange && (
               <Select
                 aria-label="Traffic time range"
+                className="min-w-0 max-w-full"
                 value={since}
                 onChange={(event) => onSinceChange(event.target.value)}
               >
