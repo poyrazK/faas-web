@@ -1,5 +1,4 @@
 import type { ComponentType, SVGProps } from 'react';
-import { useReducedMotion } from 'motion/react';
 import {
   CheckCircle,
   Circle,
@@ -24,12 +23,11 @@ const STATE: Record<
 };
 
 function PhaseIcon({ state, className }: { state: PhaseState; className?: string }) {
-  const reduce = useReducedMotion();
   const { icon: Icon, color } = STATE[state];
   return (
     <Icon
       aria-hidden
-      className={cn(className, state === 'active' && !reduce && 'animate-spin')}
+      className={cn(className, state === 'active' && 'shimmer-text')}
       style={{ color }}
     />
   );

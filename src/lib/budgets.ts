@@ -89,6 +89,30 @@ export const SCOPE_KINDS: { kind: ScopeKind; label: string }[] = [
   { kind: 'job', label: 'Job' },
 ];
 
+/**
+ * What a subject can scope a budget to. An organization covers its apps,
+ * projects and environments and its whole self, but not jobs (faas
+ * docs/billing.md "Organization budgets").
+ */
+export function scopeKindsFor(subject: 'account' | 'org'): { kind: ScopeKind; label: string }[] {
+  if (subject === 'account') return SCOPE_KINDS;
+  return SCOPE_KINDS.filter((k) => k.kind !== 'job').map((k) =>
+    k.kind === 'account' ? { ...k, label: 'Whole organization' } : k
+  );
+}
+
+/** A response's summary for its subject: an organization's alerts go to its billing contact. */
+export function levelSummary(level: BudgetLevel, subject: 'account' | 'org'): string {
+  if (subject === 'org' && level === 'alert')
+    return 'Emails the organization’s billing contact at each threshold and when the month is projected to overrun. Nothing stops.';
+  return LEVELS[level].summary;
+}
+
+/** The responses a subject can turn on: organizations have no strict caps. */
+export function levelsFor(subject: 'account' | 'org'): BudgetLevel[] {
+  return subject === 'org' ? ['alert', 'stop-previews'] : ['alert', 'stop-previews', 'strict'];
+}
+
 export const METERS: { meter: Meter; label: string }[] = [
   { meter: 'compute', label: 'Compute' },
   { meter: 'egress', label: 'Egress' },
@@ -353,9 +377,24 @@ export function draftErrors(draft: BudgetDraft): Partial<Record<DraftField, stri
  */
 export function budgetRefusal(
   error: unknown,
-  spec: BudgetSpec | undefined
+  spec: BudgetSpec | undefined,
+  /** An organization's budgets: apid explains its own refusals, and roles are named. */
+  who?: { kind: 'org'; label: string }
 ): { message: string; strictNotReleased: boolean } {
   const code = error instanceof ApiError ? error.code : '';
+  if (who?.kind === 'org') {
+    if (code === 'org_role_forbidden')
+      return {
+        strictNotReleased: false,
+        message: `Only ${who.label}’s owner or billing role can change its budgets.`,
+      };
+    // Ownership, or a strict cap organizations can't have: apid says which.
+    if (code === 'financial_budget_activation_unavailable')
+      return {
+        strictNotReleased: false,
+        message: (error as ApiError).detail ?? errorMessage(error),
+      };
+  }
   if (code === 'financial_budget_activation_unavailable') {
     if (spec && spec.enabled && isStrictCompute(spec))
       return {

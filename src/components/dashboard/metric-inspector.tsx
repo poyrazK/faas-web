@@ -9,6 +9,7 @@ import {
   validateMetricDetailSearch,
   type MetricDetailRequest,
 } from './metric-detail-search';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 const DetailBody = lazy(() => import('./metric-detail'));
 const InspectContext = createContext<(request: MetricDetailRequest) => void>(() => {});
@@ -56,7 +57,9 @@ export function MetricInspectorProvider({ children }: { children: ReactNode }) {
         width="max-w-3xl"
       >
         {selected && (
-          <Suspense fallback={<p role="status">Loading metric details…</p>}>
+          <Suspense
+            fallback={<InlinePhase phase="loading" loadingMessage="Loading metric details…" />}
+          >
             <DetailBody request={selected} onChange={change} />
           </Suspense>
         )}

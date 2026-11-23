@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useInstallRepos } from '@/lib/api/queries';
 import { ApiError, errorMessage } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * A repository field that lists what the GitHub App installation can
@@ -230,12 +231,7 @@ function RepoList({
   const shown = long && !all ? candidates.slice(0, SHOWN) : candidates;
   const hidden = candidates.length - shown.length;
 
-  if (pending)
-    return (
-      <p role="status" className="px-4 py-6 text-sm text-muted-foreground">
-        Reading repositories…
-      </p>
-    );
+  if (pending) return <InlinePhase phase="loading" loadingMessage="Reading repositories…" />;
 
   return (
     <div className="flex flex-col">

@@ -214,6 +214,8 @@ describe('usage in a company workspace', () => {
       expect(screen.queryByText(/This billing period/)).toBeNull();
       expect(screen.queryByText(/org usage for/)).toBeNull();
       expect(screen.getByText('Usage')).toBeInTheDocument();
+      // A shimmer while the workspace is identified, never a blank page.
+      expect(screen.getByRole('status').querySelector('.shimmer')).not.toBeNull();
     } finally {
       workspace.ready = true;
     }

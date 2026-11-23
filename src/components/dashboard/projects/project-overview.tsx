@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { AppTile, AppTiles } from '../app-tile';
 import { HelpTip } from '../kit/help-tip';
 import { statusWord, workloadNote } from './project-words';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 const PAGE = 12;
 
@@ -154,9 +155,7 @@ function EnvironmentCards({
           </Button>
         </p>
       ) : query.isPending ? (
-        <p role="status" className="px-1 text-sm text-muted-foreground">
-          Loading environments…
-        </p>
+        <InlinePhase phase="loading" loadingMessage="Loading environments…" />
       ) : !items.length ? (
         <p className="px-1 text-sm text-muted-foreground">This project has no environments yet.</p>
       ) : (

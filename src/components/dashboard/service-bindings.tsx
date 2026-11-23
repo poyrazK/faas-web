@@ -5,7 +5,7 @@ import { useApp } from '@/lib/api/queries';
 import { useAppPolicyOwnership, useBindingInventory } from '@/lib/api/bindings';
 import { Button } from '@/components/ui/button';
 import { CapabilityNotice } from './capability-notice';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 import { ServicePolicyEditor } from './service-policy-editor';
 import { ServiceWakeAhead } from './service-wake-ahead';
 import { Timestamp } from '@/components/ui/timestamp';
@@ -44,7 +44,7 @@ export function ServiceBindings({ slug }: { slug: string }) {
             <p>Service changes are unavailable until capability access is confirmed.</p>
           )}
           {app.isPending ? (
-            <p role="status">Loading app service policy…</p>
+            <InlinePhase phase="loading" loadingMessage="Loading app service policy…" />
           ) : app.error ? (
             <p role="alert">
               Could not read app policy.{' '}
@@ -93,7 +93,10 @@ export function ServiceBindings({ slug }: { slug: string }) {
                   source.
                 </p>
               ) : ownership.isPending ? (
-                <p>Checking source ownership before allowing policy edits…</p>
+                <InlinePhase
+                  phase="loading"
+                  loadingMessage="Checking source ownership before allowing policy edits…"
+                />
               ) : ownership.error || ownership.data?.kind === 'unverified' ? (
                 <p role="alert">
                   Source ownership could not be confirmed. Edit policies with the CLI or manifest
@@ -138,7 +141,7 @@ export function ServiceBindings({ slug }: { slug: string }) {
       <Panel title="Binding inventory">
         <div className="space-y-3 p-4 text-sm">
           {inventory.isPending ? (
-            <p role="status">Loading binding inventory…</p>
+            <InlinePhase phase="loading" loadingMessage="Loading binding inventory…" />
           ) : inventory.error ? (
             <p role="alert">
               Could not read binding inventory.{' '}

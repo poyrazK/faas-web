@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCheckoutReferral } from '@/lib/api/referrals';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 export function CheckoutSalespersonCode({
   accountId,
@@ -19,7 +20,7 @@ export function CheckoutSalespersonCode({
   return (
     <div className="flex flex-col gap-2">
       {referral.isLoading ? (
-        <p className="text-xs text-muted-foreground">Checking salesperson code availability…</p>
+        <InlinePhase phase="loading" loadingMessage="Checking salesperson code availability…" />
       ) : referral.isError ? (
         <div className="text-xs text-muted-foreground">
           <p>Could not check salesperson codes. You can still continue without one.</p>

@@ -456,7 +456,7 @@ export function AnalyticsGrid({
                 </div>
                 <div className="mt-3 flex flex-wrap items-baseline gap-2">
                   {loading ? (
-                    <span className="block h-8 w-24 animate-pulse rounded bg-muted" />
+                    <span className="shimmer block h-8 w-24 rounded" />
                   ) : (
                     <>
                       <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums">

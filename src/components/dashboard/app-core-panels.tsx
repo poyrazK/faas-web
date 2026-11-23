@@ -9,7 +9,7 @@ import { isPaidPlan } from '@/lib/plan';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { AsyncInvokeOptionsFields } from './async-invoke-options';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 
 const FIELD = `${BASE_FIELD} w-full`;
 const CODE_FIELD = `${FIELD} font-mono`;
@@ -165,9 +165,7 @@ export function InvokePanel({ slug }: { slug: string }) {
           </Button>
         </div>
         {authLoading ? (
-          <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
-            Checking plan access…
-          </p>
+          <InlinePhase phase="loading" loadingMessage="Checking plan access…" />
         ) : account && !invokeAvailable ? (
           <p className="text-xs text-muted-foreground sm:col-span-2" role="status">
             Invoking from the console is available on Hobby and above. On the free plan, call the

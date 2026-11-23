@@ -818,7 +818,7 @@ function CreateAppWizard({
               aria-hidden
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-brand"
             >
-              <RefreshDouble className="h-[18px] w-[18px] animate-spin motion-reduce:animate-none" />
+              <RefreshDouble className="shimmer-text h-[18px] w-[18px]" />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
               <h2 className="text-base font-medium">Creating app</h2>

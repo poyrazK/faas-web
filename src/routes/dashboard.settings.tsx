@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { consoleHead } from '@/lib/seo';
 import { PreviewsSettings } from '@/components/dashboard/previews-settings';
 import { Select } from '@/components/ui/field';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 export const Route = createFileRoute('/dashboard/settings')({
   validateSearch: validateSettingsSearch,
@@ -77,7 +78,7 @@ function OrganizationScope({
         </Select>
       </label>
       {orgs.isPending ? (
-        <p role="status">Loading organizations…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading organizations…" />
       ) : orgs.error ? (
         <div>
           <p role="alert">{errorMessage(orgs.error)}</p>
@@ -111,7 +112,7 @@ function OrganizationScope({
                 </div>
               )}
               {members.isPending ? (
-                <p role="status">Loading key permissions…</p>
+                <InlinePhase phase="loading" loadingMessage="Loading key permissions…" />
               ) : (
                 <OrgKeysPanel
                   key={`${active.slug}-${role ?? 'unknown'}`}

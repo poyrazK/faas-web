@@ -1286,3 +1286,38 @@ it('echoes probe overrides on the serving deployment', async () => {
   expect(live.override_readiness_probe).toMatchObject({ path: '/readyz' });
   expect(live.override_liveness_probe).toMatchObject({ path: '/livez' });
 });
+
+it('previews an organization budget over the organization’s apps only', async () => {
+  const personal = (await get('/v1/apps')).body as { id: string; slug: string }[];
+  const company = (await get('/v1/orgs/acme-corp/apps')).body as { apps: { slug: string }[] };
+  const companySlugs = new Set(company.apps.map((app) => app.slug));
+  const personalOnly = personal.map((app) => app.slug).filter((slug) => !companySlugs.has(slug));
+  expect(personalOnly.length).toBeGreaterThan(0);
+  const response = await fetch(`${origin}/v1/orgs/acme-corp/billing/budgets/preview`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      spec: {
+        name: 'Whole org',
+        scope: { kind: 'account' },
+        currency: 'USD',
+        meters: ['compute'],
+        basis: 'net_usage',
+        limit_millicents: 1_000_000,
+        notify_millicents: [],
+        mode: 'monitored',
+        action: 'stop_previews',
+        drain_seconds: 30,
+        resume_rule: 'manual',
+        enabled: false,
+      },
+    }),
+  });
+  expect(response.status).toBe(200);
+  const preview = (await response.json()) as {
+    targets: { name: string }[];
+    continuing_targets: { name: string }[];
+  };
+  const named = [...preview.targets, ...preview.continuing_targets].map((t) => t.name);
+  for (const slug of personalOnly) expect(named).not.toContain(slug);
+});

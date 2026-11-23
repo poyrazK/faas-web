@@ -95,7 +95,7 @@ export function DeploymentHistoryPanel({
   } else if (phase === 'error') {
     body = <ErrorState error={deployments.error} onRetry={() => void deployments.refetch()} />;
   } else if (phase === 'loading') {
-    body = <p className="text-sm text-muted-foreground">Loading deployment history…</p>;
+    body = <InlinePhase phase="loading" loadingMessage="Loading deployment history…" />;
   } else if (items.length === 0) {
     body = <EmptyState message="No deployments yet." />;
   } else {

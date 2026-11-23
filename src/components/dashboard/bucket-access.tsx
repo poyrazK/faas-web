@@ -20,6 +20,7 @@ import {
 } from '@/lib/api/object-storage';
 import { useApiKeys } from '@/lib/api/queries';
 import { cn } from '@/lib/utils';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * Who may reach one bucket, in the two ways the platform allows.
@@ -142,7 +143,7 @@ function AccessGrants({
     <div className="flex flex-col gap-3">
       <p className="label-mono text-muted-foreground">API-key grants</p>
       {grants.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading grants…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading grants…" />
       ) : grants.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(grants.error)}</p>
       ) : (grants.data?.items.length ?? 0) === 0 ? (
@@ -311,7 +312,7 @@ function S3Credentials({
     <div className="flex flex-col gap-3">
       <p className="label-mono text-muted-foreground">S3 credentials</p>
       {credentials.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading credentials…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading credentials…" />
       ) : credentials.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(credentials.error)}</p>
       ) : (credentials.data?.items.length ?? 0) === 0 ? (

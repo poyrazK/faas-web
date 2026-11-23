@@ -8,6 +8,7 @@ import { HelpTip } from './kit/help-tip';
 import type { IssueSearch } from './issues-search';
 import { Select } from '@/components/ui/field';
 import { Timestamp } from '@/components/ui/timestamp';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 type Props = {
   accountId: string;
@@ -152,7 +153,7 @@ export function IssuesBody({ accountId, slug, search, onSearch }: Props) {
             </label>
           </div>
           {result.isPending ? (
-            <p role="status">Loading issues…</p>
+            <InlinePhase phase="loading" loadingMessage="Loading issues…" />
           ) : result.error ? (
             <div role="alert">
               Could not load issues.{' '}

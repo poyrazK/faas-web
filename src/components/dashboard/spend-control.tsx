@@ -69,7 +69,7 @@ export function describeCapEvent(event: HistoryEvent): string {
 export function ForecastLine() {
   const forecast = useBillingForecast();
   if (forecast.isPending)
-    return <p className="text-xs text-muted-foreground">Reading the charge forecast…</p>;
+    return <InlinePhase phase="loading" loadingMessage="Reading the charge forecast…" />;
   if (forecast.error || !forecast.data)
     return (
       <p className="text-xs text-muted-foreground">

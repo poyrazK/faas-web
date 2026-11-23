@@ -39,11 +39,10 @@ export function StatusChip({
         color: TONE[tone],
       }}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn('h-3 w-3', spin && 'animate-spin motion-reduce:animate-none')}
-      />
-      {label}
+      <span className={cn('inline-flex items-center gap-[inherit]', spin && 'shimmer-text')}>
+        <Icon aria-hidden="true" className="h-3 w-3" />
+        {label}
+      </span>
     </span>
   );
 }

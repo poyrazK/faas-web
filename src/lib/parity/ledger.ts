@@ -1020,7 +1020,8 @@ export const LEDGER: LedgerEntry[] = [
     // revisions, channels and recorded stops. Strict caps show apid's "not
     // released" refusal and fall back to a draft; API-only responses
     // (reject_traffic, suspend_background) can only ever be drafts upstream,
-    // so they are shown, not authored.
+    // so they are shown, not authored. A company workspace manages the
+    // organization's own budgets (Alert and Stop previews, no channels).
     status: 'full',
     surfaces: ['/dashboard/limits'],
     capability: 'budgets',

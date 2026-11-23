@@ -36,16 +36,14 @@ export function StateBadge({ state, className }: { state: RunState; className?: 
   const Icon = cfg.icon;
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 text-xs font-medium', className)}
+      className={cn(
+        'inline-flex items-center gap-1.5 text-xs font-medium',
+        state === 'deploying' && 'shimmer-text',
+        className
+      )}
       style={{ color: cfg.color }}
     >
-      <Icon
-        aria-hidden="true"
-        className={cn(
-          'h-3 w-3 shrink-0',
-          state === 'deploying' && 'animate-spin motion-reduce:animate-none'
-        )}
-      />
+      <Icon aria-hidden="true" className="h-3 w-3 shrink-0" />
       {cfg.label}
     </span>
   );
@@ -407,11 +405,13 @@ export function InlinePhase({
     );
   }
   if (phase === 'loading') {
+    // Spans throughout, so it stays valid where it sits inside a paragraph.
     return (
-      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-        <RefreshDouble className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
-        {loadingMessage}
-      </p>
+      <span role="status" className="flex w-full flex-col gap-2 py-1">
+        <span className="sr-only">{loadingMessage}</span>
+        <Skeleton className="h-3 w-3/5 max-w-sm" />
+        <Skeleton className="h-3 w-2/5 max-w-xs" />
+      </span>
     );
   }
   if (phase === 'empty' && emptyMessage) {
@@ -495,18 +495,12 @@ export function LoadingState({
   className?: string;
 }) {
   return (
-    <div
-      role="status"
-      className={cn(
-        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-14 text-center',
-        className
-      )}
-    >
-      <RefreshDouble
-        aria-hidden="true"
-        className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none"
-      />
-      <p className="text-sm text-muted-foreground">{message}</p>
+    <div role="status" className={cn('flex flex-col gap-3 rounded-lg px-1 py-6', className)}>
+      <span className="sr-only">{message}</span>
+      <Skeleton className="h-4 w-1/3 max-w-xs" />
+      <Skeleton className="h-3 w-5/6" />
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-1/2" />
     </div>
   );
 }

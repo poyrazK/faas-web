@@ -40,12 +40,29 @@ export function useProjects(accountId: string) {
     staleTime: 30_000,
   });
 }
+/**
+ * A project's environments in the active workspace: `/v1/projects/{slug}` finds
+ * only the signed-in account's projects, so a company workspace reads
+ * `/v1/orgs/{organization}/projects/{slug}/environments`, cached apart.
+ */
 export function useProjectEnvironments(accountId: string, slug: string) {
+  const { org, ready } = useWorkspaceTarget();
   return useQuery({
-    queryKey: [...projectKeys.detail(accountId, slug), 'environments'],
+    queryKey: org
+      ? [...projectKeys.detail(accountId, slug), 'environments', 'org', org]
+      : [...projectKeys.detail(accountId, slug), 'environments'],
     queryFn: ({ signal }) =>
-      unwrap(api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } }, signal })),
-    enabled: Boolean(accountId && slug),
+      org
+        ? unwrap(
+            api.GET('/v1/orgs/{organization}/projects/{slug}/environments', {
+              params: { path: { organization: org, slug } },
+              signal,
+            })
+          )
+        : unwrap(
+            api.GET('/v1/projects/{slug}/environments', { params: { path: { slug } }, signal })
+          ),
+    enabled: Boolean(accountId && slug) && ready,
     retry: retryPolicy,
     staleTime: 30_000,
   });

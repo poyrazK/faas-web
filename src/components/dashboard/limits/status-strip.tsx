@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { billStatus, type BillStatus } from '@/lib/limits';
 import { TONE_COLOR } from './limit-row';
 import type { BillData } from './use-bill-facts';
@@ -25,13 +26,15 @@ export function StatusStrip({
 }) {
   if (!data.settled)
     return (
-      <p
+      <div
         role="status"
         aria-label="Spending limits status"
-        className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        className="flex flex-col gap-2 rounded-xl bg-muted/40 px-4 py-3"
       >
-        Checking your limits…
-      </p>
+        <span className="sr-only">Checking your limits…</span>
+        <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="h-3 w-2/3 max-w-md" />
+      </div>
     );
   const status = billStatus(data.facts);
   const color = TONE_COLOR[status.tone];

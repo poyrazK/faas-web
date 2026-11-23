@@ -18,7 +18,7 @@ import {
   servicePolicyFingerprint,
   type ServicePolicyDraft,
 } from '@/lib/service-policy';
-import { Panel } from './primitives';
+import { Panel, InlinePhase } from './primitives';
 
 type Plan = components['schemas']['CapabilitiesResponse']['plan'];
 type Review = {
@@ -177,7 +177,9 @@ export function ServicePolicyEditor({
   return (
     <Panel title="Edit standalone service policy">
       <div className="space-y-4 p-4 text-sm">
-        {choices.isPending ? <p role="status">Loading account apps…</p> : null}
+        {choices.isPending ? (
+          <InlinePhase phase="loading" loadingMessage="Loading account apps…" />
+        ) : null}
         {choices.error ? (
           <p role="alert">Could not read account apps. Refresh before editing.</p>
         ) : null}

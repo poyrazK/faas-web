@@ -20,6 +20,7 @@ import {
   EvidenceTimeline,
 } from './debug-evidence-detail';
 import { RequestCaptureLink } from './request-capture-link';
+import { InlinePhase } from '@/components/dashboard/primitives';
 
 /**
  * One request, in full: the telemetry row, the spans the gateway recorded
@@ -96,7 +97,7 @@ export function DebugRequestEvidence({
       <div className="max-h-[70vh] overflow-y-auto pr-1">
         <DebugGate error={evidence.error}>
           {evidence.isPending ? (
-            <p className="text-sm text-muted-foreground">Loading request details…</p>
+            <InlinePhase phase="loading" loadingMessage="Loading request details…" />
           ) : missing ? (
             <p className="text-sm text-muted-foreground">
               No data is kept for this request any more.

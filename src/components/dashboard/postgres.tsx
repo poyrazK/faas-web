@@ -6,6 +6,7 @@ import {
   LoadingState,
   UnreachableState,
   queryPhase,
+  InlinePhase,
 } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { HelpTip } from '@/components/dashboard/kit/help-tip';
@@ -1144,7 +1145,7 @@ function Bindings({
   return (
     <div className="flex flex-col gap-2">
       {bindings.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading the apps that use it…</p>
+        <InlinePhase phase="loading" loadingMessage="Loading the apps that use it…" />
       ) : bindings.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(bindings.error)}</p>
       ) : (

@@ -9,79 +9,130 @@ import type { Budget, BudgetSpec } from '../budgets';
  * Budgets over `/v1/billing/budgets` (faas handlers_financial_budgets.go,
  * handlers_financial_budget_channels.go, handlers_financial.go:110).
  *
- * Every route belongs to the signed-in account: none reads X-Active-Org
- * (server.go:4785-4793 mount them without loadOrg), so a company workspace
- * must not call them at all. Reads need usage:read, writes admin, both
- * session MFA; every write needs an Idempotency-Key.
+ * The account routes ignore X-Active-Org (server.go:4785-4793 mount them
+ * without loadOrg), so a company workspace uses the organization routes
+ * instead, through a `BudgetSubject`. Reads need usage:read, writes admin
+ * (an organization's also its owner or billing role), both session MFA;
+ * every write needs an Idempotency-Key.
  */
 
+/**
+ * Whose budgets: the signed-in account's (`/v1/billing/budgets`), or an
+ * organization's that owns its resources (`/v1/orgs/{slug}/billing/budgets`,
+ * ADR-20261031211500: same bodies; notify and stop previews only, no
+ * channels). The subject picks the routes and keeps the caches apart.
+ */
+export type BudgetSubject =
+  | { kind: 'account'; accountId: string }
+  | { kind: 'org'; slug: string; accountId: string; label?: string };
+
+/** Ready once the account (and, for an organization, its slug) is known. */
+export const subjectReady = (s: BudgetSubject) =>
+  Boolean(s.accountId) && (s.kind === 'account' || Boolean(s.slug));
+
+const root = (s: BudgetSubject) =>
+  s.kind === 'org'
+    ? (['orgs', s.slug, 'budgets'] as const)
+    : (['account', s.accountId, 'budgets'] as const);
+
 export const budgetKeys = {
-  all: (accountId: string) => ['account', accountId, 'budgets'] as const,
-  detail: (accountId: string, id: string) => [...budgetKeys.all(accountId), id] as const,
-  channels: (accountId: string, id: string) =>
-    [...budgetKeys.detail(accountId, id), 'channels'] as const,
-  revisions: (accountId: string, id: string, limit: number) =>
-    [...budgetKeys.detail(accountId, id), 'revisions', limit] as const,
+  all: (s: BudgetSubject) => root(s),
+  detail: (s: BudgetSubject, id: string) => [...root(s), id] as const,
+  channels: (s: BudgetSubject, id: string) => [...root(s), id, 'channels'] as const,
+  revisions: (s: BudgetSubject, id: string, limit: number) =>
+    [...root(s), id, 'revisions', limit] as const,
 };
 
-export function useBudgets(accountId: string, enabled: boolean) {
+export function useBudgets(subject: BudgetSubject, enabled: boolean) {
   return useQuery({
-    queryKey: budgetKeys.all(accountId),
+    queryKey: budgetKeys.all(subject),
     queryFn: async ({ signal }) =>
-      (await unwrap(api.GET('/v1/billing/budgets', { signal }))).budgets,
-    enabled: enabled && Boolean(accountId),
+      (
+        await unwrap(
+          subject.kind === 'org'
+            ? api.GET('/v1/orgs/{slug}/billing/budgets', {
+                params: { path: { slug: subject.slug } },
+                signal,
+              })
+            : api.GET('/v1/billing/budgets', { signal })
+        )
+      ).budgets,
+    enabled: enabled && subjectReady(subject),
     retry: retryPolicy,
   });
 }
 
 /** One budget, fresh: runtime evaluation, alerts, stops and compute balance. */
-export function useBudget(accountId: string, id: string) {
+export function useBudget(subject: BudgetSubject, id: string) {
   return useQuery({
-    queryKey: budgetKeys.detail(accountId, id),
+    queryKey: budgetKeys.detail(subject, id),
     queryFn: ({ signal }) =>
-      unwrap(api.GET('/v1/billing/budgets/{id}', { params: { path: { id } }, signal })),
-    enabled: Boolean(accountId && id),
+      unwrap(
+        subject.kind === 'org'
+          ? api.GET('/v1/orgs/{slug}/billing/budgets/{id}', {
+              params: { path: { slug: subject.slug, id } },
+              signal,
+            })
+          : api.GET('/v1/billing/budgets/{id}', { params: { path: { id } }, signal })
+      ),
+    enabled: subjectReady(subject) && Boolean(id),
     retry: retryPolicy,
   });
 }
 
-export function useBudgetChannels(accountId: string, id: string) {
+/** Alert channels belong to account budgets; an organization's go to its billing contact. */
+export function useBudgetChannels(subject: BudgetSubject, id: string) {
   return useQuery({
-    queryKey: budgetKeys.channels(accountId, id),
+    queryKey: budgetKeys.channels(subject, id),
     queryFn: async ({ signal }) =>
       (
         await unwrap(
           api.GET('/v1/billing/budgets/{id}/channels', { params: { path: { id } }, signal })
         )
       ).channels,
-    enabled: Boolean(accountId && id),
+    enabled: subject.kind === 'account' && subjectReady(subject) && Boolean(id),
     retry: retryPolicy,
   });
 }
 
 /** Immutable revisions, oldest first; `next_revision` continues a full page. */
-export function useBudgetRevisions(accountId: string, id: string, limit = 20) {
+export function useBudgetRevisions(subject: BudgetSubject, id: string, limit = 20) {
   return useInfiniteQuery({
-    queryKey: budgetKeys.revisions(accountId, id, limit),
+    queryKey: budgetKeys.revisions(subject, id, limit),
     queryFn: ({ pageParam, signal }) =>
       unwrap(
-        api.GET('/v1/billing/budgets/{id}/revisions', {
-          params: { path: { id }, query: { after_revision: pageParam, limit } },
-          signal,
-        })
+        subject.kind === 'org'
+          ? api.GET('/v1/orgs/{slug}/billing/budgets/{id}/revisions', {
+              params: {
+                path: { slug: subject.slug, id },
+                query: { after_revision: pageParam, limit },
+              },
+              signal,
+            })
+          : api.GET('/v1/billing/budgets/{id}/revisions', {
+              params: { path: { id }, query: { after_revision: pageParam, limit } },
+              signal,
+            })
       ),
     initialPageParam: 0,
     getNextPageParam: (page) => page.next_revision,
-    enabled: Boolean(accountId && id),
+    enabled: subjectReady(subject) && Boolean(id),
     retry: retryPolicy,
   });
 }
 
 /** What a spec would do this month. No writes (billing/financial_budget_preview.go:14). */
-export function usePreviewBudget() {
+export function usePreviewBudget(subject: BudgetSubject) {
   return useMutation({
     mutationFn: (spec: BudgetSpec) =>
-      unwrap(api.POST('/v1/billing/budgets/preview', { body: { spec } })),
+      unwrap(
+        subject.kind === 'org'
+          ? api.POST('/v1/orgs/{slug}/billing/budgets/preview', {
+              params: { path: { slug: subject.slug } },
+              body: { spec },
+            })
+          : api.POST('/v1/billing/budgets/preview', { body: { spec } })
+      ),
   });
 }
 
@@ -107,31 +158,36 @@ export function useOperationKey() {
   return { keyFor, settle };
 }
 
-function useBudgetWrite<V>(accountId: string, write: (vars: V) => Promise<Budget>) {
+function useBudgetWrite<V>(subject: BudgetSubject, write: (vars: V) => Promise<Budget>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: write,
     onSuccess: (budget) => {
-      qc.setQueryData(budgetKeys.detail(accountId, budget.id), budget);
+      qc.setQueryData(budgetKeys.detail(subject, budget.id), budget);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: budgetKeys.all(accountId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: budgetKeys.all(subject) }),
   });
 }
 
-export function useCreateBudget(accountId: string) {
-  return useBudgetWrite(accountId, ({ spec, key }: { spec: BudgetSpec; key: string }) =>
+export function useCreateBudget(subject: BudgetSubject) {
+  return useBudgetWrite(subject, ({ spec, key }: { spec: BudgetSpec; key: string }) =>
     unwrap(
-      api.POST('/v1/billing/budgets', {
-        params: { header: { 'Idempotency-Key': key } },
-        body: { spec },
-      })
+      subject.kind === 'org'
+        ? api.POST('/v1/orgs/{slug}/billing/budgets', {
+            params: { path: { slug: subject.slug }, header: { 'Idempotency-Key': key } },
+            body: { spec },
+          })
+        : api.POST('/v1/billing/budgets', {
+            params: { header: { 'Idempotency-Key': key } },
+            body: { spec },
+          })
     )
   );
 }
 
-export function useUpdateBudget(accountId: string) {
+export function useUpdateBudget(subject: BudgetSubject) {
   return useBudgetWrite(
-    accountId,
+    subject,
     ({
       id,
       revision,
@@ -144,39 +200,52 @@ export function useUpdateBudget(accountId: string) {
       key: string;
     }) =>
       unwrap(
-        api.PUT('/v1/billing/budgets/{id}', {
-          params: { path: { id }, header: { 'Idempotency-Key': key } },
-          body: { expected_revision: revision, spec },
-        })
+        subject.kind === 'org'
+          ? api.PUT('/v1/orgs/{slug}/billing/budgets/{id}', {
+              params: { path: { slug: subject.slug, id }, header: { 'Idempotency-Key': key } },
+              body: { expected_revision: revision, spec },
+            })
+          : api.PUT('/v1/billing/budgets/{id}', {
+              params: { path: { id }, header: { 'Idempotency-Key': key } },
+              body: { expected_revision: revision, spec },
+            })
       )
   );
 }
 
 /** Tombstones the budget; its revision history stays readable. */
-export function useDeleteBudget(accountId: string) {
+export function useDeleteBudget(subject: BudgetSubject) {
   return useBudgetWrite(
-    accountId,
+    subject,
     ({ id, revision, key }: { id: string; revision: number; key: string }) =>
       unwrap(
-        api.DELETE('/v1/billing/budgets/{id}', {
-          params: { path: { id }, header: { 'Idempotency-Key': key } },
-          body: { expected_revision: revision },
-        })
+        subject.kind === 'org'
+          ? api.DELETE('/v1/orgs/{slug}/billing/budgets/{id}', {
+              params: { path: { slug: subject.slug, id }, header: { 'Idempotency-Key': key } },
+              body: { expected_revision: revision },
+            })
+          : api.DELETE('/v1/billing/budgets/{id}', {
+              params: { path: { id }, header: { 'Idempotency-Key': key } },
+              body: { expected_revision: revision },
+            })
       )
   );
 }
 
-/** Replaces the channels a budget's alerts also go to. Not a revision. */
-export function useSetBudgetChannels(accountId: string) {
+/** Replaces the channels an account budget's alerts also go to. Not a revision. */
+export function useSetBudgetChannels(subject: BudgetSubject) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, channelIds, key }: { id: string; channelIds: string[]; key: string }) =>
-      unwrap(
+    mutationFn: ({ id, channelIds, key }: { id: string; channelIds: string[]; key: string }) => {
+      if (subject.kind !== 'account')
+        throw new Error('Organization budgets have no alert channels.');
+      return unwrap(
         api.PUT('/v1/billing/budgets/{id}/channels', {
           params: { path: { id }, header: { 'Idempotency-Key': key } },
           body: { channel_ids: channelIds },
         })
-      ),
-    onSuccess: (out, { id }) => qc.setQueryData(budgetKeys.channels(accountId, id), out.channels),
+      );
+    },
+    onSuccess: (out, { id }) => qc.setQueryData(budgetKeys.channels(subject, id), out.channels),
   });
 }

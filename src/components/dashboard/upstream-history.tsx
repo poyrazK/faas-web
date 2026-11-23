@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Sparkline } from './kit/chart';
 import { Select } from '@/components/ui/field';
-import { Panel } from '@/components/dashboard/primitives';
+import { Panel, InlinePhase } from '@/components/dashboard/primitives';
 import { Pill } from '@/components/dashboard/resource-table';
 import { errorMessage } from '@/lib/api/errors';
 import { useUpstreamHistory } from '@/lib/api/queries';
@@ -45,7 +45,7 @@ export function UpstreamHistoryPanel({ slug }: { slug: string }) {
       }
     >
       {history.isPending ? (
-        <p className="text-sm text-muted-foreground">Reading probe history…</p>
+        <InlinePhase phase="loading" loadingMessage="Reading probe history…" />
       ) : history.error ? (
         <p className="text-sm text-muted-foreground">{errorMessage(history.error)}</p>
       ) : rows.length === 0 ? (
