@@ -747,15 +747,16 @@ export const LEDGER: LedgerEntry[] = [
   },
   // F108 · GA since 2026-11-22 (ADR-20261121230052). Buckets, uploads in
   // parts with resume and abort, upload routes, S3 credentials and bindings,
-  // change notifications, object tags and write receipts are on the Storage
-  // page. The bucket settings that stay preview are F175. Compute-trigger rules come from the
+  // change notifications and object tags are on the Storage page. The bucket
+  // settings that stay preview, write receipts among them, are F175. Compute-trigger rules come from the
   // app's manifest on deploy; the page shows them and keeps them on save.
   {
     row: 108,
     name: 'Object storage: buckets, public buckets, signed URLs, upload routes, S3 gateway and S3 credentials, multipart uploads, app bindings (incl. key-scoped), change notifications and compute triggers',
-    status: 'full',
+    status: 'partial',
     surfaces: ['/dashboard/storage'],
     capability: 'object-storage',
+    gap: 'Creating public buckets (public, serve_at); key-scoped app connections (key_prefix), and showing a connection’s key scope',
     wave: 3,
   },
   // F175 · preview (split out of F108 when object storage went GA on

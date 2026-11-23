@@ -26,7 +26,7 @@ export function CapabilityGate({
   title: string;
   children: ReactNode;
 }) {
-  const { access, refresh } = useCapabilityAccess(capability);
+  const { access, refresh, capability: entry } = useCapabilityAccess(capability);
   if (access === 'on') return <>{children}</>;
   if (access === 'loading')
     return (
@@ -41,7 +41,8 @@ export function CapabilityGate({
         className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground"
       >
         <span>{GATE_MESSAGES[access]}</span>
-        {access === 'off' && (
+        {/* A GA capability that is off isn't a preview anyone can join. */}
+        {access === 'off' && entry?.maturity !== 'ga' && (
           <a className="text-brand underline" href="/dashboard/settings?section=previews">
             See previews you can join
           </a>

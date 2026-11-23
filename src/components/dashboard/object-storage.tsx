@@ -121,7 +121,8 @@ function Limits({ data, multipartOn }: { data: BucketCatalog; multipartOn: boole
       {parts
         ? `Single uploads up to ${formatUploadLimit(direct)}; larger files upload in parts, up to ${formatUploadLimit(parts)}.`
         : `Direct uploads up to ${formatUploadLimit(direct)}.`}{' '}
-      Storage beyond your plan's included amount is billed by the GiB-month.
+      On paid plans, storage beyond the included amount is billed by the GiB-month; Free stops at
+      its included storage.
     </>
   );
 }
@@ -590,8 +591,15 @@ function BucketDetail({
   const titleId = useId();
   const [uploading, setUploading] = useState(false);
   const [dropped, setDropped] = useState<File | null>(null);
-  const bindings = useBucketBindings(slug, bucket.id);
-  const grants = useBucketAccessGrants(slug, bucket.id);
+  // Grants (preview) and app connections (paid plans) are their own
+  // capabilities; apid answers their routes 404 while they're off, so they're
+  // read only behind them and left out of the summary otherwise.
+  const grantsAccess = useCapabilityAccess('bucket-access-grants').access;
+  const bindingsAccess = useCapabilityAccess('object-storage-compute').access;
+  const grantsOn = grantsAccess === 'on';
+  const bindingsOn = bindingsAccess === 'on';
+  const bindings = useBucketBindings(slug, bindingsOn ? bucket.id : '');
+  const grants = useBucketAccessGrants(slug, grantsOn ? bucket.id : '');
   const credentials = useBucketS3Credentials(slug, bucket.id);
   const connections = useMemo(
     () =>
@@ -645,8 +653,16 @@ function BucketDetail({
           bucket={bucket.name}
           app={slug}
           connections={connections}
-          loading={bindings.isPending || grants.isPending || credentials.isPending}
-          failed={Boolean(bindings.error || grants.error || credentials.error)}
+          loading={
+            grantsAccess === 'loading' ||
+            bindingsAccess === 'loading' ||
+            (bindingsOn && bindings.isPending) ||
+            (grantsOn && grants.isPending) ||
+            credentials.isPending
+          }
+          failed={Boolean(
+            (bindingsOn && bindings.error) || (grantsOn && grants.error) || credentials.error
+          )}
           onManage={() => onChange({ tab: 'code' })}
         />
         <div className="border-t border-border pt-2 sm:pt-4">
@@ -715,7 +731,9 @@ function BucketDetail({
           )}
           {tab === 'code' && (
             <div className="flex flex-col gap-10">
-              <CodeAccess slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
+              <CapabilityGate capability="object-storage-compute" title={`Connect ${slug}`}>
+                <CodeAccess slug={slug} bucketId={bucket.id} bucketName={bucket.name} />
+              </CapabilityGate>
               <section className="flex flex-col gap-4">
                 <div>
                   <h3 className="text-base font-medium">From outside Gregale</h3>

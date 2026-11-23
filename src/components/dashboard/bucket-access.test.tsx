@@ -28,6 +28,9 @@ vi.mock('@/lib/api/object-storage', () => ({
 vi.mock('@/lib/api/queries', () => ({ useApiKeys: () => useApiKeys() as unknown }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }));
 vi.mock('@/components/ui/confirm', () => ({ useConfirm: () => confirm }));
+vi.mock('@/lib/api/capabilities', () => ({
+  useCapabilityAccess: () => ({ access: 'on', capability: undefined, refresh: () => {} }),
+}));
 
 const { BucketAccess } = await import('./bucket-access');
 

@@ -2,9 +2,16 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CapabilityGate, withCapability } from './capability-gate';
 
-const access = vi.hoisted(() => ({ value: 'on' as string }));
+const access = vi.hoisted(() => ({
+  value: 'on' as string,
+  maturity: undefined as string | undefined,
+}));
 vi.mock('@/lib/api/capabilities', () => ({
-  useCapabilityAccess: () => ({ access: access.value, capability: undefined, refresh: vi.fn() }),
+  useCapabilityAccess: () => ({
+    access: access.value,
+    capability: access.maturity ? { maturity: access.maturity } : undefined,
+    refresh: vi.fn(),
+  }),
 }));
 
 describe('CapabilityGate', () => {
@@ -30,6 +37,18 @@ describe('CapabilityGate', () => {
       'href',
       '/dashboard/settings?section=previews'
     );
+  });
+  it('sends no one to Previews for a GA capability that is off for the account', () => {
+    access.value = 'off';
+    access.maturity = 'ga';
+    render(
+      <CapabilityGate capability="signed-urls" title="Uploads from your users">
+        <p>body</p>
+      </CapabilityGate>
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(/not enabled for this account/i);
+    expect(screen.queryByRole('link', { name: /previews/i })).toBeNull();
+    access.maturity = undefined;
   });
   it('shows a spinner-free checking state while loading', () => {
     access.value = 'loading';
