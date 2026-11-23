@@ -1,6 +1,6 @@
 import { useMetricInspector } from './metric-inspector';
 import { isDetailMetric } from './metric-detail-search';
-import { utcLabel, incompleteTelemetry } from './analytics-data';
+import { analyticsGroupWords, utcLabel, incompleteTelemetry } from './analytics-data';
 import { AnalyticsGrid, chosenCards, scalarCards, type AnalyticsPoint } from './analytics-grid';
 import { rangeHalfLabel } from './range-picker';
 import { useState, type KeyboardEvent } from 'react';
@@ -83,6 +83,7 @@ export function AppAnalyticsBody({
   const inspect = useMetricInspector();
   const analytics = useAppAnalytics(slug, since, groupBy);
   const hasRouteFilter = groupBy === 'route' && Boolean(route && method);
+  const activeRoute = hasRouteFilter && route ? analyticsGroupWords('route', route, method) : null;
   const series = useAppAnalyticsTimeseries(slug, since, {
     route: hasRouteFilter ? route : undefined,
     method: hasRouteFilter ? method : undefined,
@@ -293,10 +294,10 @@ export function AppAnalyticsBody({
               </p>
             )}
 
-            {hasRouteFilter && route && method && (
+            {activeRoute && (
               <div className="flex items-center gap-2 text-xs" aria-label="Active route filter">
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 font-mono">
-                  <Pill label={method} /> {route}
+                  {activeRoute.method && <Pill label={activeRoute.method} />} {activeRoute.name}
                 </span>
                 <button
                   type="button"
@@ -377,6 +378,7 @@ export function AppAnalyticsBody({
                   <tbody className="[font-variant-numeric:tabular-nums]">
                     {data.groups.map((group) => {
                       const selectable = groupBy === 'route' && Boolean(group.method);
+                      const words = analyticsGroupWords(data.group_by, group.value, group.method);
                       return (
                         <tr
                           key={group.value + '-' + (group.method ?? '')}
@@ -387,11 +389,7 @@ export function AppAnalyticsBody({
                           }
                           tabIndex={selectable ? 0 : undefined}
                           role={selectable ? 'button' : undefined}
-                          aria-label={
-                            selectable
-                              ? 'Filter chart to ' + group.method + ' ' + group.value
-                              : undefined
-                          }
+                          aria-label={selectable ? `Filter chart to ${words.label}` : undefined}
                           onClick={
                             selectable
                               ? () => selectRoute(group.value, group.method as AnalyticsMethod)
@@ -409,7 +407,7 @@ export function AppAnalyticsBody({
                           }
                         >
                           <td className="py-1.5 pr-4 font-mono">
-                            {group.method && <Pill label={group.method} />} {group.value}
+                            {words.method && <Pill label={words.method} />} {words.name}
                           </td>
                           <td className="py-1.5 pr-4 text-right">{group.requests}</td>
                           <td className="py-1.5 pr-4 text-right">

@@ -1,6 +1,22 @@
 import type { AppMetrics } from '@/lib/api/queries';
 import type { AnalyticsPoint } from './analytics-grid';
-import type { DetailMetric } from './metric-detail-search';
+import type { DetailGroup, DetailMetric } from './metric-detail-search';
+import { parseRoute } from './pages/route-words';
+
+/** Display words for a backend bucket. Queries still use the original value and method. */
+export function analyticsGroupWords(group: DetailGroup, value: string, method?: string) {
+  const route = group === 'route' ? parseRoute(value) : undefined;
+  const displayMethod = route ? (route.method ?? method) : undefined;
+  const rawName = route?.path ?? value;
+  let name = rawName;
+  if (route?.other) name = 'Other routes';
+  else if (rawName === '__unknown__' || rawName === '__unknown_') name = 'Unknown';
+  else if (rawName === '__other__') name = 'Everything else';
+  else if (group === 'referrer_host' && rawName === '__none__') name = 'No referrer';
+  else if (group === 'consumer_id' && rawName === '__anonymous__') name = 'Anonymous';
+
+  return { name, method: displayMethod, label: displayMethod ? `${displayMethod} ${name}` : name };
+}
 
 export const REQUEST_METRICS = [
   'requests',
