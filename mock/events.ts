@@ -526,6 +526,7 @@ const integrations: S['OutboundIntegrationOffer'][] = EMPTY
       },
     ];
 
+const tagLimits = new Map<string, S['OutboundAITagLimit'][]>();
 const usageCounts = new Map<string, number>(
   EMPTY
     ? []
@@ -968,8 +969,36 @@ export function registerEventMocks(route: Register, Problem: ProblemCtor, noCont
       items,
       daily_cost_millicents: items.reduce((sum, i) => sum + (i.cost_millicents ?? 0), 0),
       daily_cost_limit_millicents: found.ai_daily_cost_limit_millicents ?? null,
+      ...(ai
+        ? {
+            month: date.slice(0, 7),
+            // About twelve days of today's spend so far this month.
+            monthly_cost_millicents:
+              12 * items.reduce((sum, i) => sum + (i.cost_millicents ?? 0), 0),
+            monthly_cost_limit_millicents: found.ai_monthly_cost_limit_millicents ?? null,
+          }
+        : {}),
     };
     return usage;
+  });
+  // Per-tag daily cost limits, replaced whole (faas setOutboundAITagLimits).
+  route('GET', '/v1/outbound/integrations/{integration}/ai-tag-limits', ({ params }) => {
+    const found = findIntegration(params.integration);
+    if (!found.ai_provider)
+      throw new Problem(409, 'conflict', 'Tag limits apply to managed AI integrations only');
+    const limits: S['OutboundAITagLimits'] = { limits: tagLimits.get(found.id) ?? [] };
+    return limits;
+  });
+  route('PUT', '/v1/outbound/integrations/{integration}/ai-tag-limits', ({ params, body }) => {
+    const found = findIntegration(params.integration, true);
+    if (!found.ai_provider)
+      throw new Problem(409, 'conflict', 'Tag limits apply to managed AI integrations only');
+    const next = (body.limits ?? []) as S['OutboundAITagLimit'][];
+    for (const limit of next)
+      if (!limit.tag?.trim() || !(limit.daily_cost_limit_millicents > 0))
+        throw new Problem(400, 'validation_failed', 'Each tag needs a name and a limit above zero');
+    tagLimits.set(found.id, next);
+    return noContent;
   });
   route('GET', '/v1/outbound/integrations/{integration}/ai-alerts', ({ params }) => {
     const found = findIntegration(params.integration);

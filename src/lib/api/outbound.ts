@@ -316,3 +316,43 @@ export function useOutboundAIRoutes(accountId: string, enabled = true) {
     retry: retryPolicy,
   });
 }
+
+export type AITagLimit = S['OutboundAITagLimit'];
+const tagLimitsKey = (accountId: string, id: string) =>
+  [...outboundKey(accountId), 'ai-tag-limits', id] as const;
+
+/** An AI integration's per-tag daily cost limits (needs session MFA). */
+export function useAITagLimits(accountId: string, id: string, enabled = true) {
+  return useQuery({
+    queryKey: tagLimitsKey(accountId, id),
+    queryFn: async ({ signal }) =>
+      (
+        await unwrap(
+          api.GET('/v1/outbound/integrations/{integration}/ai-tag-limits', {
+            params: { path: { integration: id } },
+            signal,
+          })
+        )
+      ).limits,
+    enabled: Boolean(accountId && id && enabled),
+    retry: retryPolicy,
+  });
+}
+
+/** Replaces the whole list; an empty list removes every limit. */
+export function useSetAITagLimits(accountId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    // apid answers 204, so the saved list is the one sent.
+    mutationFn: async (limits: AITagLimit[]) => {
+      await unwrap(
+        api.PUT('/v1/outbound/integrations/{integration}/ai-tag-limits', {
+          params: { path: { integration: id } },
+          body: { limits },
+        })
+      );
+      return limits;
+    },
+    onSuccess: (limits) => qc.setQueryData(tagLimitsKey(accountId, id), limits),
+  });
+}
