@@ -369,7 +369,7 @@ describe('canonical Settings', () => {
     expect(
       await screen.findByRole('spinbutton', { name: 'Extra address ranges' })
     ).toBeInTheDocument();
-    expect(screen.getByText('Sleeping when idle')).toHaveAttribute('title', 'Scale to zero');
+    expect(screen.queryByRole('heading', { name: 'Set on each app' })).not.toBeInTheDocument();
     await section('Data and privacy');
     for (const name of [
       'Download export',

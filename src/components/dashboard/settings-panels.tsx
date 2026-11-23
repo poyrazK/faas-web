@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { WarningTriangle, ArrowRight } from 'iconoir-react';
+import { useNavigate } from '@tanstack/react-router';
+import { WarningTriangle } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { Panel } from '@/components/dashboard/primitives';
@@ -20,39 +20,6 @@ import { AccountDetails } from './integration-settings';
 import type { SettingsSection } from './settings-search';
 import { SettingsSummary } from './settings-kit';
 import { egressSummary, privacySummary } from './settings-words';
-
-/**
- * Where the settings people come here looking for actually live.
- *
- * This panel used to be three switches. None of them were wired to anything:
- * `handleSave` slept 700ms and toasted "Settings saved" while the state stayed
- * in the component and died on reload. Two of the three are real controls —
- * they are just per-app, because that is where the API keeps them — and the
- * third ("Agent API access") had no endpoint behind it at all.
- */
-const ELSEWHERE: {
-  label: string;
-  term: string;
-  description: string;
-  to: '/dashboard/apps';
-  cta: string;
-}[] = [
-  {
-    label: 'Sleeping when idle',
-    term: 'Scale to zero',
-    description:
-      'How long an app waits with no traffic before it sleeps, and how many copies stay awake.',
-    to: '/dashboard/apps',
-    cta: 'Open an app',
-  },
-  {
-    label: 'Alerts',
-    term: 'Deployment alerts',
-    description: "A webhook when an app crosses a threshold you set, on each app's Alerts tab.",
-    to: '/dashboard/apps',
-    cta: 'Open an app',
-  },
-];
 
 /** Type-to-confirm dialog for the staged server-side deletion. */
 function DeleteAccountDialog({
@@ -395,35 +362,6 @@ export function SettingsPanels({ section }: { section: SettingsSection }) {
         <>
           <LimitsSummary />
           <EgressExtraPanel />
-          <Panel
-            title="Set on each app"
-            help="These live on each app, not the account, because that is where the API keeps them."
-          >
-            <ul className="flex flex-col divide-y divide-border">
-              {ELSEWHERE.map((item) => (
-                <li
-                  key={item.label}
-                  className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-4 first:pt-0 last:pb-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium" title={item.term}>
-                      {item.label}
-                    </p>
-                    <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-                      {item.description}
-                    </p>
-                  </div>
-                  <Link
-                    to={item.to}
-                    className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-brand hover:underline"
-                  >
-                    {item.cta}
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Panel>
         </>
       )}
 
