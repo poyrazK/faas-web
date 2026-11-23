@@ -153,14 +153,24 @@ export function useScopeLabel(subject: BudgetSubject, specs: BudgetSpec[] | unde
   const projects = useProjects(needProjects ? accountId : '');
   const envs = useQueries({
     queries: (kinds.has('environment') ? (projects.data ?? []) : []).map((project) => ({
-      queryKey: [...projectKeys.detail(accountId, project.slug), 'environments'],
+      // The same keys and routes as useProjectEnvironments, per workspace.
+      queryKey: org
+        ? [...projectKeys.detail(accountId, project.slug), 'environments', 'org', org]
+        : [...projectKeys.detail(accountId, project.slug), 'environments'],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        unwrap(
-          api.GET('/v1/projects/{slug}/environments', {
-            params: { path: { slug: project.slug } },
-            signal,
-          })
-        ),
+        org
+          ? unwrap(
+              api.GET('/v1/orgs/{organization}/projects/{slug}/environments', {
+                params: { path: { organization: org, slug: project.slug } },
+                signal,
+              })
+            )
+          : unwrap(
+              api.GET('/v1/projects/{slug}/environments', {
+                params: { path: { slug: project.slug } },
+                signal,
+              })
+            ),
       retry: retryPolicy,
       staleTime: 30_000,
     })),

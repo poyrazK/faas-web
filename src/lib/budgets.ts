@@ -101,6 +101,13 @@ export function scopeKindsFor(subject: 'account' | 'org'): { kind: ScopeKind; la
   );
 }
 
+/** A response's summary for its subject: an organization's alerts go to its billing contact. */
+export function levelSummary(level: BudgetLevel, subject: 'account' | 'org'): string {
+  if (subject === 'org' && level === 'alert')
+    return 'Emails the organization’s billing contact at each threshold and when the month is projected to overrun. Nothing stops.';
+  return LEVELS[level].summary;
+}
+
 /** The responses a subject can turn on: organizations have no strict caps. */
 export function levelsFor(subject: 'account' | 'org'): BudgetLevel[] {
   return subject === 'org' ? ['alert', 'stop-previews'] : ['alert', 'stop-previews', 'strict'];

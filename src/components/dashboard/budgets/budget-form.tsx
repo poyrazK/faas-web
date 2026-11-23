@@ -11,6 +11,7 @@ import {
   COMPUTE_BUDGET_RATE,
   LEVELS,
   METERS,
+  levelSummary,
   levelsFor,
   scopeKindsFor,
   budgetDraftUnit,
@@ -352,7 +353,9 @@ export function BudgetForm({
                   )}
                 </span>
                 <span id={`${formId}-${key}-summary`} className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">{LEVELS[key].summary}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {levelSummary(key, subject.kind)}
+                  </span>
                   {key === 'strict' && (
                     <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
                       {strictRefused

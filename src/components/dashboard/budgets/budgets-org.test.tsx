@@ -29,6 +29,17 @@ const { BudgetsSection } = await import('./budgets-page');
 
 const ORG_APP = { id: '55555555-5555-4555-8555-555555555555', slug: 'billing' };
 const PERSONAL_APP = { id: '22222222-2222-4222-8222-222222222222', slug: 'my-side-project' };
+const ORG_PROJECT = { id: '77777777-7777-4777-8777-777777777777', slug: 'web' };
+const ORG_ENV = {
+  id: '88888888-8888-4888-8888-888888888888',
+  project_id: ORG_PROJECT.id,
+  slug: 'staging',
+};
+const PERSONAL_ENV = {
+  id: '99999999-9999-4999-8999-999999999999',
+  project_id: 'p',
+  slug: 'personal-env',
+};
 
 const SPEC: BudgetSpec = {
   name: 'Billing app',
@@ -66,7 +77,9 @@ function api(extra: Handlers = {}) {
     'GET /v1/orgs/{slug}/billing/budgets/{id}/revisions': () => ({ revisions: [] }),
     'GET /v1/orgs/{slug}/apps': () => ({ apps: [ORG_APP] }),
     'GET /v1/apps': () => [PERSONAL_APP],
-    'GET /v1/orgs/{organization}/projects': () => [],
+    'GET /v1/orgs/{organization}/projects': () => [ORG_PROJECT],
+    'GET /v1/orgs/{organization}/projects/{slug}/environments': () => [ORG_ENV],
+    'GET /v1/projects/{slug}/environments': () => [PERSONAL_ENV],
     'POST /v1/orgs/{slug}/billing/budgets/preview': (init) => ({
       spec: (init.body as { spec: BudgetSpec }).spec,
       period_start: '2026-11-01T00:00:00Z',
@@ -194,5 +207,92 @@ describe('organization budgets', () => {
         }
       )
     ).toBeInTheDocument();
+  });
+
+  it('an organization environment scope reads the organization’s project environments', async () => {
+    orgBudgets = [
+      { ...ORG_BUDGET, spec: { ...SPEC, scope: { kind: 'environment', id: ORG_ENV.id } } },
+    ];
+    const spies = api();
+    const user = userEvent.setup();
+    renderWithProviders(<BudgetsSection />);
+    const row = (await screen.findByText('Billing app')).closest('tr')!;
+    await waitFor(() => expect(row).toHaveTextContent('web/staging'));
+    const form = await openForm(user);
+    await user.selectOptions(within(form).getByLabelText('Scope'), 'environment');
+    const project = await within(form).findByRole('combobox', { name: /project/i });
+    await user.selectOptions(project, 'web');
+    const env = await within(form).findByRole('combobox', { name: /environment/i });
+    await waitFor(() =>
+      expect(within(env).getByRole('option', { name: 'staging' })).toBeInTheDocument()
+    );
+    expect(within(env).queryByRole('option', { name: 'personal-env' })).toBeNull();
+    expect(spies.GET).not.toHaveBeenCalledWith(
+      '/v1/projects/{slug}/environments',
+      expect.anything()
+    );
+  });
+
+  it('an organization’s Alert says where its alerts go', async () => {
+    api();
+    const user = userEvent.setup();
+    renderWithProviders(<BudgetsSection />);
+    const form = await openForm(user);
+    const alert = within(form).getByRole('radio', { name: 'Alert' });
+    expect(alert).toHaveAccessibleDescription(/billing contact/);
+    expect(alert).not.toHaveAccessibleDescription(/channels/);
+  });
+
+  it('an organization budget never reads the personal app list', async () => {
+    const evaluation = {
+      period_start: '2026-11-01T00:00:00Z',
+      period_end: '2026-12-01T00:00:00Z',
+      as_of: '2026-11-23T00:00:00Z',
+      evaluated_at: '2026-11-23T00:00:00Z',
+      evidence_through_id: 1,
+      known_millicents: 0,
+      coverage_complete: true,
+      fresh: true,
+      reasons: [],
+    };
+    orgBudgets = [
+      {
+        ...ORG_BUDGET,
+        spec: { ...SPEC, action: 'stop_previews', drain_seconds: 30, notify_millicents: [] },
+        runtime: {
+          evaluation,
+          alerts: [],
+          stops: [
+            {
+              id: 's1',
+              policy_id: ORG_BUDGET.id,
+              revision: 1,
+              period_start: evaluation.period_start,
+              period_end: evaluation.period_end,
+              requested_at: '2026-11-23T00:00:00Z',
+              drain_deadline: '2026-11-23T00:00:30Z',
+              resume_rule: 'manual',
+              evaluation,
+              targets: [
+                {
+                  app_id: ORG_APP.id,
+                  state: 'enforced',
+                  observed_at: '2026-11-23T00:01:00Z',
+                  resident_count: 0,
+                },
+              ],
+            },
+          ],
+        },
+      } as Budget,
+    ];
+    const spies = api();
+    const user = userEvent.setup();
+    renderWithProviders(<BudgetsSection />);
+    await user.click(await screen.findByText('Billing app'));
+    await screen.findByRole('heading', { name: /Billing app/ });
+    await waitFor(() => expect(screen.getByText(/Automatic stop/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/billing/).length).toBeGreaterThan(0));
+    expect(spies.GET).not.toHaveBeenCalledWith('/v1/apps', expect.anything());
   });
 });

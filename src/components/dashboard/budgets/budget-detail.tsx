@@ -24,6 +24,7 @@ import {
   type BudgetSubject,
 } from '@/lib/api/budgets';
 import { useApps } from '@/lib/api/queries';
+import { useOrgApps } from '@/lib/api/workspace-apps';
 import {
   BUDGET_LIMITS,
   LEVELS,
@@ -136,9 +137,13 @@ const TARGET_ERROR: Record<string, string> = {
  * preview. A decision or an email alone is not proof of shutdown: only
  * `enforced` is (docs/billing.md "Monitored preview stopping").
  */
-function StopSection({ stop }: { stop: BudgetStop }) {
-  const apps = useApps();
-  const slug = (id: string) => apps.data?.find((app) => app.id === id)?.slug ?? id.slice(0, 8);
+function StopSection({ stop, subject }: { stop: BudgetStop; subject: BudgetSubject }) {
+  // An organization's stopped previews are named from its own apps.
+  const org = subject.kind === 'org' ? subject.slug : null;
+  const personalApps = useApps({ enabled: !org });
+  const orgApps = useOrgApps(org);
+  const list: { id: string; slug: string }[] = (org ? orgApps.data?.apps : personalApps.data) ?? [];
+  const slug = (id: string) => list.find((app) => app.id === id)?.slug ?? id.slice(0, 8);
   return (
     <Section title="Automatic stop">
       <p className="text-sm">
@@ -679,7 +684,7 @@ export function BudgetDetail({
             )}
 
             {budget.runtime?.stops?.map((stop) => (
-              <StopSection key={stop.id} stop={stop} />
+              <StopSection key={stop.id} stop={stop} subject={subject} />
             ))}
             <ComputeSection budget={budget} />
             {/* An organization's alerts go to its billing contact: no channels. */}
