@@ -13,10 +13,18 @@ describe('docs home', () => {
       'href',
       '/docs/getting-started'
     );
-    expect(screen.getByRole('link', { name: /Connect your domain/ })).toHaveAttribute(
-      'href',
-      '/docs/custom-domains'
-    );
+    for (const [name, href] of [
+      [/Deploy your repository/, '/docs/deploy-from-github'],
+      [/Add a Postgres database/, '/docs/postgres'],
+      [/Set secrets and environment variables/, '/docs/secrets'],
+      [/Connect your domain/, '/docs/custom-domains'],
+      [/See your app’s logs/, '/docs/logs'],
+      [/Roll back a bad release/, '/docs/releases'],
+      [/Run code on a schedule/, '/docs/crons'],
+      [/Deploy from your coding agent/, '/docs/agents'],
+    ] as const) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', href);
+    }
     expect(screen.getByRole('button', { name: 'Copy commands' })).toBeInTheDocument();
   });
 });
