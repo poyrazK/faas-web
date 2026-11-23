@@ -271,4 +271,34 @@ describe('Integrations and AI', () => {
       expect.anything()
     );
   });
+
+  it('keeps a sub-cent tag limit as stored when other tags change', async () => {
+    tagLimits = [{ tag: 'feature=embed', daily_cost_limit_millicents: 400 }];
+    const spies = api();
+    const user = userEvent.setup();
+    show();
+    await user.click(await screen.findByText(/2 integrations/));
+    const openai = screen.getByRole('region', { name: 'OpenAI' });
+    await user.click(within(openai).getByRole('button', { name: 'Per-tag limits' }));
+    const form = await screen.findByRole('form', { name: 'Per-tag cost limits for OpenAI' });
+    expect(await within(form).findByDisplayValue('0.004')).toBeInTheDocument();
+    await user.click(within(form).getByRole('button', { name: 'Add a tag' }));
+    await user.type(within(form).getAllByLabelText('Tag')[1], 'feature=chat');
+    await user.type(within(form).getAllByLabelText('Dollars a day')[1], '2');
+    await user.click(within(form).getByRole('button', { name: 'Save tag limits' }));
+    await waitFor(() =>
+      expect(spies.PUT).toHaveBeenCalledWith(
+        '/v1/outbound/integrations/{integration}/ai-tag-limits',
+        {
+          params: { path: { integration: 'a1' } },
+          body: {
+            limits: [
+              { tag: 'feature=embed', daily_cost_limit_millicents: 400 },
+              { tag: 'feature=chat', daily_cost_limit_millicents: 200_000 },
+            ],
+          },
+        }
+      )
+    );
+  });
 });

@@ -20,14 +20,24 @@ import { parseUsdMillicents } from '@/lib/money';
 import { InlinePhase, Panel, queryPhase } from '../primitives';
 import { LimitRow } from './limit-row';
 
-type Draft = { tag: string; dollars: string };
+/** `stored` is the saved amount, kept exactly while its text is untouched. */
+type Draft = { tag: string; dollars: string; stored?: { text: string; millicents: number } };
 /** apid's tag pattern (OutboundAITagLimit.tag) and list cap. */
 const TAG = /^[a-z][a-z0-9_.-]{0,31}=[A-Za-z0-9._:@+/-]{1,64}$/;
 const MAX_TAGS = 20;
-const toDraft = (limit: AITagLimit): Draft => ({
-  tag: limit.tag,
-  dollars: (limit.daily_cost_limit_millicents / 100_000).toFixed(2),
-});
+/** Dollars with cents, or up to five decimals for a limit below a cent. */
+const dollarsText = (millicents: number) =>
+  millicents % 1000 === 0
+    ? (millicents / 100_000).toFixed(2)
+    : (millicents / 100_000).toFixed(5).replace(/0+$/, '');
+const toDraft = (limit: AITagLimit): Draft => {
+  const text = dollarsText(limit.daily_cost_limit_millicents);
+  return {
+    tag: limit.tag,
+    dollars: text,
+    stored: { text, millicents: limit.daily_cost_limit_millicents },
+  };
+};
 
 /** Per-tag daily cost limits for one AI integration, saved as a whole list. */
 function TagLimitsEditor({
@@ -73,7 +83,12 @@ function TagLimitsEditor({
         return;
       }
       seen.add(tag);
-      const millicents = parseUsdMillicents(row.dollars);
+      // An untouched saved amount goes back exactly, even below a cent, which
+      // the dollars field can't express.
+      const millicents =
+        row.stored && row.dollars === row.stored.text
+          ? row.stored.millicents
+          : parseUsdMillicents(row.dollars);
       if (!millicents) {
         setError(`Give ${tag} a dollar amount above $0, such as 12.50.`);
         return;
