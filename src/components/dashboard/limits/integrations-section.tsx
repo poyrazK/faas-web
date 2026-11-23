@@ -1,0 +1,220 @@
+import { useState, type FormEvent } from 'react';
+import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useCapabilityAccess } from '@/lib/api/capabilities';
+import { errorMessage } from '@/lib/api/errors';
+import {
+  useAITagLimits,
+  useOutboundAIUsages,
+  useOutboundIntegrations,
+  useOutboundUsages,
+  useSetAITagLimits,
+  type AITagLimit,
+  type OutboundIntegration,
+} from '@/lib/api/outbound';
+import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
+import { useAuth } from '@/lib/auth';
+import { integrationLimitRows, integrationsSummary } from '@/lib/integration-limits';
+import { parseUsdMillicents } from '@/lib/money';
+import { InlinePhase, Panel, queryPhase } from '../primitives';
+import { LimitRow } from './limit-row';
+
+type Draft = { tag: string; dollars: string };
+const toDraft = (limit: AITagLimit): Draft => ({
+  tag: limit.tag,
+  dollars: (limit.daily_cost_limit_millicents / 100_000).toFixed(2),
+});
+
+/** Per-tag daily cost limits for one AI integration, saved as a whole list. */
+function TagLimitsEditor({
+  accountId,
+  integration,
+  onClose,
+}: {
+  accountId: string;
+  integration: OutboundIntegration;
+  onClose: () => void;
+}) {
+  const limits = useAITagLimits(accountId, integration.id);
+  const save = useSetAITagLimits(accountId, integration.id);
+  const [draft, setDraft] = useState<Draft[] | null>(null);
+  const [error, setError] = useState<string>();
+  const rows = draft ?? limits.data?.map(toDraft);
+  if (!rows)
+    return (
+      <InlinePhase
+        phase={queryPhase({ loading: limits.isPending, error: limits.error })}
+        error={limits.error}
+        loadingMessage="Reading tag limits…"
+        onRetry={() => void limits.refetch()}
+      />
+    );
+  const change = (index: number, patch: Partial<Draft>) => {
+    setError(undefined);
+    setDraft(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const next: AITagLimit[] = [];
+    for (const row of rows) {
+      if (!row.tag.trim() && !row.dollars.trim()) continue;
+      const millicents = parseUsdMillicents(row.dollars);
+      if (!row.tag.trim() || !millicents) {
+        setError('Give each tag a name and a dollar amount above $0, such as 12.50.');
+        return;
+      }
+      next.push({ tag: row.tag.trim(), daily_cost_limit_millicents: millicents });
+    }
+    try {
+      await save.mutateAsync(next);
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
+  return (
+    <form
+      aria-label={`Per-tag cost limits for ${integration.name}`}
+      onSubmit={(event) => void submit(event)}
+      className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3"
+    >
+      <p className="text-xs text-muted-foreground">
+        A call carrying a tag is refused with 429 once that tag’s cost today would pass its limit.
+      </p>
+      {rows.length === 0 && <p className="text-sm text-muted-foreground">No tag has a limit.</p>}
+      {rows.map((row, index) => (
+        <div key={index} className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs">
+            Tag
+            <Input value={row.tag} onChange={(e) => change(index, { tag: e.target.value })} />
+          </label>
+          <label className="flex w-32 flex-col gap-1 text-xs">
+            Dollars a day
+            <Input
+              inputMode="decimal"
+              value={row.dollars}
+              onChange={(e) => change(index, { dollars: e.target.value })}
+            />
+          </label>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={() => setDraft(rows.filter((_, i) => i !== index))}
+          >
+            Remove
+          </Button>
+        </div>
+      ))}
+      {error && (
+        <p role="alert" className="text-sm text-[color:var(--status-critical)]">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap justify-between gap-2">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={() => setDraft([...rows, { tag: '', dollars: '' }])}
+        >
+          Add a tag
+        </Button>
+        <div className="flex gap-2">
+          <Button type="button" size="xs" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" size="xs" busy={save.isPending}>
+            Save tag limits
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Spending limits › Integrations and AI: each outbound integration's daily
+ * request limit and, for AI integrations, its token and cost limits, with
+ * per-tag cost limits edited here. Folded by default; shown only when the
+ * account has integrations. Integrations belong to the signed-in account, so a
+ * company workspace never shows them.
+ */
+export function IntegrationsSection() {
+  const workspace = useWorkspaceTarget();
+  const accountId = useAuth().account?.id ?? '';
+  const on = useCapabilityAccess('outbound-integrations').access === 'on';
+  const personal = workspace.ready && !workspace.org;
+  const list = useOutboundIntegrations(on && personal ? accountId : '');
+  const integrations = list.data ?? [];
+  const usages = useOutboundUsages(
+    accountId,
+    integrations.map((i) => i.id)
+  );
+  const aiIntegrations = integrations.filter((i) => i.ai_provider);
+  const aiUsages = useOutboundAIUsages(
+    accountId,
+    aiIntegrations.map((i) => i.id)
+  );
+  const [editing, setEditing] = useState<string | null>(null);
+  if (!on || !personal || integrations.length === 0) return null;
+  const rows = integrations.map((integration, index) => {
+    const ai = aiIntegrations.indexOf(integration);
+    return integrationLimitRows(
+      integration,
+      usages[index]?.data,
+      ai >= 0 ? aiUsages[ai]?.data : undefined
+    );
+  });
+  return (
+    <div id="integrations" className="scroll-mt-24">
+      <Panel
+        title="Integrations and AI"
+        help="Limits on calls your apps make through Gregale’s gateway. At a limit the gateway refuses the call with 429; nothing else stops. Each app’s own limits are on its Integrations tab."
+      >
+        <details>
+          <summary className="w-fit cursor-pointer text-sm text-muted-foreground underline-offset-4 hover:underline">
+            {integrationsSummary(rows)}
+          </summary>
+          <div className="mt-3 flex flex-col gap-5">
+            {integrations.map((integration, index) => (
+              <section key={integration.id} aria-label={integration.name} className="flex flex-col">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">{integration.name}</h3>
+                  {integration.ai_provider && editing !== integration.id && (
+                    <Button size="xs" variant="ghost" onClick={() => setEditing(integration.id)}>
+                      Per-tag limits
+                    </Button>
+                  )}
+                </div>
+                {rows[index].map((row) => (
+                  <LimitRow
+                    key={row.key}
+                    name={row.name}
+                    sentence={row.sentence}
+                    meter={row.meter}
+                    action={
+                      row.key === 'requests' ? (
+                        <Button asChild size="xs" variant="outline">
+                          <Link to="/dashboard/integrations">Change</Link>
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                ))}
+                {editing === integration.id && (
+                  <TagLimitsEditor
+                    accountId={accountId}
+                    integration={integration}
+                    onClose={() => setEditing(null)}
+                  />
+                )}
+              </section>
+            ))}
+          </div>
+        </details>
+      </Panel>
+    </div>
+  );
+}

@@ -6,6 +6,7 @@ import { CapabilityGate } from '../capability-gate';
 import { PageHeader } from '../primitives';
 import { SpendCapEditor } from '../spend-cap';
 import { AgentAwareStrip, AgentsSection } from './agents-section';
+import { IntegrationsSection } from './integrations-section';
 import { StatusStrip } from './status-strip';
 import { useBillFacts } from './use-bill-facts';
 import { YourBill } from './your-bill';
@@ -14,7 +15,8 @@ import { YourBill } from './your-bill';
  * Billing › Spending limits: every limit on what the workspace can be billed,
  * and what happens when one is reached. The answer comes first; then the hard
  * limits on the bill; then budgets; then agents, behind the `agents` build
- * flag (off, the agent code folds out of the bundle). Design: docs/superpowers/specs/
+ * flag (off, the agent code folds out of the bundle); then integrations and AI,
+ * folded. Design: docs/superpowers/specs/
  * 2026-11-23-spending-limits-design.md.
  */
 export function LimitsPage() {
@@ -46,6 +48,7 @@ export function LimitsPage() {
         <BudgetsSection />
       </CapabilityGate>
       {featureFlags.agents && <AgentsSection />}
+      <IntegrationsSection />
       {editingCap && capCents !== undefined && (
         <Modal
           open

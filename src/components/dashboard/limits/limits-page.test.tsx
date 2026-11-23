@@ -23,6 +23,9 @@ vi.mock('../capability-gate', () => ({
   CapabilityGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../budgets/budgets-page', () => ({ BudgetsSection: () => <p>Budgets section</p> }));
+vi.mock('./integrations-section', () => ({
+  IntegrationsSection: () => <p>Integrations section</p>,
+}));
 
 it('answers first, then Your bill, then budgets', async () => {
   render(withRouter(<LimitsPage />));
@@ -51,4 +54,13 @@ it('with the agents flag on, agents follow budgets and the strip counts them', a
   const agents = screen.getByText('Agents section');
   expect(budgets.compareDocumentPosition(agents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   flags.agents = false;
+});
+
+it('ends with integrations and AI', async () => {
+  render(withRouter(<LimitsPage />));
+  const budgets = await screen.findByText('Budgets section');
+  const integrations = screen.getByText('Integrations section');
+  expect(
+    budgets.compareDocumentPosition(integrations) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
 });

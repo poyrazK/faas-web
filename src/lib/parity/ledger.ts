@@ -846,7 +846,9 @@ export const LEDGER: LedgerEntry[] = [
     row: 114,
     name: 'AI gateway',
     status: 'partial',
-    surfaces: ['/dashboard/integrations'],
+    // Token, cost and per-tag cost limits are also on Spending limits, where
+    // per-tag limits are edited.
+    surfaces: ['/dashboard/integrations', '/dashboard/limits'],
     capability: 'ai-gateway',
     gap: 'Routes, canaries, traces and access tokens',
     wave: 3,
@@ -856,7 +858,7 @@ export const LEDGER: LedgerEntry[] = [
     row: 115,
     name: 'Outbound integrations and bindings: key pools, probes',
     status: 'partial',
-    surfaces: ['/dashboard/integrations'],
+    surfaces: ['/dashboard/integrations', '/dashboard/limits'],
     capability: 'outbound-integrations',
     gap: 'Binding budget, usage and policy',
     wave: 3,

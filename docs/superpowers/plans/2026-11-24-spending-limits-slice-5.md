@@ -3,6 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The Spending limits page gets an **Integrations and AI** section, folded by default. For each outbound integration it shows:
+
 - its daily request limit against today's count;
 - for AI integrations, the daily token limit and the daily and monthly cost limits, against today's and this month's use;
 - the per-tag daily cost limits, with an editor.
@@ -35,7 +36,7 @@
 - **The status strip ignores integrations.** The spec's strip reads Your bill and Agents only. An integration at its limit is refused with 429; it doesn't stop workloads.
 - **App bindings' limits stay on each app's Integrations tab.** They are per app and need an app picker; the spec lists them, but the binding editor already shows them where they're set. The section links there in its help.
 - **No editor for AI token or cost limits** in this slice: faas sets them through `PUT …/ai` (the AI policy), which the console doesn't edit yet anywhere. The rows say what's set.
-- **A company workspace gets a note, not the account's integrations**, per CLAUDE.md: never show personal figures in a company workspace.
+- **A company workspace shows nothing**, per CLAUDE.md (never show personal figures in a company workspace); a note would be noise for companies whose members have no integrations.
 
 ## Tasks
 

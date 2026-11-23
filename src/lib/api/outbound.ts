@@ -290,6 +290,24 @@ export function useOutboundAIUsage(accountId: string, id: string, date: string, 
   });
 }
 
+/** Today's AI usage for each listed AI integration, in list order. */
+export function useOutboundAIUsages(accountId: string, ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: [...outboundKey(accountId), 'ai-usage', id, ''],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        unwrap(
+          api.GET('/v1/outbound/integrations/{integration}/ai-usage', {
+            params: { path: { integration: id }, query: {} },
+            signal,
+          })
+        ),
+      enabled: Boolean(accountId && id),
+      retry: retryPolicy,
+    })),
+  });
+}
+
 export function useOutboundAIAlerts(accountId: string, id: string, enabled = true) {
   return useQuery({
     queryKey: [...outboundKey(accountId), 'ai-alerts', id],

@@ -12,6 +12,9 @@ vi.mock('../capability-gate', () => ({
   CapabilityGate: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../budgets/budgets-page', () => ({ BudgetsSection: () => <p>Budgets section</p> }));
+vi.mock('./integrations-section', () => ({
+  IntegrationsSection: () => <p>Integrations section</p>,
+}));
 afterEach(() => vi.restoreAllMocks());
 
 it('with the agents build flag off, no agent route is read and no Agents section renders', async () => {
