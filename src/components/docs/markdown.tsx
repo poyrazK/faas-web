@@ -6,6 +6,7 @@ import { CopyButton } from '@/components/docs/copy-button';
 import { resolveDocHref } from '@/lib/docs-links';
 import { slugifyHeading } from '@/lib/docs-content';
 import { rehypeHighlightCode } from '@/lib/syntax-highlight';
+import { remarkDropHtmlComments } from '@/lib/remark-drop-html-comments';
 
 /**
  * Renders vendored markdown with the site's own type and colour.
@@ -210,7 +211,7 @@ export function Markdown({ source, sourcePath }: { source: string; sourcePath?: 
   return (
     <div className="docs-prose">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
         rehypePlugins={[rehypeHighlightCode]}
         components={{
           ...COMPONENTS,
