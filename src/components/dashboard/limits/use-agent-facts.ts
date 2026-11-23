@@ -8,7 +8,24 @@ import {
 import { ApiError } from '@/lib/api/client';
 import { useWorkspaceTarget } from '@/lib/api/workspace-apps';
 import { agentName } from '@/lib/agents';
-import type { AgentFact } from '@/lib/limits';
+
+/** One agent's budget; `limitCents` is undefined when it has no limit. */
+export interface AgentFact {
+  name: string;
+  spentCents: number;
+  limitCents?: number;
+}
+
+/**
+ * The status strip's lines for agents: one per agent at a budget above $0,
+ * whose always-on changes now wait for a person. A $0 budget is Free's
+ * default, so it never counts as close.
+ */
+export function agentCloseLines(facts: readonly AgentFact[]): string[] {
+  return facts
+    .filter((agent) => agent.limitCents && agent.spentCents >= agent.limitCents)
+    .map((agent) => `${agent.name}’s changes now wait for you.`);
+}
 
 export interface AgentBudgetRow {
   agent: AgentConnection;
@@ -34,7 +51,9 @@ export function useAgentFacts() {
   const policy = useAgentPolicy(org, workspace.ready);
   const rows: AgentBudgetRow[] = agents.map((agent) => {
     const read = reads.get(agent.id);
-    const notMine = read?.error instanceof ApiError && read.error.status === 404;
+    // apid answers another member's agent with not_found (agentconnections
+    // budgetConnection); any other failure is a failed read.
+    const notMine = read?.error instanceof ApiError && read.error.code === 'not_found';
     return {
       agent,
       budget: read?.data,

@@ -176,6 +176,67 @@ describe('the Agents section', () => {
   });
 });
 
+describe('review fixes', () => {
+  it('a company member who can’t list agents is told who can, and still sees the ceiling', async () => {
+    workspace.org = 'acme';
+    workspace.label = 'Acme';
+    api({
+      'GET /v1/orgs/{slug}/agent-connections': () =>
+        problem(403, 'org_role_forbidden', 'owner or admin role required'),
+    });
+    show();
+    expect(
+      await screen.findByText(/Only owners and admins of Acme can see the agents acting in it/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+    const ceiling = await screen.findByRole('group', { name: 'Agent ceiling' });
+    await waitFor(() => expect(ceiling).toHaveTextContent('$50.00 a month'));
+  });
+
+  it('a ceiling that couldn’t be read says so', async () => {
+    workspace.org = 'acme';
+    workspace.label = 'Acme';
+    // A refusal that isn't retried, so the test doesn't wait out the backoff.
+    api({ 'GET /v1/orgs/{slug}/agent-policy': () => problem(422, 'validation_failed') });
+    show();
+    const ceiling = await screen.findByRole('group', { name: 'Agent ceiling' });
+    await waitFor(() => expect(ceiling).toHaveTextContent('Couldn’t read the agent ceiling.'));
+    expect(within(ceiling).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('only apid’s not_found means another member’s agent', async () => {
+    api({
+      'GET /v1/agent-connections/{id}/budget': () => problem(404, 'not_mocked'),
+    });
+    show();
+    const codex = await screen.findByRole('group', { name: 'Codex' });
+    await waitFor(() => expect(codex).toHaveTextContent('Couldn’t read this budget.'));
+    expect(codex).not.toHaveTextContent(/can see and change its budget/);
+  });
+
+  it('an agent at its budget reads amber, not red: its changes wait, nothing stopped', async () => {
+    api();
+    show();
+    const codex = await screen.findByRole('group', { name: 'Codex' });
+    const meter = await within(codex).findByRole('meter', { name: 'Codex used' });
+    expect((meter.firstElementChild as HTMLElement).style.background).toBe('var(--status-warning)');
+  });
+});
+
+describe('agentCloseLines', () => {
+  it('names an agent at a budget above $0, and nothing else', async () => {
+    const { agentCloseLines } = await import('./use-agent-facts');
+    expect(
+      agentCloseLines([
+        { name: 'Codex', spentCents: 2500, limitCents: 2500 },
+        { name: 'Free', spentCents: 0, limitCents: 0 },
+        { name: 'Below', spentCents: 2400, limitCents: 2500 },
+        { name: 'Unlimited', spentCents: 9000 },
+      ])
+    ).toEqual(['Codex’s changes now wait for you.']);
+  });
+});
+
 describe('the status strip with agents', () => {
   const data = {
     settled: true,

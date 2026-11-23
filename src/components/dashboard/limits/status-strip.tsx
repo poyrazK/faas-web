@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { billStatus, type AgentFact, type BillStatus } from '@/lib/limits';
+import { billStatus, type BillStatus } from '@/lib/limits';
 import { TONE_COLOR } from './limit-row';
 import type { BillData } from './use-bill-facts';
 
@@ -20,17 +20,17 @@ const ACTION_LABEL: Record<NonNullable<BillStatus['action']>, string> = {
 export function StatusStrip({
   data,
   onAction,
-  agents,
-  agentsSettled = true,
+  alsoClose,
+  waitFor = true,
 }: {
   data: BillData;
   onAction: (action: 'cap' | 'egress') => void;
-  /** Connected agents' budgets, only while the agents build flag is on. */
-  agents?: AgentFact[];
-  /** False while an agent read is still answering: the strip waits for it too. */
-  agentsSettled?: boolean;
+  /** Reached limits outside the bill, such as an agent at its budget. */
+  alsoClose?: string[];
+  /** False while another read the strip counts is still answering. */
+  waitFor?: boolean;
 }) {
-  if (!data.settled || !agentsSettled)
+  if (!data.settled || !waitFor)
     return (
       <div
         role="status"
@@ -42,7 +42,7 @@ export function StatusStrip({
         <Skeleton className="h-3 w-2/3 max-w-md" />
       </div>
     );
-  const status = billStatus(agents ? { ...data.facts, agents } : data.facts);
+  const status = billStatus(alsoClose ? { ...data.facts, alsoClose } : data.facts);
   const color = TONE_COLOR[status.tone];
   return (
     <section

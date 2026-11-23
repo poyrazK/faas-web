@@ -114,7 +114,7 @@ function BudgetPanel({ agent }: { agent: AgentConnection }) {
   const budget = useAgentBudget(agent.id);
   const [editing, setEditing] = useState(false);
   // apid finds only the caller's own keys here, so a colleague's agent is 404.
-  const notMine = budget.error instanceof ApiError && budget.error.status === 404;
+  const notMine = budget.error instanceof ApiError && budget.error.code === 'not_found';
   const phase = queryPhase({
     error: notMine ? undefined : budget.error,
     loading: budget.isPending,

@@ -48,17 +48,11 @@ export interface BillFacts {
   /** The personal usage summary (overage, egress and compute use) failed to load. */
   usageUnknown?: boolean;
   /**
-   * Connected agents' always-on budgets this month, only while the agents
-   * build flag is on; undefined means agents aren't counted.
+   * Plain sentences for limits outside the bill that are reached and now
+   * hold something back (an agent at its budget, while the agents build flag
+   * is on). They join the "close" lines; they never stop anything.
    */
-  agents?: AgentFact[];
-}
-
-/** One agent's budget; `limitCents` is undefined when it has no limit. */
-export interface AgentFact {
-  name: string;
-  spentCents: number;
-  limitCents?: number;
+  alsoClose?: string[];
 }
 
 export interface BillStatus {
@@ -196,11 +190,7 @@ export function billStatus(facts: BillFacts): BillStatus {
     close.push(
       `Storage is at ${pct(storageMeter.used, storageMeter.limit)}% of ${gib(storageMeter.limit)}.`
     );
-  // An agent at a budget above $0 now asks before each always-on change. A $0
-  // budget is Free's default, so it never counts as close.
-  for (const agent of facts.agents ?? [])
-    if (agent.limitCents && agent.spentCents >= agent.limitCents)
-      close.push(`${agent.name}’s changes now wait for you.`);
+  close.push(...(facts.alsoClose ?? []));
   if (close.length)
     return {
       tone: 'warning',

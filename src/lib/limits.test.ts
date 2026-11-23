@@ -243,52 +243,32 @@ describe('egress billing not live yet', () => {
   });
 });
 
-describe('agents', () => {
-  it('an agent at its budget is close', () => {
-    const status = billStatus({
-      ...base,
-      agents: [{ name: 'Codex', spentCents: 2500, limitCents: 2500 }],
-    });
+describe('lines from outside the bill', () => {
+  const line = 'Codex’s changes now wait for you.';
+  it('joins the close lines', () => {
+    const status = billStatus({ ...base, alsoClose: [line] });
     expect(status).toMatchObject({ tone: 'warning', headline: 'Close to a limit' });
-    expect(status.detail).toContain('Codex’s changes now wait for you.');
+    expect(status.detail).toContain(line);
   });
 
-  it('a $0 agent budget is not close: it is Free’s default', () => {
+  it('never outranks a reached cap', () => {
     expect(
-      billStatus({ ...base, agents: [{ name: 'Codex', spentCents: 0, limitCents: 0 }] })
-    ).toEqual(billStatus(base));
-  });
-
-  it('an agent below its budget, or without one, adds nothing', () => {
-    expect(
-      billStatus({
-        ...base,
-        agents: [
-          { name: 'Codex', spentCents: 2400, limitCents: 2500 },
-          { name: 'Claude', spentCents: 9000 },
-        ],
-      })
-    ).toEqual(billStatus(base));
-  });
-
-  it('a reached cap outranks an agent at its budget', () => {
-    expect(
-      billStatus({
-        ...base,
-        cap: ready({ capCents: 5000, overageCents: 5000 }),
-        agents: [{ name: 'Codex', spentCents: 2500, limitCents: 2500 }],
-      })
+      billStatus({ ...base, cap: ready({ capCents: 5000, overageCents: 5000 }), alsoClose: [line] })
     ).toMatchObject({ tone: 'critical', headline: 'Your apps are stopped' });
   });
 
-  it('counts agents in a company workspace too', () => {
+  it('counts in a company workspace too', () => {
     const status = billStatus({
       ...base,
       workspace: 'org',
       cap: ready({ capCents: 5000 }),
-      agents: [{ name: 'Codex', spentCents: 2600, limitCents: 2500 }],
+      alsoClose: [line],
     });
     expect(status.tone).toBe('warning');
-    expect(status.detail).toContain('Codex’s changes now wait for you.');
+    expect(status.detail).toContain(line);
+  });
+
+  it('none leaves the verdict as it was', () => {
+    expect(billStatus({ ...base, alsoClose: [] })).toEqual(billStatus(base));
   });
 });

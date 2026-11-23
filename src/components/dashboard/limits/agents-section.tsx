@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { ApiError } from '@/lib/api/client';
 import { agentName, budgetWords } from '@/lib/agents';
 import { formatCents } from '@/lib/money';
 import { BudgetDialog } from '../agents/budget-dialog';
@@ -8,7 +9,7 @@ import { InlinePhase, Panel, queryPhase } from '../primitives';
 import { LimitRow } from './limit-row';
 import { StatusStrip } from './status-strip';
 import type { BillData } from './use-bill-facts';
-import { useAgentFacts, type AgentBudgetRow } from './use-agent-facts';
+import { agentCloseLines, useAgentFacts, type AgentBudgetRow } from './use-agent-facts';
 
 /** What happens at an agent's budget, in a plain sentence. */
 function budgetSentence(monthlyCents: number | undefined): string {
@@ -45,16 +46,16 @@ function AgentRow({ row, onChange }: { row: AgentBudgetRow; onChange: () => void
     );
   const words = budgetWords(row.budget);
   const limit = row.budget.monthly_cents;
+  const metered = limit !== undefined && limit > 0;
   return (
     <LimitRow
       name={name}
       sentence={budgetSentence(limit)}
       note={words.source}
-      meter={
-        limit !== undefined && limit > 0
-          ? { used: row.budget.spent_cents, limit, label: words.amount }
-          : undefined
-      }
+      // At its budget an agent asks before acting: amber, as on the strip,
+      // never the red of a stopped workload.
+      tone={metered && row.budget.spent_cents >= limit ? 'warning' : undefined}
+      meter={metered ? { used: row.budget.spent_cents, limit, label: words.amount } : undefined}
       action={
         <Button size="xs" variant="outline" onClick={onChange}>
           Change
@@ -77,40 +78,65 @@ export function AgentsSection() {
   if (connections.isPending || (connections.data && rows.length === 0)) return null;
   const open = rows.find((row) => row.agent.id === editing);
   const ceiling = policy.data?.max_agent_budget_cents;
+  // Only owners and admins may list a company's agents; members still see
+  // the ceiling, which every member may read.
+  const forbidden =
+    connections.error instanceof ApiError && connections.error.code === 'org_role_forbidden';
+  const ceilingRow = org ? (
+    policy.error ? (
+      <LimitRow
+        name="Agent ceiling"
+        tone="neutral"
+        sentence="Couldn’t read the agent ceiling."
+        action={
+          <Button size="xs" variant="outline" onClick={() => void policy.refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    ) : policy.data ? (
+      <LimitRow
+        name="Agent ceiling"
+        sentence={
+          ceiling !== undefined
+            ? `No agent acting in ${label} may have a budget above ${formatCents(ceiling)} a month.`
+            : 'No ceiling: each agent’s own budget applies.'
+        }
+        action={
+          <Button asChild size="xs" variant="outline">
+            <Link to="/dashboard/agents/policy">Change</Link>
+          </Button>
+        }
+      />
+    ) : null
+  ) : null;
   return (
     <div id="agents" className="scroll-mt-24">
       <Panel
         title="Agents"
         help="What each connected agent may add to the bill each month without any traffic: warm instances, always-running services, frequent crons. Past its budget, each such change waits for a person’s approval. Lowering cost never asks."
       >
-        {connections.error ? (
-          <InlinePhase
-            phase={queryPhase({ error: connections.error })}
-            error={connections.error}
-            onRetry={() => void connections.refetch()}
-          />
-        ) : (
-          <div className="flex flex-col">
-            {org && policy.data && (
-              <LimitRow
-                name="Agent ceiling"
-                sentence={
-                  ceiling !== undefined
-                    ? `No agent acting in ${label} may have a budget above ${formatCents(ceiling)} a month.`
-                    : 'No ceiling: each agent’s own budget applies.'
-                }
-                action={
-                  <Button asChild size="xs" variant="outline">
-                    <Link to="/dashboard/agents/policy">Change</Link>
-                  </Button>
-                }
+        <div className="flex flex-col">
+          {ceilingRow}
+          {forbidden ? (
+            <p role="status" className="py-4 text-sm text-muted-foreground">
+              Only owners and admins of {label} can see the agents acting in it. Switch to Personal
+              to see the agents you connected for yourself.
+            </p>
+          ) : connections.error ? (
+            <div className="py-4">
+              <InlinePhase
+                phase={queryPhase({ error: connections.error })}
+                error={connections.error}
+                onRetry={() => void connections.refetch()}
               />
-            )}
-            {rows.map((row) => (
+            </div>
+          ) : (
+            rows.map((row) => (
               <AgentRow key={row.agent.id} row={row} onChange={() => setEditing(row.agent.id)} />
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </Panel>
       {open?.budget && (
         <BudgetDialog agent={open.agent} budget={open.budget} onClose={() => setEditing(null)} />
@@ -132,8 +158,8 @@ export function AgentAwareStrip({
     <StatusStrip
       data={data}
       onAction={onAction}
-      agents={agents.facts}
-      agentsSettled={agents.settled}
+      alsoClose={agentCloseLines(agents.facts)}
+      waitFor={agents.settled}
     />
   );
 }
