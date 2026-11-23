@@ -21,6 +21,8 @@ export const RESTORE_DOC_SLUG = 'scale-to-zero';
 export const INSTALL_COMMAND = 'npm install -g gregale@rc';
 export const INSTALL_DOC_SLUG = 'install';
 
-/** The maturity line the hero shows, reused wherever the product is summarised. */
-export const BETA_STATUS =
-  'Hosting and PR previews are in public beta. Connected work, MCP hosting and isolated runs are in preview; plan and rollout limits apply.';
+export const START_FREE_CTA = 'Start free';
+
+/** Shared by the home page and public agent documentation. */
+export const PLATFORM_AVAILABILITY =
+  'Hosting and PR previews are generally available. MCP hosting and isolated runs are in preview.';

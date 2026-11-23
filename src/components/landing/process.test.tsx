@@ -34,7 +34,7 @@ describe('Process', () => {
     expect(cards[0]).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('links beta hosting capabilities to their published guides', async () => {
+  it('links hosting capabilities to their published guides', async () => {
     render(withRouter(<Process />));
     await screen.findAllByRole('button');
     // jsdom reports no `min-width` match, so every card renders open here.

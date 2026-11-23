@@ -18,7 +18,7 @@ function renderHero() {
 }
 
 /**
- * The headline and beta/docs actions are the page's
+ * The headline and signup/docs actions are the page's
  * message; the light behind them must stay decorative to assistive tech.
  *
  * The wake figure is the page's one load-bearing number, and it is a
@@ -28,16 +28,16 @@ function renderHero() {
  * claim string, with its measurement boundary next to it.
  */
 describe('Hero', () => {
-  it('leads with the backend platform and states beta versus preview availability', async () => {
+  it('leads with the backend platform and states general and preview availability', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
     expect(h1).toHaveAccessibleName(/Next-generation cloud for APIs, services/);
-    expect(screen.getByText(/Hosting and PR previews are in public beta/)).toBeInTheDocument();
+    expect(screen.getByText(/Hosting and PR previews are generally available/)).toBeInTheDocument();
   });
 
-  it('keeps the primary beta action and secondary docs action as real links', async () => {
+  it('keeps the primary signup action and secondary docs action as real links', async () => {
     renderHero();
-    const cta = await screen.findByRole('link', { name: /join the beta/i });
+    const cta = await screen.findByRole('link', { name: /start free/i });
     expect(cta).toHaveAttribute('href', '/signup');
     expect(screen.getByRole('link', { name: 'Read the docs' })).toHaveAttribute('href', '/docs');
   });

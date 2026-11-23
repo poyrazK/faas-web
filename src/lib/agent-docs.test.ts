@@ -13,7 +13,12 @@ import {
   renderIntro,
 } from './agent-docs';
 import { DOC_ENTRIES, findDoc } from './docs-manifest';
-import { BETA_STATUS, INSTALL_COMMAND, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims';
+import {
+  PLATFORM_AVAILABILITY,
+  INSTALL_COMMAND,
+  RESTORE_CONTEXT,
+  RESTORE_TARGET,
+} from './platform-claims';
 
 const SITE = 'https://gregale.dev';
 
@@ -140,9 +145,9 @@ describe('llmsSmall', () => {
 
 describe('renderIntro', () => {
   it('fills each claim from its one home', () => {
-    expect(renderIntro('A ({{RESTORE_TARGET}}). {{RESTORE_CONTEXT}} {{BETA_STATUS}}\n')).toBe(
-      `A (${RESTORE_TARGET}). ${RESTORE_CONTEXT} ${BETA_STATUS}`
-    );
+    expect(
+      renderIntro('A ({{RESTORE_TARGET}}). {{RESTORE_CONTEXT}} {{PLATFORM_AVAILABILITY}}\n')
+    ).toBe(`A (${RESTORE_TARGET}). ${RESTORE_CONTEXT} ${PLATFORM_AVAILABILITY}`);
   });
 
   it('refuses a placeholder it does not know rather than shipping braces', () => {

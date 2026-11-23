@@ -14,44 +14,29 @@ function renderPricing() {
   );
 }
 
-describe('beta pricing', () => {
-  it('offers signup and billing details rather than purchasable plans', async () => {
+describe('pricing', () => {
+  it('links signup, console plans and the billing guide', async () => {
     renderPricing();
-    const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
+    const pricing = await screen.findByRole('region', { name: 'Plans and pricing' });
     expect(pricing).toHaveAttribute('id', 'pricing');
-    expect(
-      within(pricing).getByText(/paid billing and checkout open after the beta/i)
-    ).toBeInTheDocument();
-    expect(within(pricing).getByRole('link', { name: 'Join the beta' })).toHaveAttribute(
+    const links = within(pricing);
+    expect(links.getByRole('link', { name: 'Start free' })).toHaveAttribute('href', '/signup');
+    expect(links.getByRole('link', { name: 'View plans in console' })).toHaveAttribute(
       'href',
-      '/signup'
+      '/dashboard/plans'
     );
-    expect(
-      within(pricing).queryByRole('link', { name: /select|buy|upgrade/i })
-    ).not.toBeInTheDocument();
-    expect(pricing).not.toHaveTextContent(/1M invocations|€|US\$|Enterprise/);
-    expect(within(pricing).queryByRole('article')).not.toBeInTheDocument();
-    expect(within(pricing).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(pricing).getAllByRole('link')).toHaveLength(2);
-    expect(
-      within(pricing).getByRole('link', { name: 'Plan limits and billing details' })
-    ).toHaveAttribute('href', '/docs/plans');
+    expect(links.getByRole('link', { name: 'Plan limits and billing details' })).toHaveAttribute(
+      'href',
+      '/docs/plans'
+    );
+    expect(pricing).toHaveTextContent(/prices are in USD per month before tax/i);
+    expect(pricing).toHaveTextContent('$0.05 per GB-RAM-hour');
   });
 
-  it('keeps the obscured plan catalog inert and out of the accessibility tree', async () => {
+  it('shows catalog prices and all nine plan limits in the accessibility tree', async () => {
     renderPricing();
-    const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
-    const preview = within(pricing).getByText('Hobby').closest('[inert]');
-    expect(preview).not.toBeNull();
-    expect(preview).toHaveAttribute('aria-hidden', 'true');
-    expect(preview?.querySelector('a')).toBeNull();
-    expect(within(pricing).queryByRole('article', { name: 'Hobby' })).not.toBeInTheDocument();
-  });
-
-  it('preserves the generated dollar prices and all nine plan limits beneath the blur', async () => {
-    renderPricing();
-    const pricing = await screen.findByRole('region', { name: /pricing coming soon/i });
-    const cards = within(pricing).getAllByRole('article', { hidden: true });
+    const pricing = await screen.findByRole('region', { name: 'Plans and pricing' });
+    const cards = within(pricing).getAllByRole('article');
     const labels = [
       'Deployed apps',
       'PR preview environments',
