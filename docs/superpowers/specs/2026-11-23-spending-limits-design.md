@@ -89,7 +89,7 @@ These are hard limits: at the limit, workloads stop.
 ### 2. Alerts and budgets
 
 - The existing account budget list (`BudgetsPage` body: rows, status, add, detail, delete), shown as a section. The existing `budgets` capability gate applies to this section only.
-- **In a company workspace:** organization budgets through `/v1/orgs/{slug}/billing/budgets[/{id}]`, its `/revisions` and `/preview`, which take the same bodies (faas `docs/billing.md`, "Organization budgets"). Org budgets notify and stop previews; strict budgets aren't offered for orgs, so the form hides strict mode there. Org alerts go to the organization's billing contact, and notification channels stay with account budgets, so the org form hides channels.
+- **In a company workspace** (shipped in slice 2): organization budgets through `/v1/orgs/{slug}/billing/budgets[/{id}]`, its `/revisions` and `/preview`, which take the same bodies (faas `docs/billing.md`, "Organization budgets"). Org budgets notify and stop previews; strict budgets aren't offered for orgs, so the form hides strict mode there. Org alerts go to the organization's billing contact, and notification channels stay with account budgets, so the org form hides channels.
 
 ### 3. Agents
 

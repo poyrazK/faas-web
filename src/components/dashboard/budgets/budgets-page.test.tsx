@@ -9,7 +9,10 @@ const workspace = vi.hoisted(() => ({
   label: 'Personal',
   ready: true,
 }));
-vi.mock('@/lib/api/workspace-apps', () => ({ useWorkspaceTarget: () => workspace }));
+vi.mock('@/lib/api/workspace-apps', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/workspace-apps')>()),
+  useWorkspaceTarget: () => workspace,
+}));
 vi.mock('@/lib/api/capabilities', () => ({
   useCapability: () => ({
     accountId: 'acct',
@@ -220,17 +223,19 @@ async function fillNew(user: ReturnType<typeof userEvent.setup>, name: string, l
 }
 
 describe('BudgetsSection in a company workspace', () => {
-  it('says budgets are personal and reads none of them', async () => {
+  it('reads the organization’s budgets, never the personal ones', async () => {
     workspace.org = 'acme';
     workspace.label = 'Acme Corp';
-    const spies = api();
+    const spies = api({ 'GET /v1/orgs/{slug}/billing/budgets': () => ({ budgets: [] }) });
     renderWithProviders(<BudgetsSection />);
-    expect(screen.getByRole('status')).toHaveTextContent(
-      /Budgets belong to your personal account.*Acme Corp has no budgets/
+    await waitFor(() =>
+      expect(spies.GET).toHaveBeenCalledWith(
+        '/v1/orgs/{slug}/billing/budgets',
+        expect.objectContaining({ params: { path: { slug: 'acme' } } })
+      )
     );
-    expect(screen.queryByRole('form', { name: 'New budget' })).not.toBeInTheDocument();
-    expect(spies.GET).not.toHaveBeenCalled();
-    expect(spies.POST).not.toHaveBeenCalled();
+    expect(spies.GET).not.toHaveBeenCalledWith('/v1/billing/budgets', expect.anything());
+    expect(screen.queryByText(/Budgets belong to your personal account/)).toBeNull();
   });
 });
 

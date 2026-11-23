@@ -15,6 +15,8 @@ import {
 } from './budgets';
 import type { BudgetSpec } from '../budgets';
 
+const ACCT = { kind: 'account', accountId: 'acct' } as const;
+
 const ok = (data: unknown) => ({ data, response: new Response() }) as never;
 const SPEC: BudgetSpec = {
   name: 'Monthly compute',
@@ -77,10 +79,10 @@ describe('useOperationKey', () => {
 describe('budget reads', () => {
   it('lists the account budgets only when enabled', async () => {
     const get = spyApi('GET').mockResolvedValue(ok({ budgets: [BUDGET] }));
-    const off = renderHook(() => useBudgets('acct', false), { wrapper: wrapper() });
+    const off = renderHook(() => useBudgets(ACCT, false), { wrapper: wrapper() });
     expect(off.result.current.fetchStatus).toBe('idle');
     expect(get).not.toHaveBeenCalled();
-    const on = renderHook(() => useBudgets('acct', true), { wrapper: wrapper() });
+    const on = renderHook(() => useBudgets(ACCT, true), { wrapper: wrapper() });
     await waitFor(() => expect(on.result.current.data).toEqual([BUDGET]));
     expect(get).toHaveBeenCalledWith('/v1/billing/budgets', expect.anything());
   });
@@ -91,7 +93,7 @@ describe('budget reads', () => {
         ok({ revisions: [{ revision: 1 }, { revision: 2 }], next_revision: 2 })
       )
       .mockResolvedValueOnce(ok({ revisions: [{ revision: 3 }] }));
-    const { result } = renderHook(() => useBudgetRevisions('acct', BUDGET.id, 2), {
+    const { result } = renderHook(() => useBudgetRevisions(ACCT, BUDGET.id, 2), {
       wrapper: wrapper(),
     });
     await waitFor(() => expect(result.current.hasNextPage).toBe(true));
@@ -107,7 +109,7 @@ describe('budget reads', () => {
 describe('budget writes', () => {
   it('creates with the caller’s Idempotency-Key', async () => {
     const post = spyApi('POST').mockResolvedValue(ok(BUDGET));
-    const { result } = renderHook(() => useCreateBudget('acct'), { wrapper: wrapper() });
+    const { result } = renderHook(() => useCreateBudget(ACCT), { wrapper: wrapper() });
     await act(() => result.current.mutateAsync({ spec: SPEC, key: 'k1' }));
     expect(post).toHaveBeenCalledWith('/v1/billing/budgets', {
       params: { header: { 'Idempotency-Key': 'k1' } },
@@ -118,7 +120,7 @@ describe('budget writes', () => {
   it('replaces and deletes at the expected revision', async () => {
     const put = spyApi('PUT').mockResolvedValue(ok(BUDGET));
     const del = spyApi('DELETE').mockResolvedValue(ok({ ...BUDGET, status: 'deleted' }));
-    const update = renderHook(() => useUpdateBudget('acct'), { wrapper: wrapper() });
+    const update = renderHook(() => useUpdateBudget(ACCT), { wrapper: wrapper() });
     await act(() =>
       update.result.current.mutateAsync({ id: BUDGET.id, revision: 3, spec: SPEC, key: 'k2' })
     );
@@ -126,7 +128,7 @@ describe('budget writes', () => {
       params: { path: { id: BUDGET.id }, header: { 'Idempotency-Key': 'k2' } },
       body: { expected_revision: 3, spec: SPEC },
     });
-    const remove = renderHook(() => useDeleteBudget('acct'), { wrapper: wrapper() });
+    const remove = renderHook(() => useDeleteBudget(ACCT), { wrapper: wrapper() });
     await act(() => remove.result.current.mutateAsync({ id: BUDGET.id, revision: 3, key: 'k3' }));
     expect(del).toHaveBeenCalledWith('/v1/billing/budgets/{id}', {
       params: { path: { id: BUDGET.id }, header: { 'Idempotency-Key': 'k3' } },
@@ -136,7 +138,7 @@ describe('budget writes', () => {
 
   it('replaces the channel set', async () => {
     const put = spyApi('PUT').mockResolvedValue(ok({ policy_id: BUDGET.id, channels: [] }));
-    const { result } = renderHook(() => useSetBudgetChannels('acct'), { wrapper: wrapper() });
+    const { result } = renderHook(() => useSetBudgetChannels(ACCT), { wrapper: wrapper() });
     await act(() => result.current.mutateAsync({ id: BUDGET.id, channelIds: ['c1'], key: 'k4' }));
     expect(put).toHaveBeenCalledWith('/v1/billing/budgets/{id}/channels', {
       params: { path: { id: BUDGET.id }, header: { 'Idempotency-Key': 'k4' } },

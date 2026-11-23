@@ -21,8 +21,10 @@ import {
   useBudgetRevisions,
   useOperationKey,
   useSetBudgetChannels,
+  type BudgetSubject,
 } from '@/lib/api/budgets';
 import { useApps } from '@/lib/api/queries';
+import { useOrgApps } from '@/lib/api/workspace-apps';
 import {
   BUDGET_LIMITS,
   LEVELS,
@@ -50,7 +52,7 @@ import {
   type ScopeLabel,
 } from './budget-bits';
 import { BudgetForm } from './budget-form';
-import { useBudgetSave } from './use-budget-save';
+import { refusalSubject, useBudgetSave } from './use-budget-save';
 
 const GOOD = 'var(--status-good)';
 const WARN = 'var(--status-warning)';
@@ -135,9 +137,13 @@ const TARGET_ERROR: Record<string, string> = {
  * preview. A decision or an email alone is not proof of shutdown: only
  * `enforced` is (docs/billing.md "Monitored preview stopping").
  */
-function StopSection({ stop }: { stop: BudgetStop }) {
-  const apps = useApps();
-  const slug = (id: string) => apps.data?.find((app) => app.id === id)?.slug ?? id.slice(0, 8);
+function StopSection({ stop, subject }: { stop: BudgetStop; subject: BudgetSubject }) {
+  // An organization's stopped previews are named from its own apps.
+  const org = subject.kind === 'org' ? subject.slug : null;
+  const personalApps = useApps({ enabled: !org });
+  const orgApps = useOrgApps(org);
+  const list: { id: string; slug: string }[] = (org ? orgApps.data?.apps : personalApps.data) ?? [];
+  const slug = (id: string) => list.find((app) => app.id === id)?.slug ?? id.slice(0, 8);
   return (
     <Section title="Automatic stop">
       <p className="text-sm">
@@ -227,9 +233,9 @@ function ComputeSection({ budget }: { budget: Budget }) {
  * The notification channels a budget's alerts also go to. They are not part
  * of the spec, so a change is not a revision (ADR-20261019193500).
  */
-function BudgetChannels({ accountId, budget }: { accountId: string; budget: Budget }) {
-  const channels = useBudgetChannels(accountId, budget.id);
-  const set = useSetBudgetChannels(accountId);
+function BudgetChannels({ subject, budget }: { subject: BudgetSubject; budget: Budget }) {
+  const channels = useBudgetChannels(subject, budget.id);
+  const set = useSetBudgetChannels(subject);
   const { keyFor, settle } = useOperationKey();
   const { toast } = useToast();
   const [editing, setEditing] = useState<string[] | null>(null);
@@ -277,7 +283,9 @@ function BudgetChannels({ accountId, budget }: { accountId: string; budget: Budg
           />
           {failure !== null && (
             <div role="alert" className="flex flex-col gap-1 text-xs">
-              <span style={{ color: BAD }}>{budgetRefusal(failure, undefined).message}</span>
+              <span style={{ color: BAD }}>
+                {budgetRefusal(failure, undefined, refusalSubject(subject)).message}
+              </span>
               <ProblemHelp error={failure} className="[&_code]:break-all" />
             </div>
           )}
@@ -346,8 +354,8 @@ function BudgetChannels({ accountId, budget }: { accountId: string; budget: Budg
 
 const MUTATION = { created: 'Created', updated: 'Updated', deleted: 'Deleted' } as const;
 
-function BudgetHistory({ accountId, id }: { accountId: string; id: string }) {
-  const history = useBudgetRevisions(accountId, id);
+function BudgetHistory({ subject, id }: { subject: BudgetSubject; id: string }) {
+  const history = useBudgetRevisions(subject, id);
   const rows = history.data?.pages.flatMap((page) => page.revisions) ?? [];
   const phase = queryPhase({
     error: history.error,
@@ -420,7 +428,7 @@ const meterNames = (meters: string[]) =>
  * deleted budget, so its tombstone and history stay readable here.
  */
 export function BudgetDetail({
-  accountId,
+  subject,
   id,
   scopeLabel,
   strictRefused,
@@ -428,7 +436,7 @@ export function BudgetDetail({
   onDelete,
   onClose,
 }: {
-  accountId: string;
+  subject: BudgetSubject;
   id: string;
   scopeLabel: ScopeLabel;
   strictRefused: boolean;
@@ -436,8 +444,8 @@ export function BudgetDetail({
   onDelete: (budget: Budget) => void;
   onClose: () => void;
 }) {
-  const query = useBudget(accountId, id);
-  const { save, pending } = useBudgetSave(accountId, scopeLabel);
+  const query = useBudget(subject, id);
+  const { save, pending } = useBudgetSave(subject, scopeLabel);
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [failure, setFailure] = useState<{ error: unknown; message: string } | null>(null);
@@ -553,7 +561,7 @@ export function BudgetDetail({
 
         {editing ? (
           <BudgetForm
-            accountId={accountId}
+            subject={subject}
             budget={budget}
             scopeLabel={scopeLabel}
             strictRefused={strictRefused}
@@ -676,13 +684,14 @@ export function BudgetDetail({
             )}
 
             {budget.runtime?.stops?.map((stop) => (
-              <StopSection key={stop.id} stop={stop} />
+              <StopSection key={stop.id} stop={stop} subject={subject} />
             ))}
             <ComputeSection budget={budget} />
-            <BudgetChannels accountId={accountId} budget={budget} />
+            {/* An organization's alerts go to its billing contact: no channels. */}
+            {subject.kind === 'account' && <BudgetChannels subject={subject} budget={budget} />}
           </>
         )}
-        <BudgetHistory accountId={accountId} id={budget.id} />
+        <BudgetHistory subject={subject} id={budget.id} />
       </div>
     </Panel>
   );

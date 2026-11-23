@@ -315,3 +315,31 @@ describe('stopSummary', () => {
     expect(stopSummary(spec, 'x', { targets: many, continuing_targets: [] })).toMatch(/and 4 more/);
   });
 });
+
+describe('budgetRefusal for an organization', () => {
+  const unowned = new ApiError({
+    status: 422,
+    code: 'financial_budget_activation_unavailable',
+    title: 'Organization budgets unavailable',
+    detail:
+      'This organization does not own its resources yet, so its usage is billed to the members who created it. Budgets follow the subject that pays.',
+  });
+
+  it('shows apid’s own reason, never the personal strict wording', () => {
+    expect(budgetRefusal(unowned, undefined, { kind: 'org', label: 'Acme' })).toEqual({
+      strictNotReleased: false,
+      message: unowned.detail,
+    });
+  });
+
+  it('names who can change an organization’s budgets', () => {
+    const forbidden = new ApiError({ status: 403, code: 'org_role_forbidden', title: 'Forbidden' });
+    expect(budgetRefusal(forbidden, undefined, { kind: 'org', label: 'Acme' }).message).toBe(
+      'Only Acme’s owner or billing role can change its budgets.'
+    );
+  });
+
+  it('keeps the personal wording for the account', () => {
+    expect(budgetRefusal(unowned, undefined).message).toMatch(/^Gregale can turn on Alert/);
+  });
+});
