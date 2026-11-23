@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { featureFlags } from '@/lib/feature-flags';
 import { Route as AgentsList } from './dashboard.agents.index';
 import { Route as AgentDetail } from './dashboard.agents.$agentId';
+import { Route as AgentPolicy } from './dashboard.agents.policy';
 
 const beforeLoad = (route: { options: { beforeLoad?: unknown } }) => () =>
   (route.options.beforeLoad as () => void)();
@@ -15,6 +16,7 @@ describe('the agents build flag', () => {
   it.each([
     ['the list', AgentsList],
     ['one agent', AgentDetail],
+    ['the organization agent policy', AgentPolicy],
   ])('sends a bookmarked URL for %s to the Overview while off', (_, route) => {
     let thrown: unknown;
     try {
