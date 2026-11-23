@@ -1,10 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { withCapability } from '@/components/dashboard/capability-gate';
-import { BudgetsPage } from '@/components/dashboard/budgets/budgets-page';
-import { consoleHead } from '@/lib/seo';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
+// Budgets moved into Billing › Spending limits; old links land on that section.
 export const Route = createFileRoute('/dashboard/budgets')({
-  // Gated like its nav item: a bookmarked URL explains itself when off.
-  component: withCapability('budgets', 'Budgets', BudgetsPage),
-  head: () => consoleHead('budgets'),
+  beforeLoad: () => {
+    throw redirect({ to: '/dashboard/limits', hash: 'budgets', replace: true });
+  },
 });

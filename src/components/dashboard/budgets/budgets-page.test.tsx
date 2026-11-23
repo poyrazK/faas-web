@@ -22,7 +22,7 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ account: { id: 'acct', email: 'me@example.com', plan: 'pro' } }),
 }));
 
-const { BudgetsPage } = await import('./budgets-page');
+const { BudgetsSection } = await import('./budgets-page');
 
 const APP = { id: '22222222-2222-4222-8222-222222222222', slug: 'api' };
 const PREVIEW_APP = {
@@ -219,12 +219,12 @@ async function fillNew(user: ReturnType<typeof userEvent.setup>, name: string, l
   return form;
 }
 
-describe('BudgetsPage in a company workspace', () => {
+describe('BudgetsSection in a company workspace', () => {
   it('says budgets are personal and reads none of them', async () => {
     workspace.org = 'acme';
     workspace.label = 'Acme Corp';
     const spies = api();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     expect(screen.getByRole('status')).toHaveTextContent(
       /Budgets belong to your personal account.*Acme Corp has no budgets/
     );
@@ -234,10 +234,10 @@ describe('BudgetsPage in a company workspace', () => {
   });
 });
 
-describe('BudgetsPage', () => {
+describe('BudgetsSection', () => {
   it('opens with what the budgets are doing now, most urgent first', async () => {
     api();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     await waitFor(() =>
       expect(screen.getByRole('status', { name: 'Budgets status' })).toHaveTextContent(
         '“Preview spending” is stopping previews. Production keeps running.'
@@ -252,7 +252,7 @@ describe('BudgetsPage', () => {
   it('says there are none yet when the account has no budgets', async () => {
     budgets = [];
     api();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     await waitFor(() =>
       expect(screen.getByRole('status', { name: 'Budgets status' })).toHaveTextContent(
         /^You have no budgets yet\./
@@ -262,7 +262,7 @@ describe('BudgetsPage', () => {
 
   it('lists budgets with their response and status, labelled beta', async () => {
     api();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     expect(await screen.findByText('Monthly compute')).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
     const row = screen.getByText('Preview spending').closest('tr')!;
@@ -283,7 +283,7 @@ describe('BudgetsPage', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     const form = await fillNew(user, 'Ops alerts', '600');
     await user.type(within(form).getByLabelText(/Earlier alerts/), '200, 400');
     await user.click(within(form).getByRole('checkbox', { name: 'Egress' }));
@@ -327,7 +327,7 @@ describe('BudgetsPage', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     const form = await fillNew(user, 'Previews', '100');
     await user.click(within(form).getByRole('radio', { name: /Stop previews/ }));
     await user.click(within(form).getByRole('button', { name: 'Create budget' }));
@@ -365,7 +365,7 @@ describe('BudgetsPage', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     const form = await fillNew(user, 'api cap', '800');
     await user.click(within(form).getByRole('radio', { name: /Strict cap/ }));
     expect(within(form).queryByLabelText(/Earlier alerts/)).not.toBeInTheDocument();
@@ -405,7 +405,7 @@ describe('BudgetsPage', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     await pick(user, 'Preview spending', 'Show details');
     const stop = await screen.findByRole('region', { name: 'Automatic stop' });
     expect(within(stop).getByText('pr-42-api')).toBeInTheDocument();
@@ -437,7 +437,7 @@ describe('BudgetsPage', () => {
       },
     });
     const user = userEvent.setup();
-    renderWithProviders(<BudgetsPage />);
+    renderWithProviders(<BudgetsSection />);
     await pick(user, 'Preview spending', 'Delete budget');
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/stop it placed on previews is released/);

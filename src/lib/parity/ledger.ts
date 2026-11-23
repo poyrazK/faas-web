@@ -1022,7 +1022,7 @@ export const LEDGER: LedgerEntry[] = [
     // (reject_traffic, suspend_background) can only ever be drafts upstream,
     // so they are shown, not authored.
     status: 'full',
-    surfaces: ['/dashboard/budgets'],
+    surfaces: ['/dashboard/limits'],
     capability: 'budgets',
   },
   // H153 · GA

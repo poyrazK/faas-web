@@ -24,7 +24,7 @@ import {
 } from '@/lib/budgets';
 import { formatMillicentRate } from '@/lib/money';
 import { MaturityLabel } from '../maturity-label';
-import { PageHeader, Panel } from '../primitives';
+import { Panel } from '../primitives';
 import { ResourceTable, type Column } from '../resource-table';
 import {
   BudgetStatus,
@@ -321,29 +321,41 @@ export function BudgetsBody({ accountId }: { accountId: string }) {
 }
 
 /**
- * Billing › Budgets. Budgets belong to the signed-in account: apid has no
- * organization budget routes and `/v1/billing/budgets` ignores X-Active-Org,
- * so a company workspace says so instead of showing personal budgets.
+ * Alerts and budgets, a section of Billing › Spending limits. Budgets belong
+ * to the signed-in account here: `/v1/billing/budgets` ignores X-Active-Org,
+ * so a company workspace says so instead of showing personal budgets
+ * (organization budgets are the next slice of the Spending limits design).
  */
-export function BudgetsPage() {
+export function BudgetsSection() {
   const { capability } = useCapability('budgets');
   const workspace = useWorkspaceTarget();
   const { account } = useAuth();
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Budgets"
-        help="Limits on this month's usage that alert you, stop previews, or hold workloads at a funded cap."
-        actions={<MaturityLabel capability={capability} />}
-      />
+    <section
+      id="budgets"
+      aria-labelledby="budgets-heading"
+      className="flex scroll-mt-24 flex-col gap-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="budgets-heading" className="text-base font-semibold tracking-tight">
+            Alerts and budgets
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Limits on this month’s usage that alert you, stop previews, or hold workloads at a
+            funded cap.
+          </p>
+        </div>
+        <MaturityLabel capability={capability} />
+      </div>
       {!workspace.ready ? null : workspace.org ? (
         <Panel title="Budgets">
           <p role="status" className="text-sm text-muted-foreground">
             Budgets belong to your personal account, and Gregale has none for an organization, so{' '}
             {workspace.label} has no budgets to show. Switch to Personal to manage yours;{' '}
-            {workspace.label}&apos;s spend cap is on{' '}
-            <a className="text-brand underline" href="/dashboard/usage">
-              Usage
+            {workspace.label}&apos;s spend cap is{' '}
+            <a className="text-brand underline" href="#your-bill">
+              above
             </a>
             .
           </p>
@@ -351,6 +363,6 @@ export function BudgetsPage() {
       ) : (
         <BudgetsBody accountId={account?.id ?? ''} />
       )}
-    </div>
+    </section>
   );
 }

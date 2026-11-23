@@ -52,6 +52,7 @@
 /dashboard/invoices    /index.html   200
 /dashboard/jobs    /index.html   200
 /dashboard/keys    /index.html   200
+/dashboard/limits    /index.html   200
 /dashboard/logs    /index.html   200
 /dashboard/metrics    /index.html   200
 /dashboard/mirrors    /index.html   200
