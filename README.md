@@ -90,6 +90,7 @@ inlines the value into the compiled client.
 | `VITE_FEATURE_EXAMPLE`         | off     | Reference flag. Gates nothing; proves wiring.                                                                           |
 | `VITE_FEATURE_ONBOARDING_V2`   | off     | Sample/repository quickstart with account-scoped resume and API-confirmed live completion.                              |
 | `VITE_FEATURE_ERROR_REPORTING` | off     | Browser error capture and redaction (`lib/error-reporting.ts`). The transport is a no-op until a destination is chosen. |
+| `VITE_FEATURE_AGENTS`          | off     | The Agents pages (`/dashboard/agents`) and the organization agent policy. Held back until launch.                       |
 
 ### First-signup onboarding preview
 
@@ -931,7 +932,7 @@ Missing telemetry, empty windows, plan limits and failed reads have distinct sta
 
 ### Agents
 
-**Agents** (`/dashboard/agents`, Account in the rail) lists the coding agents
+**Agents** (`/dashboard/agents`, Account in the rail, behind `VITE_FEATURE_AGENTS` until launch) lists the coding agents
 connected through the hosted MCP server or an agent key
 (`/v1/agent-connections`; a company workspace reads
 `/v1/orgs/{slug}/agent-connections`). Requests waiting for a person lead the

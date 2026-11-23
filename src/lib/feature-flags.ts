@@ -68,6 +68,13 @@ export const featureFlags = {
   errorReporting:
     import.meta.env.VITE_FEATURE_ERROR_REPORTING === '1' ||
     import.meta.env.VITE_FEATURE_ERROR_REPORTING === 'true',
+  /**
+   * The Agents pages (`/dashboard/agents`, the organization agent policy) and
+   * the agent rows they feed. Built and tested on main, held back from
+   * customers until the agent experience is ready to launch.
+   */
+  agents:
+    import.meta.env.VITE_FEATURE_AGENTS === '1' || import.meta.env.VITE_FEATURE_AGENTS === 'true',
 } as const;
 
 export type FeatureFlags = typeof featureFlags;
