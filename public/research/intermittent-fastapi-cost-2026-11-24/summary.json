@@ -1,0 +1,167 @@
+{
+  "windows": {
+    "spread": [
+      {
+        "window": 1,
+        "requests": 4,
+        "mb_seconds": 1848,
+        "gb_ram_hours": 0.0005013020833333333,
+        "ledger_awake_seconds": 7,
+        "state_samples": 12,
+        "no_resident_samples": 1,
+        "frozen_samples": 3
+      },
+      {
+        "window": 4,
+        "requests": 4,
+        "mb_seconds": 1848,
+        "gb_ram_hours": 0.0005013020833333333,
+        "ledger_awake_seconds": 7,
+        "state_samples": 12,
+        "no_resident_samples": 1,
+        "frozen_samples": 3
+      }
+    ],
+    "burst": [
+      {
+        "window": 2,
+        "requests": 4,
+        "mb_seconds": 1056,
+        "gb_ram_hours": 0.00028645833333333333,
+        "ledger_awake_seconds": 4,
+        "state_samples": 12,
+        "no_resident_samples": 1,
+        "frozen_samples": 9
+      },
+      {
+        "window": 3,
+        "requests": 4,
+        "mb_seconds": 1056,
+        "gb_ram_hours": 0.00028645833333333333,
+        "ledger_awake_seconds": 4,
+        "state_samples": 12,
+        "no_resident_samples": 1,
+        "frozen_samples": 9
+      }
+    ]
+  },
+  "totals": {
+    "spread": {
+      "requests": 8,
+      "mb_seconds": 3696,
+      "ledger_awake_seconds": 14,
+      "state_samples": 24,
+      "no_resident_samples": 2,
+      "frozen_samples": 6,
+      "gb_ram_hours": 0.0010026041666666666
+    },
+    "burst": {
+      "requests": 8,
+      "mb_seconds": 2112,
+      "ledger_awake_seconds": 8,
+      "state_samples": 24,
+      "no_resident_samples": 2,
+      "frozen_samples": 18,
+      "gb_ram_hours": 0.0005729166666666667
+    }
+  },
+  "burst_compute_reduction_percent": 42.85714285714286,
+  "monthly_estimates": [
+    {
+      "pattern": "spread",
+      "windows_per_day": 10,
+      "requests_per_day": 40,
+      "gb_ram_hours": 0.150390625,
+      "plans": {
+        "Free": {
+          "monthly_usd_before_caps_and_tax": 0.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Hobby": {
+          "monthly_usd_before_caps_and_tax": 10.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Pro": {
+          "monthly_usd_before_caps_and_tax": 30.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Scale": {
+          "monthly_usd_before_caps_and_tax": 99.0,
+          "compute_overage_gb_ram_hours": 0.0
+        }
+      }
+    },
+    {
+      "pattern": "spread",
+      "windows_per_day": 90,
+      "requests_per_day": 360,
+      "gb_ram_hours": 1.353515625,
+      "plans": {
+        "Free": {
+          "monthly_usd_before_caps_and_tax": 0.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Hobby": {
+          "monthly_usd_before_caps_and_tax": 10.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Pro": {
+          "monthly_usd_before_caps_and_tax": 30.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Scale": {
+          "monthly_usd_before_caps_and_tax": 99.0,
+          "compute_overage_gb_ram_hours": 0.0
+        }
+      }
+    },
+    {
+      "pattern": "burst",
+      "windows_per_day": 10,
+      "requests_per_day": 40,
+      "gb_ram_hours": 0.0859375,
+      "plans": {
+        "Free": {
+          "monthly_usd_before_caps_and_tax": 0.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Hobby": {
+          "monthly_usd_before_caps_and_tax": 10.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Pro": {
+          "monthly_usd_before_caps_and_tax": 30.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Scale": {
+          "monthly_usd_before_caps_and_tax": 99.0,
+          "compute_overage_gb_ram_hours": 0.0
+        }
+      }
+    },
+    {
+      "pattern": "burst",
+      "windows_per_day": 90,
+      "requests_per_day": 360,
+      "gb_ram_hours": 0.7734375,
+      "plans": {
+        "Free": {
+          "monthly_usd_before_caps_and_tax": 0.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Hobby": {
+          "monthly_usd_before_caps_and_tax": 10.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Pro": {
+          "monthly_usd_before_caps_and_tax": 30.0,
+          "compute_overage_gb_ram_hours": 0.0
+        },
+        "Scale": {
+          "monthly_usd_before_caps_and_tax": 99.0,
+          "compute_overage_gb_ram_hours": 0.0
+        }
+      }
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { withRelatedResearch } from './research';
+
 /**
  * Loads the vendored markdown and pulls a table of contents out of it.
  *
@@ -41,7 +43,10 @@ export function docSource(slug: string): string | undefined {
   // JS regex refuses to match `\r` — which silently breaks `stripTitle` and
   // renders the title twice. Normalising once here heals every consumer,
   // the copy-to-clipboard text included.
-  return FILES[`/content/docs/${slug}.md`]?.replace(/\r\n/g, '\n');
+  const source = FILES[`/content/docs/${slug}.md`];
+  return source === undefined
+    ? undefined
+    : withRelatedResearch(slug, source.replace(/\r\n/g, '\n'));
 }
 
 /**

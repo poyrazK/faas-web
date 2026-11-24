@@ -1,0 +1,82 @@
+{
+  "source": "https://gregale.dev/docs/plans",
+  "billingInterval": "month",
+  "pricesExcludeTax": true,
+  "currency": "USD",
+  "plans": [
+    {
+      "name": "Free",
+      "monthly": 0,
+      "deployedApps": 1,
+      "previewEnvironments": 1,
+      "developerApps": 1,
+      "concurrentInstances": 1,
+      "ramMb": 256,
+      "includedGbHours": 20,
+      "appEgressGib": 10,
+      "appLayerMb": 256,
+      "idleTimeout": "1m",
+      "maxRequestTimeout": "30s",
+      "computeOverage": {
+        "policy": "hard-cap"
+      }
+    },
+    {
+      "name": "Hobby",
+      "monthly": 10,
+      "deployedApps": 5,
+      "previewEnvironments": 2,
+      "developerApps": 2,
+      "concurrentInstances": 2,
+      "ramMb": 512,
+      "includedGbHours": 200,
+      "appEgressGib": 100,
+      "appLayerMb": 512,
+      "idleTimeout": "1m",
+      "maxRequestTimeout": "1m",
+      "computeOverage": {
+        "policy": "metered",
+        "pricePerGbRamHour": 0.05,
+        "subjectToSpendCap": true
+      }
+    },
+    {
+      "name": "Pro",
+      "monthly": 30,
+      "deployedApps": 25,
+      "previewEnvironments": 5,
+      "developerApps": 5,
+      "concurrentInstances": 5,
+      "ramMb": 1024,
+      "includedGbHours": 1000,
+      "appEgressGib": 500,
+      "appLayerMb": 1024,
+      "idleTimeout": "5m",
+      "maxRequestTimeout": "5m",
+      "computeOverage": {
+        "policy": "metered",
+        "pricePerGbRamHour": 0.05,
+        "subjectToSpendCap": true
+      }
+    },
+    {
+      "name": "Scale",
+      "monthly": 99,
+      "deployedApps": 100,
+      "previewEnvironments": 20,
+      "developerApps": 10,
+      "concurrentInstances": 20,
+      "ramMb": 2048,
+      "includedGbHours": 3000,
+      "appEgressGib": 2000,
+      "appLayerMb": 2048,
+      "idleTimeout": "10m",
+      "maxRequestTimeout": "15m",
+      "computeOverage": {
+        "policy": "metered",
+        "pricePerGbRamHour": 0.05,
+        "subjectToSpendCap": true
+      }
+    }
+  ]
+}
