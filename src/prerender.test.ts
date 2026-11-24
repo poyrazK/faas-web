@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parsePlanCatalog } from './lib/plan-catalog-parser';
 
 /**
  * Guards the prerendered output.
@@ -106,23 +107,28 @@ describeBuilt('prerendered pages', () => {
     expect(existsSync('dist-ssr')).toBe(false);
   });
 
+  it('advertises Markdown only for docs that have a built Markdown copy', () => {
+    expect(readFileSync('dist/docs/deploy-fastapi/index.html', 'utf8')).toContain(
+      '<link rel="alternate" type="text/markdown" href="/docs/deploy-fastapi.md" />'
+    );
+    expect(existsSync('dist/docs/deploy-fastapi.md')).toBe(true);
+    expect(readFileSync('dist/docs/api/apps/index.html', 'utf8')).not.toContain(
+      'type="text/markdown"'
+    );
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';
 
-    it('is written', () => {
-      expect(robots).toContain('User-agent: *');
-    });
-
-    it('keeps crawlers out of the auth-gated console', () => {
-      // Following these only ever reaches a login screen.
-      expect(robots).toContain('Disallow: /dashboard');
-      expect(robots).toContain('Disallow: /onboarding');
-    });
-
-    it('leaves the marketing site crawlable', () => {
-      expect(robots).toContain('Allow: /');
-    });
+    it.each(['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'])(
+      'lets %s crawl public pages and excludes the auth-gated console',
+      (agent) => {
+        expect(robots.split('\n\n')).toContain(
+          `User-agent: ${agent}\nDisallow: /dashboard\nDisallow: /onboarding\nAllow: /`
+        );
+      }
+    );
   });
 
   describe('API reference', () => {
@@ -153,6 +159,11 @@ describeBuilt('prerendered pages', () => {
       expect(readFileSync('dist/sitemap.xml', 'utf8')).not.toContain('/status/incidents/');
     });
 
+    it('omits modification dates for the live status overview', () => {
+      const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+      expect(sitemap).toMatch(/<loc>https:\/\/gregale\.dev\/status<\/loc>\s*<\/url>/);
+    });
+
     it('serves direct incident links from a noindex status-event shell', () => {
       const incident = readFileSync('dist/status/incidents/index.html', 'utf8');
       expect(incident).toContain('content="noindex, follow"');
@@ -174,6 +185,21 @@ describeBuilt('prerendered pages', () => {
         expect(readFileSync(file, 'utf8')).toContain('content="noindex, follow"');
       }
     });
+  });
+
+  it('publishes and links JSON pricing derived from the published plan table', () => {
+    const catalog = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
+    expect(JSON.parse(readFileSync('dist/pricing.json', 'utf8'))).toEqual({
+      source: 'https://gregale.dev/docs/plans',
+      billingInterval: 'month',
+      pricesExcludeTax: true,
+      ...catalog,
+    });
+    for (const path of ['dist/pricing/index.html', 'dist/docs/plans/index.html']) {
+      expect(readFileSync(path, 'utf8')).toContain(
+        '<link rel="alternate" type="application/json" href="/pricing.json" />'
+      );
+    }
   });
 
   /**
