@@ -98,6 +98,86 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: 'preview-environments',
+    title: 'Preview environments for every pull request',
+    summary:
+      'Gregale gives every pull request its own live copy of the app, rebuilt on every push and torn down after the pull request closes, with no CI workflow to write. On every plan, including Free.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'Do I need a CI workflow for Gregale preview environments?',
+        answer:
+          'No. Connect the repository through the Gregale GitHub App and every pull request into the production branch gets a preview at `pr-<number>-<app>.gregale.dev`, with a status comment and a `gregale-preview` check on the pull request.',
+      },
+      {
+        question: 'Do previews get production secrets or databases?',
+        answer:
+          "No. Production environment values are not copied into previews, and managed database and storage credentials are never given to them. Set test values in the production app's `pr-preview` scope instead.",
+      },
+      {
+        question: 'Do previews work for pull requests from forks?',
+        answer:
+          'No. Pull requests from forks are skipped for security, so untrusted code from a fork never reaches a Gregale build. The `gregale-preview` check says the preview was skipped.',
+      },
+      {
+        question: 'How long does a preview live?',
+        answer:
+          'Until 24 hours after the pull request closes, or until its time to live runs out: 7 days by default, settable from 1 hour to 30 days. Reopening the pull request within those 24 hours brings it back.',
+      },
+    ],
+  },
+  {
+    slug: 'mcp-server-hosting',
+    title: 'Where to host an MCP server',
+    summary:
+      'Gregale hosts remote MCP servers over Streamable HTTP, checks every new version as an MCP client before it takes traffic, supports OAuth with per-tool scopes, and parks idle servers. In beta on Hobby, Pro and Scale.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'Where should I host a remote MCP server?',
+        answer:
+          'On a platform that serves Streamable HTTP over HTTPS, lets you require OAuth access tokens, and allows long tool calls. Gregale does all three and checks each new version as an MCP client before it takes traffic. Cloudflare Workers, Vercel, Google Cloud Run and AWS Bedrock AgentCore Runtime also host remote MCP servers.',
+      },
+      {
+        question: 'Can an MCP server scale to zero on Gregale?',
+        answer:
+          'Yes. When nobody calls the server, Gregale parks it and stops billing; the next call wakes it. The first call after a park takes longer, and the calls after it run at normal speed.',
+      },
+      {
+        question: 'How do I keep an MCP server private?',
+        answer:
+          "Create it with `--auth external-oauth` and your provider's issuer and JWKS URL. The server then accepts only JWT access tokens from that issuer with the required scopes, and each tool can require scopes of its own.",
+      },
+    ],
+  },
+  {
+    slug: 'backend-without-devops',
+    title: 'Hosting a startup backend without a DevOps engineer',
+    summary:
+      'What an ops person usually does (builds, safe releases, backups, TLS, scaling, alerts, cost limits) and how Gregale does it for a small team, with what your team still owns and when another option fits better.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'Can a startup run production without a DevOps engineer?',
+        answer:
+          'Yes, if the platform does the operations work: builds, gradual releases with automatic rollback, database backups, TLS, scaling and alerts. Someone on the team still owns the code, the data model and responding to alerts about the app itself.',
+      },
+      {
+        question: 'Do we need Kubernetes to run a startup backend?',
+        answer:
+          'Not to start. A managed platform runs your containers without a cluster to operate. Gregale runs each app in its own Firecracker microVM and handles releases, scaling and isolation for you.',
+      },
+      {
+        question: 'What does Gregale not do for us?',
+        answer:
+          'It does not write your authorization rules, schema migrations or alert responses. It runs in one region, has no durable local disk, and does not support privileged containers or Docker-in-Docker.',
+      },
+    ],
+  },
+  {
     slug: 'railway-alternatives',
     alternativesTo: 'railway',
     title: 'Railway alternatives in 2026',
@@ -216,7 +296,17 @@ const HEROKU_ALTERNATIVES_LINK =
 const RENDER_ALTERNATIVES_LINK =
   '[Render alternatives in 2026](/articles/render-alternatives) compares the main platforms people move to from Render.';
 
+const PREVIEW_LINK =
+  '[Preview environments for every pull request](/articles/preview-environments) explains what a preview includes and keeps out, and compares it with other platforms.';
+const MCP_LINK =
+  '[Where to host an MCP server](/articles/mcp-server-hosting) explains what an MCP server needs from a host, and compares the options.';
+const NO_DEVOPS_LINK =
+  '[Hosting a startup backend without a DevOps engineer](/articles/backend-without-devops) lists the operations work Gregale does and what your team still owns.';
+
 const RELATED_ARTICLES: Record<string, string> = {
+  'getting-started': NO_DEVOPS_LINK,
+  'mcp-hosting': MCP_LINK,
+  'preview-environments': PREVIEW_LINK,
   'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
   rollouts: CANARY_LINK,
