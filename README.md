@@ -730,8 +730,10 @@ on the first-parent Git history. Production Vercel builds try to fetch the
 full history. Routes without a verifiable content date omit `<lastmod>`.
 
 `/pricing` and `/docs/plans` link to `/pricing.json`, a feed generated from
-the same upstream plan table the site displays. Docs content is also available
-as Markdown, with `/llms.txt` providing an index for agents.
+the same upstream plan table the site displays. Each plan's `computeOverage`
+describes either its hard cap or its metered rate and spend-cap policy. Docs
+content is also available as Markdown, with `/llms.txt` providing an index
+for agents.
 
 ### Search webmaster tools
 

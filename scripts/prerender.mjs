@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { indexNowKey } from './indexnow-key.mjs';
-import { docsLastModified } from './sitemap-lastmod.mjs';
+import { writeIndexNowKey } from './indexnow-key.mjs';
+import { sitemapXml } from './sitemap.mjs';
 
 /**
  * Writes a real HTML document for each public route.
@@ -316,22 +316,7 @@ writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
 
 if (SITE_URL) {
-  const lastModified = docsLastModified();
-  const urls = INDEXABLE.map((route) => {
-    const date = lastModified.get(route);
-    return [
-      '  <url>',
-      `    <loc>${attr(absolute(route))}</loc>`,
-      ...(date ? [`    <lastmod>${date}</lastmod>`] : []),
-      '  </url>',
-    ].join('\n');
-  }).join('\n');
-
-  writeFileSync(
-    join(DIST, 'sitemap.xml'),
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
-      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`
-  );
+  writeFileSync(join(DIST, 'sitemap.xml'), sitemapXml(SITE_URL, INDEXABLE));
   console.log(`  wrote sitemap.xml (${INDEXABLE.length} urls)`);
 } else {
   console.log('  skipped sitemap.xml and canonical tags — set SITE_URL to emit them');
@@ -341,16 +326,21 @@ const pricing = {
   source: absolute(PLAN_DOC_ROUTE),
   billingInterval: 'month',
   pricesExcludeTax: true,
-  ...PLAN_CATALOG,
+  currency: PLAN_CATALOG.currency,
+  plans: PLAN_CATALOG.plans.map((plan) => ({
+    ...plan,
+    computeOverage:
+      plan.name === 'Free'
+        ? { policy: 'hard-cap' }
+        : {
+            policy: 'metered',
+            pricePerGbRamHour: PLAN_CATALOG.overagePerGbHour,
+            subjectToSpendCap: true,
+          },
+  })),
 };
 writeFileSync(join(DIST, PRICING_FEED), JSON.stringify(pricing, null, 2) + '\n');
 console.log('  wrote pricing.json');
-
-if (productionSite && process.env.INDEXNOW_KEY) {
-  const key = indexNowKey(process.env.INDEXNOW_KEY);
-  writeFileSync(join(DIST, `${key}.txt`), `${key}\n`);
-  console.log('  wrote IndexNow key file');
-}
 
 /* ------------------------------------------------------------------ *
  * llms.txt, llms-full.txt and a Markdown copy of every docs page
@@ -378,6 +368,11 @@ writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
   `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length} Markdown docs pages`
 );
+
+if (productionSite && process.env.INDEXNOW_KEY) {
+  writeIndexNowKey(DIST, process.env.INDEXNOW_KEY);
+  console.log('  wrote IndexNow key file');
+}
 
 // The SSR bundle is a build artifact, not something to deploy.
 rmSync('dist-ssr', { recursive: true, force: true });

@@ -193,7 +193,18 @@ describeBuilt('prerendered pages', () => {
       source: 'https://gregale.dev/docs/plans',
       billingInterval: 'month',
       pricesExcludeTax: true,
-      ...catalog,
+      currency: catalog.currency,
+      plans: [
+        { ...catalog.plans[0], computeOverage: { policy: 'hard-cap' } },
+        ...catalog.plans.slice(1).map((plan) => ({
+          ...plan,
+          computeOverage: {
+            policy: 'metered',
+            pricePerGbRamHour: catalog.overagePerGbHour,
+            subjectToSpendCap: true,
+          },
+        })),
+      ],
     });
     for (const path of ['dist/pricing/index.html', 'dist/docs/plans/index.html']) {
       expect(readFileSync(path, 'utf8')).toContain(

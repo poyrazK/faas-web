@@ -10,7 +10,7 @@ function git(args) {
   }).trim();
 }
 
-export function docsLastModified() {
+function docsLastModified() {
   const dates = new Map();
   try {
     const shallowFile = git(['rev-parse', '--git-path', 'shallow']);
@@ -54,4 +54,28 @@ export function docsLastModified() {
     console.warn('  sitemap: Git history unavailable; omitting modification dates');
   }
   return dates;
+}
+
+export function sitemapXml(siteUrl, routes) {
+  const lastModified = docsLastModified();
+  const urls = routes.map((route) => {
+    const location = (siteUrl + route)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+    const date = lastModified.get(route);
+    return [
+      '  <url>',
+      `    <loc>${location}</loc>`,
+      ...(date ? [`    <lastmod>${date}</lastmod>`] : []),
+      '  </url>',
+    ].join('\n');
+  });
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls,
+    '</urlset>',
+    '',
+  ].join('\n');
 }
