@@ -16,6 +16,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
@@ -72,6 +73,8 @@ import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSplatRouteImport } from './routes/docs.$'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as ResearchIndexRouteImport } from './routes/research.index'
+import { Route as ResearchSlugRouteImport } from './routes/research.$slug'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
 import { Route as VsSlugRouteImport } from './routes/vs.$slug'
 import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
@@ -130,6 +133,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResearchRoute = ResearchRouteImport.update({
+  id: '/research',
+  path: '/research',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -412,6 +420,16 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResearchIndexRoute = ResearchIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ResearchRoute,
+} as any)
+const ResearchSlugRoute = ResearchSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ResearchRoute,
+} as any)
 const StatusIndexRoute = StatusIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -548,6 +566,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
@@ -602,9 +621,11 @@ export interface FileRoutesByFullPath {
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/research/': typeof ResearchIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -687,9 +708,11 @@ export interface FileRoutesByTo {
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/research': typeof ResearchIndexRoute
   '/status': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -723,6 +746,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
@@ -777,9 +801,11 @@ export interface FileRoutesById {
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/research/': typeof ResearchIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -814,6 +840,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/pricing'
+    | '/research'
     | '/signup'
     | '/status'
     | '/will-it-run'
@@ -868,9 +895,11 @@ export interface FileRouteTypes {
     | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
+    | '/research/$slug'
     | '/vs/$slug'
     | '/dashboard/'
     | '/docs/'
+    | '/research/'
     | '/status/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -953,9 +982,11 @@ export interface FileRouteTypes {
     | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
+    | '/research/$slug'
     | '/vs/$slug'
     | '/dashboard'
     | '/docs'
+    | '/research'
     | '/status'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -988,6 +1019,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/pricing'
+    | '/research'
     | '/signup'
     | '/status'
     | '/will-it-run'
@@ -1042,9 +1074,11 @@ export interface FileRouteTypes {
     | '/docs/$'
     | '/docs/$slug'
     | '/invite/$token'
+    | '/research/$slug'
     | '/vs/$slug'
     | '/dashboard/'
     | '/docs/'
+    | '/research/'
     | '/status/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -1078,6 +1112,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
+  ResearchRoute: typeof ResearchRouteWithChildren
   SignupRoute: typeof SignupRoute
   StatusRoute: typeof StatusRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
@@ -1134,6 +1169,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/research': {
+      id: '/research'
+      path: '/research'
+      fullPath: '/research'
+      preLoaderRoute: typeof ResearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -1528,6 +1570,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/research/': {
+      id: '/research/'
+      path: '/'
+      fullPath: '/research/'
+      preLoaderRoute: typeof ResearchIndexRouteImport
+      parentRoute: typeof ResearchRoute
+    }
+    '/research/$slug': {
+      id: '/research/$slug'
+      path: '/$slug'
+      fullPath: '/research/$slug'
+      preLoaderRoute: typeof ResearchSlugRouteImport
+      parentRoute: typeof ResearchRoute
+    }
     '/status/': {
       id: '/status/'
       path: '/'
@@ -1883,6 +1939,20 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface ResearchRouteChildren {
+  ResearchSlugRoute: typeof ResearchSlugRoute
+  ResearchIndexRoute: typeof ResearchIndexRoute
+}
+
+const ResearchRouteChildren: ResearchRouteChildren = {
+  ResearchSlugRoute: ResearchSlugRoute,
+  ResearchIndexRoute: ResearchIndexRoute,
+}
+
+const ResearchRouteWithChildren = ResearchRoute._addFileChildren(
+  ResearchRouteChildren,
+)
+
 interface StatusRouteChildren {
   StatusIndexRoute: typeof StatusIndexRoute
   StatusIncidentsIdRoute: typeof StatusIncidentsIdRoute
@@ -1904,6 +1974,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
+  ResearchRoute: ResearchRouteWithChildren,
   SignupRoute: SignupRoute,
   StatusRoute: StatusRouteWithChildren,
   WillItRunRoute: WillItRunRoute,

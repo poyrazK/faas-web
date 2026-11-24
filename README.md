@@ -719,26 +719,60 @@ point.
 
 ### Crawler directives
 
-The same script writes `robots.txt` and `sitemap.xml`, generated rather than
-committed so the route list has one source of truth — adding a route cannot
-leave the sitemap stale. `/dashboard` and `/onboarding` are disallowed: a
-crawler following them only ever reaches a login screen. `/login` and
-`/signup` are prerendered so their link previews are right, but carry
-`noindex, follow` — they are not search results.
+The build generates `robots.txt` and lists the public routes in `sitemap.xml`.
+The wildcard, `OAI-SearchBot`, `GPTBot`, and `ChatGPT-User` groups all allow
+public pages and exclude `/dashboard` and `/onboarding`. `/login` and `/signup`
+carry `noindex, follow`. OpenAI uses `OAI-SearchBot` for search and `GPTBot`
+for potential model training.
+
+Sitemap `<lastmod>` dates come from revisions of individual docs source files
+on the first-parent Git history. Production Vercel builds try to fetch the
+full history. Routes without a verifiable content date omit `<lastmod>`.
+
+`/pricing` and `/docs/plans` link to `/pricing.json`, a feed generated from
+the same upstream plan table the site displays. Each plan's `computeOverage`
+describes either its hard cap or its metered rate and spend-cap policy. Docs
+content is also available as Markdown, with `/llms.txt` providing an index
+for agents.
+
+### Research publications
+
+`/research` lists the reports registered in `src/lib/research.ts`. Add the
+report body under `content/research/<slug>.md` and its public evidence under
+`public/research/<slug>/`. Record the measurement and publication dates
+separately. Describe the hardware, workload, timing boundaries, and limits,
+and include the per-sample data and a script that reproduces the statistics.
+The build generates the canonical HTML and Markdown pages and adds them to
+the sitemap and agent docs.
+
+### Search webmaster tools
+
+Verify `gregale.dev` in [Google Search Console](https://support.google.com/webmasters/answer/9008080)
+and [Bing Webmaster Tools](https://www.bing.com/webmasters/help/add-and-verify-site-12184f8b)
+and submit `https://gregale.dev/sitemap.xml` in each account. If you choose
+HTML tag verification, set `GOOGLE_SITE_VERIFICATION` or `BING_SITE_VERIFICATION`
+to the value supplied by that service in the Vercel Production environment
+and deploy. Bing also supports importing a verified Search Console property.
+
+For [IndexNow](https://www.indexnow.org/documentation), generate a key and set
+`INDEXNOW_KEY` in the Vercel Production environment. The next production build
+publishes the root key file. After a change is live, set the same key locally
+and pass the public paths that were added, updated, or removed.
+
+```bash
+npm run indexnow:submit -- /docs/deploy-fastapi
+```
+
+The command checks the live ownership file before sending the notification.
 
 ### SITE_URL
 
-Canonical links, `og:url`, and the sitemap need an absolute base URL, and the
-build cannot derive one. Set it in the deploy environment:
+Canonical links, `og:url`, and the sitemap use `https://gregale.dev` by default.
+Set `SITE_URL` to override the domain for a separate site.
 
 ```bash
 SITE_URL=https://your-domain.example npm run build
 ```
-
-**Unset, those tags are omitted rather than guessed.** A canonical pointing at
-the wrong host is worse than none — it tells search engines the real page is
-somewhere else. Everything else (titles, descriptions, `og:title`, prerendered
-markup, `robots.txt`) works without it.
 
 ### og:image
 

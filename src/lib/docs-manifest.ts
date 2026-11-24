@@ -378,8 +378,14 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'stored-workflows-operations',
         source: 'docs/stored-workflow-operations.md',
-        title: 'Run and recover stored workflows',
-        summary: 'Find and cancel runs, health, alerts, and recovering failed runs.',
+        title: 'Run and monitor stored workflows',
+        summary: 'Find and cancel runs, health, alerts and automatic pausing.',
+      },
+      {
+        slug: 'stored-workflows-recovery',
+        source: 'docs/stored-workflow-recovery.md',
+        title: 'Recover stored workflow runs',
+        summary: 'Resume failed runs, replay missed starts, and recovery plans and policies.',
       },
     ],
   },

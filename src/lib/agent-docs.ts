@@ -1,5 +1,6 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
+import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE } from './research.ts';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -97,6 +98,10 @@ export function llmsIndex(intro: string, siteUrl: string): string {
         `[llms-full.txt](${siteUrl}/llms-full.txt) holds every page below, over 1 MB.`
     );
   }
+  const research = RESEARCH_PUBLICATIONS.map(
+    (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
+  );
+  parts.push(`## ${RESEARCH_TITLE}\n\n${research.join('\n')}`);
   const sections = [
     ...DOC_SECTIONS.filter((section) => section.title !== OPTIONAL_SECTION),
     ...DOC_SECTIONS.filter((section) => section.title === OPTIONAL_SECTION),
