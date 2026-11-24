@@ -5,8 +5,10 @@ import { pathToFileURL } from 'node:url';
 
 const origin = 'https://gregale.dev';
 const commitSha = /^[a-f0-9]{40}$/;
-// Research reports and articles share one release file and one submission.
-const researchPath = /^\/(?:research|articles)(?:\/[a-z0-9_-]+)?$/;
+// Research reports, articles, comparison pages and docs share one release file
+// and one submission.
+const releasePath =
+  /^\/(?:(?:research|articles)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -44,9 +46,15 @@ function previousProduction(repository, deployment, status) {
   }
 }
 
-export function changedResearchPaths(files, livePaths) {
+function under(prefix, livePaths) {
+  return livePaths.filter((path) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
+/** The live pages a set of changed repository files can have changed. */
+export function changedPaths(files, livePaths) {
   if (files.includes('scripts/prerender.mjs')) return livePaths;
   const changed = new Set();
+  const add = (paths) => paths.forEach((path) => changed.add(path));
   for (const collection of ['research', 'articles']) {
     if (
       files.some(
@@ -54,13 +62,24 @@ export function changedResearchPaths(files, livePaths) {
           file === `src/lib/${collection}.ts` || file.startsWith(`src/routes/${collection}.`)
       )
     ) {
-      for (const path of livePaths) {
-        if (path === `/${collection}` || path.startsWith(`/${collection}/`)) changed.add(path);
-      }
+      add(under(`/${collection}`, livePaths));
     }
   }
+  // Comparison pages compute Gregale's figures from the plan catalog.
+  if (
+    files.some(
+      (file) =>
+        file === 'src/lib/compare.ts' ||
+        file.startsWith('src/routes/vs.') ||
+        file === 'content/docs/plans.md'
+    )
+  ) {
+    add(livePaths.filter((path) => path.startsWith('/vs/')));
+  }
+  if (files.includes('src/lib/docs-manifest.ts')) changed.add('/docs');
+  if (files.includes('api/openapi.yaml')) add(under('/docs/api', livePaths));
   for (const file of files) {
-    const page = /^content\/(research|articles)\/([a-z0-9_-]+)\.md$/.exec(file);
+    const page = /^content\/(research|articles|docs)\/([a-z0-9_-]+)\.md$/.exec(file);
     const artifact = /^public\/(research)\/([a-z0-9_-]+)\//.exec(file);
     const match = page ?? artifact;
     if (match) changed.add(`/${match[1]}/${match[2]}`);
@@ -85,9 +104,9 @@ async function liveRelease(expected) {
         !commitSha.test(commit) ||
         !Array.isArray(paths) ||
         !paths.includes('/research') ||
-        !paths.every((path) => researchPath.test(path))
+        !paths.every((path) => releasePath.test(path))
       ) {
-        throw new Error('Invalid research release file from gregale.dev.');
+        throw new Error('Invalid IndexNow release file from gregale.dev.');
       }
       // A later production deploy can go live before an older job starts.
       // In that case submit only routes that are still present on the domain.
@@ -112,7 +131,7 @@ async function main() {
     ? undefined
     : previousProduction(process.env.GITHUB_REPOSITORY, deployment, status);
   const paths = previous
-    ? changedResearchPaths(
+    ? changedPaths(
         execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', previous, live.commit], {
           encoding: 'utf8',
         }).split('\0'),
@@ -120,7 +139,7 @@ async function main() {
       )
     : live.paths;
   if (!paths.length) {
-    console.log(`No research URLs changed in production release ${live.commit}.`);
+    console.log(`No submitted URLs changed in production release ${live.commit}.`);
     return;
   }
 

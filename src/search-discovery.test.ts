@@ -82,7 +82,7 @@ it('rejects an IndexNow ownership file that would overwrite a site asset', () =>
 it('submits changed live research reports after report or artifact edits', () => {
   const code = `
     const paths = ['/research', '/research/first', '/research/second'];
-    const changed = script.changedResearchPaths([
+    const changed = script.changedPaths([
       'content/research/first.md',
       'public/research/first/sample.json',
       'content/research/removed.md',
@@ -99,8 +99,8 @@ it('includes the research index when the research registry changes', () => {
   const code = `
     const paths = ['/research', '/research/first'];
     process.stdout.write(JSON.stringify([
-      script.changedResearchPaths(['src/lib/research.ts'], paths),
-      script.changedResearchPaths(['src/routes/pricing.tsx'], paths),
+      script.changedPaths(['src/lib/research.ts'], paths),
+      script.changedPaths(['src/routes/pricing.tsx'], paths),
     ]));
   `;
   expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
@@ -113,9 +113,9 @@ it('submits changed live articles and leaves research alone', () => {
   const code = `
     const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'];
     process.stdout.write(JSON.stringify([
-      script.changedResearchPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
-      script.changedResearchPaths(['src/lib/articles.ts'], paths),
-      script.changedResearchPaths(['scripts/prerender.mjs'], paths),
+      script.changedPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
+      script.changedPaths(['src/lib/articles.ts'], paths),
+      script.changedPaths(['scripts/prerender.mjs'], paths),
     ]));
   `;
   expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
@@ -125,7 +125,29 @@ it('submits changed live articles and leaves research alone', () => {
   ]);
 });
 
-it('accepts every path the research and articles release can submit', () => {
+it('submits changed docs and comparison pages', () => {
+  const code = `
+    const paths = ['/research', '/vs/heroku', '/vs/fly', '/docs', '/docs/billing', '/docs/plans', '/docs/api/apps'];
+    process.stdout.write(JSON.stringify([
+      script.changedPaths(['content/docs/billing.md', 'content/docs/removed.md'], paths),
+      script.changedPaths(['content/docs/plans.md'], paths),
+      script.changedPaths(['src/lib/compare.ts'], paths),
+      script.changedPaths(['src/lib/docs-manifest.ts'], paths),
+      script.changedPaths(['api/openapi.yaml'], paths),
+      script.changedPaths(['src/components/landing/hero.tsx'], paths),
+    ]));
+  `;
+  expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
+    ['/docs/billing'],
+    ['/vs/heroku', '/vs/fly', '/docs/plans'],
+    ['/vs/heroku', '/vs/fly'],
+    ['/docs'],
+    ['/docs/api/apps'],
+    [],
+  ]);
+});
+
+it('accepts every path the release file can submit', () => {
   // The release job hands its paths to submit-indexnow.mjs. A path that script
   // refuses fails the whole submission, as /articles once did.
   function submit(path: string) {
@@ -141,7 +163,16 @@ it('accepts every path the research and articles release can submit', () => {
       return String((error as { stderr?: string }).stderr);
     }
   }
-  for (const path of ['/research', '/research/one', '/articles', '/articles/one', '/vs/railway']) {
+  for (const path of [
+    '/research',
+    '/research/one',
+    '/articles',
+    '/articles/one',
+    '/vs/railway',
+    '/docs',
+    '/docs/rollouts',
+    '/docs/api/apps',
+  ]) {
     // Past the path check, it stops at the missing key instead.
     expect(submit(path)).toContain('INDEXNOW_KEY must contain');
   }
