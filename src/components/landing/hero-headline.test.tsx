@@ -59,7 +59,7 @@ describe('hero capability loop', () => {
     await advance(2000);
     expect(phraseText()).toBe('services that work together.');
     expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName(
-      /Next-generation cloud for APIs, services/
+      /Your whole backend on one platform: APIs, services/
     );
   });
 
