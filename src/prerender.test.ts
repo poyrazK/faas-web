@@ -198,6 +198,17 @@ describeBuilt('prerendered pages', () => {
     const cases = [
       { slug: 'canary-deploys', doc: 'rollouts', answer: 'every production release is a canary' },
       { slug: 'microvm-isolation', doc: 'security', answer: 'in its own Firecracker microVM' },
+      {
+        slug: 'preview-environments',
+        doc: 'preview-environments',
+        answer: 'creates a preview environment for every pull request',
+      },
+      { slug: 'mcp-server-hosting', doc: 'mcp-hosting', answer: 'Host a remote MCP server' },
+      {
+        slug: 'backend-without-devops',
+        doc: 'getting-started',
+        answer: 'A startup without a DevOps engineer should host its backend',
+      },
     ];
     for (const { slug, doc, answer } of cases) {
       const route = `/articles/${slug}`;

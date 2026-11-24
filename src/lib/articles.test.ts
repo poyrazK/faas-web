@@ -48,4 +48,25 @@ describe('articles', () => {
         expect(entry.answer).toContain(`Gregale Free covers ${freePlan}`);
     }
   });
+
+  it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
+    const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
+    const previews = body('preview-environments').replace(/\s+/g, ' ');
+    expect(previews).toContain(
+      `Free includes ${free.previewEnvironments}, Hobby ${hobby.previewEnvironments}, ` +
+        `Pro ${pro.previewEnvironments} and Scale ${scale.previewEnvironments}.`
+    );
+    const seconds = (limit: string) => {
+      const match = /^(\d+)(s|m)$/.exec(limit);
+      if (!match) throw new Error(`unexpected request timeout ${limit}`);
+      return Number(match[1]) * (match[2] === 'm' ? 60 : 1);
+    };
+    const mcp = body('mcp-server-hosting').replace(/\s+/g, ' ');
+    expect(mcp).toContain(
+      `(${seconds(hobby.maxRequestTimeout)} seconds on Hobby, the plan's maximum)`
+    );
+    expect(mcp).toContain(
+      `on Scale you can raise it to ${seconds(scale.maxRequestTimeout)} seconds`
+    );
+  });
 });
