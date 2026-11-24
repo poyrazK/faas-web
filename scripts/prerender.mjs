@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { writeIndexNowKey } from './indexnow-key.mjs';
@@ -27,7 +28,8 @@ import { sitemapXml } from './sitemap.mjs';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { RESEARCH_PUBLICATIONS, RESEARCH_TITLE } = await import('../src/lib/research.ts');
+const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE } =
+  await import('../src/lib/research.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
 // The API reference is derived from the vendored spec the same way: one page
@@ -432,6 +434,36 @@ const researchPages = [...RESEARCH_BY_ROUTE].map(([route, publication]) => {
   writeFileSync(join(DIST, path), page);
   return page;
 });
+
+// Package the published inputs, with a directory prefix so the archive
+// can be extracted anywhere without overwriting unrelated files.
+const fastapiReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'run.py',
+  'traffic.csv',
+  'ledger.json',
+  'states.csv',
+  'pricing.json',
+  'summary.json',
+  'fixture/.python-version',
+  'fixture/gregale.yaml',
+  'fixture/main.py',
+  'fixture/requirements.txt',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', FASTAPI_COST_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...fastapiReproductionFiles.map((file) => join(FASTAPI_COST_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
 writeFileSync(
   join(DIST, 'llms-full.txt'),
   llmsFull(llmsIntro, [...markdownPages, ...researchPages])

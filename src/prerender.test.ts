@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePlanCatalog } from './lib/plan-catalog-parser';
@@ -191,6 +192,37 @@ describeBuilt('prerendered pages', () => {
       `<loc>https://gregale.dev${route}</loc>`
     );
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+  });
+
+  it('offers a complete copy of the FastAPI study inputs in one download', () => {
+    const slug = 'intermittent-fastapi-cost-2026-11-24';
+    const route = `/research/${slug}`;
+    const archive = `dist${route}/reproduction.tar.gz`;
+    const html = readFileSync(`dist${route}/index.html`, 'utf8');
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+
+    expect(html).toContain(`href="${route}/reproduction.tar.gz"`);
+    expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
+    expect(markdown).toContain('python3 analyze.py --verify');
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.sort()).toEqual(
+      [
+        'README.md',
+        'analyze.py',
+        'run.py',
+        'traffic.csv',
+        'ledger.json',
+        'states.csv',
+        'pricing.json',
+        'summary.json',
+        'fixture/.python-version',
+        'fixture/gregale.yaml',
+        'fixture/main.py',
+        'fixture/requirements.txt',
+      ]
+        .map((file) => `${slug}/${file}`)
+        .sort()
+    );
   });
 
   describe('robots.txt', () => {

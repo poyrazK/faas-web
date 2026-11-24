@@ -127,13 +127,22 @@ def summarize(windows):
 
 
 def main():
+    archive_directory = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "evidence", type=Path, help="Directory with the ledger, traffic and state evidence"
+        "evidence", type=Path, nargs="?", default=archive_directory,
+        help="Directory with the ledger, traffic and state evidence",
     )
-    parser.add_argument("pricing", type=Path, help="Published pricing feed snapshot used by the study")
+    parser.add_argument(
+        "pricing", type=Path, nargs="?", default=archive_directory / "pricing.json",
+        help="Published pricing feed snapshot used by the study",
+    )
+    parser.add_argument(
+        "--verify", action="store_true",
+        help="Compare the recomputed results with summary.json in the evidence directory",
+    )
     args = parser.parse_args()
-    plans = json.loads(args.pricing.read_text())["plans"]
+    plans = json.loads(args.pricing.read_text(encoding="utf-8"))["plans"]
     patterns = analyze(args.evidence)
     totals = summarize(patterns)
     data = {
@@ -144,7 +153,18 @@ def main():
         ),
         "monthly_estimates": monthly_estimates(patterns, plans),
     }
-    print(json.dumps(data, indent=2))
+    if args.verify:
+        expected = json.loads((args.evidence / "summary.json").read_text(encoding="utf-8"))
+        if data != expected:
+            parser.exit(1, "Recomputed results differ from the published summary.\n")
+        print(
+            "Verified published summary. "
+            f"Spread used {totals['spread']['mb_seconds']:,} MB-seconds. "
+            f"Bursts used {totals['burst']['mb_seconds']:,} MB-seconds. "
+            f"Bursts used {data['burst_compute_reduction_percent']:.1f}% less billable compute."
+        )
+    else:
+        print(json.dumps(data, indent=2))
 
 
 if __name__ == "__main__":
