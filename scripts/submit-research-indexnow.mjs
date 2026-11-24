@@ -5,7 +5,8 @@ import { pathToFileURL } from 'node:url';
 
 const origin = 'https://gregale.dev';
 const commitSha = /^[a-f0-9]{40}$/;
-const researchPath = /^\/research(?:\/[a-z0-9_-]+)?$/;
+// Research reports and articles share one release file and one submission.
+const researchPath = /^\/(?:research|articles)(?:\/[a-z0-9_-]+)?$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -44,22 +45,25 @@ function previousProduction(repository, deployment, status) {
 }
 
 export function changedResearchPaths(files, livePaths) {
-  if (
-    files.some(
-      (file) =>
-        file === 'src/lib/research.ts' ||
-        file === 'scripts/prerender.mjs' ||
-        file.startsWith('src/routes/research.')
-    )
-  ) {
-    return livePaths;
-  }
+  if (files.includes('scripts/prerender.mjs')) return livePaths;
   const changed = new Set();
+  for (const collection of ['research', 'articles']) {
+    if (
+      files.some(
+        (file) =>
+          file === `src/lib/${collection}.ts` || file.startsWith(`src/routes/${collection}.`)
+      )
+    ) {
+      for (const path of livePaths) {
+        if (path === `/${collection}` || path.startsWith(`/${collection}/`)) changed.add(path);
+      }
+    }
+  }
   for (const file of files) {
-    const report = /^content\/research\/([a-z0-9_-]+)\.md$/.exec(file);
-    const artifact = /^public\/research\/([a-z0-9_-]+)\//.exec(file);
-    const slug = (report ?? artifact)?.[1];
-    if (slug) changed.add(`/research/${slug}`);
+    const page = /^content\/(research|articles)\/([a-z0-9_-]+)\.md$/.exec(file);
+    const artifact = /^public\/(research)\/([a-z0-9_-]+)\//.exec(file);
+    const match = page ?? artifact;
+    if (match) changed.add(`/${match[1]}/${match[2]}`);
   }
   return livePaths.filter((path) => changed.has(path));
 }

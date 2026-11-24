@@ -1,5 +1,6 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
+import { ARTICLES, ARTICLES_TITLE, withRelatedArticles } from './articles.ts';
 import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE, withRelatedResearch } from './research.ts';
 import {
   PLATFORM_AVAILABILITY,
@@ -57,9 +58,9 @@ export const markdownUrl = (siteUrl: string, slug: string): string => `${siteUrl
 
 /** One docs page as Markdown, with the manifest's title and summary. */
 export function markdownPage(entry: DocEntry, source: string, siteUrl: string): string {
-  const body = withRelatedResearch(
+  const body = withRelatedArticles(
     entry.slug,
-    source.replace(/\r\n/g, '\n').replace(/^#\s+.+?\n+/, '')
+    withRelatedResearch(entry.slug, source.replace(/\r\n/g, '\n').replace(/^#\s+.+?\n+/, ''))
   );
   return (
     [
@@ -105,6 +106,10 @@ export function llmsIndex(intro: string, siteUrl: string): string {
     (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
   );
   parts.push(`## ${RESEARCH_TITLE}\n\n${research.join('\n')}`);
+  const articles = ARTICLES.map(
+    (entry) => `- [${entry.title}](${siteUrl}/articles/${entry.slug}.md): ${entry.summary}`
+  );
+  parts.push(`## ${ARTICLES_TITLE}\n\n${articles.join('\n')}`);
   const sections = [
     ...DOC_SECTIONS.filter((section) => section.title !== OPTIONAL_SECTION),
     ...DOC_SECTIONS.filter((section) => section.title === OPTIONAL_SECTION),

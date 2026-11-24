@@ -1,3 +1,4 @@
+import { withRelatedArticles } from './articles';
 import { withRelatedResearch } from './research';
 
 /**
@@ -46,7 +47,7 @@ export function docSource(slug: string): string | undefined {
   const source = FILES[`/content/docs/${slug}.md`];
   return source === undefined
     ? undefined
-    : withRelatedResearch(slug, source.replace(/\r\n/g, '\n'));
+    : withRelatedArticles(slug, withRelatedResearch(slug, source.replace(/\r\n/g, '\n')));
 }
 
 /**

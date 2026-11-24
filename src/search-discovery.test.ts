@@ -108,3 +108,19 @@ it('includes the research index when the research registry changes', () => {
     [],
   ]);
 });
+
+it('submits changed live articles and leaves research alone', () => {
+  const code = `
+    const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'];
+    process.stdout.write(JSON.stringify([
+      script.changedResearchPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
+      script.changedResearchPaths(['src/lib/articles.ts'], paths),
+      script.changedResearchPaths(['scripts/prerender.mjs'], paths),
+    ]));
+  `;
+  expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
+    ['/articles/one'],
+    ['/articles', '/articles/one', '/articles/two'],
+    ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'],
+  ]);
+});
