@@ -1,4 +1,3 @@
-import { featureFlags } from '@/lib/feature-flags';
 import { Link } from '@tanstack/react-router';
 import { motion, useReducedMotion } from 'motion/react';
 import { Button } from '@/components/ui/button';
@@ -137,11 +136,9 @@ export function Pricing() {
             >
               Plan limits and billing details
             </Link>
-            {featureFlags.salesIntake && (
-              <Link to="/contact" className="text-brand underline underline-offset-4">
-                Contact sales
-              </Link>
-            )}
+            <Link to="/contact" className="text-brand underline underline-offset-4">
+              Talk to a founder
+            </Link>
           </div>
         </div>
       </div>

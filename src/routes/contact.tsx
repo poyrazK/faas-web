@@ -1,15 +1,16 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Nav } from '@/components/landing/nav';
 import { ContactSales } from '@/components/sales/contact-sales';
+import { Button } from '@/components/ui/button';
 import { featureFlags } from '@/lib/feature-flags';
 import { pageHead } from '@/lib/seo';
 
 export const Route = createFileRoute('/contact')({
   head: () =>
     pageHead({
-      title: 'Talk to sales',
+      title: 'Talk to a founder',
       description:
-        'Explore Gregale with the sales team. Tell us what you are building or request a demo.',
+        'Book a 20-minute call with a Gregale founder to discuss what you are building or see a demo.',
     }),
   component: ContactPage,
 });
@@ -50,14 +51,18 @@ function ContactPage() {
             Browse the technical docs →
           </Link>
         </div>
-        {featureFlags.salesIntake ? (
-          <ContactSales />
-        ) : (
-          <p className="self-start rounded-2xl border border-border bg-card p-8 text-muted-foreground">
-            The sales contact form is not available yet. Explore our documentation to learn more
-            about Gregale.
-          </p>
-        )}
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-border bg-card p-8">
+            <h2 className="text-xl font-medium">Talk to a founder</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Pick a time for a 20-minute call on Google Meet.
+            </p>
+            <Button asChild variant="cta" className="mt-6">
+              <a href="https://cal.com/poyrazk/talk-to-a-founder">Book on Cal.com</a>
+            </Button>
+          </section>
+          {featureFlags.salesIntake && <ContactSales />}
+        </div>
       </main>
     </div>
   );

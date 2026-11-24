@@ -1,5 +1,4 @@
 import { START_FREE_CTA } from '@/lib/platform-claims';
-import { featureFlags } from '@/lib/feature-flags';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight, ArrowUpRight, Check } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
@@ -34,9 +33,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
       { label: 'FAQ', href: '/#questions' },
-      ...(featureFlags.salesIntake
-        ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
-        : []),
+      { label: 'Talk to a founder', href: '/contact', publicRoute: '/contact' },
     ],
   },
   {
