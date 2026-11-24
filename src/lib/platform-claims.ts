@@ -32,6 +32,10 @@ export const START_FREE_CTA = 'Start free';
 export const IDLE_BILLING_CLAIM = 'Billing stops about a second after each request.';
 export const IDLE_BILLING_DOC_SLUG = 'scale-to-zero';
 
-/** Shared by the home page and public agent documentation. */
+/**
+ * Shared by the home page and public agent documentation. Each capability's
+ * word follows faas's catalog (apps, pr-previews, mcp-hosting,
+ * disposable-runs); `platform-claims.test.ts` fails when a pull moves one.
+ */
 export const PLATFORM_AVAILABILITY =
-  'Hosting and PR previews are generally available. MCP hosting and isolated runs are in preview.';
+  'Hosting and PR previews are generally available. MCP hosting is in beta. Isolated runs are in preview.';
