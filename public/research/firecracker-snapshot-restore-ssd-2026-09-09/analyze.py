@@ -1,4 +1,4 @@
-"""Recompute the published distributions from the de-identified sample CSV."""
+"""Recompute the scheduler wake distribution from the de-identified sample CSV."""
 
 import argparse
 import csv
@@ -34,8 +34,7 @@ def summarize(path):
     platform_us = [
         int(row["platform_end_us"]) - int(row["platform_start_us"]) for row in rows
     ]
-    public_us = [int(row["public_request_us"]) for row in rows]
-    if min(platform_us) < 0 or min(public_us) < 0:
+    if min(platform_us) < 0:
         raise ValueError("expected nonnegative durations")
 
     return {
@@ -45,7 +44,6 @@ def summarize(path):
         "max_concurrency_at_admission": max(int(row["concurrency_at_admission"]) for row in rows),
         "max_queue_depth_at_admission": max(int(row["queue_depth_at_admission"]) for row in rows),
         "platform_ms": distribution(platform_us),
-        "public_request_ms": distribution(public_us),
         "platform_samples_at_or_above_350_ms": sum(value >= 350_000 for value in platform_us),
     }
 
