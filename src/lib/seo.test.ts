@@ -12,7 +12,9 @@ const metaOf = (head: ReturnType<typeof pageHead>, key: string) =>
 
 describe('pageHead', () => {
   it('gives the untitled (landing) case the bare brand string', () => {
-    expect(titleOf(pageHead())).toBe('Gregale — Deploy APIs and backends that scale to zero');
+    expect(titleOf(pageHead())).toBe(
+      'Gregale — Your whole backend on one platform, with safe releases'
+    );
   });
 
   it('suffixes the brand so the distinguishing half survives a narrow tab', () => {
@@ -93,9 +95,12 @@ describe('SITE_DESCRIPTION', () => {
   it('leads with the product promise, not its maturity', () => {
     // The beta is stated once on the page, under the call to action. A search
     // snippet that opens with "in public beta" reads as a warning label.
-    expect(SITE_DESCRIPTION).toMatch(/without rewriting it/i);
+    // Search and AI answers repeat this string, so it carries the positioning:
+    // the whole backend, a VM per app, safe releases. Never price or idling.
+    expect(SITE_DESCRIPTION).toMatch(/one command/i);
     expect(SITE_DESCRIPTION).toMatch(/Firecracker microVM/);
-    expect(SITE_DESCRIPTION).toMatch(/scales it to zero/i);
+    expect(SITE_DESCRIPTION).toMatch(/roll back on errors/i);
+    expect(SITE_DESCRIPTION).not.toMatch(/scales? (it )?to zero|cheap|\$/i);
     expect(SITE_DESCRIPTION).not.toMatch(/beta|preview/i);
     expect(SITE_DESCRIPTION.length).toBeLessThanOrEqual(160);
   });
