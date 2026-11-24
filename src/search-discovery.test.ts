@@ -124,3 +124,26 @@ it('submits changed live articles and leaves research alone', () => {
     ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'],
   ]);
 });
+
+it('accepts every path the research and articles release can submit', () => {
+  // The release job hands its paths to submit-indexnow.mjs. A path that script
+  // refuses fails the whole submission, as /articles once did.
+  function submit(path: string) {
+    try {
+      execFileSync(process.execPath, [resolve('scripts', 'submit-indexnow.mjs'), path], {
+        cwd: fixture,
+        env: { ...process.env, INDEXNOW_KEY: '' },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+      return '';
+    } catch (error) {
+      return String((error as { stderr?: string }).stderr);
+    }
+  }
+  for (const path of ['/research', '/research/one', '/articles', '/articles/one', '/vs/railway']) {
+    // Past the path check, it stops at the missing key instead.
+    expect(submit(path)).toContain('INDEXNOW_KEY must contain');
+  }
+  expect(submit('/dashboard')).toContain('Pass changed public paths');
+});
