@@ -1,0 +1,145 @@
+/*
+ * The deploy flow (deploy-flow.tsx): three input cards, the deploy in the
+ * middle, two outputs, joined by hairline elbows on a quiet stage with the
+ * hero's mint-and-turquoise light drifting in one corner. Cards wear a folder
+ * tab drawn as one shape with the card, and the shadow wraps both.
+ */
+.deploy-flow {
+  --df-stage: color-mix(in oklab, var(--foreground) 7.5%, var(--background));
+  --df-chip: color-mix(in oklab, var(--foreground) 4.5%, var(--card));
+  --df-line: color-mix(in oklab, var(--foreground) 15%, transparent);
+  --df-ink: var(--foreground);
+  --df-ink-2: color-mix(in oklab, var(--foreground) 66%, var(--card));
+  --df-ink-3: color-mix(in oklab, var(--foreground) 40%, var(--card));
+  --df-go: var(--brand-fill);
+  --df-go-ink: color-mix(in oklab, var(--brand-fill) 70%, var(--foreground));
+  font-family: 'Satoshi', var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.deploy-flow-stage {
+  background: var(--df-stage);
+}
+
+/* The hero's light (liquid-field preset `gregale`): mint into turquoise with a
+   deep teal core, drifting slowly. */
+.deploy-flow-light {
+  position: absolute;
+  right: -160px;
+  bottom: -260px;
+  width: 900px;
+  height: 560px;
+  pointer-events: none;
+  filter: blur(40px);
+  opacity: 0.95;
+  background:
+    radial-gradient(
+      34% 40% at 76% 64%,
+      color-mix(in oklab, var(--mint-12) 70%, #00b7d6) 0%,
+      transparent 70%
+    ),
+    radial-gradient(44% 50% at 62% 58%, #00b7d6 0%, transparent 72%),
+    radial-gradient(48% 52% at 44% 60%, var(--brand-fill) 0%, transparent 72%),
+    radial-gradient(62% 60% at 30% 62%, var(--mint-4) 0%, transparent 70%);
+  animation: deploy-flow-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes deploy-flow-drift {
+  to {
+    transform: translate(-50px, -30px) rotate(-4deg) scale(1.05);
+  }
+}
+
+.deploy-flow-lines path {
+  fill: none;
+  stroke: var(--df-line);
+  stroke-width: 1.25;
+}
+
+.deploy-flow-card {
+  position: relative;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 22px 22px 20px;
+  filter: drop-shadow(0 1px 1px color-mix(in oklab, var(--foreground) 3%, transparent))
+    drop-shadow(0 6px 14px color-mix(in oklab, var(--foreground) 7%, transparent));
+}
+
+/* The folder tab: one path, flaring into the card top on both sides. */
+.deploy-flow-tab {
+  position: absolute;
+  top: -18px;
+  left: 6px;
+  width: 60px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  padding-top: 3px;
+  color: var(--df-ink-2);
+}
+.deploy-flow-tab > svg:first-child {
+  position: absolute;
+  inset: 0;
+  fill: var(--card);
+}
+.deploy-flow-tab > svg + svg {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+
+.deploy-flow-chip {
+  background: var(--df-chip);
+}
+
+.deploy-flow-list {
+  mask-image: linear-gradient(transparent 0, #000 16%, #000 84%, transparent);
+}
+
+.deploy-flow-track {
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.deploy-flow-row {
+  transition:
+    background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.4s;
+}
+
+.deploy-flow-spin {
+  animation: deploy-flow-spin 1s linear infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes deploy-flow-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.deploy-flow-caret::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: currentColor;
+  animation: deploy-flow-blink 1s steps(1) infinite;
+}
+@keyframes deploy-flow-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deploy-flow-light,
+  .deploy-flow-spin,
+  .deploy-flow-caret::after {
+    animation: none;
+  }
+  .deploy-flow-track,
+  .deploy-flow-row {
+    transition: none;
+  }
+}

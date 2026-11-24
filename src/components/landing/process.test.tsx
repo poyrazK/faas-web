@@ -1,47 +1,33 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
-import { Process, STEPS } from './process';
+import { Process } from './process';
 import { DeploymentPreview, TracePreview, WakeSourcesPreview } from './product-previews';
 
-/** The existing hover/focus accordion now walks through a first deployment. */
 describe('Process', () => {
-  it('shows an ordered deployment walkthrough with the first step open', async () => {
+  it('shows the deploy flow under its heading, with a plain-text summary', async () => {
     render(withRouter(<Process />));
-    const cards = await screen.findAllByRole('button', { expanded: undefined });
-    expect(cards).toHaveLength(3);
     expect(
-      screen.getByRole('heading', { name: 'From repository to running API.' })
+      await screen.findByRole('heading', { name: 'From repository to running API.' })
     ).toBeInTheDocument();
-    expect(cards.map((card) => within(card).getByRole('heading').textContent)).toEqual([
-      'Bring your repository.',
-      'Set your configuration.',
-      'Deploy and verify.',
-    ]);
-    expect(cards[0]).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(STEPS[0].body)).toBeInTheDocument();
-  });
-
-  it('opens the card under the pointer and keeps it open after leaving', async () => {
-    const user = userEvent.setup();
-    render(withRouter(<Process />));
-    const cards = await screen.findAllByRole('button');
-    await user.hover(cards[2]);
-    await waitFor(() => expect(cards[2]).toHaveAttribute('aria-expanded', 'true'));
-    await user.unhover(cards[2]);
-    expect(cards[2]).toHaveAttribute('aria-expanded', 'true');
-    expect(cards[0]).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText(/Gregale fetches the code, detects the runtime/)).toBeInTheDocument();
+    expect(screen.getByText('Example data')).toBeInTheDocument();
   });
 
   it('links hosting capabilities to their published guides', async () => {
     render(withRouter(<Process />));
-    await screen.findAllByRole('button');
-    // jsdom reports no `min-width` match, so every card renders open here.
-    const hrefs = new Set(screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? ''));
-    for (const slug of ['deploy-from-source', 'deploy-from-github', 'storage', 'runtime-node']) {
+    const nav = await screen.findByRole('navigation', { name: 'Deploy guides' });
+    const hrefs = within(nav)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+    for (const slug of [
+      'deploy-from-source',
+      'deploy-from-github',
+      'storage',
+      'runtime-node',
+      'agents',
+    ])
       expect(hrefs).toContain(`/docs/${slug}`);
-    }
   });
 });
 
