@@ -755,15 +755,22 @@ to the value supplied by that service in the Vercel Production environment
 and deploy. Bing also supports importing a verified Search Console property.
 
 For [IndexNow](https://www.indexnow.org/documentation), generate a key and set
-`INDEXNOW_KEY` in the Vercel Production environment. The next production build
-publishes the root key file. After a change is live, set the same key locally
-and pass the public paths that were added, updated, or removed.
+`INDEXNOW_KEY` in the Vercel Production environment and the matching GitHub
+Actions secret. The production build publishes the root key file and the
+research release reference. **Submit research to IndexNow** runs after Vercel
+reports a successful production deployment. It checks the release on
+`gregale.dev`, compares it with the prior successful Vercel production
+deployment, and submits live research URLs affected by the changes. Run the
+workflow manually on `main` to submit the full live research catalogue.
+
+For other public paths, set the same key locally and pass the paths that
+were added, updated, or removed.
 
 ```bash
 npm run indexnow:submit -- /docs/deploy-fastapi
 ```
 
-The command checks the live ownership file before sending the notification.
+The command checks the live ownership file and logs the IndexNow response.
 
 ### SITE_URL
 
