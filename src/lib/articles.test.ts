@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANSWER_ARTICLES, ARTICLES, alternativesArticle } from './articles';
+import { ANSWER_ARTICLES, ARTICLES, alternativesArticle, comparisonArticles } from './articles';
 import { COMPARISON_SLUGS } from './compare';
 import { PLAN_CATALOG, formatPlanPrice } from './plan-catalog';
 
@@ -23,6 +23,18 @@ describe('articles', () => {
       [...COMPARISON_SLUGS].sort()
     );
     expect(ANSWER_ARTICLES.some((article) => article.alternativesTo)).toBe(false);
+  });
+
+  it('links each head-to-head only to real comparison pages, and keeps it out of the answer list', () => {
+    const headToHeads = ARTICLES.filter((article) => article.comparison);
+    expect(headToHeads.length).toBeGreaterThan(0);
+    for (const article of headToHeads) {
+      for (const slug of article.comparison ?? []) {
+        expect(COMPARISON_SLUGS, `${article.slug} -> ${slug}`).toContain(slug);
+        expect(comparisonArticles(slug)).toContain(article);
+      }
+    }
+    expect(ANSWER_ARTICLES.some((article) => article.comparison)).toBe(false);
   });
 
   it("quotes Gregale's plans in the roundups exactly as the plan catalog states them", () => {
@@ -68,5 +80,38 @@ describe('articles', () => {
     expect(mcp).toContain(
       `on Scale you can raise it to ${seconds(scale.maxRequestTimeout)} seconds`
     );
+    const minutes = (limit: string) => seconds(limit) / 60;
+    const fastapi = body('fastapi-background-jobs-postgres').replace(/\s+/g, ' ');
+    expect(fastapi).toContain(
+      `(${seconds(hobby.maxRequestTimeout)} seconds on Hobby, ${minutes(pro.maxRequestTimeout)} minutes on Pro)`
+    );
+  });
+
+  it('quotes Hobby in the API and worker pages exactly as the plan catalog states it', () => {
+    const [, hobby] = PLAN_CATALOG.plans;
+    const usd = formatPlanPrice;
+    const hobbyRow = `Gregale Hobby: ${usd(hobby.monthly)} a month for ${hobby.deployedApps} apps`;
+    const hobbyPlan =
+      `Hobby is ${usd(hobby.monthly)} a month for ${hobby.deployedApps} apps with ` +
+      `${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours`;
+    const fastapiPlan =
+      `Hobby is ${usd(hobby.monthly)} a month for up to ${hobby.deployedApps} apps with ` +
+      `${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours`;
+    const overage = `$${PLAN_CATALOG.overagePerGbHour.toFixed(2)} per GB-RAM-hour`;
+    const text = (slug: string) => body(slug).replace(/\s+/g, ' ');
+
+    expect(text('render-vs-railway-vs-flyio')).toContain(hobbyRow);
+    expect(text('render-vs-railway-vs-flyio')).toContain(hobbyPlan);
+    expect(text('nodejs-api-and-worker')).toContain(hobbyRow);
+    expect(text('nodejs-api-and-worker')).toContain(
+      `Hobby includes ${hobby.includedGbHours} GB-RAM-hours a month`
+    );
+    expect(text('fastapi-background-jobs-postgres')).toContain(fastapiPlan);
+    for (const slug of [
+      'render-vs-railway-vs-flyio',
+      'nodejs-api-and-worker',
+      'fastapi-background-jobs-postgres',
+    ])
+      expect(text(slug), slug).toContain(overage);
   });
 });
