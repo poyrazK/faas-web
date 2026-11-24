@@ -151,6 +151,48 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes the FastAPI cost study and links it from pricing and deployment docs', () => {
+    const route = '/research/intermittent-fastapi-cost-2026-11-24';
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const summary = JSON.parse(readFileSync(`dist${route}/summary.json`, 'utf8'));
+
+    for (const page of ['research', 'pricing', 'docs/deploy-fastapi']) {
+      expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+    }
+    expect(readFileSync('dist/docs/deploy-fastapi.md', 'utf8')).toContain(
+      `https://gregale.dev${route}`
+    );
+    expect(readFileSync('dist/docs/scale-to-zero.md', 'utf8')).toContain(
+      'scheduler interval from `wake.boot_started` to `wake.boot_completed`'
+    );
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(report).toContain(
+      `${summary.burst_compute_reduction_percent.toFixed(1)}% less billable compute`
+    );
+    expect(report).toContain(summary.totals.spread.gb_ram_hours.toFixed(6));
+    expect(report).toContain(summary.totals.burst.gb_ram_hours.toFixed(6));
+    for (const file of [
+      'traffic.csv',
+      'ledger.json',
+      'states.csv',
+      'pricing.json',
+      'summary.json',
+      'run.py',
+      'analyze.py',
+      'fixture/main.py',
+      'fixture/requirements.txt',
+      'fixture/gregale.yaml',
+    ]) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';

@@ -6,6 +6,7 @@ import { Footer } from '@/components/landing/footer';
 import { cheapestPaidPlan, pricingFaq } from '@/lib/faq';
 import { FREE_PLAN, PLAN_CATALOG, formatPlanPrice } from '@/lib/plan-catalog';
 import { IDLE_BILLING_CLAIM } from '@/lib/platform-claims';
+import { FASTAPI_COST_SLUG } from '@/lib/research';
 import { pageHead } from '@/lib/seo';
 
 /**
@@ -68,6 +69,17 @@ function PricingPage() {
                 ))}
               </dl>
               <p className="mt-12 text-sm text-muted-foreground">
+                See measured compute usage and monthly estimates in the{' '}
+                <Link
+                  to="/research/$slug"
+                  params={{ slug: FASTAPI_COST_SLUG }}
+                  className="text-brand underline underline-offset-4"
+                >
+                  intermittent FastAPI cost study
+                </Link>
+                .
+              </p>
+              <p className="mt-4 text-sm text-muted-foreground">
                 Every limit, including builds, realtime and object storage, is listed in{' '}
                 <Link
                   to="/docs/$slug"

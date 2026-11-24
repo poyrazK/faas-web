@@ -1,6 +1,6 @@
 import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
-import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE } from './research.ts';
+import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE, withRelatedResearch } from './research.ts';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -57,7 +57,10 @@ export const markdownUrl = (siteUrl: string, slug: string): string => `${siteUrl
 
 /** One docs page as Markdown, with the manifest's title and summary. */
 export function markdownPage(entry: DocEntry, source: string, siteUrl: string): string {
-  const body = source.replace(/\r\n/g, '\n').replace(/^#\s+.+?\n+/, '');
+  const body = withRelatedResearch(
+    entry.slug,
+    source.replace(/\r\n/g, '\n').replace(/^#\s+.+?\n+/, '')
+  );
   return (
     [
       `# ${entry.title}`,
