@@ -129,7 +129,8 @@ describeBuilt('prerendered pages', () => {
     expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
     expect(report).toContain(`type="text/markdown" href="${route}.md"`);
     expect(report).toContain(summary.platform_ms.p95.toFixed(3) + ' ms');
-    expect(report).toContain(summary.public_request_ms.p95.toFixed(3) + ' ms');
+    expect(summary).not.toHaveProperty('public_request_ms');
+    expect(readFileSync(`dist${route}/samples.csv`, 'utf8')).not.toContain('public_request_us');
     expect(JSON.parse(json!)).toMatchObject({
       '@type': 'TechArticle',
       datePublished: '2026-11-24',
@@ -143,9 +144,11 @@ describeBuilt('prerendered pages', () => {
       `<loc>https://gregale.dev${route}</loc>`
     );
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
-    expect(readFileSync(`dist${route}.md`, 'utf8')).toContain(
-      `https://gregale.dev${route}/samples.csv`
-    );
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+    expect(markdown).toContain(`https://gregale.dev${route}/samples.csv`);
+    for (const page of [index, report, markdown]) {
+      expect(page).not.toMatch(/public request time|502\.180 ms/i);
+    }
   });
 
   describe('robots.txt', () => {

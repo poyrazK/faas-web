@@ -14,8 +14,7 @@ export const RESEARCH_PUBLICATIONS: readonly ResearchPublication[] = [
   {
     slug: 'firecracker-snapshot-restore-ssd-2026-09-09',
     title: 'Firecracker snapshot restore on SSD',
-    summary:
-      'A 100-request acceptance run on one SSD-backed node measured the platform wake interval and public request time separately.',
+    summary: 'Scheduler wake timing from 100 sequential snapshot restores on one SSD-backed node.',
     publishedOn: '2026-11-24',
     measuredOn: '2026-09-09',
   },
