@@ -96,7 +96,9 @@ export function HeroHeadline() {
         style={{ animationDelay: '0.06s' }}
       >
         <h1 className="block text-balance [font:inherit] [letter-spacing:inherit]">
-          Next-generation cloud for{' '}
+          {/* The positioning, same words as the page title: the whole backend
+              in one place. The rotating phrase finishes the sentence. */}
+          Your whole backend on one platform:{' '}
           <span className="sr-only">
             APIs, services, background jobs, workflows, webhooks and MCP servers.
           </span>

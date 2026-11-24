@@ -37,7 +37,7 @@ describe('Hero', () => {
   it('leads with the backend platform and states general and preview availability', async () => {
     renderHero();
     const h1 = await screen.findByRole('heading', { level: 1 });
-    expect(h1).toHaveAccessibleName(/Next-generation cloud for APIs, services/);
+    expect(h1).toHaveAccessibleName(/Your whole backend on one platform: APIs, services/);
     expect(screen.getByText(/Hosting and PR previews are generally available/)).toBeInTheDocument();
   });
 
