@@ -170,7 +170,104 @@ function WillItRun() {
           mode. When it cannot tell, it says so rather than guessing.
         </p>
       )}
+      {!source && <AboutTheCheck />}
     </main>
+  );
+}
+
+/** Frameworks the build detects, per `content/docs/frameworks.md`. */
+const DETECTED_FRAMEWORKS: { name: string; doc?: string }[] = [
+  { name: 'Express', doc: 'deploy-express' },
+  { name: 'NestJS' },
+  { name: 'Fastify' },
+  { name: 'Hono' },
+  { name: 'FastAPI', doc: 'deploy-fastapi' },
+  { name: 'Django', doc: 'deploy-django' },
+  { name: 'Flask', doc: 'deploy-flask' },
+  { name: 'Go (net/http, Gin)', doc: 'deploy-go' },
+];
+
+/**
+ * What the check is and what its three answers mean. Shown before a check
+ * runs — which is also the state the page is prerendered in — so the page has
+ * something to say to a reader, or a search engine, who has not pasted a
+ * repository yet.
+ */
+function AboutTheCheck() {
+  return (
+    <section aria-labelledby="about-check-title" className="mt-14 border-t border-border pt-10">
+      <h2 id="about-check-title" className="text-xl font-semibold tracking-tight">
+        Check a repository before you deploy it
+      </h2>
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
+        The check reads the source of a public GitHub repository and gives one of three answers:
+      </p>
+      <ul className="mt-4 max-w-prose space-y-2 text-sm leading-relaxed text-muted-foreground">
+        <li>
+          <span className="font-medium text-foreground">{LEVEL_COPY.green.headline}</span> Gregale
+          found how to build and start it, and nothing that stops it running.
+        </li>
+        <li>
+          <span className="font-medium text-foreground">{LEVEL_COPY.amber.headline}</span> It can
+          run once you change something, and the report says what.
+        </li>
+        <li>
+          <span className="font-medium text-foreground">{LEVEL_COPY.red.headline}</span> It depends
+          on something Gregale does not provide, like durable local disk or host networking.
+        </li>
+      </ul>
+      <h2 className="mt-10 text-xl font-semibold tracking-tight">Frameworks Gregale detects</h2>
+      <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
+        Node.js, Python and Go web apps build without a Dockerfile: Gregale infers the start command
+        from the framework. Anything else can deploy from a Dockerfile or a prebuilt image.
+      </p>
+      <ul className="mt-4 flex flex-wrap gap-2 text-sm">
+        {DETECTED_FRAMEWORKS.map((framework) => (
+          <li key={framework.name}>
+            {framework.doc ? (
+              <Link
+                to="/docs/$slug"
+                params={{ slug: framework.doc }}
+                className="inline-flex rounded-full border border-border px-3 py-1 text-foreground hover:border-brand"
+              >
+                {framework.name}
+              </Link>
+            ) : (
+              <span className="inline-flex rounded-full border border-border px-3 py-1 text-muted-foreground">
+                {framework.name}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-6 max-w-prose text-sm text-muted-foreground">
+        Moving an existing app? See{' '}
+        <Link
+          to="/docs/$slug"
+          params={{ slug: 'migrate-from-heroku' }}
+          className="text-brand underline underline-offset-4"
+        >
+          migrate from Heroku
+        </Link>
+        ,{' '}
+        <Link
+          to="/docs/$slug"
+          params={{ slug: 'migrate-from-render' }}
+          className="text-brand underline underline-offset-4"
+        >
+          migrate from Render
+        </Link>{' '}
+        or the{' '}
+        <Link
+          to="/docs/$slug"
+          params={{ slug: 'container-compatibility' }}
+          className="text-brand underline underline-offset-4"
+        >
+          container compatibility guide
+        </Link>
+        .
+      </p>
+    </section>
   );
 }
 

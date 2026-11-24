@@ -35,6 +35,11 @@ const API_ROUTES = [
     (group) => `/docs/api/${group.id}`
   ),
 ];
+const { parsePlanCatalog } = await import('../src/lib/plan-catalog-parser.ts');
+const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../src/lib/faq.ts');
+// Read the same generated catalog the pricing page renders, so the Offer
+// prices in the structured data cannot disagree with the visible columns.
+const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
 
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
@@ -45,6 +50,7 @@ const ROUTES = [
   '/signup',
   '/status',
   '/will-it-run',
+  '/pricing',
   '/contact',
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
@@ -54,7 +60,7 @@ const ROUTES = [
 /** Routes worth indexing. /login and /signup are prerendered so their link
  *  previews are right, but they are not search results. Docs are the opposite:
  *  they are most of the reason anyone would find this site through a search. */
-const INDEXABLE = ['/', '/status', '/will-it-run', ...DOC_ROUTES];
+const INDEXABLE = ['/', '/status', '/will-it-run', '/pricing', ...DOC_ROUTES];
 
 const DIST = 'dist';
 const TEMPLATE = join(DIST, 'index.html');
@@ -190,6 +196,22 @@ for (const route of ROUTES) {
             'scales it to zero, and runs your services and background work too.',
           softwareHelp: `${SITE_URL}/docs`,
         },
+        // The "A few practical questions" cards, from the same strings.
+        { ...faqJsonLd(LANDING_FAQ), '@id': `${SITE_URL}/#faq` },
+      ],
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
+  }
+  // Pricing: one Offer per plan and the page's questions, both read from
+  // the generated catalog the page itself renders.
+  if (route === '/pricing' && SITE_URL) {
+    const ld = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        pricingJsonLd(PLAN_CATALOG, SITE_URL),
+        { ...faqJsonLd(pricingFaq(PLAN_CATALOG)), '@id': `${SITE_URL}/pricing#faq` },
       ],
     };
     perRoute.push(

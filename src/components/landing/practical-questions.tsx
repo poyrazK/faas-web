@@ -1,9 +1,10 @@
+import { LANDING_FAQ } from '@/lib/faq';
 import { Cards, Panel, type CardItem } from './cards';
 
 const QUESTIONS: readonly CardItem[] = [
   {
-    title: 'Can I start using Gregale today?',
-    body: 'Yes. Sign up, deploy from your terminal or GitHub, and your API is live on a Gregale URL with TLS.',
+    title: LANDING_FAQ[0].question,
+    body: LANDING_FAQ[0].answer,
     mosaic: [
       [1, 4, 2],
       [2, 3, 1],
@@ -21,8 +22,8 @@ const QUESTIONS: readonly CardItem[] = [
     ),
   },
   {
-    title: 'What stays in my application?',
-    body: 'Your business logic, user authorization and data-isolation rules. You also handle effects in external systems, including duplicate requests where needed.',
+    title: LANDING_FAQ[1].question,
+    body: LANDING_FAQ[1].answer,
     mosaic: [
       [1, 0, 2],
       [2, 1, 0],
@@ -42,8 +43,8 @@ const QUESTIONS: readonly CardItem[] = [
     ),
   },
   {
-    title: 'Does my application have to run all the time?',
-    body: 'With scale-to-zero enabled, eligible idle applications can stop consuming compute and wake when traffic returns. The first request waits for the wake. Long-running workers have different lifecycle behavior.',
+    title: LANDING_FAQ[2].question,
+    body: LANDING_FAQ[2].answer,
     mosaic: [
       [5, 0, 0],
       [4, 1, 2],
@@ -66,8 +67,8 @@ const QUESTIONS: readonly CardItem[] = [
     ),
   },
   {
-    title: 'What does it cost?',
-    body: 'Start on Free. Plan prices and included usage come from the platform catalog.',
+    title: LANDING_FAQ[3].question,
+    body: LANDING_FAQ[3].answer,
     mosaic: [
       [5, 0, 0],
       [3, 1, 1],
