@@ -735,6 +735,16 @@ describes either its hard cap or its metered rate and spend-cap policy. Docs
 content is also available as Markdown, with `/llms.txt` providing an index
 for agents.
 
+### Research publications
+
+`/research` lists the reports registered in `src/lib/research.ts`. Add the
+report body under `content/research/<slug>.md` and its public evidence under
+`public/research/<slug>/`. Record the measurement and publication dates
+separately. Describe the hardware, workload, timing boundaries, and limits,
+and include the per-sample data and a script that reproduces the statistics.
+The build generates the canonical HTML and Markdown pages and adds them to
+the sitemap and agent docs.
+
 ### Search webmaster tools
 
 Verify `gregale.dev` in [Google Search Console](https://support.google.com/webmasters/answer/9008080)

@@ -1,0 +1,26 @@
+{
+  "samples": 100,
+  "snapshot_restores": 100,
+  "all_artifacts_cached": 100,
+  "max_concurrency_at_admission": 0,
+  "max_queue_depth_at_admission": 0,
+  "platform_ms": {
+    "min": 73.094,
+    "mean": 99.011,
+    "p50": 94.795,
+    "p90": 131.502,
+    "p95": 137.756,
+    "p99": 148.229,
+    "max": 149.067
+  },
+  "public_request_ms": {
+    "min": 244.77,
+    "mean": 433.529,
+    "p50": 424.506,
+    "p90": 475.346,
+    "p95": 502.18,
+    "p99": 555.937,
+    "max": 811.678
+  },
+  "platform_samples_at_or_above_350_ms": 0
+}
