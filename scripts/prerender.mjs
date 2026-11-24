@@ -27,6 +27,7 @@ import { sitemapXml } from './sitemap.mjs';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
+const { RESEARCH_PUBLICATIONS, RESEARCH_TITLE } = await import('../src/lib/research.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
 // The API reference is derived from the vendored spec the same way: one page
@@ -43,6 +44,10 @@ const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../s
 // prices in the structured data cannot disagree with the visible columns.
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
+const RESEARCH_BY_ROUTE = new Map(
+  RESEARCH_PUBLICATIONS.map((publication) => [`/research/${publication.slug}`, publication])
+);
+const RESEARCH_ROUTES = ['/research', ...RESEARCH_BY_ROUTE.keys()];
 
 const PRICING_ROUTE = '/pricing';
 const PLAN_DOC_ROUTE = '/docs/plans';
@@ -60,12 +65,20 @@ const ROUTES = [
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,
+  ...RESEARCH_ROUTES,
 ];
 
 /** Routes worth indexing. /login and /signup are prerendered so their link
  *  previews are right, but they are not search results. Docs are the opposite:
  *  they are most of the reason anyone would find this site through a search. */
-const INDEXABLE = ['/', '/status', '/will-it-run', PRICING_ROUTE, ...DOC_ROUTES];
+const INDEXABLE = [
+  '/',
+  '/status',
+  '/will-it-run',
+  PRICING_ROUTE,
+  ...DOC_ROUTES,
+  ...RESEARCH_ROUTES,
+];
 
 const DIST = 'dist';
 const TEMPLATE = join(DIST, 'index.html');
@@ -161,6 +174,30 @@ for (const route of ROUTES) {
   const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
   if (DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
+  }
+  const publication = RESEARCH_BY_ROUTE.get(route);
+  if (publication) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+    if (SITE_URL) {
+      const ld = {
+        '@context': 'https://schema.org',
+        '@type': 'TechArticle',
+        headline: publication.title,
+        description: publication.summary,
+        datePublished: publication.publishedOn,
+        mainEntityOfPage: absolute(route),
+        author: {
+          '@type': 'Organization',
+          name: 'Gregale Engineering',
+          url: absolute('/research'),
+        },
+        publisher: { '@id': `${SITE_URL}/#org` },
+        isPartOf: { '@type': 'WebSite', name: RESEARCH_TITLE, url: absolute('/research') },
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+    }
   }
   // The home page names the agent index, so an agent that starts at the site
   // root finds llms.txt without guessing the path.
@@ -349,7 +386,8 @@ console.log('  wrote pricing.json');
  * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
  * ------------------------------------------------------------------ */
 
-const { llmsFull, llmsIndex, llmsSmall, markdownPage } = await import('../src/lib/agent-docs.ts');
+const { absoluteLinks, llmsFull, llmsIndex, llmsSmall, markdownPage } =
+  await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
 const pagesBySlug = new Map();
 const markdownPages = DOC_ENTRIES.map((entry) => {
@@ -363,10 +401,27 @@ const markdownPages = DOC_ENTRIES.map((entry) => {
   return page;
 });
 writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL));
-writeFileSync(join(DIST, 'llms-full.txt'), llmsFull(llmsIntro, markdownPages));
+const researchPages = [...RESEARCH_BY_ROUTE].map(([route, publication]) => {
+  const path = `research/${publication.slug}.md`;
+  const body = readFileSync(join('content', path), 'utf8');
+  const page = [
+    `# ${publication.title}`,
+    `Gregale Engineering · Published ${publication.publishedOn} · Measured ${publication.measuredOn}`,
+    publication.summary,
+    absoluteLinks(body, path, SITE_URL).trim(),
+    `Canonical URL: ${absolute(route)}`,
+    '',
+  ].join('\n\n');
+  writeFileSync(join(DIST, path), page);
+  return page;
+});
+writeFileSync(
+  join(DIST, 'llms-full.txt'),
+  llmsFull(llmsIntro, [...markdownPages, ...researchPages])
+);
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length} Markdown docs pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {

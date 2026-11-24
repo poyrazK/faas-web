@@ -117,6 +117,37 @@ describeBuilt('prerendered pages', () => {
     );
   });
 
+  it('publishes the research report, data, and citation metadata at stable URLs', () => {
+    const route = '/research/firecracker-snapshot-restore-ssd-2026-09-09';
+    const index = readFileSync('dist/research/index.html', 'utf8');
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const summary = JSON.parse(readFileSync(`dist${route}/summary.json`, 'utf8'));
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(report)?.[1];
+
+    expect(index).toContain(`href="${route}"`);
+    expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/research"');
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(report).toContain(summary.platform_ms.p95.toFixed(3) + ' ms');
+    expect(report).toContain(summary.public_request_ms.p95.toFixed(3) + ' ms');
+    expect(JSON.parse(json!)).toMatchObject({
+      '@type': 'TechArticle',
+      datePublished: '2026-11-24',
+      mainEntityOfPage: `https://gregale.dev${route}`,
+    });
+    for (const file of ['samples.csv', 'summary.json', 'analyze.py']) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    expect(readFileSync(`dist${route}.md`, 'utf8')).toContain(
+      `https://gregale.dev${route}/samples.csv`
+    );
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';
