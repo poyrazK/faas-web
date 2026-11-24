@@ -17,7 +17,8 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing' | '/research';
+  publicRoute?:
+    '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing' | '/research' | '/articles';
   /** A comparison page: /vs/<slug>. */
   compare?: string;
   /** A docs page. `true` is the docs index; a string is that page's slug. */
@@ -57,6 +58,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     links: [
       { label: 'Scaling to zero', href: '/docs/scale-to-zero', doc: 'scale-to-zero' },
       { label: 'Research & Benchmarks', href: '/research', publicRoute: '/research' },
+      { label: 'Articles', href: '/articles', publicRoute: '/articles' },
       { label: 'Storage', href: '/docs/storage', doc: 'storage' },
       {
         label: 'Preview environments',

@@ -3,6 +3,7 @@ import { Nav } from '@/components/landing/nav';
 import { Footer } from '@/components/landing/footer';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
+import { ARTICLES } from '@/lib/articles';
 import { COMPARISONS_CHECKED, comparisons, type Comparison } from '@/lib/compare';
 import { PLAN_CATALOG } from '@/lib/plan-catalog';
 import { START_FREE_CTA } from '@/lib/platform-claims';
@@ -92,6 +93,28 @@ function ComparisonPage() {
               </div>
             ))}
           </dl>
+        </section>
+
+        <section aria-labelledby="articles-title" className="mt-16 border-t border-border pt-12">
+          <h2 id="articles-title" className="text-3xl font-medium tracking-tight">
+            How Gregale works
+          </h2>
+          <ul className="mt-6 space-y-4">
+            {ARTICLES.map((article) => (
+              <li key={article.slug} className="max-w-3xl">
+                <Link
+                  to="/articles/$slug"
+                  params={{ slug: article.slug }}
+                  className="text-base font-medium text-brand underline-offset-4 hover:underline"
+                >
+                  {article.title}
+                </Link>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {article.summary}
+                </p>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <p className="mt-16 max-w-3xl text-xs leading-relaxed text-muted-foreground">

@@ -745,6 +745,19 @@ and include the per-sample data and a script that reproduces the statistics.
 The build generates the canonical HTML and Markdown pages and adds them to
 the sitemap and agent docs.
 
+### Articles
+
+`/articles` lists the plain-answer articles registered in
+`src/lib/articles.ts`: one buyer question each, answered in the first
+paragraph, then how Gregale does it and how other platforms compare. The body
+goes in `content/articles/<slug>.md`; the questions stay in the registry so
+the visible FAQ and its FAQPage structured data cannot drift. Every Gregale
+claim must match the vendored docs, and every competitor row names the public
+page it was checked against and the date. The build publishes the HTML and
+Markdown pages, the TechArticle and FAQPage data, the sitemap entries and the
+llms.txt links, and adds a "Related articles" link to the docs pages named in
+`RELATED_ARTICLES`.
+
 ### Search webmaster tools
 
 Verify `gregale.dev` in [Google Search Console](https://support.google.com/webmasters/answer/9008080)
@@ -757,11 +770,12 @@ and deploy. Bing also supports importing a verified Search Console property.
 For [IndexNow](https://www.indexnow.org/documentation), generate a key and set
 `INDEXNOW_KEY` in the Vercel Production environment and the matching GitHub
 Actions secret. The production build publishes the root key file and the
-research release reference. **Submit research to IndexNow** runs after Vercel
-reports a successful production deployment. It checks the release on
-`gregale.dev`, compares it with the prior successful Vercel production
-deployment, and submits live research URLs affected by the changes. Run the
-workflow manually on `main` to submit the full live research catalogue.
+research and articles release reference. **Submit research to IndexNow** runs
+after Vercel reports a successful production deployment. It checks the release
+on `gregale.dev`, compares it with the prior successful Vercel production
+deployment, and submits live research and article URLs affected by the
+changes. Run the workflow manually on `main` to submit the full live research
+and article catalogue.
 
 For other public paths, set the same key locally and pass the paths that
 were added, updated, or removed.

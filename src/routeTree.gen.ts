@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ArticlesRouteImport } from './routes/articles'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocsRouteImport } from './routes/docs'
@@ -20,6 +21,8 @@ import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
+import { Route as ArticlesIndexRouteImport } from './routes/articles.index'
+import { Route as ArticlesSlugRouteImport } from './routes/articles.$slug'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardAccountRouteImport } from './routes/dashboard.account'
 import { Route as DashboardAlertsRouteImport } from './routes/dashboard.alerts'
@@ -105,6 +108,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArticlesRoute = ArticlesRouteImport.update({
+  id: '/articles',
+  path: '/articles',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -154,6 +162,16 @@ const WillItRunRoute = WillItRunRouteImport.update({
   id: '/will-it-run',
   path: '/will-it-run',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ArticlesIndexRoute = ArticlesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ArticlesRoute,
+} as any)
+const ArticlesSlugRoute = ArticlesSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ArticlesRoute,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: '/',
@@ -560,6 +578,7 @@ const DashboardOrgsOrgSupportTicketRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
@@ -570,6 +589,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
+  '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -623,6 +643,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
+  '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -658,6 +679,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/signup': typeof SignupRoute
   '/will-it-run': typeof WillItRunRoute
+  '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -710,6 +732,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
+  '/articles': typeof ArticlesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/research': typeof ResearchIndexRoute
@@ -740,6 +763,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
@@ -750,6 +774,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
+  '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
@@ -803,6 +828,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
   '/vs/$slug': typeof VsSlugRoute
+  '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -834,6 +860,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/articles'
     | '/contact'
     | '/dashboard'
     | '/docs'
@@ -844,6 +871,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/status'
     | '/will-it-run'
+    | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -897,6 +925,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/research/$slug'
     | '/vs/$slug'
+    | '/articles/'
     | '/dashboard/'
     | '/docs/'
     | '/research/'
@@ -932,6 +961,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/signup'
     | '/will-it-run'
+    | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -984,6 +1014,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/research/$slug'
     | '/vs/$slug'
+    | '/articles'
     | '/dashboard'
     | '/docs'
     | '/research'
@@ -1013,6 +1044,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/articles'
     | '/contact'
     | '/dashboard'
     | '/docs'
@@ -1023,6 +1055,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/status'
     | '/will-it-run'
+    | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
     | '/dashboard/analytics'
@@ -1076,6 +1109,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/research/$slug'
     | '/vs/$slug'
+    | '/articles/'
     | '/dashboard/'
     | '/docs/'
     | '/research/'
@@ -1106,6 +1140,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArticlesRoute: typeof ArticlesRouteWithChildren
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
@@ -1127,6 +1162,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/articles': {
+      id: '/articles'
+      path: '/articles'
+      fullPath: '/articles'
+      preLoaderRoute: typeof ArticlesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -1198,6 +1240,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/will-it-run'
       preLoaderRoute: typeof WillItRunRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/articles/': {
+      id: '/articles/'
+      path: '/'
+      fullPath: '/articles/'
+      preLoaderRoute: typeof ArticlesIndexRouteImport
+      parentRoute: typeof ArticlesRoute
+    }
+    '/articles/$slug': {
+      id: '/articles/$slug'
+      path: '/$slug'
+      fullPath: '/articles/$slug'
+      preLoaderRoute: typeof ArticlesSlugRouteImport
+      parentRoute: typeof ArticlesRoute
     }
     '/dashboard/': {
       id: '/dashboard/'
@@ -1755,6 +1811,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ArticlesRouteChildren {
+  ArticlesSlugRoute: typeof ArticlesSlugRoute
+  ArticlesIndexRoute: typeof ArticlesIndexRoute
+}
+
+const ArticlesRouteChildren: ArticlesRouteChildren = {
+  ArticlesSlugRoute: ArticlesSlugRoute,
+  ArticlesIndexRoute: ArticlesIndexRoute,
+}
+
+const ArticlesRouteWithChildren = ArticlesRoute._addFileChildren(
+  ArticlesRouteChildren,
+)
+
 interface DashboardProjectsRouteChildren {
   DashboardProjectsProjectSlugRoute: typeof DashboardProjectsProjectSlugRoute
   DashboardProjectsIndexRoute: typeof DashboardProjectsIndexRoute
@@ -1968,6 +2038,7 @@ const StatusRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArticlesRoute: ArticlesRouteWithChildren,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,
