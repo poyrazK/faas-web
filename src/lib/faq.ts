@@ -135,13 +135,10 @@ export function pricingJsonLd(catalog: Catalog, siteUrl: string) {
       price: plan.monthly.toFixed(2),
       priceCurrency: catalog.currency,
       url: `${siteUrl}/pricing`,
-      priceSpecification: {
-        '@type': 'UnitPriceSpecification',
-        price: plan.monthly.toFixed(2),
-        priceCurrency: catalog.currency,
-        unitCode: 'MON',
-        valueAddedTaxIncluded: false,
-      },
+      // No priceSpecification: Google's software-app parser rejects a
+      // UnitPriceSpecification there ("invalid object type", Rich Results
+      // Test 2026-11-24). The billing period is stated in plain text instead.
+      description: `${plan.name} plan, billed monthly, before tax`,
     })),
   };
 }
