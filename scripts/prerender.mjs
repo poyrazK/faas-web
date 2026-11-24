@@ -444,6 +444,14 @@ console.log(
 if (productionSite && process.env.INDEXNOW_KEY) {
   writeIndexNowKey(DIST, process.env.INDEXNOW_KEY);
   console.log('  wrote IndexNow key file');
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA;
+  if (/^[a-f0-9]{40}$/.test(commit ?? '')) {
+    writeFileSync(
+      join(DIST, 'indexnow-research.json'),
+      JSON.stringify({ commit, paths: RESEARCH_ROUTES }) + '\n',
+      { flag: 'wx' }
+    );
+  }
 }
 
 // The SSR bundle is a build artifact, not something to deploy.

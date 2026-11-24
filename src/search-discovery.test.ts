@@ -78,3 +78,33 @@ it('rejects an IndexNow ownership file that would overwrite a site asset', () =>
   runScript('indexnow-key.mjs', "script.writeIndexNowKey('.', 'abcd1234');", fixture);
   expect(readFileSync(join(fixture, 'abcd1234.txt'), 'utf8')).toBe('abcd1234\n');
 });
+
+it('submits changed live research reports after report or artifact edits', () => {
+  const code = `
+    const paths = ['/research', '/research/first', '/research/second'];
+    const changed = script.changedResearchPaths([
+      'content/research/first.md',
+      'public/research/first/sample.json',
+      'content/research/removed.md',
+      'content/docs/billing.md',
+    ], paths);
+    process.stdout.write(JSON.stringify(changed));
+  `;
+  expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
+    '/research/first',
+  ]);
+});
+
+it('includes the research index when the research registry changes', () => {
+  const code = `
+    const paths = ['/research', '/research/first'];
+    process.stdout.write(JSON.stringify([
+      script.changedResearchPaths(['src/lib/research.ts'], paths),
+      script.changedResearchPaths(['src/routes/pricing.tsx'], paths),
+    ]));
+  `;
+  expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
+    ['/research', '/research/first'],
+    [],
+  ]);
+});
