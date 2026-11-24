@@ -200,7 +200,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'releases',
         source: 'docs/releases.md',
-        title: 'Safe releases',
+        title: 'Release safely',
         summary:
           'Safe changes, database releases and rollbacks, release gates, and the release page.',
       },
@@ -213,7 +213,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'rollouts',
         source: 'docs/rollouts.md',
-        title: 'Progressive rollouts',
+        title: 'Roll out gradually',
         summary: 'Dark deployments, canary stages, safe-by-default rollouts and sticky revisions.',
       },
       {
@@ -226,7 +226,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'environment-promotion',
         source: 'docs/environment-promotion.md',
-        title: 'Environment promotion',
+        title: 'Promote between environments',
         summary:
           'Promote a tested artifact and its configuration from one environment to the next.',
       },
@@ -234,7 +234,7 @@ export const DOC_SECTIONS: DocSection[] = [
   },
   {
     title: 'Run your app',
-    blurb: 'Scaling, domains, storage, and preview environments.',
+    blurb: 'Scaling, runtimes, domains, previews and dev environments.',
     entries: [
       {
         slug: 'scale-to-zero',
@@ -245,16 +245,9 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'scaling-policy',
         source: 'docs/scaling-policy.md',
-        title: 'Scaling policy',
+        title: 'Tune scaling',
         summary:
           'Instance bounds, scaling signals, custom metrics, and scheduled warm windows per app.',
-      },
-      {
-        slug: 'postgres',
-        source: 'docs/postgres.md',
-        title: 'Managed PostgreSQL',
-        summary:
-          'A database per app with its URL delivered as a secret, point-in-time restore, compute that stops when idle, and the plan limits.',
       },
       {
         slug: 'storage',
@@ -264,21 +257,34 @@ export const DOC_SECTIONS: DocSection[] = [
           'What the platform stores per app: VM snapshots, image layers, and what you pay for.',
       },
       {
-        slug: 'object-storage',
-        source: 'docs/object-storage.md',
-        title: 'Object storage',
+        slug: 'apps',
+        source: 'docs/apps.md',
+        title: 'Apps',
         summary:
-          'Private S3-compatible buckets for your app: signed URLs, any S3 SDK, and the plan limits.',
+          'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
       },
-      // `docs/executions.md` (slug `executions`) was published here until
-      // 2026-10-20. Upstream marks it an internal capability, so it stays in
-      // `UNPUBLISHED_DOCS` with that reason. `object-storage` came back once
-      // upstream cut its operator half and shipped it to every customer
-      // (poyrazK/faas#7815, general availability 2026-11-22).
+      {
+        slug: 'functions',
+        source: 'docs/functions.md',
+        title: 'Functions and runtimes',
+        summary: 'Function handlers, streaming, budgets, runtimes and database requests.',
+      },
+      {
+        slug: 'multi-service',
+        source: 'docs/multi-service-apps.md',
+        title: 'Multi-service apps',
+        summary: 'Deploy a Compose project or several services as one project.',
+      },
+      {
+        slug: 'container-compatibility',
+        source: 'docs/container-compatibility.md',
+        title: 'Container compatibility',
+        summary: 'Which image, Compose and listener features a container deployment supports.',
+      },
       {
         slug: 'custom-domains',
         source: 'docs/domains.md',
-        title: 'Custom domains',
+        title: 'Add a custom domain',
         summary: 'Attach, verify, and diagnose your own domain on a deployed app.',
       },
       {
@@ -295,47 +301,53 @@ export const DOC_SECTIONS: DocSection[] = [
           'Sync local code to a cloud dev environment with a stable URL, live patches, and debugging.',
       },
       {
-        slug: 'apps',
-        source: 'docs/apps.md',
-        title: 'Apps',
-        summary:
-          'Create, configure, scale, rename and restore apps, and open a shell in a fresh VM.',
-      },
-      {
-        slug: 'container-compatibility',
-        source: 'docs/container-compatibility.md',
-        title: 'Container compatibility',
-        summary: 'Which image, Compose and listener features a container deployment supports.',
-      },
-      {
-        slug: 'functions',
-        source: 'docs/functions.md',
-        title: 'Functions and runtimes',
-        summary: 'Function handlers, streaming, budgets, runtimes and database requests.',
-      },
-      {
-        slug: 'multi-service',
-        source: 'docs/multi-service-apps.md',
-        title: 'Multi-service apps',
-        summary: 'Deploy a Compose project or several services as one project.',
-      },
-      {
         slug: 'mcp-hosting',
         source: 'docs/mcp-hosting.md',
         title: 'Host an MCP server',
         summary:
           'Build, test and deploy an MCP server that Claude, Cursor and other clients can call.',
       },
+    ],
+  },
+  {
+    title: 'Store data',
+    blurb: 'Managed PostgreSQL and object storage.',
+    entries: [
+      {
+        slug: 'postgres',
+        source: 'docs/postgres.md',
+        title: 'Managed PostgreSQL',
+        summary:
+          'A database per app with its URL delivered as a secret, point-in-time restore, compute that stops when idle, and the plan limits.',
+      },
+      {
+        slug: 'object-storage',
+        source: 'docs/object-storage.md',
+        title: 'Object storage',
+        summary:
+          'Private S3-compatible buckets for your app: signed URLs, any S3 SDK, and the plan limits.',
+      },
+      // `docs/executions.md` (slug `executions`) was published here until
+      // 2026-10-20. Upstream marks it an internal capability, so it stays in
+      // `UNPUBLISHED_DOCS` with that reason. `object-storage` came back once
+      // upstream cut its operator half and shipped it to every customer
+      // (poyrazK/faas#7815, general availability 2026-11-22).
+    ],
+  },
+  {
+    title: 'Background work and workflows',
+    blurb: 'Jobs, crons, events, webhooks, realtime and durable workflows.',
+    entries: [
       {
         slug: 'jobs',
         source: 'docs/jobs.md',
-        title: 'Jobs',
+        title: 'Run jobs',
         summary: 'Run-to-completion tasks from an OCI image, on demand or on a schedule.',
       },
       {
         slug: 'crons',
         source: 'docs/crons.md',
-        title: 'Crons',
+        title: 'Schedule crons',
         summary: 'Call a path on your app on a schedule, waking it when needed.',
       },
       {
@@ -345,16 +357,16 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Async invokes, workflows, delayed tasks and deployment webhooks.',
       },
       {
+        slug: 'inbound-webhooks',
+        source: 'docs/inbound-webhooks.md',
+        title: 'Receive webhooks',
+        summary: 'Accept provider webhooks while the app is parked; verified, queued and retried.',
+      },
+      {
         slug: 'realtime',
         source: 'docs/realtime.md',
         title: 'Managed realtime',
         summary: 'Push messages to web and mobile clients over WebSocket or Server-Sent Events.',
-      },
-      {
-        slug: 'inbound-webhooks',
-        source: 'docs/inbound-webhooks.md',
-        title: 'Inbound webhooks',
-        summary: 'Accept provider webhooks while the app is parked; verified, queued and retried.',
       },
       {
         slug: 'code-workflows',
@@ -365,7 +377,7 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'stored-workflows',
         source: 'docs/stored-workflow-authoring.md',
-        title: 'Stored workflows',
+        title: 'Build stored workflows',
         summary:
           'Steps against an app with a manual, scheduled or event start, retries and run history.',
       },
@@ -418,19 +430,6 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Service bindings',
         summary: 'The binding inventory, readiness checks in CI, canaries and release enforcement.',
       },
-      {
-        slug: 'binding-verification-runs',
-        source: 'docs/binding-verification-runs.md',
-        title: 'Binding verification runs',
-        summary: 'Durable, resumable verification runs for one app or a whole project.',
-      },
-      {
-        slug: 'service-release-graphs',
-        source: 'docs/service-release-graphs.md',
-        title: 'Service release graphs',
-        summary:
-          'Keep callers and services on consistent revisions; qualify, activate and recover graphs.',
-      },
     ],
   },
   {
@@ -440,15 +439,21 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'env',
         source: 'docs/env.md',
-        title: 'Environment variables',
+        title: 'Set environment variables',
         summary:
           'Non-secret configuration, its precedence, history, rollback, and the config guard.',
       },
       {
-        slug: 'deploy-overrides',
-        source: 'docs/deploy-overrides.md',
-        title: 'Deployment overrides',
-        summary: 'Pin the start command, port, health path, and readiness probe in gregale.yaml.',
+        slug: 'secrets',
+        source: 'docs/secrets.md',
+        title: 'Manage secrets',
+        summary: 'Set, rotate and hot-reload secrets without restarting the app.',
+      },
+      {
+        slug: 'auth',
+        source: 'docs/auth.md',
+        title: 'Authentication',
+        summary: 'CLI login, scoped tokens for CI, MFA and OIDC token exchange.',
       },
       {
         slug: 'build',
@@ -458,42 +463,22 @@ export const DOC_SECTIONS: DocSection[] = [
           'How a framework is detected and built, how to override it, and how to read a failure.',
       },
       {
-        slug: 'companions',
-        source: 'docs/companions.md',
-        title: 'Application companions',
-        summary:
-          'Run a collector, proxy, or other helper alongside an app, with probes and dependencies.',
+        slug: 'deploy-overrides',
+        source: 'docs/deploy-overrides.md',
+        title: 'Deployment overrides',
+        summary: 'Pin the start command, port, health path, and readiness probe in gregale.yaml.',
       },
       {
         slug: 'registry-credentials',
         source: 'docs/registry-credentials.md',
-        title: 'Private registry credentials',
+        title: 'Pull from a private registry',
         summary: 'Store write-only credentials so private OCI images can be pulled at deploy time.',
       },
       {
         slug: 'static-egress-ip',
         source: 'docs/static-egress-ip.md',
-        title: 'Static egress IP',
+        title: 'Get a static egress IP',
         summary: 'Reserve a fixed outbound address an upstream service can allowlist.',
-      },
-      {
-        slug: 'queue-pull-leases',
-        source: 'docs/queue-pull-leases.md',
-        title: 'Pull queue leases',
-        summary:
-          'Consume queue messages from a worker without an HTTP listener: lease, ack, nack, extend.',
-      },
-      {
-        slug: 'secrets',
-        source: 'docs/secrets.md',
-        title: 'Secrets',
-        summary: 'Set, rotate and hot-reload secrets without restarting the app.',
-      },
-      {
-        slug: 'auth',
-        source: 'docs/auth.md',
-        title: 'Authentication',
-        summary: 'CLI login, scoped tokens for CI, MFA and OIDC token exchange.',
       },
       {
         slug: 'edge-rules',
@@ -504,8 +489,15 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'cache',
         source: 'docs/cache.md',
-        title: 'Response caching',
+        title: 'Cache responses',
         summary: 'Cache public GET and HEAD responses at the edge, and purge them.',
+      },
+      {
+        slug: 'companions',
+        source: 'docs/companions.md',
+        title: 'Application companions',
+        summary:
+          'Run a collector, proxy, or other helper alongside an app, with probes and dependencies.',
       },
     ],
   },
@@ -516,36 +508,29 @@ export const DOC_SECTIONS: DocSection[] = [
       {
         slug: 'logs',
         source: 'docs/logs.md',
-        title: 'Logs',
+        title: 'Read logs',
         summary:
           'Live tail, archived logs of parked instances, retention by plan, filters and log drains.',
       },
       {
         slug: 'tracing',
         source: 'docs/tracing.md',
-        title: 'Request tracing',
+        title: 'Trace requests',
         summary:
           'One-setting OpenTelemetry tracing to see slow or failing dependencies per request.',
       },
       {
-        slug: 'synthetic-checks',
-        source: 'docs/synthetic-checks.md',
-        title: 'Synthetic checks',
-        summary:
-          'Probe a path on a schedule from outside, track uptime and latency, alert on failure.',
-      },
-      {
-        slug: 'edge-rule-trace',
-        source: 'docs/edge-rule-trace.md',
-        title: 'Trace edge rules',
-        summary:
-          'Replay a request against an app’s edge rules from a JSON scenario to see what applies.',
-      },
-      {
         slug: 'alerts',
         source: 'docs/alerts.md',
-        title: 'Alerts',
+        title: 'Set up alerts',
         summary: 'Alert presets, notification channels and anomaly rules.',
+      },
+      {
+        slug: 'synthetic-checks',
+        source: 'docs/synthetic-checks.md',
+        title: 'Run synthetic checks',
+        summary:
+          'Probe a path on a schedule from outside, track uptime and latency, alert on failure.',
       },
     ],
   },
@@ -656,12 +641,6 @@ export const DOC_SECTIONS: DocSection[] = [
       // migration 00043 and revert a field in `pkg/imaged/handler.go`
       // (poyrazK/faas#5023). Not a catalog path, so it has no
       // `UNPUBLISHED_DOCS` row; it returns here once upstream cuts the rows.
-      {
-        slug: 'trace-propagation',
-        source: 'docs/runtimes/trace-propagation.md',
-        title: 'Trace propagation',
-        summary: 'How trace context travels through the gateway into your handler.',
-      },
     ],
   },
   {
@@ -723,6 +702,45 @@ export const DOC_SECTIONS: DocSection[] = [
         source: 'docs/sdks.md',
         title: 'SDKs',
         summary: 'Install the Node, Python and Go SDKs.',
+      },
+    ],
+  },
+  {
+    title: 'Advanced',
+    blurb: 'Specialized features most apps never need.',
+    entries: [
+      {
+        slug: 'binding-verification-runs',
+        source: 'docs/binding-verification-runs.md',
+        title: 'Binding verification runs',
+        summary: 'Durable, resumable verification runs for one app or a whole project.',
+      },
+      {
+        slug: 'service-release-graphs',
+        source: 'docs/service-release-graphs.md',
+        title: 'Service release graphs',
+        summary:
+          'Keep callers and services on consistent revisions; qualify, activate and recover graphs.',
+      },
+      {
+        slug: 'queue-pull-leases',
+        source: 'docs/queue-pull-leases.md',
+        title: 'Pull queue leases',
+        summary:
+          'Consume queue messages from a worker without an HTTP listener: lease, ack, nack, extend.',
+      },
+      {
+        slug: 'edge-rule-trace',
+        source: 'docs/edge-rule-trace.md',
+        title: 'Trace edge rules',
+        summary:
+          'Replay a request against an app’s edge rules from a JSON scenario to see what applies.',
+      },
+      {
+        slug: 'trace-propagation',
+        source: 'docs/runtimes/trace-propagation.md',
+        title: 'Trace propagation',
+        summary: 'How trace context travels through the gateway into your handler.',
       },
     ],
   },
