@@ -74,6 +74,12 @@ describe('generated API plan catalog', () => {
     expect(parsePlanCatalog(source).plans).toHaveLength(4);
     expect(source.match(/^\| \*\*/gm)?.length).toBeGreaterThan(4);
   });
+  it('reads a catalog without the generated-file comment', () => {
+    // poyrazK/faas#7920 removed the comment from customer pages.
+    const unmarked = source.replace(/^<!-- GENERATED[^\n]*\n/m, '');
+    expect(unmarked).not.toContain('<!-- GENERATED');
+    expect(parsePlanCatalog(unmarked)).toEqual(parsePlanCatalog(source));
+  });
   it.each([
     ['', 'empty source'],
     [source.replace('$30', '€30'), 'different currency'],

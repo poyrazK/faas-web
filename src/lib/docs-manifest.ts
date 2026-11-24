@@ -152,6 +152,20 @@ export const DOC_SECTIONS: DocSection[] = [
           'Express, Fastify, Hono and NestJS: the start script, the port, Node versions and PostgreSQL.',
       },
       {
+        slug: 'deploy-nextjs',
+        source: 'docs/deploy-nextjs.md',
+        title: 'Deploy a Next.js app',
+        summary:
+          'next build and next start, standalone output to fit small plans, env vars, PostgreSQL and caching.',
+      },
+      {
+        slug: 'deploy-bun',
+        source: 'docs/deploy-bun.md',
+        title: 'Deploy a Bun app',
+        summary:
+          'bun.lock, bun install and bun run start, random numbers after a wake, secrets and PostgreSQL.',
+      },
+      {
         slug: 'deploy-fastapi',
         source: 'docs/deploy-fastapi.md',
         title: 'Deploy a FastAPI app',

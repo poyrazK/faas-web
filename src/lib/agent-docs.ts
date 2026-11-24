@@ -51,8 +51,8 @@ export const AGENT_CORE_SLUGS = [
   'plans',
 ] as const;
 
-/** About 30k tokens at four bytes a token. */
-export const LLMS_SMALL_MAX_BYTES = 120_000;
+/** About 32k tokens at four bytes a token. */
+export const LLMS_SMALL_MAX_BYTES = 128_000;
 
 export const markdownUrl = (siteUrl: string, slug: string): string => `${siteUrl}/docs/${slug}.md`;
 
