@@ -769,16 +769,18 @@ and deploy. Bing also supports importing a verified Search Console property.
 
 For [IndexNow](https://www.indexnow.org/documentation), generate a key and set
 `INDEXNOW_KEY` in the Vercel Production environment and the matching GitHub
-Actions secret. The production build publishes the root key file and the
-research and articles release reference. **Submit research to IndexNow** runs
-after Vercel reports a successful production deployment. It checks the release
-on `gregale.dev`, compares it with the prior successful Vercel production
-deployment, and submits live research and article URLs affected by the
-changes. Run the workflow manually on `main` to submit the full live research
-and article catalogue.
+Actions secret. The production build publishes the root key file and a
+release reference listing the research, article, comparison (`/vs/*`) and docs
+pages. **Submit changed pages to IndexNow** runs after Vercel reports a
+successful production deployment. It checks the release on `gregale.dev`,
+compares it with the prior successful Vercel production deployment, and
+submits the live URLs affected by the changes: an edited `content/docs/*.md`
+page, every comparison page when `src/lib/compare.ts` or the plan catalog
+changes, and every listed page when `scripts/prerender.mjs` changes. Run the
+workflow manually on `main` to submit the whole list.
 
-For other public paths, set the same key locally and pass the paths that
-were added, updated, or removed.
+For other public paths, such as the home page or `/pricing`, set the same key
+locally and pass the paths that were added, updated, or removed.
 
 ```bash
 npm run indexnow:submit -- /docs/deploy-fastapi

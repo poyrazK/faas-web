@@ -538,7 +538,10 @@ if (productionSite && process.env.INDEXNOW_KEY) {
   if (/^[a-f0-9]{40}$/.test(commit ?? '')) {
     writeFileSync(
       join(DIST, 'indexnow-research.json'),
-      JSON.stringify({ commit, paths: [...RESEARCH_ROUTES, ...ARTICLE_ROUTES] }) + '\n',
+      JSON.stringify({
+        commit,
+        paths: [...RESEARCH_ROUTES, ...ARTICLE_ROUTES, ...COMPARE_ROUTES, ...DOC_ROUTES],
+      }) + '\n',
       { flag: 'wx' }
     );
   }
