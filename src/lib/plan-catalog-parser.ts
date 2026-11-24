@@ -47,7 +47,9 @@ export function parsePlanCatalog(source: string): {
 } {
   const lines = source.split('\n').map((line) => line.trimEnd());
   const headerIndex = lines.indexOf(HEADER);
-  if (!source.includes('<!-- GENERATED') || headerIndex === -1) {
+  // Upstream dropped its `<!-- GENERATED` marker from customer pages
+  // (poyrazK/faas#7920); the exact generated header is the format check.
+  if (headerIndex === -1) {
     throw new Error('Unrecognised generated plan catalog');
   }
   const rate = /billed at \$(\d+(?:\.\d+)?) per GB-RAM-hour/.exec(source);
