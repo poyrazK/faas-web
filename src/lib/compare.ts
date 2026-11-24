@@ -89,6 +89,11 @@ function gregaleFacts(catalog: Catalog) {
       previews: 'A preview environment per open pull request, on every plan including Free.',
       disk: 'No durable local disk. Keep state in managed PostgreSQL or object storage.',
       regions: 'One region today.',
+      releases:
+        'Every production release of a live app climbs a ladder: 1%, then 10%, 50% and 100% ' +
+        'of real traffic, advancing only while the new version shows no errors, OOM kills or ' +
+        'restarts, and rolling back on its own if it starts returning 5xx. On by default, on ' +
+        'every plan; a typical release reaches 100% in 3 to 5 minutes.',
     },
   };
 }
@@ -109,7 +114,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
       slug: 'heroku',
       competitor: 'Heroku',
       summary:
-        'Gregale vs Heroku: pricing, idle apps, databases and preview environments compared, ' +
+        'Gregale vs Heroku: pricing, idle apps, safe releases, databases and previews compared, ' +
         'and how to move a Heroku app without code changes.',
       rows: [
         {
@@ -131,6 +136,11 @@ export function comparisons(catalog: Catalog): Comparison[] {
           topic: 'Idle apps',
           gregale: g.rows.idle,
           them: 'Eco dynos sleep after 30 minutes. Basic and larger dynos run all the time.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Preboot (Standard and Performance dynos) starts the new dynos before stopping the old ones. Rolling back is a manual command.',
         },
         {
           topic: 'Postgres',
@@ -159,6 +169,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'Your app is busy around the clock, where a $7 Basic dyno costs less than paying by the hour.',
       ],
       gregaleFits: [
+        'You want every release to reach real traffic gradually and roll itself back if it fails.',
         'You want a free plan to start, or apps that cost nothing while nobody is using them.',
         'You run several small APIs or services that are idle much of the day.',
         'You want a preview environment for every pull request without extra setup.',
@@ -186,6 +197,15 @@ export function comparisons(catalog: Catalog): Comparison[] {
             `Yes. ${g.rows.free} Heroku's cheapest option is the $5 Eco plan, which sleeps after ` +
             '30 minutes.',
         },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own, so most ' +
+            'users never see the bad release. ' +
+            'On Heroku, a release replaces the running dynos and you roll back with heroku releases:rollback.',
+        },
       ],
       sources: [{ label: 'Heroku pricing', url: 'https://www.heroku.com/pricing/' }],
     },
@@ -193,7 +213,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
       slug: 'render',
       competitor: 'Render',
       summary:
-        'Gregale vs Render: free tier spin-down, instance pricing, idle apps and databases ' +
+        'Gregale vs Render: free tier spin-down, instance pricing, safe releases and databases ' +
         'compared, and how to move a Render web service.',
       rows: [
         {
@@ -217,6 +237,11 @@ export function comparisons(catalog: Catalog): Comparison[] {
           topic: 'Idle apps',
           gregale: g.rows.idle,
           them: 'Only Free web services spin down. Paid instances run all the time.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Zero-downtime deploys: the new instance takes all traffic once it is healthy. Rolling back is manual.',
         },
         {
           topic: 'Postgres',
@@ -245,6 +270,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'Your service is busy around the clock, where a $7 Starter instance costs less.',
       ],
       gregaleFits: [
+        'You want every release to reach real traffic gradually and roll itself back if it fails.',
         'You want paid apps to park when idle too, not only free ones.',
         'You want an idle app to wake from a snapshot instead of starting a fresh process.',
         'You run several small APIs and want them on one plan with a spend cap.',
@@ -271,6 +297,15 @@ export function comparisons(catalog: Catalog): Comparison[] {
             'Yes, but on every plan, not only Free, and an app wakes from a snapshot of its ' +
             'running state instead of starting from scratch.',
         },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own, so most ' +
+            'users never see the bad release. ' +
+            'On Render, the new instance takes all traffic once it is healthy, and you roll back from the dashboard.',
+        },
       ],
       sources: [
         { label: 'Render pricing', url: 'https://render.com/pricing' },
@@ -281,7 +316,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
       slug: 'railway',
       competitor: 'Railway',
       summary:
-        'Gregale vs Railway: plans, usage-based pricing, sleeping services and databases ' +
+        'Gregale vs Railway: plans, usage-based pricing, sleeping services and safe releases ' +
         'compared, and how to move a Railway service to Gregale.',
       rows: [
         {
@@ -307,6 +342,11 @@ export function comparisons(catalog: Catalog): Comparison[] {
           them: 'Free services sleep when idle. On paid plans, compute is always on.',
         },
         {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Health-checked deploys: the new deployment takes over once it is healthy. Rolling back is manual, from the dashboard.',
+        },
+        {
           topic: 'Databases',
           gregale: g.rows.postgres,
           them: 'One-click Postgres, Redis, MySQL and MongoDB.',
@@ -323,6 +363,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You need a volume for files that survive restarts.',
       ],
       gregaleFits: [
+        'You want every release to reach real traffic gradually and roll itself back if it fails.',
         'Your apps are idle much of the day, and you only want to pay while they serve.',
         'You want CPU included in the memory price instead of metered separately.',
         'You want a monthly allowance with a hard spend cap instead of open-ended usage.',
@@ -350,6 +391,15 @@ export function comparisons(catalog: Catalog): Comparison[] {
             'Yes, on every plan: an idle app parks and wakes from a snapshot on the next request. ' +
             'Use min_instances to keep an app warm.',
         },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own, so most ' +
+            'users never see the bad release. ' +
+            'On Railway, the new deployment takes over once it is healthy, and you roll back from the dashboard.',
+        },
       ],
       sources: [
         { label: 'Railway pricing', url: 'https://railway.com/pricing' },
@@ -360,7 +410,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
       slug: 'fly',
       competitor: 'Fly.io',
       summary:
-        'Gregale vs Fly.io: free plan, Machine pricing, auto-stop and Postgres compared, and ' +
+        'Gregale vs Fly.io: free plan, Machine pricing, auto-stop and canary releases compared, and ' +
         'what moving an app to Gregale involves.',
       rows: [
         {
@@ -386,6 +436,11 @@ export function comparisons(catalog: Catalog): Comparison[] {
           topic: 'Idle apps',
           gregale: g.rows.idle,
           them: 'Machines can stop or suspend when idle and start again on the next request.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Rolling by default; you can choose canary (one new Machine is health-checked, then a rolling restart) or blue-green.',
         },
         {
           topic: 'Isolation',
@@ -414,6 +469,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'Your app runs all day: Fly charges less per GB of memory for an always-on Machine.',
       ],
       gregaleFits: [
+        'You want every release to reach real traffic gradually and roll itself back if it fails.',
         'You want to deploy from source without writing infrastructure configuration.',
         'You want preview environments, crons and background services built in.',
         'You want a monthly allowance with a hard spend cap.',
@@ -440,6 +496,15 @@ export function comparisons(catalog: Catalog): Comparison[] {
           answer:
             'Yes. Both run each instance in a Firecracker microVM. Gregale manages the instances ' +
             'for you and parks idle apps automatically.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own, so most ' +
+            'users never see the bad release. ' +
+            'On Fly.io, a canary deploy health-checks one new Machine and then replaces the rest; there is no step-by-step traffic shift.',
         },
       ],
       sources: [

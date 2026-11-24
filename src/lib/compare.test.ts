@@ -40,6 +40,15 @@ describe('comparison pages', () => {
         expect(text).toContain(`${formatPlanPrice(PLAN_CATALOG.overagePerGbHour)} per GB-RAM-hour`);
       });
 
+      it('compares releases: the rollout ladder and automatic rollback', () => {
+        const row = comparison.rows.find((r) => r.topic === 'Releases');
+        expect(row?.gregale).toMatch(/1%, then 10%, 50% and 100%/);
+        expect(row?.gregale).toMatch(/rolling back on its own/);
+        expect(comparison.faq.some((entry) => entry.question.includes('release breaks'))).toBe(
+          true
+        );
+      });
+
       it('links to a published docs page for the move', () => {
         expect(DOC_ENTRIES.some((entry) => entry.slug === comparison.migrateDoc)).toBe(true);
       });
