@@ -141,9 +141,9 @@ describe('DeployFlow', () => {
     }
   });
 
-  it('hides the animated picture from screen readers and labels it as an example', () => {
+  it('hides the animated picture from screen readers behind a plain-text summary', () => {
     const { container } = render(<DeployFlow />);
     expect(container.querySelector('[aria-hidden="true"].deploy-flow-stage')).not.toBeNull();
-    expect(screen.getByText('Example data')).toBeInTheDocument();
+    expect(screen.queryByText('Example data')).toBeNull();
   });
 });

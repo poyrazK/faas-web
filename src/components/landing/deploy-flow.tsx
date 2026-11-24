@@ -13,7 +13,7 @@ import './deploy-flow.css';
  * From repository to running API, as one picture: what goes in (your agent,
  * your repository, a prompt or a command), the deploy itself running step by
  * step in the middle, and what comes out (a verified URL and a preview for
- * every pull request). Example data, labelled as such under the panel.
+ * every pull request). Example data; the screen-reader summary says so.
  *
  * The middle card plays Gregale's real deploy steps in a loop, three at a
  * time; the outputs settle as their steps finish. It only moves while on
@@ -56,7 +56,7 @@ type StepState = 'pending' | 'running' | 'done';
 export const stepState = (tick: number, i: number): StepState =>
   tick >= i + RUNNING ? 'done' : tick >= i ? 'running' : 'pending';
 
-function Mark({ name, size }: { name: MarkName; size: number }) {
+export function Mark({ name, size }: { name: MarkName; size: number }) {
   if (name === 'cursor')
     return (
       <svg
@@ -550,9 +550,6 @@ export function DeployFlow() {
           </div>
         </div>
       </div>
-      <p className="mt-3 font-mono text-[10.5px] tracking-[0.04em] text-muted-foreground">
-        Example data
-      </p>
     </div>
   );
 }
