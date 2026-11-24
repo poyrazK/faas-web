@@ -3,7 +3,7 @@ import { Nav } from '@/components/landing/nav';
 import { Footer } from '@/components/landing/footer';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
-import { ANSWER_ARTICLES, alternativesArticle } from '@/lib/articles';
+import { ANSWER_ARTICLES, alternativesArticle, comparisonArticles } from '@/lib/articles';
 import { COMPARISONS_CHECKED, comparisons, type Comparison } from '@/lib/compare';
 import { PLAN_CATALOG } from '@/lib/plan-catalog';
 import { START_FREE_CTA } from '@/lib/platform-claims';
@@ -43,6 +43,7 @@ export const Route = createFileRoute('/vs/$slug')({
 function ComparisonPage() {
   const comparison = Route.useLoaderData();
   const roundup = alternativesArticle(comparison.slug);
+  const headToHeads = comparisonArticles(comparison.slug);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a href="#main" className="skip-link">
@@ -129,6 +130,21 @@ function ComparisonPage() {
               compares the main platforms people move to from {comparison.competitor}.
             </p>
           )}
+          {headToHeads.map((article) => (
+            <p
+              key={article.slug}
+              className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground"
+            >
+              <Link
+                to="/articles/$slug"
+                params={{ slug: article.slug }}
+                className="font-medium text-brand underline-offset-4 hover:underline"
+              >
+                {article.title}
+              </Link>{' '}
+              puts {comparison.competitor} side by side with its closest alternatives.
+            </p>
+          ))}
         </section>
 
         <p className="mt-16 max-w-3xl text-xs leading-relaxed text-muted-foreground">

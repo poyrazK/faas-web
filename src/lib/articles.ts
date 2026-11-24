@@ -17,6 +17,8 @@ interface Article {
   faq: readonly FaqEntry[];
   /** For a roundup of one vendor's alternatives: that vendor's /vs slug. */
   alternativesTo?: string;
+  /** For a head-to-head of other vendors: each vendor's /vs slug. */
+  comparison?: readonly string[];
 }
 
 export const ARTICLES_TITLE = 'Articles';
@@ -25,6 +27,8 @@ export const ARTICLES_DESCRIPTION =
 
 const CANARY_SLUG = 'canary-deploys';
 const MICROVM_SLUG = 'microvm-isolation';
+const FASTAPI_JOBS_SLUG = 'fastapi-background-jobs-postgres';
+const NODE_WORKER_SLUG = 'nodejs-api-and-worker';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -178,6 +182,82 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: FASTAPI_JOBS_SLUG,
+    title: 'Where to host a FastAPI app with background jobs and Postgres',
+    summary:
+      'Which background work belongs in BackgroundTasks, crons, jobs or a worker, a Compose setup that runs the API, the worker and managed Postgres on Gregale, and how Render, Railway, Fly.io and Heroku compare.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Where should I host a FastAPI app with background jobs and Postgres?',
+        answer:
+          'On a platform that runs the API, a worker and managed Postgres together and deploys them as one unit. Gregale does this from a Compose file on Hobby and up, runs migrations before each release and rolls a bad release back on its own (in beta). Render, Railway, Fly.io and Heroku also run a web service, a worker and Postgres side by side.',
+      },
+      {
+        question: 'Do I need Redis for FastAPI background jobs?',
+        answer:
+          "No. FastAPI's `BackgroundTasks` run short work in the same process, and a Postgres-backed queue such as Procrastinate keeps jobs in the database you already have. Celery, Dramatiq, RQ and ARQ need Redis or another broker; on Gregale, point them at a Redis you run elsewhere, because managed Redis is not generally available yet.",
+      },
+      {
+        question: 'Does a background worker scale to zero on Gregale?',
+        answer:
+          'No. A worker service runs, and is billed, all the time, as it does on other platforms. The API pauses between requests, crons wake the app on a schedule, and jobs (in beta) run only while they work, so move scheduled or batch work there if the worker would mostly wait.',
+      },
+    ],
+  },
+  {
+    slug: NODE_WORKER_SLUG,
+    title: 'Running a Node.js API and a worker together',
+    summary:
+      'What makes an API and worker setup reliable, a Compose setup for Gregale that keeps both on one version, and what two small always-on processes cost on Fly.io, Railway, Gregale, DigitalOcean, Render and Heroku.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the cheapest reliable way to run a Node.js API and a worker?',
+        answer:
+          'Two small processes from one repository, a queue in a managed database, and releases that keep both on the same version. On raw machine price Fly.io is cheapest, at $2.19 a month per 256 MB Machine. Gregale Hobby is $10 a month for both plus a managed PostgreSQL database, with the API unbilled while idle and automatic rollback (in beta).',
+      },
+      {
+        question: 'Do I need Redis for a Node.js job queue?',
+        answer:
+          'Only for Redis-based queues such as BullMQ. pg-boss and Graphile Worker keep jobs in Postgres, so the database you already have, and its backups, cover the queue too.',
+      },
+      {
+        question: 'Can the API and the worker deploy together on Gregale?',
+        answer:
+          "Yes. Describe both in a Compose file and deploy them as one project on Hobby or higher. With `depends_on` and `condition: service_healthy`, the worker's new release waits for the API's and fails with it, so the two never run mixed versions.",
+      },
+    ],
+  },
+  {
+    slug: 'render-vs-railway-vs-flyio',
+    comparison: ['render', 'railway', 'fly'],
+    title: 'Render vs Railway vs Fly.io for a production API',
+    summary:
+      'Render, Railway and Fly.io compared for a production API on price, regions, managed Postgres and releases, with where each one fits and where Gregale fits as a fourth option.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Should I use Render, Railway or Fly.io for a production API?',
+        answer:
+          'Render for a fixed price per instance and a mature managed Postgres, Railway for several databases in one project paid by usage, and Fly.io for users on several continents and control over each Machine. None of them rolls a release back on its own when its error rate rises; Gregale sends each production release to 1%, 10%, 50% and 100% of traffic and rolls it back automatically on errors (in beta).',
+      },
+      {
+        question: 'Which is cheapest for a small production API: Render, Railway or Fly.io?',
+        answer:
+          'Fly.io, on raw price: a 512 MB Machine is $3.69 a month and Fly.io Managed Postgres starts at $4 a month in its lowest-priced regions. Render is $13 a month for a Starter instance and the smallest paid Render Postgres. Railway bills by usage against a $5 monthly minimum.',
+      },
+      {
+        question: 'Do Render, Railway and Fly.io roll back a bad release automatically?',
+        answer:
+          'Not when errors rise after a release goes live. Render and Railway send all traffic to a new version once its health check passes and leave rolling back to you. Fly.io replaces Machines one at a time, and its canary strategy health-checks one new Machine first.',
+      },
+    ],
+  },
+  {
     slug: 'railway-alternatives',
     alternativesTo: 'railway',
     title: 'Railway alternatives in 2026',
@@ -303,7 +383,14 @@ const MCP_LINK =
 const NO_DEVOPS_LINK =
   '[Hosting a startup backend without a DevOps engineer](/articles/backend-without-devops) lists the operations work Gregale does and what your team still owns.';
 
+const FASTAPI_JOBS_LINK = `[Where to host a FastAPI app with background jobs and Postgres](/articles/${FASTAPI_JOBS_SLUG}) explains where each kind of background work belongs, and compares the options.`;
+const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/articles/${NODE_WORKER_SLUG}) shows how to keep an API and its worker on one version, and what the setup costs on each platform.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
+  'deploy-fastapi': FASTAPI_JOBS_LINK,
+  jobs: FASTAPI_JOBS_LINK,
+  'deploy-express': NODE_WORKER_LINK,
+  'multi-service': NODE_WORKER_LINK,
   'getting-started': NO_DEVOPS_LINK,
   'mcp-hosting': MCP_LINK,
   'preview-environments': PREVIEW_LINK,
@@ -317,8 +404,15 @@ const RELATED_ARTICLES: Record<string, string> = {
   'container-compatibility': MICROVM_LINK,
 };
 
-/** Answer articles: how Gregale works, without the vendor roundups. */
-export const ANSWER_ARTICLES = ARTICLES.filter((article) => !article.alternativesTo);
+/** Answer articles: how Gregale works, without the vendor roundups or head-to-heads. */
+export const ANSWER_ARTICLES = ARTICLES.filter(
+  (article) => !article.alternativesTo && !article.comparison
+);
+
+/** Head-to-head comparisons that include a vendor, by that vendor's /vs slug. */
+export function comparisonArticles(comparisonSlug: string): Article[] {
+  return ARTICLES.filter((article) => article.comparison?.includes(comparisonSlug));
+}
 
 /** The roundup of a vendor's alternatives, by that vendor's /vs slug. */
 export function alternativesArticle(comparisonSlug: string): Article | undefined {
