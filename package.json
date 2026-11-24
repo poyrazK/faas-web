@@ -17,6 +17,7 @@
     "docs:pull": "node scripts/pull-docs.mjs",
     "capabilities:pull": "node scripts/pull-capabilities.mjs",
     "parity": "node scripts/parity-report.mjs",
+    "indexnow:submit": "node scripts/submit-indexnow.mjs",
     "smoke:hosting": "node scripts/smoke-hosting.mjs",
     "og": "node scripts/og-image.mjs",
     "lint": "eslint . --max-warnings 8",

@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { writeIndexNowKey } from './indexnow-key.mjs';
+import { sitemapXml } from './sitemap.mjs';
 
 /**
  * Writes a real HTML document for each public route.
@@ -42,6 +44,9 @@ const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../s
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
 
+const PRICING_ROUTE = '/pricing';
+const PLAN_DOC_ROUTE = '/docs/plans';
+const PRICING_FEED = '/pricing.json';
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
 const NOT_FOUND_ROUTE = '/404';
 const ROUTES = [
@@ -50,7 +55,7 @@ const ROUTES = [
   '/signup',
   '/status',
   '/will-it-run',
-  '/pricing',
+  PRICING_ROUTE,
   '/contact',
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
@@ -60,7 +65,7 @@ const ROUTES = [
 /** Routes worth indexing. /login and /signup are prerendered so their link
  *  previews are right, but they are not search results. Docs are the opposite:
  *  they are most of the reason anyone would find this site through a search. */
-const INDEXABLE = ['/', '/status', '/will-it-run', '/pricing', ...DOC_ROUTES];
+const INDEXABLE = ['/', '/status', '/will-it-run', PRICING_ROUTE, ...DOC_ROUTES];
 
 const DIST = 'dist';
 const TEMPLATE = join(DIST, 'index.html');
@@ -75,7 +80,11 @@ const TEMPLATE = join(DIST, 'index.html');
  * is too easy to miss). `SITE_URL` in the environment still overrides for
  * previews and forks.
  */
-const SITE_URL = (process.env.SITE_URL ?? 'https://gregale.dev').replace(/\/$/, '');
+const PRODUCTION_URL = 'https://gregale.dev';
+const SITE_URL = (process.env.SITE_URL ?? PRODUCTION_URL).replace(/\/$/, '');
+const productionSite =
+  SITE_URL === PRODUCTION_URL &&
+  (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === 'production');
 
 /** Social preview card, if one has been added to `public/`. */
 const OG_IMAGE = 'og.png';
@@ -148,15 +157,26 @@ for (const route of ROUTES) {
       perRoute.push(`<meta name="twitter:image" content="${attr(image)}" />`);
     }
   }
-  // Points agents at the page's Markdown copy, written below.
+  // Only guides have Markdown copies. The API reference uses OpenAPI.
   const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
-  if (docSlug) {
+  if (DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
   }
   // The home page names the agent index, so an agent that starts at the site
   // root finds llms.txt without guessing the path.
   if (route === '/') {
     perRoute.push('<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />');
+    if (productionSite) {
+      for (const [name, value] of [
+        ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
+        ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
+      ]) {
+        if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
+      }
+    }
+  }
+  if (route === PRICING_ROUTE || route === PLAN_DOC_ROUTE) {
+    perRoute.push(`<link rel="alternate" type="application/json" href="${PRICING_FEED}" />`);
   }
   // Keeps a non-indexable page out of results without hiding it from the
   // unfurler, which ignores robots meta.
@@ -208,7 +228,7 @@ for (const route of ROUTES) {
   }
   // Pricing: one Offer per plan and the page's questions, both read from
   // the generated catalog the page itself renders.
-  if (route === '/pricing' && SITE_URL) {
+  if (route === PRICING_ROUTE && SITE_URL) {
     const ld = {
       '@context': 'https://schema.org',
       '@graph': [
@@ -278,14 +298,17 @@ for (const route of ROUTES) {
  * sitemap stale.
  * ------------------------------------------------------------------ */
 
-// The console is behind auth — a crawler following these gets a login screen
-// and nothing else, so keep them out of the index and out of the budget.
+// Named crawler groups take precedence over the wildcard, so apply the
+// private-route exclusions to each group. GPTBot has its own training policy.
 const robots = [
-  'User-agent: *',
-  'Disallow: /dashboard',
-  'Disallow: /onboarding',
-  'Allow: /',
-  ...(SITE_URL ? ['', `Sitemap: ${SITE_URL}/sitemap.xml`] : []),
+  ...['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'].flatMap((agent) => [
+    `User-agent: ${agent}`,
+    'Disallow: /dashboard',
+    'Disallow: /onboarding',
+    'Allow: /',
+    '',
+  ]),
+  ...(SITE_URL ? [`Sitemap: ${SITE_URL}/sitemap.xml`] : []),
   '',
 ].join('\n');
 
@@ -293,19 +316,31 @@ writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
 
 if (SITE_URL) {
-  const urls = INDEXABLE.map(
-    (route) => `  <url>\n    <loc>${absolute(route)}</loc>\n  </url>`
-  ).join('\n');
-
-  writeFileSync(
-    join(DIST, 'sitemap.xml'),
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
-      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`
-  );
+  writeFileSync(join(DIST, 'sitemap.xml'), sitemapXml(SITE_URL, INDEXABLE));
   console.log(`  wrote sitemap.xml (${INDEXABLE.length} urls)`);
 } else {
   console.log('  skipped sitemap.xml and canonical tags — set SITE_URL to emit them');
 }
+
+const pricing = {
+  source: absolute(PLAN_DOC_ROUTE),
+  billingInterval: 'month',
+  pricesExcludeTax: true,
+  currency: PLAN_CATALOG.currency,
+  plans: PLAN_CATALOG.plans.map((plan) => ({
+    ...plan,
+    computeOverage:
+      plan.name === 'Free'
+        ? { policy: 'hard-cap' }
+        : {
+            policy: 'metered',
+            pricePerGbRamHour: PLAN_CATALOG.overagePerGbHour,
+            subjectToSpendCap: true,
+          },
+  })),
+};
+writeFileSync(join(DIST, PRICING_FEED), JSON.stringify(pricing, null, 2) + '\n');
+console.log('  wrote pricing.json');
 
 /* ------------------------------------------------------------------ *
  * llms.txt, llms-full.txt and a Markdown copy of every docs page
@@ -333,6 +368,11 @@ writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
   `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length} Markdown docs pages`
 );
+
+if (productionSite && process.env.INDEXNOW_KEY) {
+  writeIndexNowKey(DIST, process.env.INDEXNOW_KEY);
+  console.log('  wrote IndexNow key file');
+}
 
 // The SSR bundle is a build artifact, not something to deploy.
 rmSync('dist-ssr', { recursive: true, force: true });
