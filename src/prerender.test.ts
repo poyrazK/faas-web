@@ -16,7 +16,7 @@ const PAGES = [
   {
     route: '/',
     file: 'dist/index.html',
-    title: 'Gregale — Deploy APIs and backends that scale to zero',
+    title: 'Gregale — Your whole backend on one platform, with safe releases',
   },
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },

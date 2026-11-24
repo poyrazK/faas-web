@@ -241,6 +241,13 @@ for (const route of ROUTES) {
           name: 'Gregale',
           url: `${SITE_URL}/`,
           logo: `${SITE_URL}/logo.png`,
+          // The organisation's own profiles, so search and AI answers tie
+          // them to this site rather than to the Mediterranean wind.
+          sameAs: [
+            'https://github.com/gregale-dev',
+            'https://www.linkedin.com/company/gregale/',
+            'https://www.producthunt.com/products/gregale',
+          ],
         },
         {
           '@type': 'WebSite',
@@ -258,8 +265,8 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Deploy an existing API without rewriting it. Gregale runs it in a Firecracker microVM, ' +
-            'scales it to zero, and runs your services and background work too.',
+            'Deploy APIs, jobs and workflows with one command. Each app gets its own Firecracker ' +
+            'microVM; releases go to a slice of traffic first and roll back on errors.',
           softwareHelp: `${SITE_URL}/docs`,
         },
         // The "A few practical questions" cards, from the same strings.
