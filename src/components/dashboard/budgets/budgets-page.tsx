@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MoreHoriz, Plus } from 'iconoir-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -113,8 +113,20 @@ function useDeleteFlow(subject: BudgetSubject, onDeleted: (budget: Budget) => vo
 }
 
 /** One subject's budgets (the account's or an organization's): create, list, and one in detail. */
-export function BudgetsBody({ subject }: { subject: BudgetSubject }) {
+export function BudgetsBody({
+  subject,
+  onSettled,
+}: {
+  subject: BudgetSubject;
+  /** Called once the list has answered, loaded or failed. */
+  onSettled?: () => void;
+}) {
   const budgets = useBudgets(subject, true);
+  const settled = !budgets.isPending;
+  useEffect(() => {
+    if (settled) onSettled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
   const [selected, setSelected] = useState<string | null>(null);
   // The create form is long, so it waits behind "New budget".
   const [creating, setCreating] = useState(false);
@@ -204,7 +216,7 @@ export function BudgetsBody({ subject }: { subject: BudgetSubject }) {
     },
   ];
 
-  const answer = budgets.data ? budgetsAnswer(list) : null;
+  const answer = budgets.data ? budgetsAnswer(list, { org: subject.kind === 'org' }) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -340,6 +352,15 @@ export function BudgetsSection() {
   const { capability } = useCapability('budgets');
   const workspace = useWorkspaceTarget();
   const { account } = useAuth();
+  // A #budgets link (the old Budgets page redirects here) lands on the section
+  // once its list has answered, not before the page above it has grown. Once
+  // per page: a workspace switch remounts the list, never this.
+  const scrolled = useRef(false);
+  const scrollOnce = () => {
+    if (scrolled.current || window.location.hash !== '#budgets') return;
+    scrolled.current = true;
+    document.getElementById('budgets')?.scrollIntoView({ block: 'start' });
+  };
   return (
     <section
       id="budgets"
@@ -363,6 +384,7 @@ export function BudgetsSection() {
         // (ADR-20261031211500); one that doesn't is told so by apid on save.
         <BudgetsBody
           key={`org:${workspace.org}`}
+          onSettled={scrollOnce}
           subject={{
             kind: 'org',
             slug: workspace.org,
@@ -371,7 +393,11 @@ export function BudgetsSection() {
           }}
         />
       ) : (
-        <BudgetsBody key="account" subject={{ kind: 'account', accountId: account?.id ?? '' }} />
+        <BudgetsBody
+          key="account"
+          subject={{ kind: 'account', accountId: account?.id ?? '' }}
+          onSettled={scrollOnce}
+        />
       )}
     </section>
   );

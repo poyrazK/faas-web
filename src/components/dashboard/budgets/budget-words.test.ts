@@ -85,3 +85,19 @@ describe('budgetsAnswer', () => {
     });
   });
 });
+
+describe('budgetsAnswer for an organization', () => {
+  it('never says “your” for the organization’s budgets', () => {
+    const org = { org: true };
+    for (const list of [
+      [],
+      [budget('a', { status: 'draft' })],
+      [budget('a', { status: 'draft' }), budget('b', { status: 'draft' })],
+      [budget('a', {})],
+    ]) {
+      const { sentence } = budgetsAnswer(list, org);
+      expect(sentence.replace('Nothing needs your attention.', '')).not.toMatch(/\byour\b/i);
+    }
+    expect(budgetsAnswer([], org).sentence).toMatch(/^This organization has no budgets yet\./);
+  });
+});

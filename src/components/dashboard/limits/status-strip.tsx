@@ -30,48 +30,64 @@ export function StatusStrip({
   /** False while another read the strip counts is still answering. */
   waitFor?: boolean;
 }) {
-  if (!data.settled || !waitFor)
-    return (
-      <div
-        role="status"
-        aria-label="Spending limits status"
-        className="flex flex-col gap-2 rounded-xl bg-muted/40 px-4 py-3"
-      >
-        <span className="sr-only">Checking your limits…</span>
-        <Skeleton className="h-3.5 w-40" />
-        <Skeleton className="h-3 w-2/3 max-w-md" />
-      </div>
-    );
-  const status = billStatus(alsoClose ? { ...data.facts, alsoClose } : data.facts);
-  const color = TONE_COLOR[status.tone];
+  const settled = data.settled && waitFor;
+  const status = settled
+    ? billStatus(alsoClose ? { ...data.facts, alsoClose } : data.facts)
+    : undefined;
+  const color = status ? TONE_COLOR[status.tone] : undefined;
+  // One live region for the strip's whole life: the settled sentence replaces
+  // the checking text inside it, so screen readers announce the answer. The
+  // action sits outside it, so it isn't read out with every change.
   return (
     <section
-      role="status"
-      aria-label="Spending limits status"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 ring-1"
-      style={{
-        background: `color-mix(in oklab, ${color} 10%, transparent)`,
-        borderColor: color,
-        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 25%, transparent)`,
-      }}
+      aria-label="Spending limits"
+      className={
+        status
+          ? 'flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 ring-1'
+          : 'flex flex-col gap-2 rounded-xl bg-muted/40 px-4 py-3'
+      }
+      style={
+        color
+          ? {
+              background: `color-mix(in oklab, ${color} 10%, transparent)`,
+              borderColor: color,
+              boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 25%, transparent)`,
+            }
+          : undefined
+      }
     >
-      <div className="min-w-0">
-        <p className="text-sm font-semibold" style={{ color }}>
-          {status.headline}
-        </p>
-        {status.detail && (
-          <p className="mt-0.5 text-xs leading-relaxed text-foreground/80">{status.detail}</p>
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label="Spending limits status"
+        className={status ? 'min-w-0' : 'flex flex-col gap-2'}
+      >
+        {status ? (
+          <>
+            <p className="text-sm font-semibold" style={{ color }}>
+              {status.headline}
+            </p>
+            {status.detail && (
+              <p className="mt-0.5 text-xs leading-relaxed text-foreground/80">{status.detail}</p>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="sr-only">Checking the limits…</span>
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-3 w-2/3 max-w-md" />
+          </>
         )}
       </div>
-      {status.action === 'plans' ? (
+      {status?.action === 'plans' ? (
         <Button asChild size="sm" variant="outline">
           <Link to="/dashboard/plans">{ACTION_LABEL.plans}</Link>
         </Button>
-      ) : status.action === 'storage' ? (
+      ) : status?.action === 'storage' ? (
         <Button asChild size="sm" variant="outline">
           <Link to="/dashboard/storage">{ACTION_LABEL.storage}</Link>
         </Button>
-      ) : status.action ? (
+      ) : status?.action ? (
         <Button
           size="sm"
           variant="outline"

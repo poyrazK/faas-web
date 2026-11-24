@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -219,7 +220,7 @@ describe('before the workspace is known', () => {
     }
     await show(<Strip />);
     const strip = screen.getByRole('status', { name: 'Spending limits status' });
-    expect(strip).toHaveTextContent('Checking your limits…');
+    expect(strip).toHaveTextContent('Checking the limits…');
     expect(strip.querySelector('.shimmer')).not.toBeNull();
   });
 });
@@ -306,7 +307,7 @@ describe('Your bill', () => {
     await userEvent.click(within(row('Egress')).getByRole('button', { name: 'Choose for later' }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent(
-      'Egress billing hasn’t started yet, so this saves your choice. Until it starts, apps still stop at 500 GiB. After that, egress above it is billed at $0.03 per GiB and counts toward your spend cap.'
+      'Egress billing hasn’t started yet, so this saves the choice. Until it starts, apps still stop at 500 GiB. After that, egress above it is billed at $0.03 per GiB and counts toward your spend cap.'
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save choice' }));
     expect(h.setEgress).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
@@ -380,5 +381,40 @@ describe('StatusStrip', () => {
     await show(<Stopped />);
     await userEvent.click(screen.getByRole('button', { name: 'Change cap' }));
     expect(onAction).toHaveBeenCalledWith('cap');
+  });
+});
+
+describe('leftovers', () => {
+  it('in a company workspace the bill is the organization’s, never “your”', async () => {
+    h.workspace.mockReturnValue({ org: 'acme', label: 'Acme', ready: true });
+    h.orgOverageCap.mockReturnValue(ok({ overage_cap_cents: 0 }));
+    h.orgEgress.mockReturnValue(ok(election({ included_gib: 2000, enabled: true })));
+    await show(<Bill />);
+    expect(screen.getByRole('heading', { name: 'Acme’s bill' })).toBeInTheDocument();
+    for (const name of ['Spend cap', 'Egress', 'Object storage'])
+      expect(row(name).textContent).not.toMatch(/\byour\b/i);
+  });
+
+  it('the strip keeps one live region, so the settled sentence is announced', async () => {
+    function Strip() {
+      const [, again] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => again((n) => n + 1)}>
+            Again
+          </button>
+          <StatusStrip data={useBillFacts()} onAction={vi.fn()} />
+        </>
+      );
+    }
+    h.overageCap.mockReturnValue({ ...ok(undefined), isPending: true, isSuccess: false });
+    render(withRouter(<Strip />));
+    const before = await screen.findByRole('status', { name: 'Spending limits status' });
+    expect(before).toHaveAttribute('aria-live', 'polite');
+    expect(before).toHaveTextContent('Checking the limits…');
+    h.overageCap.mockReturnValue(ok({ overage_cap_cents: 5000 }));
+    await userEvent.click(screen.getByRole('button', { name: 'Again' }));
+    await waitFor(() => expect(before).toHaveTextContent('Nothing on your bill is stopped'));
+    expect(screen.getByRole('status', { name: 'Spending limits status' })).toBe(before);
   });
 });

@@ -71,12 +71,16 @@ const day = (iso: string) =>
 
 /** The spend cap row's sentence. */
 export function capSentence(facts: BillFacts): string {
+  const org = facts.workspace === 'org';
   if (facts.workspace === 'personal' && facts.plan === 'free')
     return 'Free stops at its allowance, so there’s no overage to cap.';
   if (facts.cap.state !== 'ready') return '';
   const { capCents } = facts.cap;
   if (capCents === null) return 'No cap is set, so nothing stops overage.';
-  if (capCents === 0) return 'A $0 cap pauses every workload, even within your allowance.';
+  if (capCents === 0)
+    return org
+      ? 'A $0 cap pauses every workload, even within the organization’s allowance.'
+      : 'A $0 cap pauses every workload, even within your allowance.';
   return `Apps, jobs and databases stop at ${formatCents(capCents)} of overage.`;
 }
 
@@ -87,21 +91,28 @@ export function egressSentence(e: {
   electable?: boolean;
   includedGb?: number;
   priceMillicentsPerGib?: number;
+  /** A company workspace: the organization's plan and cap, never "your". */
+  org?: boolean;
 }): string {
-  const allowance = e.includedGb != null ? gib(e.includedGb) : 'your plan’s egress allowance';
+  const whose = e.org ? 'the' : 'your';
+  const allowance = e.includedGb != null ? gib(e.includedGb) : `${whose} plan’s egress allowance`;
   if (e.enabled && e.billingOff)
     return `Saved. Until egress billing starts, apps still stop at ${allowance}.`;
   if (e.enabled)
-    return `Pays ${e.priceMillicentsPerGib != null ? formatMillicentRate(e.priceMillicentsPerGib) : 'the egress rate'} per GiB beyond ${allowance}, counted toward your spend cap.`;
+    return `Pays ${e.priceMillicentsPerGib != null ? formatMillicentRate(e.priceMillicentsPerGib) : 'the egress rate'} per GiB beyond ${allowance}, counted toward ${whose} spend cap.`;
   if (e.electable === false) return `Apps stop at ${allowance}. Paid plans can pay beyond it.`;
   if (e.billingOff)
     return `Apps stop at ${allowance}. You can choose to pay beyond it now; it starts when egress billing does.`;
   return `Apps stop at ${allowance}. Or pay for egress beyond it.`;
 }
 
-const stopped = (detail: string, action?: BillStatus['action']): BillStatus => ({
+const stopped = (
+  detail: string,
+  action?: BillStatus['action'],
+  headline = 'Your apps are stopped'
+): BillStatus => ({
   tone: 'critical',
-  headline: 'Your apps are stopped',
+  headline,
   detail,
   ...(action ? { action } : {}),
 });
@@ -127,7 +138,8 @@ export function billStatus(facts: BillFacts): BillStatus {
       org
         ? 'This organization’s spend cap is $0, which pauses every workload.'
         : 'Your spend cap is $0, which pauses every workload.',
-      'cap'
+      'cap',
+      org ? 'Workloads are stopped' : undefined
     );
   if (
     personalCap &&
