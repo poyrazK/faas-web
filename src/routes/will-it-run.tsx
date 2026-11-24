@@ -178,9 +178,9 @@ function WillItRun() {
 /** Frameworks the build detects, per `content/docs/frameworks.md`. */
 const DETECTED_FRAMEWORKS: { name: string; doc?: string }[] = [
   { name: 'Express', doc: 'deploy-express' },
-  { name: 'NestJS' },
-  { name: 'Fastify' },
-  { name: 'Hono' },
+  { name: 'NestJS', doc: 'deploy-express' },
+  { name: 'Fastify', doc: 'deploy-express' },
+  { name: 'Hono', doc: 'deploy-express' },
   { name: 'FastAPI', doc: 'deploy-fastapi' },
   { name: 'Django', doc: 'deploy-django' },
   { name: 'Flask', doc: 'deploy-flask' },

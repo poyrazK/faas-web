@@ -1,4 +1,4 @@
-import type { CatalogPlan } from './plan-catalog-parser';
+import { formatCatalogPrice, type CatalogPlan } from './plan-catalog-parser.ts';
 
 /**
  * Question-and-answer copy shown on public pages, kept in plain TypeScript.
@@ -17,6 +17,7 @@ export interface FaqEntry {
 }
 
 interface Catalog {
+  currency: string;
   overagePerGbHour: number;
   plans: CatalogPlan[];
 }
@@ -45,13 +46,12 @@ export const LANDING_FAQ = [
   },
 ] as const satisfies readonly FaqEntry[];
 
-const usd = (amount: number) =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 0,
-  }).format(amount);
+/** The cheapest paid plan, by monthly price. Shared by the FAQ and the page's
+ * meta description so the two cannot quote different plans. */
+export function cheapestPaidPlan(catalog: Catalog): CatalogPlan {
+  const paid = catalog.plans.slice(1);
+  return paid.reduce((low, plan) => (plan.monthly < low.monthly ? plan : low), paid[0]);
+}
 
 /**
  * Pricing page questions. Every number is read from the generated plan
@@ -59,13 +59,14 @@ const usd = (amount: number) =>
  * figure in the copy or in the structured data.
  */
 export function pricingFaq(catalog: Catalog): FaqEntry[] {
-  const [free, ...paid] = catalog.plans;
-  const cheapest = paid.reduce((low, plan) => (plan.monthly < low.monthly ? plan : low), paid[0]);
+  const usd = (amount: number) => formatCatalogPrice(amount, catalog.currency);
+  const [free] = catalog.plans;
+  const cheapest = cheapestPaidPlan(catalog);
   return [
     {
       question: 'Is there a free plan?',
       answer:
-        `Yes. ${free.name} costs ${usd(free.monthly)} and runs ${free.deployedApps} deployed app ` +
+        `Yes. ${free.name} costs ${usd(free.monthly)} and runs ${free.deployedApps} deployed ${free.deployedApps === 1 ? 'app' : 'apps'} ` +
         `with ${free.ramMb} MB of RAM and ${free.includedGbHours} GB-RAM-hours of compute a month. ` +
         `It stops at its included allowance instead of billing overage, so it never charges you.`,
     },
@@ -121,6 +122,9 @@ export function faqJsonLd(entries: readonly FaqEntry[]) {
 export function pricingJsonLd(catalog: Catalog, siteUrl: string) {
   return {
     '@type': 'SoftwareApplication',
+    // Same node as the home page's, so the offers attach to one product.
+    '@id': `${siteUrl}/#software`,
+    publisher: { '@id': `${siteUrl}/#org` },
     name: 'Gregale',
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'Linux',
@@ -129,12 +133,12 @@ export function pricingJsonLd(catalog: Catalog, siteUrl: string) {
       '@type': 'Offer',
       name: plan.name,
       price: plan.monthly.toFixed(2),
-      priceCurrency: 'USD',
+      priceCurrency: catalog.currency,
       url: `${siteUrl}/pricing`,
       priceSpecification: {
         '@type': 'UnitPriceSpecification',
         price: plan.monthly.toFixed(2),
-        priceCurrency: 'USD',
+        priceCurrency: catalog.currency,
         unitCode: 'MON',
         valueAddedTaxIncluded: false,
       },

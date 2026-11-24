@@ -98,8 +98,7 @@ export function HeroHeadline() {
         <h1 className="block text-balance [font:inherit] [letter-spacing:inherit]">
           Next-generation cloud for{' '}
           <span className="sr-only">
-            APIs, services, background jobs, workflows, webhooks and MCP servers, deployed in
-            isolated microVMs that scale to zero.
+            APIs, services, background jobs, workflows, webhooks and MCP servers.
           </span>
         </h1>
         <span aria-hidden="true" className="hero-capability-slot">

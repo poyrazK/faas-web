@@ -187,6 +187,8 @@ for (const route of ROUTES) {
         },
         {
           '@type': 'SoftwareApplication',
+          '@id': `${SITE_URL}/#software`,
+          publisher: { '@id': `${SITE_URL}/#org` },
           name: 'Gregale',
           applicationCategory: 'DeveloperApplication',
           operatingSystem: 'Linux',

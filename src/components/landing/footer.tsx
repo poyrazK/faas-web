@@ -27,11 +27,11 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Product',
     links: [
-      { label: 'Deploy your API', href: '#deploy' },
-      { label: 'Features', href: '#why' },
+      { label: 'Deploy your API', href: '/#deploy' },
+      { label: 'Features', href: '/#why' },
       { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
-      { label: 'FAQ', href: '#questions' },
+      { label: 'FAQ', href: '/#questions' },
       ...(featureFlags.salesIntake
         ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
         : []),

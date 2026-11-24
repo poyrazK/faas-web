@@ -3,7 +3,7 @@ import { MotionConfig } from 'motion/react';
 import { Nav } from '@/components/landing/nav';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
-import { pricingFaq } from '@/lib/faq';
+import { cheapestPaidPlan, pricingFaq } from '@/lib/faq';
 import { FREE_PLAN, PLAN_CATALOG, formatPlanPrice } from '@/lib/plan-catalog';
 import { pageHead } from '@/lib/seo';
 
@@ -19,7 +19,7 @@ export const Route = createFileRoute('/pricing')({
     pageHead({
       title: 'Pricing',
       description:
-        `Gregale plans start free; paid plans from ${formatPlanPrice(PLAN_CATALOG.plans[1].monthly)} a month. ` +
+        `Gregale plans start free; paid plans from ${formatPlanPrice(cheapestPaidPlan(PLAN_CATALOG).monthly)} a month. ` +
         `Compute is billed per GB-RAM-hour at ${formatPlanPrice(PLAN_CATALOG.overagePerGbHour)} beyond each plan's allowance, with a spend cap.`,
     }),
   component: PricingPage,

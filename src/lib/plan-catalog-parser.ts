@@ -89,3 +89,16 @@ export function parsePlanCatalog(source: string): {
   }
   return { currency: 'USD', overagePerGbHour: Number(rate[1]), plans };
 }
+
+/** Formats a catalog price the way the plan columns show it. Lives here, not in
+ * `plan-catalog.ts`, because the prerender script loads this module with plain
+ * Node and cannot import that one's `?raw` source. en-US renders USD as a bare
+ * "$"; other English locales would write "US$". */
+export function formatCatalogPrice(amount: number, currency: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+  }).format(amount);
+}

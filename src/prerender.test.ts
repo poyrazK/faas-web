@@ -19,6 +19,7 @@ const PAGES = [
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },
   { route: '/status', file: 'dist/status/index.html', title: 'Status · Gregale' },
+  { route: '/pricing', file: 'dist/pricing/index.html', title: 'Pricing · Gregale' },
   {
     route: '/status/incidents/:id',
     file: 'dist/status/incidents/index.html',
@@ -30,6 +31,15 @@ const built = existsSync('dist/index.html');
 const describeBuilt = built ? describe : describe.skip;
 
 describeBuilt('prerendered pages', () => {
+  it('gives /pricing one Offer per plan and its FAQ as structured data', () => {
+    const html = readFileSync('dist/pricing/index.html', 'utf8');
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+    expect(json).toBeDefined();
+    const graph = JSON.parse(json!)['@graph'] as { '@type': string; offers?: unknown[] }[];
+    expect(graph.map((node) => node['@type'])).toEqual(['SoftwareApplication', 'FAQPage']);
+    expect(graph[0].offers?.length).toBeGreaterThan(0);
+  });
+
   it('links the DPA to the legal pages on the current origin', () => {
     const html = readFileSync('dist/docs/dpa/index.html', 'utf8');
     expect(html).toContain('href="/terms"');
