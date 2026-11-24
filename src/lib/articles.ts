@@ -15,6 +15,8 @@ interface Article {
   publishedOn: string;
   updatedOn: string;
   faq: readonly FaqEntry[];
+  /** For a roundup of one vendor's alternatives: that vendor's /vs slug. */
+  alternativesTo?: string;
 }
 
 export const ARTICLES_TITLE = 'Articles';
@@ -95,6 +97,110 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: 'railway-alternatives',
+    alternativesTo: 'railway',
+    title: 'Railway alternatives in 2026',
+    summary:
+      'Render, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform, Heroku and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Railway.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'What is the best Railway alternative?',
+        answer:
+          'It depends on why you are leaving. Render is the closest like-for-like move, Fly.io suits apps that must run in many regions, Google Cloud Run suits teams already on Google Cloud, and Gregale suits small teams that want gradual releases with automatic rollback, apps that stop billing when idle, and a fixed plan with a spend cap.',
+      },
+      {
+        question: 'Which Railway alternative has a free plan?',
+        answer:
+          'Gregale, Render, Fly.io, Northflank and Google Cloud Run all have a free option. Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month. DigitalOcean App Platform is free for static sites only, and Heroku has no free plan.',
+      },
+      {
+        question: 'Is there a Railway alternative with automatic rollback?',
+        answer:
+          'Gregale sends every production release to 1%, then 10%, 50% and 100% of traffic and rolls it back on its own if the new version returns more 5xx errors, on every plan (in beta). Render, Railway and Heroku switch all traffic to a healthy new version and leave rollback to you.',
+      },
+    ],
+  },
+  {
+    slug: 'heroku-alternatives',
+    alternativesTo: 'heroku',
+    title: 'Heroku alternatives in 2026',
+    summary:
+      'Render, Railway, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Heroku.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'What is the best Heroku alternative now that Heroku is in sustaining mode?',
+        answer:
+          'Render is the closest match to the Heroku model. Railway suits teams that want several databases in one click, Fly.io suits apps that must run in many regions, and Gregale suits small teams that want the Heroku workflow (it reads your Procfile) with gradual releases, automatic rollback and apps that stop billing when idle.',
+      },
+      {
+        question: 'Can I move a Heroku app to Gregale without code changes?',
+        answer:
+          'Usually, yes. Gregale reads the same `Procfile`, including its release command, builds Node, Python and Go from source without a Dockerfile, and takes config vars as environment variables and secrets. Heroku Scheduler jobs become crons and worker dynos become background services.',
+      },
+      {
+        question: 'Which Heroku alternative has a free plan?',
+        answer:
+          'Gregale, Render, Railway, Fly.io, Northflank and Google Cloud Run all have a free option. Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month. Heroku itself has no free plan: its cheapest option is the $5 Eco plan, which sleeps after 30 minutes idle.',
+      },
+    ],
+  },
+  {
+    slug: 'render-alternatives',
+    alternativesTo: 'render',
+    title: 'Render alternatives in 2026',
+    summary:
+      'Railway, Fly.io, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Render.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'What is the best Render alternative?',
+        answer:
+          'It depends on what you need. Railway suits teams that want several databases in one click, Fly.io suits apps that must run in many regions, Google Cloud Run suits teams already on Google Cloud, and Gregale suits small teams that want paid apps to stop billing when idle and releases that roll back on their own.',
+      },
+      {
+        question: 'Which Render alternative does not charge for idle apps?',
+        answer:
+          'On Gregale an idle app pauses about a second after its last request and is not billed while paused, on every plan. Google Cloud Run with request-based billing charges only while a service handles requests. Fly.io Machines can stop when idle and then bill only their root filesystem. Render paid instances run, and bill, all the time.',
+      },
+      {
+        question: 'Is there a Render alternative with automatic rollback?',
+        answer:
+          'Gregale sends every production release to 1%, then 10%, 50% and 100% of traffic and rolls it back on its own if the new version returns more 5xx errors, on every plan (in beta). Render, Railway and Heroku switch all traffic to a healthy new version and leave rollback to you.',
+      },
+    ],
+  },
+  {
+    slug: 'flyio-alternatives',
+    alternativesTo: 'fly',
+    title: 'Fly.io alternatives in 2026',
+    summary:
+      'Render, Railway, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Fly.io.',
+    publishedOn: '2026-11-24',
+    updatedOn: '2026-11-24',
+    faq: [
+      {
+        question: 'What is the best Fly.io alternative?',
+        answer:
+          'Render and Railway suit teams that want Git deploys without infrastructure configuration, Google Cloud Run suits apps that need many regions, and Gregale suits small teams that want Firecracker isolation without managing Machines, with gradual releases and automatic rollback.',
+      },
+      {
+        question: 'Is there a Fly.io alternative that also uses Firecracker microVMs?',
+        answer:
+          'Yes. Gregale runs every app instance in its own Firecracker microVM, like Fly.io Machines, but manages the instances for you and pauses idle apps automatically. It runs in one region today, where Fly.io runs in many.',
+      },
+      {
+        question: 'Can I move a Fly.io app to Gregale?',
+        answer:
+          'Usually. If your app builds from a Dockerfile, Gregale can run that image. Apps that rely on a Fly.io volume need their files moved to managed PostgreSQL or object storage, because Gregale instances have no durable local disk.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -105,7 +211,14 @@ export function plainFaq(entries: readonly FaqEntry[]): FaqEntry[] {
 const CANARY_LINK = `[Canary deploys with automatic rollback](/articles/${CANARY_SLUG}) explains the default rollout and what rolls a release back, and compares it with other platforms.`;
 const MICROVM_LINK = `[A microVM for every app](/articles/${MICROVM_SLUG}) explains what each app's microVM isolates, and compares it with other platforms.`;
 
+const HEROKU_ALTERNATIVES_LINK =
+  '[Heroku alternatives in 2026](/articles/heroku-alternatives) compares the main platforms people move to from Heroku.';
+const RENDER_ALTERNATIVES_LINK =
+  '[Render alternatives in 2026](/articles/render-alternatives) compares the main platforms people move to from Render.';
+
 const RELATED_ARTICLES: Record<string, string> = {
+  'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
+  'migrate-from-render': RENDER_ALTERNATIVES_LINK,
   rollouts: CANARY_LINK,
   releases: CANARY_LINK,
   'release-controls': CANARY_LINK,
@@ -113,6 +226,14 @@ const RELATED_ARTICLES: Record<string, string> = {
   compliance: MICROVM_LINK,
   'container-compatibility': MICROVM_LINK,
 };
+
+/** Answer articles: how Gregale works, without the vendor roundups. */
+export const ANSWER_ARTICLES = ARTICLES.filter((article) => !article.alternativesTo);
+
+/** The roundup of a vendor's alternatives, by that vendor's /vs slug. */
+export function alternativesArticle(comparisonSlug: string): Article | undefined {
+  return ARTICLES.find((article) => article.alternativesTo === comparisonSlug);
+}
 
 export function withRelatedArticles(slug: string, source: string): string {
   const related = RELATED_ARTICLES[slug];
