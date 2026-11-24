@@ -30,6 +30,7 @@ import { sitemapXml } from './sitemap.mjs';
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
 const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE } =
   await import('../src/lib/research.ts');
+const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
 // The API reference is derived from the vendored spec the same way: one page
@@ -53,6 +54,8 @@ const RESEARCH_BY_ROUTE = new Map(
   RESEARCH_PUBLICATIONS.map((publication) => [`/research/${publication.slug}`, publication])
 );
 const RESEARCH_ROUTES = ['/research', ...RESEARCH_BY_ROUTE.keys()];
+const ARTICLE_BY_ROUTE = new Map(ARTICLES.map((article) => [`/articles/${article.slug}`, article]));
+const ARTICLE_ROUTES = ['/articles', ...ARTICLE_BY_ROUTE.keys()];
 
 const PRICING_ROUTE = '/pricing';
 const PLAN_DOC_ROUTE = '/docs/plans';
@@ -72,6 +75,7 @@ const ROUTES = [
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,
   ...RESEARCH_ROUTES,
+  ...ARTICLE_ROUTES,
 ];
 
 /** Routes worth indexing. /login and /signup are prerendered so their link
@@ -85,6 +89,7 @@ const INDEXABLE = [
   ...COMPARE_ROUTES,
   ...DOC_ROUTES,
   ...RESEARCH_ROUTES,
+  ...ARTICLE_ROUTES,
 ];
 
 const DIST = 'dist';
@@ -200,6 +205,35 @@ for (const route of ROUTES) {
         },
         publisher: { '@id': `${SITE_URL}/#org` },
         isPartOf: { '@type': 'WebSite', name: RESEARCH_TITLE, url: absolute('/research') },
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+    }
+  }
+  // Articles: the article itself and its questions, from the same registry
+  // the page renders, so the FAQ in the structured data matches the page.
+  const article = ARTICLE_BY_ROUTE.get(route);
+  if (article) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+    if (SITE_URL) {
+      const ld = {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'TechArticle',
+            '@id': `${absolute(route)}#article`,
+            headline: article.title,
+            description: article.summary,
+            datePublished: article.publishedOn,
+            dateModified: article.updatedOn,
+            mainEntityOfPage: absolute(route),
+            author: { '@id': `${SITE_URL}/#org` },
+            publisher: { '@id': `${SITE_URL}/#org` },
+            isPartOf: { '@type': 'WebSite', name: ARTICLES_TITLE, url: absolute('/articles') },
+          },
+          { ...faqJsonLd(plainFaq(article.faq)), '@id': `${absolute(route)}#faq` },
+        ],
       };
       perRoute.push(
         `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
@@ -442,6 +476,23 @@ const researchPages = [...RESEARCH_BY_ROUTE].map(([route, publication]) => {
   return page;
 });
 
+const articlePages = [...ARTICLE_BY_ROUTE].map(([route, entry]) => {
+  const path = `articles/${entry.slug}.md`;
+  const body = readFileSync(join('content', path), 'utf8');
+  const faq = entry.faq.map((item) => `### ${item.question}\n\n${item.answer}`).join('\n\n');
+  const page = [
+    `# ${entry.title}`,
+    `Gregale · Updated ${entry.updatedOn}`,
+    entry.summary,
+    absoluteLinks(body, path, SITE_URL).trim(),
+    `## Questions\n\n${faq}`,
+    `Canonical URL: ${absolute(route)}`,
+    '',
+  ].join('\n\n');
+  writeFileSync(join(DIST, path), page);
+  return page;
+});
+
 // Package the published inputs, with a directory prefix so the archive
 // can be extracted anywhere without overwriting unrelated files.
 const fastapiReproductionFiles = [
@@ -473,11 +524,11 @@ execFileSync(
 
 writeFileSync(
   join(DIST, 'llms-full.txt'),
-  llmsFull(llmsIntro, [...markdownPages, ...researchPages])
+  llmsFull(llmsIntro, [...markdownPages, ...researchPages, ...articlePages])
 );
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length} Markdown pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {
@@ -487,7 +538,7 @@ if (productionSite && process.env.INDEXNOW_KEY) {
   if (/^[a-f0-9]{40}$/.test(commit ?? '')) {
     writeFileSync(
       join(DIST, 'indexnow-research.json'),
-      JSON.stringify({ commit, paths: RESEARCH_ROUTES }) + '\n',
+      JSON.stringify({ commit, paths: [...RESEARCH_ROUTES, ...ARTICLE_ROUTES] }) + '\n',
       { flag: 'wx' }
     );
   }

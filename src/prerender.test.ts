@@ -194,6 +194,38 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
   });
 
+  it('publishes each article as answer-first HTML with matching FAQ data', () => {
+    const cases = [
+      { slug: 'canary-deploys', doc: 'rollouts', answer: 'every production release is a canary' },
+      { slug: 'microvm-isolation', doc: 'security', answer: 'in its own Firecracker microVM' },
+    ];
+    for (const { slug, doc, answer } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+      const questions = faq.mainEntity.map((entry: { name: string }) => entry.name);
+
+      expect(html).toContain(answer);
+      expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+      expect(html).toContain(`type="text/markdown" href="${route}.md"`);
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-24' });
+      expect(questions.length).toBeGreaterThan(0);
+      for (const question of questions) expect(html).toContain(question.replaceAll("'", '&#x27;'));
+      expect(JSON.stringify(faq)).not.toContain('`');
+      for (const page of ['articles', 'vs/railway', `docs/${doc}`]) {
+        expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+      }
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        `<loc>https://gregale.dev${route}</loc>`
+      );
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+      expect(readFileSync(`dist${route}.md`, 'utf8')).toContain(questions[0]);
+    }
+    expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/articles"');
+  });
+
   it('offers a complete copy of the FastAPI study inputs in one download', () => {
     const slug = 'intermittent-fastapi-cost-2026-11-24';
     const route = `/research/${slug}`;
