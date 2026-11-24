@@ -47,7 +47,7 @@ printf '%s\n' "$ALERT_SECRET" | gregale alert preset enable stored_workflow_back
 ```
 
 Use `workflow_due_age_seconds` for a custom threshold in seconds. Inspect
-[stored workflow health](stored-workflow-authoring.md#inspect-stored-workflow-health) and run
+[stored workflow health](stored-workflow-operations.md#inspect-stored-workflow-health) and run
 history to find waiting reasons. The preset does not enable itself for
 existing apps; add it to each app that needs it.
 
@@ -357,6 +357,21 @@ signal and reason. Both rules are notification-only and accept windows `5m`,
 held by route health" create them with `gt 0` over 15 minutes. Each needs its
 feature released for the account: production route monitoring for incidents,
 the route health canary guard for holds.
+
+## Out-of-memory kills
+
+`oom_kills` counts the app's instances the kernel killed for running out of
+memory within the window: the kills `gregale debug status` lists. One kill now
+and then can be a traffic spike; repeated kills mean the app needs more memory
+than its plan gives it, and requests fail while instances restart.
+
+```bash
+gregale alert create --app shop --name "Out of memory" \
+  --metric oom_kills --comparison gt --threshold 0 --window-spec 1h \
+  --channel OPS_EMAIL_ID
+```
+
+The rule needs an app and accepts every alert window and action.
 
 ## AI budget alerts
 
