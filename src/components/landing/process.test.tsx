@@ -11,7 +11,8 @@ describe('Process', () => {
       await screen.findByRole('heading', { name: 'From repository to running API.' })
     ).toBeInTheDocument();
     expect(screen.getByText(/Gregale fetches the code, detects the runtime/)).toBeInTheDocument();
-    expect(screen.getByText('Example data')).toBeInTheDocument();
+    expect(screen.queryByText('Example data')).toBeNull();
+    expect(screen.queryByText(/point Gregale at a repository/)).toBeNull();
   });
 
   it('links hosting capabilities to their published guides', async () => {
@@ -28,6 +29,18 @@ describe('Process', () => {
       'agents',
     ])
       expect(hrefs).toContain(`/docs/${slug}`);
+  });
+
+  it('gives every guide link a drawn icon, and the agents link the three agent marks', async () => {
+    render(withRouter(<Process />));
+    const nav = await screen.findByRole('navigation', { name: 'Deploy guides' });
+    const links = within(nav).getAllByRole('link');
+    for (const link of links) expect(link.querySelector('svg')).not.toBeNull();
+    const agents = within(nav).getByRole('link', { name: /Use Gregale from coding agents/ });
+    expect(agents.querySelectorAll('[data-mark]')).toHaveLength(3);
+    expect(
+      [...agents.querySelectorAll('[data-mark]')].map((m) => m.getAttribute('data-mark'))
+    ).toEqual(['claude', 'openai', 'gemini']);
   });
 });
 
