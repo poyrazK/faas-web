@@ -2,7 +2,12 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DOC_ENTRIES } from './docs-manifest';
-import { INSTALL_COMMAND, RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims';
+import {
+  INSTALL_COMMAND,
+  PLATFORM_AVAILABILITY,
+  RESTORE_CONTEXT,
+  RESTORE_TARGET,
+} from './platform-claims';
 
 /**
  * The public copy that must not drift, enforced.
@@ -75,5 +80,33 @@ describe('llms.txt', () => {
   it('is generated at build rather than committed', () => {
     // A committed copy is a second home for every claim above.
     expect(existsSync(resolve('public/llms.txt'))).toBe(false);
+  });
+});
+
+describe('platform availability', () => {
+  // The homepage's one availability sentence names four capabilities; each
+  // must carry the maturity faas's catalog gives it, so a catalog pull that
+  // promotes one fails here instead of leaving the homepage behind.
+  const catalog = (
+    JSON.parse(readFileSync(resolve('content/capabilities/catalog.json'), 'utf8')) as {
+      capabilities: { id: string; maturity: string }[];
+    }
+  ).capabilities;
+  const WORDS: Record<string, string> = {
+    ga: 'generally available',
+    beta: 'in beta',
+    preview: 'in preview',
+  };
+  it.each([
+    ['Hosting', 'apps'],
+    ['PR previews', 'pr-previews'],
+    ['MCP hosting', 'mcp-hosting'],
+    ['isolated runs', 'disposable-runs'],
+  ])('says %s is as mature as the catalog says', (name, id) => {
+    const maturity = catalog.find((c) => c.id === id)?.maturity ?? '';
+    const sentence =
+      PLATFORM_AVAILABILITY.split('. ').find((s) => s.toLowerCase().includes(name.toLowerCase())) ??
+      '';
+    expect(sentence, `${name} (${id} is ${maturity})`).toContain(WORDS[maturity]);
   });
 });

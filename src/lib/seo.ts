@@ -11,9 +11,9 @@ import { SECTION_LABELS } from '@/components/dashboard/nav-config';
  */
 
 export const SITE_NAME = 'Gregale';
-export const SITE_TAGLINE = 'Deploy APIs and backends that scale to zero';
+export const SITE_TAGLINE = 'Your whole backend on one platform, with safe releases';
 export const SITE_DESCRIPTION =
-  'Deploy an existing API without rewriting it. Gregale runs it in a Firecracker microVM, scales it to zero, and runs your services and background work too.';
+  'Deploy APIs, jobs and workflows with one command. Each app gets its own Firecracker microVM; releases go to a slice of traffic first and roll back on errors.';
 
 /** Brand last, so the distinguishing half survives a truncated tab. */
 function withSiteName(title?: string): string {

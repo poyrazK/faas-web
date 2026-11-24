@@ -73,14 +73,14 @@ function gregaleFacts(catalog: Catalog) {
     partTimeFits: partTimeGbHours <= hobby.includedGbHours,
     rows: {
       free:
-        `${free.name}: ${usd(free.monthly)}, ${apps(free.deployedApps)} with ${free.ramMb} MB and ` +
+        `Gregale ${free.name}: ${usd(free.monthly)}, ${apps(free.deployedApps)} with ${free.ramMb} MB and ` +
         `${free.includedGbHours} GB-RAM-hours a month. It stops at the allowance rather than billing you.`,
       paid:
-        `${hobby.name}: ${usd(hobby.monthly)} a month for ${apps(hobby.deployedApps)} with ` +
+        `Gregale ${hobby.name}: ${usd(hobby.monthly)} a month for ${apps(hobby.deployedApps)} with ` +
         `${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours included.`,
       billing:
         `By memory and time (GB-RAM-hours), CPU included, and only while an instance is ` +
-        `running: paused and parked time is not billed. Beyond the plan's allowance, ` +
+        `running: paused and parked time is not billed. Beyond a Gregale plan's allowance, ` +
         `${usd(catalog.overagePerGbHour)} per GB-RAM-hour, up to a spend cap you set.`,
       idle:
         'About a second after its last request, an idle app pauses and stops being billed; the ' +
@@ -124,12 +124,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Free plan',
           gregale: g.rows.free,
-          them: 'No free plan. Eco dynos are $5 a month and sleep after 30 minutes idle.',
+          them: 'No free plan. Heroku Eco dynos are $5 a month and sleep after 30 minutes idle.',
         },
         {
           topic: 'Cheapest paid option',
           gregale: g.rows.paid,
-          them: 'Basic dyno: $7 a month, 0.5 GB, always on. Eco is cheaper but personal accounts only.',
+          them: 'Heroku Basic dyno: $7 a month, 0.5 GB, always on. Eco is cheaper but personal accounts only.',
         },
         {
           topic: 'How compute is billed',
@@ -230,12 +230,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Cheapest paid option',
           gregale: g.rows.paid,
-          them: 'Starter instance: $7 a month, 512 MB and 0.5 CPU, always on.',
+          them: 'Render Starter instance: $7 a month, 512 MB and 0.5 CPU, always on.',
         },
         {
           topic: 'How compute is billed',
           gregale: g.rows.billing,
-          them: 'A workspace plan (Hobby $0, Pro $25 a month) plus a monthly price per instance.',
+          them: 'A Render workspace plan (Hobby $0, Pro $25 a month) plus a monthly price per instance.',
         },
         {
           topic: 'Idle apps',
@@ -260,7 +260,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Local disk',
           gregale: g.rows.disk,
-          them: 'Persistent disks on paid services, $0.25 per GB a month.',
+          them: 'Render persistent disks on paid services, $0.25 per GB a month.',
         },
         {
           topic: 'Static sites',
@@ -329,18 +329,18 @@ export function comparisons(catalog: Catalog): Comparison[] {
           topic: 'Free plan',
           gregale: g.rows.free,
           them:
-            '$0 with $1 of usage a month. Services sleep after 5 to 10 minutes without outbound ' +
+            'Railway Free: $0 with $1 of usage a month. Services sleep after 5 to 10 minutes without outbound ' +
             'traffic. Up to 1 vCPU and 0.5 GB per service.',
         },
         {
           topic: 'Cheapest paid option',
           gregale: g.rows.paid,
-          them: 'Hobby: $5 a month, which includes $5 of usage.',
+          them: 'Railway Hobby: $5 a month, which includes $5 of usage.',
         },
         {
           topic: 'How compute is billed',
           gregale: g.rows.billing,
-          them: 'Usage by the second: memory $10 per GB a month, CPU $20 per vCPU a month, egress $0.05 per GB.',
+          them: 'Railway bills usage by the second: memory $10 per GB a month, CPU $20 per vCPU a month, egress $0.05 per GB.',
         },
         {
           topic: 'Idle apps',
@@ -360,7 +360,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Local disk',
           gregale: g.rows.disk,
-          them: 'Volumes, $0.15 per GB a month.',
+          them: 'Railway volumes, $0.15 per GB a month.',
         },
       ],
       theyFit: [
@@ -424,20 +424,20 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Free plan',
           gregale: g.rows.free,
-          them: 'Free plan: $5 of usage every month, up to 3 Machines.',
+          them: 'Fly.io Free plan: $5 of usage every month, up to 3 Machines.',
         },
         {
           topic: 'Cheapest paid option',
           gregale: g.rows.paid,
           them:
-            'Pay As You Go, no monthly fee. A shared-cpu-1x Machine is $2.19 a month with 256 MB ' +
+            'Fly.io Pay As You Go, no monthly fee. A shared-cpu-1x Machine is $2.19 a month with 256 MB ' +
             'or $6.70 with 1 GB.',
         },
         {
           topic: 'How compute is billed',
           gregale: g.rows.billing,
           them:
-            'By the second while a Machine runs. A stopped Machine bills only its root ' +
+            'Fly.io bills by the second while a Machine runs. A stopped Machine bills only its root ' +
             'filesystem, $0.15 per GB a month.',
         },
         {
@@ -463,7 +463,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Local disk',
           gregale: g.rows.disk,
-          them: 'Volumes, $0.15 per GB a month.',
+          them: 'Fly.io volumes, $0.15 per GB a month.',
         },
         {
           topic: 'Regions',

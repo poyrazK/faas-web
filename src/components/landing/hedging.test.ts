@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const RETIRED = /join the beta|public beta|pricing coming soon|after the beta/i;
+const RETIRED =
+  /join the beta|public beta|pricing coming soon|after the beta|while the beta|beta is the recommended/i;
 const HEDGE = /in preview|non-critical|illustrative|limits apply|guide coming soon/i;
 const ALLOWED = new Set(['platform-claims.ts']);
 
@@ -16,6 +17,12 @@ const files = readdirSync(landing)
     resolve('src/lib/platform-claims.ts'),
     resolve('index.html'),
   ]);
+/** Hand-written public copy outside the landing page, held to the same retired list. */
+const copy = [
+  resolve('content/docs/getting-started.md'),
+  resolve('content/docs/install.md'),
+  resolve('content/llms-intro.md'),
+];
 
 /** Code comments explain intent and may use any word; only copy counts. */
 function stripComments(source: string): string {
@@ -32,6 +39,11 @@ describe('landing page hedging', () => {
     expect(offenders.map((f) => basename(f))).toEqual([]);
   });
 
+  it('nor do the hand-written docs and llms intro', () => {
+    const offenders = copy.filter((f) => RETIRED.test(readFileSync(f, 'utf8')));
+    expect(offenders.map((f) => basename(f))).toEqual([]);
+  });
+
   it('keeps the platform availability statement in its shared claim', () => {
     const offenders = files
       .filter((f) => !ALLOWED.has(basename(f)))
@@ -45,6 +57,7 @@ describe('landing page hedging', () => {
     const claims = stripComments(readFileSync(resolve('src/lib/platform-claims.ts'), 'utf8'));
     expect(hero).toContain('{PLATFORM_AVAILABILITY}');
     expect(claims).toMatch(/hosting and PR previews are generally available/i);
-    expect(claims).toMatch(/MCP hosting and isolated runs are in preview/i);
+    expect(claims).toMatch(/MCP hosting is in beta/i);
+    expect(claims).toMatch(/isolated runs are in preview/i);
   });
 });

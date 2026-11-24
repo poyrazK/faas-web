@@ -2,7 +2,7 @@
 
 Start with a small Node.js API, deploy it from your terminal, and verify the live URL. You can use your own repository afterward.
 
-> Hosting is in public beta. Start with a demo, side project, or another non-critical workload. Deployments consume your account’s compute and app allowance; check your [plan limits](/docs/plans) first.
+> This guide deploys a small demo you can delete afterwards. Deployments use your account’s compute and app allowance; check your [plan limits](/docs/plans) first.
 
 ## Before you start
 
@@ -19,7 +19,7 @@ npm install -g gregale@rc
 gregale login
 ```
 
-Every release is still a prerelease, so the command pins npm's `rc` tag; `latest` lags behind it. The [install guide](/docs/install) covers the curl installer, pinning a version, and what to do if npm skipped the platform package.
+Every CLI release is still a prerelease, so the command pins npm's `rc` tag; `latest` lags behind it. The [install guide](/docs/install) covers the curl installer, pinning a version, and what to do if npm skipped the platform package.
 
 Follow the login prompts. Keep credentials out of your repository and shared terminal output. For automation, use a scoped token rather than sharing your personal login.
 
