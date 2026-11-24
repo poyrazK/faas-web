@@ -87,14 +87,20 @@ export function HeroHeadline() {
 
   return (
     <div ref={ref} className="hero-headline w-full">
-      <h1
-        aria-label="Next-generation cloud for APIs, services, background jobs, workflows, webhooks, MCP servers, previews and isolated code runs."
+      {/* The heading is real text, not an aria-label over hidden spans: search
+          engines read element text and largely ignore aria-label, so the old
+          markup indexed as all eight rotating phrases run together. The
+          rotating slot is decoration beside the heading, hidden from both. */}
+      <div
         className="animate-hero-enter relative text-[40px] font-semibold leading-[1.04] tracking-[-0.055em] text-[#212121] sm:text-[58px] lg:text-[62px]"
         style={{ animationDelay: '0.06s' }}
       >
-        <span aria-hidden="true" className="block text-balance">
-          Next-generation cloud for
-        </span>
+        <h1 className="block text-balance [font:inherit] [letter-spacing:inherit]">
+          Next-generation cloud for{' '}
+          <span className="sr-only">
+            APIs, services, background jobs, workflows, webhooks and MCP servers.
+          </span>
+        </h1>
         <span aria-hidden="true" className="hero-capability-slot">
           {/* Measure every phrase at this exact viewport/font size, reserving the
               tallest one. Transitions cannot move the copy, actions or terminal. */}
@@ -110,7 +116,7 @@ export function HeroHeadline() {
             {capability.text}
           </span>
         </span>
-      </h1>
+      </div>
       {/* Keep a keyboard-accessible pause action without a visible control row. */}
       {!reduce && (
         <button

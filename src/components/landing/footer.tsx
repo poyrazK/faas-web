@@ -18,7 +18,7 @@ interface FooterLink {
   /** An app route rather than an anchor, so the router handles it. */
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
-  publicRoute?: '/status' | '/docs/api' | '/contact' | '/will-it-run';
+  publicRoute?: '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing';
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -27,11 +27,11 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Product',
     links: [
-      { label: 'Deploy your API', href: '#deploy' },
-      { label: 'Features', href: '#why' },
-      { label: 'Pricing', href: '#pricing' },
+      { label: 'Deploy your API', href: '/#deploy' },
+      { label: 'Features', href: '/#why' },
+      { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
-      { label: 'FAQ', href: '#questions' },
+      { label: 'FAQ', href: '/#questions' },
       ...(featureFlags.salesIntake
         ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
         : []),
