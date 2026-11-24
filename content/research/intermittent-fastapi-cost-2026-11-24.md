@@ -56,6 +56,12 @@ For example, a Hobby account that uses 250 GB-RAM-hours and has enough room unde
 
 ## Data and reproduction
 
+Download the [complete reproduction kit](/research/intermittent-fastapi-cost-2026-11-24/reproduction.tar.gz) and run this command in the extracted directory. It recomputes the results and compares them with the published summary using Python 3.11 or later and its standard library.
+
+```sh
+python3 analyze.py --verify
+```
+
 - [All request observations (CSV)](/research/intermittent-fastapi-cost-2026-11-24/traffic.csv)
 - [Two usage ledger captures (JSON)](/research/intermittent-fastapi-cost-2026-11-24/ledger.json)
 - [Instance state observations (CSV)](/research/intermittent-fastapi-cost-2026-11-24/states.csv)
@@ -65,13 +71,7 @@ For example, a Hobby account that uses 250 GB-RAM-hours and has enough room unde
 - [Offline analysis (Python)](/research/intermittent-fastapi-cost-2026-11-24/analyze.py)
 - Fixture files [main.py](/research/intermittent-fastapi-cost-2026-11-24/fixture/main.py), [requirements.txt](/research/intermittent-fastapi-cost-2026-11-24/fixture/requirements.txt), and [gregale.yaml](/research/intermittent-fastapi-cost-2026-11-24/fixture/gregale.yaml)
 
-Download the observations, pricing snapshot, and analysis script into one directory. The scripts use Python 3.11 or later and the standard library.
-
-```sh
-python3 analyze.py . pricing.json
-```
-
-To collect a fresh sample, place the fixture files in `fixture/` and set `fixture/.python-version` to `3.13`. Use a uniquely named disposable app and an authenticated CLI with access to the [route activity report](/docs/api/apps#getRouteAwake). Set `BENCHMARK_APP` to the unused slug.
+To collect a fresh sample, use the bundled `fixture/` directory, which pins Python 3.13. Use a uniquely named disposable app and an authenticated CLI with access to the [route activity report](/docs/api/apps#getRouteAwake). Set `BENCHMARK_APP` to the unused slug.
 
 ```sh
 gregale deploy --path fixture --source worktree --name "$BENCHMARK_APP" \
