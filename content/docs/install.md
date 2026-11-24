@@ -2,7 +2,7 @@
 
 The `gregale` command is how you deploy, inspect, and operate apps from a terminal. There are two install channels. Both verify what they download.
 
-> Every Gregale release so far is a prerelease. On npm, prereleases publish under the `rc` tag and `latest` is reserved for stable releases, so install `gregale@rc` while the beta is the recommended channel. The commands on this site switch to `latest` only after a stable release has shipped and been verified.
+> Every Gregale CLI release so far is a prerelease. On npm, prereleases publish under the `rc` tag and `latest` is reserved for stable releases, so install `gregale@rc`: it's the recommended channel until the first stable CLI release. The commands on this site switch to `latest` only after a stable release has shipped and been verified.
 
 ## Choose a channel
 
