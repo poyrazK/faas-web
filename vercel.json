@@ -203,7 +203,7 @@
       }
     },
     {
-      "src": "^/docs/([^/]+)/.+$",
+      "src": "^/docs/(?!api/)([^/]+)/.+$",
       "status": 308,
       "headers": {
         "Location": "/docs/$1"

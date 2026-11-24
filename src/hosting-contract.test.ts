@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
+import { buildApiReference } from '@/lib/api-reference/build';
 import { securityHeaders } from '@/lib/security-headers';
 
 interface Route {
@@ -74,6 +76,24 @@ describe('public hosting contract', () => {
     expect(docs404).toBeGreaterThan(filesystem);
     expect(spa).toBeGreaterThan(docs404);
     expect(config.routes[docs404]?.dest).toBe('/404.html');
+  });
+
+  it('serves every API reference page instead of collapsing it onto /docs/api', () => {
+    const filesystem = config.routes.findIndex((route) => 'handle' in route);
+    const edgeRule = (path: string) =>
+      config.routes
+        .slice(0, filesystem)
+        .find((route) => route.src && !route.continue && new RegExp(route.src).test(path));
+    const groups = buildApiReference(load(readFileSync('api/openapi.yaml', 'utf8')));
+
+    expect(groups.length).toBeGreaterThan(0);
+    for (const { id } of groups) expect(edgeRule(`/docs/api/${id}`)).toBeUndefined();
+    // Guide child paths still collapse onto their parent guide.
+    const child = edgeRule('/docs/build/limits');
+    expect(child?.status).toBe(308);
+    expect(
+      '/docs/build/limits'.replace(new RegExp(child?.src ?? ''), child?.headers?.Location ?? '')
+    ).toBe('/docs/build');
   });
 
   it('applies the browser security boundary to every route', () => {
