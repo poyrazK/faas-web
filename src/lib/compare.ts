@@ -79,11 +79,13 @@ function gregaleFacts(catalog: Catalog) {
         `${hobby.name}: ${usd(hobby.monthly)} a month for ${apps(hobby.deployedApps)} with ` +
         `${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours included.`,
       billing:
-        `By memory and time (GB-RAM-hours), CPU included. Beyond the plan's allowance, ` +
+        `By memory and time (GB-RAM-hours), CPU included, and only while an instance is ` +
+        `running: paused and parked time is not billed. Beyond the plan's allowance, ` +
         `${usd(catalog.overagePerGbHour)} per GB-RAM-hour, up to a spend cap you set.`,
       idle:
-        'Every app parks when idle, on every plan, and wakes from a snapshot on the next ' +
-        'request. Set min_instances to keep one warm.',
+        'About a second after its last request, an idle app pauses and stops being billed; the ' +
+        'next request resumes it in milliseconds. After 10 minutes it parks to a snapshot. An ' +
+        'app doing background work keeps running, and billed, while it works. On every plan.',
       isolation: 'A Firecracker microVM per instance.',
       postgres: `Managed PostgreSQL on ${hobby.name} and above, bound to the app as DATABASE_URL.`,
       previews: 'A preview environment per open pull request, on every plan including Free.',
@@ -101,13 +103,15 @@ function gregaleFacts(catalog: Catalog) {
 export function comparisons(catalog: Catalog): Comparison[] {
   const g = gregaleFacts(catalog);
   const costAnswer = (them: string) =>
-    `It depends on how much of the day your app is busy. Gregale bills memory only while an ` +
-    `app is awake. A ${g.hobbyRam} app that is busy about eight hours a day uses around ` +
+    `It depends on how much of the day your app is actually serving. Gregale stops billing ` +
+    `about a second after each request, so an API is billed for the time it spends ` +
+    `answering, not the time it is up. A ${g.hobbyRam} app that serves for about eight hours ` +
+    `a day uses around ` +
     `${g.partTimeGbHours} GB-RAM-hours a month, which ` +
     (g.partTimeFits
       ? `fits inside ${g.hobby.name}'s ${g.usd(g.hobby.monthly)} plan. `
       : `goes beyond ${g.hobby.name}'s allowance. `) +
-    `The same app awake all month costs about ${g.alwaysOn} on Gregale, and ${them}`;
+    `The same app serving around the clock costs about ${g.alwaysOn} on Gregale, and ${them}`;
 
   return [
     {
@@ -294,8 +298,10 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           question: 'Do Gregale apps spin down like Render free services?',
           answer:
-            'Yes, but on every plan, not only Free, and an app wakes from a snapshot of its ' +
-            'running state instead of starting from scratch.',
+            'Yes, and much sooner: on every plan, an idle app pauses about a second after its ' +
+            'last request and stops being billed, then resumes in milliseconds. Render free ' +
+            'services wait 15 minutes and take about a minute to spin back up. After 10 minutes ' +
+            'a Gregale app parks to a snapshot of its running state instead of shutting down.',
         },
         {
           question: 'What happens if a release breaks?',
@@ -388,8 +394,10 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           question: 'Do Gregale apps sleep like Railway free services?',
           answer:
-            'Yes, on every plan: an idle app parks and wakes from a snapshot on the next request. ' +
-            'Use min_instances to keep an app warm.',
+            'Yes, on every plan and sooner: an idle app pauses about a second after its last ' +
+            'request and stops being billed, then resumes in milliseconds; after 10 minutes it ' +
+            'parks to a snapshot. Paid Railway services stay on and billed. Use min_instances ' +
+            'to keep an app warm.',
         },
         {
           question: 'What happens if a release breaks?',

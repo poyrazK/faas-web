@@ -49,6 +49,12 @@ describe('comparison pages', () => {
         );
       });
 
+      it('says billing stops about a second after the last request', () => {
+        const idle = comparison.rows.find((r) => r.topic === 'Idle apps');
+        expect(idle?.gregale).toMatch(/About a second after its last request/);
+        expect(idle?.gregale).toMatch(/stops being billed/);
+      });
+
       it('links to a published docs page for the move', () => {
         expect(DOC_ENTRIES.some((entry) => entry.slug === comparison.migrateDoc)).toBe(true);
       });

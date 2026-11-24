@@ -43,7 +43,8 @@ function PricingPage() {
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
               {FREE_PLAN.name} runs a small API at no cost. Paid plans add apps, memory, preview
               environments and included compute, billed by RAM and time rather than per request.
-              Idle apps park and stop using compute until the next request wakes them.
+              Billing stops about a second after each request: an idle app pauses and resumes in
+              milliseconds when the next one arrives.
             </p>
           </header>
           <Pricing />

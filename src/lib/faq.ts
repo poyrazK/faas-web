@@ -80,9 +80,10 @@ export function pricingFaq(catalog: Catalog): FaqEntry[] {
     {
       question: 'Do I pay while my app is idle?',
       answer:
-        'An inactive app is parked after its plan’s idle timeout and stops using compute. The ' +
-        'next request wakes it from a snapshot, so an API with occasional traffic only uses ' +
-        'compute while it is serving.',
+        'No. About a second after its last request, an idle app pauses and billing stops; the ' +
+        'next request resumes it in milliseconds. After 10 minutes it parks to a snapshot. So ' +
+        'an API is billed for the time it spends answering requests, not the time it is up. ' +
+        'An app doing background work keeps running, and billed, while it works.',
     },
     {
       question: 'Are builds charged?',
