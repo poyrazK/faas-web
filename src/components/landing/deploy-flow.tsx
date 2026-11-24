@@ -1,5 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useReducedMotion } from 'motion/react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { MARKS, type MarkName } from './deploy-flow-marks';
 import './deploy-flow.css';
 
@@ -38,6 +44,13 @@ const LOOP = DEPLOY_STEPS.length + RUNNING + 5; // beats, with a rest at the end
 const FIRST_TICK = 6;
 const FINISHED = DEPLOY_STEPS.length + RUNNING;
 const PROMPT = 'Deploy my-api and give it a database.';
+
+const REDUCE = '(prefers-reduced-motion: reduce)';
+const subscribeMotion = (notify: () => void) => {
+  const query = window.matchMedia(REDUCE);
+  query.addEventListener('change', notify);
+  return () => query.removeEventListener('change', notify);
+};
 
 type StepState = 'pending' | 'running' | 'done';
 export const stepState = (tick: number, i: number): StepState =>
@@ -199,16 +212,29 @@ function useConnectors(stage: React.RefObject<HTMLDivElement | null>) {
       setPaths(next);
     };
     measure();
+    // Cards resize on their own (text wrapping, the card font arriving), so
+    // watch each of them as well as the stage.
     const ro = new ResizeObserver(measure);
     ro.observe(host);
-    return () => ro.disconnect();
+    host.querySelectorAll('[data-flow]').forEach((el) => ro.observe(el));
+    let live = true;
+    void document.fonts?.ready.then(() => live && measure());
+    return () => {
+      live = false;
+      ro.disconnect();
+    };
   }, [stage]);
   return paths;
 }
 
 export function DeployFlow() {
   const stage = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
+  // The server snapshot is "moving", so the prerendered frame is mid-deploy.
+  const reduce = useSyncExternalStore(
+    subscribeMotion,
+    () => window.matchMedia(REDUCE).matches,
+    () => false
+  );
   const [beat, setTick] = useState(FIRST_TICK);
   // Under reduced motion the picture rests on the finished deploy.
   const tick = reduce ? FINISHED : beat;
@@ -238,10 +264,12 @@ export function DeployFlow() {
       window.clearTimeout(type);
       beat = type = undefined;
     };
+    // Play while the deploy card itself is on screen: the stacked stage is far
+    // taller than a phone, so watching the whole stage would misfire.
     const io = new IntersectionObserver(([e]) => (e.isIntersecting ? start() : stop()), {
-      threshold: 0.2,
+      threshold: 0,
     });
-    io.observe(host);
+    io.observe(host.querySelector('[data-flow="deploy"]') ?? host);
     return () => {
       io.disconnect();
       stop();
@@ -343,7 +371,7 @@ export function DeployFlow() {
               icon={<path d="M6 9.5v-7M3.2 5.2 6 2.5l2.8 2.7" />}
             >
               <div className="deploy-flow-chip mt-4 flex h-10 items-center justify-between rounded-[9px] pl-[13px] pr-2 text-[14px]">
-                <span className="deploy-flow-caret">{PROMPT.slice(0, typed)}</span>
+                <span className="deploy-flow-caret min-w-0 truncate">{PROMPT.slice(0, typed)}</span>
                 <span className="grid size-6 place-items-center rounded-md bg-[var(--df-ink)] text-[var(--card)]">
                   <svg
                     width="11"
@@ -362,7 +390,7 @@ export function DeployFlow() {
           </div>
 
           {/* The deploy */}
-          <Card id="deploy" className="!p-[22px] lg:justify-self-center">
+          <Card id="deploy" className="p-[22px] lg:justify-self-center">
             <div className="flex items-center gap-3">
               <span className="deploy-flow-chip grid size-8 place-items-center rounded-lg">
                 <img src="/favicon.png" alt="" width={20} height={20} />

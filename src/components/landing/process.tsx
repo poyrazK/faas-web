@@ -30,7 +30,7 @@ export function Process() {
           You, or your agent, point Gregale at a repository. It builds, checks and serves it, and
           every pull request gets its own preview.
         </p>
-        <div className="mt-10 lg:-mx-12 lg:mt-12">
+        <div className="mt-10 lg:mt-12 xl:-mx-12">
           <DeployFlow />
         </div>
         <nav aria-label="Deploy guides" className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm">
