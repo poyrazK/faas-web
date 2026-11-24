@@ -5,6 +5,7 @@ import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
 import { cheapestPaidPlan, pricingFaq } from '@/lib/faq';
 import { FREE_PLAN, PLAN_CATALOG, formatPlanPrice } from '@/lib/plan-catalog';
+import { IDLE_BILLING_CLAIM } from '@/lib/platform-claims';
 import { pageHead } from '@/lib/seo';
 
 /**
@@ -43,7 +44,8 @@ function PricingPage() {
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
               {FREE_PLAN.name} runs a small API at no cost. Paid plans add apps, memory, preview
               environments and included compute, billed by RAM and time rather than per request.
-              Idle apps park and stop using compute until the next request wakes them.
+              {IDLE_BILLING_CLAIM} An idle app pauses and resumes in milliseconds when the next one
+              arrives.
             </p>
           </header>
           <Pricing />

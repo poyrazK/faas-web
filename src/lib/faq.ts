@@ -37,7 +37,7 @@ export const LANDING_FAQ = [
   {
     question: 'Does my application have to run all the time?',
     answer:
-      'With scale-to-zero enabled, eligible idle applications can stop consuming compute and wake when traffic returns. The first request waits for the wake. Long-running workers have different lifecycle behavior.',
+      'No. About a second after its last request, an idle app pauses and stops being billed, and the next request resumes it in milliseconds. After 10 minutes it parks to a snapshot, and a later request waits for the restore. Apps doing background work, and long-running workers, keep running while they work.',
   },
   {
     question: 'What does it cost?',
@@ -80,9 +80,10 @@ export function pricingFaq(catalog: Catalog): FaqEntry[] {
     {
       question: 'Do I pay while my app is idle?',
       answer:
-        'An inactive app is parked after its plan’s idle timeout and stops using compute. The ' +
-        'next request wakes it from a snapshot, so an API with occasional traffic only uses ' +
-        'compute while it is serving.',
+        'No. About a second after its last request, an idle app pauses and billing stops; the ' +
+        'next request resumes it in milliseconds. After 10 minutes it parks to a snapshot. So ' +
+        'an API is billed for the time it spends answering requests, not the time it is up. ' +
+        'An app doing background work keeps running, and billed, while it works.',
     },
     {
       question: 'Are builds charged?',

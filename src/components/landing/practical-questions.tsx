@@ -57,11 +57,11 @@ const QUESTIONS: readonly CardItem[] = [
     links: [{ label: 'How scaling to zero works', doc: 'scale-to-zero' }],
     panel: (
       <Panel
-        title="Optional scale-to-zero"
+        title="Billed only while serving"
         rows={[
-          'Eligible idle apps can park',
-          'The first request waits for wake',
-          'Workers have a different lifecycle',
+          'Paused about 1 s after a request',
+          'Unbilled while paused',
+          'Parked to a snapshot after 10 min',
         ]}
       />
     ),

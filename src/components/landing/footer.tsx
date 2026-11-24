@@ -19,6 +19,8 @@ interface FooterLink {
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
   publicRoute?: '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing' | '/research';
+  /** A comparison page: /vs/<slug>. */
+  compare?: string;
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -35,6 +37,15 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       ...(featureFlags.salesIntake
         ? [{ label: 'Contact sales', href: '/contact', publicRoute: '/contact' as const }]
         : []),
+    ],
+  },
+  {
+    title: 'Compare',
+    links: [
+      { label: 'Gregale vs Heroku', href: '/vs/heroku', compare: 'heroku' },
+      { label: 'Gregale vs Render', href: '/vs/render', compare: 'render' },
+      { label: 'Gregale vs Railway', href: '/vs/railway', compare: 'railway' },
+      { label: 'Gregale vs Fly.io', href: '/vs/fly', compare: 'fly' },
     ],
   },
   {
@@ -120,6 +131,14 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   if (link.doc === true) {
     return (
       <Link to="/docs" className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.compare) {
+    return (
+      <Link to="/vs/$slug" params={{ slug: link.compare }} className={LINK_CLASS}>
         {link.label}
       </Link>
     );
@@ -276,7 +295,7 @@ export function Footer() {
           band of headings rather than a brand block and some lists. No rules
           between columns: the whitespace does that work. */}
       <div className="relative mx-auto max-w-[88rem] px-4 sm:px-8">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-10 border-t border-border py-16 sm:grid-cols-3 lg:grid-cols-[15rem_repeat(6,minmax(0,1fr))] lg:gap-x-10">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-10 border-t border-border py-16 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-10 xl:grid-cols-[15rem_repeat(7,minmax(0,1fr))]">
           {/* Brand mark. Spans the full row on small screens so the columns
               below it start clean. */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:pr-10">

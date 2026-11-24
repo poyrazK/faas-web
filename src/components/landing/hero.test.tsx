@@ -2,7 +2,13 @@ import { render, screen } from '@testing-library/react';
 import { GlimmProvider } from 'glimm/react';
 import { describe, expect, it } from 'vitest';
 import { withRouter } from '@/test/router';
-import { RESTORE_CONTEXT, RESTORE_DOC_SLUG, RESTORE_TARGET } from '@/lib/platform-claims';
+import {
+  IDLE_BILLING_CLAIM,
+  IDLE_BILLING_DOC_SLUG,
+  RESTORE_CONTEXT,
+  RESTORE_DOC_SLUG,
+  RESTORE_TARGET,
+} from '@/lib/platform-claims';
 import { Hero } from './hero';
 
 const PALETTE = 'lagoon';
@@ -56,6 +62,12 @@ describe('Hero', () => {
     const claim = await screen.findByRole('link', { name: RESTORE_TARGET });
     const outside = (document.body.textContent ?? '').replace(claim.textContent ?? '', '');
     expect(outside).not.toMatch(/350\s*ms/);
+  });
+
+  it('states the idle billing claim, linked to how pausing works', async () => {
+    renderHero();
+    const claim = await screen.findByRole('link', { name: IDLE_BILLING_CLAIM });
+    expect(claim).toHaveAttribute('href', `/docs/${IDLE_BILLING_DOC_SLUG}`);
   });
 
   it('hides the light field from assistive tech', async () => {

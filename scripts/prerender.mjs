@@ -43,6 +43,9 @@ const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../s
 // Read the same generated catalog the pricing page renders, so the Offer
 // prices in the structured data cannot disagree with the visible columns.
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
+const { COMPARISON_SLUGS, comparisons } = await import('../src/lib/compare.ts');
+const COMPARE_ROUTES = COMPARISON_SLUGS.map((slug) => `/vs/${slug}`);
+const COMPARISONS = new Map(comparisons(PLAN_CATALOG).map((c) => [`/vs/${c.slug}`, c]));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
 const RESEARCH_BY_ROUTE = new Map(
   RESEARCH_PUBLICATIONS.map((publication) => [`/research/${publication.slug}`, publication])
@@ -61,6 +64,7 @@ const ROUTES = [
   '/status',
   '/will-it-run',
   PRICING_ROUTE,
+  ...COMPARE_ROUTES,
   '/contact',
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
@@ -76,6 +80,7 @@ const INDEXABLE = [
   '/status',
   '/will-it-run',
   PRICING_ROUTE,
+  ...COMPARE_ROUTES,
   ...DOC_ROUTES,
   ...RESEARCH_ROUTES,
 ];
@@ -272,6 +277,18 @@ for (const route of ROUTES) {
         pricingJsonLd(PLAN_CATALOG, SITE_URL),
         { ...faqJsonLd(pricingFaq(PLAN_CATALOG)), '@id': `${SITE_URL}/pricing#faq` },
       ],
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
+  }
+  // Comparison pages: their questions, from the same module the page renders.
+  const comparison = COMPARISONS.get(route);
+  if (comparison && SITE_URL) {
+    const ld = {
+      '@context': 'https://schema.org',
+      ...faqJsonLd(comparison.faq),
+      '@id': `${SITE_URL}${route}#faq`,
     };
     perRoute.push(
       `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`

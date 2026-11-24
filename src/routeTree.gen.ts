@@ -76,6 +76,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResearchIndexRouteImport } from './routes/research.index'
 import { Route as ResearchSlugRouteImport } from './routes/research.$slug'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as VsSlugRouteImport } from './routes/vs.$slug'
 import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
 import { Route as DashboardAgentsAgentIdRouteImport } from './routes/dashboard.agents.$agentId'
 import { Route as DashboardAgentsPolicyRouteImport } from './routes/dashboard.agents.policy'
@@ -434,6 +435,11 @@ const StatusIndexRoute = StatusIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StatusRoute,
 } as any)
+const VsSlugRoute = VsSlugRouteImport.update({
+  id: '/vs/$slug',
+  path: '/vs/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardAgentsIndexRoute = DashboardAgentsIndexRouteImport.update({
   id: '/agents/',
   path: '/agents/',
@@ -616,6 +622,7 @@ export interface FileRoutesByFullPath {
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/vs/$slug': typeof VsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -702,6 +709,7 @@ export interface FileRoutesByTo {
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/vs/$slug': typeof VsSlugRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/research': typeof ResearchIndexRoute
@@ -794,6 +802,7 @@ export interface FileRoutesById {
   '/docs/$slug': typeof DocsSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/vs/$slug': typeof VsSlugRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -887,6 +896,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/vs/$slug'
     | '/dashboard/'
     | '/docs/'
     | '/research/'
@@ -973,6 +983,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/vs/$slug'
     | '/dashboard'
     | '/docs'
     | '/research'
@@ -1064,6 +1075,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/vs/$slug'
     | '/dashboard/'
     | '/docs/'
     | '/research/'
@@ -1105,6 +1117,7 @@ export interface RootRouteChildren {
   StatusRoute: typeof StatusRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  VsSlugRoute: typeof VsSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1578,6 +1591,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
     }
+    '/vs/$slug': {
+      id: '/vs/$slug'
+      path: '/vs/$slug'
+      fullPath: '/vs/$slug'
+      preLoaderRoute: typeof VsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard/agents/': {
       id: '/dashboard/agents/'
       path: '/agents'
@@ -1959,6 +1979,7 @@ const rootRouteChildren: RootRouteChildren = {
   StatusRoute: StatusRouteWithChildren,
   WillItRunRoute: WillItRunRoute,
   InviteTokenRoute: InviteTokenRoute,
+  VsSlugRoute: VsSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
