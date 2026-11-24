@@ -290,6 +290,24 @@ export function useOutboundAIUsage(accountId: string, id: string, date: string, 
   });
 }
 
+/** Today's AI usage for each listed AI integration, in list order. */
+export function useOutboundAIUsages(accountId: string, ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: [...outboundKey(accountId), 'ai-usage', id, ''],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        unwrap(
+          api.GET('/v1/outbound/integrations/{integration}/ai-usage', {
+            params: { path: { integration: id }, query: {} },
+            signal,
+          })
+        ),
+      enabled: Boolean(accountId && id),
+      retry: retryPolicy,
+    })),
+  });
+}
+
 export function useOutboundAIAlerts(accountId: string, id: string, enabled = true) {
   return useQuery({
     queryKey: [...outboundKey(accountId), 'ai-alerts', id],
@@ -314,5 +332,45 @@ export function useOutboundAIRoutes(accountId: string, enabled = true) {
       (await unwrap(api.GET('/v1/outbound/ai-routes', { signal }))).items,
     enabled: Boolean(accountId && enabled),
     retry: retryPolicy,
+  });
+}
+
+export type AITagLimit = S['OutboundAITagLimit'];
+const tagLimitsKey = (accountId: string, id: string) =>
+  [...outboundKey(accountId), 'ai-tag-limits', id] as const;
+
+/** An AI integration's per-tag daily cost limits (needs session MFA). */
+export function useAITagLimits(accountId: string, id: string, enabled = true) {
+  return useQuery({
+    queryKey: tagLimitsKey(accountId, id),
+    queryFn: async ({ signal }) =>
+      (
+        await unwrap(
+          api.GET('/v1/outbound/integrations/{integration}/ai-tag-limits', {
+            params: { path: { integration: id } },
+            signal,
+          })
+        )
+      ).limits,
+    enabled: Boolean(accountId && id && enabled),
+    retry: retryPolicy,
+  });
+}
+
+/** Replaces the whole list; an empty list removes every limit. */
+export function useSetAITagLimits(accountId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    // apid answers 204, so the saved list is the one sent.
+    mutationFn: async (limits: AITagLimit[]) => {
+      await unwrap(
+        api.PUT('/v1/outbound/integrations/{integration}/ai-tag-limits', {
+          params: { path: { integration: id } },
+          body: { limits },
+        })
+      );
+      return limits;
+    },
+    onSuccess: (limits) => qc.setQueryData(tagLimitsKey(accountId, id), limits),
   });
 }

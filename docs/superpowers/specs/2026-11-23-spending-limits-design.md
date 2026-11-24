@@ -106,12 +106,16 @@ Shipped in slice 3 (`docs/superpowers/plans/2026-11-24-spending-limits-slice-3.m
 
 ### 4. Your customers
 
+Not built (2026-11-24): faas marks platform tenants, API consumers and API monetization `internal` (inventory rows 148–150), so these caps aren't customer capabilities yet.
+
 - Folded by default, and shown only when the `platform-tenants` capability is on or any app has API consumers.
 - **Tenants:** `GET /v1/account/platform-tenants`, then each tenant's `GET .../spend-cap` (`monthly_cap_millicents`, `amount_due_millicents`, `capped`). Set or clear with `PUT`/`DELETE`.
 - **Consumers:** consumer caps are per app, so the section has an app picker (`AppSelect`, as other per-app pages do), lists that app's consumers (`useConsumers`) with each one's `GET .../spend-cap`, and sets or clears with `PUT`/`DELETE`.
 - At the cap, faas answers that customer with 402 `consumer_spend_cap_reached` or `tenant_spend_cap_reached`. The sentence says so in plain words.
 
 ### 5. Integrations and AI
+
+Shipped in slice 5 (`docs/superpowers/plans/2026-11-24-spending-limits-slice-5.md`); app bindings stay on each app's Integrations tab, and a company workspace doesn't show the account's integrations.
 
 - Folded by default, and shown only when the `outbound-integrations` capability is on and at least one integration exists.
 - **Per integration**, from the list:
