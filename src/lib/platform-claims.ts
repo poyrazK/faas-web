@@ -23,6 +23,15 @@ export const INSTALL_DOC_SLUG = 'install';
 
 export const START_FREE_CTA = 'Start free';
 
+/**
+ * The idle ladder's billing effect (faas ADR-20261107122928; docs
+ * cold-wake.md "Paused between requests"): a request-serving instance pauses
+ * about a second after its last request and paused seconds are not billed.
+ * Live for every account since 2026-11-22.
+ */
+export const IDLE_BILLING_CLAIM = 'Billing stops about a second after each request.';
+export const IDLE_BILLING_DOC_SLUG = 'scale-to-zero';
+
 /** Shared by the home page and public agent documentation. */
 export const PLATFORM_AVAILABILITY =
   'Hosting and PR previews are generally available. MCP hosting and isolated runs are in preview.';

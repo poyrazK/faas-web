@@ -37,7 +37,7 @@ export const LANDING_FAQ = [
   {
     question: 'Does my application have to run all the time?',
     answer:
-      'With scale-to-zero enabled, eligible idle applications can stop consuming compute and wake when traffic returns. The first request waits for the wake. Long-running workers have different lifecycle behavior.',
+      'No. About a second after its last request, an idle app pauses and stops being billed, and the next request resumes it in milliseconds. After 10 minutes it parks to a snapshot, and a later request waits for the restore. Apps doing background work, and long-running workers, keep running while they work.',
   },
   {
     question: 'What does it cost?',

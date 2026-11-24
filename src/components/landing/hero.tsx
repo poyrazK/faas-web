@@ -3,7 +3,13 @@ import { Link } from '@tanstack/react-router';
 import { ArrowRight } from 'iconoir-react';
 import { SweepLink } from '@/components/sweep-link';
 import { RestoreTarget } from '@/components/restore-target';
-import { PLATFORM_AVAILABILITY, RESTORE_CONTEXT, START_FREE_CTA } from '@/lib/platform-claims';
+import {
+  IDLE_BILLING_CLAIM,
+  IDLE_BILLING_DOC_SLUG,
+  PLATFORM_AVAILABILITY,
+  RESTORE_CONTEXT,
+  START_FREE_CTA,
+} from '@/lib/platform-claims';
 import { DeployTerminal } from './deploy-terminal';
 import { EASE } from './reveal';
 import { LIQUID_PRESETS, LiquidField } from './liquid-field';
@@ -60,11 +66,19 @@ export function Hero() {
           <HeroHeadline />
 
           <p
-            className="animate-hero-enter relative mt-6 max-w-[30rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
+            className="animate-hero-enter relative mt-6 max-w-[34rem] text-pretty text-[15px] leading-[1.5] text-[#3d4a45] sm:text-[17px]"
             style={{ animationDelay: '0.12s' }}
           >
-            Deploy your API on Gregale. Bring services, background work and AI tools onto the same
-            platform as your product grows.
+            Deploy your API on Gregale and pay only while it serves.{' '}
+            <Link
+              to="/docs/$slug"
+              params={{ slug: IDLE_BILLING_DOC_SLUG }}
+              className="font-medium text-[#212121] underline decoration-brand/50 underline-offset-4 hover:decoration-brand"
+            >
+              {IDLE_BILLING_CLAIM}
+            </Link>{' '}
+            Bring services, background work and AI tools onto the same platform as your product
+            grows.
           </p>
 
           <CompatibilityEntry />
