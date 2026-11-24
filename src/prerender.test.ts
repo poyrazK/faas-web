@@ -226,6 +226,35 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/articles"');
   });
 
+  it('publishes each alternatives roundup and links it from its comparison page', () => {
+    const cases = [
+      { slug: 'railway-alternatives', vs: 'railway', doc: null },
+      { slug: 'heroku-alternatives', vs: 'heroku', doc: 'migrate-from-heroku' },
+      { slug: 'render-alternatives', vs: 'render', doc: 'migrate-from-render' },
+      { slug: 'flyio-alternatives', vs: 'fly', doc: null },
+    ];
+    for (const { slug, vs, doc } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(html).toContain('alternatives in 2026 are');
+      expect(html).toContain('Gregale publishes this page');
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-24' });
+      expect(faq.mainEntity.length).toBeGreaterThan(0);
+      for (const page of ['articles', `vs/${vs}`, ...(doc ? [`docs/${doc}`] : [])]) {
+        expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+      }
+      expect(html).toContain(`href="/vs/${vs}"`);
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        `<loc>https://gregale.dev${route}</loc>`
+      );
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
   it('offers a complete copy of the FastAPI study inputs in one download', () => {
     const slug = 'intermittent-fastapi-cost-2026-11-24';
     const route = `/research/${slug}`;

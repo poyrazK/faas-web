@@ -3,7 +3,7 @@ import { Nav } from '@/components/landing/nav';
 import { Footer } from '@/components/landing/footer';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
-import { ARTICLES } from '@/lib/articles';
+import { ANSWER_ARTICLES, alternativesArticle } from '@/lib/articles';
 import { COMPARISONS_CHECKED, comparisons, type Comparison } from '@/lib/compare';
 import { PLAN_CATALOG } from '@/lib/plan-catalog';
 import { START_FREE_CTA } from '@/lib/platform-claims';
@@ -42,6 +42,7 @@ export const Route = createFileRoute('/vs/$slug')({
 
 function ComparisonPage() {
   const comparison = Route.useLoaderData();
+  const roundup = alternativesArticle(comparison.slug);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <a href="#main" className="skip-link">
@@ -100,7 +101,7 @@ function ComparisonPage() {
             How Gregale works
           </h2>
           <ul className="mt-6 space-y-4">
-            {ARTICLES.map((article) => (
+            {ANSWER_ARTICLES.map((article) => (
               <li key={article.slug} className="max-w-3xl">
                 <Link
                   to="/articles/$slug"
@@ -115,6 +116,19 @@ function ComparisonPage() {
               </li>
             ))}
           </ul>
+          {roundup && (
+            <p className="mt-8 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Weighing more than two options?{' '}
+              <Link
+                to="/articles/$slug"
+                params={{ slug: roundup.slug }}
+                className="font-medium text-brand underline-offset-4 hover:underline"
+              >
+                {roundup.title}
+              </Link>{' '}
+              compares the main platforms people move to from {comparison.competitor}.
+            </p>
+          )}
         </section>
 
         <p className="mt-16 max-w-3xl text-xs leading-relaxed text-muted-foreground">

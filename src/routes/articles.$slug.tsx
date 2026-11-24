@@ -49,8 +49,9 @@ function ArticlePage() {
         </div>
       </header>
       {/* Comparison tables scroll on a phone rather than wrap a word per line,
-          like the table on the /vs pages. */}
-      <div className="[&_table]:min-w-[36rem]">
+          like the table on the /vs pages, and never split a word such as a
+          platform name across lines. */}
+      <div className="[&_table]:min-w-[36rem] [&_td]:[overflow-wrap:normal] [&_th]:[overflow-wrap:normal]">
         <Markdown source={body} />
       </div>
       <section aria-labelledby="faq-title" className="mt-12 border-t border-border pt-10">
