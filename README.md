@@ -801,7 +801,8 @@ The 1200×630 social card is `public/og.png`: the end card of the Gregale film
 (the logo, the name and the tagline over the harbour at dawn), rendered without
 grain from [gregale-film](https://github.com/jackthepunished/gregale-film).
 The next build with `SITE_URL` set includes the image in Open Graph and X
-metadata.
+metadata, at `og.png?v=<content hash>`: social sites cache a card by its image
+URL, so a changed PNG gets a new URL and every crawler fetches it fresh.
 
 `npm run og` redraws the older generated card (the logo, an editable headline
 and a cropped mint wind silhouette, from `scripts/og-image.mjs`) over that file.
