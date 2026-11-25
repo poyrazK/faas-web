@@ -102,6 +102,31 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: 'firecracker-snapshot-clones',
+    title: 'Restoring one Firecracker snapshot as many VMs: what breaks and how we fixed it',
+    summary:
+      'A snapshot copies everything that should be unique: network identity, kernel and in-process random state, and the clock. How each Gregale restore fixes them, and what it costs.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Why does every Gregale VM have the same IP address?',
+        answer:
+          "A snapshot freezes the guest's network configuration, so per-VM addresses would tie each snapshot to the VM that took it. Every guest is 10.0.0.2 inside its own network namespace, and the host side of that namespace is the instance's unique, routable address.",
+      },
+      {
+        question: "What happens if a restored VM can't confirm it reseeded?",
+        answer:
+          'The guest refuses to report ready, and Gregale cold-boots the app instead. A cold boot is slower, but two instances never share random state.',
+      },
+      {
+        question: 'Which runtimes get their in-process random generators reseeded?',
+        answer:
+          'Node, Python and Java processes get a preload or agent that reseeds their in-process generators on every restore. Every guest also gets fresh kernel entropy and a clock step before it serves traffic.',
+      },
+    ],
+  },
+  {
     slug: 'preview-environments',
     title: 'Preview environments for every pull request',
     summary:
