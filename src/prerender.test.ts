@@ -389,6 +389,41 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes each niche capability article with schema, feeds and doc cross-links', () => {
+    const cases = [
+      { slug: 'websockets-sse-scale-to-zero', doc: 'realtime' },
+      { slug: 'durable-inbound-webhooks-scale-to-zero', doc: 'inbound-webhooks' },
+      { slug: 'declarative-edge-response-cache', doc: 'cache' },
+      { slug: 'zero-secret-outbound-api-relay', doc: 'outbound-integrations' },
+      { slug: 'openapi-breaking-change-deploy-gate', doc: 'api-hosting-openapi' },
+    ];
+    const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    const feed = readFileSync('dist/feed.xml', 'utf8');
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+
+    for (const { slug, doc } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+      expect(html).toContain(`type="text/markdown" href="${route}.md"`);
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-26' });
+      expect(faq.mainEntity.length).toBeGreaterThan(0);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(existsSync(`dist${route}.md`)).toBe(true);
+      expect(articlesIndex).toContain(`href="${route}"`);
+      expect(sitemap).toContain(`<loc>https://gregale.dev${route}</loc>`);
+      expect(feed).toContain(`<id>https://gregale.dev${route}</id>`);
+      expect(llms).toContain(`https://gregale.dev${route}.md`);
+      expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
+      expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(`https://gregale.dev${route}`);
+    }
+  });
+
   it('publishes MCP server card and TechArticle + BreadcrumbList structured data on doc guides', () => {
     const serverCard = JSON.parse(readFileSync('dist/.well-known/mcp/server-card.json', 'utf8'));
     expect(serverCard).toMatchObject({

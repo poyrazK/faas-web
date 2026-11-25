@@ -40,6 +40,11 @@ const BEST_CLOUD_AGENTS_SLUG = 'best-cloud-for-ai-coding-agents';
 const CURSOR_SLUG = 'cursor-deploy-production-safely';
 const CODEX_SLUG = 'codex-deploy-production-safely';
 const GEMINI_CLI_SLUG = 'gemini-cli-deploy-production-safely';
+const REALTIME_SCALE_ZERO_SLUG = 'websockets-sse-scale-to-zero';
+const INBOUND_WEBHOOKS_SLUG = 'durable-inbound-webhooks-scale-to-zero';
+const EDGE_CACHE_SLUG = 'declarative-edge-response-cache';
+const OUTBOUND_RELAY_SLUG = 'zero-secret-outbound-api-relay';
+const OPENAPI_GATE_SLUG = 'openapi-breaking-change-deploy-gate';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -807,6 +812,132 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: REALTIME_SCALE_ZERO_SLUG,
+    title: 'Hold WebSocket and SSE connections while your backend scales to zero',
+    summary:
+      'Gregale managed realtime holds client WebSocket and SSE sockets plus heartbeats at the edge while your backend microVM parks at zero billed compute, waking only on client messages or publishes. Core endpoints are in beta on every paid plan; resumable v2, history and channel rules are in per-account preview.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Can WebSocket and SSE clients stay connected while the backend scales to zero?',
+        answer:
+          'Yes. With managed realtime (in beta on paid plans), Gregale holds the client WebSocket or SSE socket and answers heartbeats at the edge while your app parks unbilled. Client frames invoke your `/realtime/message` callback, and `gregale realtime publish` pushes updates without keeping the app pinned open.',
+      },
+      {
+        question: 'How is managed realtime priced on Gregale?',
+        answer:
+          'There is no separate per-connection surcharge. Core realtime is included on Hobby (`200` concurrent connections), Pro (`1,000`), and Scale (`5,000`); delivered messages count toward monthly app egress.',
+      },
+      {
+        question: 'When should I use self-managed WebSockets instead of managed realtime?',
+        answer:
+          'Use `gregale app <slug> --websocket-enabled` for constant, high-frequency streams such as real-time games or audio signaling where the microVM needs to stay running anyway, or if you need GA retained history before your account has the resumable preview enabled.',
+      },
+    ],
+  },
+  {
+    slug: INBOUND_WEBHOOKS_SLUG,
+    title: 'Receive Stripe and signed webhooks while scaled to zero',
+    summary:
+      'Gregale verifies Stripe and HMAC-SHA256 webhooks at the edge while your app is parked, persists them to a durable invocation queue, immediately responds `202 Accepted`, and delivers them with async retries and dead-letter replay on Hobby, Pro and Scale.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale handle Stripe webhooks when my backend is scaled to zero?',
+        answer:
+          'On Hobby, Pro and Scale, Gregale verifies the Stripe signature at the edge before waking your app, records the durable receipt with event-ID deduplication, answers `202 Accepted` immediately, and then wakes the app to POST the payload to `delivery_path`.',
+      },
+      {
+        question: 'Why does Gregale omit Stripe-Signature when delivering queued webhooks?',
+        answer:
+          'The original timestamp inside `Stripe-Signature` can expire during a cold start or async retry. Gregale verifies the provider signature before returning `202`, strips caller-supplied `X-Gregale-Webhook-*` and `X-Gregale-Event-*` headers on public routes, and sets `X-Faas-Invocation-Source: inbound_webhook`.',
+      },
+      {
+        question: 'What happens when a webhook handler fails or secrets rotate?',
+        answer:
+          'Handler errors, `408` and `429` trigger async retries and dead-letter storage replayable with `gregale dlq replay`. Secret rotation keeps the old secret valid for 24 hours without changing the endpoint URL.',
+      },
+    ],
+  },
+  {
+    slug: EDGE_CACHE_SLUG,
+    title: 'Cache public API responses at the edge without waking your app',
+    summary:
+      'Declare gateway caching with `gregale edge cache` using `stale-while-revalidate`, `stale-if-error`, query-order isolation and `Cache-Tag` purging, serving cache hits without waking your microVM while bypassing any request carrying cookies or `Authorization`.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do edge cache hits wake my app or count toward compute billing?',
+        answer:
+          'No. Responses served fresh or stale from Gregale gateway cache do not wake your app or consume compute. Delivered bytes still count toward monthly egress.',
+      },
+      {
+        question: 'How does Gregale prevent leaking authenticated responses from the cache?',
+        answer:
+          'Any request with an `Authorization` header or any cookie bypasses the cache completely. Responses carrying `Set-Cookie`, `Cache-Control: no-store`, or `Cache-Control: private` are never cached, and cache keys isolate deployment cohorts and query parameter order.',
+      },
+      {
+        question: 'Can I invalidate cached API responses by tag across routes?',
+        answer:
+          'Yes. Emit `Cache-Tag` headers on cacheable origin responses (stripped before clients see them) and run `gregale edge cache purge <app> --tag <tag>`. Purges are written to a replayable ledger verifiable at `/v1/apps/{slug}/policy/status`.',
+      },
+    ],
+  },
+  {
+    slug: OUTBOUND_RELAY_SLUG,
+    title: 'Call Stripe, OpenAI and third-party APIs without API keys in your app',
+    summary:
+      'Gregale outbound integrations (in preview per account on Hobby, Pro and Scale) inject sealed `Authorization` credentials outside your microVM at `$GREGALE_OUTBOUND_URL`, enforcing method/path allowlists, circuit breakers and daily request budgets.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question:
+          'How can my app call Stripe or OpenAI without holding API keys in environment variables?',
+        answer:
+          'In the outbound integrations preview (Hobby, Pro and Scale, enabled per account), you upload the `Authorization` header once to Gregale, bind the integration to an app, and call `$GREGALE_OUTBOUND_URL/i/{id}/...` with no credentials in the container.',
+      },
+      {
+        question: 'What guardrails can the outbound relay enforce?',
+        answer:
+          'Each integration enforces public-IP-only HTTPS origins, allowed HTTP methods and path prefixes (which app bindings can only narrow), per-second rate limits, circuit breakers and optional `daily_request_limit` caps per integration and per app.',
+      },
+      {
+        question: 'Is outbound relay available for every third-party SDK?',
+        answer:
+          'It is currently in per-account preview and works for HTTPS APIs authenticated with an `Authorization` header. Providers needing custom HMAC request signing headers or client mTLS certificates should keep using `gregale secrets`.',
+      },
+    ],
+  },
+  {
+    slug: OPENAPI_GATE_SLUG,
+    title: 'Block breaking OpenAPI changes and probe routes before traffic shifts',
+    summary:
+      'Validate OpenAPI changes with `gregale api spec preview`, `diff` and hash-pinned `apply`—exiting `2` on breaks and `3` on `UNKNOWN` schema changes while blocking promotion—and probe up to ten `x-gregale-hosting-check: true` GET routes on the exact candidate.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale block breaking OpenAPI changes before deployment?',
+        answer:
+          'Run `gregale api spec preview`, `diff` and hash-pinned `apply --confirm --preview-sha256`. Confirmed breaks such as dropping a `required` response field exit with code `2`, while ambiguous `oneOf`, `anyOf`, `enum`, or `format` edits report `UNKNOWN` with exit code `3` and block promotion.',
+      },
+      {
+        question: 'How do pre-promotion OpenAPI route checks handle authenticated endpoints?',
+        answer:
+          'Mark up to ten static, read-only `GET` operations with `x-gregale-hosting-check: true`. Gregale probes the exact new candidate and treats `2xx`, `3xx`, `401`, and `403` as passes while failing `404`, `429`, and `5xx`, proving auth-gated routes exist without storing test credentials.',
+      },
+      {
+        question: 'Do OpenAPI checks replace runtime canary rollouts?',
+        answer:
+          'No. Route checks confirm candidate reachability and exit `2`/`3` rules catch static schema regressions before traffic shifts, while Gregale canary rollouts monitor real production error rates after promotion.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -844,10 +975,20 @@ const GEMINI_CLI_LINK = `[Let Gemini CLI deploy to production safely](/articles/
 
 const DATABASE_ROLLBACK_LINK = `[Roll back a bad migration: code and database together](/articles/${DATABASE_ROLLBACK_SLUG}) explains why a code rollback is not enough after a migration, and how other platforms handle it.`;
 const COLD_START_LINK = `[Scale to zero without slow cold starts](/articles/${COLD_START_SLUG}) explains what an idle app costs and how fast it wakes, and compares other platforms.`;
+const REALTIME_SCALE_ZERO_LINK = `[Hold WebSocket and SSE connections while your backend scales to zero](/articles/${REALTIME_SCALE_ZERO_SLUG}) explains how managed realtime holds client sockets at the edge while your microVM parks at zero compute.`;
+const INBOUND_WEBHOOKS_LINK = `[Receive Stripe and signed webhooks while scaled to zero](/articles/${INBOUND_WEBHOOKS_SLUG}) explains edge signature verification, durable queuing, deduplication and dead-letter replay.`;
+const EDGE_CACHE_LINK = `[Cache public API responses at the edge without waking your app](/articles/${EDGE_CACHE_SLUG}) explains declarative \`stale-while-revalidate\`, privacy bypass guarantees and \`Cache-Tag\` purging.`;
+const OUTBOUND_RELAY_LINK = `[Call Stripe, OpenAI and third-party APIs without API keys in your app](/articles/${OUTBOUND_RELAY_SLUG}) explains zero-secret credential injection, route allowlists and daily budgets.`;
+const OPENAPI_GATE_LINK = `[Block breaking OpenAPI changes and probe routes before traffic shifts](/articles/${OPENAPI_GATE_SLUG}) explains exit code \`2\`/\`3\` schema gates and \`x-gregale-hosting-check\` candidate probes.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
   'scale-to-zero': COLD_START_LINK,
+  realtime: REALTIME_SCALE_ZERO_LINK,
+  'inbound-webhooks': INBOUND_WEBHOOKS_LINK,
+  cache: EDGE_CACHE_LINK,
+  'outbound-integrations': OUTBOUND_RELAY_LINK,
+  'api-hosting-openapi': OPENAPI_GATE_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: CODEX_LINK,
