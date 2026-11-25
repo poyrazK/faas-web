@@ -699,6 +699,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Spend caps, usage costs, budgets and invoice exports.',
       },
       {
+        slug: 'cost-controls',
+        source: 'docs/cost-controls.md',
+        title: 'Cost controls',
+        summary:
+          'Set a spend cap, get budget alerts, stop previews at a limit, and see what each app costs.',
+      },
+      {
         slug: 'errors',
         source: 'docs/errors.md',
         title: 'Errors',
