@@ -345,7 +345,10 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           topic: 'Idle apps',
           gregale: g.rows.idle,
-          them: 'Free services sleep when idle. On paid plans, compute is always on.',
+          them:
+            'Free services sleep when idle. Other services run, and bill, all the time unless you turn on ' +
+            'the Serverless setting, which sleeps a service 5 to 10 minutes after its last outbound ' +
+            'traffic and charges no compute while it sleeps. The first request after a sleep may return a 502.',
         },
         {
           topic: 'Releases',
@@ -396,8 +399,9 @@ export function comparisons(catalog: Catalog): Comparison[] {
           answer:
             'Yes, on every plan and sooner: an idle app pauses about a second after its last ' +
             'request and stops being billed, then resumes in milliseconds; after 10 minutes it ' +
-            'parks to a snapshot. Paid Railway services stay on and billed. Use min_instances ' +
-            'to keep an app warm.',
+            'parks to a snapshot. Railway services sleep only on the Free plan or with the ' +
+            'Serverless setting, 5 to 10 minutes after their last outbound traffic. Use ' +
+            'min_instances to keep an app warm.',
         },
         {
           question: 'What happens if a release breaks?',
@@ -412,6 +416,7 @@ export function comparisons(catalog: Catalog): Comparison[] {
       sources: [
         { label: 'Railway pricing', url: 'https://railway.com/pricing' },
         { label: 'Railway plans', url: 'https://docs.railway.com/reference/pricing/plans' },
+        { label: 'Railway Serverless', url: 'https://docs.railway.com/reference/app-sleeping' },
       ],
     },
     {
