@@ -302,6 +302,8 @@ describeBuilt('prerendered pages', () => {
         date: '2026-11-25',
       },
       { slug: 'vercel-alternatives', vs: 'vercel', doc: null, date: '2026-11-25' },
+      { slug: 'koyeb-alternatives', vs: 'koyeb', doc: null, date: '2026-11-25' },
+      { slug: 'northflank-alternatives', vs: 'northflank', doc: null, date: '2026-11-25' },
     ];
     for (const { slug, vs, doc, date } of cases) {
       const route = `/articles/${slug}`;
@@ -328,7 +330,16 @@ describeBuilt('prerendered pages', () => {
   it('publishes each comparison page as Markdown and lists it for agents', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
     const full = readFileSync('dist/llms-full.txt', 'utf8');
-    for (const slug of ['heroku', 'render', 'railway', 'fly', 'cloud-run', 'vercel']) {
+    for (const slug of [
+      'heroku',
+      'render',
+      'railway',
+      'fly',
+      'cloud-run',
+      'vercel',
+      'koyeb',
+      'northflank',
+    ]) {
       const route = `/vs/${slug}`;
       const markdown = readFileSync(`dist${route}.md`, 'utf8');
       expect(markdown.startsWith('# Gregale vs ')).toBe(true);
@@ -350,6 +361,24 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/docs/agents/index.html', 'utf8')).toContain(`href="${route}"`);
     expect(readFileSync('dist/docs/agents.md', 'utf8')).toContain(`https://gregale.dev${route}`);
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+
+    for (const [slug, doc] of [
+      ['cursor-deploy-production-safely', 'cursor'],
+      ['codex-deploy-production-safely', 'codex'],
+      ['gemini-cli-deploy-production-safely', 'gemini-cli'],
+    ]) {
+      const agentRoute = `/articles/${slug}`;
+      const agentHtml = readFileSync(`dist${agentRoute}/index.html`, 'utf8');
+      const agentJson = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(
+        agentHtml
+      )?.[1];
+      const agentGraph = JSON.parse(agentJson!)['@graph'];
+      expect(agentGraph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-25' });
+      expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${agentRoute}"`);
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(
+        `https://gregale.dev${agentRoute}.md`
+      );
+    }
   });
 
   it('publishes MCP server card and TechArticle + BreadcrumbList structured data on doc guides', () => {
@@ -506,6 +535,71 @@ describeBuilt('prerendered pages', () => {
     const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
     expect(entries.sort()).toEqual(
       ['README.md', 'analyze.py', 'scenarios.json', 'summary.json', 'vendors.json']
+        .map((file) => `${slug}/${file}`)
+        .sort()
+    );
+  });
+
+  it('publishes the cloud agent-ops guardrails matrix kit and Dataset metadata', () => {
+    const slug = 'agent-ops-guardrails-matrix-2026-11-25';
+    const route = `/research/${slug}`;
+    const archive = `dist${route}/reproduction.tar.gz`;
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+
+    for (const page of ['research', 'docs/agents']) {
+      expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+    }
+    expect(readFileSync('dist/docs/agents.md', 'utf8')).toContain(`https://gregale.dev${route}`);
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
+    expect(markdown).toContain('python3 analyze.py --verify');
+    expect(report).toContain('16/16');
+
+    for (const file of [
+      'reproduction.tar.gz',
+      'criteria.json',
+      'vendors.json',
+      'summary.json',
+      'analyze.py',
+      'README.md',
+    ]) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    expect(ldBlocks[0]).toMatchObject({
+      '@type': 'TechArticle',
+      datePublished: '2026-11-25',
+      mainEntityOfPage: `https://gregale.dev${route}`,
+    });
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-11-25',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toEqual(
+      expect.arrayContaining([
+        `https://gregale.dev${route}/reproduction.tar.gz`,
+        `https://gregale.dev${route}/criteria.json`,
+      ])
+    );
+
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>\n    <lastmod>2026-11-25</lastmod>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.sort()).toEqual(
+      ['README.md', 'analyze.py', 'criteria.json', 'summary.json', 'vendors.json']
         .map((file) => `${slug}/${file}`)
         .sort()
     );

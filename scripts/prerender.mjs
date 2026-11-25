@@ -36,6 +36,7 @@ const DOC_BY_SLUG = new Map(
 );
 const DOCS_DATES = docsLastModified();
 const {
+  AGENT_GUARDRAILS_SLUG,
   FASTAPI_COST_SLUG,
   PAAS_COST_MODEL_SLUG,
   RESEARCH_PUBLICATIONS,
@@ -763,6 +764,26 @@ execFileSync(
     '-C',
     join(DIST, 'research'),
     ...paasCostModelReproductionFiles.map((file) => join(PAAS_COST_MODEL_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const agentGuardrailsReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'criteria.json',
+  'vendors.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', AGENT_GUARDRAILS_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...agentGuardrailsReproductionFiles.map((file) => join(AGENT_GUARDRAILS_SLUG, file)),
   ],
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );
