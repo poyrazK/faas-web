@@ -16,7 +16,7 @@ const PAGES = [
   {
     route: '/',
     file: 'dist/index.html',
-    title: 'Gregale — Your whole backend on one platform, with safe releases',
+    title: 'Gregale — Backend cloud for APIs, Postgres &amp; AI coding agents',
   },
   { route: '/login', file: 'dist/login/index.html', title: 'Sign in · Gregale' },
   { route: '/signup', file: 'dist/signup/index.html', title: 'Create account · Gregale' },
@@ -688,7 +688,47 @@ describeBuilt('structured data', () => {
     : '';
 
   it('is present on the landing page', () => {
-    expect(JSON.parse(ld)['@graph']).toBeInstanceOf(Array);
+    const graph = JSON.parse(ld)['@graph'] as {
+      '@type': string;
+      sameAs?: string[];
+      offers?: { '@type': string; lowPrice?: number; highPrice?: number };
+      featureList?: string[];
+    }[];
+    expect(graph).toBeInstanceOf(Array);
+    const org = graph.find((node) => node['@type'] === 'Organization');
+    expect(org?.sameAs).toContain('https://github.com/gregale-dev/benchmarks');
+    const software = graph.find((node) => node['@type'] === 'SoftwareApplication');
+    expect(software?.offers).toMatchObject({ '@type': 'AggregateOffer', lowPrice: 0 });
+    expect(software?.featureList?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('links key wedge pages directly from the landing page and publishes raw OpenAPI specs', () => {
+    const landing = readFileSync('dist/index.html', 'utf8');
+    for (const path of [
+      '/articles/best-cloud-for-ai-coding-agents',
+      '/articles/canary-deploys',
+      '/articles/rollback-code-and-database',
+      '/articles/mcp-server-hosting',
+      '/research/paas-intermittent-api-cost-model-2026-11-25',
+      '/research/firecracker-snapshot-restore-ssd-2026-09-09',
+      '/openapi.yaml',
+    ]) {
+      expect(landing, path).toContain(`href="${path}"`);
+    }
+
+    const openApiJson = JSON.parse(readFileSync('dist/openapi.json', 'utf8'));
+    expect(openApiJson.openapi).toMatch(/^3\./);
+    expect(readFileSync('dist/openapi.yaml', 'utf8')).toContain('openapi:');
+
+    const apiIndex = readFileSync('dist/docs/api/index.html', 'utf8');
+    expect(apiIndex).toContain('type="application/yaml"');
+    expect(apiIndex).toContain('href="/openapi.yaml"');
+    expect(apiIndex).toContain('type="application/json"');
+    expect(apiIndex).toContain('href="/openapi.json"');
+
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    expect(llms).toContain('https://gregale.dev/openapi.yaml');
+    expect(llms).toContain('https://gregale.dev/openapi.json');
   });
 
   it('does not state the wake figure without its measurement boundary', () => {

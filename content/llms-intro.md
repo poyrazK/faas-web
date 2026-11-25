@@ -29,7 +29,9 @@ Machine-readable entry points:
   `gregale mcp connect` adds it to Claude Code, Codex, Cursor, VS Code and
   other MCP clients.
 - Plans and prices as JSON: [pricing.json](https://gregale.dev/pricing.json).
-- HTTP API reference: [API reference](https://gregale.dev/docs/api).
+- HTTP API reference: [API reference](https://gregale.dev/docs/api)
+  ([openapi.yaml](https://gregale.dev/openapi.yaml),
+  [openapi.json](https://gregale.dev/openapi.json)).
 - Every page in one file: [llms-full.txt](https://gregale.dev/llms-full.txt);
   the deploy-and-debug subset: [llms-small.txt](https://gregale.dev/llms-small.txt).
 - New articles and research: [Atom feed](https://gregale.dev/feed.xml).

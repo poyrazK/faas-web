@@ -119,10 +119,17 @@
       "continue": true
     },
     {
-      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|\\.well-known/mcp/server-card\\.json|(?:docs|articles|research|vs)/[a-z0-9_-]+\\.md)$",
+      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known/mcp/server-card\\.json|(?:docs|articles|research|vs)/[a-z0-9_-]+\\.md)$",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS"
+      },
+      "continue": true
+    },
+    {
+      "src": "^/openapi\\.yaml$",
+      "headers": {
+        "Content-Type": "application/yaml; charset=utf-8"
       },
       "continue": true
     },
