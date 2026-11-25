@@ -1,0 +1,446 @@
+{
+  "checked_on": "2026-11-25",
+  "platforms": [
+    {
+      "id": "gregale",
+      "name": "Gregale",
+      "strengths_outside_matrix": [
+        "One-command backend PaaS with ~1s pause billing",
+        "Firecracker microVM isolation per app",
+        "Per-PR preview environments on Free"
+      ],
+      "limitations": [
+        "One region today",
+        "No persistent local disks or GPUs",
+        "No Bring-Your-Own-Cloud (BYOC)"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "full",
+          "evidence": "`gregale --non-interactive --json` never prompts and returns structured JSON error codes on stderr.",
+          "source_url": "https://gregale.dev/docs/agents"
+        },
+        "official_mcp_server": {
+          "status": "full",
+          "evidence": "Hosted Streamable HTTP MCP server at api.gregale.dev/mcp with OAuth and /.well-known/mcp/server-card.json.",
+          "source_url": "https://gregale.dev/docs/agents"
+        },
+        "scoped_agent_identity": {
+          "status": "full",
+          "evidence": "`gregale key create --agent` creates a dedicated agent identity separate from human logins, enforced server-side.",
+          "source_url": "https://gregale.dev/articles/claude-code-deploy-production-safely"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "full",
+          "evidence": "`gregale scale --plan`, `gregale_plan_scale`, and `Gregale-Agent-Preview: budget` preview price deltas and budget remaining.",
+          "source_url": "https://gregale.dev/articles/ai-agent-hosting-budget"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "full",
+          "evidence": "Agent-triggered production creates, deletes, and overrides pause and emit a human approval review link.",
+          "source_url": "https://gregale.dev/articles/ai-agent-production-approval"
+        },
+        "non_code_mutation_undo": {
+          "status": "full",
+          "evidence": "`gregale mcp connection undo` reverts scaling, env vars, crons and domains logged across a 7-day activity window.",
+          "source_url": "https://gregale.dev/articles/undo-ai-agent-changes"
+        },
+        "default_canary_auto_rollback": {
+          "status": "full",
+          "evidence": "Production releases climb 1% -> 10% -> 50% -> 100% by default and roll back automatically on 5xx errors (beta).",
+          "source_url": "https://gregale.dev/articles/canary-deploys"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "full",
+          "evidence": "`gregale rollback --restore-databases` restores managed Postgres to the release point-in-time alongside code (Hobby+).",
+          "source_url": "https://gregale.dev/articles/rollback-code-and-database"
+        }
+      }
+    },
+    {
+      "id": "cloud-run",
+      "name": "Google Cloud Run",
+      "strengths_outside_matrix": [
+        "Dozens of global GCP regions with Cloud Load Balancing",
+        "Generous monthly free tier (180k vCPU-s, 360k GiB-s, 2M requests)",
+        "Native VPC integration with BigQuery, Pub/Sub, and Cloud SQL"
+      ],
+      "limitations": [
+        "No bundled Postgres or built-in PR preview environments",
+        "Requires assembling Cloud Deploy, IAM, and Cloud SQL separately"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "full",
+          "evidence": "`gcloud run --quiet --format=json` executes non-interactively with structured JSON responses.",
+          "source_url": "https://cloud.google.com/sdk/docs"
+        },
+        "official_mcp_server": {
+          "status": "full",
+          "evidence": "Google Cloud publishes an official Cloud Run MCP server for deploying and inspecting services.",
+          "source_url": "https://cloud.google.com/run/docs"
+        },
+        "scoped_agent_identity": {
+          "status": "full",
+          "evidence": "Google Cloud IAM Service Accounts allow fine-grained least-privilege roles separate from personal user accounts.",
+          "source_url": "https://cloud.google.com/iam/docs/service-account-overview"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Deploy/scale commands do not return a pre-mutation monthly cost delta or agent budget check.",
+          "source_url": "https://cloud.google.com/run/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "partial",
+          "evidence": "Available when explicitly configured via Google Cloud Deploy pipeline approval gates, not built into direct `gcloud run` deploys.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Revisions cover container specs and traffic splits manually; there is no unified one-command agent mutation undo.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Manual traffic splitting is built in; automated canary stages and rollbacks require setting up Cloud Deploy.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "none",
+          "evidence": "Cloud SQL is a separate product whose PITR restores independently of Cloud Run revisions.",
+          "source_url": "https://cloud.google.com/run/pricing"
+        }
+      }
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "strengths_outside_matrix": [
+        "Global edge CDN and Next.js / React Server Components integration",
+        "Instant PR preview URLs and collaborative frontend review toolbar",
+        "Fluid Compute pauses CPU during I/O waits"
+      ],
+      "limitations": [
+        "$20/mo per deploying seat on Pro",
+        "300s/800s serverless function duration ceilings; third-party Postgres via Marketplace"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "partial",
+          "evidence": "`vercel --yes --token` automates deploys, though JSON error/output schemas are not uniform across every subcommand.",
+          "source_url": "https://vercel.com/docs/cli"
+        },
+        "official_mcp_server": {
+          "status": "full",
+          "evidence": "Vercel hosts an official remote MCP server (`https://mcp.vercel.com`) with OAuth support.",
+          "source_url": "https://vercel.com/docs/mcp/vercel-mcp"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "Scoped personal/team access tokens exist without dedicated AI-agent policy roles or per-agent ceilings.",
+          "source_url": "https://vercel.com/docs/rest-api"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Spend Management offers team-level alerts/auto-pause on Pro rather than per-command agent cost previews.",
+          "source_url": "https://vercel.com/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "partial",
+          "evidence": "Deployment Protection and manual promotion controls exist on paid plans rather than out-of-band agent mutation approvals.",
+          "source_url": "https://vercel.com/pricing"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Instant Rollback reverts deployments; environment variable edits require separate manual updates.",
+          "source_url": "https://vercel.com/docs/deployments/instant-rollback"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Rolling Releases on Pro/Enterprise allow gradual rollouts; automatic 5xx rollback is not enabled by default on all tiers.",
+          "source_url": "https://vercel.com/pricing"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "none",
+          "evidence": "Databases are third-party Vercel Marketplace integrations managed independently of deployment rollbacks.",
+          "source_url": "https://vercel.com/pricing"
+        }
+      }
+    },
+    {
+      "id": "northflank",
+      "name": "Northflank",
+      "strengths_outside_matrix": [
+        "Bring-Your-Own-Cloud (BYOC) on AWS EKS, GCP GKE, and Azure AKS",
+        "Always-on Free Sandbox (2 services, 2 jobs, 1 database)",
+        "Enterprise RBAC, SOC 2, and GPU workloads"
+      ],
+      "limitations": [
+        "No ~1s idle-pause billing between requests",
+        "Kubernetes-oriented concepts add configuration overhead for small teams"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "full",
+          "evidence": "`northflank` CLI supports non-interactive execution and `--output json`.",
+          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+        },
+        "official_mcp_server": {
+          "status": "none",
+          "evidence": "No official first-party hosted Northflank MCP server documented.",
+          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "Role-based team access and API tokens can scope permissions, without dedicated agent-policy budget semantics.",
+          "source_url": "https://northflank.com/pricing"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Usage is metered per second ($0.01667/vCPU-h, $0.00833/GB-h) without pre-mutation CLI agent budget previews.",
+          "source_url": "https://northflank.com/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "partial",
+          "evidence": "Release pipelines support configured approval steps, rather than automatic approval links on agent API mutations.",
+          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "No built-in one-command undo for arbitrary agent settings/env mutations across a workspace.",
+          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Supports configurable canary/blue-green traffic splitting, not an automatic 1%->100% 5xx rollback on every deploy by default.",
+          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "none",
+          "evidence": "Service rollbacks and database addon backups restore independently.",
+          "source_url": "https://northflank.com/pricing"
+        }
+      }
+    },
+    {
+      "id": "render",
+      "name": "Render",
+      "strengths_outside_matrix": [
+        "Mature fixed-price PaaS and managed PostgreSQL from $6/mo",
+        "Flat predictable monthly instance pricing with unlimited free workspace collaborators on Hobby",
+        "Zero-downtime rolling deploys and `preDeployCommand` migrations"
+      ],
+      "limitations": [
+        "Paid web instances bill 24/7 even when idle",
+        "Free web services spin down after 15m and take ~1m to wake"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "partial",
+          "evidence": "Render CLI supports `--output json` in non-interactive mode across core commands.",
+          "source_url": "https://render.com/docs/cli"
+        },
+        "official_mcp_server": {
+          "status": "full",
+          "evidence": "Render publishes an official MCP server (`https://mcp.render.com/mcp`) for inspecting services, logs, and databases.",
+          "source_url": "https://render.com/docs/mcp-server"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "Account and workspace API keys authenticate automation without separate AI-agent identity ceilings.",
+          "source_url": "https://render.com/docs/api"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Does not return a pre-mutation cost preview and remaining agent budget before applying scale updates.",
+          "source_url": "https://render.com/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "none",
+          "evidence": "No built-in out-of-band human approval link enforced on agent API mutations.",
+          "source_url": "https://render.com/docs/api"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Environment variable and instance plan edits must be reverted individually or via Blueprint commits.",
+          "source_url": "https://render.com/docs/deploys"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Switches 100% of traffic once a deploy passes its health check; rollbacks are manual.",
+          "source_url": "https://render.com/docs/rollbacks"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "partial",
+          "evidence": "Supports code rollbacks and paid Postgres PITR forks separately, without single-command coordinated rollback.",
+          "source_url": "https://render.com/docs/postgresql-backups"
+        }
+      }
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "strengths_outside_matrix": [
+        "One-click Postgres, Redis, MySQL, and MongoDB on a visual project canvas",
+        "Flexible pure usage metering beyond $5/mo Hobby credits",
+        "Fast builds and per-PR preview environments on paid workspaces"
+      ],
+      "limitations": [
+        "Serverless mode sleeps only after ~5-10 min without outbound packets",
+        "No progressive canary rollback on 5xx errors"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "partial",
+          "evidence": "Railway CLI supports tokens and JSON flags on select inspect/status commands.",
+          "source_url": "https://docs.railway.com/reference/cli-api"
+        },
+        "official_mcp_server": {
+          "status": "partial",
+          "evidence": "Railway publishes an official local MCP server package wrapping the authenticated Railway CLI.",
+          "source_url": "https://docs.railway.com/reference/mcp-server"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "Project-scoped tokens restrict scope to a single project/environment without dedicated agent approval policies.",
+          "source_url": "https://docs.railway.com/guides/public-api"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Workspace usage limits exist globally, without per-command cost previews before agent scaling.",
+          "source_url": "https://railway.com/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "none",
+          "evidence": "No built-in human approval review gate for CLI or MCP mutations.",
+          "source_url": "https://docs.railway.com/guides/public-api"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Variable and scaling edits are re-applied individually; deployment rollback reverts releases only.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Replaces active deployment once health check passes; rollbacks are triggered manually.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "none",
+          "evidence": "Deployment rollbacks and Postgres volume backups restore independently.",
+          "source_url": "https://docs.railway.com/databases/postgresql"
+        }
+      }
+    },
+    {
+      "id": "fly",
+      "name": "Fly.io",
+      "strengths_outside_matrix": [
+        "Dozens of regions worldwide with low-latency edge placement",
+        "Firecracker microVMs (Machines) with regional NVMe volumes",
+        "Lower raw memory price ($2.19/mo 256 MB) for always-on servers"
+      ],
+      "limitations": [
+        "More manual infrastructure configuration in fly.toml and Machines API",
+        "Stopped Machines continue billing rootfs storage"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "full",
+          "evidence": "`flyctl --json` and the Machines REST API provide deterministic machine-readable output.",
+          "source_url": "https://fly.io/docs/flyctl/"
+        },
+        "official_mcp_server": {
+          "status": "none",
+          "evidence": "No official first-party Fly.io MCP server published.",
+          "source_url": "https://fly.io/docs/"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "Org and per-app deploy tokens exist without dedicated AI-agent approval/budget primitives.",
+          "source_url": "https://fly.io/docs/security/deploy-tokens/"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Machine resize/create APIs apply immediately without returning monthly cost impact or budget checks.",
+          "source_url": "https://fly.io/pricing/"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "none",
+          "evidence": "No built-in human approval review pause on `flyctl` or Machines API mutations.",
+          "source_url": "https://fly.io/docs/machines/api/"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Machine config and secrets changes must be undone manually via CLI/API calls.",
+          "source_url": "https://fly.io/docs/machines/api/"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Rolling deploy default; canary strategy health-checks one new Machine first without a 1%->100% 5xx traffic ladder.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "partial",
+          "evidence": "Supports image rollbacks and Managed Postgres snapshot restores separately, requiring manual coordination.",
+          "source_url": "https://fly.io/docs/postgres/"
+        }
+      }
+    },
+    {
+      "id": "koyeb",
+      "name": "Koyeb",
+      "strengths_outside_matrix": [
+        "Firecracker microVMs across multiple global edge regions plus serverless GPUs",
+        "Light Sleep scale-to-zero wakes rapidly (~250 ms)",
+        "Low entry Eco instances ($1.61/mo nano) with no base seat fee on Hobby"
+      ],
+      "limitations": [
+        "Free Postgres sleeps after 5m and caps at 50h/mo; paid Postgres starts at $29.76/mo",
+        "Volumes and snapshots require Pro ($29/mo)"
+      ],
+      "checks": {
+        "non_interactive_json_cli": {
+          "status": "full",
+          "evidence": "`koyeb` CLI supports non-interactive authentication via token and `--output json`.",
+          "source_url": "https://www.koyeb.com/docs/build-and-deploy/cli/reference"
+        },
+        "official_mcp_server": {
+          "status": "none",
+          "evidence": "No official first-party Koyeb MCP server documented.",
+          "source_url": "https://www.koyeb.com/docs"
+        },
+        "scoped_agent_identity": {
+          "status": "partial",
+          "evidence": "User and organization API tokens exist without dedicated agent approval/budget policies.",
+          "source_url": "https://www.koyeb.com/docs/api"
+        },
+        "pre_mutation_cost_preview": {
+          "status": "none",
+          "evidence": "Service scaling calls do not return pre-flight agent budget/cost projections.",
+          "source_url": "https://www.koyeb.com/pricing"
+        },
+        "human_approval_gate_on_mutations": {
+          "status": "none",
+          "evidence": "No built-in approval gate halting agent mutations for out-of-band human sign-off.",
+          "source_url": "https://www.koyeb.com/docs/api"
+        },
+        "non_code_mutation_undo": {
+          "status": "none",
+          "evidence": "Immutable deployment versions support manual rollback; there is no unified one-command agent mutation undo.",
+          "source_url": "https://www.koyeb.com/docs/run-and-scale/deployments"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Deploys shift after health checks; no default 1%->100% automatic 5xx rollback ladder.",
+          "source_url": "https://www.koyeb.com/docs/run-and-scale/deployments"
+        },
+        "code_plus_postgres_rollback": {
+          "status": "none",
+          "evidence": "Application deployment rollbacks and PostgreSQL instances are managed separately.",
+          "source_url": "https://www.koyeb.com/docs/databases"
+        }
+      }
+    }
+  ]
+}

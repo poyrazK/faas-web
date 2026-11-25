@@ -1,0 +1,130 @@
+{
+  "checked_on": "2026-11-25",
+  "criteria_count": 8,
+  "platform_count": 8,
+  "max_score": 16,
+  "leaderboard": [
+    {
+      "id": "gregale",
+      "name": "Gregale",
+      "score": 16,
+      "max_score": 16,
+      "full_count": 8,
+      "partial_count": 0,
+      "none_count": 0
+    },
+    {
+      "id": "cloud-run",
+      "name": "Google Cloud Run",
+      "score": 8,
+      "max_score": 16,
+      "full_count": 3,
+      "partial_count": 2,
+      "none_count": 3
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "score": 6,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 4,
+      "none_count": 3
+    },
+    {
+      "id": "fly",
+      "name": "Fly.io",
+      "score": 5,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 3,
+      "none_count": 4
+    },
+    {
+      "id": "northflank",
+      "name": "Northflank",
+      "score": 5,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 3,
+      "none_count": 4
+    },
+    {
+      "id": "render",
+      "name": "Render",
+      "score": 5,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 3,
+      "none_count": 4
+    },
+    {
+      "id": "koyeb",
+      "name": "Koyeb",
+      "score": 3,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 1,
+      "none_count": 6
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "score": 3,
+      "max_score": 16,
+      "full_count": 0,
+      "partial_count": 3,
+      "none_count": 5
+    }
+  ],
+  "by_criterion": {
+    "non_interactive_json_cli": {
+      "label": "Non-interactive JSON CLI",
+      "full": ["gregale", "cloud-run", "northflank", "fly", "koyeb"],
+      "partial": ["vercel", "render", "railway"],
+      "none": []
+    },
+    "official_mcp_server": {
+      "label": "Official MCP server",
+      "full": ["gregale", "cloud-run", "vercel", "render"],
+      "partial": ["railway"],
+      "none": ["northflank", "fly", "koyeb"]
+    },
+    "scoped_agent_identity": {
+      "label": "Scoped agent identity",
+      "full": ["gregale", "cloud-run"],
+      "partial": ["vercel", "northflank", "render", "railway", "fly", "koyeb"],
+      "none": []
+    },
+    "pre_mutation_cost_preview": {
+      "label": "Pre-mutation cost preview",
+      "full": ["gregale"],
+      "partial": [],
+      "none": ["cloud-run", "vercel", "northflank", "render", "railway", "fly", "koyeb"]
+    },
+    "human_approval_gate_on_mutations": {
+      "label": "Human approval gate on mutations",
+      "full": ["gregale"],
+      "partial": ["cloud-run", "vercel", "northflank"],
+      "none": ["render", "railway", "fly", "koyeb"]
+    },
+    "non_code_mutation_undo": {
+      "label": "Non-code mutation undo",
+      "full": ["gregale"],
+      "partial": [],
+      "none": ["cloud-run", "vercel", "northflank", "render", "railway", "fly", "koyeb"]
+    },
+    "default_canary_auto_rollback": {
+      "label": "Default canary with auto-rollback",
+      "full": ["gregale"],
+      "partial": ["cloud-run", "vercel", "northflank", "fly"],
+      "none": ["render", "railway", "koyeb"]
+    },
+    "code_plus_postgres_rollback": {
+      "label": "Code + Postgres rollback together",
+      "full": ["gregale"],
+      "partial": ["render", "fly"],
+      "none": ["cloud-run", "vercel", "northflank", "railway", "koyeb"]
+    }
+  }
+}

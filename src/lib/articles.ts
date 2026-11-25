@@ -36,6 +36,9 @@ const BUDGET_SLUG = 'ai-agent-hosting-budget';
 const DATABASE_ROLLBACK_SLUG = 'rollback-code-and-database';
 const COLD_START_SLUG = 'scale-to-zero-without-cold-starts';
 const BEST_CLOUD_AGENTS_SLUG = 'best-cloud-for-ai-coding-agents';
+const CURSOR_SLUG = 'cursor-deploy-production-safely';
+const CODEX_SLUG = 'codex-deploy-production-safely';
+const GEMINI_CLI_SLUG = 'gemini-cli-deploy-production-safely';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -644,6 +647,133 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: 'koyeb-alternatives',
+    alternativesTo: 'koyeb',
+    title: 'Koyeb alternatives in 2026',
+    summary:
+      'Gregale, Fly.io, Render, Railway, Northflank, Google Cloud Run and DigitalOcean App Platform compared on Firecracker scale-to-zero, managed Postgres pricing, volumes and canary rollbacks.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the best Koyeb alternative?',
+        answer:
+          'Fly.io fits teams wanting multi-region Firecracker Machines and regional volumes, Render and Railway fit full-stack apps wanting lower paid Postgres entry prices than Koyeb ($29.76/mo Small Postgres), and Gregale fits teams wanting Firecracker microVMs, ~1s idle pause billing, bundled Postgres inside $10/mo Hobby and automatic 1% canary rollbacks.',
+      },
+      {
+        question: 'Which Koyeb alternative has a free plan with no sleeping Postgres timer?',
+        answer:
+          'Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month (with Postgres starting at Hobby $10/mo), and Northflank Sandbox offers an always-on free database addon. Koyeb Free Postgres sleeps after 5 minutes idle and caps at 50 compute hours a month.',
+      },
+      {
+        question: 'Do any Koyeb alternatives also use Firecracker microVMs?',
+        answer:
+          'Yes. Both Fly.io and Gregale isolate each app instance in its own Firecracker microVM. Gregale manages instances automatically and pauses billing ~1s after each request.',
+      },
+    ],
+  },
+  {
+    slug: 'northflank-alternatives',
+    alternativesTo: 'northflank',
+    title: 'Northflank alternatives in 2026',
+    summary:
+      'Gregale, Railway, Render, Fly.io, Koyeb, Google Cloud Run and DigitalOcean App Platform compared on idle billing, Kubernetes complexity, BYOC, Postgres and automatic rollbacks.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the best Northflank alternative?',
+        answer:
+          'Railway and Render fit teams wanting simpler Git-to-URL PaaS workflows without cluster pipelines, Fly.io and Koyeb fit multi-region Firecracker workloads, and Gregale fits teams wanting ~1s idle pause billing, automatic 1%→100% 5xx canary rollbacks and coding-agent safety guardrails.',
+      },
+      {
+        question: 'Which Northflank alternative stops billing when paid apps are idle?',
+        answer:
+          'Gregale pauses each app ~1s after its last request and stops billing immediately on every plan (Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month). Google Cloud Run and Koyeb also scale paid containers to zero.',
+      },
+      {
+        question: 'Do these alternatives support Bring-Your-Own-Cloud (BYOC)?',
+        answer:
+          'Most managed PaaS options run on their own cloud rather than inside your AWS or GCP account. Stay on Northflank if BYOC inside EKS, GKE or AKS is a hard requirement.',
+      },
+    ],
+  },
+  {
+    slug: CURSOR_SLUG,
+    title: 'Let Cursor deploy to production safely',
+    summary:
+      'Give Cursor a scoped Gregale `--agent` token via `GREGALE_TOKEN` and project rules in `AGENTS.md`, or connect it via `gregale mcp connect --client cursor`, with server-side approval gates, budgets, undo and canary rollbacks.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'How do I let Cursor deploy to Gregale without risking production?',
+        answer:
+          'Run `gregale key create cursor-agent --agent`, set it as `GREGALE_TOKEN` in Cursor instead of relying on your personal `gregale login`, add `AGENTS.md` via `gregale init --agents`, and let Gregale enforce approval links, per-agent spend caps and 1% canary rollbacks in the API.',
+      },
+      {
+        question: 'Does Cursor support Gregale’s MCP server?',
+        answer:
+          'Yes. Run `gregale mcp connect --client cursor` to connect Cursor to `https://api.gregale.dev/mcp` over OAuth.',
+      },
+      {
+        question: 'Are `.cursorrules` enough to stop unsafe production commands?',
+        answer:
+          'No. Prompt rules can be ignored or misinterpreted, whereas Gregale enforces approval gates, budget checks, mutation undo and 5xx canary rollbacks server-side whenever `GREGALE_TOKEN` is an `--agent` key.',
+      },
+    ],
+  },
+  {
+    slug: CODEX_SLUG,
+    title: 'Let OpenAI Codex deploy to production safely',
+    summary:
+      'Configure Codex with a scoped `gregale key create --agent` token in `GREGALE_TOKEN`, sandbox network access in `~/.codex/config.toml`, and `AGENTS.md` deploy rules enforced by Gregale API guardrails.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'How do I connect OpenAI Codex to Gregale safely?',
+        answer:
+          'Create a scoped `--agent` key with `gregale key create codex-agent --agent`, pass it in `GREGALE_TOKEN`, run `gregale init --agents`, and allow outbound CLI access in `~/.codex/config.toml` under `[sandbox_workspace_write]` (`network_access = true`).',
+      },
+      {
+        question: 'Why use `--non-interactive --json` with Codex?',
+        answer:
+          'In `--non-interactive --json` mode, `gregale` never pauses for prompts or opens a browser login flow and emits structured JSON error codes on stderr so Codex can inspect errors cleanly.',
+      },
+      {
+        question: 'Can I undo scaling or env changes Codex made?',
+        answer:
+          'Yes. `gregale mcp connection undo` reverts non-code mutations such as scaling limits, environment variables, crons and domains logged over the last 7 days.',
+      },
+    ],
+  },
+  {
+    slug: GEMINI_CLI_SLUG,
+    title: 'Let Gemini CLI deploy to production safely',
+    summary:
+      'Authenticate Gemini CLI with a scoped Gregale `--agent` key, load `AGENTS.md` via `.gemini/settings.json`, and let Gregale enforce human approvals, budget previews, undo and 5xx canary rollbacks in production.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'How does Gemini CLI load Gregale deployment instructions?',
+        answer:
+          'Running `gregale init --agents` updates `AGENTS.md` and configures `.gemini/settings.json` when a `.gemini/` directory exists so Gemini CLI reads `AGENTS.md` automatically.',
+      },
+      {
+        question: 'What if I use a personal Google AI account instead of Enterprise Gemini CLI?',
+        answer:
+          'Free and Google AI Pro/Ultra accounts use Antigravity rather than standalone Gemini CLI; see the Antigravity guide at `/docs/antigravity`. Both share the same `--agent` key and API guardrails.',
+      },
+      {
+        question: 'Can Gemini CLI roll back both code and Postgres after a failed migration?',
+        answer:
+          'Yes, on paid plans: `gregale rollback --restore-databases` restores managed PostgreSQL to the release point in time and switches the app with earlier code.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -675,6 +805,9 @@ const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/article
 
 const AGENT_SAFETY_LINK = `[Best cloud platform for AI coding agents in 2026](/articles/${BEST_CLOUD_AGENTS_SLUG}), [Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) compare platforms and explain the limits Gregale puts on coding agents.`;
 const CLAUDE_CODE_LINK = `[Let Claude Code deploy to production safely](/articles/${CLAUDE_CODE_SLUG}) shows the setup and the guardrails that hold whatever the agent runs.`;
+const CURSOR_LINK = `[Let Cursor deploy to production safely](/articles/${CURSOR_SLUG}) shows the token, MCP and API guardrails for Cursor. ${AGENT_SAFETY_LINK}`;
+const CODEX_LINK = `[Let OpenAI Codex deploy to production safely](/articles/${CODEX_SLUG}) shows the sandbox, token and API guardrails for Codex. ${AGENT_SAFETY_LINK}`;
+const GEMINI_CLI_LINK = `[Let Gemini CLI deploy to production safely](/articles/${GEMINI_CLI_SLUG}) shows the settings, token and API guardrails for Gemini CLI. ${AGENT_SAFETY_LINK}`;
 
 const DATABASE_ROLLBACK_LINK = `[Roll back a bad migration: code and database together](/articles/${DATABASE_ROLLBACK_SLUG}) explains why a code rollback is not enough after a migration, and how other platforms handle it.`;
 const COLD_START_LINK = `[Scale to zero without slow cold starts](/articles/${COLD_START_SLUG}) explains what an idle app costs and how fast it wakes, and compares other platforms.`;
@@ -684,9 +817,9 @@ const RELATED_ARTICLES: Record<string, string> = {
   'scale-to-zero': COLD_START_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
-  codex: AGENT_SAFETY_LINK,
-  cursor: AGENT_SAFETY_LINK,
-  'gemini-cli': AGENT_SAFETY_LINK,
+  codex: CODEX_LINK,
+  cursor: CURSOR_LINK,
+  'gemini-cli': GEMINI_CLI_LINK,
   'deploy-fastapi': FASTAPI_JOBS_LINK,
   jobs: FASTAPI_JOBS_LINK,
   'deploy-express': NODE_WORKER_LINK,

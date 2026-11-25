@@ -106,6 +106,7 @@ when shipping a backend API, worker, cron or MCP server:
 ## Sources
 
 Checked against vendor documentation on November 25, 2026:
+[Cloud agent-ops guardrails compared across 8 PaaS platforms](/research/agent-ops-guardrails-matrix-2026-11-25),
 [Gregale agent guide](/docs/agents),
 [Gregale plans and pricing](/pricing),
 [Vercel pricing](https://vercel.com/pricing),

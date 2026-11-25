@@ -767,6 +767,244 @@ export function comparisons(catalog: Catalog): Comparison[] {
         },
       ],
     },
+    {
+      slug: 'koyeb',
+      competitor: 'Koyeb',
+      summary:
+        'Gregale vs Koyeb: Firecracker microVMs, scale-to-zero Light Sleep vs ~1s pause billing, ' +
+        'managed PostgreSQL, canary rollbacks and pricing compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them:
+            '1 Free web service (0.1 vCPU, 512 MB RAM, scales to zero after 1h) plus Free ' +
+            'Postgres (0.25 vCPU, 1 GB, capped at 50 active compute hours/mo, sleeps after 5m).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them:
+            'Pay-as-you-go Eco Nano from $1.61 a month (0.1 vCPU, 256 MB) or Eco Micro at ' +
+            '$2.68 a month (0.25 vCPU, 512 MB). Koyeb Pro is $29 a month including $10 credit.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them:
+            'Billed by the second while instances or serverless Postgres databases run, plus ' +
+            'optional team plan fees ($29/mo Pro, $299/mo Scale).',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them:
+            'Scale-to-zero with Light Sleep (wakes rapidly from idle sleep); Free web services ' +
+            'sleep after 1 hour idle and Free Postgres sleeps after 5 minutes.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Immutable versions with health checks; deployments roll back manually.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Firecracker microVMs on bare-metal servers.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them:
+            'Managed PostgreSQL: Free tier has 50 compute hours/month; paid Small Postgres ' +
+            'starts at $29.76 a month (~$0.04/hr for 0.25 vCPU, 1 GB).',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Git-driven deployments per branch/service; preview workflows require extra setup.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Ephemeral local SSD; persistent NVMe volumes and snapshots available on Koyeb Pro.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Multiple global regions (including US, Europe and Asia) plus serverless GPU nodes.',
+        },
+      ],
+      theyFit: [
+        'You need multi-region edge placement or serverless GPU instances.',
+        'You want NVMe persistent volumes on Koyeb Pro ($29/mo).',
+        'Your database workload fits Koyeb’s free 50 compute-hour monthly Postgres cap or always-on needs global proximity.',
+      ],
+      gregaleFits: [
+        'You want always-available managed PostgreSQL bundled into a $10 Hobby plan without jumping to $29.76/mo for Postgres.',
+        'You want idle apps to pause ~1s after requests instead of sleeping on minute-scale timeouts.',
+        'You want automatic 1%→100% canary rollbacks, PR preview environments on Free, and scoped AI agent guardrails.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Koyeb?',
+          answer: costAnswer(
+            'Koyeb’s Eco Micro (512 MB) is $2.68 a month on compute alone, though paid Koyeb ' +
+              'Managed Postgres starts at $29.76 a month compared with Gregale Hobby at $10 a month ' +
+              'including 1 managed Postgres database.'
+          ),
+        },
+        {
+          question: 'Do both Gregale and Koyeb use Firecracker?',
+          answer:
+            'Yes. Both isolate instances in Firecracker microVMs. Koyeb offers multiple regions ' +
+            'and GPU instances; Gregale focuses on one-command backends, ~1s pause billing, ' +
+            'bundled Postgres and automatic canary rollbacks.',
+        },
+        {
+          question: 'Can I move a Koyeb app to Gregale?',
+          answer:
+            'Yes. Standard Dockerfiles and Git-built Node, Python or Go apps listening on PORT ' +
+            'deploy via `gregale deploy` with environment variables and `DATABASE_URL` preserved.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and rolls back on its own if 5xx errors spike. On Koyeb, you manually ' +
+            'trigger a rollback to an earlier immutable deployment version.',
+        },
+      ],
+      sources: [
+        { label: 'Koyeb pricing', url: 'https://www.koyeb.com/pricing' },
+        {
+          label: 'Koyeb scale-to-zero',
+          url: 'https://www.koyeb.com/docs/run-and-scale/scale-to-zero',
+        },
+        { label: 'Koyeb managed Postgres', url: 'https://www.koyeb.com/docs/databases' },
+      ],
+    },
+    {
+      slug: 'northflank',
+      competitor: 'Northflank',
+      summary:
+        'Gregale vs Northflank: container PaaS and BYOC vs single-command Firecracker microVMs, ' +
+        'idle billing, canary rollbacks and pricing compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them:
+            'Northflank Free Sandbox: 2 services, 2 cron jobs and 1 database addon on Northflank ' +
+            'Cloud (always on, no sleeping; up to 1 BYOC cluster with 12 vCPU / 48 GB).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them:
+            'Usage-based plans billed per second at $0.01667 per vCPU-hour (~$12/vCPU-mo) and ' +
+            '$0.00833 per GB-hour (~$6/GB-mo); a 0.5 vCPU / 1 GB service is ~$12 a month.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them:
+            'CPU and memory billed separately by the second while containers run, plus $0.15/GB-mo ' +
+            'persistent storage and $0.06/GB egress. No per-seat workspace fees.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them:
+            'Sandbox services are always on; paid containers bill continuously while active ' +
+            'unless scaled down via autoscaling rules.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them:
+            'Supports rolling updates, blue-green deploys and configurable canary traffic splitting; ' +
+            'not automatic 1%→100% 5xx rollback by default on every deploy.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Isolated container runtimes (gVisor / Cloud Hypervisor microVMs) across managed K8s.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them:
+            'Managed PostgreSQL, MySQL, MongoDB, Redis and RabbitMQ addons billed by vCPU/RAM ' +
+            'hours plus $0.15/GB-mo disk.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Automated preview environments per pull request supported via templates and CI.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Persistent SSD/HDD volumes attached to services or databases ($0.15/GB-month).',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Northflank Cloud regions plus BYOC inside AWS, GCP, Azure or Oracle.',
+        },
+      ],
+      theyFit: [
+        'You need Bring-Your-Own-Cloud (BYOC) inside your own AWS EKS, GCP GKE or Azure AKS account.',
+        'You want an always-on Free Sandbox with a database or GPU/Kubernetes pipeline primitives.',
+        'You need enterprise RBAC across large multi-cluster microservice topologies.',
+      ],
+      gregaleFits: [
+        'You want intermittent or spaced API traffic to stop billing ~1s after every request instead of paying 24/7 vCPU+RAM rates.',
+        'You want a simpler CLI without Kubernetes concepts, plus automatic 1%→100% 5xx canary rollbacks and code+Postgres PITR rollback.',
+        'You want scoped `--agent` keys, human approval links, cost previews and undo for AI coding agents.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Northflank?',
+          answer: costAnswer(
+            'Northflank bills ~$12 a month for a 0.5 vCPU / 1 GB always-on container plus ' +
+              'database compute and disk storage, while Northflank’s Free Sandbox covers 2 always-on services and 1 DB.'
+          ),
+        },
+        {
+          question: 'Does Gregale support Bring-Your-Own-Cloud (BYOC) like Northflank?',
+          answer:
+            'No. Gregale is a fully managed single-control-plane platform running each app in a ' +
+            'Firecracker microVM. Choose Northflank if running inside your own AWS, GCP or Azure ' +
+            'cluster is a hard requirement.',
+        },
+        {
+          question: 'Can I move a containerized service from Northflank to Gregale?',
+          answer:
+            'Yes. Any standard Dockerfile or Node/Python/Go service deploys via `gregale deploy`, ' +
+            'with managed PostgreSQL bound as `DATABASE_URL`.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and rolls back on its own if 5xx errors rise. On Northflank, you configure ' +
+            'custom pipeline rules or trigger rollbacks across revisions.',
+        },
+      ],
+      sources: [
+        { label: 'Northflank pricing', url: 'https://northflank.com/pricing' },
+        {
+          label: 'Northflank platform overview',
+          url: 'https://northflank.com/docs/v1/application/getting-started/what-is-northflank',
+        },
+      ],
+    },
   ];
 }
 
@@ -778,4 +1016,6 @@ export const COMPARISON_SLUGS = [
   'fly',
   'cloud-run',
   'vercel',
+  'koyeb',
+  'northflank',
 ] as const;
