@@ -401,6 +401,11 @@ describeBuilt('prerendered pages', () => {
       { slug: 'private-microservice-networking-no-vpc', doc: 'internal-services' },
       { slug: 'sidecar-companions-without-kubernetes', doc: 'companions' },
       { slug: 'pull-queue-workers-workload-identity', doc: 'queue-pull-leases' },
+      { slug: 'hard-cloud-spend-caps', doc: 'cost-controls' },
+      { slug: 'zero-code-otel-sql-regression-tracing', doc: 'tracing' },
+      { slug: 'autoscale-from-zero-kafka-lag-custom-metrics', doc: 'scaling-policy' },
+      { slug: 'promote-staging-to-production-without-rebuilding', doc: 'environment-promotion' },
+      { slug: 'synthetic-uptime-checks-scale-to-zero', doc: 'synthetic-checks' },
     ];
     const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');

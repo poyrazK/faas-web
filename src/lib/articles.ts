@@ -50,6 +50,11 @@ const SECRET_ROTATION_SLUG = 'zero-restart-secret-rotation';
 const INTERNAL_SERVICES_SLUG = 'private-microservice-networking-no-vpc';
 const COMPANIONS_SLUG = 'sidecar-companions-without-kubernetes';
 const PULL_QUEUE_WORKERS_SLUG = 'pull-queue-workers-workload-identity';
+const SPEND_CAPS_SLUG = 'hard-cloud-spend-caps';
+const OTEL_TRACING_SLUG = 'zero-code-otel-sql-regression-tracing';
+const AUTOSCALE_LAG_SLUG = 'autoscale-from-zero-kafka-lag-custom-metrics';
+const ENV_PROMOTION_SLUG = 'promote-staging-to-production-without-rebuilding';
+const SYNTHETIC_CHECKS_SLUG = 'synthetic-uptime-checks-scale-to-zero';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -1068,6 +1073,132 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: SPEND_CAPS_SLUG,
+    title: 'Hard cloud spend caps that actually stop runaway bills',
+    summary:
+      'Every paid Gregale plan enforces a hard monthly overage cap from day one (Hobby $10 default, Pro $50, Scale $150), stopping compute at the ceiling with HTTP 402 instead of alerting after a runaway loop or DDoS spike racks up charges.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do Gregale spend caps actually stop billing or only send email alerts?',
+        answer:
+          'They stop billing hard at your cap. Running instances and minimum-instance floors stop within one scheduler tick, new requests return `HTTP 402 admission_refused`, managed PostgreSQL pauses without losing data, and queued webhooks and crons wait until you raise the cap or the month resets.',
+      },
+      {
+        question: 'Can a compromised CI token or AI coding agent raise my spend cap?',
+        answer:
+          'No. Raising or lowering the spend cap (`gregale billing spend-cap`) requires an `admin`-scoped credential and multi-factor authentication (plus recent step-up in the dashboard); deploy keys and MCP agents cannot raise it.',
+      },
+      {
+        question: 'Can I stop preview environments at a limit while keeping production live?',
+        answer:
+          'Yes. A budget policy with `"action": "stop_previews"` pauses pull-request preview environments at your chosen dollar threshold while production continues serving.',
+      },
+    ],
+  },
+  {
+    slug: OTEL_TRACING_SLUG,
+    title: 'One-line OpenTelemetry tracing with deploy-to-deploy SQL regression detection',
+    summary:
+      'Add `tracing: { enabled: true }` in `gregale.yaml` for zero-code Node and Python OpenTelemetry spans, in-instance OTLP receivers for Go/containers, normalized SQL queries, PII log redaction and automatic deploy-to-deploy `failure_regression` alerts.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do I need to install an OpenTelemetry exporter or API key to trace requests?',
+        answer:
+          'No. Set `tracing: { enabled: true }` in `gregale.yaml` (`tracing.enabled = true` in `gregale.toml`) and Gregale auto-instruments managed Node.js (22, 24) and Python (3.12, 3.13) runtimes and provides loopback OTLP receivers (`127.0.0.1:4318` / `4317`) for Go and Docker images.',
+      },
+      {
+        question: 'Does Gregale strip customer PII and SQL values from trace spans?',
+        answer:
+          'Yes. Gregale folds SQL literals into parameterized patterns (`WHERE customer_id = ?`), drops query values, request headers, user IDs and exception stack traces at ingestion, and redacts emails, card numbers and tokens from linked logs.',
+      },
+      {
+        question: 'Can I still send traces to Grafana, Honeycomb or Datadog?',
+        answer:
+          'Yes. Set `tracing.forward` with your OTLP/HTTP endpoint and `OTLP_HEADERS` secret to forward complete raw spans, logs and metrics asynchronously via a 4 MiB in-instance buffer alongside the Gregale debugger.',
+      },
+    ],
+  },
+  {
+    slug: AUTOSCALE_LAG_SLUG,
+    title: 'Autoscale containers from zero on Kafka lag, custom metrics and schedules',
+    summary:
+      'Scale Gregale apps up from zero on upstream Kafka/NATS/SQS `queue_lag`, API-pushed `custom` backlog metrics, or timezone-aware cron warm windows (`scaling.schedules`) with bounded saturation queues—without Kubernetes or KEDA.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question:
+          'What is the difference between queue_depth and queue_lag in Gregale autoscaling?',
+        answer:
+          '`queue_depth` measures messages already inside Gregale’s own queue, whereas `queue_lag` measures backlog still waiting upstream on Kafka, NATS, Redis Streams or SQS brokers (such as summed partition offset lag). Scale broker-backed consumers on `queue_lag`.',
+      },
+      {
+        question: 'Can a parked app at zero instances wake and scale out from a custom metric?',
+        answer:
+          'Yes, on paid plans. An external cron or database trigger can `PUT /v1/apps/$APP/custom-metrics/<name>` while your app is parked at zero, scaling replicas to match `ceil(value / target)`.',
+      },
+      {
+        question: 'How do scheduled warm windows work with reactive scaling targets?',
+        answer:
+          '`scaling.schedules` sets a cron + duration floor in any IANA timezone (raising `min_instances` during busy weekday hours while parking overnight), and reactive signals scale above that floor whenever demand spikes further.',
+      },
+    ],
+  },
+  {
+    slug: ENV_PROMOTION_SLUG,
+    title: 'Promote tested staging artifacts to production without rebuilding',
+    summary:
+      'Promote exact staging build artifacts and pinned non-secret config to production with `gregale environment promote --sync-config` while keeping production secrets separate, with dark health rounds, service-graph rewiring and migrations rolling out per account.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Does promoting from staging to production rebuild the container image?',
+        answer:
+          'No. `gregale environment promote --from staging --to production --sync-config` reuses the tested staging build artifact and binds pinned non-secret variables without running a fresh build.',
+      },
+      {
+        question: 'Do staging secrets overwrite production secrets during promotion?',
+        answer:
+          'Never. Production retains its own secrets, secret version pins, authentication credentials and service bindings while receiving only the promoted artifact and approved non-secret configuration.',
+      },
+      {
+        question: 'Which verified promotion features require account enablement today?',
+        answer:
+          'Health-verified (`--verify`) two-round dark cutovers, complete HTTP service-graph promotion, database migration expansion (`--migrate`) and push-worker promotion (`--workers`) are rolling out per account (contact support); `--release-secrets-file` and combined `--migrate --workers` are not available yet.',
+      },
+    ],
+  },
+  {
+    slug: SYNTHETIC_CHECKS_SLUG,
+    title: 'Synthetic uptime checks on scale-to-zero apps without accidental bills',
+    summary:
+      'Run external 5-, 15-, or 60-minute `GET`/`HEAD` uptime and p95-latency probes (`Gregale-Synthetics/1`) on Hobby+ apps with consecutive-failure alerts and exact per-plan GB-RAM-hour wake-cost tables.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do built-in synthetic checks wake a parked scale-to-zero app?',
+        answer:
+          'Yes. Probes travel through real DNS, TLS and the public edge (`User-Agent: Gregale-Synthetics/1`), so they wake a parked app and keep it up for the plan’s idle timeout (60 s Hobby, 300 s Pro, 600 s Scale).',
+      },
+      {
+        question: 'Why does a 5-minute check keep Pro and Scale apps continuously warm?',
+        answer:
+          'Pro (300 s) and Scale (600 s) have idle timeouts at or above 5 minutes, so probing every 5 minutes resets the idle timer before the app parks (~726 GB-h/mo on Pro, ~1,446 GB-h/mo on Scale). Choose 15- or 60-minute intervals when you want the app to park between probes.',
+      },
+      {
+        question: 'How many synthetic checks can an app run and on which plans?',
+        answer:
+          'Up to 5 checks per public app on Hobby, Pro and Scale; Free plans and internal-only apps (`409`) pause or disallow scheduled synthetic checks.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -1115,6 +1246,11 @@ const SECRET_ROTATION_LINK = `[Rotate and revoke secrets without restarting cont
 const INTERNAL_SERVICES_LINK = `[Private service-to-service networking with caller allowlists and no VPC](/articles/${INTERNAL_SERVICES_SLUG}) explains zero-VPC discovery, caller scopes, private HTTPS and PR preview isolation.`;
 const COMPANIONS_LINK = `[Run OpenTelemetry, Datadog and proxy sidecars on a PaaS without Kubernetes](/articles/${COMPANIONS_SLUG}) explains presets, custom digest-pinned companions, probes and secret grants.`;
 const PULL_QUEUE_WORKERS_LINK = `[Run SQS-style pull queue workers with zero-secret workload identity](/articles/${PULL_QUEUE_WORKERS_SLUG}) explains pull leases, SDK heartbeating, scale-in safety and production isolation.`;
+const SPEND_CAPS_LINK = `[Hard cloud spend caps that actually stop runaway bills](/articles/${SPEND_CAPS_SLUG}) explains day-one overage caps, MFA enforcement, HTTP 402 freezing and preview-only shutoffs.`;
+const OTEL_TRACING_LINK = `[One-line OpenTelemetry tracing with deploy-to-deploy SQL regression detection](/articles/${OTEL_TRACING_SLUG}) explains zero-code instrumentation, SQL normalization, PII redaction and OTLP forwarding.`;
+const AUTOSCALE_LAG_LINK = `[Autoscale containers from zero on Kafka lag, custom metrics and schedules](/articles/${AUTOSCALE_LAG_SLUG}) explains queue_lag vs queue_depth, pushed backlog metrics and cron warm windows.`;
+const ENV_PROMOTION_LINK = `[Promote tested staging artifacts to production without rebuilding](/articles/${ENV_PROMOTION_SLUG}) explains immutable artifact promotion, secret isolation and verified dark cutovers.`;
+const SYNTHETIC_CHECKS_LINK = `[Synthetic uptime checks on scale-to-zero apps without accidental bills](/articles/${SYNTHETIC_CHECKS_SLUG}) explains external probe alerts, failure classes and exact per-plan wake costs.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
@@ -1129,6 +1265,11 @@ const RELATED_ARTICLES: Record<string, string> = {
   'internal-services': INTERNAL_SERVICES_LINK,
   companions: COMPANIONS_LINK,
   'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
+  'cost-controls': SPEND_CAPS_LINK,
+  tracing: OTEL_TRACING_LINK,
+  'scaling-policy': AUTOSCALE_LAG_LINK,
+  'environment-promotion': ENV_PROMOTION_LINK,
+  'synthetic-checks': SYNTHETIC_CHECKS_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: CODEX_LINK,
