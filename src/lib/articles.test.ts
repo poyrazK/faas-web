@@ -20,6 +20,10 @@ const sources = import.meta.glob<string>(
     '../../content/docs/secrets.md',
     '../../content/docs/companions.md',
     '../../content/docs/queue-pull-leases.md',
+    '../../content/docs/cost-controls.md',
+    '../../content/docs/tracing.md',
+    '../../content/docs/scaling-policy.md',
+    '../../content/docs/synthetic-checks.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -236,6 +240,56 @@ describe('articles', () => {
     expect(pullText).toContain('gregale:queues');
     for (const snippet of ['`100` messages', '`8 MiB`', '`20` seconds', '`64`']) {
       expect(pullText).toContain(snippet);
+    }
+  });
+
+  it('quotes limits and figures in Batch 3 capability articles as docs state them', () => {
+    const costDoc = sources['../../content/docs/cost-controls.md'].replace(/\s+/g, ' ');
+    const costText = body('hard-cloud-spend-caps').replace(/\s+/g, ' ');
+    for (const [plan, included, defCap, maxCap] of [
+      ['Hobby', '200', '\\$10', '\\$75'],
+      ['Pro', '1,000', '\\$50', '\\$200'],
+      ['Scale', '3,000', '\\$150', '\\$1,000'],
+    ]) {
+      expect(costDoc).toMatch(
+        new RegExp(
+          `\\|\\s*${plan}\\s*\\|\\s*${included}\\s*\\|\\s*${defCap}\\s*\\|\\s*${maxCap}\\s*\\|`
+        )
+      );
+      expect(costText).toMatch(
+        new RegExp(
+          `\\|\\s*${plan}\\s*\\|\\s*${included}\\s*\\|\\s*${defCap}\\s*\\|\\s*${maxCap}\\s*\\|`
+        )
+      );
+    }
+    expect(costText).toContain('HTTP 402');
+
+    const tracingDoc = sources['../../content/docs/tracing.md'].replace(/\s+/g, ' ');
+    const tracingText = body('zero-code-otel-sql-regression-tracing').replace(/\s+/g, ' ');
+    for (const snippet of [
+      'enabled: true',
+      '127.0.0.1:4318',
+      '127.0.0.1:4317',
+      'failure_regression',
+    ]) {
+      expect(tracingDoc).toContain(snippet);
+      expect(tracingText).toContain(snippet);
+    }
+
+    const scalingDoc = sources['../../content/docs/scaling-policy.md'].replace(/\s+/g, ' ');
+    const scalingText = body('autoscale-from-zero-kafka-lag-custom-metrics').replace(/\s+/g, ' ');
+    expect(scalingDoc).toContain('20 on Hobby, 50 on Pro, 200 on Scale');
+    expect(scalingText).toContain('`20` names on Hobby, `50` on Pro, and `200` on Scale');
+    for (const signal of ['queue_lag', 'queue_depth']) {
+      expect(scalingDoc).toContain(signal);
+      expect(scalingText).toContain(signal);
+    }
+
+    const synthDoc = sources['../../content/docs/synthetic-checks.md'].replace(/\s+/g, ' ');
+    const synthText = body('synthetic-uptime-checks-scale-to-zero').replace(/\s+/g, ' ');
+    for (const snippet of ['~73 GB-h', '~726 GB-h', '~1,446 GB-h', 'Gregale-Synthetics/1']) {
+      expect(synthDoc).toContain(snippet);
+      expect(synthText).toContain(snippet);
     }
   });
 });
