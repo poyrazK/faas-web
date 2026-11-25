@@ -137,10 +137,32 @@ describeBuilt('prerendered pages', () => {
       datePublished: '2026-11-24',
       mainEntityOfPage: `https://gregale.dev${route}`,
     });
-    for (const file of ['samples.csv', 'summary.json', 'analyze.py']) {
+    for (const file of [
+      'samples.csv',
+      'summary.json',
+      'analyze.py',
+      'README.md',
+      'reproduction.tar.gz',
+    ]) {
       expect(report).toContain(`href="${route}/${file}"`);
       expect(existsSync(`dist${route}/${file}`)).toBe(true);
     }
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-09-09',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toEqual(
+      expect.arrayContaining([
+        `https://gregale.dev${route}/reproduction.tar.gz`,
+        `https://gregale.dev${route}/samples.csv`,
+      ])
+    );
     expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
       `<loc>https://gregale.dev${route}</loc>`
     );
@@ -174,6 +196,7 @@ describeBuilt('prerendered pages', () => {
     expect(report).toContain(summary.totals.spread.gb_ram_hours.toFixed(6));
     expect(report).toContain(summary.totals.burst.gb_ram_hours.toFixed(6));
     for (const file of [
+      'reproduction.tar.gz',
       'traffic.csv',
       'ledger.json',
       'states.csv',
@@ -188,6 +211,20 @@ describeBuilt('prerendered pages', () => {
       expect(report).toContain(`href="${route}/${file}"`);
       expect(existsSync(`dist${route}/${file}`)).toBe(true);
     }
+    expect(existsSync(`dist${route}/README.md`)).toBe(true);
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-11-24',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toContain(
+      `https://gregale.dev${route}/reproduction.tar.gz`
+    );
     expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
       `<loc>https://gregale.dev${route}</loc>`
     );
