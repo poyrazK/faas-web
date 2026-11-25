@@ -29,6 +29,10 @@ const CANARY_SLUG = 'canary-deploys';
 const MICROVM_SLUG = 'microvm-isolation';
 const FASTAPI_JOBS_SLUG = 'fastapi-background-jobs-postgres';
 const NODE_WORKER_SLUG = 'nodejs-api-and-worker';
+const CLAUDE_CODE_SLUG = 'claude-code-deploy-production-safely';
+const APPROVAL_SLUG = 'ai-agent-production-approval';
+const UNDO_SLUG = 'undo-ai-agent-changes';
+const BUDGET_SLUG = 'ai-agent-hosting-budget';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -232,6 +236,140 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: CLAUDE_CODE_SLUG,
+    title: 'Let Claude Code deploy to production safely',
+    summary:
+      'Give Claude Code a Gregale agent key instead of your login or cloud credentials. It can deploy, read logs and roll back; risky production changes wait for your approval, new releases go to a small share of traffic first, and you can undo what it changed.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Does Claude Code need my cloud credentials?',
+        answer:
+          "No. It gets its own Gregale agent key, or connects to Gregale's hosted MCP server (in preview) with OAuth. You never paste your own login or a cloud provider's keys into the session.",
+      },
+      {
+        question: 'What can Claude Code do without asking?',
+        answer:
+          'Inspect apps, read logs and metrics, and deploy previews. Deletes, production deploys and rollbacks, credentials and billing changes wait for your approval unless you choose otherwise.',
+      },
+      {
+        question: 'What if a deploy breaks production?',
+        answer:
+          'A production release gets 1% of traffic first, then 10%, 50% and 100%, and Gregale stops it when its 5xx rate, latency, crashes or memory get worse (progressive rollouts are in beta). `gregale mcp connection undo` reverses everything else the agent changed.',
+      },
+      {
+        question: 'Does this work with Codex, Cursor or Gemini CLI?',
+        answer:
+          'Yes. They use the same CLI and agent key, and any MCP client can connect to the hosted MCP server. Gregale has a setup guide for each.',
+      },
+    ],
+  },
+  {
+    slug: APPROVAL_SLUG,
+    title: 'Human approval before an AI agent changes production',
+    summary:
+      'On Gregale, an AI coding agent has to ask a person before it deletes something, deploys or rolls back a production app, creates or rotates credentials, or changes billing. You approve or deny from a review link; the agent repeats the exact request once.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Can the agent approve its own request?',
+        answer:
+          'No. Only the member who connected the agent, or an owner or admin of its organization, can decide, and only from a signed-in dashboard session, never with an API key. Approving a delete, production, credentials or billing request also needs a sign-in from the last 15 minutes.',
+      },
+      {
+        question: 'Does every change need approval?',
+        answer:
+          "No. Reads and previews are not gated, and changing variables or settings in a stage scope does not ask. You choose which categories ask (`delete`, `production`, `credentials`, `billing`, `all` or `none`) when you create the agent's key.",
+      },
+      {
+        question: 'Which agents does it work with?',
+        answer:
+          "Any agent that runs the `gregale` CLI with an agent key, such as Claude Code, Codex, Cursor or Gemini CLI, and any MCP client connected to Gregale's hosted MCP server, which is in preview.",
+      },
+      {
+        question: 'What if nobody is watching the agent?',
+        answer:
+          'Subscribe an account webhook to `agent.approval.requested`, `agent.approval.approved` and `agent.approval.denied`. A request expires 30 minutes after it was made.',
+      },
+      {
+        question: 'What does the review page show?',
+        answer:
+          "The exact method, path and body the agent will send, and the reason the agent gave, if any. You approve the request itself, not the agent's description of it.",
+      },
+    ],
+  },
+  {
+    slug: UNDO_SLUG,
+    title: 'Undo what an AI agent changed in production',
+    summary:
+      'Gregale keeps a 7-day log of every change an AI agent makes and can reverse them with one command: deploys and rollbacks, traffic splits, settings, scaling, variables, and the apps, crons, domains and databases it created or deleted.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'Is undo the same as rolling back a deploy?',
+        answer:
+          'No. A rollback restores code. Undo also puts back the settings, scaling, variables, traffic split, crons, domains and databases the agent changed, created or deleted, newest first.',
+      },
+      {
+        question: "What can't undo reverse?",
+        answer:
+          "A secret the agent set or removed (Gregale keeps no copy of a replaced secret), an app's first deploy, an individual canary step and a deleted bucket. The plan lists anything it cannot reverse and why before you confirm.",
+      },
+      {
+        question: 'What if someone changed the same thing after the agent did?',
+        answer:
+          "Undo leaves that resource as it is, so it never overwrites a person's later change. Pass `--force` to undo it anyway.",
+      },
+      {
+        question: 'Can the agent undo its own mistakes?',
+        answer:
+          "It can plan an undo of its own changes, never another key's, with the MCP tools `gregale_plan_undo` and `gregale_apply_undo`. Applying always waits for your approval.",
+      },
+      {
+        question: 'How long are changes kept?',
+        answer: 'Seven days. Each change can be undone once.',
+      },
+    ],
+  },
+  {
+    slug: BUDGET_SLUG,
+    title: 'Cap what an AI agent adds to your hosting bill',
+    summary:
+      'Each AI agent on Gregale has a monthly budget for the always-on capacity it adds. Gregale prices every change before it is made; a change past the budget waits for your approval, with its added monthly cost on the review page.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What does the agent budget count?',
+        answer:
+          "The always-on cost the agent's changes keep running: warm instances, services and workers, more RAM on warm instances, and prewarming. Traffic-driven usage is not counted; your account's spend cap still bounds it.",
+      },
+      {
+        question: 'What is the default budget?',
+        answer:
+          "Half of your plan's default spend cap. You can set a budget per agent, make it unlimited, or go back to the default with `gregale mcp connection budget`.",
+      },
+      {
+        question: 'Does the budget reset every month?',
+        answer:
+          "No. It holds the total always-on cost the agent's changes keep running, so capacity it added last month still counts. Lowering cost never asks and gives the budget back.",
+      },
+      {
+        question: 'Can the agent check the cost before it asks?',
+        answer:
+          'Yes. `gregale app <slug> scale --plan`, the MCP tool `gregale_plan_scale`, or the header `Gregale-Agent-Preview: budget` prices a change, shows the budget left and whether a person would be asked, and changes nothing.',
+      },
+      {
+        question: 'Can an organization cap every agent?',
+        answer:
+          "Yes. `gregale org agent policy set --max-budget` sets a ceiling; the lower of the agent's budget and the ceiling applies.",
+      },
+    ],
+  },
+  {
     slug: 'render-vs-railway-vs-flyio',
     comparison: ['render', 'railway', 'fly'],
     title: 'Render vs Railway vs Fly.io for a production API',
@@ -386,7 +524,15 @@ const NO_DEVOPS_LINK =
 const FASTAPI_JOBS_LINK = `[Where to host a FastAPI app with background jobs and Postgres](/articles/${FASTAPI_JOBS_SLUG}) explains where each kind of background work belongs, and compares the options.`;
 const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/articles/${NODE_WORKER_SLUG}) shows how to keep an API and its worker on one version, and what the setup costs on each platform.`;
 
+const AGENT_SAFETY_LINK = `[Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) explain the limits Gregale puts on coding agents, and compare them with other setups.`;
+const CLAUDE_CODE_LINK = `[Let Claude Code deploy to production safely](/articles/${CLAUDE_CODE_SLUG}) shows the setup and the guardrails that hold whatever the agent runs.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
+  agents: AGENT_SAFETY_LINK,
+  'claude-code': CLAUDE_CODE_LINK,
+  codex: AGENT_SAFETY_LINK,
+  cursor: AGENT_SAFETY_LINK,
+  'gemini-cli': AGENT_SAFETY_LINK,
   'deploy-fastapi': FASTAPI_JOBS_LINK,
   jobs: FASTAPI_JOBS_LINK,
   'deploy-express': NODE_WORKER_LINK,
