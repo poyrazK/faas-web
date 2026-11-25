@@ -9,7 +9,7 @@ From a repository to a live URL, the way a coding agent does it:
 
 ```sh
 {{INSTALL_COMMAND}}
-gregale login        # a person signs in once; CI and agents can set FAAS_TOKEN instead
+gregale login        # a person signs in once; CI and agents set GREGALE_TOKEN instead
 gregale guide        # task index written for agents
 gregale deploy --dry-run   # what Gregale detects in this repository
 gregale --non-interactive --json deploy --path . --worktree --name my-api
@@ -22,10 +22,22 @@ as one JSON object with a stable `code` and exit code. The full contract,
 scoped keys for agents and the Claude Code plugin are in
 [Use Gregale from coding agents](https://gregale.dev/docs/agents.md).
 
+Machine-readable entry points:
+
+- Hosted MCP server (in preview): `https://api.gregale.dev/mcp`, with OAuth.
+  `gregale mcp connect` adds it to Claude Code, Codex, Cursor, VS Code and
+  other MCP clients.
+- Plans and prices as JSON: [pricing.json](https://gregale.dev/pricing.json).
+- HTTP API reference: [API reference](https://gregale.dev/docs/api).
+- Every page in one file: [llms-full.txt](https://gregale.dev/llms-full.txt);
+  the deploy-and-debug subset: [llms-small.txt](https://gregale.dev/llms-small.txt).
+- New articles and research: [Atom feed](https://gregale.dev/feed.xml).
+
 Key facts:
 
 - The whole backend in one place: APIs and functions, background jobs,
-  workflows, crons, delayed tasks, inbound webhooks and managed PostgreSQL.
+  workflows, crons, delayed tasks, inbound webhooks, managed PostgreSQL and
+  private S3-compatible object storage.
   A Compose file or a monorepo deploys as one project whose services call
   each other by name.
 - Safe releases: every deploy is an immutable revision. Roll back to an

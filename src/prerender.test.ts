@@ -266,6 +266,55 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes each comparison page as Markdown and lists it for agents', () => {
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    const full = readFileSync('dist/llms-full.txt', 'utf8');
+    for (const slug of ['heroku', 'render', 'railway', 'fly']) {
+      const route = `/vs/${slug}`;
+      const markdown = readFileSync(`dist${route}.md`, 'utf8');
+      expect(markdown.startsWith('# Gregale vs ')).toBe(true);
+      expect(markdown).toContain(`Canonical URL: https://gregale.dev${route}`);
+      expect(full).toContain(markdown.split('\n')[0]);
+      expect(readFileSync(`dist${route}/index.html`, 'utf8')).toContain(
+        `type="text/markdown" href="${route}.md"`
+      );
+      expect(llms).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
+  it('publishes an Atom feed of articles and research and links it from their pages', () => {
+    const feed = readFileSync('dist/feed.xml', 'utf8');
+    const link =
+      'type="application/atom+xml" title="Gregale articles and research" href="/feed.xml"';
+    expect(feed).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
+    for (const route of [
+      '/articles/canary-deploys',
+      '/research/intermittent-fastapi-cost-2026-11-24',
+    ]) {
+      expect(feed).toContain(`<id>https://gregale.dev${route}</id>`);
+      expect(readFileSync(`dist${route}/index.html`, 'utf8')).toContain(link);
+    }
+    expect(readFileSync('dist/index.html', 'utf8')).toContain(link);
+    expect(readFileSync('dist/pricing/index.html', 'utf8')).not.toContain(link);
+  });
+
+  it('dates articles, research and comparison pages in the sitemap', () => {
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    for (const route of [
+      '/articles',
+      '/articles/canary-deploys',
+      '/research',
+      '/research/intermittent-fastapi-cost-2026-11-24',
+      '/vs/heroku',
+    ]) {
+      expect(sitemap, route).toMatch(
+        new RegExp(
+          `<loc>https://gregale\\.dev${route}</loc>\\n    <lastmod>\\d{4}-\\d{2}-\\d{2}</lastmod>`
+        )
+      );
+    }
+  });
+
   it('offers a complete copy of the FastAPI study inputs in one download', () => {
     const slug = 'intermittent-fastapi-cost-2026-11-24';
     const route = `/research/${slug}`;

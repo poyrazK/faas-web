@@ -5,10 +5,10 @@ import { pathToFileURL } from 'node:url';
 
 const origin = 'https://gregale.dev';
 const commitSha = /^[a-f0-9]{40}$/;
-// Research reports, articles, comparison pages and docs share one release file
-// and one submission.
+// The home page, pricing, research reports, articles, comparison pages and docs
+// share one release file and one submission.
 const releasePath =
-  /^\/(?:(?:research|articles)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})$/;
+  /^\/(?:pricing|(?:research|articles)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -75,6 +75,28 @@ export function changedPaths(files, livePaths) {
     )
   ) {
     add(livePaths.filter((path) => path.startsWith('/vs/')));
+  }
+  // The pricing page renders the plan catalog and its own questions.
+  if (
+    files.some(
+      (file) =>
+        file === 'content/docs/plans.md' ||
+        file === 'src/lib/faq.ts' ||
+        file.startsWith('src/routes/pricing.')
+    )
+  ) {
+    changed.add('/pricing');
+  }
+  // The home page is the landing components and their questions.
+  if (
+    files.some(
+      (file) =>
+        file === 'src/routes/index.tsx' ||
+        file === 'src/lib/faq.ts' ||
+        file.startsWith('src/components/landing/')
+    )
+  ) {
+    changed.add('/');
   }
   if (files.includes('src/lib/docs-manifest.ts')) changed.add('/docs');
   if (files.includes('api/openapi.yaml')) add(under('/docs/api', livePaths));
