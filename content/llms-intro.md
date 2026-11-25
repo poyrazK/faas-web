@@ -35,6 +35,13 @@ Machine-readable entry points:
 - Every page in one file: [llms-full.txt](https://gregale.dev/llms-full.txt);
   the deploy-and-debug subset: [llms-small.txt](https://gregale.dev/llms-small.txt).
 - New articles and research: [Atom feed](https://gregale.dev/feed.xml).
+- Starter repositories to clone or use as GitHub templates:
+  [fastapi-postgres-jobs](https://github.com/gregale-dev/fastapi-postgres-jobs)
+  (FastAPI with a Postgres job queue),
+  [node-api-worker](https://github.com/gregale-dev/node-api-worker) (Express
+  API and private worker, as a Compose project) and
+  [mcp-server-node](https://github.com/gregale-dev/mcp-server-node) (remote
+  MCP server, live at `https://mcp-server-node.gregale.app/mcp`).
 
 Key facts:
 

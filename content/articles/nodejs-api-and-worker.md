@@ -66,6 +66,12 @@ higher. See [Deploy a multi-service app](/docs/multi-service) and
 Scheduled work does not need the worker either: a [cron](/docs/crons) calls a
 path on your API on a schedule, and Gregale wakes the API for it.
 
+[gregale-dev/node-api-worker](https://github.com/gregale-dev/node-api-worker)
+is a complete Compose project for this setup, with an Express API, a private
+worker and a job queue in Postgres. The worker has no polling loop: the API
+calls its private `POST /drain` after storing a job, so the worker runs only
+while there's work, and `gregale deploy --project` deploys all of it.
+
 ## What two small always-on processes cost
 
 The API and the worker each at the smallest paid size that stays on, before

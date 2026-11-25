@@ -144,7 +144,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale hosts remote MCP servers over Streamable HTTP, checks every new version as an MCP client before it takes traffic, supports OAuth with per-tool scopes, and parks idle servers. In beta on Hobby, Pro and Scale.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-25',
     faq: [
       {
         question: 'Where should I host a remote MCP server?',
