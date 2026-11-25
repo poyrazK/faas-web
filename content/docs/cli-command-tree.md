@@ -81,6 +81,7 @@ touch them. The tables below map each earlier name.
 | `gregale capabilities` | `gregale feature list` |
 | `gregale channels` | `gregale alert channel` |
 | `gregale chaos` | `gregale test` |
+| `gregale claim` | `gregale account claim create` |
 | `gregale connect` | `gregale github` |
 | `gregale consumers` | `gregale api consumer` |
 | `gregale context` | `gregale config context get` |
@@ -224,6 +225,8 @@ touch them. The tables below map each earlier name.
 | `gregale consumers billing-policy` | `gregale api consumer billing-policy get` |
 | `gregale consumers credit-grant` | `gregale api consumer credit grant` |
 | `gregale consumers credit-void` | `gregale api consumer credit void` |
+| `gregale consumers identities` | `gregale api consumer identity list` |
+| `gregale consumers identity-delete` | `gregale api consumer identity delete` |
 | `gregale consumers key-create` | `gregale api consumer key create` |
 | `gregale consumers key-revoke` | `gregale api consumer key revoke` |
 | `gregale consumers overdue-holds` | `gregale api consumer overdue-hold list` |
@@ -395,6 +398,9 @@ touch them. The tables below map each earlier name.
 | `gregale events subscriptions` | `gregale event subscription list` |
 | `gregale events workflow-backfill` | `gregale event backfill create --workflow-name <WORKFLOW-NAME>` |
 | `gregale events workflow-replay-preview` | `gregale event backfill create --workflow-name <WORKFLOW-NAME> --dry-run` |
+| `gregale flags edge-list` | `gregale flag edge list` |
+| `gregale flags edge-rm` | `gregale flag edge delete` |
+| `gregale flags edge-set` | `gregale flag edge set` |
 | `gregale flags experiments create` | `gregale flag experiment create` |
 | `gregale flags experiments delete` | `gregale flag experiment delete` |
 | `gregale flags experiments get` | `gregale flag experiment get` |
@@ -410,6 +416,9 @@ touch them. The tables below map each earlier name.
 | `gregale flags experiments start` | `gregale flag experiment start` |
 | `gregale flags experiments stop` | `gregale flag experiment stop` |
 | `gregale flags kill` | `gregale flag kill set` |
+| `gregale flags notifications clear` | `gregale flag notify clear` |
+| `gregale flags notifications get` | `gregale flag notify get` |
+| `gregale flags notifications set` | `gregale flag notify set` |
 | `gregale flags off` | `gregale flag disable` |
 | `gregale flags on` | `gregale flag enable` |
 | `gregale flags percent` | `gregale flag rollout set` |
@@ -556,6 +565,7 @@ touch them. The tables below map each earlier name.
 | `gregale platform-tenants trial-end` | `gregale api tenant trial end` |
 | `gregale platform-tenants trial-set` | `gregale api tenant trial set` |
 | `gregale platform-tenants trial` | `gregale api tenant trial get` |
+| `gregale postgres app-wake` | `gregale postgres app-wake set` |
 | `gregale postgres compute-policy-status` | `gregale postgres compute-policy status` |
 | `gregale postgres compute-policy` | `gregale postgres compute-policy set` |
 | `gregale postgres overage` | `gregale postgres overage get` |
