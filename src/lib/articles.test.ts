@@ -10,6 +10,14 @@ const bodies = import.meta.glob<string>('../../content/articles/*.md', {
 });
 const body = (slug: string) => bodies[`../../content/articles/${slug}.md`];
 
+const sources = import.meta.glob<string>(
+  [
+    '../../content/docs/postgres.md',
+    '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
+  ],
+  { query: '?raw', import: 'default', eager: true }
+);
+
 const ROUNDUPS = ARTICLES.filter((article) => article.alternativesTo);
 
 describe('articles', () => {
@@ -113,5 +121,38 @@ describe('articles', () => {
       'fastapi-background-jobs-postgres',
     ])
       expect(text(slug), slug).toContain(overage);
+  });
+
+  it('quotes managed PostgreSQL limits in the rollback article as the Postgres docs state them', () => {
+    const doc = sources['../../content/docs/postgres.md'];
+    const row = (plan: string) => {
+      const cells = new RegExp(`^\\| ${plan} \\|(.+)\\|\\s*$`, 'm').exec(doc)?.[1].split('|');
+      if (!cells) throw new Error(`postgres.md has no ${plan} row`);
+      return { databases: cells[0].trim(), window: cells[4].trim() };
+    };
+    const [hobby, pro, scale] = ['Hobby', 'Pro', 'Scale'].map(row);
+    const text = body('rollback-code-and-database').replace(/\s+/g, ' ');
+    expect(text).toContain(
+      `${hobby.databases} on Hobby, ${pro.databases} on Pro, ${scale.databases} on Scale`
+    );
+    for (const plan of [hobby, pro, scale]) expect(plan.window).toBe('7 days');
+    expect(text).toContain('7-day restore window');
+    expect(row('Free').databases).toBe('—');
+    expect(text).toContain('the Free plan has no managed PostgreSQL');
+  });
+
+  it('quotes the snapshot restore benchmark as its published summary rounds it', () => {
+    const summary = JSON.parse(
+      sources['../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json']
+    ) as { snapshot_restores: number; platform_ms: { p50: number; p95: number; max: number } };
+    const ms = (value: number) => `${Math.round(value)} ms`;
+    const text = body('scale-to-zero-without-cold-starts').replace(/\s+/g, ' ');
+    const claim =
+      `${summary.snapshot_restores} snapshot restores of a 256 MiB app took ` +
+      `${ms(summary.platform_ms.p50)} at the median and ${ms(summary.platform_ms.p95)} at p95`;
+    expect(text).toContain(claim);
+    expect(text).toContain(`${ms(summary.platform_ms.max)} at worst`);
+    const faq = ARTICLES.find((a) => a.slug === 'scale-to-zero-without-cold-starts')!.faq;
+    expect(faq.some((entry) => entry.answer.includes(claim))).toBe(true);
   });
 });
