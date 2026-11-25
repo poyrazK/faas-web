@@ -13,6 +13,9 @@ const body = (slug: string) => bodies[`../../content/articles/${slug}.md`];
 const sources = import.meta.glob<string>(
   [
     '../../content/docs/postgres.md',
+    '../../content/docs/realtime.md',
+    '../../content/docs/inbound-webhooks.md',
+    '../../content/docs/outbound-integrations.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -154,5 +157,40 @@ describe('articles', () => {
     expect(text).toContain(`${ms(summary.platform_ms.max)} at worst`);
     const faq = ARTICLES.find((a) => a.slug === 'scale-to-zero-without-cold-starts')!.faq;
     expect(faq.some((entry) => entry.answer.includes(claim))).toBe(true);
+  });
+
+  it('quotes plan limits and preview labels in the niche capability articles as the docs state them', () => {
+    const realtimeDoc = sources['../../content/docs/realtime.md'];
+    const realtimeText = body('websockets-sse-scale-to-zero').replace(/\s+/g, ' ');
+    for (const [endpoints, connections] of [
+      ['2 / 10', '200'],
+      ['10 / 50', '1,000'],
+      ['25 / 250', '5,000'],
+    ]) {
+      expect(realtimeDoc).toContain(`| ${endpoints} | ${connections} |`);
+      expect(realtimeText).toMatch(
+        new RegExp(`\\|\\s*${endpoints}\\s*\\|\\s*${connections}\\s*\\|`)
+      );
+    }
+
+    const webhooksDoc = sources['../../content/docs/inbound-webhooks.md'];
+    const webhooksText = body('durable-inbound-webhooks-scale-to-zero').replace(/\s+/g, ' ');
+    expect(webhooksDoc).toContain('Free 60, Hobby 1,200, Pro 3,000, Scale 6,000');
+    for (const limit of ['1,200', '3,000', '6,000', '60']) {
+      expect(webhooksText).toContain(limit);
+    }
+
+    const outboundDoc = sources['../../content/docs/outbound-integrations.md'];
+    const outboundText = body('zero-secret-outbound-api-relay').replace(/\s+/g, ' ');
+    expect(outboundDoc).toContain('**Preview.** Outbound integrations are a preview capability');
+    expect(outboundText).toContain('**Preview:** Outbound integrations are a preview capability');
+    for (const [plan, daily] of [
+      ['Hobby', '1,000,000'],
+      ['Pro', '10,000,000'],
+      ['Scale', '100,000,000'],
+    ]) {
+      expect(outboundDoc).toContain(`| ${plan} | ${daily} |`);
+      expect(outboundText).toMatch(new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${daily}\\s*\\|`));
+    }
   });
 });
