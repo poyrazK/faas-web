@@ -29,8 +29,13 @@ import { sitemapXml } from './sitemap.mjs';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE, SNAPSHOT_RESTORE_SLUG } =
-  await import('../src/lib/research.ts');
+const {
+  FASTAPI_COST_SLUG,
+  PAAS_COST_MODEL_SLUG,
+  RESEARCH_PUBLICATIONS,
+  RESEARCH_TITLE,
+  SNAPSHOT_RESTORE_SLUG,
+} = await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
@@ -627,6 +632,26 @@ execFileSync(
     '-C',
     join(DIST, 'research'),
     ...snapshotRestoreReproductionFiles.map((file) => join(SNAPSHOT_RESTORE_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const paasCostModelReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'vendors.json',
+  'scenarios.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', PAAS_COST_MODEL_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...paasCostModelReproductionFiles.map((file) => join(PAAS_COST_MODEL_SLUG, file)),
   ],
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );

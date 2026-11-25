@@ -383,6 +383,74 @@ describeBuilt('prerendered pages', () => {
     );
   });
 
+  it('publishes the cross-platform PaaS cost model kit and Dataset metadata', () => {
+    const slug = 'paas-intermittent-api-cost-model-2026-11-25';
+    const route = `/research/${slug}`;
+    const archive = `dist${route}/reproduction.tar.gz`;
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+
+    for (const page of ['research', 'docs/plans', 'docs/billing']) {
+      expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+    }
+    for (const docSlug of ['plans', 'billing']) {
+      expect(readFileSync(`dist/docs/${docSlug}.md`, 'utf8')).toContain(
+        `https://gregale.dev${route}`
+      );
+    }
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
+    expect(markdown).toContain('python3 analyze.py --verify');
+
+    for (const file of [
+      'reproduction.tar.gz',
+      'vendors.json',
+      'scenarios.json',
+      'summary.json',
+      'analyze.py',
+      'README.md',
+    ]) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    expect(ldBlocks[0]).toMatchObject({
+      '@type': 'TechArticle',
+      datePublished: '2026-11-25',
+      mainEntityOfPage: `https://gregale.dev${route}`,
+    });
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-11-25',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toEqual(
+      expect.arrayContaining([
+        `https://gregale.dev${route}/reproduction.tar.gz`,
+        `https://gregale.dev${route}/vendors.json`,
+      ])
+    );
+
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>\n    <lastmod>2026-11-25</lastmod>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.sort()).toEqual(
+      ['README.md', 'analyze.py', 'scenarios.json', 'summary.json', 'vendors.json']
+        .map((file) => `${slug}/${file}`)
+        .sort()
+    );
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';

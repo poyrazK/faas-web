@@ -1,0 +1,79 @@
+{
+  "checked_on": "2026-11-25",
+  "currency": "USD",
+  "prices_exclude_tax": true,
+  "hours_per_month": "730",
+  "days_per_month": 30,
+  "vendors": {
+    "gregale": {
+      "label": "Gregale",
+      "ram_overhead_mb": 8,
+      "overage_per_gb_ram_hour": "0.05",
+      "free": {
+        "monthly": "0",
+        "ram_mb": 256,
+        "included_gb_ram_hours": "20",
+        "max_apps": 1,
+        "includes_postgres": false
+      },
+      "hobby": {
+        "monthly": "10",
+        "ram_mb": 512,
+        "included_gb_ram_hours": "200",
+        "max_apps": 5,
+        "includes_postgres": true
+      },
+      "sources": ["https://gregale.dev/pricing.json", "https://gregale.dev/docs/plans"]
+    },
+    "render": {
+      "label": "Render",
+      "free_web_monthly": "0",
+      "free_instance_hours_per_month": "750",
+      "free_web_ram_mb": 512,
+      "starter_512mb_monthly": "7",
+      "postgres_basic_256mb_monthly": "6",
+      "sources": ["https://render.com/pricing", "https://render.com/docs/free"]
+    },
+    "railway": {
+      "label": "Railway",
+      "hobby_minimum_monthly": "5",
+      "ram_per_gb_month": "10",
+      "cpu_per_vcpu_month": "20",
+      "postgres_small_ram_gb": "0.25",
+      "postgres_small_avg_vcpu": "0.05",
+      "serverless_sleep_tail_factor": "1.5",
+      "sources": [
+        "https://railway.com/pricing",
+        "https://docs.railway.com/reference/pricing/plans",
+        "https://docs.railway.com/reference/app-sleeping"
+      ]
+    },
+    "fly": {
+      "label": "Fly.io",
+      "shared_cpu_1x_256mb_monthly": "2.19",
+      "shared_cpu_1x_512mb_monthly": "3.69",
+      "stopped_rootfs_per_gb_month": "0.15",
+      "assumed_rootfs_gb": "1",
+      "postgres_developer_monthly": "4",
+      "sources": ["https://fly.io/pricing/", "https://fly.io/docs/about/pricing/"]
+    },
+    "cloud_run": {
+      "label": "Google Cloud Run",
+      "tier": "Tier 1 (request-based billing)",
+      "vcpu_second_usd": "0.00002400",
+      "gib_second_usd": "0.00000250",
+      "requests_per_million_usd": "0.40",
+      "free_vcpu_seconds": 180000,
+      "free_gib_seconds": 360000,
+      "free_requests": 2000000,
+      "sources": ["https://cloud.google.com/run/pricing"]
+    },
+    "heroku": {
+      "label": "Heroku",
+      "eco_monthly": "5",
+      "basic_512mb_monthly": "7",
+      "postgres_essential_0_monthly": "5",
+      "sources": ["https://www.heroku.com/pricing/"]
+    }
+  }
+}
