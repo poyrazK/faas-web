@@ -205,6 +205,20 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Translate render.yaml services, pre-deploy commands, workers, crons and Postgres to Gregale.',
       },
+      {
+        slug: 'migrate-from-railway',
+        source: 'docs/migrate-from-railway.md',
+        title: 'Migrate from Railway',
+        summary:
+          'Map Railway services, railpack.json, variables, cron services and Postgres to Gregale, step by step.',
+      },
+      {
+        slug: 'migrate-from-fly',
+        source: 'docs/migrate-from-fly.md',
+        title: 'Migrate from Fly.io',
+        summary:
+          'Translate fly.toml, secrets, process groups, volumes and Managed Postgres to Gregale, step by step.',
+      },
     ],
   },
   {

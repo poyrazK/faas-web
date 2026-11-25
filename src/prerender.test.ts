@@ -276,7 +276,12 @@ describeBuilt('prerendered pages', () => {
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
     const cases = [
-      { slug: 'railway-alternatives', vs: 'railway', doc: null, date: '2026-11-24' },
+      {
+        slug: 'railway-alternatives',
+        vs: 'railway',
+        doc: 'migrate-from-railway',
+        date: '2026-11-25',
+      },
       {
         slug: 'heroku-alternatives',
         vs: 'heroku',
@@ -289,7 +294,7 @@ describeBuilt('prerendered pages', () => {
         doc: 'migrate-from-render',
         date: '2026-11-24',
       },
-      { slug: 'flyio-alternatives', vs: 'fly', doc: null, date: '2026-11-24' },
+      { slug: 'flyio-alternatives', vs: 'fly', doc: 'migrate-from-fly', date: '2026-11-25' },
       {
         slug: 'cloud-run-alternatives',
         vs: 'cloud-run',

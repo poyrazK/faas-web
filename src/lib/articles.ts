@@ -470,7 +470,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform, Heroku and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Railway.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-25',
     faq: [
       {
         question: 'What is the best Railway alternative?',
@@ -548,7 +548,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Fly.io.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-25',
     faq: [
       {
         question: 'What is the best Fly.io alternative?',
@@ -658,6 +658,10 @@ const HEROKU_ALTERNATIVES_LINK =
   '[Heroku alternatives in 2026](/articles/heroku-alternatives) compares the main platforms people move to from Heroku.';
 const RENDER_ALTERNATIVES_LINK =
   '[Render alternatives in 2026](/articles/render-alternatives) compares the main platforms people move to from Render.';
+const RAILWAY_ALTERNATIVES_LINK =
+  '[Railway alternatives in 2026](/articles/railway-alternatives) compares the main platforms people move to from Railway.';
+const FLY_ALTERNATIVES_LINK =
+  '[Fly.io alternatives in 2026](/articles/flyio-alternatives) compares the main platforms people move to from Fly.io.';
 
 const PREVIEW_LINK =
   '[Preview environments for every pull request](/articles/preview-environments) explains what a preview includes and keeps out, and compares it with other platforms.';
@@ -692,6 +696,8 @@ const RELATED_ARTICLES: Record<string, string> = {
   'preview-environments': PREVIEW_LINK,
   'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
+  'migrate-from-railway': RAILWAY_ALTERNATIVES_LINK,
+  'migrate-from-fly': FLY_ALTERNATIVES_LINK,
   rollouts: CANARY_LINK,
   releases: CANARY_LINK,
   'release-controls': CANARY_LINK,
