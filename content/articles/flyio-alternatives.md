@@ -148,9 +148,9 @@ the second, and a development database is $7 a month.
 
 If your app builds from a Dockerfile, Gregale can run that image. Apps that
 rely on a Fly.io volume need those files moved to managed PostgreSQL or object
-storage, because Gregale instances have no durable local disk. See
-[Container compatibility](/docs/container-compatibility) and the
-[Gregale vs Fly.io comparison](/vs/fly).
+storage, because Gregale instances have no durable local disk.
+[Migrate from Fly.io](/docs/migrate-from-fly) maps each `fly.toml` setting
+step by step; see also the [Gregale vs Fly.io comparison](/vs/fly).
 
 ## Sources
 

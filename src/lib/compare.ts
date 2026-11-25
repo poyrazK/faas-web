@@ -377,8 +377,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want CPU included in the memory price instead of metered separately.',
         'You want a monthly allowance with a hard spend cap instead of open-ended usage.',
       ],
-      migrateDoc: 'deploy-from-github',
-      migrateLabel: 'Deploy from GitHub',
+      migrateDoc: 'migrate-from-railway',
+      migrateLabel: 'Migrate from Railway',
       faq: [
         {
           question: 'Is Gregale cheaper than Railway?',
@@ -390,9 +390,10 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           question: 'Can I move a Railway service to Gregale?',
           answer:
-            'Yes. Gregale builds Node, Python and Go from source, or uses your Dockerfile, and ' +
-            'takes configuration as environment variables and secrets. Connect the GitHub ' +
-            'repository and deploy, then move the database.',
+            'Usually without code changes. Gregale builds Node, Python and Go from source, or ' +
+            'uses your Dockerfile, reads the start command in a railpack.json, and takes ' +
+            'configuration as environment variables and secrets. The pre-deploy command becomes ' +
+            'a release command; move the database with pg_dump.',
         },
         {
           question: 'Do Gregale apps sleep like Railway free services?',
@@ -487,8 +488,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want preview environments, crons and background services built in.',
         'You want a monthly allowance with a hard spend cap.',
       ],
-      migrateDoc: 'container-compatibility',
-      migrateLabel: 'Container compatibility',
+      migrateDoc: 'migrate-from-fly',
+      migrateLabel: 'Migrate from Fly.io',
       faq: [
         {
           question: 'Is Gregale cheaper than Fly.io?',
@@ -500,9 +501,11 @@ export function comparisons(catalog: Catalog): Comparison[] {
         {
           question: 'Can I move a Fly.io app to Gregale?',
           answer:
-            'Usually. If your app builds from a Dockerfile, Gregale can run that image. Apps that ' +
-            'rely on a volume need their files moved to managed PostgreSQL or object storage, ' +
-            'because Gregale instances have no durable local disk.',
+            'Usually. If your app builds from a Dockerfile, Gregale can run that image, and the ' +
+            'fly.toml settings map to gregale.yaml: release_command becomes a release command and ' +
+            'the health check path becomes hosting.health. Apps that rely on a volume need their files ' +
+            'moved to managed PostgreSQL or object storage, because Gregale instances have no ' +
+            'durable local disk.',
         },
         {
           question: 'Do both use Firecracker?',

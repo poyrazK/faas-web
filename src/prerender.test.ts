@@ -276,12 +276,27 @@ describeBuilt('prerendered pages', () => {
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
     const cases = [
-      { slug: 'railway-alternatives', vs: 'railway', doc: null },
-      { slug: 'heroku-alternatives', vs: 'heroku', doc: 'migrate-from-heroku' },
-      { slug: 'render-alternatives', vs: 'render', doc: 'migrate-from-render' },
-      { slug: 'flyio-alternatives', vs: 'fly', doc: null },
+      {
+        slug: 'railway-alternatives',
+        vs: 'railway',
+        doc: 'migrate-from-railway',
+        modified: '2026-11-25',
+      },
+      {
+        slug: 'heroku-alternatives',
+        vs: 'heroku',
+        doc: 'migrate-from-heroku',
+        modified: '2026-11-24',
+      },
+      {
+        slug: 'render-alternatives',
+        vs: 'render',
+        doc: 'migrate-from-render',
+        modified: '2026-11-24',
+      },
+      { slug: 'flyio-alternatives', vs: 'fly', doc: 'migrate-from-fly', modified: '2026-11-25' },
     ];
-    for (const { slug, vs, doc } of cases) {
+    for (const { slug, vs, doc, modified } of cases) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
@@ -290,7 +305,7 @@ describeBuilt('prerendered pages', () => {
 
       expect(html).toContain('alternatives in 2026 are');
       expect(html).toContain('Gregale publishes this page');
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-24' });
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: modified });
       expect(faq.mainEntity.length).toBeGreaterThan(0);
       for (const page of ['articles', `vs/${vs}`, ...(doc ? [`docs/${doc}`] : [])]) {
         expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
