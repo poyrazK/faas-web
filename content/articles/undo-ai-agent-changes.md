@@ -68,4 +68,5 @@ for you.
 
 - [Human approval before an AI agent changes production](/articles/ai-agent-production-approval)
 - [Canary deploys with automatic rollback](/articles/canary-deploys)
+- [Hosting platforms with an MCP server that deploys, reads logs and rolls back](/articles/hosting-mcp-server-deploy-logs-rollback)
 - Reference: [Undo what an agent changed](/docs/agents#undo-what-an-agent-changed)
