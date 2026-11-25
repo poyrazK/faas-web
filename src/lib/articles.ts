@@ -33,6 +33,7 @@ const CLAUDE_CODE_SLUG = 'claude-code-deploy-production-safely';
 const APPROVAL_SLUG = 'ai-agent-production-approval';
 const UNDO_SLUG = 'undo-ai-agent-changes';
 const BUDGET_SLUG = 'ai-agent-hosting-budget';
+const MCP_OPERATIONS_SLUG = 'hosting-mcp-server-deploy-logs-rollback';
 const DATABASE_ROLLBACK_SLUG = 'rollback-code-and-database';
 const COLD_START_SLUG = 'scale-to-zero-without-cold-starts';
 const BEST_CLOUD_AGENTS_SLUG = 'best-cloud-for-ai-coding-agents';
@@ -372,6 +373,38 @@ export const ARTICLES: readonly Article[] = [
         question: 'Can an organization cap every agent?',
         answer:
           "Yes. `gregale org agent policy set --max-budget` sets a ceiling; the lower of the agent's budget and the ceiling applies.",
+      },
+    ],
+  },
+  {
+    slug: MCP_OPERATIONS_SLUG,
+    title: 'Hosting platforms with an MCP server that deploys, reads logs and rolls back',
+    summary:
+      "Gregale, Vercel and Dokploy ship official MCP servers whose tools let an AI agent deploy, read logs and roll back. Render, Railway, DigitalOcean, Heroku, Cloud Run and Netlify deploy over MCP but have no rollback tool, and Fly.io's hosted server has no deploy tool. Checked on November 26, 2026.",
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question:
+          'Which hosting platforms have an MCP server that lets an AI agent deploy, read logs and roll back?',
+        answer:
+          "Gregale, Vercel and Dokploy, as of November 26, 2026. Render, Railway, DigitalOcean App Platform, Heroku, Google Cloud Run and Netlify can deploy over MCP but their servers have no rollback tool. Fly.io's hosted MCP server manages Machines, volumes and secrets but has no deploy or app-log tool.",
+      },
+      {
+        question: 'Can an AI agent roll back a Render or Railway app over MCP?',
+        answer:
+          'Not with a tool: neither MCP server has one as of November 26, 2026. Both platforms can roll back from the dashboard, so the agent has to fall back to another route or ask you.',
+      },
+      {
+        question:
+          "Does an agent need my approval to deploy or roll back over Gregale's MCP server?",
+        answer:
+          'For a production app, yes by default. The tool call returns a review link, and the change goes through only after a person approves it in a signed-in session. Reads and previews are not gated.',
+      },
+      {
+        question: "Can I give an agent read-only access to Gregale's MCP server?",
+        answer:
+          'Yes. Choose "Inspect only" when you connect, and the agent can list apps and deployments and read logs, metrics and health, but cannot deploy or roll back.',
       },
     ],
   },
@@ -803,7 +836,7 @@ const NO_DEVOPS_LINK =
 const FASTAPI_JOBS_LINK = `[Where to host a FastAPI app with background jobs and Postgres](/articles/${FASTAPI_JOBS_SLUG}) explains where each kind of background work belongs, and compares the options.`;
 const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/articles/${NODE_WORKER_SLUG}) shows how to keep an API and its worker on one version, and what the setup costs on each platform.`;
 
-const AGENT_SAFETY_LINK = `[Best cloud platform for AI coding agents in 2026](/articles/${BEST_CLOUD_AGENTS_SLUG}), [Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) compare platforms and explain the limits Gregale puts on coding agents.`;
+const AGENT_SAFETY_LINK = `[Best cloud platform for AI coding agents in 2026](/articles/${BEST_CLOUD_AGENTS_SLUG}), [Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}), [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) and [Hosting platforms with an MCP server that deploys, reads logs and rolls back](/articles/${MCP_OPERATIONS_SLUG}) compare platforms and explain the limits Gregale puts on coding agents.`;
 const CLAUDE_CODE_LINK = `[Let Claude Code deploy to production safely](/articles/${CLAUDE_CODE_SLUG}) shows the setup and the guardrails that hold whatever the agent runs.`;
 const CURSOR_LINK = `[Let Cursor deploy to production safely](/articles/${CURSOR_SLUG}) shows the token, MCP and API guardrails for Cursor. ${AGENT_SAFETY_LINK}`;
 const CODEX_LINK = `[Let OpenAI Codex deploy to production safely](/articles/${CODEX_SLUG}) shows the sandbox, token and API guardrails for Codex. ${AGENT_SAFETY_LINK}`;

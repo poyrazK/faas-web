@@ -79,4 +79,5 @@ request an agent key makes, whichever tool the agent uses.
 - [Undo what an AI agent changed](/articles/undo-ai-agent-changes)
 - [Cap what an AI agent adds to your hosting bill](/articles/ai-agent-hosting-budget)
 - [Let Claude Code deploy to production safely](/articles/claude-code-deploy-production-safely)
+- [Hosting platforms with an MCP server that deploys, reads logs and rolls back](/articles/hosting-mcp-server-deploy-logs-rollback)
 - Reference: [Approve an agent's risky requests](/docs/agents#approve-an-agents-risky-requests)
