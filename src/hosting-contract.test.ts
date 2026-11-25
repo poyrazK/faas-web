@@ -131,6 +131,8 @@ describe('public hosting contract', () => {
       '/llms-small.txt',
       '/pricing.json',
       '/.well-known/mcp/server-card.json',
+      '/openapi.yaml',
+      '/openapi.json',
       '/docs/quickstart.md',
       '/articles/canary-deploys.md',
       '/vs/vercel.md',
@@ -152,6 +154,9 @@ describe('public hosting contract', () => {
     expect(mdRewrite('/vs/cloud-run')?.dest).toBe('/$1/$2.md');
     expect(mdRewrite('/docs/api')).toBeUndefined();
     expect(mdRewrite('/docs/api/apps')).toBeUndefined();
+
+    const yamlHeader = preFs.find((route) => route.continue && route.src === '^/openapi\\.yaml$');
+    expect(yamlHeader?.headers?.['Content-Type']).toBe('application/yaml; charset=utf-8');
   });
 });
 

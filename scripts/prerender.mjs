@@ -45,13 +45,13 @@ const {
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
+const OPENAPI_YAML = readFileSync('api/openapi.yaml', 'utf8');
+const OPENAPI_DOC = parseYaml(OPENAPI_YAML);
 // The API reference is derived from the vendored spec the same way: one page
 // per group, so a group the spec gains is prerendered and in the sitemap.
 const API_ROUTES = [
   '/docs/api',
-  ...buildApiReference(parseYaml(readFileSync('api/openapi.yaml', 'utf8'))).map(
-    (group) => `/docs/api/${group.id}`
-  ),
+  ...buildApiReference(OPENAPI_DOC).map((group) => `/docs/api/${group.id}`),
 ];
 const { parsePlanCatalog } = await import('../src/lib/plan-catalog-parser.ts');
 const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../src/lib/faq.ts');
@@ -339,6 +339,12 @@ for (const route of ROUTES) {
       if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
     }
   }
+  if (route === '/docs/api') {
+    perRoute.push(
+      '<link rel="alternate" type="application/yaml" title="OpenAPI specification (YAML)" href="/openapi.yaml" />',
+      '<link rel="alternate" type="application/json" title="OpenAPI specification (JSON)" href="/openapi.json" />'
+    );
+  }
   if (route === PRICING_ROUTE || route === PLAN_DOC_ROUTE) {
     perRoute.push(`<link rel="alternate" type="application/json" href="${PRICING_FEED}" />`);
   }
@@ -365,6 +371,10 @@ for (const route of ROUTES) {
           // them to this site rather than to the Mediterranean wind.
           sameAs: [
             'https://github.com/gregale-dev',
+            'https://github.com/gregale-dev/benchmarks',
+            'https://github.com/gregale-dev/gregale-js',
+            'https://github.com/gregale-dev/gregale-python',
+            'https://github.com/gregale-dev/gregale-go',
             'https://www.linkedin.com/company/gregale/',
             'https://www.producthunt.com/products/gregale',
             'https://www.crunchbase.com/organization/gregale',
@@ -387,9 +397,25 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Deploy APIs, jobs and workflows with one command. Each app gets its own Firecracker ' +
-            'microVM; releases go to a slice of traffic first and roll back on errors.',
+            'Deploy APIs, jobs, Postgres and MCP servers in one command. Each app gets a ' +
+            'Firecracker microVM; canary releases roll back on errors. Built for coding agents.',
           softwareHelp: `${SITE_URL}/docs`,
+          offers: {
+            '@type': 'AggregateOffer',
+            priceCurrency: PLAN_CATALOG.currency,
+            lowPrice: Math.min(...PLAN_CATALOG.plans.map((p) => p.monthly)),
+            highPrice: Math.max(...PLAN_CATALOG.plans.map((p) => p.monthly)),
+            offerCount: PLAN_CATALOG.plans.length,
+            url: absolute(PRICING_ROUTE),
+          },
+          featureList: [
+            'Firecracker microVM isolation per app',
+            'Automatic 1% to 100% canary releases with 5xx rollback',
+            'Idle pause after ~1 second with memory snapshot wake',
+            'Managed PostgreSQL with code and database point-in-time rollback',
+            'Scoped AI coding agent keys with human approval gates, cost preview and undo',
+            'Hosted OAuth MCP server and per-PR preview environments',
+          ],
         },
         // The "A few practical questions" cards, from the same strings.
         { ...faqJsonLd(LANDING_FAQ), '@id': `${SITE_URL}/#faq` },
@@ -560,6 +586,10 @@ const pricing = {
 };
 writeFileSync(join(DIST, PRICING_FEED), JSON.stringify(pricing, null, 2) + '\n');
 console.log('  wrote pricing.json');
+
+writeFileSync(join(DIST, 'openapi.yaml'), OPENAPI_YAML);
+writeFileSync(join(DIST, 'openapi.json'), JSON.stringify(OPENAPI_DOC, null, 2) + '\n');
+console.log('  wrote openapi.yaml and openapi.json');
 
 const mcpServerCard = {
   serverInfo: {

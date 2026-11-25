@@ -21,6 +21,10 @@ interface FooterLink {
     '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing' | '/research' | '/articles';
   /** A comparison page: /vs/<slug>. */
   compare?: string;
+  /** An article page: /articles/<slug>. */
+  article?: string;
+  /** A research kit page: /research/<slug>. */
+  research?: string;
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -69,6 +73,22 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       },
       { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
       { label: 'Egress denylist', href: '/docs/egress-denylist', doc: 'egress-denylist' },
+      { label: 'Canary rollbacks', href: '/articles/canary-deploys', article: 'canary-deploys' },
+      {
+        label: 'Code + Postgres rollback',
+        href: '/articles/rollback-code-and-database',
+        article: 'rollback-code-and-database',
+      },
+      {
+        label: 'PaaS idle cost model',
+        href: '/research/paas-intermittent-api-cost-model-2026-11-25',
+        research: 'paas-intermittent-api-cost-model-2026-11-25',
+      },
+      {
+        label: 'Firecracker restore study',
+        href: '/research/firecracker-snapshot-restore-ssd-2026-09-09',
+        research: 'firecracker-snapshot-restore-ssd-2026-09-09',
+      },
     ],
   },
   {
@@ -83,6 +103,17 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       },
       { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
       { label: 'API reference', href: '/docs/api', publicRoute: '/docs/api' },
+      { label: 'OpenAPI spec (YAML)', href: '/openapi.yaml' },
+      {
+        label: 'Cloud for AI coding agents',
+        href: '/articles/best-cloud-for-ai-coding-agents',
+        article: 'best-cloud-for-ai-coding-agents',
+      },
+      {
+        label: 'MCP server hosting',
+        href: '/articles/mcp-server-hosting',
+        article: 'mcp-server-hosting',
+      },
     ],
   },
   {
@@ -140,6 +171,22 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   if (link.compare) {
     return (
       <Link to="/vs/$slug" params={{ slug: link.compare }} className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.article) {
+    return (
+      <Link to="/articles/$slug" params={{ slug: link.article }} className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.research) {
+    return (
+      <Link to="/research/$slug" params={{ slug: link.research }} className={LINK_CLASS}>
         {link.label}
       </Link>
     );
