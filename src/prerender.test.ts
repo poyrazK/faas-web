@@ -280,32 +280,39 @@ describeBuilt('prerendered pages', () => {
         slug: 'railway-alternatives',
         vs: 'railway',
         doc: 'migrate-from-railway',
-        modified: '2026-11-25',
+        date: '2026-11-25',
       },
       {
         slug: 'heroku-alternatives',
         vs: 'heroku',
         doc: 'migrate-from-heroku',
-        modified: '2026-11-24',
+        date: '2026-11-24',
       },
       {
         slug: 'render-alternatives',
         vs: 'render',
         doc: 'migrate-from-render',
-        modified: '2026-11-24',
+        date: '2026-11-24',
       },
-      { slug: 'flyio-alternatives', vs: 'fly', doc: 'migrate-from-fly', modified: '2026-11-25' },
+      { slug: 'flyio-alternatives', vs: 'fly', doc: 'migrate-from-fly', date: '2026-11-25' },
+      {
+        slug: 'cloud-run-alternatives',
+        vs: 'cloud-run',
+        doc: null,
+        date: '2026-11-25',
+      },
+      { slug: 'vercel-alternatives', vs: 'vercel', doc: null, date: '2026-11-25' },
     ];
-    for (const { slug, vs, doc, modified } of cases) {
+    for (const { slug, vs, doc, date } of cases) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
       const graph = JSON.parse(json!)['@graph'];
       const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
 
-      expect(html).toContain('alternatives in 2026 are');
+      expect(html).toContain('alternatives in 2026');
       expect(html).toContain('Gregale publishes this page');
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: modified });
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: date });
       expect(faq.mainEntity.length).toBeGreaterThan(0);
       for (const page of ['articles', `vs/${vs}`, ...(doc ? [`docs/${doc}`] : [])]) {
         expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
@@ -321,7 +328,7 @@ describeBuilt('prerendered pages', () => {
   it('publishes each comparison page as Markdown and lists it for agents', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
     const full = readFileSync('dist/llms-full.txt', 'utf8');
-    for (const slug of ['heroku', 'render', 'railway', 'fly']) {
+    for (const slug of ['heroku', 'render', 'railway', 'fly', 'cloud-run', 'vercel']) {
       const route = `/vs/${slug}`;
       const markdown = readFileSync(`dist${route}.md`, 'utf8');
       expect(markdown.startsWith('# Gregale vs ')).toBe(true);
@@ -332,6 +339,40 @@ describeBuilt('prerendered pages', () => {
       );
       expect(llms).toContain(`https://gregale.dev${route}.md`);
     }
+  });
+
+  it('publishes the AI coding agents guide article and links it from agent docs', () => {
+    const route = '/articles/best-cloud-for-ai-coding-agents';
+    const html = readFileSync(`dist${route}/index.html`, 'utf8');
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-25' });
+    expect(readFileSync('dist/docs/agents/index.html', 'utf8')).toContain(`href="${route}"`);
+    expect(readFileSync('dist/docs/agents.md', 'utf8')).toContain(`https://gregale.dev${route}`);
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+  });
+
+  it('publishes MCP server card and TechArticle + BreadcrumbList structured data on doc guides', () => {
+    const serverCard = JSON.parse(readFileSync('dist/.well-known/mcp/server-card.json', 'utf8'));
+    expect(serverCard).toMatchObject({
+      serverInfo: { name: 'gregale' },
+      transport: { type: 'streamable-http', endpoint: 'https://api.gregale.dev/mcp' },
+      authentication: { required: true, schemes: ['oauth2'] },
+    });
+
+    const quickstart = readFileSync('dist/docs/quickstart/index.html', 'utf8');
+    expect(quickstart).toContain(
+      '<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />'
+    );
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(quickstart)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    expect(graph.find((n: { '@type': string }) => n['@type'] === 'TechArticle')).toMatchObject({
+      '@id': 'https://gregale.dev/docs/quickstart#article',
+      mainEntityOfPage: 'https://gregale.dev/docs/quickstart',
+    });
+    expect(
+      graph.find((n: { '@type': string }) => n['@type'] === 'BreadcrumbList')?.itemListElement
+    ).toHaveLength(3);
   });
 
   it('publishes an Atom feed of articles and research and links it from their pages', () => {
@@ -398,18 +439,99 @@ describeBuilt('prerendered pages', () => {
     );
   });
 
+  it('publishes the cross-platform PaaS cost model kit and Dataset metadata', () => {
+    const slug = 'paas-intermittent-api-cost-model-2026-11-25';
+    const route = `/research/${slug}`;
+    const archive = `dist${route}/reproduction.tar.gz`;
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+
+    for (const page of ['research', 'docs/plans', 'docs/billing']) {
+      expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+    }
+    for (const docSlug of ['plans', 'billing']) {
+      expect(readFileSync(`dist/docs/${docSlug}.md`, 'utf8')).toContain(
+        `https://gregale.dev${route}`
+      );
+    }
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
+    expect(markdown).toContain('python3 analyze.py --verify');
+    expect(report).toContain('between_requests');
+    for (const amount of ['$10.00', '$22.45', '$33.50', '$41.00']) {
+      expect(report).toContain(amount);
+    }
+
+    for (const file of [
+      'reproduction.tar.gz',
+      'vendors.json',
+      'scenarios.json',
+      'summary.json',
+      'analyze.py',
+      'README.md',
+    ]) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    expect(ldBlocks[0]).toMatchObject({
+      '@type': 'TechArticle',
+      datePublished: '2026-11-25',
+      mainEntityOfPage: `https://gregale.dev${route}`,
+    });
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-11-25',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toEqual(
+      expect.arrayContaining([
+        `https://gregale.dev${route}/reproduction.tar.gz`,
+        `https://gregale.dev${route}/vendors.json`,
+      ])
+    );
+
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>\n    <lastmod>2026-11-25</lastmod>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.sort()).toEqual(
+      ['README.md', 'analyze.py', 'scenarios.json', 'summary.json', 'vendors.json']
+        .map((file) => `${slug}/${file}`)
+        .sort()
+    );
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';
 
-    it.each(['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'])(
-      'lets %s crawl public pages and excludes the auth-gated console',
-      (agent) => {
-        expect(robots.split('\n\n')).toContain(
-          `User-agent: ${agent}\nDisallow: /dashboard\nDisallow: /onboarding\nAllow: /`
-        );
-      }
-    );
+    it.each([
+      'OAI-SearchBot',
+      'GPTBot',
+      'ChatGPT-User',
+      'ClaudeBot',
+      'Claude-SearchBot',
+      'Claude-User',
+      'PerplexityBot',
+      'Perplexity-User',
+      'Google-Extended',
+      'Applebot-Extended',
+      '*',
+    ])('lets %s crawl public pages and excludes the auth-gated console', (agent) => {
+      expect(robots.split('\n\n')).toContain(
+        `User-agent: ${agent}\nDisallow: /dashboard\nDisallow: /onboarding\nAllow: /`
+      );
+    });
   });
 
   describe('API reference', () => {

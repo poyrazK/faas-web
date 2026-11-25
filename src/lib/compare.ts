@@ -19,7 +19,7 @@ import type { FaqEntry } from './faq.ts';
  */
 
 /** When the competitor figures below were last read from their sources. */
-export const COMPARISONS_CHECKED = '2026-11-24';
+export const COMPARISONS_CHECKED = '2026-11-25';
 
 interface Catalog {
   currency: string;
@@ -528,8 +528,254 @@ export function comparisons(catalog: Catalog): Comparison[] {
         { label: 'Fly.io resource pricing', url: 'https://fly.io/docs/about/pricing/' },
       ],
     },
+    {
+      slug: 'cloud-run',
+      competitor: 'Google Cloud Run',
+      summary:
+        'Gregale vs Google Cloud Run: request-based pricing, cold starts, automatic canary ' +
+        'rollbacks, managed PostgreSQL and preview environments compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them:
+            '180,000 vCPU-seconds, 360,000 GiB-seconds and 2 million requests a month in ' +
+            'Tier 1 regions (with a Google Cloud billing account attached).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them:
+            'Pay per use: $0.00002400 per vCPU-second, $0.00000250 per GiB-second and ' +
+            '$0.40 per million requests in Tier 1 regions.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them:
+            'Request-based billing charges while starting, shutting down or handling a request ' +
+            '(rounded to 100 ms); instance-based billing charges for the whole lifetime.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them:
+            'Scales to zero after traffic stops and shuts down the container; minimum warm ' +
+            'instances stay billed continuously.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them:
+            'Revisions shift 100% by default; manual traffic splitting is built in, while ' +
+            'automated canary phases and rollbacks require Google Cloud Deploy.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'gVisor container sandbox.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them:
+            'Not bundled. Connect Cloud SQL (starting separately at per-hour instance rates) ' +
+            'and manage IAM or VPC connectors yourself.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Revision tags give tagged URLs; per-PR databases and teardown must be wired in CI.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Ephemeral in-memory disk (counts toward instance RAM) or Cloud Storage FUSE.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Dozens of Google Cloud regions worldwide with global Cloud Load Balancing.',
+        },
+      ],
+      theyFit: [
+        'Your backend already uses BigQuery, Pub/Sub, Cloud SQL or Google Cloud IAM inside a GCP VPC.',
+        'You need multi-region Google Cloud placement or hundreds of auto-scaled containers.',
+        'Your request volume stays inside Cloud Run’s monthly free allowance.',
+      ],
+      gregaleFits: [
+        'You want managed PostgreSQL, PR previews, crons and custom domains in one CLI without assembling GCP IAM, Cloud SQL and load balancers.',
+        'You want automatic percentage canary rollouts that roll back on 5xx errors without setting up Cloud Deploy.',
+        'You want predictable monthly allowances, a hard spend cap and scoped keys for AI coding agents.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Google Cloud Run?',
+          answer: costAnswer(
+            'Cloud Run can be free under its monthly Tier 1 allowance or cheap for sparse ' +
+              'bursts, though keeping a minimum warm instance or adding Cloud SQL adds continuous ' +
+              'GCP charges.'
+          ),
+        },
+        {
+          question: 'Can I move a Google Cloud Run service to Gregale?',
+          answer:
+            'Yes. Any Dockerfile or standard HTTP server listening on PORT deploys directly with ' +
+            '`gregale deploy`. Replace Secret Manager mounts with environment variables and bind ' +
+            'bundled managed PostgreSQL via DATABASE_URL.',
+        },
+        {
+          question: 'Does Google Cloud Run include managed Postgres or PR previews?',
+          answer:
+            'No. Cloud SQL is a separate paid Google Cloud service that you connect over a Cloud SQL ' +
+            'proxy or VPC connector, and full PR preview environments require your own CI workflow.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own. ' +
+            'On Cloud Run, you split traffic manually across revisions or wire Cloud Deploy for automated rollbacks.',
+        },
+      ],
+      sources: [
+        { label: 'Google Cloud Run pricing', url: 'https://cloud.google.com/run/pricing' },
+        {
+          label: 'Cloud Run traffic migration',
+          url: 'https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration',
+        },
+      ],
+    },
+    {
+      slug: 'vercel',
+      competitor: 'Vercel',
+      summary:
+        'Gregale vs Vercel: backend services, Fluid Compute pricing, function duration limits, ' +
+        'managed Postgres, canary rollbacks and Firecracker isolation compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them:
+            'Vercel Hobby is $0 (non-commercial) with 4 Active CPU hours, 360 GB-hours of ' +
+            'Provisioned Memory and 1 million invocations a month.',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Vercel Pro is $20 a month per deploying team seat (includes $20 of usage credit).',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them:
+            'Fluid Compute bills Active CPU hours while code executes plus Provisioned Memory ' +
+            'GB-hours across the instance lifetime.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them:
+            'Functions freeze between bursts and un-billed CPU waits during I/O; long-running ' +
+            'daemons or persistent WebSocket servers are outside the function model.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them:
+            'New deploys go live atomically with instant manual rollback; Rolling Releases are ' +
+            'available on Pro and Enterprise.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Sandboxed function runtimes / Fluid Compute microVMs.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Third-party databases installed via Vercel Marketplace integrations.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Unique preview URL created automatically for every Git branch and pull request.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Ephemeral `/tmp` storage per invocation; pair with Vercel Blob for files.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Global Edge Network CDN with regional function execution.',
+        },
+      ],
+      theyFit: [
+        'Your application is Next.js or frontend-centric with global edge caching, ISR and image optimization.',
+        'Your team collaborates around Vercel toolbar comments on every frontend PR URL.',
+        'All your backend endpoints finish quickly inside serverless function duration limits.',
+      ],
+      gregaleFits: [
+        'You run APIs, background workers, crons, MCP servers or Next.js backends without function timeouts (Vercel Hobby stops at 300s; Pro stops at 800s or 1,800s in beta).',
+        'You want bundled managed PostgreSQL with point-in-time restore tied to code rollbacks.',
+        'You want per-project monthly pricing without paying $20 a month for every developer or agent seat, plus automatic 5xx canary rollbacks.',
+      ],
+      migrateDoc: 'deploy-nextjs',
+      migrateLabel: 'Deploy Next.js',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Vercel?',
+          answer: costAnswer(
+            'Vercel Pro charges $20 a month per deploying team seat before overages, while ' +
+              'Gregale charges per plan with no per-seat fee for backend services.'
+          ),
+        },
+        {
+          question: 'Can I move a Next.js or backend app from Vercel to Gregale?',
+          answer:
+            'Yes. Next.js apps configured for standalone server output and any Node or Python ' +
+            'API deploy with `gregale deploy`, with managed PostgreSQL and background workers in ' +
+            'the same project.',
+        },
+        {
+          question: 'Why run a backend on Gregale instead of Vercel functions?',
+          answer:
+            'Vercel functions cap execution duration (300s on Hobby, 800s standard on Pro) and ' +
+            'do not host long-lived worker loops or persistent WebSocket servers. Each Gregale ' +
+            'app runs in its own Firecracker microVM alongside background jobs, crons and Postgres.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and ' +
+            '100%, and only moves up while the new version is answering cleanly. If it starts ' +
+            'returning 5xx errors, it rolls back to the previous version on its own. ' +
+            'On Vercel, you trigger an instant rollback manually unless you configure Rolling Releases on Pro or Enterprise.',
+        },
+      ],
+      sources: [
+        { label: 'Vercel pricing', url: 'https://vercel.com/pricing' },
+        { label: 'Vercel Fluid Compute', url: 'https://vercel.com/docs/fluid-compute' },
+        {
+          label: 'Vercel function limits',
+          url: 'https://vercel.com/docs/functions/limitations',
+        },
+      ],
+    },
   ];
 }
 
 /** Slugs, for the route list. Must match `comparisons()`. */
-export const COMPARISON_SLUGS = ['heroku', 'render', 'railway', 'fly'] as const;
+export const COMPARISON_SLUGS = [
+  'heroku',
+  'render',
+  'railway',
+  'fly',
+  'cloud-run',
+  'vercel',
+] as const;

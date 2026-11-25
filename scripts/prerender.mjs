@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { atomFeed } from './feed.mjs';
 import { writeIndexNowKey } from './indexnow-key.mjs';
-import { sitemapXml } from './sitemap.mjs';
+import { docsLastModified, sitemapXml } from './sitemap.mjs';
 
 /**
  * Writes a real HTML document for each public route.
@@ -28,9 +28,20 @@ import { sitemapXml } from './sitemap.mjs';
  * a page to the table of contents cannot leave it unprerendered and absent from
  * the sitemap. Same reasoning as generating robots.txt below.
  */
-const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE, SNAPSHOT_RESTORE_SLUG } =
-  await import('../src/lib/research.ts');
+const { DOC_ENTRIES, DOC_SECTIONS } = await import('../src/lib/docs-manifest.ts');
+const DOC_BY_SLUG = new Map(
+  DOC_SECTIONS.flatMap((section) =>
+    section.entries.map((entry) => [entry.slug, { entry, sectionTitle: section.title }])
+  )
+);
+const DOCS_DATES = docsLastModified();
+const {
+  FASTAPI_COST_SLUG,
+  PAAS_COST_MODEL_SLUG,
+  RESEARCH_PUBLICATIONS,
+  RESEARCH_TITLE,
+  SNAPSHOT_RESTORE_SLUG,
+} = await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
@@ -189,8 +200,43 @@ for (const route of ROUTES) {
   }
   // Only guides have Markdown copies. The API reference uses OpenAPI.
   const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
-  if (DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
+  const docMeta = DOC_BY_SLUG.get(docSlug);
+  if (docMeta || DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
+  }
+  if (docMeta && SITE_URL) {
+    const docModified = DOCS_DATES.get(route);
+    const ld = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'TechArticle',
+          '@id': `${absolute(route)}#article`,
+          headline: docMeta.entry.title,
+          description: docMeta.entry.summary,
+          mainEntityOfPage: absolute(route),
+          ...(docModified ? { dateModified: docModified } : {}),
+          author: { '@type': 'Organization', name: 'Gregale', url: `${SITE_URL}/` },
+          publisher: { '@id': `${SITE_URL}/#org` },
+          isPartOf: {
+            '@type': 'WebSite',
+            name: 'Gregale Documentation',
+            url: absolute('/docs'),
+          },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+            { '@type': 'ListItem', position: 2, name: 'Documentation', item: absolute('/docs') },
+            { '@type': 'ListItem', position: 3, name: docMeta.entry.title, item: absolute(route) },
+          ],
+        },
+      ],
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
   }
   const publication = RESEARCH_BY_ROUTE.get(route);
   if (publication) {
@@ -280,17 +326,17 @@ for (const route of ROUTES) {
       `<link rel="alternate" type="application/atom+xml" title="${ATOM_FEED_TITLE}" href="${ATOM_FEED}" />`
     );
   }
-  // The home page names the agent index, so an agent that starts at the site
-  // root finds llms.txt without guessing the path.
-  if (route === '/') {
+  // Every indexable page names the agent index, so an agent landing on any
+  // public doc, article, research kit or comparison finds llms.txt directly.
+  if (INDEXABLE.includes(route)) {
     perRoute.push('<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />');
-    if (productionSite) {
-      for (const [name, value] of [
-        ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
-        ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
-      ]) {
-        if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
-      }
+  }
+  if (route === '/' && productionSite) {
+    for (const [name, value] of [
+      ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
+      ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
+    ]) {
+      if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
     }
   }
   if (route === PRICING_ROUTE || route === PLAN_DOC_ROUTE) {
@@ -440,7 +486,19 @@ for (const route of ROUTES) {
 // Named crawler groups take precedence over the wildcard, so apply the
 // private-route exclusions to each group. GPTBot has its own training policy.
 const robots = [
-  ...['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'].flatMap((agent) => [
+  ...[
+    'OAI-SearchBot',
+    'GPTBot',
+    'ChatGPT-User',
+    'ClaudeBot',
+    'Claude-SearchBot',
+    'Claude-User',
+    'PerplexityBot',
+    'Perplexity-User',
+    'Google-Extended',
+    'Applebot-Extended',
+    '*',
+  ].flatMap((agent) => [
     `User-agent: ${agent}`,
     'Disallow: /dashboard',
     'Disallow: /onboarding',
@@ -475,6 +533,7 @@ if (SITE_URL) {
       dates: PAGE_DATES,
       // The pricing page renders the plan catalog in docs/plans.
       datedLike: { [PRICING_ROUTE]: PLAN_DOC_ROUTE },
+      docDates: DOCS_DATES,
     })
   );
   console.log(`  wrote sitemap.xml (${INDEXABLE.length} urls)`);
@@ -501,6 +560,33 @@ const pricing = {
 };
 writeFileSync(join(DIST, PRICING_FEED), JSON.stringify(pricing, null, 2) + '\n');
 console.log('  wrote pricing.json');
+
+const mcpServerCard = {
+  serverInfo: {
+    name: 'gregale',
+    title: 'Gregale',
+    description:
+      'Deploy, inspect, scale, and roll back backend apps and managed PostgreSQL on Gregale from MCP clients.',
+  },
+  transport: {
+    type: 'streamable-http',
+    endpoint: 'https://api.gregale.dev/mcp',
+  },
+  authentication: {
+    required: true,
+    schemes: ['oauth2'],
+    oauthProtectedResource: 'https://api.gregale.dev/.well-known/oauth-protected-resource/mcp',
+    oauthAuthorizationServer: 'https://api.gregale.dev/.well-known/oauth-authorization-server/mcp',
+  },
+  documentationUrl: `${SITE_URL || 'https://gregale.dev'}/docs/agents`,
+  websiteUrl: `${SITE_URL || 'https://gregale.dev'}/`,
+};
+mkdirSync(join(DIST, '.well-known', 'mcp'), { recursive: true });
+writeFileSync(
+  join(DIST, '.well-known', 'mcp', 'server-card.json'),
+  JSON.stringify(mcpServerCard, null, 2) + '\n'
+);
+console.log('  wrote .well-known/mcp/server-card.json');
 
 /* ------------------------------------------------------------------ *
  * llms.txt, llms-full.txt and a Markdown copy of every docs page
@@ -627,6 +713,26 @@ execFileSync(
     '-C',
     join(DIST, 'research'),
     ...snapshotRestoreReproductionFiles.map((file) => join(SNAPSHOT_RESTORE_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const paasCostModelReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'vendors.json',
+  'scenarios.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', PAAS_COST_MODEL_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...paasCostModelReproductionFiles.map((file) => join(PAAS_COST_MODEL_SLUG, file)),
   ],
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );
