@@ -240,14 +240,19 @@ describeBuilt('prerendered pages', () => {
         doc: 'preview-environments',
         answer: 'creates a preview environment for every pull request',
       },
-      { slug: 'mcp-server-hosting', doc: 'mcp-hosting', answer: 'Host a remote MCP server' },
+      {
+        slug: 'mcp-server-hosting',
+        doc: 'mcp-hosting',
+        answer: 'Host a remote MCP server',
+        modified: '2026-11-25',
+      },
       {
         slug: 'backend-without-devops',
         doc: 'getting-started',
         answer: 'A startup without a DevOps engineer should host its backend',
       },
     ];
-    for (const { slug, doc, answer } of cases) {
+    for (const { slug, doc, answer, modified } of cases) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
@@ -258,7 +263,10 @@ describeBuilt('prerendered pages', () => {
       expect(html).toContain(answer);
       expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
       expect(html).toContain(`type="text/markdown" href="${route}.md"`);
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-24' });
+      expect(graph[0]).toMatchObject({
+        '@type': 'TechArticle',
+        dateModified: modified ?? '2026-11-24',
+      });
       expect(questions.length).toBeGreaterThan(0);
       for (const question of questions) expect(html).toContain(question.replaceAll("'", '&#x27;'));
       expect(JSON.stringify(faq)).not.toContain('`');
