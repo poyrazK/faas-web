@@ -29,7 +29,7 @@ import { sitemapXml } from './sitemap.mjs';
  * the sitemap. Same reasoning as generating robots.txt below.
  */
 const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE } =
+const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE, SNAPSHOT_RESTORE_SLUG } =
   await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
@@ -213,6 +213,32 @@ for (const route of ROUTES) {
       };
       perRoute.push(
         `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+      const datasetLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        '@id': `${absolute(route)}#dataset`,
+        name: `${publication.title} — dataset and reproduction kit`,
+        description: publication.summary,
+        url: absolute(route),
+        datePublished: publication.publishedOn,
+        temporalCoverage: publication.measuredOn,
+        creator: {
+          '@type': 'Organization',
+          name: 'Gregale Engineering',
+          url: absolute('/research'),
+        },
+        publisher: { '@id': `${SITE_URL}/#org` },
+        isAccessibleForFree: true,
+        distribution: publication.datasetDownloads.map((file) => ({
+          '@type': 'DataDownload',
+          name: file.name,
+          encodingFormat: file.encodingFormat,
+          contentUrl: `${absolute(route)}/${file.path}`,
+        })),
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(datasetLd).replaceAll('<', '\\u003c')}</script>`
       );
     }
   }
@@ -587,6 +613,20 @@ execFileSync(
     '-C',
     join(DIST, 'research'),
     ...fastapiReproductionFiles.map((file) => join(FASTAPI_COST_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const snapshotRestoreReproductionFiles = ['README.md', 'analyze.py', 'samples.csv', 'summary.json'];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', SNAPSHOT_RESTORE_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...snapshotRestoreReproductionFiles.map((file) => join(SNAPSHOT_RESTORE_SLUG, file)),
   ],
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );

@@ -24,15 +24,18 @@ Each cycle sent one request after the idle reaper parked the only running instan
 
 ## Data and reproduction
 
+Download the [complete reproduction kit](/research/firecracker-snapshot-restore-ssd-2026-09-09/reproduction.tar.gz) and run this command in the extracted directory. It recomputes the wake distribution and compares it with the published summary using Python 3.11 or later and its standard library.
+
+```sh
+python3 analyze.py --verify
+```
+
 - [Per-request samples (CSV)](/research/firecracker-snapshot-restore-ssd-2026-09-09/samples.csv)
 - [Computed distributions (JSON)](/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json)
 - [Offline analysis script (Python)](/research/firecracker-snapshot-restore-ssd-2026-09-09/analyze.py)
+- [Kit instructions (Markdown)](/research/firecracker-snapshot-restore-ssd-2026-09-09/README.md)
 
-Download the CSV and script into the same directory and run the command below. It uses the Python standard library and prints the statistics in the report. The CSV gives both scheduler timestamps as microsecond offsets from the first recorded wake, along with the restore method and admission conditions for each sample.
-
-```sh
-python3 analyze.py samples.csv
-```
+Or run `python3 analyze.py samples.csv` to print the recomputed JSON summary. The CSV gives both scheduler timestamps as microsecond offsets from the first recorded wake, along with the restore method and admission conditions for each sample.
 
 For a fresh run, use an instrumented test deployment with the same workload, memory, instance limit, idle timeout, and storage class. Verify that the instance parks between requests and that each timeline records a restore on the selected host. Use the same scheduler events and percentile method.
 
