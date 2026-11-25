@@ -402,6 +402,10 @@ describeBuilt('prerendered pages', () => {
     expect(report).toContain(`type="text/markdown" href="${route}.md"`);
     expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
     expect(markdown).toContain('python3 analyze.py --verify');
+    expect(report).toContain('between_requests');
+    for (const amount of ['$10.00', '$22.45', '$33.50', '$41.00']) {
+      expect(report).toContain(amount);
+    }
 
     for (const file of [
       'reproduction.tar.gz',

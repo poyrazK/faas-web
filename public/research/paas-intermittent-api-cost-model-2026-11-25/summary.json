@@ -4,22 +4,25 @@
   "scenarios": [
     {
       "id": "single_intermittent_no_db",
-      "label": "1 intermittent API, no database (360 req/day)",
+      "label": "1 intermittent API, no database (360 req/day, 90 spaced windows)",
       "apps": 1,
       "ram_mb": 256,
       "requires_postgres": false,
-      "active_hours_per_app_per_month": "5.25",
+      "window_hours_per_app_per_month": "5.25",
+      "inter_arrival_seconds": "30",
       "requests_per_month": 10800,
       "offers": {
         "gregale_free": {
           "eligible": true,
           "monthly_usd": "0.00",
+          "billed_hours_per_app": "5.25",
           "gb_ram_hours": "1.354",
-          "note": "Within 20 GB-RAM-h Free allowance; hard cap (no overage)."
+          "note": "Within 20 GB-RAM-h Free allowance; pauses ~1-2 s after each request."
         },
         "gregale_hobby": {
           "eligible": true,
           "monthly_usd": "10.00",
+          "billed_hours_per_app": "5.25",
           "gb_ram_hours": "1.354",
           "overage_gb_ram_hours": "0.0",
           "note": "Includes up to 5 apps, 200 GB-RAM-h, and 1 Postgres (1 GiB, 7d PITR)."
@@ -37,23 +40,27 @@
         "railway_hobby_always_on": {
           "eligible": true,
           "monthly_usd": "5.00",
+          "billed_hours_per_app": "730.0",
           "raw_usage_usd": "3.50",
           "note": "Hobby $5 minimum; assumed small always-on Postgres ($3.50/mo) when needed."
         },
         "railway_hobby_serverless": {
           "eligible": true,
           "monthly_usd": "5.00",
+          "billed_hours_per_app": "7.88",
           "raw_usage_usd": "0.04",
-          "note": "Serverless sleep enabled (modeled with 1.5x active-hour tail factor)."
+          "note": "Serverless sleep (5-10 min idle threshold; 300 s used). Never triggers at 30 s spacing."
         },
         "fly_auto_stop": {
           "eligible": true,
           "monthly_usd": "0.16",
-          "note": "Auto-stop Machines + 1 GB stopped rootfs ($0.15/GB-mo) + Dev Postgres ($4 if used)."
+          "billed_hours_per_app": "5.25",
+          "note": "Auto-stop Machines (300 s idle threshold) + 1 GB stopped rootfs + Dev Postgres ($4 if used)."
         },
         "fly_always_on": {
           "eligible": true,
           "monthly_usd": "2.19",
+          "billed_hours_per_app": "730.0",
           "note": "Always-on shared-cpu-1x Machines + Developer Postgres ($4 if used)."
         },
         "cloud_run_compute_only": {
@@ -70,13 +77,14 @@
       }
     },
     {
-      "id": "single_business_hours_with_db",
-      "label": "1 business-hours API + Postgres (8 h/day)",
+      "id": "evenly_spaced_24x7_single_with_db",
+      "label": "1 evenly distributed 24/7 API + Postgres (1 req / 30 s)",
       "apps": 1,
       "ram_mb": 512,
       "requires_postgres": true,
-      "active_hours_per_app_per_month": "243.33",
-      "requests_per_month": 100000,
+      "window_hours_per_app_per_month": "730",
+      "inter_arrival_seconds": "30",
+      "requests_per_month": 87600,
       "offers": {
         "gregale_free": {
           "eligible": false,
@@ -86,14 +94,15 @@
         "gregale_hobby": {
           "eligible": true,
           "monthly_usd": "10.00",
-          "gb_ram_hours": "123.566",
+          "billed_hours_per_app": "42.58",
+          "gb_ram_hours": "21.624",
           "overage_gb_ram_hours": "0.0",
           "note": "Includes up to 5 apps, 200 GB-RAM-h, and 1 Postgres (1 GiB, 7d PITR)."
         },
         "render_free": {
           "eligible": false,
           "monthly_usd": null,
-          "note": "Ineligible (paid Render Postgres needed or >1 service)."
+          "note": "Ineligible (paid Render Postgres needed, >750 active h, or >1 service)."
         },
         "render_paid": {
           "eligible": true,
@@ -103,30 +112,34 @@
         "railway_hobby_always_on": {
           "eligible": true,
           "monthly_usd": "10.50",
+          "billed_hours_per_app": "730.0",
           "raw_usage_usd": "10.50",
           "note": "Hobby $5 minimum; assumed small always-on Postgres ($3.50/mo) when needed."
         },
         "railway_hobby_serverless": {
           "eligible": true,
-          "monthly_usd": "7.00",
-          "raw_usage_usd": "7.00",
-          "note": "Serverless sleep enabled (modeled with 1.5x active-hour tail factor)."
+          "monthly_usd": "10.50",
+          "billed_hours_per_app": "730.0",
+          "raw_usage_usd": "10.50",
+          "note": "Serverless sleep (5-10 min idle threshold; 300 s used). Never triggers at 30 s spacing."
         },
         "fly_auto_stop": {
           "eligible": true,
-          "monthly_usd": "5.33",
-          "note": "Auto-stop Machines + 1 GB stopped rootfs ($0.15/GB-mo) + Dev Postgres ($4 if used)."
+          "monthly_usd": "7.69",
+          "billed_hours_per_app": "730.0",
+          "note": "Auto-stop Machines (300 s idle threshold) + 1 GB stopped rootfs + Dev Postgres ($4 if used)."
         },
         "fly_always_on": {
           "eligible": true,
           "monthly_usd": "7.69",
+          "billed_hours_per_app": "730.0",
           "note": "Always-on shared-cpu-1x Machines + Developer Postgres ($4 if used)."
         },
         "cloud_run_compute_only": {
           "eligible": true,
           "monthly_usd": "0.00",
           "postgres_excluded": true,
-          "note": "Compute only (excludes managed Cloud SQL Postgres)."
+          "note": "Compute and requests only (excludes managed Cloud SQL Postgres)."
         },
         "heroku_paid": {
           "eligible": true,
@@ -136,13 +149,14 @@
       }
     },
     {
-      "id": "five_intermittent_services_with_db",
-      "label": "5 intermittent services + Postgres (2 h/day each)",
+      "id": "evenly_spaced_24x7_five_services_with_db",
+      "label": "5 evenly distributed 24/7 services + Postgres (1 req / 30 s each)",
       "apps": 5,
       "ram_mb": 512,
       "requires_postgres": true,
-      "active_hours_per_app_per_month": "60.83",
-      "requests_per_month": 250000,
+      "window_hours_per_app_per_month": "730",
+      "inter_arrival_seconds": "30",
+      "requests_per_month": 438000,
       "offers": {
         "gregale_free": {
           "eligible": false,
@@ -152,14 +166,15 @@
         "gregale_hobby": {
           "eligible": true,
           "monthly_usd": "10.00",
-          "gb_ram_hours": "154.451",
+          "billed_hours_per_app": "42.58",
+          "gb_ram_hours": "108.122",
           "overage_gb_ram_hours": "0.0",
           "note": "Includes up to 5 apps, 200 GB-RAM-h, and 1 Postgres (1 GiB, 7d PITR)."
         },
         "render_free": {
           "eligible": false,
           "monthly_usd": null,
-          "note": "Ineligible (paid Render Postgres needed or >1 service)."
+          "note": "Ineligible (paid Render Postgres needed, >750 active h, or >1 service)."
         },
         "render_paid": {
           "eligible": true,
@@ -169,30 +184,34 @@
         "railway_hobby_always_on": {
           "eligible": true,
           "monthly_usd": "33.50",
+          "billed_hours_per_app": "730.0",
           "raw_usage_usd": "33.50",
           "note": "Hobby $5 minimum; assumed small always-on Postgres ($3.50/mo) when needed."
         },
         "railway_hobby_serverless": {
           "eligible": true,
-          "monthly_usd": "7.25",
-          "raw_usage_usd": "7.25",
-          "note": "Serverless sleep enabled (modeled with 1.5x active-hour tail factor)."
+          "monthly_usd": "33.50",
+          "billed_hours_per_app": "730.0",
+          "raw_usage_usd": "33.50",
+          "note": "Serverless sleep (5-10 min idle threshold; 300 s used). Never triggers at 30 s spacing."
         },
         "fly_auto_stop": {
           "eligible": true,
-          "monthly_usd": "6.22",
-          "note": "Auto-stop Machines + 1 GB stopped rootfs ($0.15/GB-mo) + Dev Postgres ($4 if used)."
+          "monthly_usd": "22.45",
+          "billed_hours_per_app": "730.0",
+          "note": "Auto-stop Machines (300 s idle threshold) + 1 GB stopped rootfs + Dev Postgres ($4 if used)."
         },
         "fly_always_on": {
           "eligible": true,
           "monthly_usd": "22.45",
+          "billed_hours_per_app": "730.0",
           "note": "Always-on shared-cpu-1x Machines + Developer Postgres ($4 if used)."
         },
         "cloud_run_compute_only": {
           "eligible": true,
           "monthly_usd": "0.00",
           "postgres_excluded": true,
-          "note": "Compute only (excludes managed Cloud SQL Postgres)."
+          "note": "Compute and requests only (excludes managed Cloud SQL Postgres)."
         },
         "heroku_paid": {
           "eligible": true,
@@ -202,13 +221,14 @@
       }
     },
     {
-      "id": "single_always_on_with_db",
-      "label": "1 always-on API + Postgres (24/7)",
+      "id": "saturated_24x7_single_with_db",
+      "label": "1 continuously busy 24/7 API + Postgres (2 req/s, no idle gaps)",
       "apps": 1,
       "ram_mb": 512,
       "requires_postgres": true,
-      "active_hours_per_app_per_month": "730",
-      "requests_per_month": 1000000,
+      "window_hours_per_app_per_month": "730",
+      "inter_arrival_seconds": "0.5",
+      "requests_per_month": 5256000,
       "offers": {
         "gregale_free": {
           "eligible": false,
@@ -218,6 +238,7 @@
         "gregale_hobby": {
           "eligible": true,
           "monthly_usd": "18.54",
+          "billed_hours_per_app": "730.0",
           "gb_ram_hours": "370.703",
           "overage_gb_ram_hours": "170.703",
           "note": "Includes up to 5 apps, 200 GB-RAM-h, and 1 Postgres (1 GiB, 7d PITR)."
@@ -225,7 +246,7 @@
         "render_free": {
           "eligible": false,
           "monthly_usd": null,
-          "note": "Ineligible (paid Render Postgres needed or >1 service)."
+          "note": "Ineligible (paid Render Postgres needed, >750 active h, or >1 service)."
         },
         "render_paid": {
           "eligible": true,
@@ -235,30 +256,34 @@
         "railway_hobby_always_on": {
           "eligible": true,
           "monthly_usd": "10.50",
+          "billed_hours_per_app": "730.0",
           "raw_usage_usd": "10.50",
           "note": "Hobby $5 minimum; assumed small always-on Postgres ($3.50/mo) when needed."
         },
         "railway_hobby_serverless": {
           "eligible": true,
           "monthly_usd": "10.50",
+          "billed_hours_per_app": "730.0",
           "raw_usage_usd": "10.50",
-          "note": "Serverless sleep enabled (modeled with 1.5x active-hour tail factor)."
+          "note": "Serverless sleep (5-10 min idle threshold; 300 s used). Never triggers at 30 s spacing."
         },
         "fly_auto_stop": {
           "eligible": true,
           "monthly_usd": "7.69",
-          "note": "Auto-stop Machines + 1 GB stopped rootfs ($0.15/GB-mo) + Dev Postgres ($4 if used)."
+          "billed_hours_per_app": "730.0",
+          "note": "Auto-stop Machines (300 s idle threshold) + 1 GB stopped rootfs + Dev Postgres ($4 if used)."
         },
         "fly_always_on": {
           "eligible": true,
           "monthly_usd": "7.69",
+          "billed_hours_per_app": "730.0",
           "note": "Always-on shared-cpu-1x Machines + Developer Postgres ($4 if used)."
         },
         "cloud_run_compute_only": {
           "eligible": true,
-          "monthly_usd": "0.48",
+          "monthly_usd": "22.63",
           "postgres_excluded": true,
-          "note": "Compute only (excludes managed Cloud SQL Postgres)."
+          "note": "Compute and requests only (excludes managed Cloud SQL Postgres)."
         },
         "heroku_paid": {
           "eligible": true,

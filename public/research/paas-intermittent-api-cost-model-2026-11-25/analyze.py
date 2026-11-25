@@ -25,7 +25,9 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
     apps = int(scenario["apps"])
     ram_mb = int(scenario["ram_mb"])
     requires_db = bool(scenario["requires_postgres"])
-    active_h = d(scenario["active_hours_per_app_per_month"])
+    window_h = d(scenario["window_hours_per_app_per_month"])
+    inter_arrival = d(scenario["inter_arrival_seconds"])
+    has_long_idle_gaps = bool(scenario["has_long_idle_gaps"])
     reqs = d(scenario["requests_per_month"])
     req_dur = d(scenario["avg_request_duration_seconds"])
     railway_vcpu = d(scenario["railway_avg_vcpu_while_active"])
@@ -34,11 +36,20 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
 
     offers = {}
 
-    # Gregale Free (1 app <= 256 MB, no Postgres, hard cap at 20 GB-RAM-h)
+    # Gregale: ~1-2 s between_requests pause in RAM -> freezes/parks when idle
     g = v["gregale"]
+    if "gregale_billed_hours_override" in scenario:
+        g_billed_h = d(scenario["gregale_billed_hours_override"])
+    else:
+        g_frac = min(
+            Decimal("1"),
+            d(g["billed_awake_seconds_per_isolated_request"]) / inter_arrival,
+        )
+        g_billed_h = window_h * g_frac
+
     g_free = g["free"]
     g_free_gbh = (
-        d(apps) * active_h * (d(ram_mb) + d(g["ram_overhead_mb"])) / KIB_DIVISOR
+        d(apps) * g_billed_h * (d(ram_mb) + d(g["ram_overhead_mb"])) / KIB_DIVISOR
     )
     if (
         apps <= int(g_free["max_apps"])
@@ -49,8 +60,9 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
         offers["gregale_free"] = {
             "eligible": True,
             "monthly_usd": money(d(g_free["monthly"])),
+            "billed_hours_per_app": str(round(float(g_billed_h), 2)),
             "gb_ram_hours": str(round(float(g_free_gbh), 3)),
-            "note": "Within 20 GB-RAM-h Free allowance; hard cap (no overage).",
+            "note": "Within 20 GB-RAM-h Free allowance; pauses ~1-2 s after each request.",
         }
     else:
         offers["gregale_free"] = {
@@ -59,24 +71,29 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
             "note": "Ineligible (requires Hobby+ for Postgres, >1 app, or >256 MB RAM).",
         }
 
-    # Gregale Hobby (up to 5 apps, 512 MB, 200 GB-RAM-h, 1 Postgres included)
     g_hobby = g["hobby"]
     g_hobby_gbh = (
-        d(apps) * active_h * (d(ram_mb) + d(g["ram_overhead_mb"])) / KIB_DIVISOR
+        d(apps) * g_billed_h * (d(ram_mb) + d(g["ram_overhead_mb"])) / KIB_DIVISOR
     )
     g_overage = max(Decimal("0"), g_hobby_gbh - d(g_hobby["included_gb_ram_hours"]))
     g_hobby_cost = d(g_hobby["monthly"]) + g_overage * d(g["overage_per_gb_ram_hour"])
     offers["gregale_hobby"] = {
         "eligible": True,
         "monthly_usd": money(g_hobby_cost),
+        "billed_hours_per_app": str(round(float(g_billed_h), 2)),
         "gb_ram_hours": str(round(float(g_hobby_gbh), 3)),
         "overage_gb_ram_hours": str(round(float(g_overage), 3)),
         "note": "Includes up to 5 apps, 200 GB-RAM-h, and 1 Postgres (1 GiB, 7d PITR).",
     }
 
-    # Render Free (1 web service <= 750h, spins down after 15m, no durable Postgres)
+    # Render Free (1 web service <= 750h, spins down after 15m idle) and Paid
     r = v["render"]
-    if apps == 1 and not requires_db and active_h <= d(r["free_instance_hours_per_month"]):
+    if (
+        apps == 1
+        and not requires_db
+        and (has_long_idle_gaps or inter_arrival >= d(r["free_idle_timeout_seconds"]))
+        and window_h <= d(r["free_instance_hours_per_month"])
+    ):
         offers["render_free"] = {
             "eligible": True,
             "monthly_usd": money(d(r["free_web_monthly"])),
@@ -86,7 +103,7 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
         offers["render_free"] = {
             "eligible": False,
             "monthly_usd": None,
-            "note": "Ineligible (paid Render Postgres needed or >1 service).",
+            "note": "Ineligible (paid Render Postgres needed, >750 active h, or >1 service).",
         }
 
     r_paid_cost = d(apps) * d(r["starter_512mb_monthly"]) + (
@@ -117,21 +134,26 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
     offers["railway_hobby_always_on"] = {
         "eligible": True,
         "monthly_usd": money(rw_always_cost),
+        "billed_hours_per_app": str(round(float(hours_mo), 2)),
         "raw_usage_usd": money(rw_always_raw),
         "note": "Hobby $5 minimum; assumed small always-on Postgres ($3.50/mo) when needed.",
     }
 
-    rw_active_fraction = min(
-        Decimal("1"),
-        (active_h * d(rw["serverless_sleep_tail_factor"])) / hours_mo,
-    )
-    rw_serverless_raw = d(apps) * rw_per_app_full * rw_active_fraction + rw_db_cost
+    rw_timeout = d(rw["serverless_idle_timeout_seconds"])
+    if has_long_idle_gaps:
+        rw_billed_h = min(hours_mo, window_h * d(rw["serverless_sleep_tail_factor"]))
+    elif inter_arrival < rw_timeout:
+        rw_billed_h = hours_mo
+    else:
+        rw_billed_h = window_h * min(Decimal("1"), rw_timeout / inter_arrival)
+    rw_serverless_raw = d(apps) * rw_per_app_full * (rw_billed_h / hours_mo) + rw_db_cost
     rw_serverless_cost = max(d(rw["hobby_minimum_monthly"]), rw_serverless_raw)
     offers["railway_hobby_serverless"] = {
         "eligible": True,
         "monthly_usd": money(rw_serverless_cost),
+        "billed_hours_per_app": str(round(float(rw_billed_h), 2)),
         "raw_usage_usd": money(rw_serverless_raw),
-        "note": "Serverless sleep enabled (modeled with 1.5x active-hour tail factor).",
+        "note": "Serverless sleep (5-10 min idle threshold; 300 s used). Never triggers at 30 s spacing.",
     }
 
     # Fly.io Auto-Stop and Always-On
@@ -142,7 +164,14 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
         else fly["shared_cpu_1x_512mb_monthly"]
     )
     fly_stopped_rootfs = d(fly["stopped_rootfs_per_gb_month"]) * d(fly["assumed_rootfs_gb"])
-    fly_active_frac = min(Decimal("1"), active_h / hours_mo)
+    fly_timeout = d(fly["autostop_idle_timeout_seconds"])
+    if has_long_idle_gaps:
+        fly_billed_h = window_h
+    elif inter_arrival < fly_timeout:
+        fly_billed_h = hours_mo
+    else:
+        fly_billed_h = window_h * min(Decimal("1"), fly_timeout / inter_arrival)
+    fly_active_frac = min(Decimal("1"), fly_billed_h / hours_mo)
     fly_db = d(fly["postgres_developer_monthly"]) if requires_db else Decimal("0")
     fly_autostop_cost = (
         d(apps)
@@ -156,11 +185,13 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
     offers["fly_auto_stop"] = {
         "eligible": True,
         "monthly_usd": money(fly_autostop_cost),
-        "note": "Auto-stop Machines + 1 GB stopped rootfs ($0.15/GB-mo) + Dev Postgres ($4 if used).",
+        "billed_hours_per_app": str(round(float(fly_billed_h), 2)),
+        "note": "Auto-stop Machines (300 s idle threshold) + 1 GB stopped rootfs + Dev Postgres ($4 if used).",
     }
     offers["fly_always_on"] = {
         "eligible": True,
         "monthly_usd": money(fly_always_cost),
+        "billed_hours_per_app": str(round(float(hours_mo), 2)),
         "note": "Always-on shared-cpu-1x Machines + Developer Postgres ($4 if used).",
     }
 
@@ -180,7 +211,7 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
         "monthly_usd": money(cr_cost),
         "postgres_excluded": requires_db,
         "note": (
-            "Compute only (excludes managed Cloud SQL Postgres)."
+            "Compute and requests only (excludes managed Cloud SQL Postgres)."
             if requires_db
             else "Tier 1 request-based billing with permanent monthly free tier."
         ),
@@ -203,7 +234,8 @@ def compute_scenario(scenario: dict, vendors_data: dict) -> dict:
         "apps": apps,
         "ram_mb": ram_mb,
         "requires_postgres": requires_db,
-        "active_hours_per_app_per_month": str(active_h),
+        "window_hours_per_app_per_month": str(window_h),
+        "inter_arrival_seconds": str(inter_arrival),
         "requests_per_month": int(reqs),
         "offers": offers,
     }

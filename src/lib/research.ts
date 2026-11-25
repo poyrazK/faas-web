@@ -24,9 +24,9 @@ export const SNAPSHOT_RESTORE_SLUG = 'firecracker-snapshot-restore-ssd-2026-09-0
 export const RESEARCH_PUBLICATIONS: readonly ResearchPublication[] = [
   {
     slug: PAAS_COST_MODEL_SLUG,
-    title: 'What an intermittent backend costs across 6 PaaS platforms',
+    title: 'What an intermittent or evenly spaced backend costs across 6 PaaS platforms',
     summary:
-      'Deterministic 30-day cost model comparing Gregale, Render, Railway, Fly.io, Cloud Run and Heroku across 4 API and Postgres workloads.',
+      'Deterministic 30-day cost model showing how Gregale’s ~1–2 s between-request pause ladder compares with minute-scale sleep timers on Fly.io, Railway, Render, Heroku and Cloud Run.',
     publishedOn: '2026-11-25',
     measuredOn: '2026-11-25',
     datasetDownloads: [

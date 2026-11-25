@@ -9,6 +9,7 @@
       "label": "Gregale",
       "ram_overhead_mb": 8,
       "overage_per_gb_ram_hour": "0.05",
+      "billed_awake_seconds_per_isolated_request": "1.75",
       "free": {
         "monthly": "0",
         "ram_mb": 256,
@@ -23,12 +24,18 @@
         "max_apps": 5,
         "includes_postgres": true
       },
-      "sources": ["https://gregale.dev/pricing.json", "https://gregale.dev/docs/plans"]
+      "sources": [
+        "https://gregale.dev/pricing.json",
+        "https://gregale.dev/docs/plans",
+        "https://gregale.dev/research/intermittent-fastapi-cost-2026-11-24",
+        "https://gregale.dev/articles/scale-to-zero-without-cold-starts"
+      ]
     },
     "render": {
       "label": "Render",
       "free_web_monthly": "0",
       "free_instance_hours_per_month": "750",
+      "free_idle_timeout_seconds": 900,
       "free_web_ram_mb": 512,
       "starter_512mb_monthly": "7",
       "postgres_basic_256mb_monthly": "6",
@@ -41,6 +48,7 @@
       "cpu_per_vcpu_month": "20",
       "postgres_small_ram_gb": "0.25",
       "postgres_small_avg_vcpu": "0.05",
+      "serverless_idle_timeout_seconds": 300,
       "serverless_sleep_tail_factor": "1.5",
       "sources": [
         "https://railway.com/pricing",
@@ -54,8 +62,13 @@
       "shared_cpu_1x_512mb_monthly": "3.69",
       "stopped_rootfs_per_gb_month": "0.15",
       "assumed_rootfs_gb": "1",
+      "autostop_idle_timeout_seconds": 300,
       "postgres_developer_monthly": "4",
-      "sources": ["https://fly.io/pricing/", "https://fly.io/docs/about/pricing/"]
+      "sources": [
+        "https://fly.io/pricing/",
+        "https://fly.io/docs/about/pricing/",
+        "https://docs.fly.io/launch/autostop-autostart"
+      ]
     },
     "cloud_run": {
       "label": "Google Cloud Run",
@@ -71,6 +84,7 @@
     "heroku": {
       "label": "Heroku",
       "eco_monthly": "5",
+      "eco_idle_timeout_seconds": 1800,
       "basic_512mb_monthly": "7",
       "postgres_essential_0_monthly": "5",
       "sources": ["https://www.heroku.com/pricing/"]
