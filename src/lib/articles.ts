@@ -33,6 +33,8 @@ const CLAUDE_CODE_SLUG = 'claude-code-deploy-production-safely';
 const APPROVAL_SLUG = 'ai-agent-production-approval';
 const UNDO_SLUG = 'undo-ai-agent-changes';
 const BUDGET_SLUG = 'ai-agent-hosting-budget';
+const DATABASE_ROLLBACK_SLUG = 'rollback-code-and-database';
+const COLD_START_SLUG = 'scale-to-zero-without-cold-starts';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -370,6 +372,71 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: DATABASE_ROLLBACK_SLUG,
+    title: 'Roll back a bad migration: code and database together',
+    summary:
+      'Rolling back code after a migration runs old code on the new schema. On Gregale, `gregale rollback --restore-databases` restores the managed PostgreSQL database to the moment before the migration as a new database and switches the app to it with the earlier code, keeping the original and its writes.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'How do I roll back a bad database migration in production?',
+        answer:
+          "Restore the database to the moment before the migration ran and run the code from before it against that copy. On Gregale, `gregale rollback my-api --to v41 --restore-databases` does both in one command, within the database's 7-day restore window.",
+      },
+      {
+        question: 'Does rolling back a deploy roll back the database?',
+        answer:
+          'Not on its own, on Gregale or elsewhere: a plain rollback restores code and config. Gregale refuses a rollback to code older than a migration unless you acknowledge it, and `--restore-databases` rolls back the managed PostgreSQL database with the code.',
+      },
+      {
+        question: 'What happens to writes made after the migration?',
+        answer:
+          'They stay in the original database, which is left unchanged and no longer bound to the app. The restored copy has the data up to the restore point, so you can compare the two and move rows by hand.',
+      },
+      {
+        question: 'Is the app down during the rollback?',
+        answer:
+          'Briefly. It keeps serving until the restored copy is ready and its credentials are verified, then stops while the app switches: usually under a minute, plus a cold start.',
+      },
+      {
+        question: 'Which plans can do this?',
+        answer:
+          'Managed PostgreSQL and its 7-day restore window are on Hobby, Pro and Scale. The one-command rollback needs room for one more database, which Pro and Scale have; on Hobby, restore with `gregale postgres restore`, attach the copy and roll back with `--acknowledge-releases`.',
+      },
+    ],
+  },
+  {
+    slug: COLD_START_SLUG,
+    title: 'Scale to zero without slow cold starts',
+    summary:
+      'Gregale scales idle apps to zero without booting them again: an app pauses in memory about a second after its last request and resumes in about a millisecond, and after 10 minutes it parks as a memory snapshot that wakes with its process already running.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'How do I avoid cold starts when scaling to zero?',
+        answer:
+          'Wake the app from a snapshot of its running process instead of booting it. Gregale pauses an idle app in memory about a second after its last request and parks it as a memory snapshot after 10 minutes, so the next request never waits for a full boot unless the node has no usable snapshot.',
+      },
+      {
+        question: 'How fast does a parked app wake?',
+        answer:
+          "In Gregale's published benchmark, 100 snapshot restores of a 256 MiB app took 95 ms at the median and 138 ms at p95, measured inside the platform. A public request also includes network transit and your app's response time.",
+      },
+      {
+        question: 'Am I billed while the app is idle?',
+        answer:
+          'No. Billing stops about a second after each request, when the app pauses, and a parked app uses no memory. An app that keeps working in the background is billed while it works.',
+      },
+      {
+        question: 'Can I keep an instance warm anyway?',
+        answer:
+          'Yes, on Pro and Scale: `gregale app my-api --min 1` keeps an instance running, billed like any running instance.',
+      },
+    ],
+  },
+  {
     slug: 'render-vs-railway-vs-flyio',
     comparison: ['render', 'railway', 'fly'],
     title: 'Render vs Railway vs Fly.io for a production API',
@@ -527,7 +594,12 @@ const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/article
 const AGENT_SAFETY_LINK = `[Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) explain the limits Gregale puts on coding agents, and compare them with other setups.`;
 const CLAUDE_CODE_LINK = `[Let Claude Code deploy to production safely](/articles/${CLAUDE_CODE_SLUG}) shows the setup and the guardrails that hold whatever the agent runs.`;
 
+const DATABASE_ROLLBACK_LINK = `[Roll back a bad migration: code and database together](/articles/${DATABASE_ROLLBACK_SLUG}) explains why a code rollback is not enough after a migration, and how other platforms handle it.`;
+const COLD_START_LINK = `[Scale to zero without slow cold starts](/articles/${COLD_START_SLUG}) explains what an idle app costs and how fast it wakes, and compares other platforms.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
+  postgres: DATABASE_ROLLBACK_LINK,
+  'scale-to-zero': COLD_START_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: AGENT_SAFETY_LINK,
