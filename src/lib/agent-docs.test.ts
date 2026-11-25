@@ -3,8 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   AGENT_CORE_SLUGS,
+  COMPARISONS_TITLE,
   LLMS_SMALL_MAX_BYTES,
   absoluteLinks,
+  comparisonPage,
+  comparisonTitle,
   llmsFull,
   llmsIndex,
   llmsSmall,
@@ -12,7 +15,9 @@ import {
   markdownUrl,
   renderIntro,
 } from './agent-docs';
+import { COMPARISONS_CHECKED, comparisons } from './compare';
 import { DOC_ENTRIES, findDoc } from './docs-manifest';
+import { parsePlanCatalog } from './plan-catalog-parser';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -102,6 +107,45 @@ describe('llmsIndex', () => {
     expect(optional).toContain(markdownUrl(SITE, 'dpa'));
     expect(index).not.toContain('## Trust');
   });
+
+  it('lists each comparison page once, as Markdown, before the docs', () => {
+    const all = comparisons(CATALOG);
+    const withComparisons = llmsIndex('# Gregale\n\n> Summary.\n', SITE, all);
+    const section = withComparisons.indexOf(`\n## ${COMPARISONS_TITLE}\n`);
+    expect(section).toBeGreaterThan(withComparisons.indexOf('\n## Articles\n'));
+    expect(section).toBeLessThan(withComparisons.indexOf('\n## Optional\n'));
+    for (const comparison of all) {
+      const link = `[${comparisonTitle(comparison)}](${SITE}/vs/${comparison.slug}.md): `;
+      expect(withComparisons.split(link).length - 1, comparison.slug).toBe(1);
+    }
+    expect(index).not.toContain(`## ${COMPARISONS_TITLE}`);
+  });
+});
+
+const CATALOG = parsePlanCatalog(readFileSync(resolve('content/docs/plans.md'), 'utf8'));
+
+describe('comparisonPage', () => {
+  for (const comparison of comparisons(CATALOG)) {
+    it(`carries every fact on /vs/${comparison.slug}`, () => {
+      const page = comparisonPage(comparison, COMPARISONS_CHECKED, SITE);
+      expect(page.startsWith(`# Gregale vs ${comparison.competitor}\n`)).toBe(true);
+      expect(page).toContain(`Checked ${COMPARISONS_CHECKED}`);
+      expect(page).toContain(comparison.summary);
+      // One table row per topic, each on one line with its pipes escaped.
+      const rows = page.split('\n').filter((line) => line.startsWith('| '));
+      expect(rows.length).toBe(comparison.rows.length + 1);
+      for (const row of rows) expect(row.split(/(?<!\\)\|/).length).toBe(5);
+      for (const item of [...comparison.theyFit, ...comparison.gregaleFits])
+        expect(page).toContain(`- ${item}`);
+      for (const { question, answer } of comparison.faq) {
+        expect(page).toContain(`### ${question}\n\n${answer}`);
+      }
+      for (const source of comparison.sources) expect(page).toContain(`](${source.url})`);
+      expect(findDoc(comparison.migrateDoc), comparison.migrateDoc).toBeDefined();
+      expect(page).toContain(`](${markdownUrl(SITE, comparison.migrateDoc)})`);
+      expect(page.trimEnd().endsWith(`Canonical URL: ${SITE}/vs/${comparison.slug}`)).toBe(true);
+    });
+  }
 });
 
 describe('llmsFull', () => {

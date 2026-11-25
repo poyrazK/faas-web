@@ -112,6 +112,13 @@
       "continue": true
     },
     {
+      "src": "^/(docs|articles|research|vs)/([a-z0-9_-]+)\\.md$",
+      "headers": {
+        "Link": "<https://gregale.dev/$1/$2>; rel=\"canonical\""
+      },
+      "continue": true
+    },
+    {
       "src": "^/status/incidents/[^/]+$",
       "dest": "/status/incidents/index.html",
       "headers": {

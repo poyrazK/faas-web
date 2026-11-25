@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { atomFeed } from './feed.mjs';
 import { writeIndexNowKey } from './indexnow-key.mjs';
 import { sitemapXml } from './sitemap.mjs';
 
@@ -46,7 +47,8 @@ const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../s
 // Read the same generated catalog the pricing page renders, so the Offer
 // prices in the structured data cannot disagree with the visible columns.
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
-const { COMPARISON_SLUGS, comparisons } = await import('../src/lib/compare.ts');
+const { COMPARISON_SLUGS, COMPARISONS_CHECKED, comparisons } =
+  await import('../src/lib/compare.ts');
 const COMPARE_ROUTES = COMPARISON_SLUGS.map((slug) => `/vs/${slug}`);
 const COMPARISONS = new Map(comparisons(PLAN_CATALOG).map((c) => [`/vs/${c.slug}`, c]));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
@@ -60,6 +62,9 @@ const ARTICLE_ROUTES = ['/articles', ...ARTICLE_BY_ROUTE.keys()];
 const PRICING_ROUTE = '/pricing';
 const PLAN_DOC_ROUTE = '/docs/plans';
 const PRICING_FEED = '/pricing.json';
+/** Articles and research reports as one Atom feed, newest first. */
+const ATOM_FEED = '/feed.xml';
+const ATOM_FEED_TITLE = 'Gregale articles and research';
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
 const NOT_FOUND_ROUTE = '/404';
 const ROUTES = [
@@ -240,6 +245,15 @@ for (const route of ROUTES) {
       );
     }
   }
+  if (COMPARISONS.has(route)) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+  }
+  // Feed readers and aggregators find the feed from the pages it covers.
+  if (route === '/' || ARTICLE_ROUTES.includes(route) || RESEARCH_ROUTES.includes(route)) {
+    perRoute.push(
+      `<link rel="alternate" type="application/atom+xml" title="${ATOM_FEED_TITLE}" href="${ATOM_FEED}" />`
+    );
+  }
   // The home page names the agent index, so an agent that starts at the site
   // root finds llms.txt without guessing the path.
   if (route === '/') {
@@ -281,6 +295,8 @@ for (const route of ROUTES) {
             'https://github.com/gregale-dev',
             'https://www.linkedin.com/company/gregale/',
             'https://www.producthunt.com/products/gregale',
+            'https://www.crunchbase.com/organization/gregale',
+            'https://www.npmjs.com/package/gregale',
           ],
         },
         {
@@ -412,8 +428,29 @@ const robots = [
 writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
 
+/**
+ * Modification dates for routes that are not docs pages (those come from Git
+ * in sitemap.mjs): the dates the registries already state, so the sitemap
+ * cannot claim a change the page does not show.
+ */
+const latest = (dates) => dates.reduce((a, b) => (a > b ? a : b));
+const PAGE_DATES = new Map([
+  ...[...ARTICLE_BY_ROUTE].map(([route, article]) => [route, article.updatedOn]),
+  ['/articles', latest(ARTICLES.map((article) => article.updatedOn))],
+  ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => [route, publication.publishedOn]),
+  ['/research', latest(RESEARCH_PUBLICATIONS.map((publication) => publication.publishedOn))],
+  ...COMPARE_ROUTES.map((route) => [route, COMPARISONS_CHECKED]),
+]);
+
 if (SITE_URL) {
-  writeFileSync(join(DIST, 'sitemap.xml'), sitemapXml(SITE_URL, INDEXABLE));
+  writeFileSync(
+    join(DIST, 'sitemap.xml'),
+    sitemapXml(SITE_URL, INDEXABLE, {
+      dates: PAGE_DATES,
+      // The pricing page renders the plan catalog in docs/plans.
+      datedLike: { [PRICING_ROUTE]: PLAN_DOC_ROUTE },
+    })
+  );
   console.log(`  wrote sitemap.xml (${INDEXABLE.length} urls)`);
 } else {
   console.log('  skipped sitemap.xml and canonical tags — set SITE_URL to emit them');
@@ -446,7 +483,7 @@ console.log('  wrote pricing.json');
  * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
  * ------------------------------------------------------------------ */
 
-const { absoluteLinks, llmsFull, llmsIndex, llmsSmall, markdownPage } =
+const { absoluteLinks, comparisonPage, llmsFull, llmsIndex, llmsSmall, markdownPage } =
   await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
 const pagesBySlug = new Map();
@@ -460,7 +497,7 @@ const markdownPages = DOC_ENTRIES.map((entry) => {
   pagesBySlug.set(entry.slug, page);
   return page;
 });
-writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL));
+writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL, [...COMPARISONS.values()]));
 const researchPages = [...RESEARCH_BY_ROUTE].map(([route, publication]) => {
   const path = `research/${publication.slug}.md`;
   const body = readFileSync(join('content', path), 'utf8');
@@ -493,6 +530,38 @@ const articlePages = [...ARTICLE_BY_ROUTE].map(([route, entry]) => {
   return page;
 });
 
+const comparisonPages = [...COMPARISONS].map(([route, comparison]) => {
+  const page = comparisonPage(comparison, COMPARISONS_CHECKED, SITE_URL);
+  writeFileSync(join(DIST, `${route.slice(1)}.md`), page);
+  return page;
+});
+
+writeFileSync(
+  join(DIST, ATOM_FEED),
+  atomFeed({
+    siteUrl: SITE_URL,
+    path: ATOM_FEED,
+    title: ATOM_FEED_TITLE,
+    entries: [
+      ...[...ARTICLE_BY_ROUTE].map(([route, article]) => ({
+        route,
+        title: article.title,
+        summary: article.summary,
+        published: article.publishedOn,
+        updated: article.updatedOn,
+      })),
+      ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => ({
+        route,
+        title: publication.title,
+        summary: publication.summary,
+        published: publication.publishedOn,
+        updated: publication.publishedOn,
+      })),
+    ],
+  })
+);
+console.log('  wrote feed.xml');
+
 // Package the published inputs, with a directory prefix so the archive
 // can be extracted anywhere without overwriting unrelated files.
 const fastapiReproductionFiles = [
@@ -524,11 +593,11 @@ execFileSync(
 
 writeFileSync(
   join(DIST, 'llms-full.txt'),
-  llmsFull(llmsIntro, [...markdownPages, ...researchPages, ...articlePages])
+  llmsFull(llmsIntro, [...markdownPages, ...researchPages, ...articlePages, ...comparisonPages])
 );
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length} Markdown pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length + comparisonPages.length} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {
@@ -540,7 +609,14 @@ if (productionSite && process.env.INDEXNOW_KEY) {
       join(DIST, 'indexnow-research.json'),
       JSON.stringify({
         commit,
-        paths: [...RESEARCH_ROUTES, ...ARTICLE_ROUTES, ...COMPARE_ROUTES, ...DOC_ROUTES],
+        paths: [
+          '/',
+          PRICING_ROUTE,
+          ...RESEARCH_ROUTES,
+          ...ARTICLE_ROUTES,
+          ...COMPARE_ROUTES,
+          ...DOC_ROUTES,
+        ],
       }) + '\n',
       { flag: 'wx' }
     );

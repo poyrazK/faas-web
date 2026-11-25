@@ -2,6 +2,7 @@ import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
 import { ARTICLES, ARTICLES_TITLE, withRelatedArticles } from './articles.ts';
 import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE, withRelatedResearch } from './research.ts';
+import type { Comparison } from './compare.ts';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -18,6 +19,8 @@ import {
  * - `/llms-small.txt` — the intro and the pages an agent needs to deploy and
  *   debug an app (`AGENT_CORE_SLUGS`), small enough for one context window.
  * - `/docs/<slug>.md` — each page as Markdown.
+ * - `/vs/<slug>.md` — each comparison page as Markdown, from the same
+ *   module the page renders (`comparisonPage`).
  *
  * Generated from the manifest for the same reason as the sitemap: adding a
  * page to the table of contents cannot leave it out of what agents read. The
@@ -93,7 +96,52 @@ export function renderIntro(intro: string): string {
   });
 }
 
-export function llmsIndex(intro: string, siteUrl: string): string {
+export const COMPARISONS_TITLE = 'Comparisons';
+
+export const comparisonTitle = (comparison: Pick<Comparison, 'competitor'>): string =>
+  `Gregale vs ${comparison.competitor}`;
+
+/** A table cell: one line, with pipes escaped. */
+const cell = (text: string): string => text.replace(/\s+/g, ' ').replaceAll('|', '\\|').trim();
+
+/**
+ * One comparison page as Markdown: the table, where each side fits, the
+ * questions and the sources, from the same `Comparison` the page renders, so
+ * an agent reads exactly the facts a person sees.
+ */
+export function comparisonPage(comparison: Comparison, checkedOn: string, siteUrl: string): string {
+  const them = comparison.competitor;
+  const table = [
+    `| | Gregale | ${cell(them)} |`,
+    '|---|---|---|',
+    ...comparison.rows.map(
+      (row) => `| ${cell(row.topic)} | ${cell(row.gregale)} | ${cell(row.them)} |`
+    ),
+  ].join('\n');
+  const list = (items: readonly string[]) => items.map((item) => `- ${item}`).join('\n');
+  const faq = comparison.faq.map((item) => `### ${item.question}\n\n${item.answer}`).join('\n\n');
+  const sources = comparison.sources.map((source) => `- [${source.label}](${source.url})`);
+  return (
+    [
+      `# ${comparisonTitle(comparison)}`,
+      `Gregale · Checked ${checkedOn}`,
+      comparison.summary,
+      table,
+      `## When ${them} fits\n\n${list(comparison.theyFit)}`,
+      `## When Gregale fits\n\n${list(comparison.gregaleFits)}`,
+      `## Moving over\n\n[${comparison.migrateLabel}](${markdownUrl(siteUrl, comparison.migrateDoc)})`,
+      `## Questions\n\n${faq}`,
+      `## Sources\n\n${sources.join('\n')}`,
+      `Canonical URL: ${siteUrl}/vs/${comparison.slug}`,
+    ].join('\n\n') + '\n'
+  );
+}
+
+export function llmsIndex(
+  intro: string,
+  siteUrl: string,
+  comparisons: readonly Pick<Comparison, 'slug' | 'competitor' | 'summary'>[] = []
+): string {
   const parts = [renderIntro(intro)];
   if (findDoc(AGENTS_SLUG)) {
     parts.push(
@@ -110,6 +158,12 @@ export function llmsIndex(intro: string, siteUrl: string): string {
     (entry) => `- [${entry.title}](${siteUrl}/articles/${entry.slug}.md): ${entry.summary}`
   );
   parts.push(`## ${ARTICLES_TITLE}\n\n${articles.join('\n')}`);
+  if (comparisons.length) {
+    const links = comparisons.map(
+      (entry) => `- [${comparisonTitle(entry)}](${siteUrl}/vs/${entry.slug}.md): ${entry.summary}`
+    );
+    parts.push(`## ${COMPARISONS_TITLE}\n\n${links.join('\n')}`);
+  }
   const sections = [
     ...DOC_SECTIONS.filter((section) => section.title !== OPTIONAL_SECTION),
     ...DOC_SECTIONS.filter((section) => section.title === OPTIONAL_SECTION),
