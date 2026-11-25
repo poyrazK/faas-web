@@ -16,6 +16,10 @@ const sources = import.meta.glob<string>(
     '../../content/docs/realtime.md',
     '../../content/docs/inbound-webhooks.md',
     '../../content/docs/outbound-integrations.md',
+    '../../content/docs/code-workflows.md',
+    '../../content/docs/secrets.md',
+    '../../content/docs/companions.md',
+    '../../content/docs/queue-pull-leases.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -191,6 +195,47 @@ describe('articles', () => {
     ]) {
       expect(outboundDoc).toContain(`| ${plan} | ${daily} |`);
       expect(outboundText).toMatch(new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${daily}\\s*\\|`));
+    }
+  });
+
+  it('quotes limits and maturity labels in Batch 2 capability articles as docs state them', () => {
+    const workflowsDoc = sources['../../content/docs/code-workflows.md'].replace(/\s+/g, ' ');
+    const workflowsText = body('durable-code-workflows-scale-to-zero').replace(/\s+/g, ' ');
+    expect(workflowsDoc).toContain('preview feature on Hobby and higher plans');
+    expect(workflowsText).toContain('**Preview:** Workflow execution is a preview capability');
+    expect(workflowsDoc).toContain('30 days on Hobby, 90 on Pro, 365 on Scale');
+    expect(workflowsText).toContain('30 days on Hobby, 90 on Pro, 365 on Scale');
+    for (const limit of ['1,000', '1.5 MiB', '960 KiB']) {
+      expect(workflowsDoc).toContain(limit);
+      expect(workflowsText).toContain(limit);
+    }
+
+    const secretsDoc = sources['../../content/docs/secrets.md'].replace(/\s+/g, ' ');
+    const secretsText = body('zero-restart-secret-rotation').replace(/\s+/g, ' ');
+    expect(secretsDoc).toContain('Free 8, Hobby 25, Pro 50, Scale 100');
+    expect(secretsText).toContain('Free 8`, `Hobby 25`, `Pro 50`, `Scale 100');
+    expect(secretsDoc).toContain('com.gregale.secret-reload-signal');
+    expect(secretsText).toContain('com.gregale.secret-reload-signal');
+
+    const companionsDoc = sources['../../content/docs/companions.md'].replace(/\s+/g, ' ');
+    const companionsText = body('sidecar-companions-without-kubernetes').replace(/\s+/g, ' ');
+    for (const phrase of [
+      'four long-running companions',
+      'one one-shot setup helper',
+      'opentelemetry',
+      'sentry',
+      'datadog-dogstatsd',
+    ]) {
+      expect(companionsDoc).toContain(phrase);
+      expect(companionsText).toContain(phrase);
+    }
+
+    const pullDoc = sources['../../content/docs/queue-pull-leases.md'].replace(/\s+/g, ' ');
+    const pullText = body('pull-queue-workers-workload-identity').replace(/\s+/g, ' ');
+    expect(pullDoc).toContain('gregale:queues');
+    expect(pullText).toContain('gregale:queues');
+    for (const snippet of ['`100` messages', '`8 MiB`', '`20` seconds', '`64`']) {
+      expect(pullText).toContain(snippet);
     }
   });
 });

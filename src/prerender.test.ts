@@ -396,6 +396,11 @@ describeBuilt('prerendered pages', () => {
       { slug: 'declarative-edge-response-cache', doc: 'cache' },
       { slug: 'zero-secret-outbound-api-relay', doc: 'outbound-integrations' },
       { slug: 'openapi-breaking-change-deploy-gate', doc: 'api-hosting-openapi' },
+      { slug: 'durable-code-workflows-scale-to-zero', doc: 'code-workflows' },
+      { slug: 'zero-restart-secret-rotation', doc: 'secrets' },
+      { slug: 'private-microservice-networking-no-vpc', doc: 'internal-services' },
+      { slug: 'sidecar-companions-without-kubernetes', doc: 'companions' },
+      { slug: 'pull-queue-workers-workload-identity', doc: 'queue-pull-leases' },
     ];
     const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');

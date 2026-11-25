@@ -45,6 +45,11 @@ const INBOUND_WEBHOOKS_SLUG = 'durable-inbound-webhooks-scale-to-zero';
 const EDGE_CACHE_SLUG = 'declarative-edge-response-cache';
 const OUTBOUND_RELAY_SLUG = 'zero-secret-outbound-api-relay';
 const OPENAPI_GATE_SLUG = 'openapi-breaking-change-deploy-gate';
+const CODE_WORKFLOWS_SLUG = 'durable-code-workflows-scale-to-zero';
+const SECRET_ROTATION_SLUG = 'zero-restart-secret-rotation';
+const INTERNAL_SERVICES_SLUG = 'private-microservice-networking-no-vpc';
+const COMPANIONS_SLUG = 'sidecar-companions-without-kubernetes';
+const PULL_QUEUE_WORKERS_SLUG = 'pull-queue-workers-workload-identity';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -938,6 +943,131 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: CODE_WORKFLOWS_SLUG,
+    title: 'Write durable workflows that sleep for months without a running VM',
+    summary:
+      'Write durable retries, multi-day sleeps (30 days on Hobby, 90 on Pro, 365 on Scale), and event waits as plain async functions in Node, Python or Go that hold zero running VM while parked (in preview on Hobby and up).',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do durable code workflows keep a VM running while sleeping for days?',
+        answer:
+          'No. In this Hobby+ preview, `wf.sleep` and `wf.waitForEvent` park the workflow run with zero compute running and replay the function from stored step results once a timer fires or an event arrives.',
+      },
+      {
+        question: 'Which languages support code-first workflows on Gregale?',
+        answer:
+          'Node (`@gregale/sdk-node/workflows`), Python (`faas_sdk.workflows`), and Go (`github.com/gregale-dev/gregale-go`), with local in-process test runners (`runWorkflowLocally`) included.',
+      },
+      {
+        question: 'What limits apply to a code-first workflow run?',
+        answer:
+          'A run can execute up to 1,000 operations and record 1.5 MiB total, with 960 KiB of JSON per step call result and workflow output. Store larger artifacts in object storage and return their keys.',
+      },
+    ],
+  },
+  {
+    slug: SECRET_ROTATION_SLUG,
+    title: 'Rotate and revoke secrets without restarting containers or leaking snapshots',
+    summary:
+      'Every secret mutation on Gregale invalidates memory snapshots so restored VMs never serve stale keys, `--restart` performs a draining rolling replacement, and images with `com.gregale.secret-reload-signal` hot-reload in-process with verifiable acknowledgements.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Can a restored scale-to-zero snapshot serve an old secret after rotation?',
+        answer:
+          'No. Rotating or deleting a secret immediately invalidates existing memory snapshots, forcing the next wake to cold-boot with the current secret versions before taking a fresh snapshot.',
+      },
+      {
+        question: 'How does zero-restart secret reload verify my app updated its pools?',
+        answer:
+          'Images with `com.gregale.secret-reload-signal` receive an atomic mode-`0400` snapshot file and process signal, and POST a generation-scoped self-attestation to `FAAS_SECRETS_RELOAD_ACK_ENDPOINT` checked by `--wait-for-ack`.',
+      },
+      {
+        question: 'What happens if my image does not handle reload signals?',
+        answer:
+          'Use `gregale env rotate --restart` for a draining rolling replacement. Commands with `--wait-for-ack` intentionally fail non-zero rather than pretending a non-reloading container rotated.',
+      },
+    ],
+  },
+  {
+    slug: INTERNAL_SERVICES_SLUG,
+    title: 'Private service-to-service networking with caller allowlists and no VPC',
+    summary:
+      'Apps in the same account reach one another privately by name (`GREGALE_SERVICE_*_URL` and `.internal`) with zero VPC setup, while target caller allowlists, path scopes, deadlines and default-deny PR preview rules run at the proxy before waking targets.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do I need a VPC or private DNS setup for internal service calls on Gregale?',
+        answer:
+          'No. Same-account apps reach one another privately on every plan via auto-injected `GREGALE_SERVICE_*_URL` environment variables, `*.svc.gregale:10081`, and `.internal` aliases with no VPC or subnets to configure.',
+      },
+      {
+        question: 'How do I stop other apps or PR previews from calling internal services?',
+        answer:
+          'Set `x-gregale-allow-callers` and `x-gregale-allow-call-scopes` on target services to enforce allowed callers, HTTP methods and path prefixes before waking the target VM. PR previews also default to `preview_service_policy: deny`.',
+      },
+      {
+        question: 'Can internal calls use HTTPS and signed caller identities?',
+        answer:
+          'Yes: `x-gregale-service-transport: https` enables `https://<service>.internal` with automatic CA bundles (rolling out per account), and signed 30-second EdDSA `X-Faas-Caller-Assertion` headers are available in preview.',
+      },
+    ],
+  },
+  {
+    slug: COMPANIONS_SLUG,
+    title: 'Run OpenTelemetry, Datadog and proxy sidecars on a PaaS without Kubernetes',
+    summary:
+      'Declare built-in `opentelemetry`, `sentry` or `datadog-dogstatsd` presets or custom `@sha256` sidecars in `gregale.yaml` with loopback discovery, startup probes, Unix socket directories and per-companion `env_secrets` allowlists.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How many sidecars can run alongside my app in one microVM?',
+        answer:
+          'Each deployment can declare up to four long-running companions plus one one-shot setup helper under `companions:` in `gregale.yaml` or `gregale.toml`.',
+      },
+      {
+        question: 'Do companions inherit my main app secrets automatically?',
+        answer:
+          'No. Each companion receives only secrets explicitly granted in its own `env_secrets` block and never inherits the main app secret set automatically.',
+      },
+      {
+        question: 'Are companion ports exposed publicly or only on loopback?',
+        answer:
+          'Declaring `port` binds loopback discovery (`FAAS_WORKLOAD_<NAME>_ADDR`) and opens `<app>--<companion>.<apps domain>` publicly. Omit `port` to use shared Unix sockets without opening a hostname, or protect `@app` hosts with edge rules.',
+      },
+    ],
+  },
+  {
+    slug: PULL_QUEUE_WORKERS_SLUG,
+    title: 'Run SQS-style pull queue workers with zero-secret workload identity',
+    summary:
+      'Long-running workers consume Gregale queues without an HTTP listener using `leases`, `ack`, `nack` and `extend`, preview SDK auto-heartbeating (`consumeQueue`), `queue_depth` autoscaling and `gregale:queues` workload tokens that block staging/preview code.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How do pull queue workers authenticate without storing API keys in the image?',
+        answer:
+          'Workers inside a Gregale microVM fetch a short-lived workload-identity token for `gregale:queues` from the guest loopback endpoint (where workload identity is enabled), keeping long-lived keys out of images.',
+      },
+      {
+        question: 'Can a staging deploy or PR preview accidentally drain production queue jobs?',
+        answer:
+          'No. Workload-identity queue leases only succeed for production deployments; staging or preview apps receive `401` if they try to lease production messages.',
+      },
+      {
+        question: 'What happens if a worker scales in or crashes mid-message?',
+        answer:
+          'The platform tracks lease ownership to avoid stopping busy instances first during scale-in, and if an instance stops or fails, its leases end so messages redeliver cleanly.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -980,6 +1110,11 @@ const INBOUND_WEBHOOKS_LINK = `[Receive Stripe and signed webhooks while scaled 
 const EDGE_CACHE_LINK = `[Cache public API responses at the edge without waking your app](/articles/${EDGE_CACHE_SLUG}) explains declarative \`stale-while-revalidate\`, privacy bypass guarantees and \`Cache-Tag\` purging.`;
 const OUTBOUND_RELAY_LINK = `[Call Stripe, OpenAI and third-party APIs without API keys in your app](/articles/${OUTBOUND_RELAY_SLUG}) explains zero-secret credential injection, route allowlists and daily budgets.`;
 const OPENAPI_GATE_LINK = `[Block breaking OpenAPI changes and probe routes before traffic shifts](/articles/${OPENAPI_GATE_SLUG}) explains exit code \`2\`/\`3\` schema gates and \`x-gregale-hosting-check\` candidate probes.`;
+const CODE_WORKFLOWS_LINK = `[Write durable workflows that sleep for months without a running VM](/articles/${CODE_WORKFLOWS_SLUG}) explains code-first retries, multi-day sleeps, deterministic replay and limits.`;
+const SECRET_ROTATION_LINK = `[Rotate and revoke secrets without restarting containers or leaking snapshots](/articles/${SECRET_ROTATION_SLUG}) explains snapshot invalidation, draining restarts, in-process hot reload and revocation proofs.`;
+const INTERNAL_SERVICES_LINK = `[Private service-to-service networking with caller allowlists and no VPC](/articles/${INTERNAL_SERVICES_SLUG}) explains zero-VPC discovery, caller scopes, private HTTPS and PR preview isolation.`;
+const COMPANIONS_LINK = `[Run OpenTelemetry, Datadog and proxy sidecars on a PaaS without Kubernetes](/articles/${COMPANIONS_SLUG}) explains presets, custom digest-pinned companions, probes and secret grants.`;
+const PULL_QUEUE_WORKERS_LINK = `[Run SQS-style pull queue workers with zero-secret workload identity](/articles/${PULL_QUEUE_WORKERS_SLUG}) explains pull leases, SDK heartbeating, scale-in safety and production isolation.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
@@ -989,6 +1124,11 @@ const RELATED_ARTICLES: Record<string, string> = {
   cache: EDGE_CACHE_LINK,
   'outbound-integrations': OUTBOUND_RELAY_LINK,
   'api-hosting-openapi': OPENAPI_GATE_LINK,
+  'code-workflows': CODE_WORKFLOWS_LINK,
+  secrets: SECRET_ROTATION_LINK,
+  'internal-services': INTERNAL_SERVICES_LINK,
+  companions: COMPANIONS_LINK,
+  'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: CODEX_LINK,
