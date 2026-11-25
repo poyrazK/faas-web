@@ -276,21 +276,38 @@ describeBuilt('prerendered pages', () => {
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
     const cases = [
-      { slug: 'railway-alternatives', vs: 'railway', doc: null },
-      { slug: 'heroku-alternatives', vs: 'heroku', doc: 'migrate-from-heroku' },
-      { slug: 'render-alternatives', vs: 'render', doc: 'migrate-from-render' },
-      { slug: 'flyio-alternatives', vs: 'fly', doc: null },
+      { slug: 'railway-alternatives', vs: 'railway', doc: null, date: '2026-11-24' },
+      {
+        slug: 'heroku-alternatives',
+        vs: 'heroku',
+        doc: 'migrate-from-heroku',
+        date: '2026-11-24',
+      },
+      {
+        slug: 'render-alternatives',
+        vs: 'render',
+        doc: 'migrate-from-render',
+        date: '2026-11-24',
+      },
+      { slug: 'flyio-alternatives', vs: 'fly', doc: null, date: '2026-11-24' },
+      {
+        slug: 'cloud-run-alternatives',
+        vs: 'cloud-run',
+        doc: null,
+        date: '2026-11-25',
+      },
+      { slug: 'vercel-alternatives', vs: 'vercel', doc: null, date: '2026-11-25' },
     ];
-    for (const { slug, vs, doc } of cases) {
+    for (const { slug, vs, doc, date } of cases) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
       const graph = JSON.parse(json!)['@graph'];
       const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
 
-      expect(html).toContain('alternatives in 2026 are');
+      expect(html).toContain('alternatives in 2026');
       expect(html).toContain('Gregale publishes this page');
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-24' });
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: date });
       expect(faq.mainEntity.length).toBeGreaterThan(0);
       for (const page of ['articles', `vs/${vs}`, ...(doc ? [`docs/${doc}`] : [])]) {
         expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
@@ -306,7 +323,7 @@ describeBuilt('prerendered pages', () => {
   it('publishes each comparison page as Markdown and lists it for agents', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
     const full = readFileSync('dist/llms-full.txt', 'utf8');
-    for (const slug of ['heroku', 'render', 'railway', 'fly']) {
+    for (const slug of ['heroku', 'render', 'railway', 'fly', 'cloud-run', 'vercel']) {
       const route = `/vs/${slug}`;
       const markdown = readFileSync(`dist${route}.md`, 'utf8');
       expect(markdown.startsWith('# Gregale vs ')).toBe(true);
@@ -317,6 +334,40 @@ describeBuilt('prerendered pages', () => {
       );
       expect(llms).toContain(`https://gregale.dev${route}.md`);
     }
+  });
+
+  it('publishes the AI coding agents guide article and links it from agent docs', () => {
+    const route = '/articles/best-cloud-for-ai-coding-agents';
+    const html = readFileSync(`dist${route}/index.html`, 'utf8');
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-25' });
+    expect(readFileSync('dist/docs/agents/index.html', 'utf8')).toContain(`href="${route}"`);
+    expect(readFileSync('dist/docs/agents.md', 'utf8')).toContain(`https://gregale.dev${route}`);
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+  });
+
+  it('publishes MCP server card and TechArticle + BreadcrumbList structured data on doc guides', () => {
+    const serverCard = JSON.parse(readFileSync('dist/.well-known/mcp/server-card.json', 'utf8'));
+    expect(serverCard).toMatchObject({
+      serverInfo: { name: 'gregale' },
+      transport: { type: 'streamable-http', endpoint: 'https://api.gregale.dev/mcp' },
+      authentication: { required: true, schemes: ['oauth2'] },
+    });
+
+    const quickstart = readFileSync('dist/docs/quickstart/index.html', 'utf8');
+    expect(quickstart).toContain(
+      '<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />'
+    );
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(quickstart)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    expect(graph.find((n: { '@type': string }) => n['@type'] === 'TechArticle')).toMatchObject({
+      '@id': 'https://gregale.dev/docs/quickstart#article',
+      mainEntityOfPage: 'https://gregale.dev/docs/quickstart',
+    });
+    expect(
+      graph.find((n: { '@type': string }) => n['@type'] === 'BreadcrumbList')?.itemListElement
+    ).toHaveLength(3);
   });
 
   it('publishes an Atom feed of articles and research and links it from their pages', () => {
@@ -459,14 +510,23 @@ describeBuilt('prerendered pages', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';
 
-    it.each(['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'])(
-      'lets %s crawl public pages and excludes the auth-gated console',
-      (agent) => {
-        expect(robots.split('\n\n')).toContain(
-          `User-agent: ${agent}\nDisallow: /dashboard\nDisallow: /onboarding\nAllow: /`
-        );
-      }
-    );
+    it.each([
+      'OAI-SearchBot',
+      'GPTBot',
+      'ChatGPT-User',
+      'ClaudeBot',
+      'Claude-SearchBot',
+      'Claude-User',
+      'PerplexityBot',
+      'Perplexity-User',
+      'Google-Extended',
+      'Applebot-Extended',
+      '*',
+    ])('lets %s crawl public pages and excludes the auth-gated console', (agent) => {
+      expect(robots.split('\n\n')).toContain(
+        `User-agent: ${agent}\nDisallow: /dashboard\nDisallow: /onboarding\nAllow: /`
+      );
+    });
   });
 
   describe('API reference', () => {
