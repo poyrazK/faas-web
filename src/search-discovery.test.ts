@@ -212,6 +212,50 @@ it('submits changed docs and comparison pages', () => {
   ]);
 });
 
+it('hashes what a search engine indexes, not the page template', () => {
+  const code = `
+    const page = (title, main, chrome = 'nav') =>
+      '<html><head><title>' + title + '</title><meta name="description" content="Summary">' +
+      '</head><body><header>' + chrome + '</header><main><h1>' + main + '</h1></main>' +
+      '<footer>' + chrome + '</footer></body></html>';
+    const base = script.contentHash(page('Title', 'Body'));
+    const ld = '<script type="application/ld+json">{}</script></head>';
+    process.stdout.write(JSON.stringify([
+      /^[a-f0-9]{16}$/.test(base),
+      base === script.contentHash(page('Title', 'Body', 'new footer links').replace('</head>', ld)),
+      base === script.contentHash(page('Title', 'Body changed')),
+      base === script.contentHash(page('New title', 'Body')),
+      base === script.contentHash(page('Title', 'Body').replace('Summary', 'New summary')),
+    ]));
+  `;
+  expect(JSON.parse(runScript('indexnow-content.mjs', code, fixture))).toEqual([
+    true,
+    true,
+    false,
+    false,
+    false,
+  ]);
+});
+
+it('submits only pages whose content is new or changed since the last release', () => {
+  const code = `
+    const before = { '/': 'aaaaaaaaaaaaaaaa', '/articles/one': 'bbbbbbbbbbbbbbbb', '/articles/gone': 'cccccccccccccccc' };
+    const now = { '/': 'aaaaaaaaaaaaaaaa', '/articles/one': 'dddddddddddddddd', '/articles/new': 'eeeeeeeeeeeeeeee' };
+    process.stdout.write(JSON.stringify([
+      script.contentChangedPaths(before, now, ['/', '/articles/one', '/articles/new', '/docs/unhashed']),
+      script.contentHashes(now, ['/', '/articles/one', '/articles/new']) !== undefined,
+      script.contentHashes({ '/': 'not-a-hash' }) === undefined,
+      script.contentHashes(now, ['/']) === undefined,
+    ]));
+  `;
+  expect(JSON.parse(runScript('indexnow-content.mjs', code, fixture))).toEqual([
+    ['/articles/one', '/articles/new', '/docs/unhashed'],
+    true,
+    true,
+    true,
+  ]);
+});
+
 it('accepts every path the release file can submit', () => {
   // The release job hands its paths to submit-indexnow.mjs. A path that script
   // refuses fails the whole submission, as /articles once did.

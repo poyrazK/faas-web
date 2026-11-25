@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { atomFeed } from './feed.mjs';
+import { contentHash } from './indexnow-content.mjs';
 import { writeIndexNowKey } from './indexnow-key.mjs';
 import { docsLastModified, sitemapXml } from './sitemap.mjs';
 
@@ -177,6 +178,8 @@ function stripStaticHead(html) {
 }
 
 let written = 0;
+/** Each page's indexable content, so IndexNow submits only pages that changed. */
+const pageHashes = new Map();
 for (const route of ROUTES) {
   const incidentShell = route === INCIDENT_SHELL_ROUTE;
   const { html, meta } = await render(route);
@@ -493,6 +496,7 @@ for (const route of ROUTES) {
           : join(DIST, route, 'index.html');
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, doc);
+  pageHashes.set(route, contentHash(doc));
 
   const text = html
     .replace(/<[^>]+>/g, ' ')
@@ -802,18 +806,20 @@ if (productionSite && process.env.INDEXNOW_KEY) {
   console.log('  wrote IndexNow key file');
   const commit = process.env.VERCEL_GIT_COMMIT_SHA;
   if (/^[a-f0-9]{40}$/.test(commit ?? '')) {
+    const paths = [
+      '/',
+      PRICING_ROUTE,
+      ...RESEARCH_ROUTES,
+      ...ARTICLE_ROUTES,
+      ...COMPARE_ROUTES,
+      ...DOC_ROUTES,
+    ];
     writeFileSync(
       join(DIST, 'indexnow-research.json'),
       JSON.stringify({
         commit,
-        paths: [
-          '/',
-          PRICING_ROUTE,
-          ...RESEARCH_ROUTES,
-          ...ARTICLE_ROUTES,
-          ...COMPARE_ROUTES,
-          ...DOC_ROUTES,
-        ],
+        paths,
+        hashes: Object.fromEntries(paths.map((path) => [path, pageHashes.get(path)])),
       }) + '\n',
       { flag: 'wx' }
     );

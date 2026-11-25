@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Reads the page hashes the previous run saved, to submit only changed pages.
+  actions: read
   contents: read
   deployments: read
 
@@ -31,3 +33,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+      # The next run compares against these hashes. Written only after a
+      # successful submission, so a failed one is retried in full.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: indexnow-content
+          path: indexnow-content.json
+          if-no-files-found: ignore
+          retention-days: 90
