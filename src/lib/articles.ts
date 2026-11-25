@@ -35,6 +35,7 @@ const UNDO_SLUG = 'undo-ai-agent-changes';
 const BUDGET_SLUG = 'ai-agent-hosting-budget';
 const DATABASE_ROLLBACK_SLUG = 'rollback-code-and-database';
 const COLD_START_SLUG = 'scale-to-zero-without-cold-starts';
+const BEST_CLOUD_AGENTS_SLUG = 'best-cloud-for-ai-coding-agents';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -566,6 +567,83 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: BEST_CLOUD_AGENTS_SLUG,
+    title: 'Best cloud platform for AI coding agents in 2026',
+    summary:
+      'What makes a cloud safe for Claude Code, Codex, Cursor and Gemini CLI: non-interactive JSON output, scoped agent keys, human approval on production mutations, cost previews, undo and automatic 5xx rollbacks, compared across Gregale, Vercel, Railway, Render, Fly.io and Cloud Run.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the best cloud platform for AI coding agents?',
+        answer:
+          'Gregale is built for backend APIs, workers, crons and MCP servers deployed by coding agents: it enforces scoped `--agent` keys, approval links for production mutations, per-agent cost previews and budgets, undo for non-code edits, and 1% to 100% canary rollbacks. Vercel fits frontend Next.js apps, and Google Cloud Run fits services tied into a GCP VPC.',
+      },
+      {
+        question: 'Why should an AI coding agent not use my personal cloud login?',
+        answer:
+          'A personal login or admin token lets a single agent mistake delete production resources, expose services publicly or raise scaling limits without review. On Gregale, `gregale key create --agent` creates a separate API-enforced identity with its own spend cap and human approval gates.',
+      },
+      {
+        question: 'How do AI agents discover and operate Gregale without scraping HTML?',
+        answer:
+          'Every doc, article, research study and comparison is available at a `.md` URL and via `Accept: text/markdown` content negotiation, indexed in `/llms.txt` and `/llms-small.txt`, paired with a hosted MCP server (`https://api.gregale.dev/mcp`, discovered via `/.well-known/mcp/server-card.json`) and `gregale --non-interactive --json`.',
+      },
+    ],
+  },
+  {
+    slug: 'cloud-run-alternatives',
+    alternativesTo: 'cloud-run',
+    title: 'Google Cloud Run alternatives in 2026',
+    summary:
+      'Gregale, Fly.io, Render, Railway, Northflank, DigitalOcean App Platform and Heroku compared on free tiers, prices, idle billing, bundled Postgres and releases.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the best Google Cloud Run alternative?',
+        answer:
+          'Fly.io fits teams wanting multi-region Firecracker containers, Render and Railway fit classic Git-push PaaS with bundled databases, and Gregale fits small teams that want per-second billing that stops when idle alongside bundled PostgreSQL, PR previews and automatic canary rollbacks without configuring GCP IAM or Cloud Deploy.',
+      },
+      {
+        question: 'Which Google Cloud Run alternative includes managed Postgres and previews?',
+        answer:
+          'Gregale bundles managed PostgreSQL (`DATABASE_URL`), PR preview environments, crons and workers alongside compute. Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month, and Hobby adds managed Postgres for $10 a month.',
+      },
+      {
+        question: 'Is there a Cloud Run alternative with automatic canary rollbacks?',
+        answer:
+          'Gregale sends every production release through 1%, 10%, 50% and 100% of traffic and rolls back automatically if the new version returns more 5xx errors (in beta). Cloud Run requires Cloud Deploy for automated phased rollbacks.',
+      },
+    ],
+  },
+  {
+    slug: 'vercel-alternatives',
+    alternativesTo: 'vercel',
+    title: 'Vercel alternatives for backends and full-stack apps in 2026',
+    summary:
+      'Gregale, Render, Railway, Fly.io, Google Cloud Run, Northflank and DigitalOcean App Platform compared on per-seat pricing, duration limits, bundled Postgres and releases.',
+    publishedOn: '2026-11-25',
+    updatedOn: '2026-11-25',
+    faq: [
+      {
+        question: 'What is the best Vercel alternative for backend APIs and workers?',
+        answer:
+          'Render and Railway fit full-stack teams wanting traditional services and databases, Fly.io fits multi-region containers and WebSockets, and Gregale fits teams wanting Firecracker microVMs without function execution timeouts, bundled managed PostgreSQL, no per-seat fee and automatic canary rollbacks.',
+      },
+      {
+        question: 'Which Vercel alternative has a free tier without per-seat fees?',
+        answer:
+          'Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month with no per-seat charge. Render, Railway, Fly.io, Google Cloud Run and Northflank also offer free compute tiers.',
+      },
+      {
+        question: 'Can I run Next.js and a persistent worker together outside Vercel?',
+        answer:
+          'Yes. Gregale, Render, Railway and Fly.io all run Next.js servers alongside background worker processes and managed databases with no serverless 300s or 800s execution cutoff.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -591,7 +669,7 @@ const NO_DEVOPS_LINK =
 const FASTAPI_JOBS_LINK = `[Where to host a FastAPI app with background jobs and Postgres](/articles/${FASTAPI_JOBS_SLUG}) explains where each kind of background work belongs, and compares the options.`;
 const NODE_WORKER_LINK = `[Running a Node.js API and a worker together](/articles/${NODE_WORKER_SLUG}) shows how to keep an API and its worker on one version, and what the setup costs on each platform.`;
 
-const AGENT_SAFETY_LINK = `[Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) explain the limits Gregale puts on coding agents, and compare them with other setups.`;
+const AGENT_SAFETY_LINK = `[Best cloud platform for AI coding agents in 2026](/articles/${BEST_CLOUD_AGENTS_SLUG}), [Human approval before an AI agent changes production](/articles/${APPROVAL_SLUG}), [Undo what an AI agent changed in production](/articles/${UNDO_SLUG}) and [Cap what an AI agent adds to your hosting bill](/articles/${BUDGET_SLUG}) compare platforms and explain the limits Gregale puts on coding agents.`;
 const CLAUDE_CODE_LINK = `[Let Claude Code deploy to production safely](/articles/${CLAUDE_CODE_SLUG}) shows the setup and the guardrails that hold whatever the agent runs.`;
 
 const DATABASE_ROLLBACK_LINK = `[Roll back a bad migration: code and database together](/articles/${DATABASE_ROLLBACK_SLUG}) explains why a code rollback is not enough after a migration, and how other platforms handle it.`;

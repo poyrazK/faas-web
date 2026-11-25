@@ -119,6 +119,21 @@
       "continue": true
     },
     {
+      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|\\.well-known/mcp/server-card\\.json|(?:docs|articles|research|vs)/[a-z0-9_-]+\\.md)$",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS"
+      },
+      "continue": true
+    },
+    {
+      "src": "^/(?:docs/(?!api$)|(?:articles|research|vs)/)[a-z0-9_-]+$",
+      "headers": {
+        "Vary": "Accept"
+      },
+      "continue": true
+    },
+    {
       "src": "^/status/incidents/[^/]+$",
       "dest": "/status/incidents/index.html",
       "headers": {
@@ -215,6 +230,40 @@
       "headers": {
         "Location": "/docs/$1"
       }
+    },
+    {
+      "src": "^/docs/(?!api$)([a-z0-9_-]+)$",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": ".*text/markdown.*"
+        }
+      ],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Link": "<https://gregale.dev/docs/$1>; rel=\"canonical\"",
+        "Vary": "Accept"
+      },
+      "dest": "/docs/$1.md"
+    },
+    {
+      "src": "^/(articles|research|vs)/([a-z0-9_-]+)$",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": ".*text/markdown.*"
+        }
+      ],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Link": "<https://gregale.dev/$1/$2>; rel=\"canonical\"",
+        "Vary": "Accept"
+      },
+      "dest": "/$1/$2.md"
     },
     {
       "handle": "filesystem"

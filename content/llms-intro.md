@@ -24,7 +24,8 @@ scoped keys for agents and the Claude Code plugin are in
 
 Machine-readable entry points:
 
-- Hosted MCP server (in preview): `https://api.gregale.dev/mcp`, with OAuth.
+- Hosted MCP server (in preview): `https://api.gregale.dev/mcp`, with OAuth
+  ([MCP server card](https://gregale.dev/.well-known/mcp/server-card.json)).
   `gregale mcp connect` adds it to Claude Code, Codex, Cursor, VS Code and
   other MCP clients.
 - Plans and prices as JSON: [pricing.json](https://gregale.dev/pricing.json).

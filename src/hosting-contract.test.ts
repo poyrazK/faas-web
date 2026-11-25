@@ -9,6 +9,7 @@ interface Route {
   dest?: string;
   methods?: string[];
   status?: number;
+  has?: { type: string; key: string; value?: string }[];
   headers?: Record<string, string>;
   continue?: boolean;
 }
@@ -114,6 +115,43 @@ describe('public hosting contract', () => {
     // On failure: copy `securityHeaders('production')` into vercel.json —
     // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
     expect(boundary?.headers).toEqual(securityHeaders('production'));
+  });
+
+  it('opens CORS and content-negotiates Markdown for public agent discovery paths', () => {
+    const filesystem = config.routes.findIndex((route) => 'handle' in route);
+    const preFs = config.routes.slice(0, filesystem);
+
+    const corsRule = preFs.find(
+      (route) => route.continue && route.headers?.['Access-Control-Allow-Origin'] === '*'
+    );
+    expect(corsRule?.src).toBeDefined();
+    for (const path of [
+      '/llms.txt',
+      '/llms-full.txt',
+      '/llms-small.txt',
+      '/pricing.json',
+      '/.well-known/mcp/server-card.json',
+      '/docs/quickstart.md',
+      '/articles/canary-deploys.md',
+      '/vs/vercel.md',
+    ]) {
+      expect(new RegExp(corsRule!.src!).test(path), path).toBe(true);
+    }
+
+    const mdRewrite = (path: string) =>
+      preFs.find(
+        (route) =>
+          route.src &&
+          !route.continue &&
+          route.has?.some((cond) => cond.key === 'accept' && cond.value === '.*text/markdown.*') &&
+          new RegExp(route.src).test(path)
+      );
+
+    expect(mdRewrite('/docs/quickstart')?.dest).toBe('/docs/$1.md');
+    expect(mdRewrite('/articles/best-cloud-for-ai-coding-agents')?.dest).toBe('/$1/$2.md');
+    expect(mdRewrite('/vs/cloud-run')?.dest).toBe('/$1/$2.md');
+    expect(mdRewrite('/docs/api')).toBeUndefined();
+    expect(mdRewrite('/docs/api/apps')).toBeUndefined();
   });
 });
 
