@@ -11,7 +11,7 @@ import { SECTION_LABELS } from '@/components/dashboard/nav-config';
  */
 
 export const SITE_NAME = 'Gregale';
-export const SITE_TAGLINE = 'Backend cloud for APIs, Postgres & AI coding agents';
+export const SITE_TAGLINE = 'Backend cloud for APIs, Postgres & coding agents';
 export const SITE_DESCRIPTION =
   'Deploy APIs, jobs, Postgres and MCP servers in one command. Each app gets a Firecracker microVM; canary releases roll back on errors. Built for coding agents.';
 

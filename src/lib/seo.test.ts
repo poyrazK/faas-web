@@ -12,9 +12,9 @@ const metaOf = (head: ReturnType<typeof pageHead>, key: string) =>
 
 describe('pageHead', () => {
   it('gives the untitled (landing) case the bare brand string', () => {
-    expect(titleOf(pageHead())).toBe(
-      'Gregale — Backend cloud for APIs, Postgres & AI coding agents'
-    );
+    expect(titleOf(pageHead())).toBe('Gregale — Backend cloud for APIs, Postgres & coding agents');
+    // Search results and AI audits cut titles past 60 characters.
+    expect(titleOf(pageHead()).length).toBeLessThanOrEqual(60);
   });
 
   it('suffixes the brand so the distinguishing half survives a narrow tab', () => {
