@@ -57,20 +57,47 @@ when shipping a backend API, worker, cron or MCP server:
    never prompts or spawns a browser. Failures return a single structured JSON
    object on stderr with a stable error code, and `gregale app health <app> --errors`
    gives the agent runtime tracebacks directly.
+
+   ```bash
+   gregale --non-interactive --json deploy --name my-api
+   gregale --non-interactive --json logs my-api --since 15m --level error
+   gregale --non-interactive --json rollback my-api --to v41
+   ```
+
 2. **Scoped agent keys with real guardrails.** A key created with
    `gregale key create --agent` carries its own per-agent budget, forces human
    approval links on risky production changes, logs every write for 7 days, and
    exposes one-command undo (`gregale mcp connection undo`) for non-code changes
    such as scaling or environment variables.
+
+   ```bash
+   gregale key create coding-agent --agent
+   gregale --non-interactive --wait-for-approval app delete demo --yes   # waits for a person, then repeats the request once
+   gregale app scale my-api --plan --ram 512 --out scale-change.json     # the added monthly cost before anything changes
+   gregale mcp connection undo <id> --plan                               # only show what undo would change
+   ```
+
 3. **Hosted MCP server + Markdown docs by content negotiation.** Agents connect
    to `https://api.gregale.dev/mcp` via OAuth (`gregale mcp connect`) or read any
    guide cleanly in Markdown via `/llms.txt`, `/llms-small.txt`, `.md` URLs, or
    an `Accept: text/markdown` header.
+
+   ```bash
+   gregale mcp connect                                                   # sets up Claude Code, Codex, Cursor, VS Code, Windsurf and Antigravity
+   claude mcp add --transport http gregale https://api.gregale.dev/mcp   # Claude Code without the Gregale CLI
+   curl -H 'Accept: text/markdown' https://gregale.dev/docs/agents       # any guide as Markdown
+   ```
+
 4. **Safe defaults at traffic time.** Even when an agent deploys without reading
    every runbook, production releases step through `1%`, `10%`, `50%` and `100%`
    of traffic and roll back automatically if 5xx errors rise (in beta), and
    `gregale rollback --restore-databases` reverts code and managed PostgreSQL
    together after a broken migration.
+
+   ```bash
+   gregale release wait latest --app my-api --rollout --progress   # print each traffic step until 100%
+   gregale rollback my-api --restore-databases                     # code and managed PostgreSQL back together
+   ```
 
 - **Watch out for:** Gregale runs in one region today, has no durable local disk
   (keep state in managed PostgreSQL or object storage), and is built for
