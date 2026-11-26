@@ -42,6 +42,7 @@ const {
   PAAS_COST_MODEL_SLUG,
   RESEARCH_PUBLICATIONS,
   RESEARCH_TITLE,
+  ROLLBACK_RECOVERY_SLUG,
   SNAPSHOT_RESTORE_SLUG,
 } = await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
@@ -952,6 +953,26 @@ execFileSync(
     '-C',
     join(DIST, 'research'),
     ...agentGuardrailsReproductionFiles.map((file) => join(AGENT_GUARDRAILS_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const rollbackRecoveryReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'criteria.json',
+  'vendors.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', ROLLBACK_RECOVERY_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...rollbackRecoveryReproductionFiles.map((file) => join(ROLLBACK_RECOVERY_SLUG, file)),
   ],
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );

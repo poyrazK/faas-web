@@ -1,0 +1,373 @@
+{
+  "checked_on": "2026-11-26",
+  "platforms": [
+    {
+      "id": "gregale",
+      "name": "Gregale",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "Every deploy records an immutable release revision; `gregale rollback <app>` switches traffic back without rebuilding.",
+          "source_url": "https://gregale.dev/docs/releases"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "Declared release commands execute inside a one-off microVM before traffic shifts to new instances.",
+          "source_url": "https://gregale.dev/docs/releases"
+        },
+        "default_canary_auto_rollback": {
+          "status": "full",
+          "evidence": "Production releases climb 1% -> 10% -> 50% -> 100% by default and roll back automatically if 5xx error rates spike (beta).",
+          "source_url": "https://gregale.dev/docs/rollouts"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Managed PostgreSQL keeps continuous WAL archives for timestamped restore across a 7-day window on paid plans.",
+          "source_url": "https://gregale.dev/docs/postgres"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "full",
+          "evidence": "`gregale rollback --restore-databases` rolls back application code and restores attached managed PostgreSQL to that release's point in time.",
+          "source_url": "https://gregale.dev/docs/releases"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "full",
+          "evidence": "Environment and release configuration snapshots bind to each immutable release revision and restore together.",
+          "source_url": "https://gregale.dev/docs/releases"
+        },
+        "release_freezes_and_approvals": {
+          "status": "full",
+          "evidence": "Supports scheduled release freezes and server-enforced human approval gates on deployments and rollbacks.",
+          "source_url": "https://gregale.dev/docs/release-controls"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "full",
+          "evidence": "Supports promoting the exact verified release artifact digest from staging to production without rebuilding.",
+          "source_url": "https://gregale.dev/docs/releases"
+        }
+      }
+    },
+    {
+      "id": "heroku",
+      "name": "Heroku",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "`heroku rollback vN` creates a new release pointing back to a previous slug without rebuilding from source.",
+          "source_url": "https://devcenter.heroku.com/articles/releases"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "Procfile `release` phase executes database migrations before dyno formation restarts receive web traffic.",
+          "source_url": "https://devcenter.heroku.com/articles/release-phase"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Preboot restarts dynos behind health checks, without default progressive 1%->100% live 5xx canary auto-rollback.",
+          "source_url": "https://devcenter.heroku.com/articles/releases"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Heroku Postgres provides timestamped rollback and WAL point-in-time recovery into a replacement database.",
+          "source_url": "https://devcenter.heroku.com/articles/heroku-postgres-rollback"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "`heroku rollback` and `heroku pg:backups` / rollback CLI run as separate app and database commands rather than one coordinated lockstep action.",
+          "source_url": "https://devcenter.heroku.com/articles/heroku-postgres-rollback"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "full",
+          "evidence": "Heroku Releases version both the compiled slug and the full snapshot of app config vars together.",
+          "source_url": "https://devcenter.heroku.com/articles/releases"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "No built-in cron-scheduled release freeze windows or token-bound approval URLs enforced across CLI/API mutations.",
+          "source_url": "https://devcenter.heroku.com/articles/releases"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "full",
+          "evidence": "`heroku pipelines:promote` promotes the exact compiled slug downstream from staging to production without rebuilding.",
+          "source_url": "https://devcenter.heroku.com/articles/releases"
+        }
+      }
+    },
+    {
+      "id": "cloud_run",
+      "name": "Google Cloud Run",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "`gcloud run services update-traffic --to-revisions` immediately shifts 100% traffic to a prior immutable revision.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "pre_traffic_migration_command": {
+          "status": "partial",
+          "evidence": "Migrations run via separate Cloud Run Jobs or Cloud Build steps rather than a native single-service release hook.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Manual revision traffic splitting is built in; automated canary stages and error-based rollback require configuring Cloud Deploy.",
+          "source_url": "https://docs.cloud.google.com/deploy/docs/overview"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Cloud SQL for PostgreSQL supports timestamped WAL point-in-time recovery by cloning an instance to a target timestamp.",
+          "source_url": "https://docs.cloud.google.com/sql/docs/postgres/backup-recovery/pitr"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "none",
+          "evidence": "Cloud Run revision traffic updates and Cloud SQL instance clones operate as decoupled Google Cloud resources.",
+          "source_url": "https://docs.cloud.google.com/sql/docs/postgres/backup-recovery/pitr"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "full",
+          "evidence": "Environment variables and Secret Manager references are bound immutably to each Cloud Run revision.",
+          "source_url": "https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration"
+        },
+        "release_freezes_and_approvals": {
+          "status": "partial",
+          "evidence": "Cloud Deploy supports manual promotion approvals when configured as a separate delivery pipeline around Cloud Run.",
+          "source_url": "https://docs.cloud.google.com/deploy/docs/overview"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "partial",
+          "evidence": "Artifact Registry container digests promote cleanly across stages when orchestrated via Cloud Deploy.",
+          "source_url": "https://docs.cloud.google.com/deploy/docs/overview"
+        }
+      }
+    },
+    {
+      "id": "render",
+      "name": "Render",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "Dashboard Deploys and Rollback API spin up a previous deploy from its cached build artifact.",
+          "source_url": "https://render.com/docs/rollbacks"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "`preDeployCommand` executes database migrations after build and before routing live traffic to new instances.",
+          "source_url": "https://render.com/docs/deploys"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Zero-downtime deploys validate startup health checks before cutover rather than running default live-traffic 5xx canaries.",
+          "source_url": "https://render.com/docs/deploys"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Paid Render PostgreSQL databases keep automatic WAL backups for timestamped PITR into a new database instance.",
+          "source_url": "https://render.com/docs/postgresql-backups"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "Service rollbacks and PostgreSQL PITR restores run separately; operators manually update services to the restored database.",
+          "source_url": "https://render.com/docs/postgresql-backups"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "partial",
+          "evidence": "Dashboard rollbacks restore the code deploy while disabling auto-deploy; external env-var edits are managed independently.",
+          "source_url": "https://render.com/docs/rollbacks"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "Supports turning off auto-deploy globally on a service, without built-in freeze schedules or per-release approval gates.",
+          "source_url": "https://render.com/docs/rollbacks"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "none",
+          "evidence": "Environments build separately from Git branches or image pushes rather than one-click artifact digest promotion.",
+          "source_url": "https://render.com/docs/deploys"
+        }
+      }
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "Railway deployment history supports one-click Rollback to a prior successful deployment artifact.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "`preDeployCommand` executes before traffic routes to the updated deployment.",
+          "source_url": "https://docs.railway.com/guides/pre-deploy-command"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Health checks guard cutover cleanly, without default progressive 1%->100% live 5xx canary auto-rollback.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Continuous WAL archiving restores PostgreSQL to a target second into a sibling Postgres service.",
+          "source_url": "https://docs.railway.com/reference/backups"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "Code deployment rollback and Postgres PITR sibling restore run separately and require repointing service variables.",
+          "source_url": "https://docs.railway.com/reference/backups"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "partial",
+          "evidence": "Deployment rollbacks restore deployment snapshots and variables within plan retention windows.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "No native time-window release freezes or server-enforced human approval workflow for deployments.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "none",
+          "evidence": "Environments deploy from configured branches/sync flows rather than promoting a verified staging digest without rebuild.",
+          "source_url": "https://docs.railway.com/guides/deployments"
+        }
+      }
+    },
+    {
+      "id": "digitalocean",
+      "name": "DigitalOcean App Platform",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "full",
+          "evidence": "DigitalOcean App Platform supports rolling back an app to a previous deployment revision from the dashboard or CLI.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-deployments/"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "Pre-Deploy Jobs run database migrations after build and must succeed before new web/worker instances receive traffic.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-jobs/"
+        },
+        "default_canary_auto_rollback": {
+          "status": "none",
+          "evidence": "Uses rolling/readiness-check cutover rather than default progressive 1%->100% live 5xx canary auto-rollback.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-deployments/"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "DigitalOcean Managed PostgreSQL retains WAL backups for point-in-time recovery via cluster restore/fork.",
+          "source_url": "https://docs.digitalocean.com/products/databases/postgresql/details/features/"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "App Platform deployment rollback and Managed PostgreSQL PITR restores are separate workflows across two products.",
+          "source_url": "https://docs.digitalocean.com/products/databases/postgresql/details/features/"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "none",
+          "evidence": "App Spec tracks component configuration without tying managed database PITR and rollback together automatically.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-deployments/"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "No built-in cron-based release freezes or API-level approval gates for deployments.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-deployments/"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "none",
+          "evidence": "Separate apps deploy from branches or registry images independently without a built-in staging-to-prod promotion flow.",
+          "source_url": "https://docs.digitalocean.com/products/app-platform/how-to/manage-deployments/"
+        }
+      }
+    },
+    {
+      "id": "fly",
+      "name": "Fly.io",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "partial",
+          "evidence": "Inspect prior image refs via `fly releases --image` and redeploy with `fly deploy --image` rather than a dedicated rollback command.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "pre_traffic_migration_command": {
+          "status": "full",
+          "evidence": "`[deploy] release_command` in `fly.toml` runs migrations inside a temporary Machine before rolling out app updates.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Default rolling/canary strategies halt deployment on Machine startup health failures rather than post-cutover live 5xx canary auto-rollback.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Fly Managed Postgres supports automatic WAL backups and timestamped point-in-time recovery into a restored cluster.",
+          "source_url": "https://fly.io/docs/mpg/overview/"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "Code image redeploy and Managed Postgres PITR restore run separately; operators update `DATABASE_URL` manually.",
+          "source_url": "https://fly.io/docs/mpg/overview/"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "none",
+          "evidence": "`fly secrets` updates app secrets independently rather than rolling back alongside an image tag.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "No built-in scheduled freeze windows or out-of-band human approval gates in the Fly platform API.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "none",
+          "evidence": "Registry digests can be redeployed across apps manually via `fly deploy --image`, with no first-party promotion workflow.",
+          "source_url": "https://fly.io/docs/launch/deploy/"
+        }
+      }
+    },
+    {
+      "id": "aws_app_runner",
+      "name": "AWS App Runner",
+      "checks": {
+        "immutable_release_rollback": {
+          "status": "partial",
+          "evidence": "Reverting code requires manually deploying an earlier Amazon ECR image tag/digest rather than rolling back via a release history button.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-deploy.html"
+        },
+        "pre_traffic_migration_command": {
+          "status": "none",
+          "evidence": "App Runner has no native pre-traffic release-command hook; teams must run migrations via CI or external tasks before deployment.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-deploy.html"
+        },
+        "default_canary_auto_rollback": {
+          "status": "partial",
+          "evidence": "Automatically aborts and reverts during deployment if startup health checks fail, without progressive 1%->100% live-traffic 5xx canaries.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-autoscaling.html"
+        },
+        "managed_postgres_pitr": {
+          "status": "full",
+          "evidence": "Amazon RDS for PostgreSQL provides automated backups and transaction-log PITR restoring to a target second in a new DB instance.",
+          "source_url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PITR.html"
+        },
+        "coordinated_code_and_db_rollback": {
+          "status": "partial",
+          "evidence": "App Runner service deployments and Amazon RDS PITR instance restores are separate AWS services coordinated externally.",
+          "source_url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PITR.html"
+        },
+        "config_and_env_revision_rollback": {
+          "status": "none",
+          "evidence": "Updating configuration or Secrets Manager links is separate from an ECR image tag deploy without bundled rollback snapshots.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-deploy.html"
+        },
+        "release_freezes_and_approvals": {
+          "status": "none",
+          "evidence": "No built-in App Runner release freeze schedules or approval gates outside external AWS CodePipeline configuration.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-deploy.html"
+        },
+        "immutable_staging_to_prod_promotion": {
+          "status": "none",
+          "evidence": "Promoting an ECR image digest across App Runner environments requires separate CI pipelines or IAM scripts.",
+          "source_url": "https://docs.aws.amazon.com/apprunner/latest/dg/manage-deploy.html"
+        }
+      }
+    }
+  ]
+}

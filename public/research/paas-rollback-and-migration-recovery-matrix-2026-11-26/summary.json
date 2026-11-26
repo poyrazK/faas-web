@@ -1,0 +1,139 @@
+{
+  "checked_on": "2026-11-26",
+  "criteria_count": 8,
+  "platform_count": 8,
+  "max_score": 16,
+  "leaderboard": [
+    {
+      "id": "gregale",
+      "name": "Gregale",
+      "score": 16,
+      "max_score": 16,
+      "full_count": 8,
+      "partial_count": 0,
+      "none_count": 0
+    },
+    {
+      "id": "heroku",
+      "name": "Heroku",
+      "score": 11,
+      "max_score": 16,
+      "full_count": 5,
+      "partial_count": 1,
+      "none_count": 2
+    },
+    {
+      "id": "cloud_run",
+      "name": "Google Cloud Run",
+      "score": 10,
+      "max_score": 16,
+      "full_count": 3,
+      "partial_count": 4,
+      "none_count": 1
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "score": 8,
+      "max_score": 16,
+      "full_count": 3,
+      "partial_count": 2,
+      "none_count": 3
+    },
+    {
+      "id": "render",
+      "name": "Render",
+      "score": 8,
+      "max_score": 16,
+      "full_count": 3,
+      "partial_count": 2,
+      "none_count": 3
+    },
+    {
+      "id": "digitalocean",
+      "name": "DigitalOcean App Platform",
+      "score": 7,
+      "max_score": 16,
+      "full_count": 3,
+      "partial_count": 1,
+      "none_count": 4
+    },
+    {
+      "id": "fly",
+      "name": "Fly.io",
+      "score": 7,
+      "max_score": 16,
+      "full_count": 2,
+      "partial_count": 3,
+      "none_count": 3
+    },
+    {
+      "id": "aws_app_runner",
+      "name": "AWS App Runner",
+      "score": 5,
+      "max_score": 16,
+      "full_count": 1,
+      "partial_count": 3,
+      "none_count": 4
+    }
+  ],
+  "by_criterion": {
+    "immutable_release_rollback": {
+      "label": "One-command immutable code rollback",
+      "full": ["gregale", "heroku", "cloud_run", "render", "railway", "digitalocean"],
+      "partial": ["fly", "aws_app_runner"],
+      "none": []
+    },
+    "pre_traffic_migration_command": {
+      "label": "Pre-traffic migration / release command",
+      "full": ["gregale", "heroku", "render", "railway", "digitalocean", "fly"],
+      "partial": ["cloud_run"],
+      "none": ["aws_app_runner"]
+    },
+    "default_canary_auto_rollback": {
+      "label": "Default canary with automatic 5xx rollback",
+      "full": ["gregale"],
+      "partial": ["cloud_run", "fly", "aws_app_runner"],
+      "none": ["heroku", "render", "railway", "digitalocean"]
+    },
+    "managed_postgres_pitr": {
+      "label": "Managed PostgreSQL point-in-time recovery",
+      "full": [
+        "gregale",
+        "heroku",
+        "cloud_run",
+        "render",
+        "railway",
+        "digitalocean",
+        "fly",
+        "aws_app_runner"
+      ],
+      "partial": [],
+      "none": []
+    },
+    "coordinated_code_and_db_rollback": {
+      "label": "Coordinated code + Postgres rollback together",
+      "full": ["gregale"],
+      "partial": ["heroku", "render", "railway", "digitalocean", "fly", "aws_app_runner"],
+      "none": ["cloud_run"]
+    },
+    "config_and_env_revision_rollback": {
+      "label": "Config / env-var rollback tied to release",
+      "full": ["gregale", "heroku", "cloud_run"],
+      "partial": ["render", "railway"],
+      "none": ["digitalocean", "fly", "aws_app_runner"]
+    },
+    "release_freezes_and_approvals": {
+      "label": "Built-in release freezes & approval gates",
+      "full": ["gregale"],
+      "partial": ["cloud_run"],
+      "none": ["heroku", "render", "railway", "digitalocean", "fly", "aws_app_runner"]
+    },
+    "immutable_staging_to_prod_promotion": {
+      "label": "Artifact-digest staging -> prod promotion",
+      "full": ["gregale", "heroku"],
+      "partial": ["cloud_run"],
+      "none": ["render", "railway", "digitalocean", "fly", "aws_app_runner"]
+    }
+  }
+}
