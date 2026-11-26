@@ -1200,6 +1200,310 @@ export function comparisons(catalog: Catalog): Comparison[] {
         },
       ],
     },
+    {
+      slug: 'aws',
+      competitor: 'AWS App Runner',
+      summary:
+        'Gregale vs AWS App Runner: provisioned container memory fees vs ~1s idle pause, bundled Postgres, PR previews and automatic canary rollbacks compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them: 'No permanent free tier on AWS App Runner (new accounts can use time-limited AWS Free Tier credits).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Minimum instance is 0.25 vCPU / 0.5 GB: provisioned memory bills continuously at ~$0.007/GB-hour (US/EU) plus ~$0.064/vCPU-hour while handling requests, optional source build-minute fees and automated deployment fees.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them: 'Per second (1-minute minimum) for active vCPU (~$0.064/vCPU-hour) plus continuous provisioned memory (~$0.007/GB-hour) while unpaused, plus AWS data transfer and source build minutes.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them: 'Keeps at least 1 warm provisioned instance billed for memory (~$0.007/GB-hour) unless manually or programmatically paused; paused services stop traffic until resumed.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Automatic rollback on failed health checks during deploy, without default 1%→10%→50%→100% live-traffic 5xx canary rollback or coordinated database restore.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Isolated AWS managed container runtime powered by AWS Firecracker.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Separate Amazon RDS or Aurora PostgreSQL provisioned and wired via VPC connectors, IAM and Secrets Manager.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Not built in automatically per pull request; requires separate App Runner services and CI wiring.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Ephemeral instance storage (cleared on pause or restart); persistent data lives in Amazon RDS or Amazon S3.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Selected AWS regions globally, directly inside your AWS account VPC.',
+        },
+      ],
+      theyFit: [
+        'Your team already runs inside AWS IAM, VPC security groups, PrivateLink, and Amazon RDS/Aurora.',
+        'You need multi-region AWS placement or direct private access to internal AWS services.',
+        'You want managed container deployments billed on your consolidated AWS enterprise agreement.',
+      ],
+      gregaleFits: [
+        'You want a real backend API, worker and managed PostgreSQL up in one command without wiring RDS, VPC connectors, IAM and Secrets Manager.',
+        'You want idle apps to pause automatically ~1s after requests instead of paying continuous provisioned memory or manually pausing services.',
+        'You want PR preview environments, automatic 1%→100% 5xx canary rollbacks, code+DB PITR rollback and hard monthly spend caps.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than AWS App Runner?',
+          answer: costAnswer(
+            'AWS App Runner bills ~$0.007 per GB-hour continuously for unpaused provisioned memory (US/EU), ~$0.064 per vCPU-hour while serving requests, plus separate RDS PostgreSQL, build-minute and AWS egress fees.'
+          ),
+        },
+        {
+          question: 'Does Gregale require configuring AWS VPC connectors for PostgreSQL?',
+          answer:
+            'No. On Gregale Hobby and above, managed PostgreSQL is provisioned alongside your app and bound automatically as DATABASE_URL without VPC connectors or security group rules.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and 100%, and rolls back on its own if 5xx errors rise. On AWS App Runner, deploys roll back if startup health checks fail, rather than stepping live traffic automatically.',
+        },
+      ],
+      sources: [
+        { label: 'AWS App Runner pricing', url: 'https://aws.amazon.com/apprunner/pricing/' },
+        {
+          label: 'AWS App Runner auto scaling',
+          url: 'https://docs.aws.amazon.com/apprunner/latest/dg/manage-autoscaling.html',
+        },
+        {
+          label: 'AWS App Runner pause and resume',
+          url: 'https://docs.aws.amazon.com/apprunner/latest/dg/manage-pause-resume.html',
+        },
+      ],
+    },
+    {
+      slug: 'digitalocean',
+      competitor: 'DigitalOcean App Platform',
+      summary:
+        'Gregale vs DigitalOcean App Platform: always-on container rates and separate managed Postgres vs ~1s idle pause, PR previews and automatic canary rollbacks compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them: 'Up to 3 static sites ($0 a month, 1 GiB transfer/app); no free tier for backend services or containers.',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Shared CPU container starts at $5 a month (1 shared vCPU, 512 MiB RAM, 50 GiB transfer); dedicated CPU starts at $29 a month (1 dedicated vCPU, 512 MiB RAM).',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them: 'Fixed monthly tier per container component, prorated by the second (1-minute minimum) while deployed, plus $0.10/GiB overage transfer.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them: 'Services and workers bill continuously at their monthly rate even when idle; only one-off or scheduled jobs stop billing between runs.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Rolling deployments with health checks and manual rollback to prior releases; no default 1%→10%→50%→100% automated 5xx canary rollback.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Managed Kubernetes containers inside DigitalOcean infrastructure.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Separate DigitalOcean Managed PostgreSQL starting at $15 a month for single-node (1 GiB RAM) or $30 a month HA, plus development DB attachments.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Deploy previews configurable for App Platform pull requests against fixed/prorated component tiers.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Ephemeral container filesystem; external object storage via DigitalOcean Spaces.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Multiple DigitalOcean datacenter regions (North America, Europe and Asia).',
+        },
+      ],
+      theyFit: [
+        'You already run Droplets, Spaces, or Managed Databases in a DigitalOcean VPC.',
+        'Your backend handles steady 24/7 traffic and prefers flat $5/$12/$25/mo shared-CPU tiers.',
+        'You want multi-datacenter choice across North America, Europe and Asia.',
+      ],
+      gregaleFits: [
+        'You run intermittent APIs, staging services or MCP servers that sit idle most of the day and want compute billing to pause ~1s after requests.',
+        'You want bundled managed PostgreSQL with coordinated code + DB PITR rollback inside the $10 Hobby plan instead of $15/mo+ add-on clusters.',
+        'You want automatic 1%→100% 5xx canary rollbacks, hard monthly spend caps and scoped AI agent guardrails.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than DigitalOcean App Platform?',
+          answer: costAnswer(
+            'DigitalOcean App Platform bills $5 a month for a 512 MiB shared-CPU container always on, plus $15 a month for single-node Managed PostgreSQL (or $30/mo HA).'
+          ),
+        },
+        {
+          question: 'Does Gregale offer a backend free tier unlike DigitalOcean App Platform?',
+          answer:
+            'Yes. DigitalOcean App Platform free covers static sites only, whereas Gregale Free runs full containerized APIs and MCP servers in Firecracker microVMs at $0 up to 20 GB-RAM-hours a month.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and 100%, and rolls back on its own if 5xx errors rise. On DigitalOcean App Platform, you manually roll back to a previous deployment if a regression slips past health checks.',
+        },
+      ],
+      sources: [
+        {
+          label: 'DigitalOcean App Platform pricing',
+          url: 'https://docs.digitalocean.com/products/app-platform/details/pricing/',
+        },
+        {
+          label: 'DigitalOcean Managed PostgreSQL pricing',
+          url: 'https://docs.digitalocean.com/products/databases/postgresql/details/pricing/',
+        },
+      ],
+    },
+    {
+      slug: 'replit',
+      competitor: 'Replit',
+      summary:
+        'Gregale vs Replit: moving production APIs and AI-built backends off browser workspaces onto Git-native Firecracker microVMs with canary rollbacks and spend caps.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them: 'Replit Starter is free for browser development workspaces; live production deployments and production databases require paid usage or Replit Core.',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Replit Core is $20 a month ($18/mo annual) including $20/mo in non-rolling credits; Autoscale bills $1/mo base + $0.60/M compute units + $0.40/M requests; Reserved VMs start at $0.0208/hr (~$15/mo for 0.5 vCPU / 2 GiB RAM).',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them: 'Consumes included Core credits first, then pay-as-you-go for Autoscale compute units & requests, always-on Reserved VM hours, and production Postgres compute/storage.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them: 'Autoscale Deployments scale down after ~15 minutes idle (keeping the $1/mo base fee); Reserved VMs run and bill continuously.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'One-click republish from the workspace with manual rollback; no Git PR preview environments or default 1%→100% 5xx canary rollback.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Cloud containers on Autoscale or dedicated GCP VMs on Reserved VM deployments.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Built-in workspace PostgreSQL (free in dev; production PostgreSQL bills $0.16 per compute hour + $0.35/GiB-month, up to 100 GiB).',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Live dev preview inside the Replit browser workspace rather than isolated per-PR preview URLs.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Replit Object Storage for deployed apps; Reserved VM filesystem resets across redeployments.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Google Cloud regions managed by Replit.',
+        },
+      ],
+      theyFit: [
+        'You want an all-in-one browser IDE and AI app generator where beginners prototype without Git or a local terminal.',
+        'You want workspace snapshots and zero local tooling setup while iterating on early demos.',
+        'Your team prefers per-seat Replit Core credits bundling editor AI and hosting.',
+      ],
+      gregaleFits: [
+        'You pushed an AI-built app from Replit, Cursor, or Claude Code to GitHub and want clean Git-owned production hosting outside a browser IDE.',
+        'You want PR preview environments, automatic 1%→100% 5xx canary rollbacks, code + PostgreSQL PITR rollback and strict monthly spend caps.',
+        'You want scoped `--agent` keys with approval links so coding agents can deploy safely to real infrastructure.',
+      ],
+      migrateDoc: 'deploy-from-github',
+      migrateLabel: 'Deploy from your repository',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Replit Deployments?',
+          answer: costAnswer(
+            'Replit Core costs $20 a month ($18/mo annual with $20 included credits), Autoscale adds $1/mo base plus compute-unit and request metering, Reserved VMs start around $15 a month always-on, and production Postgres bills $0.16 per active compute hour.'
+          ),
+        },
+        {
+          question: 'Can I move an app built on Replit to Gregale?',
+          answer:
+            'Yes. Push your Replit project to GitHub and open /deploy?repo=https://github.com/owner/repo or run `gregale deploy` locally; Node, Bun, Python and Go apps deploy with bundled managed PostgreSQL.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and 100%, and rolls back on its own if 5xx errors rise, with optional database point-in-time restore. On Replit, you republish or manually revert to an earlier deployment.',
+        },
+      ],
+      sources: [
+        { label: 'Replit pricing', url: 'https://replit.com/pricing' },
+        {
+          label: 'Replit deployments overview',
+          url: 'https://docs.replit.com/cloud-services/deployments/about-deployments',
+        },
+        {
+          label: 'Replit Autoscale pricing',
+          url: 'https://docs.replit.com/cloud-services/deployments/autoscale-deployments',
+        },
+        {
+          label: 'Replit Reserved VM deployments',
+          url: 'https://docs.replit.com/cloud-services/deployments/reserved-vm-deployments',
+        },
+        {
+          label: 'Replit SQL Database',
+          url: 'https://docs.replit.com/cloud-services/storage-and-databases/sql-database',
+        },
+      ],
+    },
   ];
 }
 
@@ -1215,4 +1519,7 @@ export const COMPARISON_SLUGS = [
   'northflank',
   'coolify',
   'cloudflare-workers',
+  'aws',
+  'digitalocean',
+  'replit',
 ] as const;
