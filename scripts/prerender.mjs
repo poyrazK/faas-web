@@ -129,6 +129,7 @@ const ROUTES = [
  *  they are most of the reason anyone would find this site through a search. */
 const INDEXABLE = [
   '/',
+  '/deploy',
   '/status',
   '/will-it-run',
   PRICING_ROUTE,
@@ -980,6 +981,7 @@ if (productionSite && process.env.INDEXNOW_KEY) {
       '/',
       PRICING_ROUTE,
       '/templates',
+      '/deploy',
       ...FEATURE_ROUTES,
       ...SOLUTION_ROUTES,
       ...RESEARCH_ROUTES,

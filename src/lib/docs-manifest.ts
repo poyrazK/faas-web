@@ -88,6 +88,14 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'Pin a branch, tag, or commit for a reproducible CI deployment.',
       },
       {
+        slug: 'deploy-button',
+        source: 'content/docs/deploy-button.md',
+        local: true,
+        title: 'Deploy on Gregale button',
+        summary:
+          'Add a one-click Deploy on Gregale badge to any GitHub README using /deploy?repo= and optional ?ref=.',
+      },
+      {
         slug: 'troubleshooting',
         source: 'docs/troubleshooting.md',
         title: 'Troubleshooting',

@@ -1024,4 +1024,25 @@ describeBuilt('structured data', () => {
   it('does not call a proprietary product open source', () => {
     expect(ld).not.toMatch(/open[\s-]?source/i);
   });
+
+  it('indexes /deploy, publishes deploy-button docs, and exposes them in llms.txt', () => {
+    const deployHtml = readFileSync('dist/deploy/index.html', 'utf8');
+    expect(deployHtml).not.toContain('name="robots"');
+    expect(deployHtml).toContain('href="/docs/deploy-button"');
+
+    const docHtml = readFileSync('dist/docs/deploy-button/index.html', 'utf8');
+    const docMd = readFileSync('dist/docs/deploy-button.md', 'utf8');
+    expect(docHtml).toContain('deploy-badge.svg');
+    expect(docHtml).toContain('/deploy?repo=');
+    expect(docMd).toContain('https://gregale.dev/deploy-badge.svg');
+    expect(docMd).toContain('/deploy?repo=');
+
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    expect(sitemap).toContain('<loc>https://gregale.dev/deploy</loc>');
+    expect(sitemap).toContain('<loc>https://gregale.dev/docs/deploy-button</loc>');
+
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    expect(llms).toContain('https://gregale.dev/docs/deploy-button.md');
+    expect(llms).toContain('https://gregale.dev/deploy?repo=');
+  });
 });

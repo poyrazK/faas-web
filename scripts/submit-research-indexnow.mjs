@@ -16,7 +16,7 @@ const commitSha = /^[a-f0-9]{40}$/;
 // The home page, pricing, templates, research reports, articles, comparison
 // pages and docs share one release file and one submission.
 const releasePath =
-  /^\/(?:pricing|templates|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
+  /^\/(?:pricing|templates|deploy|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -111,6 +111,13 @@ export function changedPaths(files, livePaths) {
     files.some((file) => file.startsWith('src/routes/templates.'))
   ) {
     changed.add('/templates');
+  }
+  if (
+    files.includes('src/lib/deploy-link.ts') ||
+    files.includes('src/routes/deploy.tsx') ||
+    files.includes('public/deploy-badge.svg')
+  ) {
+    changed.add('/deploy');
   }
   if (files.includes('src/lib/docs-manifest.ts')) changed.add('/docs');
   if (files.includes('api/openapi.yaml')) add(under('/docs/api', livePaths));
