@@ -148,6 +148,13 @@
       "continue": true
     },
     {
+      "src": "^/\\.well-known/openai-apps-challenge$",
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "continue": true
+    },
+    {
       "src": "^/(?:(?:docs/(?!api$)|(?:solutions|articles|research|features|vs)/)[a-z0-9_-]+|pricing|docs|solutions|articles|research|features|templates)?$",
       "headers": {
         "Vary": "Accept"

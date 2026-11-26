@@ -54,6 +54,23 @@ describe('public hosting contract', () => {
     expect(route?.status).toBeUndefined();
   });
 
+  it('serves the OpenAI plugin domain challenge as plain text', () => {
+    // OpenAI verifies the MCP server's domain from a parent hostname:
+    // https://gregale.dev/.well-known/openai-apps-challenge holds the token.
+    const token = readFileSync('public/.well-known/openai-apps-challenge', 'utf8');
+    expect(token).toMatch(/^[A-Za-z0-9_-]{20,}$/);
+    const filesystem = config.routes.findIndex((route) => 'handle' in route);
+    const rule = config.routes
+      .slice(0, filesystem)
+      .find(
+        (route) =>
+          route.continue &&
+          route.headers?.['Content-Type'] === 'text/plain; charset=utf-8' &&
+          new RegExp(route.src!).test('/.well-known/openai-apps-challenge')
+      );
+    expect(rule).toBeDefined();
+  });
+
   it('keeps MFA server-rendered on alternate static hosts too', () => {
     const rules = readFileSync('public/_redirects', 'utf8')
       .split('\n')
