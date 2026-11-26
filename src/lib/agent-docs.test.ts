@@ -6,17 +6,26 @@ import {
   COMPARISONS_TITLE,
   LLMS_SMALL_MAX_BYTES,
   absoluteLinks,
+  articlesIndexPage,
   comparisonPage,
   comparisonTitle,
+  docsIndexPage,
+  homePage,
   llmsFull,
   llmsIndex,
   llmsSmall,
   markdownPage,
   markdownUrl,
+  pricingPage,
   renderIntro,
+  researchIndexPage,
 } from './agent-docs';
+import { ARTICLES } from './articles';
+import { LANDING_FAQ, pricingDescription, pricingFaq } from './faq';
+import { formatCatalogPrice } from './plan-catalog-parser';
+import { RESEARCH_PUBLICATIONS } from './research';
 import { COMPARISONS_CHECKED, comparisons } from './compare';
-import { DOC_ENTRIES, findDoc } from './docs-manifest';
+import { DOC_ENTRIES, DOC_SECTIONS, findDoc } from './docs-manifest';
 import { parsePlanCatalog } from './plan-catalog-parser';
 import {
   PLATFORM_AVAILABILITY,
@@ -146,6 +155,65 @@ describe('comparisonPage', () => {
       expect(page.trimEnd().endsWith(`Canonical URL: ${SITE}/vs/${comparison.slug}`)).toBe(true);
     });
   }
+});
+
+describe('site pages as Markdown', () => {
+  const intro = readFileSync(resolve('content/llms-intro.md'), 'utf8');
+  const endsWithCanonical = (page: string, route: string) =>
+    page.trimEnd().endsWith(`Canonical URL: ${SITE}${route}`);
+
+  it('gives the home page the agent intro, where to read next and its questions', () => {
+    const page = homePage(intro, LANDING_FAQ, SITE);
+    expect(page.startsWith(renderIntro(intro))).toBe(true);
+    for (const path of ['/pricing.md', '/docs.md', '/articles.md', '/research.md', '/llms.txt']) {
+      expect(page).toContain(`](${SITE}${path})`);
+    }
+    for (const { question, answer } of LANDING_FAQ) {
+      expect(page).toContain(`### ${question}\n\n${answer}`);
+    }
+    expect(endsWithCanonical(page, '/')).toBe(true);
+  });
+
+  it('quotes every plan price and the pricing questions from the catalog', () => {
+    const page = pricingPage(CATALOG, pricingDescription(CATALOG), pricingFaq(CATALOG), SITE);
+    expect(page).toContain(`> ${pricingDescription(CATALOG)}`);
+    const rows = page.split('\n').filter((line) => line.startsWith('| '));
+    expect(rows.length).toBe(CATALOG.plans.length + 1);
+    for (const row of rows) expect(row.split('|').length).toBe(14);
+    for (const plan of CATALOG.plans) {
+      expect(page).toContain(
+        `| ${plan.name} | ${formatCatalogPrice(plan.monthly, CATALOG.currency)} |`
+      );
+    }
+    for (const { question, answer } of pricingFaq(CATALOG)) {
+      expect(page).toContain(`### ${question}\n\n${answer}`);
+    }
+    expect(page).toContain(`](${markdownUrl(SITE, 'plans')})`);
+    expect(findDoc('plans')).toBeDefined();
+    expect(endsWithCanonical(page, '/pricing')).toBe(true);
+  });
+
+  it('lists every docs page once, under its section', () => {
+    const page = docsIndexPage(SITE);
+    for (const section of DOC_SECTIONS)
+      expect(page).toContain(`## ${section.title}\n\n${section.blurb}`);
+    for (const entry of DOC_ENTRIES) {
+      expect(page.split(`](${markdownUrl(SITE, entry.slug)})`).length - 1, entry.slug).toBe(1);
+    }
+    expect(endsWithCanonical(page, '/docs')).toBe(true);
+  });
+
+  it('lists every article and research publication as Markdown', () => {
+    const articles = articlesIndexPage(SITE);
+    for (const entry of ARTICLES)
+      expect(articles).toContain(`](${SITE}/articles/${entry.slug}.md)`);
+    expect(endsWithCanonical(articles, '/articles')).toBe(true);
+    const research = researchIndexPage(SITE);
+    for (const entry of RESEARCH_PUBLICATIONS) {
+      expect(research).toContain(`](${SITE}/research/${entry.slug}.md)`);
+    }
+    expect(endsWithCanonical(research, '/research')).toBe(true);
+  });
 });
 
 describe('llmsFull', () => {

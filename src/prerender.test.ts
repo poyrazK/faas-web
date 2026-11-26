@@ -118,6 +118,21 @@ describeBuilt('prerendered pages', () => {
     );
   });
 
+  it.each([
+    ['dist/index.html', '/index.md', 'https://gregale.dev/'],
+    ['dist/pricing/index.html', '/pricing.md', 'https://gregale.dev/pricing'],
+    ['dist/docs/index.html', '/docs.md', 'https://gregale.dev/docs'],
+    ['dist/articles/index.html', '/articles.md', 'https://gregale.dev/articles'],
+    ['dist/research/index.html', '/research.md', 'https://gregale.dev/research'],
+  ])('publishes %s as Markdown at %s', (html, markdown, canonical) => {
+    expect(readFileSync(html, 'utf8')).toContain(
+      `<link rel="alternate" type="text/markdown" href="${markdown}" />`
+    );
+    const page = readFileSync(`dist${markdown}`, 'utf8');
+    expect(page.startsWith('# ')).toBe(true);
+    expect(page.trimEnd().endsWith(`Canonical URL: ${canonical}`)).toBe(true);
+  });
+
   it('publishes the research report, data, and citation metadata at stable URLs', () => {
     const route = '/research/firecracker-snapshot-restore-ssd-2026-09-09';
     const index = readFileSync('dist/research/index.html', 'utf8');

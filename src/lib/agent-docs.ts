@@ -1,8 +1,22 @@
-import { DOC_SECTIONS, findDoc, type DocEntry } from './docs-manifest.ts';
+import {
+  DOC_SECTIONS,
+  DOCS_DESCRIPTION,
+  findDoc,
+  type DocEntry,
+  type DocSection,
+} from './docs-manifest.ts';
 import { resolveDocHref } from './docs-links.ts';
-import { ARTICLES, ARTICLES_TITLE, withRelatedArticles } from './articles.ts';
-import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE, withRelatedResearch } from './research.ts';
+import { ARTICLES, ARTICLES_DESCRIPTION, ARTICLES_TITLE, withRelatedArticles } from './articles.ts';
+import {
+  FASTAPI_COST_SLUG,
+  RESEARCH_DESCRIPTION,
+  RESEARCH_PUBLICATIONS,
+  RESEARCH_TITLE,
+  withRelatedResearch,
+} from './research.ts';
 import type { Comparison } from './compare.ts';
+import type { FaqEntry } from './faq.ts';
+import { formatCatalogPrice, type CatalogPlan } from './plan-catalog-parser.ts';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -21,6 +35,9 @@ import {
  * - `/docs/<slug>.md` — each page as Markdown.
  * - `/vs/<slug>.md` — each comparison page as Markdown, from the same
  *   module the page renders (`comparisonPage`).
+ * - `/index.md`, `/pricing.md`, `/docs.md`, `/articles.md`, `/research.md` —
+ *   the home, pricing and index pages, served to a request for `/`, `/pricing`
+ *   and so on that asks for `Accept: text/markdown` (see `vercel.json`).
  *
  * Generated from the manifest for the same reason as the sitemap: adding a
  * page to the table of contents cannot leave it out of what agents read. The
@@ -170,12 +187,131 @@ export function llmsIndex(
   ];
   for (const section of sections) {
     const heading = section.title === OPTIONAL_SECTION ? 'Optional' : section.title;
-    const links = section.entries.map(
-      (entry) => `- [${entry.title}](${markdownUrl(siteUrl, entry.slug)}): ${entry.summary}`
-    );
-    parts.push(`## ${heading}\n\n${links.join('\n')}`);
+    parts.push(`## ${heading}\n\n${docLinks(section, siteUrl)}`);
   }
   return parts.join('\n\n') + '\n';
+}
+
+/** A docs section's pages as a Markdown list of their Markdown copies. */
+function docLinks(section: DocSection, siteUrl: string): string {
+  return section.entries
+    .map((entry) => `- [${entry.title}](${markdownUrl(siteUrl, entry.slug)}): ${entry.summary}`)
+    .join('\n');
+}
+
+const questions = (faq: readonly FaqEntry[]): string =>
+  `## Questions\n\n${faq.map((item) => `### ${item.question}\n\n${item.answer}`).join('\n\n')}`;
+
+const page = (parts: string[]): string => parts.join('\n\n') + '\n';
+
+/**
+ * The home page for an agent that asks for Markdown: the llms.txt intro, where
+ * to read next, and the landing page's questions.
+ */
+export function homePage(intro: string, faq: readonly FaqEntry[], siteUrl: string): string {
+  const next = [
+    `- [Pricing](${siteUrl}/pricing.md): plans, included compute and pricing questions`,
+    `- [Documentation](${siteUrl}/docs.md): every guide, by section`,
+    `- [${ARTICLES_TITLE}](${siteUrl}/articles.md): ${ARTICLES_DESCRIPTION}`,
+    `- [${RESEARCH_TITLE}](${siteUrl}/research.md): ${RESEARCH_DESCRIPTION}`,
+    `- [llms.txt](${siteUrl}/llms.txt): every page on this site, as Markdown links`,
+  ];
+  return page([
+    renderIntro(intro),
+    `## Where to read next\n\n${next.join('\n')}`,
+    questions(faq),
+    `Canonical URL: ${siteUrl}/`,
+  ]);
+}
+
+interface PricingCatalog {
+  currency: string;
+  plans: CatalogPlan[];
+}
+
+/**
+ * The pricing page as Markdown: the plan table and questions, from the same
+ * generated catalog the page renders, so an agent quotes the prices a person sees.
+ */
+export function pricingPage(
+  catalog: PricingCatalog,
+  description: string,
+  faq: readonly FaqEntry[],
+  siteUrl: string
+): string {
+  const price = (amount: number) => formatCatalogPrice(amount, catalog.currency);
+  const table = [
+    '| Plan | Monthly | Deployed apps | PR preview environments | Developer apps | Concurrent instances | RAM / app | Included GB-RAM-hours | App egress / month | App layer | Idle timeout | Max request timeout |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|',
+    ...catalog.plans.map((plan) =>
+      [
+        '',
+        plan.name,
+        price(plan.monthly),
+        plan.deployedApps,
+        plan.previewEnvironments,
+        plan.developerApps,
+        plan.concurrentInstances,
+        `${plan.ramMb} MB`,
+        plan.includedGbHours,
+        `${plan.appEgressGib.toLocaleString('en-US')} GiB`,
+        `${plan.appLayerMb} MB`,
+        plan.idleTimeout,
+        plan.maxRequestTimeout,
+        '',
+      ]
+        .join(' | ')
+        .trim()
+    ),
+  ].join('\n');
+  return page([
+    '# Gregale pricing',
+    `> ${description}`,
+    table,
+    `Every limit, plan by plan: [Plans and limits](${markdownUrl(siteUrl, 'plans')}). ` +
+      `The same plans as JSON: [pricing.json](${siteUrl}/pricing.json). ` +
+      `Measured compute use and monthly estimates: [intermittent FastAPI cost study](${siteUrl}/research/${FASTAPI_COST_SLUG}.md).`,
+    questions(faq),
+    `Canonical URL: ${siteUrl}/pricing`,
+  ]);
+}
+
+/** The docs index as Markdown: every section, with links to each page's Markdown copy. */
+export function docsIndexPage(siteUrl: string): string {
+  return page([
+    '# Documentation',
+    `> ${DOCS_DESCRIPTION}`,
+    ...DOC_SECTIONS.map(
+      (section) => `## ${section.title}\n\n${section.blurb}\n\n${docLinks(section, siteUrl)}`
+    ),
+    `Canonical URL: ${siteUrl}/docs`,
+  ]);
+}
+
+/** The articles index as Markdown. */
+export function articlesIndexPage(siteUrl: string): string {
+  return page([
+    `# ${ARTICLES_TITLE}`,
+    `> ${ARTICLES_DESCRIPTION}`,
+    ARTICLES.map(
+      (entry) =>
+        `- [${entry.title}](${siteUrl}/articles/${entry.slug}.md) · Updated ${entry.updatedOn}: ${entry.summary}`
+    ).join('\n'),
+    `Canonical URL: ${siteUrl}/articles`,
+  ]);
+}
+
+/** The research index as Markdown. */
+export function researchIndexPage(siteUrl: string): string {
+  return page([
+    `# ${RESEARCH_TITLE}`,
+    `> ${RESEARCH_DESCRIPTION}`,
+    RESEARCH_PUBLICATIONS.map(
+      (entry) =>
+        `- [${entry.title}](${siteUrl}/research/${entry.slug}.md) · Published ${entry.publishedOn}: ${entry.summary}`
+    ).join('\n'),
+    `Canonical URL: ${siteUrl}/research`,
+  ]);
 }
 
 export function llmsFull(intro: string, pages: string[]): string {

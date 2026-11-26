@@ -56,7 +56,8 @@ const API_ROUTES = [
   ...buildApiReference(OPENAPI_DOC).map((group) => `/docs/api/${group.id}`),
 ];
 const { parsePlanCatalog } = await import('../src/lib/plan-catalog-parser.ts');
-const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../src/lib/faq.ts');
+const { LANDING_FAQ, faqJsonLd, pricingDescription, pricingFaq, pricingJsonLd } =
+  await import('../src/lib/faq.ts');
 // Read the same generated catalog the pricing page renders, so the Offer
 // prices in the structured data cannot disagree with the visible columns.
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
@@ -73,6 +74,15 @@ const ARTICLE_BY_ROUTE = new Map(ARTICLES.map((article) => [`/articles/${article
 const ARTICLE_ROUTES = ['/articles', ...ARTICLE_BY_ROUTE.keys()];
 
 const PRICING_ROUTE = '/pricing';
+/** Pages that also have a Markdown copy outside the docs, articles, research and comparison
+ * collections; vercel.json serves it to a request with `Accept: text/markdown`. */
+const SITE_MARKDOWN = new Map([
+  ['/', '/index.md'],
+  [PRICING_ROUTE, '/pricing.md'],
+  ['/docs', '/docs.md'],
+  ['/articles', '/articles.md'],
+  ['/research', '/research.md'],
+]);
 const PLAN_DOC_ROUTE = '/docs/plans';
 const PRICING_FEED = '/pricing.json';
 /** Articles and research reports as one Atom feed, newest first. */
@@ -323,6 +333,11 @@ for (const route of ROUTES) {
   }
   if (COMPARISONS.has(route)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+  }
+  if (SITE_MARKDOWN.has(route)) {
+    perRoute.push(
+      `<link rel="alternate" type="text/markdown" href="${attr(SITE_MARKDOWN.get(route))}" />`
+    );
   }
   // Feed readers and aggregators find the feed from the pages it covers.
   if (route === '/' || ARTICLE_ROUTES.includes(route) || RESEARCH_ROUTES.includes(route)) {
@@ -630,8 +645,19 @@ console.log('  wrote .well-known/mcp/server-card.json');
  * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
  * ------------------------------------------------------------------ */
 
-const { absoluteLinks, comparisonPage, llmsFull, llmsIndex, llmsSmall, markdownPage } =
-  await import('../src/lib/agent-docs.ts');
+const {
+  absoluteLinks,
+  articlesIndexPage,
+  comparisonPage,
+  docsIndexPage,
+  homePage,
+  llmsFull,
+  llmsIndex,
+  llmsSmall,
+  markdownPage,
+  pricingPage,
+  researchIndexPage,
+} = await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
 const pagesBySlug = new Map();
 const markdownPages = DOC_ENTRIES.map((entry) => {
@@ -682,6 +708,18 @@ const comparisonPages = [...COMPARISONS].map(([route, comparison]) => {
   writeFileSync(join(DIST, `${route.slice(1)}.md`), page);
   return page;
 });
+
+const sitePages = new Map([
+  ['/', homePage(llmsIntro, LANDING_FAQ, SITE_URL)],
+  [
+    PRICING_ROUTE,
+    pricingPage(PLAN_CATALOG, pricingDescription(PLAN_CATALOG), pricingFaq(PLAN_CATALOG), SITE_URL),
+  ],
+  ['/docs', docsIndexPage(SITE_URL)],
+  ['/articles', articlesIndexPage(SITE_URL)],
+  ['/research', researchIndexPage(SITE_URL)],
+]);
+for (const [route, path] of SITE_MARKDOWN) writeFileSync(join(DIST, path), sitePages.get(route));
 
 writeFileSync(
   join(DIST, ATOM_FEED),
@@ -798,7 +836,7 @@ writeFileSync(
 );
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length + comparisonPages.length} Markdown pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length + comparisonPages.length + sitePages.size} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {
