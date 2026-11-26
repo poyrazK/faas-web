@@ -182,7 +182,10 @@ const NO_CONTENT = Symbol('no-content');
 /** Wraps a body with a non-200 status. */
 const status = (code: number, body: unknown) => ({ __status: code, body });
 
-const latency = () => Number(process.env.MOCK_LATENCY ?? 180) + Math.random() * 160;
+const latency = () => {
+  const base = Number(process.env.MOCK_LATENCY ?? 180);
+  return base <= 0 ? 0 : base + Math.random() * 160;
+};
 
 // Deploy freezes (faas release_freezes.go, release_freezes_org.go) and
 // scheduled releases (scheduled_releases.go); the logic is in
