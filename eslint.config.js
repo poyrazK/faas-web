@@ -13,7 +13,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
  * produced noise in this codebase is off rather than merely downgraded.
  */
 export default tseslint.config(
-  { ignores: ['dist', 'src/routeTree.gen.ts', 'src/lib/api/schema.d.ts'] },
+  { ignores: ['dist', 'dist-ssr', 'src/routeTree.gen.ts', 'src/lib/api/schema.d.ts'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
