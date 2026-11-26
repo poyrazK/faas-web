@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ANSWER_ARTICLES, ARTICLES, alternativesArticle, comparisonArticles } from './articles';
+import {
+  ANSWER_ARTICLES,
+  ARTICLE_TOPICS,
+  ARTICLES,
+  alternativesArticle,
+  comparisonArticles,
+  groupedArticles,
+} from './articles';
+import { SOLUTIONS } from './solutions';
 import { COMPARISON_SLUGS } from './compare';
 import { PLAN_CATALOG, formatPlanPrice } from './plan-catalog';
 
@@ -47,6 +55,22 @@ const sources = import.meta.glob<string>(
 const ROUNDUPS = ARTICLES.filter((article) => article.alternativesTo);
 
 describe('articles', () => {
+  it('partitions all articles cleanly across topic clusters', () => {
+    const allTopicSlugs = ARTICLE_TOPICS.flatMap((topic) => topic.slugs);
+    const articleSlugs = ARTICLES.map((article) => article.slug);
+    expect(new Set(allTopicSlugs).size).toBe(allTopicSlugs.length);
+    expect([...allTopicSlugs].sort()).toEqual([...articleSlugs].sort());
+
+    const solutionSlugs = new Set(SOLUTIONS.map((solution) => solution.slug));
+    for (const topic of ARTICLE_TOPICS) {
+      if (topic.solutionSlug) {
+        expect(solutionSlugs.has(topic.solutionSlug), topic.id).toBe(true);
+      }
+    }
+    const groups = groupedArticles();
+    expect(groups.reduce((sum, group) => sum + group.articles.length, 0)).toBe(ARTICLES.length);
+  });
+
   it('has a Markdown body for every article', () => {
     for (const article of ARTICLES) expect(body(article.slug), article.slug).toBeTruthy();
   });

@@ -20,9 +20,11 @@ import {
   pricingPage,
   renderIntro,
   researchIndexPage,
+  solutionsIndexPage,
 } from './agent-docs';
 import { ARTICLES } from './articles';
 import { FEATURES } from './features';
+import { SOLUTIONS } from './solutions';
 import { LANDING_FAQ, pricingDescription, pricingFaq } from './faq';
 import { formatCatalogPrice } from './plan-catalog-parser';
 import { RESEARCH_PUBLICATIONS } from './research';
@@ -171,6 +173,7 @@ describe('site pages as Markdown', () => {
       '/features.md',
       '/pricing.md',
       '/docs.md',
+      '/solutions.md',
       '/articles.md',
       '/research.md',
       '/llms.txt',
@@ -212,11 +215,15 @@ describe('site pages as Markdown', () => {
     expect(endsWithCanonical(page, '/docs')).toBe(true);
   });
 
-  it('lists every feature, article and research publication as Markdown', () => {
+  it('lists every feature, solution, article and research publication as Markdown', () => {
     const features = featuresIndexPage(SITE);
     for (const entry of FEATURES)
       expect(features).toContain(`](${SITE}/features/${entry.slug}.md)`);
     expect(endsWithCanonical(features, '/features')).toBe(true);
+    const solutions = solutionsIndexPage(SITE);
+    for (const entry of SOLUTIONS)
+      expect(solutions).toContain(`](${SITE}/solutions/${entry.slug}.md)`);
+    expect(endsWithCanonical(solutions, '/solutions')).toBe(true);
     const articles = articlesIndexPage(SITE);
     for (const entry of ARTICLES)
       expect(articles).toContain(`](${SITE}/articles/${entry.slug}.md)`);

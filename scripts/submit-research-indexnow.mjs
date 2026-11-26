@@ -16,7 +16,7 @@ const commitSha = /^[a-f0-9]{40}$/;
 // The home page, pricing, research reports, articles, comparison pages and docs
 // share one release file and one submission.
 const releasePath =
-  /^\/(?:pricing|(?:research|articles|features)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
+  /^\/(?:pricing|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -63,7 +63,7 @@ export function changedPaths(files, livePaths) {
   if (files.includes('scripts/prerender.mjs')) return livePaths;
   const changed = new Set();
   const add = (paths) => paths.forEach((path) => changed.add(path));
-  for (const collection of ['research', 'articles', 'features']) {
+  for (const collection of ['research', 'articles', 'features', 'solutions']) {
     if (
       files.some(
         (file) =>

@@ -174,13 +174,14 @@ it('includes the research index when the research registry changes', () => {
   ]);
 });
 
-it('submits changed live articles and features independently', () => {
+it('submits changed live articles, features and solutions cleanly', () => {
   const code = `
-    const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two', '/features', '/features/database-rollbacks'];
+    const paths = ['/research', '/research/first', '/solutions', '/solutions/one', '/features', '/features/database-rollbacks', '/articles', '/articles/one', '/articles/two'];
     process.stdout.write(JSON.stringify([
       script.changedPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
       script.changedPaths(['src/lib/articles.ts'], paths),
       script.changedPaths(['src/lib/features.ts'], paths),
+      script.changedPaths(['src/lib/solutions.ts'], paths),
       script.changedPaths(['scripts/prerender.mjs'], paths),
     ]));
   `;
@@ -188,14 +189,17 @@ it('submits changed live articles and features independently', () => {
     ['/articles/one'],
     ['/articles', '/articles/one', '/articles/two'],
     ['/features', '/features/database-rollbacks'],
+    ['/solutions', '/solutions/one'],
     [
       '/research',
       '/research/first',
+      '/solutions',
+      '/solutions/one',
+      '/features',
+      '/features/database-rollbacks',
       '/articles',
       '/articles/one',
       '/articles/two',
-      '/features',
-      '/features/database-rollbacks',
     ],
   ]);
 });
@@ -287,6 +291,8 @@ it('accepts every path the release file can submit', () => {
     '/pricing',
     '/research',
     '/research/one',
+    '/solutions',
+    '/solutions/one',
     '/articles',
     '/articles/one',
     '/features',

@@ -8,7 +8,7 @@ import type { FaqEntry } from './faq.ts';
  *
  * Loaded by `scripts/prerender.mjs` with plain Node: no JSX, no `?raw`.
  */
-interface Article {
+export interface Article {
   slug: string;
   title: string;
   summary: string;
@@ -19,6 +19,14 @@ interface Article {
   alternativesTo?: string;
   /** For a head-to-head of other vendors: each vendor's /vs slug. */
   comparison?: readonly string[];
+}
+
+export interface ArticleTopic {
+  id: string;
+  title: string;
+  description: string;
+  solutionSlug?: string;
+  slugs: readonly string[];
 }
 
 export const ARTICLES_TITLE = 'Articles';
@@ -1775,6 +1783,131 @@ const RELATED_ARTICLES: Record<string, string> = {
 };
 
 /** Answer articles: how Gregale works, without the vendor roundups or head-to-heads. */
+export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
+  {
+    id: 'safe-releases',
+    title: 'Safe releases, rollbacks & governance',
+    description:
+      'Canary traffic ramps, coordinated Postgres rollbacks, MFA approvals, freezes, binding verification and OpenAPI deploy gates.',
+    solutionSlug: 'safe-production-deploys',
+    slugs: [
+      CANARY_SLUG,
+      DATABASE_ROLLBACK_SLUG,
+      RELEASE_CONTROLS_SLUG,
+      BINDING_VERIFICATION_SLUG,
+      ENV_PROMOTION_SLUG,
+      OPENAPI_GATE_SLUG,
+      SECRET_ROTATION_SLUG,
+    ],
+  },
+  {
+    id: 'scale-to-zero',
+    title: 'Scale-to-zero, caching & cost control',
+    description:
+      'Millisecond snapshot wakes, hard monthly spend caps, edge caching, managed realtime sockets, inbound webhooks, crons and uptime probes.',
+    solutionSlug: 'scale-to-zero-apis',
+    slugs: [
+      COLD_START_SLUG,
+      SPEND_CAPS_SLUG,
+      REALTIME_SCALE_ZERO_SLUG,
+      INBOUND_WEBHOOKS_SLUG,
+      EDGE_CACHE_SLUG,
+      CRONS_EVENTS_SLUG,
+      SYNTHETIC_CHECKS_SLUG,
+      'stop-bot-traffic-cloud-bill-shock',
+    ],
+  },
+  {
+    id: 'ai-agents',
+    title: 'AI coding agents & MCP',
+    description:
+      'Server-side approval gates, spend ceilings, mutation undo and OAuth MCP hosting for Claude Code, Cursor, Codex, Gemini CLI and Antigravity.',
+    solutionSlug: 'ai-coding-agent-guardrails',
+    slugs: [
+      BEST_CLOUD_AGENTS_SLUG,
+      CLAUDE_CODE_SLUG,
+      CURSOR_SLUG,
+      CODEX_SLUG,
+      GEMINI_CLI_SLUG,
+      'antigravity-ide-mcp-server-deploy',
+      'deploy-vibe-coded-app-to-production',
+      APPROVAL_SLUG,
+      BUDGET_SLUG,
+      UNDO_SLUG,
+      MCP_OPERATIONS_SLUG,
+      'mcp-server-hosting',
+      'host-python-fastmcp-server',
+    ],
+  },
+  {
+    id: 'networking-security',
+    title: 'Networking, security & multi-service ops',
+    description:
+      'Atomic release graphs, Firecracker microVM isolation, zero-VPC internal routing, static egress IPs, SSRF denylists, pull queues and durable workflows.',
+    solutionSlug: 'multi-service-networking',
+    slugs: [
+      ATOMIC_RELEASES_SLUG,
+      MICROVM_SLUG,
+      INTERNAL_SERVICES_SLUG,
+      STATIC_EGRESS_IP_SLUG,
+      EGRESS_DENYLIST_SLUG,
+      OUTBOUND_RELAY_SLUG,
+      EDGE_RULES_TRACE_SLUG,
+      PULL_QUEUE_WORKERS_SLUG,
+      AUTOSCALE_LAG_SLUG,
+      CODE_WORKFLOWS_SLUG,
+      STORED_WORKFLOW_RECOVERY_SLUG,
+    ],
+  },
+  {
+    id: 'backend-foundations',
+    title: 'Backend foundations, storage & observability',
+    description:
+      'No-DevOps startup architecture, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
+    solutionSlug: 'backend-without-devops',
+    slugs: [
+      'backend-without-devops',
+      FASTAPI_JOBS_SLUG,
+      NODE_WORKER_SLUG,
+      'preview-environments',
+      'remote-dev-environment-without-docker-desktop',
+      OBJECT_STORAGE_SLUG,
+      OTEL_TRACING_SLUG,
+      COMPANIONS_SLUG,
+      CONTAINER_COMPAT_SLUG,
+    ],
+  },
+  {
+    id: 'comparisons',
+    title: 'Platform comparisons & alternatives',
+    description:
+      'Side-by-side pricing, idle billing, isolation and rollback comparisons against Heroku, Render, Railway, Fly.io, Cloud Run, Vercel, Koyeb, Northflank, Coolify and Cloudflare Workers.',
+    slugs: [
+      'render-vs-railway-vs-flyio',
+      'heroku-alternatives',
+      'render-alternatives',
+      'railway-alternatives',
+      'flyio-alternatives',
+      'cloud-run-alternatives',
+      'vercel-alternatives',
+      'koyeb-alternatives',
+      'northflank-alternatives',
+      'coolify-alternatives',
+      'cloudflare-workers-alternatives',
+    ],
+  },
+];
+
+export function groupedArticles(): (ArticleTopic & { articles: Article[] })[] {
+  const bySlug = new Map(ARTICLES.map((article) => [article.slug, article]));
+  return ARTICLE_TOPICS.map((topic) => ({
+    ...topic,
+    articles: topic.slugs
+      .map((slug) => bySlug.get(slug))
+      .filter((entry): entry is Article => Boolean(entry)),
+  }));
+}
+
 export const ANSWER_ARTICLES = ARTICLES.filter(
   (article) => !article.alternativesTo && !article.comparison
 );

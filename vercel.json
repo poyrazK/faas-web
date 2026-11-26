@@ -112,14 +112,14 @@
       "continue": true
     },
     {
-      "src": "^/(docs|articles|research|features|vs)/([a-z0-9_-]+)\\.md$",
+      "src": "^/(docs|solutions|articles|research|features|vs)/([a-z0-9_-]+)\\.md$",
       "headers": {
         "Link": "<https://gregale.dev/$1/$2>; rel=\"canonical\""
       },
       "continue": true
     },
     {
-      "src": "^/(pricing|docs|articles|research|features)\\.md$",
+      "src": "^/(pricing|docs|solutions|articles|research|features)\\.md$",
       "headers": {
         "Link": "<https://gregale.dev/$1>; rel=\"canonical\""
       },
@@ -133,7 +133,7 @@
       "continue": true
     },
     {
-      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known/mcp/server-card\\.json|(?:index|pricing|docs|articles|research|features)\\.md|(?:docs|articles|research|features|vs)/[a-z0-9_-]+\\.md)$",
+      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known/mcp/server-card\\.json|(?:index|pricing|docs|solutions|articles|research|features)\\.md|(?:docs|solutions|articles|research|features|vs)/[a-z0-9_-]+\\.md)$",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS"
@@ -148,7 +148,7 @@
       "continue": true
     },
     {
-      "src": "^/(?:(?:docs/(?!api$)|(?:articles|research|features|vs)/)[a-z0-9_-]+|pricing|docs|articles|research|features)?$",
+      "src": "^/(?:(?:docs/(?!api$)|(?:solutions|articles|research|features|vs)/)[a-z0-9_-]+|pricing|docs|solutions|articles|research|features)?$",
       "headers": {
         "Vary": "Accept"
       },
@@ -270,7 +270,7 @@
       "dest": "/docs/$1.md"
     },
     {
-      "src": "^/(articles|research|features|vs)/([a-z0-9_-]+)$",
+      "src": "^/(solutions|articles|research|features|vs)/([a-z0-9_-]+)$",
       "has": [
         {
           "type": "header",
@@ -287,7 +287,7 @@
       "dest": "/$1/$2.md"
     },
     {
-      "src": "^/(pricing|docs|articles|research|features)$",
+      "src": "^/(pricing|docs|solutions|articles|research|features)$",
       "has": [
         {
           "type": "header",

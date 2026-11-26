@@ -24,6 +24,7 @@ interface FooterLink {
     | '/features'
     | '/will-it-run'
     | '/pricing'
+    | '/solutions'
     | '/research'
     | '/articles';
   /** A comparison page: /vs/<slug>. */
@@ -41,6 +42,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Product',
     links: [
       { label: 'Deploy your API', href: '/#deploy' },
+      { label: 'Solutions', href: '/solutions', publicRoute: '/solutions' },
       { label: 'Features', href: '/features', publicRoute: '/features' },
       { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
