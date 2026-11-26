@@ -402,6 +402,24 @@ describeBuilt('prerendered pages', () => {
         doc: null,
         date: '2026-11-26',
       },
+      {
+        slug: 'aws-app-runner-alternatives',
+        vs: 'aws',
+        doc: null,
+        date: '2026-11-26',
+      },
+      {
+        slug: 'digitalocean-app-platform-alternatives',
+        vs: 'digitalocean',
+        doc: null,
+        date: '2026-11-26',
+      },
+      {
+        slug: 'replit-alternatives',
+        vs: 'replit',
+        doc: null,
+        date: '2026-11-26',
+      },
     ];
     for (const { slug, vs, doc, date } of cases) {
       const route = `/articles/${slug}`;
@@ -439,6 +457,9 @@ describeBuilt('prerendered pages', () => {
       'northflank',
       'coolify',
       'cloudflare-workers',
+      'aws',
+      'digitalocean',
+      'replit',
     ]) {
       const route = `/vs/${slug}`;
       const markdown = readFileSync(`dist${route}.md`, 'utf8');

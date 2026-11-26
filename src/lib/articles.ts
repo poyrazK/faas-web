@@ -818,6 +818,86 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: 'aws-app-runner-alternatives',
+    alternativesTo: 'aws',
+    title: 'AWS App Runner alternatives in 2026',
+    summary:
+      'Gregale, Google Cloud Run, Render, Railway, Fly.io, DigitalOcean App Platform and Northflank compared against AWS App Runner on idle billing, bundled Postgres, previews and automatic rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'What is the best AWS App Runner alternative with bundled PostgreSQL?',
+        answer:
+          'Render, Railway and Gregale bundle managed PostgreSQL without requiring separate RDS instances or VPC connectors. Gregale also adds ~1s idle pause billing, PR preview environments, hard monthly spend caps and automatic 1%→100% 5xx canary rollbacks.',
+      },
+      {
+        question:
+          'Do any AWS App Runner alternatives stop billing without manually pausing services?',
+        answer:
+          'Yes. Google Cloud Run scales idle revisions to zero when min instances is 0, and Gregale pauses each Firecracker microVM ~1 second after requests stop. On Gregale Free, Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month at $0.',
+      },
+      {
+        question: 'When should I stay on AWS App Runner?',
+        answer:
+          'Stay on AWS App Runner if your containers depend directly on AWS IAM roles, PrivateLink, Amazon RDS inside the same VPC, or consolidated AWS enterprise billing.',
+      },
+    ],
+  },
+  {
+    slug: 'digitalocean-app-platform-alternatives',
+    alternativesTo: 'digitalocean',
+    title: 'DigitalOcean App Platform alternatives in 2026',
+    summary:
+      'Gregale, Render, Railway, Fly.io, Heroku, Koyeb and Northflank compared against DigitalOcean App Platform on backend free tiers, ~1s idle pause, Postgres pricing and canary rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question:
+          'What is the best DigitalOcean App Platform alternative for intermittent backends?',
+        answer:
+          'Railway Serverless, Fly.io Machines, Koyeb and Gregale stop compute billing when idle rather than charging a flat monthly container rate 24/7. Gregale pauses ~1 second after each request, includes managed PostgreSQL on the $10 Hobby plan and enforces default 5xx canary rollbacks.',
+      },
+      {
+        question: 'Does Gregale offer a free backend tier unlike DigitalOcean App Platform?',
+        answer:
+          'Yes. DigitalOcean App Platform free covers static sites only, whereas Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month on full Firecracker microVMs without overage billing.',
+      },
+      {
+        question: 'When is DigitalOcean App Platform still the better fit?',
+        answer:
+          'Stay on DigitalOcean App Platform when your workloads run steady 24/7 traffic alongside existing DigitalOcean Droplets, Spaces buckets or Managed Databases.',
+      },
+    ],
+  },
+  {
+    slug: 'replit-alternatives',
+    alternativesTo: 'replit',
+    title: 'Replit alternatives in 2026',
+    summary:
+      'Gregale, Railway, Render, Fly.io, Vercel and DigitalOcean App Platform compared for moving Replit and AI-built backends into Git-owned production with spend caps and automatic rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'What is the best Replit alternative once my app moves to GitHub?',
+        answer:
+          'Railway, Render and Gregale deploy directly from GitHub with managed PostgreSQL. Gregale adds Firecracker microVM isolation, ~1s idle pause billing, hard monthly spend caps, scoped AI agent approval gates and automatic 1%→100% 5xx canary rollbacks.',
+      },
+      {
+        question: 'Is there a free plan to try migrating off Replit?',
+        answer:
+          'Yes. Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month at $0 and stops at the allowance rather than billing overages, with PR preview environments included.',
+      },
+      {
+        question: 'When should I stay on Replit?',
+        answer:
+          'Stay on Replit when you want an integrated browser IDE and built-in visual workspace for rapid prototyping without managing local tools or Git workflows.',
+      },
+    ],
+  },
+  {
     slug: CURSOR_SLUG,
     title: 'Let Cursor deploy to production safely',
     summary:
@@ -1881,7 +1961,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'comparisons',
     title: 'Platform comparisons & alternatives',
     description:
-      'Side-by-side pricing, idle billing, isolation and rollback comparisons against Heroku, Render, Railway, Fly.io, Cloud Run, Vercel, Koyeb, Northflank, Coolify and Cloudflare Workers.',
+      'Side-by-side pricing, idle billing, isolation and rollback comparisons against Heroku, Render, Railway, Fly.io, Cloud Run, Vercel, Koyeb, Northflank, Coolify, Cloudflare Workers, AWS App Runner, DigitalOcean App Platform and Replit.',
     slugs: [
       'render-vs-railway-vs-flyio',
       'heroku-alternatives',
@@ -1894,6 +1974,9 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'northflank-alternatives',
       'coolify-alternatives',
       'cloudflare-workers-alternatives',
+      'aws-app-runner-alternatives',
+      'digitalocean-app-platform-alternatives',
+      'replit-alternatives',
     ],
   },
 ];

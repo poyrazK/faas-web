@@ -69,6 +69,13 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/vs/cloudflare-workers',
         compare: 'cloudflare-workers',
       },
+      { label: 'Gregale vs AWS App Runner', href: '/vs/aws', compare: 'aws' },
+      {
+        label: 'Gregale vs DigitalOcean',
+        href: '/vs/digitalocean',
+        compare: 'digitalocean',
+      },
+      { label: 'Gregale vs Replit', href: '/vs/replit', compare: 'replit' },
     ],
   },
   {
