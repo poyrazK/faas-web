@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePlanCatalog } from './lib/plan-catalog-parser';
+import { SOLUTIONS } from './lib/solutions';
 
 /**
  * Guards the prerendered output.
@@ -340,8 +341,8 @@ describeBuilt('prerendered pages', () => {
     }
 
     const vercel = readFileSync('vercel.json', 'utf8');
-    expect(vercel).toContain('^/(pricing|docs|articles|research|features)$');
-    expect(vercel).toContain('^/(articles|research|features|vs)/([a-z0-9_-]+)$');
+    expect(vercel).toContain('^/(pricing|docs|solutions|articles|research|features)$');
+    expect(vercel).toContain('^/(solutions|articles|research|features|vs)/([a-z0-9_-]+)$');
   });
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
@@ -517,6 +518,37 @@ describeBuilt('prerendered pages', () => {
       expect(llms).toContain(`https://gregale.dev${route}.md`);
       expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
       expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(`https://gregale.dev${route}`);
+    }
+  });
+
+  it('publishes /solutions hub and each solution page with schema, Markdown and nav links', () => {
+    const hubHtml = readFileSync('dist/solutions/index.html', 'utf8');
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    expect(hubHtml).toContain('rel="canonical" href="https://gregale.dev/solutions"');
+    expect(hubHtml).toContain('type="text/markdown" href="/solutions.md"');
+    expect(existsSync('dist/solutions.md')).toBe(true);
+    expect(sitemap).toContain('<loc>https://gregale.dev/solutions</loc>');
+    expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/solutions"');
+    expect(readFileSync('dist/articles/index.html', 'utf8')).toContain('href="/solutions"');
+
+    for (const solution of SOLUTIONS) {
+      const route = `/solutions/${solution.slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(html).toContain(solution.title);
+      expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+      expect(html).toContain(`type="text/markdown" href="${route}.md"`);
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: solution.updatedOn });
+      expect(faq.mainEntity.length).toBeGreaterThan(0);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(existsSync(`dist${route}.md`)).toBe(true);
+      expect(hubHtml).toContain(`href="${route}"`);
+      expect(sitemap).toContain(`<loc>https://gregale.dev${route}</loc>`);
+      expect(llms).toContain(`https://gregale.dev${route}.md`);
     }
   });
 

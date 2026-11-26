@@ -20,6 +20,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SolutionsRouteImport } from './routes/solutions'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
 import { Route as ArticlesIndexRouteImport } from './routes/articles.index'
@@ -81,6 +82,8 @@ import { Route as FeaturesSlugRouteImport } from './routes/features.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResearchIndexRouteImport } from './routes/research.index'
 import { Route as ResearchSlugRouteImport } from './routes/research.$slug'
+import { Route as SolutionsIndexRouteImport } from './routes/solutions.index'
+import { Route as SolutionsSlugRouteImport } from './routes/solutions.$slug'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
 import { Route as VsSlugRouteImport } from './routes/vs.$slug'
 import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
@@ -159,6 +162,11 @@ const ResearchRoute = ResearchRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SolutionsRoute = SolutionsRouteImport.update({
+  id: '/solutions',
+  path: '/solutions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatusRoute = StatusRouteImport.update({
@@ -466,6 +474,16 @@ const ResearchSlugRoute = ResearchSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ResearchRoute,
 } as any)
+const SolutionsIndexRoute = SolutionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SolutionsRoute,
+} as any)
+const SolutionsSlugRoute = SolutionsSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => SolutionsRoute,
+} as any)
 const StatusIndexRoute = StatusIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -606,6 +624,7 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
+  '/solutions': typeof SolutionsRouteWithChildren
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
   '/articles/$slug': typeof ArticlesSlugRoute
@@ -662,12 +681,14 @@ export interface FileRoutesByFullPath {
   '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/solutions/': typeof SolutionsIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -753,12 +774,14 @@ export interface FileRoutesByTo {
   '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles': typeof ArticlesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
   '/features': typeof FeaturesIndexRoute
   '/research': typeof ResearchIndexRoute
+  '/solutions': typeof SolutionsIndexRoute
   '/status': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -796,6 +819,7 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
+  '/solutions': typeof SolutionsRouteWithChildren
   '/status': typeof StatusRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
   '/articles/$slug': typeof ArticlesSlugRoute
@@ -852,12 +876,14 @@ export interface FileRoutesById {
   '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/features/': typeof FeaturesIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/solutions/': typeof SolutionsIndexRoute
   '/status/': typeof StatusIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
@@ -896,6 +922,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/research'
     | '/signup'
+    | '/solutions'
     | '/status'
     | '/will-it-run'
     | '/articles/$slug'
@@ -952,12 +979,14 @@ export interface FileRouteTypes {
     | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles/'
     | '/dashboard/'
     | '/docs/'
     | '/features/'
     | '/research/'
+    | '/solutions/'
     | '/status/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -1043,12 +1072,14 @@ export interface FileRouteTypes {
     | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles'
     | '/dashboard'
     | '/docs'
     | '/features'
     | '/research'
+    | '/solutions'
     | '/status'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -1085,6 +1116,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/research'
     | '/signup'
+    | '/solutions'
     | '/status'
     | '/will-it-run'
     | '/articles/$slug'
@@ -1141,12 +1173,14 @@ export interface FileRouteTypes {
     | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles/'
     | '/dashboard/'
     | '/docs/'
     | '/features/'
     | '/research/'
+    | '/solutions/'
     | '/status/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
@@ -1184,6 +1218,7 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   ResearchRoute: typeof ResearchRouteWithChildren
   SignupRoute: typeof SignupRoute
+  SolutionsRoute: typeof SolutionsRouteWithChildren
   StatusRoute: typeof StatusRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -1267,6 +1302,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/solutions': {
+      id: '/solutions'
+      path: '/solutions'
+      fullPath: '/solutions'
+      preLoaderRoute: typeof SolutionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/status': {
@@ -1696,6 +1738,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchSlugRouteImport
       parentRoute: typeof ResearchRoute
     }
+    '/solutions/': {
+      id: '/solutions/'
+      path: '/'
+      fullPath: '/solutions/'
+      preLoaderRoute: typeof SolutionsIndexRouteImport
+      parentRoute: typeof SolutionsRoute
+    }
+    '/solutions/$slug': {
+      id: '/solutions/$slug'
+      path: '/$slug'
+      fullPath: '/solutions/$slug'
+      preLoaderRoute: typeof SolutionsSlugRouteImport
+      parentRoute: typeof SolutionsRoute
+    }
     '/status/': {
       id: '/status/'
       path: '/'
@@ -2093,6 +2149,20 @@ const ResearchRouteWithChildren = ResearchRoute._addFileChildren(
   ResearchRouteChildren,
 )
 
+interface SolutionsRouteChildren {
+  SolutionsSlugRoute: typeof SolutionsSlugRoute
+  SolutionsIndexRoute: typeof SolutionsIndexRoute
+}
+
+const SolutionsRouteChildren: SolutionsRouteChildren = {
+  SolutionsSlugRoute: SolutionsSlugRoute,
+  SolutionsIndexRoute: SolutionsIndexRoute,
+}
+
+const SolutionsRouteWithChildren = SolutionsRoute._addFileChildren(
+  SolutionsRouteChildren,
+)
+
 interface StatusRouteChildren {
   StatusIndexRoute: typeof StatusIndexRoute
   StatusIncidentsIdRoute: typeof StatusIncidentsIdRoute
@@ -2118,6 +2188,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   ResearchRoute: ResearchRouteWithChildren,
   SignupRoute: SignupRoute,
+  SolutionsRoute: SolutionsRouteWithChildren,
   StatusRoute: StatusRouteWithChildren,
   WillItRunRoute: WillItRunRoute,
   InviteTokenRoute: InviteTokenRoute,

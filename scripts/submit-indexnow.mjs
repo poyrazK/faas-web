@@ -2,7 +2,7 @@ import { indexNowKey } from './indexnow-key.mjs';
 
 const origin = 'https://gregale.dev';
 const publicRoute =
-  /^\/(?:status|will-it-run|pricing|docs(?:\/[a-z0-9_-]+){0,2}|(?:research|articles|features)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+)?$/;
+  /^\/(?:status|will-it-run|pricing|docs(?:\/[a-z0-9_-]+){0,2}|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+)?$/;
 
 async function main(paths) {
   if (paths.length === 0 || paths.some((path) => !publicRoute.test(path))) {

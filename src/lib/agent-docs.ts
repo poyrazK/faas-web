@@ -15,6 +15,7 @@ import {
   withRelatedResearch,
 } from './research.ts';
 import { FEATURES, FEATURES_DESCRIPTION, FEATURES_TITLE } from './features.ts';
+import { SOLUTIONS, SOLUTIONS_DESCRIPTION, SOLUTIONS_TITLE } from './solutions.ts';
 import type { Comparison } from './compare.ts';
 import type { FaqEntry } from './faq.ts';
 import { formatCatalogPrice, type CatalogPlan } from './plan-catalog-parser.ts';
@@ -172,6 +173,10 @@ export function llmsIndex(
     (entry) => `- [${entry.title}](${siteUrl}/features/${entry.slug}.md): ${entry.summary}`
   );
   parts.push(`## ${FEATURES_TITLE}\n\n${features.join('\n')}`);
+  const solutions = SOLUTIONS.map(
+    (entry) => `- [${entry.title}](${siteUrl}/solutions/${entry.slug}.md): ${entry.summary}`
+  );
+  parts.push(`## ${SOLUTIONS_TITLE}\n\n${solutions.join('\n')}`);
   const research = RESEARCH_PUBLICATIONS.map(
     (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
   );
@@ -218,6 +223,7 @@ export function homePage(intro: string, faq: readonly FaqEntry[], siteUrl: strin
     `- [${FEATURES_TITLE}](${siteUrl}/features.md): ${FEATURES_DESCRIPTION}`,
     `- [Pricing](${siteUrl}/pricing.md): plans, included compute and pricing questions`,
     `- [Documentation](${siteUrl}/docs.md): every guide, by section`,
+    `- [${SOLUTIONS_TITLE}](${siteUrl}/solutions.md): ${SOLUTIONS_DESCRIPTION}`,
     `- [${ARTICLES_TITLE}](${siteUrl}/articles.md): ${ARTICLES_DESCRIPTION}`,
     `- [${RESEARCH_TITLE}](${siteUrl}/research.md): ${RESEARCH_DESCRIPTION}`,
     `- [llms.txt](${siteUrl}/llms.txt): every page on this site, as Markdown links`,
@@ -317,6 +323,19 @@ export function featuresIndexPage(siteUrl: string): string {
         `- [${entry.title}](${siteUrl}/features/${entry.slug}.md) · ${entry.maturity} · ${entry.plans}: ${entry.summary}`
     ).join('\n'),
     `Canonical URL: ${siteUrl}/features`,
+  ]);
+}
+
+/** The solutions index as Markdown. */
+export function solutionsIndexPage(siteUrl: string): string {
+  return page([
+    `# ${SOLUTIONS_TITLE}`,
+    `> ${SOLUTIONS_DESCRIPTION}`,
+    SOLUTIONS.map(
+      (entry) =>
+        `- [${entry.title}](${siteUrl}/solutions/${entry.slug}.md) · Updated ${entry.updatedOn}: ${entry.summary}`
+    ).join('\n'),
+    `Canonical URL: ${siteUrl}/solutions`,
   ]);
 }
 
