@@ -47,6 +47,8 @@ const {
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
 const { FEATURES, FEATURES_TITLE, featureMarkdown } = await import('../src/lib/features.ts');
 const { SOLUTIONS, SOLUTIONS_TITLE, solutionMarkdown } = await import('../src/lib/solutions.ts');
+const { PUBLIC_TEMPLATES, TEMPLATES_DESCRIPTION, TEMPLATES_TITLE } =
+  await import('../src/lib/public-templates.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
 const OPENAPI_YAML = readFileSync('api/openapi.yaml', 'utf8');
@@ -92,6 +94,7 @@ const SITE_MARKDOWN = new Map([
   ['/solutions', '/solutions.md'],
   ['/articles', '/articles.md'],
   ['/features', '/features.md'],
+  ['/templates', '/templates.md'],
   ['/research', '/research.md'],
 ]);
 const PLAN_DOC_ROUTE = '/docs/plans';
@@ -114,6 +117,7 @@ const ROUTES = [
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,
   ...FEATURE_ROUTES,
+  '/templates',
   ...SOLUTION_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
@@ -130,6 +134,7 @@ const INDEXABLE = [
   ...COMPARE_ROUTES,
   ...DOC_ROUTES,
   ...FEATURE_ROUTES,
+  '/templates',
   ...SOLUTION_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
@@ -436,6 +441,26 @@ for (const route of ROUTES) {
   if (route === PRICING_ROUTE || route === PLAN_DOC_ROUTE) {
     perRoute.push(`<link rel="alternate" type="application/json" href="${PRICING_FEED}" />`);
   }
+  if (route === '/templates' && SITE_URL) {
+    const ld = {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      '@id': `${absolute('/templates')}#collection`,
+      name: TEMPLATES_TITLE,
+      description: TEMPLATES_DESCRIPTION,
+      url: absolute('/templates'),
+      publisher: { '@id': `${SITE_URL}/#org` },
+      hasPart: PUBLIC_TEMPLATES.map((item) => ({
+        '@type': 'SoftwareSourceCode',
+        name: item.title,
+        codeRepository: item.repoUrl,
+        description: item.summary,
+      })),
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
+  }
   // Keeps a non-indexable page out of results without hiding it from the
   // unfurler, which ignores robots meta.
   if (!INDEXABLE.includes(route)) {
@@ -463,6 +488,10 @@ for (const route of ROUTES) {
             'https://github.com/gregale-dev/gregale-js',
             'https://github.com/gregale-dev/gregale-python',
             'https://github.com/gregale-dev/gregale-go',
+            'https://github.com/gregale-dev/gregale-cursor-plugin',
+            'https://github.com/gregale-dev/gregale-antigravity-plugin',
+            'https://github.com/gregale-dev/gregale-claude-code-plugin',
+            'https://github.com/gregale-dev/setup-gregale',
             'https://www.linkedin.com/company/gregale/',
             'https://www.producthunt.com/products/gregale',
             'https://www.crunchbase.com/organization/gregale',
@@ -640,6 +669,7 @@ const PAGE_DATES = new Map([
   ['/articles', latest(ARTICLES.map((article) => article.updatedOn))],
   ...[...FEATURE_BY_ROUTE].map(([route, feature]) => [route, feature.updatedOn]),
   ['/features', latest(FEATURES.map((feature) => feature.updatedOn))],
+  ['/templates', latest(PUBLIC_TEMPLATES.map((template) => template.updatedOn))],
   ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => [route, publication.publishedOn]),
   ['/research', latest(RESEARCH_PUBLICATIONS.map((publication) => publication.publishedOn))],
   ...COMPARE_ROUTES.map((route) => [route, COMPARISONS_CHECKED]),
@@ -732,6 +762,7 @@ const {
   pricingPage,
   researchIndexPage,
   solutionsIndexPage,
+  templatesIndexPage,
 } = await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
 const pagesBySlug = new Map();
@@ -808,6 +839,7 @@ const sitePages = new Map([
   ['/solutions', solutionsIndexPage(SITE_URL)],
   ['/articles', articlesIndexPage(SITE_URL)],
   ['/features', featuresIndexPage(SITE_URL)],
+  ['/templates', templatesIndexPage(SITE_URL)],
   ['/research', researchIndexPage(SITE_URL)],
 ]);
 for (const [route, path] of SITE_MARKDOWN) writeFileSync(join(DIST, path), sitePages.get(route));

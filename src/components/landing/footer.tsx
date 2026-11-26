@@ -22,6 +22,7 @@ interface FooterLink {
     | '/docs/api'
     | '/contact'
     | '/features'
+    | '/templates'
     | '/will-it-run'
     | '/pricing'
     | '/solutions'
@@ -44,6 +45,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Deploy your API', href: '/#deploy' },
       { label: 'Solutions', href: '/solutions', publicRoute: '/solutions' },
       { label: 'Features', href: '/features', publicRoute: '/features' },
+      { label: 'Templates', href: '/templates', publicRoute: '/templates' },
       { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
       { label: 'FAQ', href: '/#questions' },

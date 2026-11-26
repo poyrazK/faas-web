@@ -16,6 +16,12 @@ import {
 } from './research.ts';
 import { FEATURES, FEATURES_DESCRIPTION, FEATURES_TITLE } from './features.ts';
 import { SOLUTIONS, SOLUTIONS_DESCRIPTION, SOLUTIONS_TITLE } from './solutions.ts';
+import {
+  PUBLIC_TEMPLATES,
+  TEMPLATE_CATEGORIES,
+  TEMPLATES_DESCRIPTION,
+  TEMPLATES_TITLE,
+} from './public-templates.ts';
 import type { Comparison } from './compare.ts';
 import type { FaqEntry } from './faq.ts';
 import { formatCatalogPrice, type CatalogPlan } from './plan-catalog-parser.ts';
@@ -177,6 +183,12 @@ export function llmsIndex(
     (entry) => `- [${entry.title}](${siteUrl}/solutions/${entry.slug}.md): ${entry.summary}`
   );
   parts.push(`## ${SOLUTIONS_TITLE}\n\n${solutions.join('\n')}`);
+  const templates = PUBLIC_TEMPLATES.map(
+    (entry) => `- [${entry.title}](${entry.repoUrl}) (${entry.runtime}): ${entry.summary}`
+  );
+  parts.push(
+    `## ${TEMPLATES_TITLE}\n\n- [All templates & starters](${siteUrl}/templates.md): ${TEMPLATES_DESCRIPTION}\n${templates.join('\n')}`
+  );
   const research = RESEARCH_PUBLICATIONS.map(
     (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
   );
@@ -221,6 +233,7 @@ const page = (parts: string[]): string => parts.join('\n\n') + '\n';
 export function homePage(intro: string, faq: readonly FaqEntry[], siteUrl: string): string {
   const next = [
     `- [${FEATURES_TITLE}](${siteUrl}/features.md): ${FEATURES_DESCRIPTION}`,
+    `- [${TEMPLATES_TITLE}](${siteUrl}/templates.md): ${TEMPLATES_DESCRIPTION}`,
     `- [Pricing](${siteUrl}/pricing.md): plans, included compute and pricing questions`,
     `- [Documentation](${siteUrl}/docs.md): every guide, by section`,
     `- [${SOLUTIONS_TITLE}](${siteUrl}/solutions.md): ${SOLUTIONS_DESCRIPTION}`,
@@ -336,6 +349,23 @@ export function solutionsIndexPage(siteUrl: string): string {
         `- [${entry.title}](${siteUrl}/solutions/${entry.slug}.md) · Updated ${entry.updatedOn}: ${entry.summary}`
     ).join('\n'),
     `Canonical URL: ${siteUrl}/solutions`,
+  ]);
+}
+
+/** The templates index as Markdown. */
+export function templatesIndexPage(siteUrl: string): string {
+  const sections = TEMPLATE_CATEGORIES.map((category) => {
+    const rows = PUBLIC_TEMPLATES.filter((entry) => entry.category === category).map(
+      (entry) =>
+        `- [${entry.title}](${entry.repoUrl}) (${entry.runtime}): ${entry.summary} (\`${entry.command}\`)`
+    );
+    return `## ${category}\n\n${rows.join('\n')}`;
+  });
+  return page([
+    `# ${TEMPLATES_TITLE}`,
+    `> ${TEMPLATES_DESCRIPTION}`,
+    ...sections,
+    `Canonical URL: ${siteUrl}/templates`,
   ]);
 }
 

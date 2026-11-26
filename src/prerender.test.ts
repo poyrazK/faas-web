@@ -125,6 +125,7 @@ describeBuilt('prerendered pages', () => {
     ['dist/docs/index.html', '/docs.md', 'https://gregale.dev/docs'],
     ['dist/articles/index.html', '/articles.md', 'https://gregale.dev/articles'],
     ['dist/features/index.html', '/features.md', 'https://gregale.dev/features'],
+    ['dist/templates/index.html', '/templates.md', 'https://gregale.dev/templates'],
     ['dist/research/index.html', '/research.md', 'https://gregale.dev/research'],
   ])('publishes %s as Markdown at %s', (html, markdown, canonical) => {
     expect(readFileSync(html, 'utf8')).toContain(
@@ -342,8 +343,15 @@ describeBuilt('prerendered pages', () => {
     }
 
     const vercel = readFileSync('vercel.json', 'utf8');
-    expect(vercel).toContain('^/(pricing|docs|solutions|articles|research|features)$');
+    expect(vercel).toContain('^/(pricing|docs|solutions|articles|research|features|templates)$');
     expect(vercel).toContain('^/(solutions|articles|research|features|vs)/([a-z0-9_-]+)$');
+    expect(readFileSync('dist/features/database-rollbacks/index.html', 'utf8')).toContain(
+      'https://github.com/gregale-dev/postgres-migration-rollback-demo'
+    );
+    expect(readFileSync('dist/templates/index.html', 'utf8')).toContain(
+      'https://github.com/gregale-dev/setup-gregale'
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain('https://gregale.dev/templates.md');
   });
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
