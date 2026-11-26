@@ -142,11 +142,15 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
       { label: 'Subprocessors', href: '/docs/subprocessors', doc: 'subprocessors' },
+      { label: 'Security', href: '/docs/security', doc: 'security' },
       {
         label: 'Responsible disclosure',
         href: '/docs/responsible-disclosure',
         doc: 'responsible-disclosure',
       },
+      // Served by apid through vercel.json, so plain anchors, not router links.
+      { label: 'Terms of Service', href: '/terms' },
+      { label: 'Privacy Policy', href: '/privacy' },
     ],
   },
   {
