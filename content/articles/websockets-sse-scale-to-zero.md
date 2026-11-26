@@ -1,10 +1,16 @@
-**Hold long-lived WebSocket and Server-Sent Events (SSE) connections without keeping your backend app awake.** On Gregale, the managed realtime service terminates client sockets and handles heartbeats at the edge while your backend microVM parks at zero billed compute, waking it only when a client sends a frame or your backend publishes a message.
+**Gregale is a scale-to-zero PaaS that holds persistent WebSocket and Server-Sent Events (SSE) connections at the edge via Managed Realtime without dropping clients or keeping your backend app awake.** On Gregale, Managed Realtime terminates client sockets and handles heartbeats at the edge while your backend microVM parks at zero billed compute, waking it only when a client sends a frame or your backend publishes a message.
 
 > **Maturity:** Realtime endpoints, parked WebSocket and SSE connections, authentication and callbacks, the original protocol, live publish, direct and principal send, connection operations, and fair-use limits are in **Beta** on every paid plan. Resumable v2 (`gregale.realtime.v2`), retained history, presence, subscription tickets, `channel_rules`, and the `realtime:` section of `gregale.yaml` are in **Preview**, released per account.
 
 ## Why open sockets break scale-to-zero
 
 On most platforms, a WebSocket or SSE connection terminates inside your application container. That keeps the process busy for hours even when nobody is sending messages. On Cloud Run, Fly.io, Render, Railway, or a self-managed WebSocket app on Gregale (`gregale app <slug> --websocket-enabled`), an open socket prevents the instance from idling down and keeps compute billing running—or forces you to pay separately for Pusher, Ably, or Liveblocks.
+
+| Approach                           | Compute billing when idle                     | External service required                 | Starter / reference                                                                                                    |
+| ---------------------------------- | --------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Gregale Managed Realtime**       | `$0` app compute while parked at the edge     | None (included on paid plans)             | [Scale-to-Zero WebSockets starter](https://github.com/gregale-dev/scale-to-zero-websockets) ([/templates](/templates)) |
+| **Always-on container PaaS**       | Billed continuously while sockets remain open | None                                      | Self-managed socket server                                                                                             |
+| **Stateless PaaS + Pusher / Ably** | `$0` app compute when stateless               | Separate Pusher, Ably, or Liveblocks bill | Two-vendor integration                                                                                                 |
 
 ## How Gregale separates sockets from compute
 

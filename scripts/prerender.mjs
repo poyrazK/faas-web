@@ -977,6 +977,7 @@ if (productionSite && process.env.INDEXNOW_KEY) {
     const paths = [
       '/',
       PRICING_ROUTE,
+      '/templates',
       ...FEATURE_ROUTES,
       ...SOLUTION_ROUTES,
       ...RESEARCH_ROUTES,

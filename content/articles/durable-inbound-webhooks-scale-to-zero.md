@@ -1,12 +1,12 @@
-**Accept Stripe and signed third-party webhooks at the edge while your backend is scaled to zero, without losing events or paying for an always-on receiver.** Gregale verifies the provider's signature while your app is parked, writes the event to the durable invocation queue, immediately answers `202 Accepted`, and wakes your app to deliver it with async retries and dead-letter replay. Available on the Hobby, Pro, and Scale plans.
+**Gregale accepts Stripe and generic HMAC-SHA256 webhooks durably at the edge while your backend is scaled to zero, without losing events or paying for an always-on receiver.** Gregale verifies the provider's signature while your app is parked, writes the event to the durable invocation queue, immediately answers `202 Accepted`, and wakes your app to deliver it with async retries and dead-letter replay. Available on the Hobby, Pro, and Scale plans.
 
 ## Why webhooks drop on scale-to-zero backends
 
 Payment and billing webhooks are unforgiving. When a backend scales to zero, a slow cold start can push the provider past its timeout and trigger a failure storm. Worse, if the receiver restarts mid-deploy or returns a temporary `5xx`, the original `Stripe-Signature` timestamp can expire before a later retry arrives. Teams usually end up disabling scale-to-zero for a dedicated receiver service or adding an external webhook gateway such as Hookdeck.
 
-## Verify at the edge, queue durably, wake to deliver
+## How Gregale verifies and queues Stripe and HMAC webhooks without cold-start timeouts
 
-Gregale keeps signature verification and durability in front of your app for both `stripe` and `generic` HMAC-SHA256 webhook senders:
+Gregale keeps signature verification and durability in front of your app for both `stripe` and `generic` HMAC-SHA256 webhook senders (see the runnable [Durable Stripe & HMAC Webhooks starter](https://github.com/gregale-dev/durable-stripe-webhooks) on [Gregale templates](/templates)):
 
 ```http
 POST /v1/apps/my-api/inbound-webhooks

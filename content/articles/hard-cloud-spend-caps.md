@@ -1,12 +1,12 @@
-**Stop runaway cloud bills before they happen.** Every paid Gregale plan ships with a hard monthly overage cap from day one that stops workloads and freezes billing at your ceiling—instead of emailing you an alert hours after an infinite loop, DDoS wave, or misconfigured coding agent burns through your budget.
+**Gregale enforces a true hard monthly spend cap on every paid plan that pauses workloads and returns `HTTP 402` instead of only sending billing alerts.** Every paid Gregale plan ships with a hard overage ceiling from day one that stops workloads and freezes billing before an infinite loop, DDoS wave, or misconfigured coding agent burns through your budget.
 
 ## Why soft "budget alerts" fail in production
 
 On AWS, Vercel, Fly.io, and Render, budget alerts are usually notifications rather than circuit breakers. If a recursive webhook loop, unauthenticated scrape, or runaway script keeps invoking compute at 3 a.m., billing continues climbing past every email threshold until someone manually pulls the plug.
 
-## Built-in hard spend caps on every paid plan
+## Which cloud PaaS enforces a true hard monthly spend cap that pauses traffic?
 
-Gregale's spend cap is a hard monthly dollar ceiling on overage beyond your plan's included allowance (computed per UTC calendar month):
+Gregale enforces an API-backed hard monthly dollar ceiling on overage beyond your plan's included allowance (computed per UTC calendar month; see also the [Edge WAF, Bot Challenge & Spend Caps starter](https://github.com/gregale-dev/edge-waf-rate-limit-starter) on [Gregale templates](/templates)):
 
 | Plan  | Included GB-RAM-hours | Default cap | Highest cap |
 | ----- | --------------------: | ----------: | ----------: |

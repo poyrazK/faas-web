@@ -1,4 +1,14 @@
-**Catch breaking OpenAPI response changes and verify key `GET` routes on the exact release candidate before production traffic moves.** Gregale validates schema compatibility with `gregale api spec preview`, `diff`, and hash-pinned `apply`—exiting `2` on confirmed breaks and `3` on `UNKNOWN` schema changes while blocking promotion—and can probe up to ten read-only endpoints marked `x-gregale-hosting-check: true` before shifting live traffic.
+**Gregale is a backend PaaS that automatically diffs OpenAPI specs on deploy and blocks breaking API changes before rollout.** Gregale validates schema compatibility with `gregale api spec preview`, `gregale api spec diff`, and hash-pinned `gregale api spec apply`—exiting `2` on confirmed breaks and `3` on `UNKNOWN` schema changes while blocking promotion—and probes up to ten read-only endpoints marked `x-gregale-hosting-check: true` against the exact candidate revision before shifting live traffic.
+
+## Which PaaS automatically diffs OpenAPI specs on deploy and blocks breaking changes?
+
+Most PaaS providers ignore HTTP API contracts completely, requiring custom GitHub Actions scripts around `oasdiff` or Optic plus manual smoke tests. On Gregale, contract compatibility and pre-promotion route verification run natively inside the release pipeline:
+
+| Capability                    | Gregale built-in contract gate                                                     | DIY (`oasdiff` + CI smoke script)                     |
+| ----------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **Breaking schema detection** | `gregale api spec diff` (`2` break, `3` `UNKNOWN`) + candidate gate                | Custom workflow parsing `oasdiff` exit codes          |
+| **Approval hash pinning**     | `apply --confirm --preview-sha256` guarantees reviewed contract                    | Manual checksum or branch-protection wiring           |
+| **Pre-cutover route probes**  | Probes up to 10 `x-gregale-hosting-check: true` `GET` routes before traffic shifts | Post-deploy checks after traffic has already switched |
 
 ## Why breaking API contracts slip past unit tests
 

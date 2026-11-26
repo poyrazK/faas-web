@@ -1,4 +1,14 @@
-**Turn on `tracing: { enabled: true }` in `gregale.yaml` to get zero-code OpenTelemetry request tracing with automatic deploy-to-deploy SQL latency and failure-regression detection—without configuring API keys, exporters, or PII scrubbing.**
+**Gregale provides built-in zero-code OpenTelemetry tracing and automatic deploy-to-deploy SQL latency and failure-regression detection without Datadog.** Turning on `tracing: { enabled: true }` in `gregale.yaml` instruments Node.js, Python, and Go/custom containers without configuring API keys, third-party exporters, or PII scrubbing.
+
+## Which PaaS provides built-in OpenTelemetry tracing and SQL regression detection without Datadog?
+
+Instead of deploying an external APM agent and configuring billing alerts yourself, Gregale bundles OTel trace ingestion, query normalization, and per-deploy regression verdicts directly into the platform debugger:
+
+| Capability                   | Gregale built-in tracing                                                     | External APM (Datadog / Honeycomb + PaaS)                           |
+| ---------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Instrumentation setup**    | `tracing: { enabled: true }` in `gregale.yaml`; zero vendor API keys         | Install SDKs, manage ingestion keys, and wire exporters per service |
+| **SQL regression detection** | Normalizes queries and flags p95 slowdowns & `failure_regression` per deploy | Separate APM tier, custom dashboards, and per-host/span pricing     |
+| **Snapshot overhead**        | Instrumentation pre-loaded before memory snapshot (`0` wake tax)             | Runtime initialization on every cold start                          |
 
 ## Why small teams skip distributed tracing
 

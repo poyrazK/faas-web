@@ -206,12 +206,13 @@ it('submits changed live articles, features and solutions cleanly', () => {
 
 it('submits changed docs and comparison pages', () => {
   const code = `
-    const paths = ['/research', '/vs/heroku', '/vs/fly', '/docs', '/docs/billing', '/docs/plans', '/docs/api/apps'];
+    const paths = ['/research', '/vs/heroku', '/vs/fly', '/templates', '/docs', '/docs/billing', '/docs/plans', '/docs/api/apps'];
     process.stdout.write(JSON.stringify([
       script.changedPaths(['content/docs/billing.md', 'content/docs/removed.md'], paths),
       script.changedPaths(['content/docs/plans.md'], paths),
       script.changedPaths(['src/lib/compare.ts'], paths),
       script.changedPaths(['src/lib/docs-manifest.ts'], paths),
+      script.changedPaths(['src/lib/public-templates.ts'], paths),
       script.changedPaths(['api/openapi.yaml'], paths),
       script.changedPaths(['src/components/landing/hero.tsx'], paths),
     ]));
@@ -221,6 +222,7 @@ it('submits changed docs and comparison pages', () => {
     ['/vs/heroku', '/vs/fly', '/docs/plans'],
     ['/vs/heroku', '/vs/fly'],
     ['/docs'],
+    ['/templates'],
     ['/docs/api/apps'],
     [],
   ]);
@@ -289,6 +291,7 @@ it('accepts every path the release file can submit', () => {
   for (const path of [
     '/',
     '/pricing',
+    '/templates',
     '/research',
     '/research/one',
     '/solutions',

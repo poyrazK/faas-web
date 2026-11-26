@@ -1,6 +1,13 @@
-**Call Stripe, Resend, OpenAI, and other third-party HTTPS APIs from your backend without ever putting their API keys in your app's environment variables.** Gregale's outbound integrations relay injects sealed credentials outside your microVM, enforces method and path allowlists, and applies rate limits and daily request budgets before requests reach the upstream provider.
+**Gregale's outbound integrations relay (Preview) lets your backend call Stripe, Resend, OpenAI, and other third-party HTTPS APIs via `$GREGALE_OUTBOUND_URL` without putting API keys in application environment variables.** Gregale injects sealed credentials outside your microVM, enforces method and path allowlists, and applies rate limits and daily request budgets before requests reach the upstream provider.
 
 > **Preview:** Outbound integrations are a preview capability on the **Hobby, Pro, and Scale** plans, released per account. Ask support to enable them on your account; behavior and limits can change before general availability.
+
+## How Gregale calls third-party APIs without API keys in environment variables
+
+| Setup                                   | Key inside app env / memory                                                | Per-route method & path lock                         | Rate limits & daily caps           |
+| --------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------- |
+| **Gregale outbound integrations relay** | Never injected (`$GREGALE_OUTBOUND_URL` authenticates by microVM identity) | Enforced by relay (`403 outbound_route_not_allowed`) | Built in per integration & binding |
+| **Env-var secret manager**              | Plaintext key visible in `process.env` / memory                            | All paths & methods permitted by upstream key        | Requires separate API proxy        |
 
 ## Why API keys in environment variables widen blast radius
 
