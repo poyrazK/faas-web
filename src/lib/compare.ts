@@ -19,7 +19,7 @@ import type { FaqEntry } from './faq.ts';
  */
 
 /** When the competitor figures below were last read from their sources. */
-export const COMPARISONS_CHECKED = '2026-11-25';
+export const COMPARISONS_CHECKED = '2026-11-26';
 
 interface Catalog {
   currency: string;
@@ -1005,6 +1005,201 @@ export function comparisons(catalog: Catalog): Comparison[] {
         },
       ],
     },
+    {
+      slug: 'coolify',
+      competitor: 'Coolify',
+      summary:
+        'Gregale vs Coolify: self-hosted VPS control plane vs managed Firecracker microVMs, idle pause billing, pre-wake WAF and canary rollbacks compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them: 'Self-hosted Coolify is $0 open-source software; you still pay for your own VPS (Hetzner, DigitalOcean, AWS).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Coolify Cloud starts at $5 a month for up to 2 servers (+$3 per extra server), plus your underlying VPS cost.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them: 'Fixed monthly server bill on your VPS provider, regardless of whether an app serves traffic or sits idle.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them: 'Always running on your VPS; there is no automatic per-second snapshot pause across individual apps.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Supports rolling deployments on your connected server rather than default 1%→100% 5xx canary rollbacks or DB-synced restores.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'Docker containers sharing the OS kernel of the VPS you provision and patch.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Self-managed database containers running on your own VPS with scheduled backups to S3 you configure and monitor.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'PR preview deployments supported on your server hardware, bounded by your VPS RAM and disk.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'Persistent Docker volumes directly on the VPS host disk.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Anywhere you connect a Linux server (Hetzner, DigitalOcean, Vultr, AWS, bare metal).',
+        },
+      ],
+      theyFit: [
+        'You want maximum raw RAM/CPU per dollar on a fixed $5–$20 Hetzner or DigitalOcean VPS for steady 24/7 workloads.',
+        'You want 360+ self-hosted one-click apps or durable local Docker volumes on hardware you control.',
+        'You are comfortable patching Linux hosts, tuning Traefik, and owning OS security and backup recovery.',
+      ],
+      gregaleFits: [
+        'You want VPS-like low idle cost without 3 AM server maintenance, OS patching, backup verification, or Traefik tuning.',
+        'You want Firecracker microVM isolation, pre-wake OWASP WAF + browser challenges, and default hard monthly spend caps.',
+        'You want automatic 1%→100% canary rollbacks, code + PostgreSQL PITR rollbacks, and scoped `--agent` guardrails.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Coolify on a VPS?',
+          answer: costAnswer(
+            'Coolify software is free self-hosted (or $5/mo for Coolify Cloud across 2 servers) on top of a fixed VPS bill you pay whether apps are busy or idle.'
+          ),
+        },
+        {
+          question: 'Why switch from Coolify on a VPS to Gregale?',
+          answer:
+            'Teams move when they want scale-to-zero billing, Firecracker isolation, pre-wake OWASP WAF, default hard spend caps, and automatic rollbacks without operating their own Linux servers.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and 100%, and rolls back on its own if 5xx errors rise. On Coolify, you redeploy an earlier commit or image manually on your server.',
+        },
+      ],
+      sources: [
+        { label: 'Coolify pricing', url: 'https://coolify.io/pricing' },
+        { label: 'Coolify documentation', url: 'https://coolify.io/docs' },
+      ],
+    },
+    {
+      slug: 'cloudflare-workers',
+      competitor: 'Cloudflare Workers',
+      summary:
+        'Gregale vs Cloudflare Workers: V8 isolates & Cloudflare Containers vs Firecracker microVMs, full CPython/Docker support, bundled Postgres and canary rollbacks compared.',
+      rows: [
+        {
+          topic: 'Free plan',
+          gregale: g.rows.free,
+          them: 'Workers Free: $0 a month for 100,000 requests/day with 10 ms CPU time per invocation (no Containers on Free).',
+        },
+        {
+          topic: 'Cheapest paid option',
+          gregale: g.rows.paid,
+          them: 'Workers Paid: $5 a month minimum with 10M requests and 30M CPU ms included ($0.30/M extra requests, $0.02/M extra CPU ms); Containers bill extra CPU, RAM and disk.',
+        },
+        {
+          topic: 'How compute is billed',
+          gregale: g.rows.billing,
+          them: 'Workers bill active CPU ms and requests (zero egress fees); Containers bill active CPU, allocated RAM and disk per 10 ms past included allowances.',
+        },
+        {
+          topic: 'Idle apps',
+          gregale: g.rows.idle,
+          them: 'Workers isolates consume nothing when idle; Containers also scale to zero when inactive.',
+        },
+        {
+          topic: 'Releases',
+          gregale: g.rows.releases,
+          them: 'Gradual deployments let you split percentages manually between two Worker versions; not default automatic 1%→100% 5xx rollback across Docker/Postgres.',
+        },
+        {
+          topic: 'Isolation',
+          gregale: g.rows.isolation,
+          them: 'V8 isolates on Workers (128 MB memory limit) and isolated Linux containers on Cloudflare Containers.',
+        },
+        {
+          topic: 'Postgres',
+          gregale: g.rows.postgres,
+          them: 'Cloudflare D1 (SQLite) natively, or external PostgreSQL over Hyperdrive connection pooling.',
+        },
+        {
+          topic: 'Preview environments',
+          gregale: g.rows.previews,
+          them: 'Preview URLs generated automatically for uploaded Worker versions.',
+        },
+        {
+          topic: 'Local disk',
+          gregale: g.rows.disk,
+          them: 'R2 object storage, KV and Durable Objects on Workers; ephemeral container disk on Containers.',
+        },
+        {
+          topic: 'Regions',
+          gregale: g.rows.regions,
+          them: 'Global Anycast network across 300+ Cloudflare edge locations.',
+        },
+      ],
+      theyFit: [
+        'You need ultra-low-latency global edge execution across 300+ PoPs with zero egress fees.',
+        'Your backend is lightweight JavaScript/TypeScript built around D1, KV, R2, or Durable Objects.',
+        'You run pure edge routing, auth middleware, or streaming Workers where V8 isolates excel.',
+      ],
+      gregaleFits: [
+        'You run FastAPI, FastMCP, Django, Express, or Go with standard C/native libraries and Linux Dockerfiles without V8 or Pyodide 128 MB isolate limits.',
+        'You want bundled managed PostgreSQL with code + DB point-in-time rollbacks (`--restore-databases`).',
+        'You want automatic 1%→100% 5xx canary rollbacks, managed scale-to-zero WebSockets, and scoped `--agent` guardrails.',
+      ],
+      migrateDoc: 'container-compatibility',
+      migrateLabel: 'Container compatibility',
+      faq: [
+        {
+          question: 'Is Gregale cheaper than Cloudflare Workers?',
+          answer: costAnswer(
+            'Cloudflare Workers Free covers 100,000 requests/day inside 10 ms CPU isolates and Workers Paid starts at $5/mo with zero egress fees, while Cloudflare Containers bill separate CPU, RAM and disk rates.'
+          ),
+        },
+        {
+          question:
+            'Why run Python FastAPI or MCP servers on Gregale instead of Cloudflare Workers?',
+          answer:
+            'Cloudflare Python Workers execute inside WebAssembly/Pyodide isolates capped at 128 MB memory, whereas Gregale runs full CPython 3.13 or standard Linux Dockerfiles in isolated Firecracker microVMs.',
+        },
+        {
+          question: 'What happens if a release breaks?',
+          answer:
+            'On Gregale, a production release first gets 1% of traffic, then 10%, 50% and 100%, and rolls back on its own if 5xx errors rise. On Cloudflare Workers, you adjust gradual deployment weights or roll back versions manually.',
+        },
+      ],
+      sources: [
+        {
+          label: 'Cloudflare Workers pricing',
+          url: 'https://developers.cloudflare.com/workers/platform/pricing/',
+        },
+        {
+          label: 'Cloudflare Workers limits',
+          url: 'https://developers.cloudflare.com/workers/platform/limits/',
+        },
+        {
+          label: 'Cloudflare Containers pricing',
+          url: 'https://developers.cloudflare.com/containers/pricing/',
+        },
+      ],
+    },
   ];
 }
 
@@ -1018,4 +1213,6 @@ export const COMPARISON_SLUGS = [
   'vercel',
   'koyeb',
   'northflank',
+  'coolify',
+  'cloudflare-workers',
 ] as const;

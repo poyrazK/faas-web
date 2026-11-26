@@ -758,6 +758,58 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: 'coolify-alternatives',
+    alternativesTo: 'coolify',
+    title: 'Coolify alternatives in 2026',
+    summary:
+      'Gregale, Dokploy, Railway, Render and Fly.io compared against self-hosted Coolify on maintenance, idle billing, Firecracker isolation, WAF and rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'What is the best managed alternative to Coolify?',
+        answer:
+          'Railway and Render offer easy Git-push PaaS workflows, Fly.io fits multi-region Firecracker containers, and Gregale adds ~1s idle pause billing, default hard spend caps, pre-wake OWASP WAF, and automatic 1%→100% 5xx canary rollbacks.',
+      },
+      {
+        question: 'Can Gregale match Coolify VPS pricing for low-traffic apps?',
+        answer:
+          'For intermittent or low-traffic APIs, Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month at $0, and paid apps pause billing ~1 second after requests complete instead of running 24/7 on a paid VPS.',
+      },
+      {
+        question: 'When should I stay on Coolify instead of moving to a managed PaaS?',
+        answer:
+          'Stay on Coolify + Hetzner or DigitalOcean when you run steady heavy 24/7 services and want maximum raw RAM/CPU per dollar, durable host volumes, and full Linux root ownership.',
+      },
+    ],
+  },
+  {
+    slug: 'cloudflare-workers-alternatives',
+    alternativesTo: 'cloudflare-workers',
+    title: 'Cloudflare Workers alternatives in 2026',
+    summary:
+      'Gregale, Google Cloud Run, Fly.io, Railway and Render compared against Cloudflare Workers when you need full CPython/Docker, bundled Postgres and automatic canary rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'What is the best Cloudflare Workers alternative for Python and Docker APIs?',
+        answer:
+          'Google Cloud Run, Fly.io and Gregale run full Linux Docker containers without Pyodide or V8 isolate constraints. Gregale adds ~1s idle pause billing, bundled managed PostgreSQL with PITR rollback, and automatic 1%→100% 5xx canary rollbacks.',
+      },
+      {
+        question: 'Does Gregale have a free plan without isolate limits?',
+        answer:
+          'Yes. Gregale Free covers 1 app with 256 MB and 20 GB-RAM-hours a month on full Firecracker microVMs, stopping at the allowance rather than billing overage.',
+      },
+      {
+        question: 'When is Cloudflare Workers still the better fit?',
+        answer:
+          'Stay on Cloudflare Workers when you need sub-10ms edge execution across 300+ global PoPs, zero egress charges, or tight integration with D1, KV, and Durable Objects.',
+      },
+    ],
+  },
+  {
     slug: CURSOR_SLUG,
     title: 'Let Cursor deploy to production safely',
     summary:
@@ -1463,6 +1515,133 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: 'antigravity-ide-mcp-server-deploy',
+    title: 'Connect Antigravity IDE to an MCP server and deploy backends safely',
+    summary:
+      'Wire Google Antigravity IDE or agy to Gregale’s hosted MCP server in one command, teach repos with AGENTS.md, or host your own Streamable HTTP MCP server at $0 idle.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How do I connect Gregale’s MCP server inside Antigravity IDE?',
+        answer:
+          'Run `gregale mcp connect --client antigravity` (or `--project` for `.agents/mcp_config.json`), then open Customizations → Installed and select Authenticate next to `gregale`, or run `/mcp` in `agy`.',
+      },
+      {
+        question:
+          'Can Antigravity IDE deploy and inspect apps without my personal browser login in CI?',
+        answer:
+          'Antigravity MCP uses browser OAuth, while headless automation uses `GREGALE_TOKEN` created via `gregale key create <name> --agent` with `--non-interactive --json`.',
+      },
+      {
+        question: 'Can I host my own custom MCP server on Gregale for Antigravity IDE?',
+        answer:
+          'Yes. Run `gregale mcp server init` (Node, Python, or Go), define explicit `auth.tool_scopes` in `gregale-mcp.json`, and deploy to Gregale with scale-to-zero between sessions.',
+      },
+    ],
+  },
+  {
+    slug: 'stop-bot-traffic-cloud-bill-shock',
+    title: 'How to stop bot traffic cloud bill shock without taking your site down',
+    summary:
+      'Hard spend caps alone convert DDoS and scraper bursts into outages; block hostile requests at the edge with OWASP WAF and proof-of-work challenges before waking compute.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Why does a spend cap alone fail during a bot or scraper spike?',
+        answer:
+          'On platforms that only pause workloads at a billing ceiling, bots keep hitting your containers until they exhaust your spend limit, knocking real users offline.',
+      },
+      {
+        question: 'Do requests blocked by Gregale WAF or browser challenges cost money?',
+        answer:
+          'No. Requests refused at the edge with WAF `block`, proof-of-work challenges, rate limits, or access controls never wake parked microVMs and add $0 to compute bills.',
+      },
+      {
+        question: 'Will browser challenges break legitimate API clients or mobile apps?',
+        answer:
+          'No. Requests carrying a verified API key, consumer key, or JWT bypass the browser challenge automatically.',
+      },
+    ],
+  },
+  {
+    slug: 'deploy-vibe-coded-app-to-production',
+    title: 'How to deploy a vibe-coded app (Claude Code, Cursor, Antigravity) to production safely',
+    summary:
+      'Ship AI-generated backends from localhost to production with hard default spend caps, scoped agent tokens, deploy secret/CVE scans, 1% canary rollbacks and DB-synced recovery.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How do I stop an AI coding agent from causing a runaway cloud bill?',
+        answer:
+          'Use a Free plan (stops at its monthly allowance) or a paid plan with default hard monthly spend caps (`$10`/`$50`/`$150`), and give the agent a scoped `--agent` key with per-agent budgets and `gregale scale --plan` cost previews.',
+      },
+      {
+        question: 'What protects production if an agent pushes a bad migration or bug?',
+        answer:
+          'Production releases roll out 1% → 10% → 50% → 100% with automatic 5xx rollback (beta), and `gregale rollback --restore-databases` reverts code and managed PostgreSQL together.',
+      },
+      {
+        question:
+          'Why aren’t prompt instructions in AGENTS.md or .cursorrules enough on their own?',
+        answer:
+          'Agents can misread or ignore prompt text; Gregale enforces budgets, approval links, dry-run checks, CVE scans and canary rollbacks server-side in its API.',
+      },
+    ],
+  },
+  {
+    slug: 'host-python-fastmcp-server',
+    title: 'Where to host a Python FastMCP remote MCP server with auth and scale-to-zero',
+    summary:
+      'Run Streamable HTTP Python MCP servers in full CPython 3.13 Firecracker microVMs without 128 MB Pyodide isolate limits, paying $0 while idle and enforcing per-tool allowlists.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Why run Python MCP servers on Firecracker microVMs instead of edge isolates?',
+        answer:
+          'Full Linux/amd64 Firecracker microVMs run native CPython 3.13 packages and Dockerfiles cleanly without WebAssembly/Pyodide compatibility workarounds or 128 MB isolate limits.',
+      },
+      {
+        question: 'Does a hosted Python MCP server cost money while nobody is chatting with it?',
+        answer:
+          'No. Idle instances pause ~1 second after a request completes and park to snapshot at $0 compute cost until the next `/mcp` request arrives.',
+      },
+      {
+        question: 'How are individual MCP tools secured once hosted remotely?',
+        answer:
+          'List permitted tools in `auth.tool_scopes` inside `gregale-mcp.json`; unlisted tools stay hidden and are rejected with `403 tool_access_denied`.',
+      },
+    ],
+  },
+  {
+    slug: 'remote-dev-environment-without-docker-desktop',
+    title: 'Remote cloud dev environments without Docker Desktop or local KVM',
+    summary:
+      'Run `gregale dev` for an isolated, auto-expiring Firecracker dev environment with hot reload, managed PostgreSQL and production-identical routing — no local KVM or Docker needed.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do I need Linux, KVM, or Docker Desktop installed to use gregale dev?',
+        answer:
+          'No. Builds and Firecracker microVMs run remotely on Gregale’s infrastructure while local source edits sync automatically.',
+      },
+      {
+        question: 'Do developer apps count against my production deployed apps quota?',
+        answer:
+          'No. `gregale dev` has a separate developer-app allowance (1 on Free, 2 Hobby, 5 Pro, 10 Scale) and auto-expires after an idle lease (24h default, configurable per plan).',
+      },
+      {
+        question: 'Can I attach managed PostgreSQL inside a remote dev session?',
+        answer:
+          'Yes, on Hobby, Pro, and Scale plans pass `gregale dev --postgres` to provision a managed PostgreSQL database wired directly into the dev session.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -1525,6 +1704,16 @@ const OBJECT_STORAGE_LINK = `[Private app object storage and direct browser uplo
 const EGRESS_DENYLIST_LINK = `[Default SSRF protection with platform egress denylists across every plan](/articles/${EGRESS_DENYLIST_SLUG}) explains blocked RFC1918/metadata/NAT64 ranges, closed ports and registry SSRF guards.`;
 const STORED_WORKFLOW_RECOVERY_LINK = `[Diagnose and recover failed stored workflows and missed schedules safely](/articles/${STORED_WORKFLOW_RECOVERY_SLUG}) explains recovery diagnostics, generation-fenced resumes, schedule catch-up and batch jobs.`;
 const CONTAINER_COMPAT_LINK = `[Deploy any Docker container at scale-to-zero without rewriting for serverless](/articles/${CONTAINER_COMPAT_SLUG}) explains the Linux/amd64 OCI contract, snapshot PRNG reseeding and private registry pulls.`;
+const ANTIGRAVITY_LINK =
+  '[Connect Antigravity IDE to an MCP server and deploy backends safely](/articles/antigravity-ide-mcp-server-deploy) covers browser OAuth MCP setup, `AGENTS.md`, scoped CI keys and hosting custom Streamable HTTP MCP servers.';
+const BOT_BILL_SHOCK_LINK =
+  '[How to stop bot traffic cloud bill shock without taking your site down](/articles/stop-bot-traffic-cloud-bill-shock) compares spend caps that take apps offline against pre-wake OWASP WAF and browser challenges.';
+const VIBE_DEPLOY_LINK =
+  '[How to deploy a vibe-coded app (Claude Code, Cursor, Antigravity) to production safely](/articles/deploy-vibe-coded-app-to-production) shows default spend caps, scoped agent keys, deploy scans and atomic DB rollbacks.';
+const PYTHON_FASTMCP_LINK =
+  '[Where to host a Python FastMCP remote MCP server with auth and scale-to-zero](/articles/host-python-fastmcp-server) explains CPython 3.13 support, $0 idle parking and fail-closed tool allowlists.';
+const REMOTE_DEV_LINK =
+  '[Remote cloud dev environments without Docker Desktop or local KVM](/articles/remote-dev-environment-without-docker-desktop) covers hot-reload remote microVMs, Postgres bindings and auto-expiring leases.';
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
@@ -1539,7 +1728,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'internal-services': INTERNAL_SERVICES_LINK,
   companions: COMPANIONS_LINK,
   'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
-  'cost-controls': SPEND_CAPS_LINK,
+  'cost-controls': `${SPEND_CAPS_LINK} ${BOT_BILL_SHOCK_LINK}`,
   tracing: OTEL_TRACING_LINK,
   'scaling-policy': AUTOSCALE_LAG_LINK,
   'environment-promotion': ENV_PROMOTION_LINK,
@@ -1558,7 +1747,9 @@ const RELATED_ARTICLES: Record<string, string> = {
   'egress-denylist': EGRESS_DENYLIST_LINK,
   'stored-workflows': STORED_WORKFLOW_RECOVERY_LINK,
   'stored-workflows-recovery': STORED_WORKFLOW_RECOVERY_LINK,
-  agents: AGENT_SAFETY_LINK,
+  agents: `${AGENT_SAFETY_LINK} ${VIBE_DEPLOY_LINK}`,
+  antigravity: ANTIGRAVITY_LINK,
+  dev: REMOTE_DEV_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: CODEX_LINK,
   cursor: CURSOR_LINK,
@@ -1568,7 +1759,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'deploy-express': NODE_WORKER_LINK,
   'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK}`,
   'getting-started': NO_DEVOPS_LINK,
-  'mcp-hosting': MCP_LINK,
+  'mcp-hosting': `${MCP_LINK} ${PYTHON_FASTMCP_LINK}`,
   'preview-environments': PREVIEW_LINK,
   'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
@@ -1577,7 +1768,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   rollouts: CANARY_LINK,
   releases: CANARY_LINK,
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
-  security: MICROVM_LINK,
+  security: `${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
   compliance: MICROVM_LINK,
   'container-compatibility': `${CONTAINER_COMPAT_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,

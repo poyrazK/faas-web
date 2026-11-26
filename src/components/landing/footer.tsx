@@ -52,6 +52,12 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Gregale vs Vercel', href: '/vs/vercel', compare: 'vercel' },
       { label: 'Gregale vs Koyeb', href: '/vs/koyeb', compare: 'koyeb' },
       { label: 'Gregale vs Northflank', href: '/vs/northflank', compare: 'northflank' },
+      { label: 'Gregale vs Coolify', href: '/vs/coolify', compare: 'coolify' },
+      {
+        label: 'Gregale vs Cloudflare Workers',
+        href: '/vs/cloudflare-workers',
+        compare: 'cloudflare-workers',
+      },
     ],
   },
   {
