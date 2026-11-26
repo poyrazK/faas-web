@@ -22,6 +22,8 @@ export type ReleasePanel = (typeof RELEASE_PANELS)[number];
 
 export interface ReleasePageSearch extends Record<string, unknown> {
   panel?: ReleasePanel;
+  sandbox?: true;
+  sandboxScenario?: string;
 }
 
 export function isReleasePanel(value: unknown): value is ReleasePanel {
@@ -29,8 +31,16 @@ export function isReleasePanel(value: unknown): value is ReleasePanel {
 }
 
 export function validateReleasePageSearch(raw: Record<string, unknown>): ReleasePageSearch {
-  const { panel, ...rest } = raw;
-  return isReleasePanel(panel) ? { ...rest, panel } : rest;
+  const { panel, sandbox, sandboxScenario, ...rest } = raw;
+  return {
+    ...rest,
+    ...(isReleasePanel(panel) ? { panel } : {}),
+    ...(sandbox === true ? { sandbox } : {}),
+    ...(typeof sandboxScenario === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sandboxScenario)
+      ? { sandboxScenario }
+      : {}),
+  };
 }
 
 const SECTION_PANELS: Record<string, ReleasePanel> = {

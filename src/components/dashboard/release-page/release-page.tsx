@@ -25,6 +25,7 @@ import type { ReleasePanel } from './panels';
 import { ReleaseTileGrid } from './tile';
 import { RELEASE_TILES } from './tiles';
 import { ReleaseMainAction } from './main-action-button';
+import { ReleaseAPISandboxes } from './api-sandboxes';
 import type { RolloutGroup } from './rollout-popup';
 
 export type Build = components['schemas']['BuildResponse'];
@@ -40,7 +41,17 @@ export interface ReleaseContext {
 }
 
 /** A release's own page: header, failure, process, tiles and facts. */
-export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploymentId: string }) {
+export function ReleasePage({
+  appSlug,
+  deploymentId,
+  openAPISandboxes = false,
+  initialSandboxScenario,
+}: {
+  appSlug: string;
+  deploymentId: string;
+  openAPISandboxes?: boolean;
+  initialSandboxScenario?: string;
+}) {
   const app = useApp(appSlug);
   const detail = useDeployment(deploymentId, {
     refetchInterval: (query) => (isDeploymentTerminal(query.state.data?.status) ? false : 2_500),
@@ -141,6 +152,17 @@ export function ReleasePage({ appSlug, deploymentId }: { appSlug: string; deploy
         <p className="text-sm">{shippedLine(ctx.deployment, build)}</p>
         <ReleaseProcess phases={releaseProcess(ctx.deployment)} />
       </section>
+      {app.data?.type === 'app' &&
+      !app.data.preview_of_slug &&
+      ['live', 'superseded'].includes(ctx.deployment.status) ? (
+        <ReleaseAPISandboxes
+          key={`${ctx.deployment.id}/${openAPISandboxes}/${initialSandboxScenario ?? ''}`}
+          slug={appSlug}
+          deployment={ctx.deployment.id}
+          initialOpen={openAPISandboxes}
+          initialScenario={initialSandboxScenario}
+        />
+      ) : null}
       <ReleaseTileGrid>
         {tiles.map((tile) => (
           <tile.Tile key={tile.panel} ctx={ctx} onOpen={() => open(tile.panel)} />

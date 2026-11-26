@@ -24,6 +24,7 @@ import { minutesLabel } from '@/lib/api/release-freezes';
 import { cn } from '@/lib/utils';
 import { Sheet } from './kit/sheet';
 import { InlinePhase, queryPhase } from './primitives';
+import { SandboxApprovalChecks } from './release-page/api-sandbox-approval-checks';
 import { ReleaseChannelPicker } from './release-channel-picker';
 import { SafetyCard, useVersionName } from './release-safety-card';
 import { approvalCardWords, approvalPolicyDetails } from './release-safety-words';
@@ -90,11 +91,13 @@ export function ReleaseApproval({
   deploymentId,
   release,
   intent,
+  includeSandboxChecks,
 }: {
   deploymentId: string;
   /** "v44" or a short id, for the confirmations. */
   release: string;
   intent?: 'approve' | 'reject';
+  includeSandboxChecks?: boolean;
 }) {
   const status = useReleaseApproval(deploymentId);
   const decide = useDecideRelease();
@@ -129,16 +132,23 @@ export function ReleaseApproval({
     }
     if (decision === 'reject' ? commentProblem : comment.length > APPROVAL_LIMITS.comment) return;
     const remaining = Math.max((data.required_approvals ?? 1) - data.approvals, 0);
+    const commandApproval = data.require_passing_sandbox_suite
+      ? 'Gregale needs the required human approvals and a current passing sandbox suite before it can run the production release command.'
+      : 'Once enough people approve, Gregale can run the production release command and start the rollout.';
     const ok = await confirm(
       decision === 'approve'
         ? {
             title: `Approve ${data.app} ${release}?`,
-            description: `Your approval counts toward the ${data.required_approvals ?? 1} the policy needs (${remaining} still missing). Once enough people approve, the rollout continues past stage ${data.after_stage ?? 1} on its next step and the release takes more production traffic. An approved release can no longer be rejected; abort its rollout to stop it.`,
+            description: data.before_release_command
+              ? `Your approval counts toward the ${data.required_approvals ?? 1} the policy needs (${remaining} still missing). ${commandApproval}`
+              : `Your approval counts toward the ${data.required_approvals ?? 1} the policy needs (${remaining} still missing). Once enough people approve, the rollout continues past stage ${data.after_stage ?? 1} on its next step and the release takes more production traffic. An approved release can no longer be rejected; abort its rollout to stop it.`,
             confirmLabel: 'Approve release',
           }
         : {
             title: `Reject ${data.app} ${release}?`,
-            description: `The rollout is aborted at once and the release serving before it takes its traffic back. A rejection is final: shipping this change again needs a new deploy. Your reason, “${comment.trim()}”, is recorded and sent to the policy’s channels.`,
+            description: data.before_release_command
+              ? `Gregale will stop this release before it runs the production release command. Your reason, “${comment.trim()}”, is recorded and sent to the policy’s channels.`
+              : `The rollout is aborted at once and the release serving before it takes its traffic back. A rejection is final: shipping this change again needs a new deploy. Your reason, “${comment.trim()}”, is recorded and sent to the policy’s channels.`,
             confirmLabel: 'Reject release',
             destructive: true,
           }
@@ -160,7 +170,9 @@ export function ReleaseApproval({
           decision === 'reject'
             ? 'The rollout is being aborted.'
             : next.state === 'approved'
-              ? 'The rollout continues on its next step.'
+              ? next.require_passing_sandbox_suite
+                ? 'The production release command also needs a current passing sandbox suite.'
+                : 'The rollout continues on its next step.'
               : `${Math.max((next.required_approvals ?? 1) - next.approvals, 0)} more approval(s) needed.`,
       });
     } catch (err) {
@@ -181,7 +193,9 @@ export function ReleaseApproval({
         </p>
         {data.state !== 'not_required' && (
           <p className="text-xs text-muted-foreground">
-            Waits at canary stage {data.after_stage ?? 1}
+            {data.before_release_command
+              ? 'Approval before the release command'
+              : `Waits at canary stage ${data.after_stage ?? 1}`}
             {data.deployed_by && ` · deployed by ${data.deployed_by}`}
             {data.waiting_since && (
               <>
@@ -192,7 +206,10 @@ export function ReleaseApproval({
             {data.expires_at && data.state === 'waiting' && (
               <>
                 {' · aborts '}
-                <Timestamp value={data.expires_at} mode="absolute" /> unless approved
+                <Timestamp value={data.expires_at} mode="absolute" />
+                {data.require_passing_sandbox_suite
+                  ? ' unless approvals and a passing sandbox suite are ready'
+                  : ' unless approved'}
               </>
             )}
           </p>
@@ -238,6 +255,13 @@ export function ReleaseApproval({
           ))}
         </ul>
       )}
+      {includeSandboxChecks ? (
+        <SandboxApprovalChecks
+          deploymentId={deploymentId}
+          slug={data.app}
+          beforeReleaseCommand={Boolean(data.before_release_command)}
+        />
+      ) : null}
       {data.state === 'waiting' && (
         <div className="flex flex-col gap-2">
           <label className="flex flex-col gap-1.5">
@@ -382,6 +406,7 @@ type Draft = {
   timeout: number;
   approvers: ApprovalPolicy['approvers'];
   self: boolean;
+  sandbox: boolean;
   notify: string[];
 };
 const draftOf = (p: ApprovalPolicy | null): Draft => ({
@@ -390,6 +415,7 @@ const draftOf = (p: ApprovalPolicy | null): Draft => ({
   timeout: p?.timeout_minutes ?? 1440,
   approvers: p?.approvers ?? 'admin',
   self: p?.allow_self_approval ?? false,
+  sandbox: p?.require_passing_sandbox_suite ?? false,
   notify: p?.notify_channels ?? [],
 });
 const inRange = (n: number, [lo, hi]: readonly [number, number]) =>
@@ -442,7 +468,7 @@ function ApprovalPolicySheet({
     if (invalid || save.isPending) return;
     const ok = await confirm({
       title: `${current ? 'Change' : 'Require'} release approvals for ${slug}?`,
-      description: `Each production release of ${slug} then waits at canary stage ${draft.stage} until ${draft.required} ${approversLabel(draft.approvers)}${draft.self ? '' : ' other than the deployer'} approve it, and is aborted after ${minutesLabel(draft.timeout)} without them. Releases without a canary are refused (release_approval_canary_required). ${draft.notify.join(', ')} hear when a release waits, is decided or times out.`,
+      description: `Each production release of ${slug} then waits at canary stage ${draft.stage} until ${draft.required} ${approversLabel(draft.approvers)}${draft.self ? '' : ' other than the deployer'} approve it, and is aborted after ${minutesLabel(draft.timeout)} without them. Releases without a canary are refused (release_approval_canary_required). ${draft.notify.join(', ')} hear when a release waits, is decided or times out.${draft.sandbox ? ' Production release commands that wait for approval also need a current passing sandbox suite.' : ''}`,
       confirmLabel: current ? 'Save policy' : 'Require approvals',
     });
     if (!ok) return;
@@ -454,6 +480,9 @@ function ApprovalPolicySheet({
         timeout_minutes: draft.timeout,
         approvers: draft.approvers,
         allow_self_approval: draft.self,
+        ...(draft.sandbox || current?.require_passing_sandbox_suite
+          ? { require_passing_sandbox_suite: draft.sandbox }
+          : {}),
         notify_channels: draft.notify,
       });
       toast({ kind: 'success', title: 'Approval policy saved' });
@@ -562,6 +591,21 @@ function ApprovalPolicySheet({
           legend="Tell approvers in"
         />
         {shown('notify') && <FieldError id="approval-notify-error">{shown('notify')}</FieldError>}
+        <div className="grid gap-1">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={draft.sandbox}
+              aria-describedby="approval-sandbox-help"
+              onChange={(e) => set('sandbox', e.target.checked)}
+            />
+            Require a passing sandbox suite
+          </label>
+          <p id="approval-sandbox-help" className="text-xs text-muted-foreground">
+            Set up a regression suite first. Production release commands that wait for approval also
+            wait for the suite to pass.
+          </p>
+        </div>
         <details
           open={advancedOpen}
           onToggle={(e) => setAdvanced(e.currentTarget.open)}
@@ -669,6 +713,12 @@ export function ReleaseApprovals({ slug }: { slug: string }) {
                 <dd>{row.value}</dd>
               </div>
             ))}
+            {current.require_passing_sandbox_suite && (
+              <div>
+                <dt className="text-xs text-muted-foreground">Regression suite</dt>
+                <dd>Required before the release command</dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted-foreground">Last changed</dt>
               <dd>

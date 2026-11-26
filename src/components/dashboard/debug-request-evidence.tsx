@@ -10,6 +10,7 @@ import { safeDebugBundle, suggestedDebugChecks } from './debug-support';
 import { regressionKey } from './debug-search';
 import { DebugGate } from './debug-gate';
 import { DebugReplayAction } from './debug-replay';
+import { DebugSandboxScenarioAction } from './debug-sandbox-scenario';
 import {
   EvidenceCorrelation,
   EvidenceCriticalPath,
@@ -59,6 +60,7 @@ export function DebugRequestEvidence({
 }) {
   const evidence = useDebugRequestEvidence(slug, reqId ?? '');
   const data = evidence.data;
+  const requestId = data?.request.request_id ?? data?.request.id;
   const deployment = useDeployment(data?.request.deployment_id ?? '');
   const buildId =
     deployment.data?.id === data?.request.deployment_id ? deployment.data?.build_id : undefined;
@@ -394,14 +396,21 @@ export function DebugRequestEvidence({
                       ? 'Support bundle copied'
                       : ''}
                 </p>
-                {(data.request.request_id ?? data.request.id) && (
+                {requestId && (
                   <DebugReplayAction
                     slug={slug}
-                    reqId={(data.request.request_id ?? data.request.id)!}
+                    reqId={requestId}
                     method={data.request.method}
                     route={data.request.route}
                     deploymentId={data.request.deployment_id}
                     onCompare={onCompare}
+                  />
+                )}
+                {requestId && data.request.deployment_id && data.request.count === 1 && (
+                  <DebugSandboxScenarioAction
+                    key={`${slug}/${requestId}`}
+                    slug={slug}
+                    reqId={requestId}
                   />
                 )}
               </section>

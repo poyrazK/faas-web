@@ -28,3 +28,12 @@ it('preserves ordinary marketing attribution', () => {
 it('drops an invalid SDK URL instead of forwarding it', () => {
   expect(onboardingAnalyticsPrivacy({ type: 'event', url: 'invalid' })).toBeNull();
 });
+
+it('drops sandbox invite events before they can send a credential fragment', () => {
+  expect(
+    onboardingAnalyticsPrivacy({
+      type: 'pageview',
+      url: 'https://gregale.dev/api-sandbox/example#secret',
+    })
+  ).toBeNull();
+});

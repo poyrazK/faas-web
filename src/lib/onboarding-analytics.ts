@@ -5,6 +5,7 @@ export function onboardingAnalyticsPrivacy(event: BeforeSendEvent): BeforeSendEv
   try {
     const url = new URL(event.url);
     const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+    if (path.startsWith('/api-sandbox/')) return null;
     if (!['/onboarding', '/login', '/signup', '/will-it-run', '/dashboard/apps/new'].includes(path))
       return event;
     url.search = '';

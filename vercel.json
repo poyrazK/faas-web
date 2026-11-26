@@ -229,6 +229,15 @@
       "dest": "/index.html"
     },
     {
+      "src": "^/api-sandbox/[^/]+/?$",
+      "dest": "/index.html",
+      "headers": {
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Robots-Tag": "noindex, nofollow"
+      }
+    },
+    {
       "src": "^/invite/[^/]+/?$",
       "dest": "/index.html"
     },
