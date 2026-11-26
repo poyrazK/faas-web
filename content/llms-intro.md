@@ -35,7 +35,12 @@ Machine-readable entry points:
 - Every page in one file: [llms-full.txt](https://gregale.dev/llms-full.txt);
   the deploy-and-debug subset: [llms-small.txt](https://gregale.dev/llms-small.txt).
 - New articles and research: [Atom feed](https://gregale.dev/feed.xml).
-- Starter repositories to clone or use as GitHub templates:
+- Starter repositories & one-click GitHub deploys: browse all 11 starters on
+  [Templates](https://gregale.dev/templates.md) (`https://gregale.dev/templates`),
+  launch any public repo via `https://gregale.dev/deploy?repo=https://github.com/<owner>/<repo>`
+  ([Deploy on Gregale button](https://gregale.dev/docs/deploy-button.md)), or ask
+  questions in [Community Q&A](https://github.com/gregale-dev/community/discussions).
+  Key starters include
   [fastapi-postgres-jobs](https://github.com/gregale-dev/fastapi-postgres-jobs)
   (FastAPI with a Postgres job queue),
   [node-api-worker](https://github.com/gregale-dev/node-api-worker) (Express

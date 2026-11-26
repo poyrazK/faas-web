@@ -193,6 +193,13 @@ function DeployPage() {
                 >
                   Browse all Gregale templates
                 </Link>
+                <Link
+                  to="/docs/$slug"
+                  params={{ slug: 'deploy-button' }}
+                  className="underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  Button docs &amp; options
+                </Link>
                 <a
                   href={`https://github.com/gregale-dev/community/discussions`}
                   target="_blank"
@@ -242,13 +249,22 @@ function DeployPage() {
                   {formError}
                 </p>
               )}
-              <div className="mt-6 text-sm text-muted-foreground">
-                Looking for a prebuilt starter?{' '}
+              <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                <span>
+                  Looking for a prebuilt starter?{' '}
+                  <Link
+                    to="/templates"
+                    className="font-medium text-brand underline-offset-4 hover:underline"
+                  >
+                    Browse Gregale templates &amp; starters
+                  </Link>
+                </span>
                 <Link
-                  to="/templates"
-                  className="font-medium text-brand underline-offset-4 hover:underline"
+                  to="/docs/$slug"
+                  params={{ slug: 'deploy-button' }}
+                  className="underline-offset-4 hover:text-foreground hover:underline"
                 >
-                  Browse Gregale templates &amp; starters
+                  Button docs &amp; options
                 </Link>
               </div>
             </div>
