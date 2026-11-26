@@ -73,6 +73,10 @@ const OBJECT_STORAGE_SLUG = 'private-object-storage-without-s3-iam';
 const EGRESS_DENYLIST_SLUG = 'ssrf-protection-egress-denylist-paas';
 const STORED_WORKFLOW_RECOVERY_SLUG = 'stored-workflow-recovery-missed-schedules';
 const CONTAINER_COMPAT_SLUG = 'deploy-docker-container-scale-to-zero-no-rewrite';
+const NEXTJS_POSTGRES_SLUG = 'host-nextjs-postgres-outside-vercel';
+const BUN_HONO_SLUG = 'host-bun-hono-postgres-api';
+const DJANGO_POSTGRES_SLUG = 'host-django-postgres-migrations-rollback';
+const GO_API_SLUG = 'host-go-api-scale-to-zero';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -1730,6 +1734,106 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: NEXTJS_POSTGRES_SLUG,
+    title: 'Host Next.js 16 and PostgreSQL outside Vercel without DevOps',
+    summary:
+      'Deploy Next.js 16 Server Components, Route Handlers and Server Actions with automatic standalone sizing (~40 MB), bundled managed PostgreSQL on Hobby ($10/mo), PR previews and 5xx canary rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Does Next.js 16 fit inside Gregale Free with standalone builds?',
+        answer:
+          'Yes. When package.json uses a plain next start script, Gregale enables standalone output and ships only the standalone bundle (~40 MB instead of ~530 MB), fitting Free’s 256 MB app-layer limit.',
+      },
+      {
+        question: 'Do Server Components and Server Actions work without serverless adapters?',
+        answer:
+          'Yes. Gregale runs Next.js as a full Node process inside an isolated Firecracker microVM, so Server Components, Route Handlers, Middleware and Postgres connection pools work out of the box.',
+      },
+      {
+        question: 'Can I bundle managed PostgreSQL with Next.js on Gregale?',
+        answer:
+          'Yes. Managed PostgreSQL is included on Hobby ($10 a month) and higher plans, wired automatically as DATABASE_URL with optional point-in-time rollback alongside app releases.',
+      },
+    ],
+  },
+  {
+    slug: BUN_HONO_SLUG,
+    title: 'Host a Bun and Hono API with PostgreSQL and ~1s idle pause',
+    summary:
+      'Deploy Bun TypeScript APIs with automatic bun.lock detection, ~95 MB Free-plan footprint, bundled managed PostgreSQL and automatic 5xx canary rollbacks.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale detect and build a Bun + Hono app?',
+        answer:
+          'A committed bun.lock file switches the builder to install dependencies with bun install --frozen-lockfile and start the TypeScript entrypoint directly with bun run start.',
+      },
+      {
+        question: 'Does a Bun + Hono API fit on Gregale Free?',
+        answer:
+          'Yes. As long as your start scripts call bun or bunx rather than npm toolchain wrappers, Gregale keeps only Bun (~90 MB) beside your app (~95 MB total), leaving ~160 MB under Free’s 256 MB cap.',
+      },
+      {
+        question: 'What happens to billing between Bun API requests?',
+        answer:
+          'About a second after its last HTTP request completes, the microVM pauses and stops accruing compute charges until the next request arrives.',
+      },
+    ],
+  },
+  {
+    slug: DJANGO_POSTGRES_SLUG,
+    title: 'Host Django and Postgres with safe pre-traffic migrations and rollback',
+    summary:
+      'Run Gunicorn, separate read/write DATABASE_URL from pre-traffic MIGRATION_DATABASE_URL, and recover code plus PostgreSQL state together on Gregale.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale separate Django runtime and migration database credentials?',
+        answer:
+          'Runtime instances receive pooled DATABASE_URL with data-only privileges and DISABLE_SERVER_SIDE_CURSORS enabled, while pre-traffic release commands receive MIGRATION_DATABASE_URL scoped to schema migrations.',
+      },
+      {
+        question: 'What if a Django migration breaks production after deploy?',
+        answer:
+          'Production releases step through 1%, 10%, 50% and 100% traffic and stop automatically on 5xx errors without crossing a migration boundary, while paid plans let you restore code and Postgres together via PITR.',
+      },
+      {
+        question: 'Do I need to configure ALLOWED_HOSTS for Gregale deploys?',
+        answer:
+          'Yes. Include your default gregale.app domain and any custom domains in DJANGO_ALLOWED_HOSTS before deploying so health and post-deploy verification requests succeed.',
+      },
+    ],
+  },
+  {
+    slug: GO_API_SLUG,
+    title: 'Host Go APIs and MCP servers on scale-to-zero microVMs',
+    summary:
+      'Compile Go services automatically from go.mod to a small binary under Free’s 256 MB limit, pause billing ~1s after idle, and deploy with canary rollbacks and bundled Postgres.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do I need a Dockerfile to deploy a Go HTTP API on Gregale?',
+        answer:
+          'Not for standard module-root services. Gregale detects go.mod, picks the Go toolchain version from your go directive, compiles ./out and runs it automatically.',
+      },
+      {
+        question: 'How fast do scale-to-zero Go microVMs wake and stop billing?',
+        answer:
+          'Idle instances pause about one second after the last HTTP request to stop billing, park after 10 minutes, and resume quickly on the next request without an always-on VM charge.',
+      },
+      {
+        question: 'Why avoid a Heroku-style Procfile for Go apps on Gregale?',
+        answer:
+          'Heroku Go Procfiles often reference a custom binary name installed only by Heroku’s buildpack; on Gregale, remove that Procfile or point hosting start in gregale.yaml at ./out.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -1802,6 +1906,10 @@ const PYTHON_FASTMCP_LINK =
   '[Where to host a Python FastMCP remote MCP server with auth and scale-to-zero](/articles/host-python-fastmcp-server) explains CPython 3.13 support, $0 idle parking and fail-closed tool allowlists.';
 const REMOTE_DEV_LINK =
   '[Remote cloud dev environments without Docker Desktop or local KVM](/articles/remote-dev-environment-without-docker-desktop) covers hot-reload remote microVMs, Postgres bindings and auto-expiring leases.';
+const NEXTJS_POSTGRES_LINK = `[Host Next.js 16 and managed PostgreSQL outside Vercel](/articles/${NEXTJS_POSTGRES_SLUG}) shows automatic standalone sizing, Server Actions parity, bundled Postgres and canary rollbacks.`;
+const BUN_HONO_LINK = `[Host a Bun and Hono API with managed Postgres and scale-to-zero](/articles/${BUN_HONO_SLUG}) explains bun.lock detection, ~95 MB Free-plan fit and ~1s idle pause billing.`;
+const DJANGO_POSTGRES_LINK = `[Host Django with pre-traffic migrations and coordinated Postgres rollback](/articles/${DJANGO_POSTGRES_SLUG}) explains separated migration roles, Gunicorn setup and code + PITR rollbacks.`;
+const GO_API_LINK = `[Host Go APIs and Go MCP servers on scale-to-zero microVMs](/articles/${GO_API_SLUG}) covers zero-Dockerfile go.mod builds, small binaries and automatic 5xx canary rollbacks.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
@@ -1845,6 +1953,10 @@ const RELATED_ARTICLES: Record<string, string> = {
   'deploy-fastapi': FASTAPI_JOBS_LINK,
   jobs: FASTAPI_JOBS_LINK,
   'deploy-express': NODE_WORKER_LINK,
+  'deploy-nextjs': NEXTJS_POSTGRES_LINK,
+  'deploy-bun': BUN_HONO_LINK,
+  'deploy-django': DJANGO_POSTGRES_LINK,
+  'deploy-go': GO_API_LINK,
   'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK}`,
   'getting-started': NO_DEVOPS_LINK,
   'mcp-hosting': `${MCP_LINK} ${PYTHON_FASTMCP_LINK}`,
@@ -1941,12 +2053,16 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
   },
   {
     id: 'backend-foundations',
-    title: 'Backend foundations, storage & observability',
+    title: 'Backend foundations, frameworks & storage',
     description:
-      'No-DevOps startup architecture, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
+      'No-DevOps startup architecture, Next.js, Bun, Django, Go, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
     solutionSlug: 'backend-without-devops',
     slugs: [
       'backend-without-devops',
+      NEXTJS_POSTGRES_SLUG,
+      BUN_HONO_SLUG,
+      DJANGO_POSTGRES_SLUG,
+      GO_API_SLUG,
       FASTAPI_JOBS_SLUG,
       NODE_WORKER_SLUG,
       'preview-environments',

@@ -301,6 +301,52 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/articles"');
   });
 
+  it('publishes the 4 framework + Postgres answer articles with doc cross-links and /deploy links', () => {
+    const frameworkCases = [
+      {
+        slug: 'host-nextjs-postgres-outside-vercel',
+        doc: 'deploy-nextjs',
+        repo: 'nextjs-postgres-starter',
+      },
+      {
+        slug: 'host-bun-hono-postgres-api',
+        doc: 'deploy-bun',
+        repo: 'bun-hono-postgres-starter',
+      },
+      {
+        slug: 'host-django-postgres-migrations-rollback',
+        doc: 'deploy-django',
+        repo: 'postgres-migration-rollback-demo',
+      },
+      {
+        slug: 'host-go-api-scale-to-zero',
+        doc: 'deploy-go',
+        repo: 'mcp-server-go',
+      },
+    ];
+    for (const { slug, doc, repo } of frameworkCases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const md = readFileSync(`dist${route}.md`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-26' });
+      expect(faq.mainEntity.length).toBeGreaterThanOrEqual(3);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(html).toContain(`/deploy?repo=https://github.com/gregale-dev/${repo}`);
+      expect(md).toContain(`/deploy?repo=https://github.com/gregale-dev/${repo}`);
+      expect(readFileSync('dist/articles/index.html', 'utf8')).toContain(`href="${route}"`);
+      expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
+      expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(`https://gregale.dev${route}`);
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        `<loc>https://gregale.dev${route}</loc>`
+      );
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
   it('publishes the /features hub and all 8 flagship feature pages with schema and Markdown', () => {
     const slugs = [
       'database-rollbacks',
