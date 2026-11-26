@@ -119,7 +119,21 @@
       "continue": true
     },
     {
-      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known/mcp/server-card\\.json|(?:docs|articles|research|vs)/[a-z0-9_-]+\\.md)$",
+      "src": "^/(pricing|docs|articles|research)\\.md$",
+      "headers": {
+        "Link": "<https://gregale.dev/$1>; rel=\"canonical\""
+      },
+      "continue": true
+    },
+    {
+      "src": "^/index\\.md$",
+      "headers": {
+        "Link": "<https://gregale.dev/>; rel=\"canonical\""
+      },
+      "continue": true
+    },
+    {
+      "src": "^/(llms\\.txt|llms-full\\.txt|llms-small\\.txt|pricing\\.json|feed\\.xml|sitemap\\.xml|robots\\.txt|openapi\\.yaml|openapi\\.json|\\.well-known/mcp/server-card\\.json|(?:index|pricing|docs|articles|research)\\.md|(?:docs|articles|research|vs)/[a-z0-9_-]+\\.md)$",
       "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS"
@@ -134,7 +148,7 @@
       "continue": true
     },
     {
-      "src": "^/(?:docs/(?!api$)|(?:articles|research|vs)/)[a-z0-9_-]+$",
+      "src": "^/(?:(?:docs/(?!api$)|(?:articles|research|vs)/)[a-z0-9_-]+|pricing|docs|articles|research)?$",
       "headers": {
         "Vary": "Accept"
       },
@@ -271,6 +285,40 @@
         "Vary": "Accept"
       },
       "dest": "/$1/$2.md"
+    },
+    {
+      "src": "^/(pricing|docs|articles|research)$",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": ".*text/markdown.*"
+        }
+      ],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Link": "<https://gregale.dev/$1>; rel=\"canonical\"",
+        "Vary": "Accept"
+      },
+      "dest": "/$1.md"
+    },
+    {
+      "src": "^/$",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": ".*text/markdown.*"
+        }
+      ],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Link": "<https://gregale.dev/>; rel=\"canonical\"",
+        "Vary": "Accept"
+      },
+      "dest": "/index.md"
     },
     {
       "handle": "filesystem"

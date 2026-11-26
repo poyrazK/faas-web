@@ -44,6 +44,10 @@ export interface DocSection {
   entries: DocEntry[];
 }
 
+/** The docs index page's meta description, which its Markdown copy also opens with. */
+export const DOCS_DESCRIPTION =
+  'Deploy your first Gregale app, connect a repository, and learn how to run, observe, and scale your backend.';
+
 export const DOC_SECTIONS: DocSection[] = [
   {
     title: 'Start here',
