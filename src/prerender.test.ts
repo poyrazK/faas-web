@@ -351,6 +351,12 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/templates/index.html', 'utf8')).toContain(
       'https://github.com/gregale-dev/setup-gregale'
     );
+    expect(readFileSync('dist/templates/index.html', 'utf8')).toContain(
+      'https://github.com/gregale-dev/community/discussions'
+    );
+    expect(readFileSync('dist/templates.md', 'utf8')).toContain(
+      'https://github.com/gregale-dev/community/discussions'
+    );
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain('https://gregale.dev/templates.md');
   });
 
@@ -971,6 +977,7 @@ describeBuilt('structured data', () => {
     expect(graph).toBeInstanceOf(Array);
     const org = graph.find((node) => node['@type'] === 'Organization');
     expect(org?.sameAs).toContain('https://github.com/gregale-dev/benchmarks');
+    expect(org?.sameAs).toContain('https://github.com/gregale-dev/community');
     const software = graph.find((node) => node['@type'] === 'SoftwareApplication');
     expect(software?.offers).toMatchObject({ '@type': 'AggregateOffer', lowPrice: 0 });
     expect(software?.featureList?.length).toBeGreaterThanOrEqual(5);

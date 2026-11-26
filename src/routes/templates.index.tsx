@@ -40,6 +40,15 @@ function TemplatesIndex() {
             Browse github.com/gregale-dev
             <ArrowUpRight aria-hidden="true" className="size-4" />
           </a>
+          <a
+            href="https://github.com/gregale-dev/community/discussions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Community Q&amp;A (Discussions)
+            <ArrowUpRight aria-hidden="true" className="size-4" />
+          </a>
           <Link
             to="/features"
             className="inline-flex items-center gap-1.5 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"

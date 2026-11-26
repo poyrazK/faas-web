@@ -187,7 +187,7 @@ export function llmsIndex(
     (entry) => `- [${entry.title}](${entry.repoUrl}) (${entry.runtime}): ${entry.summary}`
   );
   parts.push(
-    `## ${TEMPLATES_TITLE}\n\n- [All templates & starters](${siteUrl}/templates.md): ${TEMPLATES_DESCRIPTION}\n${templates.join('\n')}`
+    `## ${TEMPLATES_TITLE}\n\n- [All templates & starters](${siteUrl}/templates.md): ${TEMPLATES_DESCRIPTION}\n- [Community Q&A Discussions](https://github.com/gregale-dev/community/discussions): Public architecture guides, troubleshooting, and answered Q&A threads on GitHub.\n${templates.join('\n')}`
   );
   const research = RESEARCH_PUBLICATIONS.map(
     (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
@@ -364,6 +364,7 @@ export function templatesIndexPage(siteUrl: string): string {
   return page([
     `# ${TEMPLATES_TITLE}`,
     `> ${TEMPLATES_DESCRIPTION}`,
+    `- [Community Q&A Discussions](https://github.com/gregale-dev/community/discussions): Public Q&A, troubleshooting, and architecture guides for Gregale starters and platform workflows.`,
     ...sections,
     `Canonical URL: ${siteUrl}/templates`,
   ]);
