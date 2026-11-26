@@ -123,6 +123,7 @@ describeBuilt('prerendered pages', () => {
     ['dist/pricing/index.html', '/pricing.md', 'https://gregale.dev/pricing'],
     ['dist/docs/index.html', '/docs.md', 'https://gregale.dev/docs'],
     ['dist/articles/index.html', '/articles.md', 'https://gregale.dev/articles'],
+    ['dist/features/index.html', '/features.md', 'https://gregale.dev/features'],
     ['dist/research/index.html', '/research.md', 'https://gregale.dev/research'],
   ])('publishes %s as Markdown at %s', (html, markdown, canonical) => {
     expect(readFileSync(html, 'utf8')).toContain(
@@ -295,6 +296,52 @@ describeBuilt('prerendered pages', () => {
       expect(readFileSync(`dist${route}.md`, 'utf8')).toContain(questions[0]);
     }
     expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/articles"');
+  });
+
+  it('publishes the /features hub and all 8 flagship feature pages with schema and Markdown', () => {
+    const slugs = [
+      'database-rollbacks',
+      'edge-security',
+      'realtime-scale-to-zero',
+      'durable-webhooks-and-workflows',
+      'firecracker-scale-to-zero',
+      'zero-secret-outbound',
+      'mcp-hosting',
+      'strict-budgets',
+    ];
+    const hub = readFileSync('dist/features/index.html', 'utf8');
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    const full = readFileSync('dist/llms-full.txt', 'utf8');
+
+    expect(readFileSync('dist/index.html', 'utf8')).toContain('href="/features"');
+    expect(hub).toContain('rel="canonical" href="https://gregale.dev/features"');
+    expect(hub).toContain('type="text/markdown" href="/features.md"');
+    expect(sitemap).toContain('<loc>https://gregale.dev/features</loc>');
+
+    for (const slug of slugs) {
+      const route = `/features/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const md = readFileSync(`dist${route}.md`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(hub).toContain(`href="${route}"`);
+      expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+      expect(html).toContain(`type="text/markdown" href="${route}.md"`);
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-26' });
+      expect(faq.mainEntity.length).toBeGreaterThan(0);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(md).toContain(`Canonical URL: https://gregale.dev${route}`);
+      expect(full).toContain(md.split('\n')[0]);
+      expect(sitemap).toContain(`<loc>https://gregale.dev${route}</loc>`);
+      expect(llms).toContain(`https://gregale.dev${route}.md`);
+    }
+
+    const vercel = readFileSync('vercel.json', 'utf8');
+    expect(vercel).toContain('^/(pricing|docs|articles|research|features)$');
+    expect(vercel).toContain('^/(articles|research|features|vs)/([a-z0-9_-]+)$');
   });
 
   it('publishes each alternatives roundup and links it from its comparison page', () => {
