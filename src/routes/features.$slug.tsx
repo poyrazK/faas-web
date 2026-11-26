@@ -1,10 +1,11 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router';
-import { ArrowLeft, ArrowRight } from 'iconoir-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight } from 'iconoir-react';
 import { Markdown } from '@/components/docs/markdown';
 import { ARTICLES, articleDate } from '@/lib/articles';
 import { findFeature, FEATURES_TITLE } from '@/lib/features';
 import { START_FREE_CTA } from '@/lib/platform-claims';
 import { RESEARCH_PUBLICATIONS } from '@/lib/research';
+import { templatesForFeature } from '@/lib/public-templates';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { pageHead } from '@/lib/seo';
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/features/$slug')({
 function FeaturePage() {
   const { feature, articles, research } = Route.useLoaderData();
   const primaryDoc = feature.docSlugs[0];
+  const starters = templatesForFeature(feature.slug);
   const codeBlock = `\`\`\`${feature.codeLanguage}\n${feature.codeSnippet}\n\`\`\``;
 
   return (
@@ -188,6 +190,49 @@ function FeaturePage() {
                     {item.summary}
                   </p>
                 </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {starters.length > 0 && (
+        <section aria-labelledby="starters-title" className="mt-12 border-t border-border pt-10">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 id="starters-title" className="text-2xl font-medium tracking-tight sm:text-3xl">
+              Runnable starters &amp; integrations ({starters.length})
+            </h2>
+            <Link
+              to="/templates"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand underline-offset-4 hover:underline"
+            >
+              Browse all templates
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </div>
+          <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+            {starters.map((starter) => (
+              <li key={starter.slug}>
+                <a
+                  href={starter.repoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex h-full flex-col justify-between rounded-2xl border border-border p-5 transition-colors hover:border-brand/60"
+                >
+                  <div>
+                    <p className="label-mono text-brand">{starter.runtime}</p>
+                    <div className="mt-2 flex items-start justify-between gap-3">
+                      <h3 className="text-lg font-medium tracking-tight">{starter.title}</h3>
+                      <ArrowUpRight
+                        aria-hidden="true"
+                        className="mt-1 size-4 shrink-0 text-brand"
+                      />
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                      {starter.summary}
+                    </p>
+                  </div>
+                </a>
               </li>
             ))}
           </ul>

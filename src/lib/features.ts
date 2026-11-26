@@ -1,5 +1,6 @@
 import type { FaqEntry } from './faq.ts';
 import { RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.ts';
+import { templatesForFeature } from './public-templates.ts';
 
 /**
  * Product-level feature pages showcasing Gregale's flagship GA and Beta
@@ -830,6 +831,16 @@ export function featureMarkdown(feature: Feature, siteUrl: string): string {
       .map((slug) => `- [${slug}](${siteUrl}/research/${slug}.md)`)
       .join('\n');
     sections.push(`## Research\n\n${studies}`);
+  }
+
+  const starters = templatesForFeature(feature.slug);
+  if (starters.length > 0) {
+    const starterLines = starters
+      .map((entry) => `- [${entry.title}](${entry.repoUrl}) (${entry.runtime}): ${entry.summary}`)
+      .join('\n');
+    sections.push(
+      `## Runnable starters on GitHub\n\n${starterLines}\n\nBrowse all starters: ${siteUrl}/templates.md`
+    );
   }
 
   sections.push(`## Frequently asked questions\n\n${faq}`);
