@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowRight, ArrowUpRight } from 'iconoir-react';
+import { deployButtonSearch, isDeployablePublicTemplate } from '@/lib/deploy-link';
 import {
   PUBLIC_TEMPLATES,
   TEMPLATE_CATEGORIES,
@@ -101,6 +102,16 @@ function TemplatesIndex() {
                       </pre>
                     </div>
                     <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
+                      {isDeployablePublicTemplate(item) && (
+                        <Link
+                          to="/deploy"
+                          search={deployButtonSearch(item.repoUrl)}
+                          className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1 font-medium text-brand-foreground transition-opacity hover:opacity-90"
+                        >
+                          Deploy on Gregale
+                          <ArrowRight aria-hidden="true" className="size-3.5" />
+                        </Link>
+                      )}
                       <a
                         href={item.repoUrl}
                         target="_blank"

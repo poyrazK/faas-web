@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArticlesRouteImport } from './routes/articles'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DeployRouteImport } from './routes/deploy'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as LoginRouteImport } from './routes/login'
@@ -129,6 +130,11 @@ const ContactRoute = ContactRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeployRoute = DeployRouteImport.update({
+  id: '/deploy',
+  path: '/deploy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -629,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/deploy': typeof DeployRoute
   '/docs': typeof DocsRouteWithChildren
   '/features': typeof FeaturesRouteWithChildren
   '/login': typeof LoginRoute
@@ -730,6 +737,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/contact': typeof ContactRoute
+  '/deploy': typeof DeployRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
@@ -827,6 +835,7 @@ export interface FileRoutesById {
   '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/deploy': typeof DeployRoute
   '/docs': typeof DocsRouteWithChildren
   '/features': typeof FeaturesRouteWithChildren
   '/login': typeof LoginRoute
@@ -932,6 +941,7 @@ export interface FileRouteTypes {
     | '/articles'
     | '/contact'
     | '/dashboard'
+    | '/deploy'
     | '/docs'
     | '/features'
     | '/login'
@@ -1033,6 +1043,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/contact'
+    | '/deploy'
     | '/login'
     | '/onboarding'
     | '/pricing'
@@ -1129,6 +1140,7 @@ export interface FileRouteTypes {
     | '/articles'
     | '/contact'
     | '/dashboard'
+    | '/deploy'
     | '/docs'
     | '/features'
     | '/login'
@@ -1233,6 +1245,7 @@ export interface RootRouteChildren {
   ArticlesRoute: typeof ArticlesRouteWithChildren
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
+  DeployRoute: typeof DeployRoute
   DocsRoute: typeof DocsRouteWithChildren
   FeaturesRoute: typeof FeaturesRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -1276,6 +1289,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deploy': {
+      id: '/deploy'
+      path: '/deploy'
+      fullPath: '/deploy'
+      preLoaderRoute: typeof DeployRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -2230,6 +2250,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArticlesRoute: ArticlesRouteWithChildren,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
+  DeployRoute: DeployRoute,
   DocsRoute: DocsRouteWithChildren,
   FeaturesRoute: FeaturesRouteWithChildren,
   LoginRoute: LoginRoute,
