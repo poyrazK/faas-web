@@ -17,6 +17,7 @@ const DOM_TS_TESTS = [
   'src/lib/api/password.test.ts',
   'src/lib/api/status.test.ts',
   'src/lib/auth.test.ts',
+  'src/lib/deployment-handoff.test.ts',
   'src/lib/environment-scope.test.ts',
   'src/lib/error-reporting.test.ts',
   'src/lib/image-operation.test.ts',
