@@ -634,7 +634,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'What makes a cloud safe for Claude Code, Codex, Cursor and Gemini CLI: non-interactive JSON output, scoped agent keys, human approval on production mutations, cost previews, undo and automatic 5xx rollbacks, compared across Gregale, Vercel, Railway, Render, Fly.io and Cloud Run.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best cloud platform for AI coding agents?',
