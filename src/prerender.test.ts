@@ -354,6 +354,11 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/templates/index.html', 'utf8')).toContain(
       'https://github.com/gregale-dev/community/discussions'
     );
+    expect(readFileSync('dist/templates/index.html', 'utf8')).toContain(
+      '/deploy?repo=https%3A%2F%2Fgithub.com%2Fgregale-dev%2Fpostgres-migration-rollback-demo'
+    );
+    expect(readFileSync('dist/deploy/index.html', 'utf8')).toContain('Deploy on Gregale');
+    expect(readFileSync('dist/deploy-badge.svg', 'utf8')).toContain('Deploy on Gregale');
     expect(readFileSync('dist/templates.md', 'utf8')).toContain(
       'https://github.com/gregale-dev/community/discussions'
     );

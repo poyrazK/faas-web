@@ -108,6 +108,7 @@ const ROUTES = [
   '/',
   '/login',
   '/signup',
+  '/deploy',
   '/status',
   '/will-it-run',
   PRICING_ROUTE,
