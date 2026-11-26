@@ -1,4 +1,5 @@
 import type { FaqEntry } from './faq.ts';
+import { RESTORE_CONTEXT, RESTORE_TARGET } from './platform-claims.ts';
 
 /**
  * Product-level feature pages showcasing Gregale's flagship GA and Beta
@@ -419,8 +420,7 @@ gregale dlq list my-api`,
     plans: 'Free, Hobby, Pro, Scale',
     title: 'Firecracker snapshot restore & wake-ahead',
     headline: 'Isolated microVMs that park to $0 and pre-wake downstream services automatically',
-    summary:
-      'Every workload runs in its own Firecracker microVM that snapshots to disk at zero RAM cost, targets sub-350 ms p95 snapshot restore on SSD nodes, and pre-wakes internal service dependencies automatically.',
+    summary: `Every workload runs in its own Firecracker microVM that snapshots to disk at zero RAM cost (${RESTORE_TARGET}) and pre-wakes internal service dependencies automatically.`,
     overview:
       'Most scale-to-zero platforms force either shared container kernels, multi-second cold starts, or cascading delays when an edge API calls internal microservices. Gregale pairs hardware-virtualized Firecracker snapshots with Service Wake-Ahead, after-restore lifecycle hooks, and zero-rewrite OCI compatibility.',
     updatedOn: '2026-11-26',
@@ -440,8 +440,7 @@ services:
     highlights: [
       {
         title: 'MicroVM snapshot restore',
-        detail:
-          'Idle instances park to snapshot on disk at zero resident RAM. On the reference SSD node, Gregale targets p95 below 350 ms for the platform wake interval (capacity admission/boot start through first upstream byte).',
+        detail: `Idle instances park to snapshot on disk at zero resident RAM. ${RESTORE_TARGET}. ${RESTORE_CONTEXT}`,
       },
       {
         title: 'Service wake-ahead',
@@ -496,9 +495,8 @@ services:
     ],
     faq: [
       {
-        question: 'What does the 350 ms snapshot restore target measure?',
-        answer:
-          'On the reference SSD node, Gregale targets p95 below 350 ms for the platform interval from capacity admission or boot start through the first upstream byte (scheduler, snapshot restore, and internal proxy). Total public request time also adds Cloudflare, Internet transit, and your app handler.',
+        question: 'What does the snapshot restore target measure?',
+        answer: `${RESTORE_TARGET}. ${RESTORE_CONTEXT} The platform interval covers capacity admission or boot start through the first upstream byte (scheduler, snapshot restore, and internal proxy).`,
       },
       {
         question: 'Do I have to configure Service Wake-Ahead manually for Compose apps?',
