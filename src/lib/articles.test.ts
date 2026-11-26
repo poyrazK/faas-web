@@ -47,6 +47,11 @@ const sources = import.meta.glob<string>(
     '../../content/docs/stored-workflows-recovery.md',
     '../../content/docs/container-compatibility.md',
     '../../content/docs/registry-credentials.md',
+    '../../content/docs/rollouts.md',
+    '../../content/docs/jobs.md',
+    '../../content/docs/security.md',
+    '../../content/docs/storage.md',
+    '../../content/docs/scale-to-zero.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -455,5 +460,161 @@ describe('articles', () => {
       expect(compatDoc).toContain(snippet);
       expect(compatText).toContain(snippet);
     }
+  });
+
+  it('quotes commands, limits and maturity labels in the feature articles as the docs state them', () => {
+    const doc = (name: string) => sources[`../../content/docs/${name}.md`].replace(/\s+/g, ' ');
+    const text = (slug: string) => body(slug).replace(/\s+/g, ' ');
+    const cases: { slug: string; docs: string[]; snippets: string[]; label?: string }[] = [
+      {
+        slug: 'shadow-test-release-traffic-mirroring',
+        docs: ['rollouts'],
+        snippets: [
+          'gregale deploy --no-traffic',
+          'gregale release mirror create --app my-api --source v43 --mirror v44 --percent 10',
+          'gregale release mirror summary --app my-api --id RULE_ID --window 24h',
+          'gregale release mirror replay --app my-api --id RULE_ID --file corpus.json',
+          'gregale release traffic promote --app my-api --release v44 --if-serving v43',
+          '--allow-unsafe-methods',
+          '422 mirror_rule_quota_exceeded',
+          '403 plan_mirror_not_allowed',
+          'Proxy-Authorization',
+          '64 KiB',
+          'raw response bodies are never stored',
+        ],
+        label: 'in preview, on the Pro and Scale plans',
+      },
+      {
+        slug: 'test-migration-postgres-branch-ttl',
+        docs: ['postgres'],
+        snippets: [
+          'gregale postgres branch orders pr-42 --ttl 2h',
+          'gregale postgres attach pr-42 my-api-pr-42 --env DATABASE_URL',
+          '--access migration --env MIGRATION_DATABASE_URL',
+          'cannot `CREATE`, `ALTER` or `DROP`',
+          'gregale postgres branch delete orders pr-42 --yes',
+          'gregale postgres branch list orders',
+          'managed_postgres_branch_limit',
+          'ttl_seconds',
+          'restore_range',
+        ],
+        label: 'the Free plan has no managed PostgreSQL',
+      },
+      {
+        slug: 'batch-jobs-fan-out-retry-failed-inputs',
+        docs: ['jobs'],
+        snippets: [
+          'gregale job create nightly --image registry.example/nightly@sha256:DIGEST --timeout 900 --retries 2',
+          'gregale job run nightly --parallelism 2 --input=shard-a=s3://my-bucket/a --input=shard-b=s3://my-bucket/b',
+          'gregale job run nightly --parallelism 2 --input-manifest-uri=obj://APP_ID/BUCKET_ID/inputs.json --input-manifest-sha256=sha256:DIGEST',
+          'gregale job replay nightly RUN_ID',
+          'gregale job artifact get nightly RUN_ID 0 result',
+          'GREGALE_INPUT_REF',
+          'GREGALE_OUTPUT_MANIFEST_PATH',
+          'retry_budget_exhausted',
+          'source_task_index',
+          '16 MiB',
+        ],
+        label: 'Jobs are in beta, on the Hobby, Pro and Scale plans',
+      },
+      {
+        slug: 'block-insecure-deploys-security-policy',
+        docs: ['security'],
+        snippets: [
+          'gregale app <slug> security --security-policy=enforce',
+          'gregale app <slug> security --posture',
+          'GET /v1/apps/{slug}/security',
+          'POST /v1/apps/{slug}/security/recover',
+          'security_posture_blocked',
+          'image_abuse_detected',
+          'credentialed wildcard CORS',
+        ],
+        label: 'Deploy scans are in beta, on every plan',
+      },
+      {
+        slug: 'what-breaks-when-app-scales-to-zero',
+        docs: ['storage', 'scale-to-zero'],
+        snippets: [
+          'stateless_only_violation',
+          'gregale audit list --kind-prefix stateless.advisory',
+          'gregale invocation watch --include-stateless',
+          'X-Faas-After-Restore: 1',
+          'path: /internal/after-restore',
+          'path: /internal/warmup',
+          '--no-warm-snapshot',
+          'Apps created before 2026-11-10 on Pro or Scale were opted in by default',
+          'up to 20 `GET` requests',
+          '256 MiB and 20,000 operations',
+        ],
+        label: 'generally available on every plan',
+      },
+    ];
+    for (const { slug, docs, snippets, label } of cases) {
+      const article = text(slug);
+      const sourceText = docs.map(doc).join(' ');
+      for (const snippet of snippets) {
+        // The security doc writes the app as <slug>; the article uses my-api.
+        expect(sourceText, `${slug}: ${snippet}`).toContain(snippet);
+        expect(article, `${slug}: ${snippet}`).toContain(snippet.replace('<slug>', 'my-api'));
+      }
+      if (label) expect(article, slug).toContain(label);
+    }
+
+    const postgres = sources['../../content/docs/postgres.md'];
+    const branches = text('test-migration-postgres-branch-ttl');
+    expect(doc('postgres')).toContain('Hobby 2, Pro 5, Scale 20');
+    expect(doc('postgres')).toContain('`--ttl` (5m to 30d');
+    for (const [plan, databases, branchesAtOnce] of [
+      ['Hobby', '1', '2'],
+      ['Pro', '3', '5'],
+      ['Scale', '10', '20'],
+    ]) {
+      expect(postgres).toMatch(
+        new RegExp(`^\\| ${plan} \\| ${databases} \\|.*\\| 7 days \\|`, 'm')
+      );
+      expect(branches).toMatch(
+        new RegExp(
+          `\\|\\s*${plan}\\s*\\|\\s*${databases}\\s*\\|\\s*${branchesAtOnce}\\s*\\|\\s*7 days\\s*\\|`
+        )
+      );
+    }
+
+    const jobs = doc('jobs');
+    expect(jobs).toContain('(Hobby 512 MB, Pro 2048 MB, Scale 4096 MB)');
+    expect(text('batch-jobs-fan-out-retry-failed-inputs')).toContain(
+      'Hobby 512 MB, Pro 2048 MB, Scale 4096 MB'
+    );
+    expect(jobs).toContain('1 day on Free, 7 days on Hobby, 30 on Pro, 90 on Scale');
+    expect(text('batch-jobs-fan-out-retry-failed-inputs')).toContain(
+      '1 day on Free, 7 days on Hobby, 30 on Pro, 90 on Scale'
+    );
+
+    const storage = doc('storage');
+    const stateless = text('what-breaks-when-app-scales-to-zero');
+    expect(storage).toContain(
+      '50 MB/s and 2,000 operations/s on Free, 100 MB/s and 4,000/s on Hobby, 200 MB/s and 8,000/s on Pro and Scale'
+    );
+    for (const [plan, rate, ops] of [
+      ['Free', '50 MB/s', '2,000'],
+      ['Hobby', '100 MB/s', '4,000'],
+      ['Pro and Scale', '200 MB/s', '8,000'],
+    ]) {
+      expect(stateless).toMatch(
+        new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${rate}\\s*\\|\\s*${ops}\\s*\\|`)
+      );
+    }
+    expect(storage).toContain('An instance reports at most 256 files.');
+    expect(stateless).toContain('an instance reports at most 256 files');
+
+    const rollouts = doc('rollouts');
+    expect(rollouts).toContain('It is in preview, on the Pro and Scale plans.');
+    expect(rollouts).toContain('a 5% sample unless `--percent` (0 to 100)');
+    expect(text('shadow-test-release-traffic-mirroring')).toContain(
+      'Without `--percent`, the sample is 5%.'
+    );
+    expect(rollouts).toContain('one mirror rule per app on Pro, three on Scale');
+    expect(text('shadow-test-release-traffic-mirroring')).toContain(
+      'One mirror rule per app on Pro and three on Scale'
+    );
   });
 });

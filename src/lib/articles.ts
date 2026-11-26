@@ -77,6 +77,11 @@ const NEXTJS_POSTGRES_SLUG = 'host-nextjs-postgres-outside-vercel';
 const BUN_HONO_SLUG = 'host-bun-hono-postgres-api';
 const DJANGO_POSTGRES_SLUG = 'host-django-postgres-migrations-rollback';
 const GO_API_SLUG = 'host-go-api-scale-to-zero';
+const MIRRORING_SLUG = 'shadow-test-release-traffic-mirroring';
+const PG_BRANCH_SLUG = 'test-migration-postgres-branch-ttl';
+const BATCH_JOBS_SLUG = 'batch-jobs-fan-out-retry-failed-inputs';
+const DEPLOY_GUARD_SLUG = 'block-insecure-deploys-security-policy';
+const STATELESS_SLUG = 'what-breaks-when-app-scales-to-zero';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -1834,6 +1839,161 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: MIRRORING_SLUG,
+    title: 'Test a new release on real production traffic without users seeing it',
+    summary:
+      'Mirror a sample of live requests to a dark-deployed release, compare status codes, JSON shape, values, latency and crashes, and discard the copies’ responses.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'What is traffic mirroring?',
+        answer:
+          'Mirroring copies a share of live production requests to a second version of an app and compares its responses with the serving version’s. Callers always get the serving version’s response; the copy’s response is discarded after the comparison.',
+      },
+      {
+        question: 'How do I mirror traffic to a new release on Gregale?',
+        answer:
+          'Stage the release with `gregale deploy --no-traffic`, then run `gregale release mirror create --app my-api --source v43 --mirror v44 --percent 10` and read the result with `gregale release mirror summary`. Without `--percent`, 5% of requests are copied.',
+      },
+      {
+        question: 'Does mirroring send POST requests or credentials to the new version?',
+        answer:
+          'Not by default. POST, PUT, PATCH and DELETE requests are copied only with `--allow-unsafe-methods`, and the Authorization, Cookie, Set-Cookie, X-API-Key, Proxy-Authorization and WWW-Authenticate headers are always removed from the copy.',
+      },
+      {
+        question: 'Which Gregale plans include traffic mirroring?',
+        answer:
+          'Traffic mirroring is in preview on the Pro and Scale plans: one mirror rule per app on Pro and three on Scale. The candidate’s running time while it answers copies is billed like any instance.',
+      },
+    ],
+  },
+  {
+    slug: PG_BRANCH_SLUG,
+    title: 'Test a migration on a copy of production Postgres that deletes itself',
+    summary:
+      'Branch a managed PostgreSQL database from its latest point or any time in the 7-day restore window, run migrations on real rows, and let a 5-minute to 30-day TTL purge it.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'What is a Postgres branch on Gregale?',
+        answer:
+          'A branch is a new database restored from another database’s latest point, a couple of seconds before the request, that shares its source’s storage until it is written to. The source database and the apps that use it are never changed.',
+      },
+      {
+        question: 'How do I test a migration on a copy of production data?',
+        answer:
+          'Run `gregale postgres branch orders pr-42 --ttl 2h`, attach the branch to a test app twice, once with `--env DATABASE_URL` and once with `--access migration --env MIGRATION_DATABASE_URL` for the schema changes, run the migration and tests, then delete it with `gregale postgres branch delete orders pr-42 --yes` or let the TTL purge it.',
+      },
+      {
+        question: 'How long can a branch live, and do branches count toward my database limit?',
+        answer:
+          'A TTL can be 5 minutes to 30 days. A branch with a TTL of 7 days or less does not count toward the database limit; Hobby allows 2 of them at once, Pro 5 and Scale 20.',
+      },
+      {
+        question: 'Can I branch from a point in the past?',
+        answer:
+          'Yes. `--from` with a timestamp branches from any time in the source’s 7-day restore window, which lets you reproduce a bug against the data as it was.',
+      },
+    ],
+  },
+  {
+    slug: BATCH_JOBS_SLUG,
+    title: 'Fan out a batch job, one task per input, and re-run only the failures',
+    summary:
+      'Run one microVM task per named input from the CLI or a checksummed manifest, classify failures by exit or outcome code, and replay only the inputs that failed.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How do I run one task per input in a Gregale job?',
+        answer:
+          'Pass repeated `--input ID=REF` values to `gregale job run`, or a JSON manifest in object storage with `--input-manifest-uri` and `--input-manifest-sha256`. Each task reads its input from GREGALE_INPUT_ID and GREGALE_INPUT_REF.',
+      },
+      {
+        question: 'How do I re-run only the inputs that failed?',
+        answer:
+          'Run `gregale job replay nightly RUN_ID` after the run finishes. It creates a linked run that contains only the failed, timed-out, out-of-memory or cancelled inputs, each with a fresh attempt budget, on the same image digest.',
+      },
+      {
+        question: 'Can a job retry some failures and not others?',
+        answer:
+          'Yes. Failure rules map exit codes or outcome codes that the task writes to its result manifest to `retry` or `fail_partition`, and `uncertain_outcome: hold` keeps a task whose completion receipt was lost instead of running it again.',
+      },
+      {
+        question: 'Which plans include Gregale jobs?',
+        answer:
+          'Jobs are in beta on Hobby, Pro and Scale. Each task gets 256 MB unless set otherwise, up to 512 MB on Hobby, 2048 MB on Pro and 4096 MB on Scale.',
+      },
+    ],
+  },
+  {
+    slug: DEPLOY_GUARD_SLUG,
+    title: 'Block deploys of vulnerable or unsigned images with a per-app policy',
+    summary:
+      'Enforce mode refuses a deploy unless the exact image has a fresh, clean scan and a trusted signature, and quarantines a live app whose evidence regresses.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How do I stop vulnerable images from being deployed on Gregale?',
+        answer:
+          'Set the app’s policy with `gregale app my-api security --security-policy=enforce`. Deploys then fail before snapshotting unless the image has a fresh, complete scan matched to the deployment with no high, critical or unknown-severity findings.',
+      },
+      {
+        question: 'Why is a scanner in CI not enough?',
+        answer:
+          'A CI scan blocks only the pipelines that run it, and it describes one image digest. Gregale checks the scan evidence inside the deploy and requires its recorded image reference to match the image being promoted, however the deploy was started.',
+      },
+      {
+        question: 'What are the off, warn and enforce policies?',
+        answer:
+          '`off`, the default, reports findings without affecting deploys. `warn` keeps deploys flowing while making the policy explicit. `enforce` rejects new deploys while high-severity findings remain and requires scan evidence and a trusted signature for OCI images.',
+      },
+      {
+        question: 'What happens if a live app’s security evidence regresses?',
+        answer:
+          'Gregale parks the enforce-mode app and quarantines the deployment, refusing its traffic with `security_posture_blocked`. Deploy a newer image and call the recover endpoint, which needs deploy-write scope and MFA.',
+      },
+    ],
+  },
+  {
+    slug: STATELESS_SLUG,
+    title: 'What breaks when your app scales to zero, and how to catch it',
+    summary:
+      'Local files, /tmp, in-memory sessions, background timers and startup connections do not survive a park. Gregale refuses stateful images and audits writes that will be lost.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'What is lost when an app scales to zero?',
+        answer:
+          'Anything kept only on the instance: files written to local disk or /tmp, sessions and caches held in memory, and timers meant to run between requests. Data in a database, object storage or the platform’s crons and queues is kept.',
+      },
+      {
+        question: 'How does Gregale warn me that my app writes data it will lose?',
+        answer:
+          'It rejects stateful base images such as postgres:16 and VOLUME directives at deploy with `stateless_only_violation`, and records a `stateless.advisory` audit row the first time an app writes to a database-shaped directory such as /data or /var/lib/postgresql.',
+      },
+      {
+        question: 'How do I reconnect to my database after a snapshot restore?',
+        answer:
+          'Declare an `after_restore` hook in gregale.yaml. Gregale sends one POST to that path on the app’s loopback listener after repairing the clock and entropy; a 2xx answer lets the instance serve, anything else falls back to a cold boot.',
+      },
+      {
+        question: 'Can a snapshot carry one user’s data into other instances?',
+        answer:
+          'Only if you opt in to warm snapshots on Pro or Scale, or your app was created there before 2026-11-10. A warm snapshot is taken after an instance has served a few requests and keeps what they left in memory, so apps with per-user state in memory should turn it off with `--no-warm-snapshot`.',
+      },
+      {
+        question: 'Do I pay while my app is idle?',
+        answer:
+          'Not while it is paused. About a second after the last request, with nothing in flight, Gregale pauses the VM in memory, and paused seconds are not billed. An app that keeps itself busy with timers keeps running and is billed while it works.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -1910,10 +2070,15 @@ const NEXTJS_POSTGRES_LINK = `[Host Next.js 16 and managed PostgreSQL outside Ve
 const BUN_HONO_LINK = `[Host a Bun and Hono API with managed Postgres and scale-to-zero](/articles/${BUN_HONO_SLUG}) explains bun.lock detection, ~95 MB Free-plan fit and ~1s idle pause billing.`;
 const DJANGO_POSTGRES_LINK = `[Host Django with pre-traffic migrations and coordinated Postgres rollback](/articles/${DJANGO_POSTGRES_SLUG}) explains separated migration roles, Gunicorn setup and code + PITR rollbacks.`;
 const GO_API_LINK = `[Host Go APIs and Go MCP servers on scale-to-zero microVMs](/articles/${GO_API_SLUG}) covers zero-Dockerfile go.mod builds, small binaries and automatic 5xx canary rollbacks.`;
+const MIRRORING_LINK = `[Test a new release on real production traffic without users seeing it](/articles/${MIRRORING_SLUG}) shows how to mirror live requests to a dark deploy and compare its answers, and how other platforms handle it.`;
+const PG_BRANCH_LINK = `[Test a migration on a copy of production Postgres that deletes itself](/articles/${PG_BRANCH_SLUG}) shows a branch, migrate and expire workflow, plan limits, and how other platforms compare.`;
+const BATCH_JOBS_LINK = `[Fan out a batch job, one task per input, and re-run only the failures](/articles/${BATCH_JOBS_SLUG}) explains input manifests, failure rules and replays, and compares Cloud Run jobs and AWS Batch.`;
+const DEPLOY_GUARD_LINK = `[Block deploys of vulnerable or unsigned images with a per-app policy](/articles/${DEPLOY_GUARD_SLUG}) explains the off, warn and enforce policies, quarantine and recovery.`;
+const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
-  postgres: DATABASE_ROLLBACK_LINK,
-  'scale-to-zero': COLD_START_LINK,
+  postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK}`,
+  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
   'inbound-webhooks': INBOUND_WEBHOOKS_LINK,
   cache: EDGE_CACHE_LINK,
@@ -1939,7 +2104,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   crons: CRONS_EVENTS_LINK,
   'event-driven': CRONS_EVENTS_LINK,
   'object-storage': OBJECT_STORAGE_LINK,
-  storage: OBJECT_STORAGE_LINK,
+  storage: `${STATELESS_LINK} ${OBJECT_STORAGE_LINK}`,
   'egress-denylist': EGRESS_DENYLIST_LINK,
   'stored-workflows': STORED_WORKFLOW_RECOVERY_LINK,
   'stored-workflows-recovery': STORED_WORKFLOW_RECOVERY_LINK,
@@ -1951,7 +2116,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   cursor: CURSOR_LINK,
   'gemini-cli': GEMINI_CLI_LINK,
   'deploy-fastapi': FASTAPI_JOBS_LINK,
-  jobs: FASTAPI_JOBS_LINK,
+  jobs: `${BATCH_JOBS_LINK} ${FASTAPI_JOBS_LINK}`,
   'deploy-express': NODE_WORKER_LINK,
   'deploy-nextjs': NEXTJS_POSTGRES_LINK,
   'deploy-bun': BUN_HONO_LINK,
@@ -1965,10 +2130,10 @@ const RELATED_ARTICLES: Record<string, string> = {
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
   'migrate-from-railway': RAILWAY_ALTERNATIVES_LINK,
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
-  rollouts: CANARY_LINK,
+  rollouts: `${MIRRORING_LINK} ${CANARY_LINK}`,
   releases: CANARY_LINK,
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
-  security: `${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
+  security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
   compliance: MICROVM_LINK,
   'container-compatibility': `${CONTAINER_COMPAT_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,
@@ -1984,7 +2149,9 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     solutionSlug: 'safe-production-deploys',
     slugs: [
       CANARY_SLUG,
+      MIRRORING_SLUG,
       DATABASE_ROLLBACK_SLUG,
+      PG_BRANCH_SLUG,
       RELEASE_CONTROLS_SLUG,
       BINDING_VERIFICATION_SLUG,
       ENV_PROMOTION_SLUG,
@@ -2000,6 +2167,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     solutionSlug: 'scale-to-zero-apis',
     slugs: [
       COLD_START_SLUG,
+      STATELESS_SLUG,
       SPEND_CAPS_SLUG,
       REALTIME_SCALE_ZERO_SLUG,
       INBOUND_WEBHOOKS_SLUG,
@@ -2040,6 +2208,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     slugs: [
       ATOMIC_RELEASES_SLUG,
       MICROVM_SLUG,
+      DEPLOY_GUARD_SLUG,
       INTERNAL_SERVICES_SLUG,
       STATIC_EGRESS_IP_SLUG,
       EGRESS_DENYLIST_SLUG,
@@ -2049,6 +2218,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       AUTOSCALE_LAG_SLUG,
       CODE_WORKFLOWS_SLUG,
       STORED_WORKFLOW_RECOVERY_SLUG,
+      BATCH_JOBS_SLUG,
     ],
   },
   {
