@@ -143,11 +143,22 @@ minutes idle, and a Basic dyno is $7 a month for 0.5 GB, always on.
 
 ## Moving from Railway to Gregale
 
-Gregale builds Node, Python and Go from source, or uses your Dockerfile, and
-takes configuration as environment variables and secrets. Connect the GitHub
-repository and deploy, then move the database to managed PostgreSQL. See
-[Deploy from GitHub](/docs/deploy-from-github) and the
+Gregale builds Node, Python and Go from source, or uses your Dockerfile,
+reads the start command in a `railpack.json`, and takes configuration as
+environment variables and secrets. Deploy, then move the database to managed
+PostgreSQL. [Migrate from Railway](/docs/migrate-from-railway) maps each
+Railway setting step by step; see also the
 [Gregale vs Railway comparison](/vs/railway).
+
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+railway variables --kv | grep -v '^RAILWAY_' > railway.env
+gregale deploy --name my-api --secrets-file railway.env
+rm railway.env
+gregale add postgres --app my-api --region <region>
+```
 
 ## Sources
 

@@ -56,5 +56,26 @@ if __name__ == "__main__":
         type=Path,
         default=Path(__file__).with_name("samples.csv"),
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Compare the recomputed results with summary.json next to the sample CSV",
+    )
     args = parser.parse_args()
-    print(json.dumps(summarize(args.samples), indent=2))
+    summary = summarize(args.samples)
+    if args.verify:
+        expected = json.loads(
+            args.samples.with_name("summary.json").read_text(encoding="utf-8")
+        )
+        if summary != expected:
+            parser.exit(1, "Recomputed results differ from the published summary.\n")
+        ms = summary["platform_ms"]
+        print(
+            "Verified published summary. "
+            f"{summary['snapshot_restores']} snapshot restores; "
+            f"platform wake p50 {ms['p50']:.3f} ms, p95 {ms['p95']:.3f} ms, "
+            f"max {ms['max']:.3f} ms "
+            f"({summary['platform_samples_at_or_above_350_ms']} >= 350 ms)."
+        )
+    else:
+        print(json.dumps(summary, indent=2))

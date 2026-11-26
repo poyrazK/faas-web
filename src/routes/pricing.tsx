@@ -3,8 +3,8 @@ import { MotionConfig } from 'motion/react';
 import { Nav } from '@/components/landing/nav';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
-import { cheapestPaidPlan, pricingFaq } from '@/lib/faq';
-import { FREE_PLAN, PLAN_CATALOG, formatPlanPrice } from '@/lib/plan-catalog';
+import { pricingDescription, pricingFaq } from '@/lib/faq';
+import { FREE_PLAN, PLAN_CATALOG } from '@/lib/plan-catalog';
 import { IDLE_BILLING_CLAIM } from '@/lib/platform-claims';
 import { FASTAPI_COST_SLUG } from '@/lib/research';
 import { pageHead } from '@/lib/seo';
@@ -17,13 +17,7 @@ import { pageHead } from '@/lib/seo';
  * changes when the API's limits do.
  */
 export const Route = createFileRoute('/pricing')({
-  head: () =>
-    pageHead({
-      title: 'Pricing',
-      description:
-        `Gregale plans start free; paid plans from ${formatPlanPrice(cheapestPaidPlan(PLAN_CATALOG).monthly)} a month. ` +
-        `Compute is billed per GB-RAM-hour at ${formatPlanPrice(PLAN_CATALOG.overagePerGbHour)} beyond each plan's allowance, with a spend cap.`,
-    }),
+  head: () => pageHead({ title: 'Pricing', description: pricingDescription(PLAN_CATALOG) }),
   component: PricingPage,
 });
 

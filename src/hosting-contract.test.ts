@@ -9,6 +9,7 @@ interface Route {
   dest?: string;
   methods?: string[];
   status?: number;
+  has?: { type: string; key: string; value?: string }[];
   headers?: Record<string, string>;
   continue?: boolean;
 }
@@ -114,6 +115,69 @@ describe('public hosting contract', () => {
     // On failure: copy `securityHeaders('production')` into vercel.json —
     // Vercel reads JSON, so the literal is a copy and this test keeps it honest.
     expect(boundary?.headers).toEqual(securityHeaders('production'));
+  });
+
+  it('opens CORS and content-negotiates Markdown for public agent discovery paths', () => {
+    const filesystem = config.routes.findIndex((route) => 'handle' in route);
+    const preFs = config.routes.slice(0, filesystem);
+
+    const corsRule = preFs.find(
+      (route) => route.continue && route.headers?.['Access-Control-Allow-Origin'] === '*'
+    );
+    expect(corsRule?.src).toBeDefined();
+    for (const path of [
+      '/llms.txt',
+      '/llms-full.txt',
+      '/llms-small.txt',
+      '/pricing.json',
+      '/.well-known/mcp/server-card.json',
+      '/openapi.yaml',
+      '/openapi.json',
+      '/docs/quickstart.md',
+      '/articles/canary-deploys.md',
+      '/vs/vercel.md',
+      '/index.md',
+      '/pricing.md',
+      '/docs.md',
+      '/articles.md',
+      '/research.md',
+    ]) {
+      expect(new RegExp(corsRule!.src!).test(path), path).toBe(true);
+    }
+
+    const mdRewrite = (path: string) =>
+      preFs.find(
+        (route) =>
+          route.src &&
+          !route.continue &&
+          route.has?.some((cond) => cond.key === 'accept' && cond.value === '.*text/markdown.*') &&
+          new RegExp(route.src).test(path)
+      );
+
+    expect(mdRewrite('/docs/quickstart')?.dest).toBe('/docs/$1.md');
+    expect(mdRewrite('/articles/best-cloud-for-ai-coding-agents')?.dest).toBe('/$1/$2.md');
+    expect(mdRewrite('/vs/cloud-run')?.dest).toBe('/$1/$2.md');
+    expect(mdRewrite('/')?.dest).toBe('/index.md');
+    for (const path of ['/pricing', '/docs', '/articles', '/research']) {
+      expect(mdRewrite(path)?.dest, path).toBe('/$1.md');
+    }
+    expect(mdRewrite('/dashboard')).toBeUndefined();
+    expect(mdRewrite('/status')).toBeUndefined();
+    expect(mdRewrite('/docs/api')).toBeUndefined();
+    expect(mdRewrite('/docs/api/apps')).toBeUndefined();
+
+    // A cache must not hand the Markdown copy to a browser, or the page to an agent.
+    const varies = (path: string) =>
+      preFs.some(
+        (route) =>
+          route.continue && route.headers?.Vary === 'Accept' && new RegExp(route.src!).test(path)
+      );
+    for (const path of ['/', '/pricing', '/docs', '/articles', '/research', '/docs/quickstart']) {
+      expect(varies(path), path).toBe(true);
+    }
+
+    const yamlHeader = preFs.find((route) => route.continue && route.src === '^/openapi\\.yaml$');
+    expect(yamlHeader?.headers?.['Content-Type']).toBe('application/yaml; charset=utf-8');
   });
 });
 

@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { atomFeed } from './feed.mjs';
+import { contentHash } from './indexnow-content.mjs';
 import { writeIndexNowKey } from './indexnow-key.mjs';
-import { sitemapXml } from './sitemap.mjs';
+import { docsLastModified, sitemapXml } from './sitemap.mjs';
 
 /**
  * Writes a real HTML document for each public route.
@@ -27,26 +29,44 @@ import { sitemapXml } from './sitemap.mjs';
  * a page to the table of contents cannot leave it unprerendered and absent from
  * the sitemap. Same reasoning as generating robots.txt below.
  */
-const { DOC_ENTRIES } = await import('../src/lib/docs-manifest.ts');
-const { FASTAPI_COST_SLUG, RESEARCH_PUBLICATIONS, RESEARCH_TITLE } =
-  await import('../src/lib/research.ts');
+const { DOC_ENTRIES, DOC_SECTIONS } = await import('../src/lib/docs-manifest.ts');
+const DOC_BY_SLUG = new Map(
+  DOC_SECTIONS.flatMap((section) =>
+    section.entries.map((entry) => [entry.slug, { entry, sectionTitle: section.title }])
+  )
+);
+const DOCS_DATES = docsLastModified();
+const {
+  AGENT_GUARDRAILS_SLUG,
+  FASTAPI_COST_SLUG,
+  PAAS_COST_MODEL_SLUG,
+  RESEARCH_PUBLICATIONS,
+  RESEARCH_TITLE,
+  SNAPSHOT_RESTORE_SLUG,
+} = await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
+const { FEATURES, FEATURES_TITLE, featureMarkdown } = await import('../src/lib/features.ts');
+const { SOLUTIONS, SOLUTIONS_TITLE, solutionMarkdown } = await import('../src/lib/solutions.ts');
+const { PUBLIC_TEMPLATES, TEMPLATES_DESCRIPTION, TEMPLATES_TITLE } =
+  await import('../src/lib/public-templates.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
+const OPENAPI_YAML = readFileSync('api/openapi.yaml', 'utf8');
+const OPENAPI_DOC = parseYaml(OPENAPI_YAML);
 // The API reference is derived from the vendored spec the same way: one page
 // per group, so a group the spec gains is prerendered and in the sitemap.
 const API_ROUTES = [
   '/docs/api',
-  ...buildApiReference(parseYaml(readFileSync('api/openapi.yaml', 'utf8'))).map(
-    (group) => `/docs/api/${group.id}`
-  ),
+  ...buildApiReference(OPENAPI_DOC).map((group) => `/docs/api/${group.id}`),
 ];
 const { parsePlanCatalog } = await import('../src/lib/plan-catalog-parser.ts');
-const { LANDING_FAQ, faqJsonLd, pricingFaq, pricingJsonLd } = await import('../src/lib/faq.ts');
+const { LANDING_FAQ, faqJsonLd, pricingDescription, pricingFaq, pricingJsonLd } =
+  await import('../src/lib/faq.ts');
 // Read the same generated catalog the pricing page renders, so the Offer
 // prices in the structured data cannot disagree with the visible columns.
 const PLAN_CATALOG = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
-const { COMPARISON_SLUGS, comparisons } = await import('../src/lib/compare.ts');
+const { COMPARISON_SLUGS, COMPARISONS_CHECKED, comparisons } =
+  await import('../src/lib/compare.ts');
 const COMPARE_ROUTES = COMPARISON_SLUGS.map((slug) => `/vs/${slug}`);
 const COMPARISONS = new Map(comparisons(PLAN_CATALOG).map((c) => [`/vs/${c.slug}`, c]));
 const DOC_ROUTES = ['/docs', ...DOC_ENTRIES.map((entry) => `/docs/${entry.slug}`), ...API_ROUTES];
@@ -54,18 +74,41 @@ const RESEARCH_BY_ROUTE = new Map(
   RESEARCH_PUBLICATIONS.map((publication) => [`/research/${publication.slug}`, publication])
 );
 const RESEARCH_ROUTES = ['/research', ...RESEARCH_BY_ROUTE.keys()];
+const ARTICLE_BY_SLUG = new Map(ARTICLES.map((article) => [article.slug, article]));
 const ARTICLE_BY_ROUTE = new Map(ARTICLES.map((article) => [`/articles/${article.slug}`, article]));
 const ARTICLE_ROUTES = ['/articles', ...ARTICLE_BY_ROUTE.keys()];
+const FEATURE_BY_ROUTE = new Map(FEATURES.map((feature) => [`/features/${feature.slug}`, feature]));
+const FEATURE_ROUTES = ['/features', ...FEATURE_BY_ROUTE.keys()];
+const SOLUTION_BY_ROUTE = new Map(
+  SOLUTIONS.map((solution) => [`/solutions/${solution.slug}`, solution])
+);
+const SOLUTION_ROUTES = ['/solutions', ...SOLUTION_BY_ROUTE.keys()];
 
 const PRICING_ROUTE = '/pricing';
+/** Pages that also have a Markdown copy outside the docs, articles, research, features,
+ * solutions and comparison collections; vercel.json serves it to a request with `Accept: text/markdown`. */
+const SITE_MARKDOWN = new Map([
+  ['/', '/index.md'],
+  [PRICING_ROUTE, '/pricing.md'],
+  ['/docs', '/docs.md'],
+  ['/solutions', '/solutions.md'],
+  ['/articles', '/articles.md'],
+  ['/features', '/features.md'],
+  ['/templates', '/templates.md'],
+  ['/research', '/research.md'],
+]);
 const PLAN_DOC_ROUTE = '/docs/plans';
 const PRICING_FEED = '/pricing.json';
+/** Articles and research reports as one Atom feed, newest first. */
+const ATOM_FEED = '/feed.xml';
+const ATOM_FEED_TITLE = 'Gregale articles and research';
 const INCIDENT_SHELL_ROUTE = '/status/incidents/00000000-0000-4000-8000-000000000000';
 const NOT_FOUND_ROUTE = '/404';
 const ROUTES = [
   '/',
   '/login',
   '/signup',
+  '/deploy',
   '/status',
   '/will-it-run',
   PRICING_ROUTE,
@@ -74,6 +117,9 @@ const ROUTES = [
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,
+  ...FEATURE_ROUTES,
+  '/templates',
+  ...SOLUTION_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
 ];
@@ -88,6 +134,9 @@ const INDEXABLE = [
   PRICING_ROUTE,
   ...COMPARE_ROUTES,
   ...DOC_ROUTES,
+  ...FEATURE_ROUTES,
+  '/templates',
+  ...SOLUTION_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
 ];
@@ -160,6 +209,8 @@ function stripStaticHead(html) {
 }
 
 let written = 0;
+/** Each page's indexable content, so IndexNow submits only pages that changed. */
+const pageHashes = new Map();
 for (const route of ROUTES) {
   const incidentShell = route === INCIDENT_SHELL_ROUTE;
   const { html, meta } = await render(route);
@@ -184,8 +235,43 @@ for (const route of ROUTES) {
   }
   // Only guides have Markdown copies. The API reference uses OpenAPI.
   const docSlug = route.startsWith('/docs/') ? route.slice('/docs/'.length) : '';
-  if (DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
+  const docMeta = DOC_BY_SLUG.get(docSlug);
+  if (docMeta || DOC_ENTRIES.some((entry) => entry.slug === docSlug)) {
     perRoute.push(`<link rel="alternate" type="text/markdown" href="/docs/${attr(docSlug)}.md" />`);
+  }
+  if (docMeta && SITE_URL) {
+    const docModified = DOCS_DATES.get(route);
+    const ld = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'TechArticle',
+          '@id': `${absolute(route)}#article`,
+          headline: docMeta.entry.title,
+          description: docMeta.entry.summary,
+          mainEntityOfPage: absolute(route),
+          ...(docModified ? { dateModified: docModified } : {}),
+          author: { '@type': 'Organization', name: 'Gregale', url: `${SITE_URL}/` },
+          publisher: { '@id': `${SITE_URL}/#org` },
+          isPartOf: {
+            '@type': 'WebSite',
+            name: 'Gregale Documentation',
+            url: absolute('/docs'),
+          },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+            { '@type': 'ListItem', position: 2, name: 'Documentation', item: absolute('/docs') },
+            { '@type': 'ListItem', position: 3, name: docMeta.entry.title, item: absolute(route) },
+          ],
+        },
+      ],
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
   }
   const publication = RESEARCH_BY_ROUTE.get(route);
   if (publication) {
@@ -208,6 +294,32 @@ for (const route of ROUTES) {
       };
       perRoute.push(
         `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+      const datasetLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        '@id': `${absolute(route)}#dataset`,
+        name: `${publication.title} — dataset and reproduction kit`,
+        description: publication.summary,
+        url: absolute(route),
+        datePublished: publication.publishedOn,
+        temporalCoverage: publication.measuredOn,
+        creator: {
+          '@type': 'Organization',
+          name: 'Gregale Engineering',
+          url: absolute('/research'),
+        },
+        publisher: { '@id': `${SITE_URL}/#org` },
+        isAccessibleForFree: true,
+        distribution: publication.datasetDownloads.map((file) => ({
+          '@type': 'DataDownload',
+          name: file.name,
+          encodingFormat: file.encodingFormat,
+          contentUrl: `${absolute(route)}/${file.path}`,
+        })),
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(datasetLd).replaceAll('<', '\\u003c')}</script>`
       );
     }
   }
@@ -240,21 +352,115 @@ for (const route of ROUTES) {
       );
     }
   }
-  // The home page names the agent index, so an agent that starts at the site
-  // root finds llms.txt without guessing the path.
-  if (route === '/') {
-    perRoute.push('<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />');
-    if (productionSite) {
-      for (const [name, value] of [
-        ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
-        ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
-      ]) {
-        if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
-      }
+  const feature = FEATURE_BY_ROUTE.get(route);
+  if (feature) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+    if (SITE_URL) {
+      const ld = {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'TechArticle',
+            '@id': `${absolute(route)}#article`,
+            headline: feature.title,
+            description: feature.summary,
+            dateModified: feature.updatedOn,
+            mainEntityOfPage: absolute(route),
+            author: { '@id': `${SITE_URL}/#org` },
+            publisher: { '@id': `${SITE_URL}/#org` },
+            isPartOf: { '@type': 'WebSite', name: FEATURES_TITLE, url: absolute('/features') },
+          },
+          { ...faqJsonLd(plainFaq(feature.faq)), '@id': `${absolute(route)}#faq` },
+        ],
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
     }
+  }
+  // Solutions: the hub page and its questions, from the same registry.
+  const solution = SOLUTION_BY_ROUTE.get(route);
+  if (solution) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+    if (SITE_URL) {
+      const ld = {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'TechArticle',
+            '@id': `${absolute(route)}#article`,
+            headline: solution.title,
+            description: solution.summary,
+            datePublished: solution.publishedOn,
+            dateModified: solution.updatedOn,
+            mainEntityOfPage: absolute(route),
+            author: { '@id': `${SITE_URL}/#org` },
+            publisher: { '@id': `${SITE_URL}/#org` },
+            isPartOf: { '@type': 'WebSite', name: SOLUTIONS_TITLE, url: absolute('/solutions') },
+          },
+          { ...faqJsonLd(plainFaq(solution.faq)), '@id': `${absolute(route)}#faq` },
+        ],
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+    }
+  }
+  if (COMPARISONS.has(route)) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+  }
+  if (SITE_MARKDOWN.has(route)) {
+    perRoute.push(
+      `<link rel="alternate" type="text/markdown" href="${attr(SITE_MARKDOWN.get(route))}" />`
+    );
+  }
+  // Feed readers and aggregators find the feed from the pages it covers.
+  if (route === '/' || ARTICLE_ROUTES.includes(route) || RESEARCH_ROUTES.includes(route)) {
+    perRoute.push(
+      `<link rel="alternate" type="application/atom+xml" title="${ATOM_FEED_TITLE}" href="${ATOM_FEED}" />`
+    );
+  }
+  // Every indexable page names the agent index, so an agent landing on any
+  // public doc, article, research kit or comparison finds llms.txt directly.
+  if (INDEXABLE.includes(route)) {
+    perRoute.push('<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />');
+  }
+  if (route === '/' && productionSite) {
+    for (const [name, value] of [
+      ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
+      ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
+    ]) {
+      if (value?.trim()) perRoute.push(`<meta name="${name}" content="${attr(value.trim())}" />`);
+    }
+  }
+  if (route === '/docs/api') {
+    perRoute.push(
+      '<link rel="alternate" type="application/yaml" title="OpenAPI specification (YAML)" href="/openapi.yaml" />',
+      '<link rel="alternate" type="application/json" title="OpenAPI specification (JSON)" href="/openapi.json" />'
+    );
   }
   if (route === PRICING_ROUTE || route === PLAN_DOC_ROUTE) {
     perRoute.push(`<link rel="alternate" type="application/json" href="${PRICING_FEED}" />`);
+  }
+  if (route === '/templates' && SITE_URL) {
+    const ld = {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      '@id': `${absolute('/templates')}#collection`,
+      name: TEMPLATES_TITLE,
+      description: TEMPLATES_DESCRIPTION,
+      url: absolute('/templates'),
+      publisher: { '@id': `${SITE_URL}/#org` },
+      hasPart: PUBLIC_TEMPLATES.map((item) => ({
+        '@type': 'SoftwareSourceCode',
+        name: item.title,
+        codeRepository: item.repoUrl,
+        description: item.summary,
+      })),
+    };
+    perRoute.push(
+      `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+    );
   }
   // Keeps a non-indexable page out of results without hiding it from the
   // unfurler, which ignores robots meta.
@@ -279,8 +485,19 @@ for (const route of ROUTES) {
           // them to this site rather than to the Mediterranean wind.
           sameAs: [
             'https://github.com/gregale-dev',
+            'https://github.com/gregale-dev/community',
+            'https://github.com/gregale-dev/benchmarks',
+            'https://github.com/gregale-dev/gregale-js',
+            'https://github.com/gregale-dev/gregale-python',
+            'https://github.com/gregale-dev/gregale-go',
+            'https://github.com/gregale-dev/gregale-cursor-plugin',
+            'https://github.com/gregale-dev/gregale-antigravity-plugin',
+            'https://github.com/gregale-dev/gregale-claude-code-plugin',
+            'https://github.com/gregale-dev/setup-gregale',
             'https://www.linkedin.com/company/gregale/',
             'https://www.producthunt.com/products/gregale',
+            'https://www.crunchbase.com/organization/gregale',
+            'https://www.npmjs.com/package/gregale',
           ],
         },
         {
@@ -299,9 +516,25 @@ for (const route of ROUTES) {
           operatingSystem: 'Linux',
           url: `${SITE_URL}/`,
           description:
-            'Deploy APIs, jobs and workflows with one command. Each app gets its own Firecracker ' +
-            'microVM; releases go to a slice of traffic first and roll back on errors.',
+            'Deploy APIs, jobs, Postgres and MCP servers in one command. Each app gets a ' +
+            'Firecracker microVM; canary releases roll back on errors. Built for coding agents.',
           softwareHelp: `${SITE_URL}/docs`,
+          offers: {
+            '@type': 'AggregateOffer',
+            priceCurrency: PLAN_CATALOG.currency,
+            lowPrice: Math.min(...PLAN_CATALOG.plans.map((p) => p.monthly)),
+            highPrice: Math.max(...PLAN_CATALOG.plans.map((p) => p.monthly)),
+            offerCount: PLAN_CATALOG.plans.length,
+            url: absolute(PRICING_ROUTE),
+          },
+          featureList: [
+            'Firecracker microVM isolation per app',
+            'Automatic 1% to 100% canary releases with 5xx rollback',
+            'Idle pause after ~1 second with memory snapshot wake',
+            'Managed PostgreSQL with code and database point-in-time rollback',
+            'Scoped AI coding agent keys with human approval gates, cost preview and undo',
+            'Hosted OAuth MCP server and per-PR preview environments',
+          ],
         },
         // The "A few practical questions" cards, from the same strings.
         { ...faqJsonLd(LANDING_FAQ), '@id': `${SITE_URL}/#faq` },
@@ -378,6 +611,7 @@ for (const route of ROUTES) {
           : join(DIST, route, 'index.html');
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, doc);
+  pageHashes.set(route, contentHash(doc));
 
   const text = html
     .replace(/<[^>]+>/g, ' ')
@@ -398,7 +632,19 @@ for (const route of ROUTES) {
 // Named crawler groups take precedence over the wildcard, so apply the
 // private-route exclusions to each group. GPTBot has its own training policy.
 const robots = [
-  ...['OAI-SearchBot', 'GPTBot', 'ChatGPT-User', '*'].flatMap((agent) => [
+  ...[
+    'OAI-SearchBot',
+    'GPTBot',
+    'ChatGPT-User',
+    'ClaudeBot',
+    'Claude-SearchBot',
+    'Claude-User',
+    'PerplexityBot',
+    'Perplexity-User',
+    'Google-Extended',
+    'Applebot-Extended',
+    '*',
+  ].flatMap((agent) => [
     `User-agent: ${agent}`,
     'Disallow: /dashboard',
     'Disallow: /onboarding',
@@ -412,8 +658,35 @@ const robots = [
 writeFileSync(join(DIST, 'robots.txt'), robots);
 console.log('  wrote robots.txt');
 
+/**
+ * Modification dates for routes that are not docs pages (those come from Git
+ * in sitemap.mjs): the dates the registries already state, so the sitemap
+ * cannot claim a change the page does not show.
+ */
+const latest = (dates) => dates.reduce((a, b) => (a > b ? a : b));
+const PAGE_DATES = new Map([
+  ...[...SOLUTION_BY_ROUTE].map(([route, solution]) => [route, solution.updatedOn]),
+  ['/solutions', latest(SOLUTIONS.map((solution) => solution.updatedOn))],
+  ...[...ARTICLE_BY_ROUTE].map(([route, article]) => [route, article.updatedOn]),
+  ['/articles', latest(ARTICLES.map((article) => article.updatedOn))],
+  ...[...FEATURE_BY_ROUTE].map(([route, feature]) => [route, feature.updatedOn]),
+  ['/features', latest(FEATURES.map((feature) => feature.updatedOn))],
+  ['/templates', latest(PUBLIC_TEMPLATES.map((template) => template.updatedOn))],
+  ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => [route, publication.publishedOn]),
+  ['/research', latest(RESEARCH_PUBLICATIONS.map((publication) => publication.publishedOn))],
+  ...COMPARE_ROUTES.map((route) => [route, COMPARISONS_CHECKED]),
+]);
+
 if (SITE_URL) {
-  writeFileSync(join(DIST, 'sitemap.xml'), sitemapXml(SITE_URL, INDEXABLE));
+  writeFileSync(
+    join(DIST, 'sitemap.xml'),
+    sitemapXml(SITE_URL, INDEXABLE, {
+      dates: PAGE_DATES,
+      // The pricing page renders the plan catalog in docs/plans.
+      datedLike: { [PRICING_ROUTE]: PLAN_DOC_ROUTE },
+      docDates: DOCS_DATES,
+    })
+  );
   console.log(`  wrote sitemap.xml (${INDEXABLE.length} urls)`);
 } else {
   console.log('  skipped sitemap.xml and canonical tags — set SITE_URL to emit them');
@@ -439,6 +712,37 @@ const pricing = {
 writeFileSync(join(DIST, PRICING_FEED), JSON.stringify(pricing, null, 2) + '\n');
 console.log('  wrote pricing.json');
 
+writeFileSync(join(DIST, 'openapi.yaml'), OPENAPI_YAML);
+writeFileSync(join(DIST, 'openapi.json'), JSON.stringify(OPENAPI_DOC, null, 2) + '\n');
+console.log('  wrote openapi.yaml and openapi.json');
+
+const mcpServerCard = {
+  serverInfo: {
+    name: 'gregale',
+    title: 'Gregale',
+    description:
+      'Deploy, inspect, scale, and roll back backend apps and managed PostgreSQL on Gregale from MCP clients.',
+  },
+  transport: {
+    type: 'streamable-http',
+    endpoint: 'https://api.gregale.dev/mcp',
+  },
+  authentication: {
+    required: true,
+    schemes: ['oauth2'],
+    oauthProtectedResource: 'https://api.gregale.dev/.well-known/oauth-protected-resource/mcp',
+    oauthAuthorizationServer: 'https://api.gregale.dev/.well-known/oauth-authorization-server/mcp',
+  },
+  documentationUrl: `${SITE_URL || 'https://gregale.dev'}/docs/agents`,
+  websiteUrl: `${SITE_URL || 'https://gregale.dev'}/`,
+};
+mkdirSync(join(DIST, '.well-known', 'mcp'), { recursive: true });
+writeFileSync(
+  join(DIST, '.well-known', 'mcp', 'server-card.json'),
+  JSON.stringify(mcpServerCard, null, 2) + '\n'
+);
+console.log('  wrote .well-known/mcp/server-card.json');
+
 /* ------------------------------------------------------------------ *
  * llms.txt, llms-full.txt and a Markdown copy of every docs page
  *
@@ -446,8 +750,22 @@ console.log('  wrote pricing.json');
  * Built from the same manifest as the docs routes; see src/lib/agent-docs.ts.
  * ------------------------------------------------------------------ */
 
-const { absoluteLinks, llmsFull, llmsIndex, llmsSmall, markdownPage } =
-  await import('../src/lib/agent-docs.ts');
+const {
+  absoluteLinks,
+  articlesIndexPage,
+  comparisonPage,
+  docsIndexPage,
+  featuresIndexPage,
+  homePage,
+  llmsFull,
+  llmsIndex,
+  llmsSmall,
+  markdownPage,
+  pricingPage,
+  researchIndexPage,
+  solutionsIndexPage,
+  templatesIndexPage,
+} = await import('../src/lib/agent-docs.ts');
 const llmsIntro = readFileSync(join('content', 'llms-intro.md'), 'utf8');
 const pagesBySlug = new Map();
 const markdownPages = DOC_ENTRIES.map((entry) => {
@@ -460,7 +778,7 @@ const markdownPages = DOC_ENTRIES.map((entry) => {
   pagesBySlug.set(entry.slug, page);
   return page;
 });
-writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL));
+writeFileSync(join(DIST, 'llms.txt'), llmsIndex(llmsIntro, SITE_URL, [...COMPARISONS.values()]));
 const researchPages = [...RESEARCH_BY_ROUTE].map(([route, publication]) => {
   const path = `research/${publication.slug}.md`;
   const body = readFileSync(join('content', path), 'utf8');
@@ -493,6 +811,67 @@ const articlePages = [...ARTICLE_BY_ROUTE].map(([route, entry]) => {
   return page;
 });
 
+const comparisonPages = [...COMPARISONS].map(([route, comparison]) => {
+  const page = comparisonPage(comparison, COMPARISONS_CHECKED, SITE_URL);
+  writeFileSync(join(DIST, `${route.slice(1)}.md`), page);
+  return page;
+});
+
+const featurePages = [...FEATURE_BY_ROUTE].map(([route, feature]) => {
+  const page = featureMarkdown(feature, SITE_URL);
+  writeFileSync(join(DIST, `${route.slice(1)}.md`), page);
+  return page;
+});
+
+const solutionPages = [...SOLUTION_BY_ROUTE].map(([route, entry]) => {
+  const path = `solutions/${entry.slug}.md`;
+  const page = solutionMarkdown(entry, ARTICLE_BY_SLUG, SITE_URL);
+  mkdirSync(dirname(join(DIST, path)), { recursive: true });
+  writeFileSync(join(DIST, path), page);
+  return page;
+});
+
+const sitePages = new Map([
+  ['/', homePage(llmsIntro, LANDING_FAQ, SITE_URL)],
+  [
+    PRICING_ROUTE,
+    pricingPage(PLAN_CATALOG, pricingDescription(PLAN_CATALOG), pricingFaq(PLAN_CATALOG), SITE_URL),
+  ],
+  ['/docs', docsIndexPage(SITE_URL)],
+  ['/solutions', solutionsIndexPage(SITE_URL)],
+  ['/articles', articlesIndexPage(SITE_URL)],
+  ['/features', featuresIndexPage(SITE_URL)],
+  ['/templates', templatesIndexPage(SITE_URL)],
+  ['/research', researchIndexPage(SITE_URL)],
+]);
+for (const [route, path] of SITE_MARKDOWN) writeFileSync(join(DIST, path), sitePages.get(route));
+
+writeFileSync(
+  join(DIST, ATOM_FEED),
+  atomFeed({
+    siteUrl: SITE_URL,
+    path: ATOM_FEED,
+    title: ATOM_FEED_TITLE,
+    entries: [
+      ...[...ARTICLE_BY_ROUTE].map(([route, article]) => ({
+        route,
+        title: article.title,
+        summary: article.summary,
+        published: article.publishedOn,
+        updated: article.updatedOn,
+      })),
+      ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => ({
+        route,
+        title: publication.title,
+        summary: publication.summary,
+        published: publication.publishedOn,
+        updated: publication.publishedOn,
+      })),
+    ],
+  })
+);
+console.log('  wrote feed.xml');
+
 // Package the published inputs, with a directory prefix so the archive
 // can be extracted anywhere without overwriting unrelated files.
 const fastapiReproductionFiles = [
@@ -522,13 +901,74 @@ execFileSync(
   { env: { ...process.env, COPYFILE_DISABLE: '1' } }
 );
 
+const snapshotRestoreReproductionFiles = ['README.md', 'analyze.py', 'samples.csv', 'summary.json'];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', SNAPSHOT_RESTORE_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...snapshotRestoreReproductionFiles.map((file) => join(SNAPSHOT_RESTORE_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const paasCostModelReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'vendors.json',
+  'scenarios.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', PAAS_COST_MODEL_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...paasCostModelReproductionFiles.map((file) => join(PAAS_COST_MODEL_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
+const agentGuardrailsReproductionFiles = [
+  'README.md',
+  'analyze.py',
+  'criteria.json',
+  'vendors.json',
+  'summary.json',
+];
+execFileSync(
+  'tar',
+  [
+    '--format=ustar',
+    '-czf',
+    join(DIST, 'research', AGENT_GUARDRAILS_SLUG, 'reproduction.tar.gz'),
+    '-C',
+    join(DIST, 'research'),
+    ...agentGuardrailsReproductionFiles.map((file) => join(AGENT_GUARDRAILS_SLUG, file)),
+  ],
+  { env: { ...process.env, COPYFILE_DISABLE: '1' } }
+);
+
 writeFileSync(
   join(DIST, 'llms-full.txt'),
-  llmsFull(llmsIntro, [...markdownPages, ...researchPages, ...articlePages])
+  llmsFull(llmsIntro, [
+    ...markdownPages,
+    ...featurePages,
+    ...solutionPages,
+    ...researchPages,
+    ...articlePages,
+    ...comparisonPages,
+  ])
 );
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length} Markdown pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + featurePages.length + solutionPages.length + researchPages.length + articlePages.length + comparisonPages.length + sitePages.size} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {
@@ -536,11 +976,23 @@ if (productionSite && process.env.INDEXNOW_KEY) {
   console.log('  wrote IndexNow key file');
   const commit = process.env.VERCEL_GIT_COMMIT_SHA;
   if (/^[a-f0-9]{40}$/.test(commit ?? '')) {
+    const paths = [
+      '/',
+      PRICING_ROUTE,
+      '/templates',
+      ...FEATURE_ROUTES,
+      ...SOLUTION_ROUTES,
+      ...RESEARCH_ROUTES,
+      ...ARTICLE_ROUTES,
+      ...COMPARE_ROUTES,
+      ...DOC_ROUTES,
+    ];
     writeFileSync(
       join(DIST, 'indexnow-research.json'),
       JSON.stringify({
         commit,
-        paths: [...RESEARCH_ROUTES, ...ARTICLE_ROUTES, ...COMPARE_ROUTES, ...DOC_ROUTES],
+        paths,
+        hashes: Object.fromEntries(paths.map((path) => [path, pageHashes.get(path)])),
       }) + '\n',
       { flag: 'wx' }
     );

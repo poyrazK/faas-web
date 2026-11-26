@@ -1,0 +1,50 @@
+{
+  "checked_on": "2026-11-25",
+  "scoring": {
+    "full": 2,
+    "partial": 1,
+    "none": 0
+  },
+  "criteria": [
+    {
+      "id": "non_interactive_json_cli",
+      "label": "Non-interactive JSON CLI",
+      "description": "Commands avoid interactive prompts/browsers and return structured JSON output and errors."
+    },
+    {
+      "id": "official_mcp_server",
+      "label": "Official MCP server",
+      "description": "First-party hosted or official documented Model Context Protocol server for agent tools."
+    },
+    {
+      "id": "scoped_agent_identity",
+      "label": "Scoped agent identity",
+      "description": "Dedicated agent identity or fine-grained service identity separate from personal user logins."
+    },
+    {
+      "id": "pre_mutation_cost_preview",
+      "label": "Pre-mutation cost preview",
+      "description": "Dry-run cost estimate and budget check returned before applying scaling or compute mutations."
+    },
+    {
+      "id": "human_approval_gate_on_mutations",
+      "label": "Human approval gate on mutations",
+      "description": "Platform pauses destructive/production mutations until a human approves out of band."
+    },
+    {
+      "id": "non_code_mutation_undo",
+      "label": "Non-code mutation undo",
+      "description": "Reversible undo and audit log for platform mutations outside Git (env vars, scaling, crons, domains)."
+    },
+    {
+      "id": "default_canary_auto_rollback",
+      "label": "Default canary with auto-rollback",
+      "description": "Gradual percentage traffic shift on by default that rolls back automatically on elevated 5xx errors."
+    },
+    {
+      "id": "code_plus_postgres_rollback",
+      "label": "Code + Postgres rollback together",
+      "description": "Coordinated rollback of application code and managed PostgreSQL together to a release point in time."
+    }
+  ]
+}

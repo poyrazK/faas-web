@@ -66,6 +66,71 @@ it('dates guides from Git and omits dates beyond a shallow checkout boundary', (
   expect(fullXml).toContain(recentDate);
   expect(shallowXml).toContain('<loc>https://example.test/docs/older</loc>\n  </url>');
   expect(shallowXml).toContain(recentDate);
+
+  // Routes outside the docs: a stated date, or the date of the docs page they render.
+  const datedCode = `process.stdout.write(script.sitemapXml('https://example.test',
+    ['/articles/one', '/pricing', '/docs/recent', '/status'], {
+      dates: new Map([['/articles/one', '2026-11-25'], ['/docs/recent', '2020-01-01']]),
+      datedLike: { '/pricing': '/docs/recent' },
+    }));`;
+  const datedXml = runScript('sitemap.mjs', datedCode, source);
+  expect(datedXml).toContain(
+    '<loc>https://example.test/articles/one</loc>\n    <lastmod>2026-11-25</lastmod>'
+  );
+  expect(datedXml).toContain(
+    '<loc>https://example.test/pricing</loc>\n    <lastmod>2026-01-03</lastmod>'
+  );
+  // A docs date from Git wins over a stated one.
+  expect(datedXml).toContain(recentDate);
+  expect(datedXml).toContain('<loc>https://example.test/status</loc>\n  </url>');
+});
+
+it('writes an Atom feed newest first, with escaped text and registry dates', () => {
+  const code = `process.stdout.write(script.atomFeed({
+    siteUrl: 'https://example.test',
+    path: '/feed.xml',
+    title: 'Articles & research',
+    entries: [
+      { route: '/articles/old', title: 'Old', summary: 'A < B', published: '2026-11-01', updated: '2026-11-01' },
+      { route: '/research/new', title: 'New "one"', summary: 'Fresh', published: '2026-11-20', updated: '2026-11-24' },
+    ],
+  }));`;
+  const feed = runScript('feed.mjs', code, fixture);
+  expect(feed).toContain('<title>Articles &amp; research</title>');
+  expect(feed).toContain('<id>https://example.test/feed.xml</id>');
+  expect(feed).toContain('<updated>2026-11-24T00:00:00Z</updated>');
+  expect(feed.indexOf('/research/new')).toBeLessThan(feed.indexOf('/articles/old'));
+  expect(feed).toContain('<summary>A &lt; B</summary>');
+  expect(feed).toContain('<title>New &quot;one&quot;</title>');
+  expect(feed).toContain('<published>2026-11-20T00:00:00Z</published>');
+  expect(() =>
+    runScript(
+      'feed.mjs',
+      `script.atomFeed({ siteUrl: 'x', path: '/f', title: 't', entries: [
+        { route: '/a', title: 'a', summary: 's', published: 'soon', updated: '2026-11-01' }] });`,
+      fixture
+    )
+  ).toThrow(/bad date soon/);
+});
+
+it('submits the home and pricing pages when their sources change', () => {
+  const code = `
+    const paths = ['/', '/pricing', '/research', '/vs/heroku', '/docs/plans'];
+    process.stdout.write(JSON.stringify([
+      script.changedPaths(['content/docs/plans.md'], paths),
+      script.changedPaths(['src/routes/pricing.tsx'], paths),
+      script.changedPaths(['src/components/landing/hero.tsx'], paths),
+      script.changedPaths(['src/lib/faq.ts'], paths),
+      script.changedPaths(['content/docs/billing.md'], paths),
+    ]));
+  `;
+  expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
+    ['/pricing', '/vs/heroku', '/docs/plans'],
+    ['/pricing'],
+    ['/'],
+    ['/', '/pricing'],
+    [],
+  ]);
 });
 
 it('rejects an IndexNow ownership file that would overwrite a site asset', () => {
@@ -109,30 +174,45 @@ it('includes the research index when the research registry changes', () => {
   ]);
 });
 
-it('submits changed live articles and leaves research alone', () => {
+it('submits changed live articles, features and solutions cleanly', () => {
   const code = `
-    const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'];
+    const paths = ['/research', '/research/first', '/solutions', '/solutions/one', '/features', '/features/database-rollbacks', '/articles', '/articles/one', '/articles/two'];
     process.stdout.write(JSON.stringify([
       script.changedPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
       script.changedPaths(['src/lib/articles.ts'], paths),
+      script.changedPaths(['src/lib/features.ts'], paths),
+      script.changedPaths(['src/lib/solutions.ts'], paths),
       script.changedPaths(['scripts/prerender.mjs'], paths),
     ]));
   `;
   expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
     ['/articles/one'],
     ['/articles', '/articles/one', '/articles/two'],
-    ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'],
+    ['/features', '/features/database-rollbacks'],
+    ['/solutions', '/solutions/one'],
+    [
+      '/research',
+      '/research/first',
+      '/solutions',
+      '/solutions/one',
+      '/features',
+      '/features/database-rollbacks',
+      '/articles',
+      '/articles/one',
+      '/articles/two',
+    ],
   ]);
 });
 
 it('submits changed docs and comparison pages', () => {
   const code = `
-    const paths = ['/research', '/vs/heroku', '/vs/fly', '/docs', '/docs/billing', '/docs/plans', '/docs/api/apps'];
+    const paths = ['/research', '/vs/heroku', '/vs/fly', '/templates', '/docs', '/docs/billing', '/docs/plans', '/docs/api/apps'];
     process.stdout.write(JSON.stringify([
       script.changedPaths(['content/docs/billing.md', 'content/docs/removed.md'], paths),
       script.changedPaths(['content/docs/plans.md'], paths),
       script.changedPaths(['src/lib/compare.ts'], paths),
       script.changedPaths(['src/lib/docs-manifest.ts'], paths),
+      script.changedPaths(['src/lib/public-templates.ts'], paths),
       script.changedPaths(['api/openapi.yaml'], paths),
       script.changedPaths(['src/components/landing/hero.tsx'], paths),
     ]));
@@ -142,8 +222,53 @@ it('submits changed docs and comparison pages', () => {
     ['/vs/heroku', '/vs/fly', '/docs/plans'],
     ['/vs/heroku', '/vs/fly'],
     ['/docs'],
+    ['/templates'],
     ['/docs/api/apps'],
     [],
+  ]);
+});
+
+it('hashes what a search engine indexes, not the page template', () => {
+  const code = `
+    const page = (title, main, chrome = 'nav') =>
+      '<html><head><title>' + title + '</title><meta name="description" content="Summary">' +
+      '</head><body><header>' + chrome + '</header><main><h1>' + main + '</h1></main>' +
+      '<footer>' + chrome + '</footer></body></html>';
+    const base = script.contentHash(page('Title', 'Body'));
+    const ld = '<script type="application/ld+json">{}</script></head>';
+    process.stdout.write(JSON.stringify([
+      /^[a-f0-9]{16}$/.test(base),
+      base === script.contentHash(page('Title', 'Body', 'new footer links').replace('</head>', ld)),
+      base === script.contentHash(page('Title', 'Body changed')),
+      base === script.contentHash(page('New title', 'Body')),
+      base === script.contentHash(page('Title', 'Body').replace('Summary', 'New summary')),
+    ]));
+  `;
+  expect(JSON.parse(runScript('indexnow-content.mjs', code, fixture))).toEqual([
+    true,
+    true,
+    false,
+    false,
+    false,
+  ]);
+});
+
+it('submits only pages whose content is new or changed since the last release', () => {
+  const code = `
+    const before = { '/': 'aaaaaaaaaaaaaaaa', '/articles/one': 'bbbbbbbbbbbbbbbb', '/articles/gone': 'cccccccccccccccc' };
+    const now = { '/': 'aaaaaaaaaaaaaaaa', '/articles/one': 'dddddddddddddddd', '/articles/new': 'eeeeeeeeeeeeeeee' };
+    process.stdout.write(JSON.stringify([
+      script.contentChangedPaths(before, now, ['/', '/articles/one', '/articles/new', '/docs/unhashed']),
+      script.contentHashes(now, ['/', '/articles/one', '/articles/new']) !== undefined,
+      script.contentHashes({ '/': 'not-a-hash' }) === undefined,
+      script.contentHashes(now, ['/']) === undefined,
+    ]));
+  `;
+  expect(JSON.parse(runScript('indexnow-content.mjs', code, fixture))).toEqual([
+    ['/articles/one', '/articles/new', '/docs/unhashed'],
+    true,
+    true,
+    true,
   ]);
 });
 
@@ -164,10 +289,17 @@ it('accepts every path the release file can submit', () => {
     }
   }
   for (const path of [
+    '/',
+    '/pricing',
+    '/templates',
     '/research',
     '/research/one',
+    '/solutions',
+    '/solutions/one',
     '/articles',
     '/articles/one',
+    '/features',
+    '/features/database-rollbacks',
     '/vs/railway',
     '/docs',
     '/docs/rollouts',

@@ -7,8 +7,10 @@ import { mockApi } from '../mock/plugin';
 let server: Server;
 let origin: string;
 const savedPlan = process.env.MOCK_PLAN;
+const savedLatency = process.env.MOCK_LATENCY;
 
 beforeAll(async () => {
+  process.env.MOCK_LATENCY = '0';
   let middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => void;
   const configureServer = mockApi().configureServer;
   if (typeof configureServer !== 'function')
@@ -35,6 +37,8 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  if (savedLatency === undefined) delete process.env.MOCK_LATENCY;
+  else process.env.MOCK_LATENCY = savedLatency;
   await new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve()))
   );

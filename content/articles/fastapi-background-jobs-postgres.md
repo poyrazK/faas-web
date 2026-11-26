@@ -81,6 +81,15 @@ The worker needs a queue that survives restarts:
   one more system to run. Gregale's managed Redis is not generally available
   yet, so point `REDIS_URL` at a Redis you run elsewhere.
 
+If jobs arrive with requests and each one is short, you may not need a worker
+at all.
+[gregale-dev/fastapi-postgres-jobs](https://github.com/gregale-dev/fastapi-postgres-jobs)
+is a complete FastAPI app that stores each job in Postgres, runs it in a
+background task right after the request, retries failures with backoff, and
+claims jobs with `FOR UPDATE SKIP LOCKED`. A cron sweep every few hours
+recovers jobs that a crash interrupted. Nothing polls the database, so the
+app and the database both stop when no requests arrive.
+
 ## Managed PostgreSQL on Gregale
 
 Managed PostgreSQL starts on Hobby: 1 database with 1 GiB of storage and a

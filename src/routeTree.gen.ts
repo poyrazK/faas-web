@@ -13,13 +13,17 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArticlesRouteImport } from './routes/articles'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DeployRouteImport } from './routes/deploy'
 import { Route as DocsRouteImport } from './routes/docs'
+import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ResearchRouteImport } from './routes/research'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SolutionsRouteImport } from './routes/solutions'
 import { Route as StatusRouteImport } from './routes/status'
+import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
 import { Route as ApiSandboxSandboxIdRouteImport } from './routes/api-sandbox.$sandboxId'
 import { Route as ArticlesIndexRouteImport } from './routes/articles.index'
@@ -76,10 +80,15 @@ import { Route as DashboardWorkersRouteImport } from './routes/dashboard.workers
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSplatRouteImport } from './routes/docs.$'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
+import { Route as FeaturesIndexRouteImport } from './routes/features.index'
+import { Route as FeaturesSlugRouteImport } from './routes/features.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResearchIndexRouteImport } from './routes/research.index'
 import { Route as ResearchSlugRouteImport } from './routes/research.$slug'
+import { Route as SolutionsIndexRouteImport } from './routes/solutions.index'
+import { Route as SolutionsSlugRouteImport } from './routes/solutions.$slug'
 import { Route as StatusIndexRouteImport } from './routes/status.index'
+import { Route as TemplatesIndexRouteImport } from './routes/templates.index'
 import { Route as VsSlugRouteImport } from './routes/vs.$slug'
 import { Route as DashboardAgentsIndexRouteImport } from './routes/dashboard.agents.index'
 import { Route as DashboardAgentsAgentIdRouteImport } from './routes/dashboard.agents.$agentId'
@@ -124,9 +133,19 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeployRoute = DeployRouteImport.update({
+  id: '/deploy',
+  path: '/deploy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesRoute = FeaturesRouteImport.update({
+  id: '/features',
+  path: '/features',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -154,9 +173,19 @@ const SignupRoute = SignupRouteImport.update({
   path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SolutionsRoute = SolutionsRouteImport.update({
+  id: '/solutions',
+  path: '/solutions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StatusRoute = StatusRouteImport.update({
   id: '/status',
   path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplatesRoute = TemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WillItRunRoute = WillItRunRouteImport.update({
@@ -439,6 +468,16 @@ const DocsSlugRoute = DocsSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => DocsRoute,
 } as any)
+const FeaturesIndexRoute = FeaturesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => FeaturesRoute,
+} as any)
+const FeaturesSlugRoute = FeaturesSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => FeaturesRoute,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -454,10 +493,25 @@ const ResearchSlugRoute = ResearchSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ResearchRoute,
 } as any)
+const SolutionsIndexRoute = SolutionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SolutionsRoute,
+} as any)
+const SolutionsSlugRoute = SolutionsSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => SolutionsRoute,
+} as any)
 const StatusIndexRoute = StatusIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => StatusRoute,
+} as any)
+const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TemplatesRoute,
 } as any)
 const VsSlugRoute = VsSlugRouteImport.update({
   id: '/vs/$slug',
@@ -587,13 +641,17 @@ export interface FileRoutesByFullPath {
   '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/deploy': typeof DeployRoute
   '/docs': typeof DocsRouteWithChildren
+  '/features': typeof FeaturesRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
   '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
+  '/solutions': typeof SolutionsRouteWithChildren
   '/status': typeof StatusRouteWithChildren
+  '/templates': typeof TemplatesRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
   '/api-sandbox/$sandboxId': typeof ApiSandboxSandboxIdRoute
   '/articles/$slug': typeof ArticlesSlugRoute
@@ -647,14 +705,19 @@ export interface FileRoutesByFullPath {
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/features/': typeof FeaturesIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/solutions/': typeof SolutionsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/templates/': typeof TemplatesIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
@@ -681,6 +744,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/contact': typeof ContactRoute
+  '/deploy': typeof DeployRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
@@ -737,14 +801,19 @@ export interface FileRoutesByTo {
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles': typeof ArticlesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/features': typeof FeaturesIndexRoute
   '/research': typeof ResearchIndexRoute
+  '/solutions': typeof SolutionsIndexRoute
   '/status': typeof StatusIndexRoute
+  '/templates': typeof TemplatesIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
@@ -774,13 +843,17 @@ export interface FileRoutesById {
   '/articles': typeof ArticlesRouteWithChildren
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
+  '/deploy': typeof DeployRoute
   '/docs': typeof DocsRouteWithChildren
+  '/features': typeof FeaturesRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
   '/research': typeof ResearchRouteWithChildren
   '/signup': typeof SignupRoute
+  '/solutions': typeof SolutionsRouteWithChildren
   '/status': typeof StatusRouteWithChildren
+  '/templates': typeof TemplatesRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
   '/api-sandbox/$sandboxId': typeof ApiSandboxSandboxIdRoute
   '/articles/$slug': typeof ArticlesSlugRoute
@@ -834,14 +907,19 @@ export interface FileRoutesById {
   '/dashboard/workers': typeof DashboardWorkersRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/features/$slug': typeof FeaturesSlugRoute
   '/invite/$token': typeof InviteTokenRoute
   '/research/$slug': typeof ResearchSlugRoute
+  '/solutions/$slug': typeof SolutionsSlugRoute
   '/vs/$slug': typeof VsSlugRoute
   '/articles/': typeof ArticlesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/features/': typeof FeaturesIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/solutions/': typeof SolutionsIndexRoute
   '/status/': typeof StatusIndexRoute
+  '/templates/': typeof TemplatesIndexRoute
   '/dashboard/agents/$agentId': typeof DashboardAgentsAgentIdRoute
   '/dashboard/agents/policy': typeof DashboardAgentsPolicyRoute
   '/dashboard/apps/$appSlug': typeof DashboardAppsAppSlugRoute
@@ -872,13 +950,17 @@ export interface FileRouteTypes {
     | '/articles'
     | '/contact'
     | '/dashboard'
+    | '/deploy'
     | '/docs'
+    | '/features'
     | '/login'
     | '/onboarding'
     | '/pricing'
     | '/research'
     | '/signup'
+    | '/solutions'
     | '/status'
+    | '/templates'
     | '/will-it-run'
     | '/api-sandbox/$sandboxId'
     | '/articles/$slug'
@@ -932,14 +1014,19 @@ export interface FileRouteTypes {
     | '/dashboard/workers'
     | '/docs/$'
     | '/docs/$slug'
+    | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles/'
     | '/dashboard/'
     | '/docs/'
+    | '/features/'
     | '/research/'
+    | '/solutions/'
     | '/status/'
+    | '/templates/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
@@ -966,6 +1053,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/contact'
+    | '/deploy'
     | '/login'
     | '/onboarding'
     | '/pricing'
@@ -1022,14 +1110,19 @@ export interface FileRouteTypes {
     | '/dashboard/workers'
     | '/docs/$'
     | '/docs/$slug'
+    | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles'
     | '/dashboard'
     | '/docs'
+    | '/features'
     | '/research'
+    | '/solutions'
     | '/status'
+    | '/templates'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
@@ -1058,13 +1151,17 @@ export interface FileRouteTypes {
     | '/articles'
     | '/contact'
     | '/dashboard'
+    | '/deploy'
     | '/docs'
+    | '/features'
     | '/login'
     | '/onboarding'
     | '/pricing'
     | '/research'
     | '/signup'
+    | '/solutions'
     | '/status'
+    | '/templates'
     | '/will-it-run'
     | '/api-sandbox/$sandboxId'
     | '/articles/$slug'
@@ -1118,14 +1215,19 @@ export interface FileRouteTypes {
     | '/dashboard/workers'
     | '/docs/$'
     | '/docs/$slug'
+    | '/features/$slug'
     | '/invite/$token'
     | '/research/$slug'
+    | '/solutions/$slug'
     | '/vs/$slug'
     | '/articles/'
     | '/dashboard/'
     | '/docs/'
+    | '/features/'
     | '/research/'
+    | '/solutions/'
     | '/status/'
+    | '/templates/'
     | '/dashboard/agents/$agentId'
     | '/dashboard/agents/policy'
     | '/dashboard/apps/$appSlug'
@@ -1155,13 +1257,17 @@ export interface RootRouteChildren {
   ArticlesRoute: typeof ArticlesRouteWithChildren
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
+  DeployRoute: typeof DeployRoute
   DocsRoute: typeof DocsRouteWithChildren
+  FeaturesRoute: typeof FeaturesRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
   ResearchRoute: typeof ResearchRouteWithChildren
   SignupRoute: typeof SignupRoute
+  SolutionsRoute: typeof SolutionsRouteWithChildren
   StatusRoute: typeof StatusRouteWithChildren
+  TemplatesRoute: typeof TemplatesRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
   ApiSandboxSandboxIdRoute: typeof ApiSandboxSandboxIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -1198,11 +1304,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/deploy': {
+      id: '/deploy'
+      path: '/deploy'
+      fullPath: '/deploy'
+      preLoaderRoute: typeof DeployRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
       fullPath: '/docs'
       preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features': {
+      id: '/features'
+      path: '/features'
+      fullPath: '/features'
+      preLoaderRoute: typeof FeaturesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1240,11 +1360,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/solutions': {
+      id: '/solutions'
+      path: '/solutions'
+      fullPath: '/solutions'
+      preLoaderRoute: typeof SolutionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/status': {
       id: '/status'
       path: '/status'
       fullPath: '/status'
       preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/templates': {
+      id: '/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof TemplatesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/will-it-run': {
@@ -1639,6 +1773,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSlugRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/features/': {
+      id: '/features/'
+      path: '/'
+      fullPath: '/features/'
+      preLoaderRoute: typeof FeaturesIndexRouteImport
+      parentRoute: typeof FeaturesRoute
+    }
+    '/features/$slug': {
+      id: '/features/$slug'
+      path: '/$slug'
+      fullPath: '/features/$slug'
+      preLoaderRoute: typeof FeaturesSlugRouteImport
+      parentRoute: typeof FeaturesRoute
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -1660,12 +1808,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchSlugRouteImport
       parentRoute: typeof ResearchRoute
     }
+    '/solutions/': {
+      id: '/solutions/'
+      path: '/'
+      fullPath: '/solutions/'
+      preLoaderRoute: typeof SolutionsIndexRouteImport
+      parentRoute: typeof SolutionsRoute
+    }
+    '/solutions/$slug': {
+      id: '/solutions/$slug'
+      path: '/$slug'
+      fullPath: '/solutions/$slug'
+      preLoaderRoute: typeof SolutionsSlugRouteImport
+      parentRoute: typeof SolutionsRoute
+    }
     '/status/': {
       id: '/status/'
       path: '/'
       fullPath: '/status/'
       preLoaderRoute: typeof StatusIndexRouteImport
       parentRoute: typeof StatusRoute
+    }
+    '/templates/': {
+      id: '/templates/'
+      path: '/'
+      fullPath: '/templates/'
+      preLoaderRoute: typeof TemplatesIndexRouteImport
+      parentRoute: typeof TemplatesRoute
     }
     '/vs/$slug': {
       id: '/vs/$slug'
@@ -2029,6 +2198,20 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface FeaturesRouteChildren {
+  FeaturesSlugRoute: typeof FeaturesSlugRoute
+  FeaturesIndexRoute: typeof FeaturesIndexRoute
+}
+
+const FeaturesRouteChildren: FeaturesRouteChildren = {
+  FeaturesSlugRoute: FeaturesSlugRoute,
+  FeaturesIndexRoute: FeaturesIndexRoute,
+}
+
+const FeaturesRouteWithChildren = FeaturesRoute._addFileChildren(
+  FeaturesRouteChildren,
+)
+
 interface ResearchRouteChildren {
   ResearchSlugRoute: typeof ResearchSlugRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
@@ -2041,6 +2224,20 @@ const ResearchRouteChildren: ResearchRouteChildren = {
 
 const ResearchRouteWithChildren = ResearchRoute._addFileChildren(
   ResearchRouteChildren,
+)
+
+interface SolutionsRouteChildren {
+  SolutionsSlugRoute: typeof SolutionsSlugRoute
+  SolutionsIndexRoute: typeof SolutionsIndexRoute
+}
+
+const SolutionsRouteChildren: SolutionsRouteChildren = {
+  SolutionsSlugRoute: SolutionsSlugRoute,
+  SolutionsIndexRoute: SolutionsIndexRoute,
+}
+
+const SolutionsRouteWithChildren = SolutionsRoute._addFileChildren(
+  SolutionsRouteChildren,
 )
 
 interface StatusRouteChildren {
@@ -2056,18 +2253,34 @@ const StatusRouteChildren: StatusRouteChildren = {
 const StatusRouteWithChildren =
   StatusRoute._addFileChildren(StatusRouteChildren)
 
+interface TemplatesRouteChildren {
+  TemplatesIndexRoute: typeof TemplatesIndexRoute
+}
+
+const TemplatesRouteChildren: TemplatesRouteChildren = {
+  TemplatesIndexRoute: TemplatesIndexRoute,
+}
+
+const TemplatesRouteWithChildren = TemplatesRoute._addFileChildren(
+  TemplatesRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ArticlesRoute: ArticlesRouteWithChildren,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
+  DeployRoute: DeployRoute,
   DocsRoute: DocsRouteWithChildren,
+  FeaturesRoute: FeaturesRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
   ResearchRoute: ResearchRouteWithChildren,
   SignupRoute: SignupRoute,
+  SolutionsRoute: SolutionsRouteWithChildren,
   StatusRoute: StatusRouteWithChildren,
+  TemplatesRoute: TemplatesRouteWithChildren,
   WillItRunRoute: WillItRunRoute,
   ApiSandboxSandboxIdRoute: ApiSandboxSandboxIdRoute,
   InviteTokenRoute: InviteTokenRoute,

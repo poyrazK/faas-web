@@ -34,7 +34,10 @@ claude mcp add --transport http my-mcp https://my-mcp.gregale.app/mcp
 ```
 
 Each starter comes with sample tools, a resource and a prompt, so it works
-before you change anything. `doctor` checks discovery, origin rejection,
+before you change anything. The Node starter is on GitHub as
+[gregale-dev/mcp-server-node](https://github.com/gregale-dev/mcp-server-node)
+and runs as-is at `https://mcp-server-node.gregale.app/mcp`: add that URL to
+a client to try it first. `doctor` checks discovery, origin rejection,
 protocol compatibility and streaming, locally or against the live URL.
 
 The deploy builds your source and starts the new version with no traffic.

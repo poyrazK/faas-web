@@ -44,6 +44,10 @@ export interface DocSection {
   entries: DocEntry[];
 }
 
+/** The docs index page's meta description, which its Markdown copy also opens with. */
+export const DOCS_DESCRIPTION =
+  'Deploy your first Gregale app, connect a repository, and learn how to run, observe, and scale your backend.';
+
 export const DOC_SECTIONS: DocSection[] = [
   {
     title: 'Start here',
@@ -204,6 +208,20 @@ export const DOC_SECTIONS: DocSection[] = [
         title: 'Migrate from Render',
         summary:
           'Translate render.yaml services, pre-deploy commands, workers, crons and Postgres to Gregale.',
+      },
+      {
+        slug: 'migrate-from-railway',
+        source: 'docs/migrate-from-railway.md',
+        title: 'Migrate from Railway',
+        summary:
+          'Map Railway services, railpack.json, variables, cron services and Postgres to Gregale, step by step.',
+      },
+      {
+        slug: 'migrate-from-fly',
+        source: 'docs/migrate-from-fly.md',
+        title: 'Migrate from Fly.io',
+        summary:
+          'Translate fly.toml, secrets, process groups, volumes and Managed Postgres to Gregale, step by step.',
       },
     ],
   },

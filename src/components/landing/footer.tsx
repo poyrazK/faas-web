@@ -18,9 +18,22 @@ interface FooterLink {
   route?: '/login' | '/signup' | '/dashboard';
   /** A public app route without the marketing-to-product sweep. */
   publicRoute?:
-    '/status' | '/docs/api' | '/contact' | '/will-it-run' | '/pricing' | '/research' | '/articles';
+    | '/status'
+    | '/docs/api'
+    | '/contact'
+    | '/features'
+    | '/templates'
+    | '/will-it-run'
+    | '/pricing'
+    | '/solutions'
+    | '/research'
+    | '/articles';
   /** A comparison page: /vs/<slug>. */
   compare?: string;
+  /** An article page: /articles/<slug>. */
+  article?: string;
+  /** A research kit page: /research/<slug>. */
+  research?: string;
   /** A docs page. `true` is the docs index; a string is that page's slug. */
   doc?: true | string;
 }
@@ -30,7 +43,9 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
     title: 'Product',
     links: [
       { label: 'Deploy your API', href: '/#deploy' },
-      { label: 'Features', href: '/#why' },
+      { label: 'Solutions', href: '/solutions', publicRoute: '/solutions' },
+      { label: 'Features', href: '/features', publicRoute: '/features' },
+      { label: 'Templates', href: '/templates', publicRoute: '/templates' },
       { label: 'Pricing', href: '/pricing', publicRoute: '/pricing' },
       { label: 'Will it run?', href: '/will-it-run', publicRoute: '/will-it-run' },
       { label: 'FAQ', href: '/#questions' },
@@ -44,6 +59,16 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Gregale vs Render', href: '/vs/render', compare: 'render' },
       { label: 'Gregale vs Railway', href: '/vs/railway', compare: 'railway' },
       { label: 'Gregale vs Fly.io', href: '/vs/fly', compare: 'fly' },
+      { label: 'Gregale vs Cloud Run', href: '/vs/cloud-run', compare: 'cloud-run' },
+      { label: 'Gregale vs Vercel', href: '/vs/vercel', compare: 'vercel' },
+      { label: 'Gregale vs Koyeb', href: '/vs/koyeb', compare: 'koyeb' },
+      { label: 'Gregale vs Northflank', href: '/vs/northflank', compare: 'northflank' },
+      { label: 'Gregale vs Coolify', href: '/vs/coolify', compare: 'coolify' },
+      {
+        label: 'Gregale vs Cloudflare Workers',
+        href: '/vs/cloudflare-workers',
+        compare: 'cloudflare-workers',
+      },
     ],
   },
   {
@@ -67,6 +92,22 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       },
       { label: 'Trace propagation', href: '/docs/trace-propagation', doc: 'trace-propagation' },
       { label: 'Egress denylist', href: '/docs/egress-denylist', doc: 'egress-denylist' },
+      { label: 'Canary rollbacks', href: '/articles/canary-deploys', article: 'canary-deploys' },
+      {
+        label: 'Code + Postgres rollback',
+        href: '/articles/rollback-code-and-database',
+        article: 'rollback-code-and-database',
+      },
+      {
+        label: 'PaaS idle cost model',
+        href: '/research/paas-intermittent-api-cost-model-2026-11-25',
+        research: 'paas-intermittent-api-cost-model-2026-11-25',
+      },
+      {
+        label: 'Firecracker restore study',
+        href: '/research/firecracker-snapshot-restore-ssd-2026-09-09',
+        research: 'firecracker-snapshot-restore-ssd-2026-09-09',
+      },
     ],
   },
   {
@@ -81,6 +122,22 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       },
       { label: 'CLI guide', href: '/docs/cli', doc: 'cli' },
       { label: 'API reference', href: '/docs/api', publicRoute: '/docs/api' },
+      { label: 'OpenAPI spec (YAML)', href: '/openapi.yaml' },
+      {
+        label: 'Cloud for AI coding agents',
+        href: '/articles/best-cloud-for-ai-coding-agents',
+        article: 'best-cloud-for-ai-coding-agents',
+      },
+      {
+        label: 'MCP server hosting',
+        href: '/articles/mcp-server-hosting',
+        article: 'mcp-server-hosting',
+      },
+      {
+        label: 'Community Q&A',
+        href: 'https://github.com/gregale-dev/community/discussions',
+        external: true,
+      },
     ],
   },
   {
@@ -90,11 +147,15 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Compliance', href: '/docs/compliance', doc: 'compliance' },
       { label: 'Data Processing Agreement', href: '/docs/dpa', doc: 'dpa' },
       { label: 'Subprocessors', href: '/docs/subprocessors', doc: 'subprocessors' },
+      { label: 'Security', href: '/docs/security', doc: 'security' },
       {
         label: 'Responsible disclosure',
         href: '/docs/responsible-disclosure',
         doc: 'responsible-disclosure',
       },
+      // Served by apid through vercel.json, so plain anchors, not router links.
+      { label: 'Terms of Service', href: '/terms' },
+      { label: 'Privacy Policy', href: '/privacy' },
     ],
   },
   {
@@ -138,6 +199,22 @@ function FooterAnchor({ link }: { link: FooterLink }) {
   if (link.compare) {
     return (
       <Link to="/vs/$slug" params={{ slug: link.compare }} className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.article) {
+    return (
+      <Link to="/articles/$slug" params={{ slug: link.article }} className={LINK_CLASS}>
+        {link.label}
+      </Link>
+    );
+  }
+
+  if (link.research) {
+    return (
+      <Link to="/research/$slug" params={{ slug: link.research }} className={LINK_CLASS}>
         {link.label}
       </Link>
     );

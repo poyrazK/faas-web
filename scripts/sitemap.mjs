@@ -10,7 +10,7 @@ function git(args) {
   }).trim();
 }
 
-function docsLastModified() {
+export function docsLastModified() {
   const dates = new Map();
   try {
     const shallowFile = git(['rev-parse', '--git-path', 'shallow']);
@@ -56,14 +56,22 @@ function docsLastModified() {
   return dates;
 }
 
-export function sitemapXml(siteUrl, routes) {
-  const lastModified = docsLastModified();
+/**
+ * `dates` gives routes outside the docs the date their registry states.
+ * `datedLike` dates a route by a docs page it renders, e.g. /pricing by the
+ * plan catalog in /docs/plans. A docs date from Git always wins.
+ */
+export function sitemapXml(siteUrl, routes, { dates = new Map(), datedLike = {}, docDates } = {}) {
+  const lastModified = docDates ?? docsLastModified();
   const urls = routes.map((route) => {
     const location = (siteUrl + route)
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
-    const date = lastModified.get(route);
+    const date =
+      lastModified.get(route) ??
+      dates.get(route) ??
+      (datedLike[route] ? lastModified.get(datedLike[route]) : undefined);
     return [
       '  <url>',
       `    <loc>${location}</loc>`,

@@ -3,16 +3,34 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   AGENT_CORE_SLUGS,
+  COMPARISONS_TITLE,
   LLMS_SMALL_MAX_BYTES,
   absoluteLinks,
+  articlesIndexPage,
+  comparisonPage,
+  comparisonTitle,
+  docsIndexPage,
+  featuresIndexPage,
+  homePage,
   llmsFull,
   llmsIndex,
   llmsSmall,
   markdownPage,
   markdownUrl,
+  pricingPage,
   renderIntro,
+  researchIndexPage,
+  solutionsIndexPage,
 } from './agent-docs';
-import { DOC_ENTRIES, findDoc } from './docs-manifest';
+import { ARTICLES } from './articles';
+import { FEATURES } from './features';
+import { SOLUTIONS } from './solutions';
+import { LANDING_FAQ, pricingDescription, pricingFaq } from './faq';
+import { formatCatalogPrice } from './plan-catalog-parser';
+import { RESEARCH_PUBLICATIONS } from './research';
+import { COMPARISONS_CHECKED, comparisons } from './compare';
+import { DOC_ENTRIES, DOC_SECTIONS, findDoc } from './docs-manifest';
+import { parsePlanCatalog } from './plan-catalog-parser';
 import {
   PLATFORM_AVAILABILITY,
   INSTALL_COMMAND,
@@ -101,6 +119,120 @@ describe('llmsIndex', () => {
     expect(index.lastIndexOf('\n## ')).toBe(index.indexOf('\n## Optional\n'));
     expect(optional).toContain(markdownUrl(SITE, 'dpa'));
     expect(index).not.toContain('## Trust');
+  });
+
+  it('lists each comparison page once, as Markdown, before the docs', () => {
+    const all = comparisons(CATALOG);
+    const withComparisons = llmsIndex('# Gregale\n\n> Summary.\n', SITE, all);
+    const section = withComparisons.indexOf(`\n## ${COMPARISONS_TITLE}\n`);
+    expect(section).toBeGreaterThan(withComparisons.indexOf('\n## Articles\n'));
+    expect(section).toBeLessThan(withComparisons.indexOf('\n## Optional\n'));
+    for (const comparison of all) {
+      const link = `[${comparisonTitle(comparison)}](${SITE}/vs/${comparison.slug}.md): `;
+      expect(withComparisons.split(link).length - 1, comparison.slug).toBe(1);
+    }
+    expect(index).not.toContain(`## ${COMPARISONS_TITLE}`);
+  });
+});
+
+const CATALOG = parsePlanCatalog(readFileSync(resolve('content/docs/plans.md'), 'utf8'));
+
+describe('comparisonPage', () => {
+  for (const comparison of comparisons(CATALOG)) {
+    it(`carries every fact on /vs/${comparison.slug}`, () => {
+      const page = comparisonPage(comparison, COMPARISONS_CHECKED, SITE);
+      expect(page.startsWith(`# Gregale vs ${comparison.competitor}\n`)).toBe(true);
+      expect(page).toContain(`Checked ${COMPARISONS_CHECKED}`);
+      expect(page).toContain(comparison.summary);
+      // One table row per topic, each on one line with its pipes escaped.
+      const rows = page.split('\n').filter((line) => line.startsWith('| '));
+      expect(rows.length).toBe(comparison.rows.length + 1);
+      for (const row of rows) expect(row.split(/(?<!\\)\|/).length).toBe(5);
+      for (const item of [...comparison.theyFit, ...comparison.gregaleFits])
+        expect(page).toContain(`- ${item}`);
+      for (const { question, answer } of comparison.faq) {
+        expect(page).toContain(`### ${question}\n\n${answer}`);
+      }
+      for (const source of comparison.sources) expect(page).toContain(`](${source.url})`);
+      expect(findDoc(comparison.migrateDoc), comparison.migrateDoc).toBeDefined();
+      expect(page).toContain(`](${markdownUrl(SITE, comparison.migrateDoc)})`);
+      expect(page.trimEnd().endsWith(`Canonical URL: ${SITE}/vs/${comparison.slug}`)).toBe(true);
+    });
+  }
+});
+
+describe('site pages as Markdown', () => {
+  const intro = readFileSync(resolve('content/llms-intro.md'), 'utf8');
+  const endsWithCanonical = (page: string, route: string) =>
+    page.trimEnd().endsWith(`Canonical URL: ${SITE}${route}`);
+
+  it('gives the home page the agent intro, where to read next and its questions', () => {
+    const page = homePage(intro, LANDING_FAQ, SITE);
+    expect(page.startsWith(renderIntro(intro))).toBe(true);
+    for (const path of [
+      '/features.md',
+      '/pricing.md',
+      '/docs.md',
+      '/solutions.md',
+      '/articles.md',
+      '/research.md',
+      '/llms.txt',
+    ]) {
+      expect(page).toContain(`](${SITE}${path})`);
+    }
+    for (const { question, answer } of LANDING_FAQ) {
+      expect(page).toContain(`### ${question}\n\n${answer}`);
+    }
+    expect(endsWithCanonical(page, '/')).toBe(true);
+  });
+
+  it('quotes every plan price and the pricing questions from the catalog', () => {
+    const page = pricingPage(CATALOG, pricingDescription(CATALOG), pricingFaq(CATALOG), SITE);
+    expect(page).toContain(`> ${pricingDescription(CATALOG)}`);
+    const rows = page.split('\n').filter((line) => line.startsWith('| '));
+    expect(rows.length).toBe(CATALOG.plans.length + 1);
+    for (const row of rows) expect(row.split('|').length).toBe(14);
+    for (const plan of CATALOG.plans) {
+      expect(page).toContain(
+        `| ${plan.name} | ${formatCatalogPrice(plan.monthly, CATALOG.currency)} |`
+      );
+    }
+    for (const { question, answer } of pricingFaq(CATALOG)) {
+      expect(page).toContain(`### ${question}\n\n${answer}`);
+    }
+    expect(page).toContain(`](${markdownUrl(SITE, 'plans')})`);
+    expect(findDoc('plans')).toBeDefined();
+    expect(endsWithCanonical(page, '/pricing')).toBe(true);
+  });
+
+  it('lists every docs page once, under its section', () => {
+    const page = docsIndexPage(SITE);
+    for (const section of DOC_SECTIONS)
+      expect(page).toContain(`## ${section.title}\n\n${section.blurb}`);
+    for (const entry of DOC_ENTRIES) {
+      expect(page.split(`](${markdownUrl(SITE, entry.slug)})`).length - 1, entry.slug).toBe(1);
+    }
+    expect(endsWithCanonical(page, '/docs')).toBe(true);
+  });
+
+  it('lists every feature, solution, article and research publication as Markdown', () => {
+    const features = featuresIndexPage(SITE);
+    for (const entry of FEATURES)
+      expect(features).toContain(`](${SITE}/features/${entry.slug}.md)`);
+    expect(endsWithCanonical(features, '/features')).toBe(true);
+    const solutions = solutionsIndexPage(SITE);
+    for (const entry of SOLUTIONS)
+      expect(solutions).toContain(`](${SITE}/solutions/${entry.slug}.md)`);
+    expect(endsWithCanonical(solutions, '/solutions')).toBe(true);
+    const articles = articlesIndexPage(SITE);
+    for (const entry of ARTICLES)
+      expect(articles).toContain(`](${SITE}/articles/${entry.slug}.md)`);
+    expect(endsWithCanonical(articles, '/articles')).toBe(true);
+    const research = researchIndexPage(SITE);
+    for (const entry of RESEARCH_PUBLICATIONS) {
+      expect(research).toContain(`](${SITE}/research/${entry.slug}.md)`);
+    }
+    expect(endsWithCanonical(research, '/research')).toBe(true);
   });
 });
 

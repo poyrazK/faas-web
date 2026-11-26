@@ -28,11 +28,9 @@ jobs:
       # package.json rather than silently resolving something new.
       - run: npm ci
 
-      # Build first. The prerender tests assert against `dist/`, and skip
-      # themselves when it is absent — running `check` before this would let
-      # them quietly no-op in the one place they most need to run.
-      - run: npm run build
+      # Build bundle/prerender concurrently with typecheck (eliminating a
+      # duplicate `tsc` pass), lint, and format checks before running tests so
+      # `src/prerender.test.ts` asserts against freshly built `dist/`.
+      - run: node scripts/run-parallel.mjs build:bundle typecheck lint format:check
 
-      # Typecheck, lint, format, tests. Kept as one script so `npm run check`
-      # locally and CI can never drift apart.
-      - run: npm run check
+      - run: npm run test:node && npm run test:jsdom

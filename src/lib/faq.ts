@@ -53,6 +53,15 @@ export function cheapestPaidPlan(catalog: Catalog): CatalogPlan {
   return paid.reduce((low, plan) => (plan.monthly < low.monthly ? plan : low), paid[0]);
 }
 
+/** The pricing page's meta description, which its Markdown copy also opens with. */
+export function pricingDescription(catalog: Catalog): string {
+  const usd = (amount: number) => formatCatalogPrice(amount, catalog.currency);
+  return (
+    `Gregale plans start free; paid plans from ${usd(cheapestPaidPlan(catalog).monthly)} a month. ` +
+    `Compute is billed per GB-RAM-hour at ${usd(catalog.overagePerGbHour)} beyond each plan's allowance, with a spend cap.`
+  );
+}
+
 /**
  * Pricing page questions. Every number is read from the generated plan
  * catalog (`content/docs/plans.md`), so a price change cannot leave a stale
