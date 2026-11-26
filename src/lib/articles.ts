@@ -55,6 +55,16 @@ const OTEL_TRACING_SLUG = 'zero-code-otel-sql-regression-tracing';
 const AUTOSCALE_LAG_SLUG = 'autoscale-from-zero-kafka-lag-custom-metrics';
 const ENV_PROMOTION_SLUG = 'promote-staging-to-production-without-rebuilding';
 const SYNTHETIC_CHECKS_SLUG = 'synthetic-uptime-checks-scale-to-zero';
+const STATIC_EGRESS_IP_SLUG = 'static-egress-ip-scale-to-zero';
+const ATOMIC_RELEASES_SLUG = 'atomic-multi-service-releases';
+const BINDING_VERIFICATION_SLUG = 'pre-traffic-service-binding-verification';
+const RELEASE_CONTROLS_SLUG = 'deploy-freezes-release-approvals-schedules';
+const EDGE_RULES_TRACE_SLUG = 'edge-rules-rate-limiting-trace-testing';
+const CRONS_EVENTS_SLUG = 'scale-to-zero-cron-jobs-event-triggers';
+const OBJECT_STORAGE_SLUG = 'private-object-storage-without-s3-iam';
+const EGRESS_DENYLIST_SLUG = 'ssrf-protection-egress-denylist-paas';
+const STORED_WORKFLOW_RECOVERY_SLUG = 'stored-workflow-recovery-missed-schedules';
+const CONTAINER_COMPAT_SLUG = 'deploy-docker-container-scale-to-zero-no-rewrite';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -1199,6 +1209,260 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: STATIC_EGRESS_IP_SLUG,
+    title: 'Static egress IP on scale-to-zero without a NAT Gateway',
+    summary:
+      'Bind a dedicated outbound static IP per app and region with `gregale app static-egress-ip set` so banks, payment processors and allowlisted databases see one stable IP even while compute scales to zero.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How do I assign a static outbound IP for IP allowlisting on Gregale?',
+        answer:
+          'Run `gregale app APP_ID static-egress-ip set 203.0.113.42` (`show` and `clear` inspect or remove it). The address applies to outbound connections from that app in its region without changing inbound routing.',
+      },
+      {
+        question: 'Do I need to configure a VPC or NAT Gateway to get a static egress IP?',
+        answer:
+          'No. Gregale allocates and routes the outbound static address at the platform level per app and region without VPC subnets or NAT gateway instances.',
+      },
+      {
+        question: 'Is static egress available on every plan and region?',
+        answer:
+          'No. Static egress is plan- and region-dependent, and the API reports availability and any charge before allocation. Do not hard-code the address in application configuration.',
+      },
+    ],
+  },
+  {
+    slug: ATOMIC_RELEASES_SLUG,
+    title: 'Stop microservice version drift with atomic project releases and release graphs',
+    summary:
+      'Preflight multi-service projects with `gregale deploy check --project`, pin compatible frontend, API, worker and queue versions with `X-Gregale-Release` and `__Host-gregale_release`, and opt into progressive whole-graph canaries.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale stop API and client versions from drifting during deploys?',
+        answer:
+          'A project release graph pins which deployment of each service a caller reaches using `X-Gregale-Release` headers and host-only `__Host-gregale_release` cookies across HTTP, WebSockets, internal calls and durable queues.',
+      },
+      {
+        question: 'What does gregale deploy check --project check in CI?',
+        answer:
+          'It runs a read-only readiness check before uploading source or starting builds—reporting missing keys, invalid dependencies and policy blockers, and exiting `0` for ready, `1` for blocked or `2` for unknown.',
+      },
+      {
+        question:
+          'Are progressive multi-service canaries and worker cutovers available to every account?',
+        answer:
+          'Progressive whole-graph canaries (`--progressive`, 5%/25%/100% stages), atomic worker cutovers (`--workers --worker-health`), schema cleanup contracts and release secret snapshots are opt-in capabilities not yet enabled on every account.',
+      },
+    ],
+  },
+  {
+    slug: BINDING_VERIFICATION_SLUG,
+    title: 'Pre-traffic service binding verification for Postgres, S3 and queues',
+    summary:
+      'Probe `.internal` service routes, managed PostgreSQL (`SELECT 1`), object storage (`ListObjectsV2`) and push-queue consumers on your exact candidate release with `gregale app binding verify` and enforce gates inside promotion transactions.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'What does gregale app binding verify test before production traffic shifts?',
+        answer:
+          'It tests private `.internal` service DNS and endpoint health (without waking idle targets), runs `SELECT 1` inside a bounded candidate task for managed Postgres, executes read-only `ListObjectsV2` (`MaxKeys=1`) for S3 buckets and checks push-queue consumer readiness.',
+      },
+      {
+        question: 'How do I block deployment promotion unless candidate bindings pass?',
+        answer:
+          'Pass `--require-bindings` to `gregale release traffic promote`, or store server-side enforcement via `gregale app binding release-policy set --require-verification --max-age 10m` so requests cannot waive the gate.',
+      },
+      {
+        question: 'What happens if a CI runner disconnects during multi-binding verification?',
+        answer:
+          'Run `gregale app binding verify --release-policy --durable` to persist a resumable verification receipt (up to 128 steps, 10-minute lifetime, 1-8 concurrency) that you can inspect, resume or diagnose later.',
+      },
+    ],
+  },
+  {
+    slug: RELEASE_CONTROLS_SLUG,
+    title: 'Stop Friday-night outages with deploy freezes, approvals and scheduled rollouts',
+    summary:
+      'Require signed-in human MFA approvals (`--approvals 2`), enforce recurring weekend or post-rollback deploy freezes (`--after-rollback 1h`), and build releases early to roll out automatically during quiet windows.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Can a CI key or AI agent approve its own production release on Gregale?',
+        answer:
+          'No. Release approvals require a signed-in human session (and MFA when enabled) on the dashboard approval page; CLI tokens, API keys and CI jobs receive `403 release_approval_session_required`.',
+      },
+      {
+        question: 'Do deploy freezes block emergency rollbacks?',
+        answer:
+          'Never. Freezes block new production deploys, GitHub pushes and promotions (`release_frozen`), while rollbacks, in-progress rollouts, previews and secret rotations always remain open.',
+      },
+      {
+        question: 'When does a database migration run under release approvals?',
+        answer:
+          'Releases with a release command wait after building and before executing the migration, so rejecting or timing out the approval leaves production data untouched.',
+      },
+    ],
+  },
+  {
+    slug: EDGE_RULES_TRACE_SLUG,
+    title: 'Programmable edge rules and replayable trace testing without Nginx or Cloudflare',
+    summary:
+      'Block scrapers, rate-limit routes, verify JWTs and validate JSON Schema requests at the gateway without waking idle VMs, then test rule sets deterministically with versioned `gregale edge rule trace` JSON scenarios.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Do requests refused by edge rules wake a parked Gregale app?',
+        answer:
+          'No. `ip`, `geo`, `jwt`, `limit`, `throttle`, `validate`, `waf` and `challenge` rules run at the gateway in cheapest-first order, refusing blocked traffic before waking your microVM.',
+      },
+      {
+        question: 'How can I test edge rule changes before applying them to production?',
+        answer:
+          'Deploy rules first in `mode: log`, inspect matched samples with `gregale edge rule review`, and run deterministic dry-runs against live rules using `gregale edge rule trace --config trace.json`.',
+      },
+      {
+        question: 'Can I undo a broken edge rule change immediately?',
+        answer:
+          'Yes. Every change creates a versioned snapshot (`gregale edge rule history`) that you can restore in one command with `gregale edge rule rollback`.',
+      },
+    ],
+  },
+  {
+    slug: CRONS_EVENTS_SLUG,
+    title: 'Scale-to-zero cron jobs, delayed tasks and event queues without an always-on server',
+    summary:
+      'Run DST-safe HTTP crons (Hobby 5, Pro 20, Scale 100 per app), 365-day delayed tasks and CloudEvents app inboxes with zero idle compute and at least 30 days of dead-letter queue retention on every plan.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'How does Gregale bill scheduled cron jobs on a scale-to-zero app?',
+        answer:
+          'Cron runs bill only for the seconds your app runs (including wake), then the app scales back to zero. Choosing 15-minute or hourly intervals instead of every-minute runs avoids keeping apps continuously warm.',
+      },
+      {
+        question: 'How do I run one-off future tasks or service-to-service events without SQS?',
+        answer:
+          'Use `gregale delayed-task add` for scheduled one-shot calls up to 365 days out, or `gregale event send` to place CloudEvents messages directly on another app’s durable invocation queue.',
+      },
+      {
+        question: 'What happens when a scheduled cron or inbox message fails?',
+        answer:
+          'Failed and dead-lettered invocations stay inspectable and replayable in `gregale dlq list` for at least 30 days on every plan.',
+      },
+    ],
+  },
+  {
+    slug: OBJECT_STORAGE_SLUG,
+    title: 'Private app object storage and direct browser uploads without S3 IAM boilerplate',
+    summary:
+      'Create private S3-compatible buckets (`https://s3.gregale.dev`) with `gregale add bucket`, sealed env vars outside secret quotas, `$0.03/GiB-month` overage, direct upload routes and upload triggers without waking your app.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Can I use boto3 or AWS SDK v3 with Gregale object storage?',
+        answer:
+          'Yes. Point any standard S3 client at `https://s3.gregale.dev` (`region: us-east-1`, path-style addressing, SigV4). `gregale add bucket` injects the six sealed credentials automatically.',
+      },
+      {
+        question: 'Are downloads and API requests billed per operation on Gregale buckets?',
+        answer:
+          'No. Downloads and requests inside your monthly plan allowance (Free 10 GiB/50k, Hobby 100 GiB/500k, Pro 500 GiB/2.5M, Scale 2,000 GiB/10M) carry no separate charge; paid average storage past included GiB costs $0.03 per GiB-month.',
+      },
+      {
+        question: 'Does Gregale object storage support versioning or Object Lock yet?',
+        answer:
+          'Buckets live in a single OVHcloud storage region that does not yet support versioning or Object Lock, while versioning, lifecycle rules and bucket CORS are gated preview capabilities. Keep external backups of critical files.',
+      },
+    ],
+  },
+  {
+    slug: EGRESS_DENYLIST_SLUG,
+    title: 'Default SSRF protection with platform egress denylists across every plan',
+    summary:
+      'Block `169.254.169.254` cloud metadata, RFC1918 private networks, IPv6 NAT64 bypasses, SMTP spam ports, SSH/RDP and mining pools automatically on every Gregale app without extra configuration.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Can an app allowlist bypass Gregale’s SSRF and metadata IP denylist?',
+        answer:
+          'No. The blocked IPv4, IPv6 and port rules apply to every app on every plan, and egress allowlist entries or `gregale app egress-ports add` cannot open them.',
+      },
+      {
+        question: 'Why does Gregale block ports 25 and 2525 outbound?',
+        answer:
+          'Closing raw SMTP ports 25 and 2525 stops abuse and spam relays by default. Apps send mail over HTTPS provider APIs or via allowlisted mail submission ports 465 and 587.',
+      },
+      {
+        question: 'Does Gregale also protect against SSRF during container image pulls?',
+        answer:
+          'Yes. Container image pulls refuse any registry resolving to loopback (`127.0.0.0/8`), `0.0.0.0/8`, `192.0.0.0/24`, benchmarking (`198.18.0.0/15`), or reserved (`240.0.0.0/4`) IP ranges.',
+      },
+    ],
+  },
+  {
+    slug: STORED_WORKFLOW_RECOVERY_SLUG,
+    title: 'Diagnose and recover failed stored workflows and missed schedules safely',
+    summary:
+      'Inspect failed DAG blockers with `gregale workflow diagnose`, resume mid-run preserving completed steps (`expected_resume_count`, up to 16 resumptions), opt into `catch_up: latest` schedules and run rate-limited recovery batches.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question: 'Does resuming a failed stored workflow re-run already completed steps?',
+        answer:
+          'No. `gregale workflow resume` preserves completed steps and batch progress, reopening only the failed step and downstream descendants while pinning the original handler deployment.',
+      },
+      {
+        question: 'How does Gregale prevent two operators from double-resuming a failed run?',
+        answer:
+          'Every resume requires `--expected-resume-count N` and an `--idempotency-key`, rejecting concurrent or stale attempts via generation fencing, and blocking unsafe un-idempotent mutations (`unsafe_mutation`).',
+      },
+      {
+        question:
+          'How do scheduled workflows recover after an outage without running 50 backlogged copies?',
+        answer:
+          'Set `catch_up: latest` with a `catch_up_window` (`1m` to `24h`, default `1h`) so only the most recent missed schedule inside the window fires instead of flooding your app with old runs.',
+      },
+    ],
+  },
+  {
+    slug: CONTAINER_COMPAT_SLUG,
+    title: 'Deploy any Docker container at scale-to-zero without rewriting for serverless',
+    summary:
+      'Any stateless Linux/amd64 OCI image listening on `0.0.0.0:$PORT` runs inside a Gregale microVM with automatic kernel/Node/Python/Java snapshot reseeding, ECR/Artifact Registry/ACR pulls, Compose support and `HEALTHCHECK` conversion.',
+    publishedOn: '2026-11-26',
+    updatedOn: '2026-11-26',
+    faq: [
+      {
+        question:
+          'Do I have to rewrite my Express, Go, Spring or Rust HTTP server as a handler function?',
+        answer:
+          'No. Any stateless `Linux/amd64` OCI image listening on `0.0.0.0:$PORT` (default 8080) deploys directly with `gregale deploy --image`, preserving ENTRYPOINT, CMD, USER and WORKDIR.',
+      },
+      {
+        question:
+          'Why does random number generation sometimes break on snapshot-restored VMs, and how does Gregale fix it?',
+        answer:
+          'Restoring a memory snapshot without reseeding makes two woken VMs repeat identical PRNG sequences. Gregale automatically reseeds the kernel plus Node, Python and Java 16+ randomness and prevents Gunicorn clock-jump worker restarts on wake.',
+      },
+      {
+        question: 'Can Gregale persist files written to a Docker VOLUME inside a microVM?',
+        answer:
+          'No. Container filesystems and `/tmp` are ephemeral across scale-to-zero cold fallbacks and deploys; store durable state in managed PostgreSQL or object storage.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -1251,6 +1515,16 @@ const OTEL_TRACING_LINK = `[One-line OpenTelemetry tracing with deploy-to-deploy
 const AUTOSCALE_LAG_LINK = `[Autoscale containers from zero on Kafka lag, custom metrics and schedules](/articles/${AUTOSCALE_LAG_SLUG}) explains queue_lag vs queue_depth, pushed backlog metrics and cron warm windows.`;
 const ENV_PROMOTION_LINK = `[Promote tested staging artifacts to production without rebuilding](/articles/${ENV_PROMOTION_SLUG}) explains immutable artifact promotion, secret isolation and verified dark cutovers.`;
 const SYNTHETIC_CHECKS_LINK = `[Synthetic uptime checks on scale-to-zero apps without accidental bills](/articles/${SYNTHETIC_CHECKS_SLUG}) explains external probe alerts, failure classes and exact per-plan wake costs.`;
+const STATIC_EGRESS_IP_LINK = `[Static egress IP on scale-to-zero without a NAT Gateway](/articles/${STATIC_EGRESS_IP_SLUG}) explains how to bind a dedicated outbound IP per app and region for partner allowlists.`;
+const ATOMIC_RELEASES_LINK = `[Stop microservice version drift with atomic project releases and release graphs](/articles/${ATOMIC_RELEASES_SLUG}) explains read-only CI project checks, release-set pinning and coordinated multi-service rollouts.`;
+const BINDING_VERIFICATION_LINK = `[Pre-traffic service binding verification for Postgres, S3 and queues](/articles/${BINDING_VERIFICATION_SLUG}) explains candidate-pinned connectivity canaries, transaction-locked promotions and durable CI runs.`;
+const RELEASE_CONTROLS_LINK = `[Stop Friday-night outages with deploy freezes, approvals and scheduled rollouts](/articles/${RELEASE_CONTROLS_SLUG}) explains MFA human approvals, recurring/post-rollback freezes and scheduled deployments.`;
+const EDGE_RULES_TRACE_LINK = `[Programmable edge rules and replayable trace testing without Nginx or Cloudflare](/articles/${EDGE_RULES_TRACE_SLUG}) explains gateway rate limits, schema validation, log mode and JSON trace scenarios.`;
+const CRONS_EVENTS_LINK = `[Scale-to-zero cron jobs, delayed tasks and event queues without an always-on server](/articles/${CRONS_EVENTS_SLUG}) explains DST-safe crons, 365-day delayed tasks, app inboxes and dead-letter recovery.`;
+const OBJECT_STORAGE_LINK = `[Private app object storage and direct browser uploads without S3 IAM boilerplate](/articles/${OBJECT_STORAGE_SLUG}) explains one-command S3 buckets, zero-wake upload routes and plan pricing.`;
+const EGRESS_DENYLIST_LINK = `[Default SSRF protection with platform egress denylists across every plan](/articles/${EGRESS_DENYLIST_SLUG}) explains blocked RFC1918/metadata/NAT64 ranges, closed ports and registry SSRF guards.`;
+const STORED_WORKFLOW_RECOVERY_LINK = `[Diagnose and recover failed stored workflows and missed schedules safely](/articles/${STORED_WORKFLOW_RECOVERY_SLUG}) explains recovery diagnostics, generation-fenced resumes, schedule catch-up and batch jobs.`;
+const CONTAINER_COMPAT_LINK = `[Deploy any Docker container at scale-to-zero without rewriting for serverless](/articles/${CONTAINER_COMPAT_SLUG}) explains the Linux/amd64 OCI contract, snapshot PRNG reseeding and private registry pulls.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: DATABASE_ROLLBACK_LINK,
@@ -1270,6 +1544,20 @@ const RELATED_ARTICLES: Record<string, string> = {
   'scaling-policy': AUTOSCALE_LAG_LINK,
   'environment-promotion': ENV_PROMOTION_LINK,
   'synthetic-checks': SYNTHETIC_CHECKS_LINK,
+  'static-egress-ip': STATIC_EGRESS_IP_LINK,
+  'project-releases': ATOMIC_RELEASES_LINK,
+  'service-release-graphs': ATOMIC_RELEASES_LINK,
+  'service-bindings': BINDING_VERIFICATION_LINK,
+  'binding-verification-runs': BINDING_VERIFICATION_LINK,
+  'edge-rules': EDGE_RULES_TRACE_LINK,
+  'edge-rule-trace': EDGE_RULES_TRACE_LINK,
+  crons: CRONS_EVENTS_LINK,
+  'event-driven': CRONS_EVENTS_LINK,
+  'object-storage': OBJECT_STORAGE_LINK,
+  storage: OBJECT_STORAGE_LINK,
+  'egress-denylist': EGRESS_DENYLIST_LINK,
+  'stored-workflows': STORED_WORKFLOW_RECOVERY_LINK,
+  'stored-workflows-recovery': STORED_WORKFLOW_RECOVERY_LINK,
   agents: AGENT_SAFETY_LINK,
   'claude-code': CLAUDE_CODE_LINK,
   codex: CODEX_LINK,
@@ -1278,7 +1566,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'deploy-fastapi': FASTAPI_JOBS_LINK,
   jobs: FASTAPI_JOBS_LINK,
   'deploy-express': NODE_WORKER_LINK,
-  'multi-service': NODE_WORKER_LINK,
+  'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK}`,
   'getting-started': NO_DEVOPS_LINK,
   'mcp-hosting': MCP_LINK,
   'preview-environments': PREVIEW_LINK,
@@ -1288,10 +1576,11 @@ const RELATED_ARTICLES: Record<string, string> = {
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
   rollouts: CANARY_LINK,
   releases: CANARY_LINK,
-  'release-controls': CANARY_LINK,
+  'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
   security: MICROVM_LINK,
   compliance: MICROVM_LINK,
-  'container-compatibility': MICROVM_LINK,
+  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${MICROVM_LINK}`,
+  'registry-credentials': CONTAINER_COMPAT_LINK,
 };
 
 /** Answer articles: how Gregale works, without the vendor roundups or head-to-heads. */

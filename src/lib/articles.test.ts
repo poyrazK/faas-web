@@ -24,6 +24,21 @@ const sources = import.meta.glob<string>(
     '../../content/docs/tracing.md',
     '../../content/docs/scaling-policy.md',
     '../../content/docs/synthetic-checks.md',
+    '../../content/docs/static-egress-ip.md',
+    '../../content/docs/project-releases.md',
+    '../../content/docs/service-release-graphs.md',
+    '../../content/docs/service-bindings.md',
+    '../../content/docs/binding-verification-runs.md',
+    '../../content/docs/release-controls.md',
+    '../../content/docs/edge-rules.md',
+    '../../content/docs/edge-rule-trace.md',
+    '../../content/docs/crons.md',
+    '../../content/docs/event-driven.md',
+    '../../content/docs/object-storage.md',
+    '../../content/docs/egress-denylist.md',
+    '../../content/docs/stored-workflows-recovery.md',
+    '../../content/docs/container-compatibility.md',
+    '../../content/docs/registry-credentials.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -290,6 +305,131 @@ describe('articles', () => {
     for (const snippet of ['~73 GB-h', '~726 GB-h', '~1,446 GB-h', 'Gregale-Synthetics/1']) {
       expect(synthDoc).toContain(snippet);
       expect(synthText).toContain(snippet);
+    }
+  });
+
+  it('quotes CLI commands, flags and limits in Batch 4 problem-solution articles as docs state them', () => {
+    const egressDoc = sources['../../content/docs/static-egress-ip.md'].replace(/\s+/g, ' ');
+    const egressText = body('static-egress-ip-scale-to-zero').replace(/\s+/g, ' ');
+    expect(egressDoc).toContain('gregale app APP_ID static-egress-ip set');
+    expect(egressText).toContain('gregale app APP_ID static-egress-ip set');
+
+    const projectDoc = sources['../../content/docs/project-releases.md'].replace(/\s+/g, ' ');
+    const graphDoc = sources['../../content/docs/service-release-graphs.md'].replace(/\s+/g, ' ');
+    const atomicText = body('atomic-multi-service-releases').replace(/\s+/g, ' ');
+    expect(projectDoc).toContain('gregale deploy check --project');
+    expect(atomicText).toContain('gregale deploy check --project');
+    expect(graphDoc).toContain('X-Gregale-Release');
+    expect(atomicText).toContain('X-Gregale-Release');
+    expect(graphDoc).toContain('__Host-gregale_release');
+    expect(atomicText).toContain('__Host-gregale_release');
+
+    const bindingsDoc = sources['../../content/docs/service-bindings.md'].replace(/\s+/g, ' ');
+    const runsDoc = sources['../../content/docs/binding-verification-runs.md'].replace(/\s+/g, ' ');
+    const bindingsText = body('pre-traffic-service-binding-verification').replace(/\s+/g, ' ');
+    for (const snippet of ['SELECT 1', 'ListObjectsV2', '--require-bindings']) {
+      expect(bindingsDoc).toContain(snippet);
+      expect(bindingsText).toContain(snippet);
+    }
+    expect(runsDoc).toContain('--durable');
+    expect(bindingsText).toContain('--durable');
+
+    const controlsDoc = sources['../../content/docs/release-controls.md'].replace(/\s+/g, ' ');
+    const controlsText = body('deploy-freezes-release-approvals-schedules').replace(/\s+/g, ' ');
+    for (const snippet of [
+      'release_approval_session_required',
+      'release_frozen',
+      '--after-rollback 1h',
+    ]) {
+      expect(controlsDoc).toContain(snippet);
+      expect(controlsText).toContain(snippet);
+    }
+
+    const edgeDoc = sources['../../content/docs/edge-rules.md'].replace(/\s+/g, ' ');
+    const edgeText = body('edge-rules-rate-limiting-trace-testing').replace(/\s+/g, ' ');
+    for (const [label, f, h, p, s] of [
+      ['Total edge rules', '5', '25', '100', '500'],
+      ['`geo` rules', '1', '5', '25', '100'],
+      ['`throttle` rules', '1', '5', '25', '100'],
+      ['`cache` rules', '0', '1', '5', '20'],
+    ]) {
+      expect(edgeText).toMatch(
+        new RegExp(
+          `\\|\\s*${label}\\s*\\|\\s*${f}\\s*\\|\\s*${h}\\s*\\|\\s*${p}\\s*\\|\\s*${s}\\s*\\|`
+        )
+      );
+    }
+    expect(edgeDoc).toContain('request_validation_failed');
+    expect(edgeText).toContain('request_validation_failed');
+  });
+
+  it('quotes tables, CIDR ranges and contracts in Batch 5 problem-solution articles as docs state them', () => {
+    const cronsDoc = sources['../../content/docs/crons.md'].replace(/\s+/g, ' ');
+    const cronsText = body('scale-to-zero-cron-jobs-event-triggers').replace(/\s+/g, ' ');
+    for (const [plan, perApp, perAccount] of [
+      ['Hobby', '5', '10'],
+      ['Pro', '20', '50'],
+      ['Scale', '100', '500'],
+    ]) {
+      expect(cronsDoc).toMatch(
+        new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${perApp}\\s*\\|\\s*${perAccount}\\s*\\|`)
+      );
+      expect(cronsText).toMatch(
+        new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${perApp}\\s*\\|\\s*${perAccount}\\s*\\|`)
+      );
+    }
+    expect(cronsText).toContain('gregale delayed-task add');
+
+    const storageDoc = sources['../../content/docs/object-storage.md'].replace(/\s+/g, ' ');
+    const storageText = body('private-object-storage-without-s3-iam').replace(/\s+/g, ' ');
+    for (const [plan, inc, ceil] of [
+      ['Free', '1 GiB', '1 GiB'],
+      ['Hobby', '10 GiB', '20 GiB'],
+      ['Pro', '50 GiB', '250 GiB'],
+      ['Scale', '200 GiB', '1,000 GiB'],
+    ]) {
+      expect(storageDoc).toMatch(
+        new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${inc}\\s*\\|\\s*${ceil}\\s*\\|`)
+      );
+      expect(storageText).toMatch(
+        new RegExp(`\\|\\s*${plan}\\s*\\|\\s*${inc}\\s*\\|\\s*${ceil}\\s*\\|`)
+      );
+    }
+    expect(storageText).toContain('https://s3.gregale.dev');
+
+    const denyDoc = sources['../../content/docs/egress-denylist.md'].replace(/\s+/g, ' ');
+    const denyText = body('ssrf-protection-egress-denylist-paas').replace(/\s+/g, ' ');
+    for (const range of ['169.254.169.254', '10.0.0.0/8', '64:ff9b:1::/48', '198.18.0.0/15']) {
+      expect(denyDoc).toContain(range);
+      expect(denyText).toContain(range);
+    }
+
+    const recoveryDoc = sources['../../content/docs/stored-workflows-recovery.md'].replace(
+      /\s+/g,
+      ' '
+    );
+    const recoveryText = body('stored-workflow-recovery-missed-schedules').replace(/\s+/g, ' ');
+    for (const snippet of [
+      'gregale workflow diagnose',
+      'expected_resume_count',
+      'catch_up: latest',
+    ]) {
+      expect(recoveryDoc).toContain(snippet);
+      expect(recoveryText).toContain(snippet);
+    }
+
+    const compatDoc = sources['../../content/docs/container-compatibility.md'].replace(/\s+/g, ' ');
+    const compatText = body('deploy-docker-container-scale-to-zero-no-rewrite').replace(
+      /\s+/g,
+      ' '
+    );
+    for (const snippet of [
+      '0.0.0.0:$PORT',
+      'GREGALE_GUNICORN_FREEZE_GUARD',
+      'image_manifest_invalid',
+    ]) {
+      expect(compatDoc).toContain(snippet);
+      expect(compatText).toContain(snippet);
     }
   });
 });
