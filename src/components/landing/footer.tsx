@@ -133,6 +133,11 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
         href: '/articles/mcp-server-hosting',
         article: 'mcp-server-hosting',
       },
+      {
+        label: 'Community Q&A',
+        href: 'https://github.com/gregale-dev/community/discussions',
+        external: true,
+      },
     ],
   },
   {

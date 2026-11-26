@@ -484,6 +484,7 @@ for (const route of ROUTES) {
           // them to this site rather than to the Mediterranean wind.
           sameAs: [
             'https://github.com/gregale-dev',
+            'https://github.com/gregale-dev/community',
             'https://github.com/gregale-dev/benchmarks',
             'https://github.com/gregale-dev/gregale-js',
             'https://github.com/gregale-dev/gregale-python',
