@@ -53,6 +53,17 @@ Fixed-price PaaS for standard web services, background workers, crons, and manag
 
 - **Better than Cloudflare Workers when:** you want predictable per-instance monthly bills and zero refactoring for Node/Python/Ruby/Go apps.
 
+## Moving from Cloudflare Workers to Gregale
+
+A Worker's fetch handler becomes an ordinary Node, Python or Go HTTP
+server listening on `PORT`. From that app's directory:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-api
+gregale add postgres --app my-api --region <region>   # in place of D1 or Hyperdrive
+```
+
 ## Full side-by-side comparison
 
 - [Gregale vs Cloudflare Workers](/vs/cloudflare-workers)

@@ -152,6 +152,15 @@ storage, because Gregale instances have no durable local disk.
 [Migrate from Fly.io](/docs/migrate-from-fly) maps each `fly.toml` setting
 step by step; see also the [Gregale vs Fly.io comparison](/vs/fly).
 
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-api --secrets-file fly.env   # your secrets and fly.toml [env], one KEY=VALUE per line
+rm fly.env
+gregale add postgres --app my-api --region <region>
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 24, 2026:

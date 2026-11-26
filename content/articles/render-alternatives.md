@@ -152,6 +152,16 @@ command becomes a release command. See
 [Migrate from Render](/docs/migrate-from-render) and the
 [Gregale vs Render comparison](/vs/render).
 
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-api --secrets-file render.env   # the service's variables, one KEY=VALUE per line
+rm render.env
+gregale add postgres --app my-api --region <region>
+gregale postgres attach my-api-postgres my-api --access migration --env MIGRATION_DATABASE_URL
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 24, 2026:

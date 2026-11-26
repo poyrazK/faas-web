@@ -26,6 +26,16 @@ runs in its own Firecracker microVM.
 | Reviewing changes             | A preview environment for every pull request, on every plan                                                                                                           |
 | Keeping the bill in check     | Budgets with alerts on every plan, and a hard spend cap on paid plans                                                                                                 |
 
+The same jobs from the terminal:
+
+```bash
+gregale deploy --name my-api                          # build and deploy
+gregale add postgres --app my-api --region <region>   # managed PostgreSQL, from Hobby
+gregale logs my-api
+gregale app health my-api --errors
+gregale rollback my-api                               # back to the previous release
+```
+
 ## What your team still owns
 
 A platform takes the infrastructure off your plate, not the product:

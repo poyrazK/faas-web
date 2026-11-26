@@ -86,7 +86,13 @@ Sources, checked 2026-11-25 unless noted:
 
 A restore is fast but not free. If your app answers a request every few
 seconds all day, it rarely parks and the question does not arise. If every
-millisecond of the first request matters, keep instances running with
-`gregale app my-api --min 1` on Pro or Scale; each one is billed like any
-running instance. See [How scaling to zero works](/docs/scale-to-zero) for
+millisecond of the first request matters, keep instances running on Pro or
+Scale; each one is billed like any running instance:
+
+```bash
+gregale app my-api --min 1   # always keep 1 instance warm
+gregale app my-api --min 0   # back to scale-to-zero (default)
+```
+
+See [How scaling to zero works](/docs/scale-to-zero) for
 every setting, and [Gregale pricing](/pricing) for what running time costs.

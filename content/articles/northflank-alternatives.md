@@ -128,6 +128,14 @@ workers, crons, and bundled managed PostgreSQL (`DATABASE_URL`). See
 [Container compatibility](/docs/container-compatibility) and
 [Gregale vs Northflank](/vs/northflank).
 
+To run an image Northflank already builds, or the repository itself:
+
+```bash
+gregale deploy check --image registry.example.com/team/api@sha256:<digest>
+gregale deploy --image registry.example.com/team/api@sha256:<digest>
+gregale deploy --name my-api   # from the repository instead
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 25, 2026:

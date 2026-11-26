@@ -150,6 +150,16 @@ PostgreSQL. [Migrate from Railway](/docs/migrate-from-railway) maps each
 Railway setting step by step; see also the
 [Gregale vs Railway comparison](/vs/railway).
 
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+railway variables --kv | grep -v '^RAILWAY_' > railway.env
+gregale deploy --name my-api --secrets-file railway.env
+rm railway.env
+gregale add postgres --app my-api --region <region>
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 24, 2026:
