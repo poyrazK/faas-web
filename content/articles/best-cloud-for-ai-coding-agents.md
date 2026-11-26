@@ -103,6 +103,18 @@ when shipping a backend API, worker, cron or MCP server:
 4. Require approval on production destroys, custom domain edits and database
    drops so autonomous bug-fix loops always leave a clean rollback path.
 
+The same checklist as commands, run once by a person before the agent starts:
+
+```bash
+gregale key create coding-agent --agent       # asks a person before deletes, production, credential and billing changes
+gregale init --agents --name my-api           # adds deploy, verify and rollback steps for my-api to AGENTS.md
+gregale billing spend-cap 5000                # cap this month's overage at $50.00
+
+# In an organization: every agent acting in acme asks before deletes and
+# production changes, and no agent's budget goes above $100 a month
+gregale org agent policy set --org acme --agents allow --approvals delete,production --max-budget 100
+```
+
 ## Sources
 
 Checked against vendor documentation on November 25, 2026:
