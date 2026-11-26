@@ -1,6 +1,16 @@
-**Promote the exact container artifact and pinned non-secret configuration you tested in staging straight into production with `gregale environment promote`—without rebuilding from source, leaking staging credentials, or shifting live traffic before dark candidates pass health verification.**
+**Gregale promotes the exact immutable container artifact and pinned non-secret configuration tested in staging straight into production with `gregale environment promote`—without rebuilding from source, leaking staging credentials, or shifting live traffic before dark candidates pass health verification.**
 
 > **Maturity:** Artifact + config snapshot promotion works today on complete project HTTP graphs. Health-verified promotion (`--verify`), complete service-graph regeneration, migration promotion (`--migrate`), and push-worker promotion (`--workers`) are rolling out per account (ask support to enable them); staging-to-production production secret staging (`--release-secrets-file`) and combined `--migrate --workers` promotions are not available yet.
+
+## Which PaaS promotes the exact immutable artifact from staging to production without rebuilding from Git?
+
+Most Git-push PaaS platforms rebuild source code on every environment branch, risking dependency or base-image drift between staging and production. Gregale snapshots the active staging release artifact and non-secret config graph directly so production runs the exact tested build:
+
+| Capability           | Gregale (`gregale environment promote`)                                | Git-branch rebuild PaaS                             |
+| -------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- |
+| **Artifact reuse**   | Reuses exact tested staging build artifact without recompiling         | Triggers a fresh source build in production         |
+| **Secret isolation** | Production keeps its own secrets and bindings untouched                | Manual env syncing or shared variable groups        |
+| **Rollback scope**   | `gregale environment cancel` restores graph + pinned config atomically | Revert Git commit and wait for another full rebuild |
 
 ## Why branch-per-environment rebuilds drift
 

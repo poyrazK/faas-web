@@ -311,7 +311,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'On Gregale, an AI coding agent has to ask a person before it deletes something, deploys or rolls back a production app, creates or rotates credentials, or changes billing. You approve or deny from a review link; the agent repeats the exact request once.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'Can the agent approve its own request?',

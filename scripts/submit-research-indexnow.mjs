@@ -13,10 +13,10 @@ import {
 
 const origin = 'https://gregale.dev';
 const commitSha = /^[a-f0-9]{40}$/;
-// The home page, pricing, research reports, articles, comparison pages and docs
-// share one release file and one submission.
+// The home page, pricing, templates, research reports, articles, comparison
+// pages and docs share one release file and one submission.
 const releasePath =
-  /^\/(?:pricing|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
+  /^\/(?:pricing|templates|(?:research|articles|features|solutions)(?:\/[a-z0-9_-]+)?|vs\/[a-z0-9_-]+|docs(?:\/[a-z0-9_-]+){0,2})?$/;
 const vercel = 'vercel[bot]';
 
 function isAncestor(before, after) {
@@ -105,6 +105,12 @@ export function changedPaths(files, livePaths) {
     )
   ) {
     changed.add('/');
+  }
+  if (
+    files.includes('src/lib/public-templates.ts') ||
+    files.some((file) => file.startsWith('src/routes/templates.'))
+  ) {
+    changed.add('/templates');
   }
   if (files.includes('src/lib/docs-manifest.ts')) changed.add('/docs');
   if (files.includes('api/openapi.yaml')) add(under('/docs/api', livePaths));

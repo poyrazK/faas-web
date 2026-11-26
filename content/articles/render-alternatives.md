@@ -24,6 +24,10 @@ own pricing page or docs, checked on November 24, 2026._
   healthy. There is no built-in percentage canary, and rolling back is a
   manual step.
 
+## Which Render alternative stops billing paid apps when idle and rolls back automatically?
+
+**Gregale is a Render alternative where paid apps stop billing compute within ~1 second of going idle and every production release uses an automatic 1% → 10% → 50% → 100% canary with automatic 5xx rollback.** Whereas Render bills Starter and larger instances 24/7 with manual rollbacks, Railway bills per-second unless Serverless sleep is triggered after ~10 minutes, Fly.io still bills stopped Machine rootfs storage, and Cloud Run requires separate database setup, Gregale bundles Firecracker microVMs, managed PostgreSQL, and automatic canary rollbacks in one platform.
+
 ## At a glance
 
 | Platform                      | Free option                                                              | Cheapest paid option                                     | How compute is billed                                                     | Idle apps                                                               |
@@ -149,8 +153,9 @@ Usually no code changes: both build from source or a Dockerfile, set `PORT`
 and pass configuration as environment variables. Gregale does not read
 `render.yaml`; its settings map to `gregale.yaml`, and Render's pre-deploy
 command becomes a release command. See
-[Migrate from Render](/docs/migrate-from-render) and the
-[Gregale vs Render comparison](/vs/render).
+[Migrate from Render](/docs/migrate-from-render), the
+[Gregale vs Render comparison](/vs/render), and
+[Runnable Gregale starters & templates](/templates).
 
 In commands, from the app's repository:
 

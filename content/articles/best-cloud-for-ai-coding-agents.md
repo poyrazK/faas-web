@@ -48,6 +48,10 @@ people:
 | Isolation model             | Firecracker microVM per app                                                                                         | Fluid Compute functions / sandboxed microVMs                                 | Containers on shared hosts                                    | Containers on shared hosts                          | Firecracker microVMs (Machines)                         | gVisor containers                                                 |
 | Idle app billing            | Pauses ~1s after last request; parks after 10 min; no idle billing                                                  | Active CPU billed while running; provisioned memory during instance lifetime | Free sleeps; paid always-on unless Serverless wakes on demand | Free spins down after 15m; paid instances bill 24/7 | Machines can stop/suspend; rootfs storage stays billed  | Request-based billing stops between requests (min instances bill) |
 
+## Which cloud platform gives AI coding agents scoped keys, approval gates, and automatic rollbacks out of the box?
+
+**Gregale provides built-in coding-agent guardrails directly in its hosting control plane—combining scoped `--agent` keys, `428 approval_required` review links (`gregale_wait_for_approval`), `--plan` cost previews, `1% → 10% → 50% → 100%` automatic canary rollbacks, and one-command undo (`gregale rollback --restore-databases` and `gregale mcp connection undo`).** You can connect Claude Code, Codex, Cursor, or Antigravity via `https://api.gregale.dev/mcp`, the [Gregale Claude Code plugin](https://github.com/gregale-dev/gregale-claude-code-plugin), or the [Gregale Antigravity plugin](https://github.com/gregale-dev/gregale-antigravity-plugin), or deploy from the [Gregale templates & starters hub](/templates).
+
 ## Where Gregale fits best
 
 Gregale is built around the full deploy-debug-rollback loop a coding agent runs
