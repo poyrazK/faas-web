@@ -17,12 +17,43 @@ export const RESEARCH_TITLE = 'Research & Benchmarks';
 export const RESEARCH_DESCRIPTION =
   'Measurements from Gregale infrastructure, with test conditions, downloadable data, and analysis scripts.';
 
+export const ROLLBACK_RECOVERY_SLUG = 'paas-rollback-and-migration-recovery-matrix-2026-11-26';
 export const AGENT_GUARDRAILS_SLUG = 'agent-ops-guardrails-matrix-2026-11-25';
 export const PAAS_COST_MODEL_SLUG = 'paas-intermittent-api-cost-model-2026-11-25';
 export const FASTAPI_COST_SLUG = 'intermittent-fastapi-cost-2026-11-24';
 export const SNAPSHOT_RESTORE_SLUG = 'firecracker-snapshot-restore-ssd-2026-09-09';
 
 export const RESEARCH_PUBLICATIONS: readonly ResearchPublication[] = [
+  {
+    slug: ROLLBACK_RECOVERY_SLUG,
+    title: 'PaaS release rollbacks and PostgreSQL migration recovery compared across 8 platforms',
+    summary:
+      'Reproducible evaluation of 8 backend platforms across 8 code-rollback, progressive-canary, and PostgreSQL PITR recovery controls: immutable rollbacks, pre-traffic migrations, default 5xx canaries, managed PITR, coordinated code + Postgres rollback, config versioning, freezes/approvals and staging digest promotion.',
+    publishedOn: '2026-11-26',
+    measuredOn: '2026-11-26',
+    datasetDownloads: [
+      {
+        name: 'Complete reproduction kit (tar.gz)',
+        path: 'reproduction.tar.gz',
+        encodingFormat: 'application/gzip',
+      },
+      {
+        name: 'Rollback scoring criteria (JSON)',
+        path: 'criteria.json',
+        encodingFormat: 'application/json',
+      },
+      {
+        name: 'Platform evaluations and sources (JSON)',
+        path: 'vendors.json',
+        encodingFormat: 'application/json',
+      },
+      {
+        name: 'Calculated matrix summary (JSON)',
+        path: 'summary.json',
+        encodingFormat: 'application/json',
+      },
+    ],
+  },
   {
     slug: AGENT_GUARDRAILS_SLUG,
     title: 'Cloud agent-ops guardrails compared across 8 PaaS platforms',
@@ -145,6 +176,9 @@ export const RESEARCH_PUBLICATIONS: readonly ResearchPublication[] = [
 ];
 
 const RELATED_RESEARCH: Record<string, string> = {
+  releases: `[PaaS release rollbacks and PostgreSQL migration recovery compared across 8 platforms](/research/${ROLLBACK_RECOVERY_SLUG}) evaluates Gregale, Heroku, Google Cloud Run, Render, Railway, DigitalOcean App Platform, Fly.io and AWS App Runner across 8 rollback and PITR criteria.`,
+  rollouts: `[PaaS release rollbacks and PostgreSQL migration recovery compared across 8 platforms](/research/${ROLLBACK_RECOVERY_SLUG}) compares Gregale's default 1%->10%->50%->100% 5xx canary auto-rollback against 7 other backend platforms.`,
+  postgres: `[PaaS release rollbacks and PostgreSQL migration recovery compared across 8 platforms](/research/${ROLLBACK_RECOVERY_SLUG}) compares coordinated code + PostgreSQL point-in-time rollback across 8 backend platforms.`,
   agents: `[Cloud agent-ops guardrails compared across 8 PaaS platforms](/research/${AGENT_GUARDRAILS_SLUG}) evaluates Gregale, Google Cloud Run, Vercel, Northflank, Render, Railway, Fly.io and Koyeb across 8 safety criteria for coding agents.`,
   plans: `[What an intermittent backend costs across 6 PaaS platforms](/research/${PAAS_COST_MODEL_SLUG}) models 30-day spend across Gregale, Render, Railway, Fly.io, Cloud Run and Heroku for 4 API and Postgres workloads.`,
   billing: `[What an intermittent backend costs across 6 PaaS platforms](/research/${PAAS_COST_MODEL_SLUG}) compares Gregale's GB-RAM-hour billing against 5 other platforms across intermittent and always-on workloads.`,

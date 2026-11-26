@@ -817,6 +817,75 @@ describeBuilt('prerendered pages', () => {
     );
   });
 
+  it('publishes the PaaS rollback and migration recovery matrix kit and Dataset metadata', () => {
+    const slug = 'paas-rollback-and-migration-recovery-matrix-2026-11-26';
+    const route = `/research/${slug}`;
+    const archive = `dist${route}/reproduction.tar.gz`;
+    const report = readFileSync(`dist${route}/index.html`, 'utf8');
+    const markdown = readFileSync(`dist${route}.md`, 'utf8');
+
+    for (const page of ['research', 'docs/releases', 'docs/rollouts', 'docs/postgres']) {
+      expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
+    }
+    for (const mdDoc of ['releases', 'rollouts', 'postgres']) {
+      expect(readFileSync(`dist/docs/${mdDoc}.md`, 'utf8')).toContain(
+        `https://gregale.dev${route}`
+      );
+    }
+    expect(report).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(report).toContain(`type="text/markdown" href="${route}.md"`);
+    expect(markdown).toContain(`https://gregale.dev${route}/reproduction.tar.gz`);
+    expect(markdown).toContain('python3 analyze.py --verify');
+    expect(report).toContain('16/16');
+
+    for (const file of [
+      'reproduction.tar.gz',
+      'criteria.json',
+      'vendors.json',
+      'summary.json',
+      'analyze.py',
+      'README.md',
+    ]) {
+      expect(report).toContain(`href="${route}/${file}"`);
+      expect(existsSync(`dist${route}/${file}`)).toBe(true);
+    }
+
+    const ldBlocks = [
+      ...report.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((match) => JSON.parse(match[1]));
+    expect(ldBlocks[0]).toMatchObject({
+      '@type': 'TechArticle',
+      datePublished: '2026-11-26',
+      mainEntityOfPage: `https://gregale.dev${route}`,
+    });
+    const dataset = ldBlocks.find((node) => node['@type'] === 'Dataset');
+    expect(dataset).toMatchObject({
+      '@type': 'Dataset',
+      '@id': `https://gregale.dev${route}#dataset`,
+      isAccessibleForFree: true,
+      temporalCoverage: '2026-11-26',
+    });
+    expect(dataset.distribution.map((entry: { contentUrl: string }) => entry.contentUrl)).toEqual(
+      expect.arrayContaining([
+        `https://gregale.dev${route}/reproduction.tar.gz`,
+        `https://gregale.dev${route}/criteria.json`,
+      ])
+    );
+
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>\n    <lastmod>2026-11-26</lastmod>`
+    );
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+
+    const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.sort()).toEqual(
+      ['README.md', 'analyze.py', 'criteria.json', 'summary.json', 'vendors.json']
+        .map((file) => `${slug}/${file}`)
+        .sort()
+    );
+  });
+
   describe('robots.txt', () => {
     const robots =
       built && existsSync('dist/robots.txt') ? readFileSync('dist/robots.txt', 'utf8') : '';
