@@ -206,7 +206,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'What an ops person usually does (builds, safe releases, backups, TLS, scaling, alerts, cost limits) and how Gregale does it for a small team, with what your team still owns and when another option fits better.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'Can a startup run production without a DevOps engineer?',
@@ -482,7 +482,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale scales idle apps to zero without booting them again: an app pauses in memory about a second after its last request and resumes in about a millisecond, and after 10 minutes it parks as a memory snapshot that wakes with its process already running.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'How do I avoid cold starts when scaling to zero?',
@@ -513,7 +513,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway and Fly.io compared for a production API on price, regions, managed Postgres and releases, with where each one fits and where Gregale fits as a fourth option.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'Should I use Render, Railway or Fly.io for a production API?',
@@ -539,7 +539,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform, Heroku and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Railway.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Railway alternative?',
@@ -565,7 +565,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Heroku.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Heroku alternative now that Heroku is in sustaining mode?',
@@ -591,7 +591,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Railway, Fly.io, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Render.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-24',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Render alternative?',
@@ -617,7 +617,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Fly.io.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Fly.io alternative?',
@@ -668,7 +668,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale, Fly.io, Render, Railway, Northflank, DigitalOcean App Platform and Heroku compared on free tiers, prices, idle billing, bundled Postgres and releases.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Google Cloud Run alternative?',
@@ -694,7 +694,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale, Render, Railway, Fly.io, Google Cloud Run, Northflank and DigitalOcean App Platform compared on per-seat pricing, duration limits, bundled Postgres and releases.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Vercel alternative for backend APIs and workers?',
@@ -720,7 +720,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale, Fly.io, Render, Railway, Northflank, Google Cloud Run and DigitalOcean App Platform compared on Firecracker scale-to-zero, managed Postgres pricing, volumes and canary rollbacks.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Koyeb alternative?',
@@ -746,7 +746,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Gregale, Railway, Render, Fly.io, Koyeb, Google Cloud Run and DigitalOcean App Platform compared on idle billing, Kubernetes complexity, BYOC, Postgres and automatic rollbacks.',
     publishedOn: '2026-11-25',
-    updatedOn: '2026-11-25',
+    updatedOn: '2026-11-26',
     faq: [
       {
         question: 'What is the best Northflank alternative?',

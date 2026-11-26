@@ -131,6 +131,15 @@ like while running your dynamic APIs, jobs and Next.js server in its own
 microVM. See [Deploy Next.js](/docs/deploy-nextjs) and
 [Gregale vs Vercel](/vs/vercel).
 
+In commands, from the Next.js app's repository:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-site
+gregale app health my-site --errors
+gregale add postgres --app my-site --region <region>
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 25, 2026:

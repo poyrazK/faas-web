@@ -111,6 +111,14 @@ the new one passes its health check. They differ in what happens next:
   crash loops or a p95 latency regression. See
   [Canary deploys with automatic rollback](/articles/canary-deploys).
 
+On Gregale, follow a release step by step, or go back by hand:
+
+```bash
+gregale deploy --name my-api
+gregale release wait latest --app my-api --rollout --progress   # print each traffic step until 100%
+gregale rollback my-api                                          # back to the previous release
+```
+
 ## How to choose
 
 - **Simplest fixed price and a mature managed Postgres:** Render.

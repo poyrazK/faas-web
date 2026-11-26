@@ -53,6 +53,19 @@ Global Firecracker microVM hosting across 30+ regions starting at $2.19/month fo
 
 - **Better than Coolify when:** you need multi-region edge compute with WireGuard private networking and don't want to patch base Linux hosts yourself.
 
+## Moving from Coolify to Gregale
+
+Apps Coolify builds from a Dockerfile or from source deploy from the same
+repository. Put the environment variables in a `KEY=VALUE` file, one per
+line, then:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-api --secrets-file coolify.env
+rm coolify.env
+gregale add postgres --app my-api --region <region>
+```
+
 ## Full side-by-side comparison
 
 - [Gregale vs Coolify](/vs/coolify)

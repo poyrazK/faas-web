@@ -156,6 +156,17 @@ vars as environment variables and secrets, and builds from source. See
 [Migrate from Heroku](/docs/migrate-from-heroku) and the
 [Gregale vs Heroku comparison](/vs/heroku).
 
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+heroku config --json --app my-heroku-app \
+  | jq -r 'to_entries[] | "\(.key)=\(.value)"' > heroku.env
+gregale deploy --name my-api --secrets-file heroku.env
+rm heroku.env
+gregale app health my-api --errors
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 24, 2026:

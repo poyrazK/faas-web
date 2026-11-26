@@ -130,6 +130,15 @@ Koyeb builds from Git or standard Dockerfiles and routes HTTP traffic over
 See [Container compatibility](/docs/container-compatibility) and
 [Gregale vs Koyeb](/vs/koyeb).
 
+In commands, from the app's repository:
+
+```bash
+gregale deploy --dry-run
+gregale deploy --name my-api --secrets-file koyeb.env   # the service's variables, one KEY=VALUE per line
+rm koyeb.env
+gregale add postgres --app my-api --region <region>
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 25, 2026:

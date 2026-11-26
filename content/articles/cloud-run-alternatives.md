@@ -132,6 +132,13 @@ and if you connect to Cloud SQL today you can move to bundled managed
 PostgreSQL (`DATABASE_URL`). See [Container compatibility](/docs/container-compatibility)
 and [Gregale vs Google Cloud Run](/vs/cloud-run).
 
+To run the image Cloud Run already uses:
+
+```bash
+gregale deploy check --image registry.example.com/team/api@sha256:<digest>
+gregale deploy --image registry.example.com/team/api@sha256:<digest>
+```
+
 ## Sources
 
 Checked against each vendor's own pages on November 25, 2026:
