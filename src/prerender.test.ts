@@ -374,6 +374,13 @@ describeBuilt('prerendered pages', () => {
       { slug: 'vercel-alternatives', vs: 'vercel', doc: null, date: '2026-11-25' },
       { slug: 'koyeb-alternatives', vs: 'koyeb', doc: null, date: '2026-11-25' },
       { slug: 'northflank-alternatives', vs: 'northflank', doc: null, date: '2026-11-25' },
+      { slug: 'coolify-alternatives', vs: 'coolify', doc: null, date: '2026-11-26' },
+      {
+        slug: 'cloudflare-workers-alternatives',
+        vs: 'cloudflare-workers',
+        doc: null,
+        date: '2026-11-26',
+      },
     ];
     for (const { slug, vs, doc, date } of cases) {
       const route = `/articles/${slug}`;
@@ -409,6 +416,8 @@ describeBuilt('prerendered pages', () => {
       'vercel',
       'koyeb',
       'northflank',
+      'coolify',
+      'cloudflare-workers',
     ]) {
       const route = `/vs/${slug}`;
       const markdown = readFileSync(`dist${route}.md`, 'utf8');
@@ -478,6 +487,11 @@ describeBuilt('prerendered pages', () => {
       { slug: 'ssrf-protection-egress-denylist-paas', doc: 'egress-denylist' },
       { slug: 'stored-workflow-recovery-missed-schedules', doc: 'stored-workflows-recovery' },
       { slug: 'deploy-docker-container-scale-to-zero-no-rewrite', doc: 'container-compatibility' },
+      { slug: 'antigravity-ide-mcp-server-deploy', doc: 'antigravity' },
+      { slug: 'stop-bot-traffic-cloud-bill-shock', doc: 'security' },
+      { slug: 'deploy-vibe-coded-app-to-production', doc: 'agents' },
+      { slug: 'host-python-fastmcp-server', doc: 'mcp-hosting' },
+      { slug: 'remote-dev-environment-without-docker-desktop', doc: 'dev' },
     ];
     const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
