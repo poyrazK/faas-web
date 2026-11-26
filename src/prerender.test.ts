@@ -380,7 +380,7 @@ describeBuilt('prerendered pages', () => {
     const html = readFileSync(`dist${route}/index.html`, 'utf8');
     const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
     const graph = JSON.parse(json!)['@graph'];
-    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-25' });
+    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-26' });
     expect(readFileSync('dist/docs/agents/index.html', 'utf8')).toContain(`href="${route}"`);
     expect(readFileSync('dist/docs/agents.md', 'utf8')).toContain(`https://gregale.dev${route}`);
     expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);

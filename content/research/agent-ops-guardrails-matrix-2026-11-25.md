@@ -1,8 +1,8 @@
 ## Results
 
-Across **8 verifiable operational safety controls** for AI coding agents (`2` = full built-in enforcement, `1` = partial / manual setup required, `0` = not provided; **16 points maximum**), **Gregale scores 16/16** (`8` full), followed by **Google Cloud Run (`8/16`)**, **Vercel (`6/16`)**, **Fly.io (`5/16`)**, **Northflank (`5/16`)**, **Render (`5/16`)**, **Koyeb (`3/16`)**, and **Railway (`3/16`)**.
+Across **8 verifiable operational safety controls** for AI coding agents (`2` = full built-in enforcement, `1` = partial / manual setup required, `0` = not provided; **16 points maximum**), **Gregale scores 16/16** (`8` full), followed by **Google Cloud Run (`8/16`)**, **Fly.io (`7/16`)**, **Northflank (`7/16`)**, **Vercel (`6/16`)**, **Render (`5/16`)**, **Koyeb (`4/16`)**, and **Railway (`4/16`)**.
 
-Most cloud platforms already provide structured CLIs (`5/8` full) and scoped project or IAM credentials, and half ship an official MCP server (`4/8` full). The gap sits in runtime safeguards designed for autonomous write loops: **pre-mutation cost previews (`1/8` full)**, **server-side human approval gates (`1/8` full)**, **non-code mutation undo (`1/8` full)**, **default 5xx canary rollbacks (`1/8` full)**, and **coordinated code + Postgres rollback (`1/8` full)**.
+Most cloud platforms already provide structured CLIs (`5/8` full) and scoped project or IAM credentials, and nearly all ship an official MCP server (`7/8` full, `1/8` partial). The gap sits in runtime safeguards designed for autonomous write loops: **pre-mutation cost previews (`1/8` full)**, **server-side human approval gates (`1/8` full)**, **non-code mutation undo (`1/8` full)**, **default 5xx canary rollbacks (`1/8` full)**, and **coordinated code + Postgres rollback (`1/8` full)**.
 
 This evaluation is a **published-documentation matrix checked on November 25, 2026**, not a measure of uptime, latency, or multi-region compute breadth (areas where Cloud Run, Fly.io, Koyeb, Northflank, and Vercel lead Gregale outside these 8 controls). Every score is computed deterministically by `analyze.py` from `criteria.json` and `vendors.json`.
 
@@ -10,19 +10,19 @@ This evaluation is a **published-documentation matrix checked on November 25, 20
 | -------------- | ----: | ---: | ------: | ---: | ------------------------------------------------------------------------------------ |
 | **Gregale**    | 16/16 |    8 |       0 |    0 | ~1s idle pause billing, Firecracker microVM isolation, free PR previews              |
 | **Cloud Run**  |  8/16 |    3 |       2 |    3 | Global GCP regions, generous monthly free tier, VPC + Cloud SQL / BigQuery / Pub/Sub |
+| **Fly.io**     |  7/16 |    2 |       3 |    3 | Global edge microVM placement, regional NVMe volumes, low-cost always-on memory      |
+| **Northflank** |  7/16 |    2 |       3 |    3 | Bring-Your-Own-Cloud (AWS/GCP/Azure K8s), always-on Free Sandbox, enterprise RBAC    |
 | **Vercel**     |  6/16 |    1 |       4 |    3 | Global edge CDN, Next.js RSC/ISR integration, collaborative frontend previews        |
-| **Fly.io**     |  5/16 |    1 |       3 |    4 | Global edge microVM placement, regional NVMe volumes, low-cost always-on memory      |
-| **Northflank** |  5/16 |    1 |       3 |    4 | Bring-Your-Own-Cloud (AWS/GCP/Azure K8s), always-on Free Sandbox, enterprise RBAC    |
 | **Render**     |  5/16 |    1 |       3 |    4 | Mature fixed-price PaaS, $6/mo managed Postgres, zero seat fees on Hobby             |
-| **Koyeb**      |  3/16 |    1 |       1 |    6 | Global Firecracker microVMs, Light Sleep scale-to-zero, serverless GPU nodes         |
-| **Railway**    |  3/16 |    0 |       3 |    5 | One-click Postgres/Redis/MySQL/MongoDB canvas, pure usage-based pricing              |
+| **Koyeb**      |  4/16 |    1 |       2 |    5 | Global Firecracker microVMs, Light Sleep scale-to-zero, serverless GPU nodes         |
+| **Railway**    |  4/16 |    1 |       2 |    5 | One-click Postgres/Redis/MySQL/MongoDB canvas, pure usage-based pricing              |
 
 ## Criterion-by-criterion breakdown
 
 | Criterion                           | Gregale | Cloud Run | Vercel  | Fly.io  | Northflank | Render  | Koyeb   | Railway |
 | ----------------------------------- | ------- | --------- | ------- | ------- | ---------- | ------- | ------- | ------- |
 | **Non-interactive JSON CLI**        | Full    | Full      | Partial | Full    | Full       | Partial | Full    | Partial |
-| **Official MCP server**             | Full    | Full      | Full    | None    | None       | Full    | None    | Partial |
+| **Official MCP server**             | Full    | Full      | Full    | Full    | Full       | Full    | Partial | Full    |
 | **Scoped agent identity**           | Full    | Full      | Partial | Partial | Partial    | Partial | Partial | Partial |
 | **Pre-mutation cost preview**       | Full    | None      | None    | None    | None       | None    | None    | None    |
 | **Human approval gate**             | Full    | Partial   | Partial | None    | Partial    | None    | None    | None    |
@@ -61,8 +61,10 @@ Checked against primary documentation on November 25, 2026:
 [Best cloud platform for AI coding agents in 2026](/articles/best-cloud-for-ai-coding-agents),
 [Google Cloud Run docs](https://cloud.google.com/run/docs) and [Cloud Run traffic migration](https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration),
 [Vercel CLI](https://vercel.com/docs/cli), [Vercel MCP](https://vercel.com/docs/mcp/vercel-mcp) and [Vercel pricing](https://vercel.com/pricing),
-[Northflank platform overview](https://northflank.com/docs/v1/application/getting-started/what-is-northflank),
+[Northflank platform overview](https://northflank.com/docs/v1/application/getting-started/what-is-northflank) and [Northflank MCP server](https://northflank.com/docs/v1/application/ai-agents/mcp-server),
 [Render MCP server](https://render.com/docs/mcp-server) and [Render rollbacks](https://render.com/docs/rollbacks),
 [Railway MCP server](https://docs.railway.com/reference/mcp-server),
-[Fly.io deploy docs](https://fly.io/docs/launch/deploy/),
-[Koyeb CLI](https://www.koyeb.com/docs/build-and-deploy/cli/reference) and [Koyeb deployments](https://www.koyeb.com/docs/run-and-scale/deployments).
+[Fly.io deploy docs](https://fly.io/docs/launch/deploy/) and [Fly MCP announcement](https://fly.io/changelog/new-fly-mcp/),
+[Koyeb CLI](https://www.koyeb.com/docs/build-and-deploy/cli/reference), [Koyeb deployments](https://www.koyeb.com/docs/run-and-scale/deployments) and [Koyeb MCP server](https://github.com/koyeb/mcp-server-koyeb).
+
+**Correction, November 26, 2026:** the first version scored Fly.io and Northflank `None` and Railway `Partial` for an official MCP server, and Koyeb `None`. Fly.io (`mcp.fly.io`), Northflank (`mcp.northflank.com`) and Railway (`mcp.railway.com`) host official servers, and Koyeb publishes an official local one (`@koyeb/mcp-server`, beta). Their scores rose from 5 to 7 (Fly.io, Northflank) and from 3 to 4 (Koyeb, Railway); `vendors.json` and `summary.json` carry the corrected entries.

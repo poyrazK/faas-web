@@ -186,9 +186,9 @@
           "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
         },
         "official_mcp_server": {
-          "status": "none",
-          "evidence": "No official first-party hosted Northflank MCP server documented.",
-          "source_url": "https://northflank.com/docs/v1/application/getting-started/what-is-northflank"
+          "status": "full",
+          "evidence": "Northflank hosts an official MCP server (`https://mcp.northflank.com/mcp`, Streamable HTTP with a bearer token) to deploy applications, manage databases and inspect resources.",
+          "source_url": "https://northflank.com/docs/v1/application/ai-agents/mcp-server"
         },
         "scoped_agent_identity": {
           "status": "partial",
@@ -296,8 +296,8 @@
           "source_url": "https://docs.railway.com/reference/cli-api"
         },
         "official_mcp_server": {
-          "status": "partial",
-          "evidence": "Railway publishes an official local MCP server package wrapping the authenticated Railway CLI.",
+          "status": "full",
+          "evidence": "Railway hosts an official MCP server (`https://mcp.railway.com`, OAuth or through the Railway CLI); `railway mcp local` runs it in-process for restricted networks.",
           "source_url": "https://docs.railway.com/reference/mcp-server"
         },
         "scoped_agent_identity": {
@@ -351,9 +351,9 @@
           "source_url": "https://fly.io/docs/flyctl/"
         },
         "official_mcp_server": {
-          "status": "none",
-          "evidence": "No official first-party Fly.io MCP server published.",
-          "source_url": "https://fly.io/docs/"
+          "status": "full",
+          "evidence": "Fly.io hosts an official MCP server (`https://mcp.fly.io`, beta since 2026-10-23) that manages apps, Machines and volumes; `fly mcp server` also runs one locally (experimental).",
+          "source_url": "https://fly.io/changelog/new-fly-mcp/"
         },
         "scoped_agent_identity": {
           "status": "partial",
@@ -406,9 +406,9 @@
           "source_url": "https://www.koyeb.com/docs/build-and-deploy/cli/reference"
         },
         "official_mcp_server": {
-          "status": "none",
-          "evidence": "No official first-party Koyeb MCP server documented.",
-          "source_url": "https://www.koyeb.com/docs"
+          "status": "partial",
+          "evidence": "Koyeb publishes an official local stdio MCP server package (`@koyeb/mcp-server`, beta pre-release) that wraps the Koyeb API with an API token.",
+          "source_url": "https://github.com/koyeb/mcp-server-koyeb"
         },
         "scoped_agent_identity": {
           "status": "partial",

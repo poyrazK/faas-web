@@ -23,6 +23,24 @@
       "none_count": 3
     },
     {
+      "id": "fly",
+      "name": "Fly.io",
+      "score": 7,
+      "max_score": 16,
+      "full_count": 2,
+      "partial_count": 3,
+      "none_count": 3
+    },
+    {
+      "id": "northflank",
+      "name": "Northflank",
+      "score": 7,
+      "max_score": 16,
+      "full_count": 2,
+      "partial_count": 3,
+      "none_count": 3
+    },
+    {
       "id": "vercel",
       "name": "Vercel",
       "score": 6,
@@ -30,24 +48,6 @@
       "full_count": 1,
       "partial_count": 4,
       "none_count": 3
-    },
-    {
-      "id": "fly",
-      "name": "Fly.io",
-      "score": 5,
-      "max_score": 16,
-      "full_count": 1,
-      "partial_count": 3,
-      "none_count": 4
-    },
-    {
-      "id": "northflank",
-      "name": "Northflank",
-      "score": 5,
-      "max_score": 16,
-      "full_count": 1,
-      "partial_count": 3,
-      "none_count": 4
     },
     {
       "id": "render",
@@ -61,19 +61,19 @@
     {
       "id": "koyeb",
       "name": "Koyeb",
-      "score": 3,
+      "score": 4,
       "max_score": 16,
       "full_count": 1,
-      "partial_count": 1,
-      "none_count": 6
+      "partial_count": 2,
+      "none_count": 5
     },
     {
       "id": "railway",
       "name": "Railway",
-      "score": 3,
+      "score": 4,
       "max_score": 16,
-      "full_count": 0,
-      "partial_count": 3,
+      "full_count": 1,
+      "partial_count": 2,
       "none_count": 5
     }
   ],
@@ -86,9 +86,9 @@
     },
     "official_mcp_server": {
       "label": "Official MCP server",
-      "full": ["gregale", "cloud-run", "vercel", "render"],
-      "partial": ["railway"],
-      "none": ["northflank", "fly", "koyeb"]
+      "full": ["gregale", "cloud-run", "vercel", "northflank", "render", "railway", "fly"],
+      "partial": ["koyeb"],
+      "none": []
     },
     "scoped_agent_identity": {
       "label": "Scoped agent identity",
