@@ -406,6 +406,16 @@ describeBuilt('prerendered pages', () => {
       { slug: 'autoscale-from-zero-kafka-lag-custom-metrics', doc: 'scaling-policy' },
       { slug: 'promote-staging-to-production-without-rebuilding', doc: 'environment-promotion' },
       { slug: 'synthetic-uptime-checks-scale-to-zero', doc: 'synthetic-checks' },
+      { slug: 'static-egress-ip-scale-to-zero', doc: 'static-egress-ip' },
+      { slug: 'atomic-multi-service-releases', doc: 'project-releases' },
+      { slug: 'pre-traffic-service-binding-verification', doc: 'service-bindings' },
+      { slug: 'deploy-freezes-release-approvals-schedules', doc: 'release-controls' },
+      { slug: 'edge-rules-rate-limiting-trace-testing', doc: 'edge-rules' },
+      { slug: 'scale-to-zero-cron-jobs-event-triggers', doc: 'crons' },
+      { slug: 'private-object-storage-without-s3-iam', doc: 'object-storage' },
+      { slug: 'ssrf-protection-egress-denylist-paas', doc: 'egress-denylist' },
+      { slug: 'stored-workflow-recovery-missed-schedules', doc: 'stored-workflows-recovery' },
+      { slug: 'deploy-docker-container-scale-to-zero-no-rewrite', doc: 'container-compatibility' },
     ];
     const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
