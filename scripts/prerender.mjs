@@ -45,6 +45,7 @@ const {
   SNAPSHOT_RESTORE_SLUG,
 } = await import('../src/lib/research.ts');
 const { ARTICLES, ARTICLES_TITLE, plainFaq } = await import('../src/lib/articles.ts');
+const { FEATURES, FEATURES_TITLE, featureMarkdown } = await import('../src/lib/features.ts');
 const { buildApiReference } = await import('../src/lib/api-reference/build.ts');
 const { load: parseYaml } = await import('js-yaml');
 const OPENAPI_YAML = readFileSync('api/openapi.yaml', 'utf8');
@@ -72,15 +73,18 @@ const RESEARCH_BY_ROUTE = new Map(
 const RESEARCH_ROUTES = ['/research', ...RESEARCH_BY_ROUTE.keys()];
 const ARTICLE_BY_ROUTE = new Map(ARTICLES.map((article) => [`/articles/${article.slug}`, article]));
 const ARTICLE_ROUTES = ['/articles', ...ARTICLE_BY_ROUTE.keys()];
+const FEATURE_BY_ROUTE = new Map(FEATURES.map((feature) => [`/features/${feature.slug}`, feature]));
+const FEATURE_ROUTES = ['/features', ...FEATURE_BY_ROUTE.keys()];
 
 const PRICING_ROUTE = '/pricing';
-/** Pages that also have a Markdown copy outside the docs, articles, research and comparison
- * collections; vercel.json serves it to a request with `Accept: text/markdown`. */
+/** Pages that also have a Markdown copy outside the docs, articles, research, features and
+ * comparison collections; vercel.json serves it to a request with `Accept: text/markdown`. */
 const SITE_MARKDOWN = new Map([
   ['/', '/index.md'],
   [PRICING_ROUTE, '/pricing.md'],
   ['/docs', '/docs.md'],
   ['/articles', '/articles.md'],
+  ['/features', '/features.md'],
   ['/research', '/research.md'],
 ]);
 const PLAN_DOC_ROUTE = '/docs/plans';
@@ -102,6 +106,7 @@ const ROUTES = [
   NOT_FOUND_ROUTE,
   INCIDENT_SHELL_ROUTE,
   ...DOC_ROUTES,
+  ...FEATURE_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
 ];
@@ -116,6 +121,7 @@ const INDEXABLE = [
   PRICING_ROUTE,
   ...COMPARE_ROUTES,
   ...DOC_ROUTES,
+  ...FEATURE_ROUTES,
   ...RESEARCH_ROUTES,
   ...ARTICLE_ROUTES,
 ];
@@ -324,6 +330,32 @@ for (const route of ROUTES) {
             isPartOf: { '@type': 'WebSite', name: ARTICLES_TITLE, url: absolute('/articles') },
           },
           { ...faqJsonLd(plainFaq(article.faq)), '@id': `${absolute(route)}#faq` },
+        ],
+      };
+      perRoute.push(
+        `<script type="application/ld+json">${JSON.stringify(ld).replaceAll('<', '\\u003c')}</script>`
+      );
+    }
+  }
+  const feature = FEATURE_BY_ROUTE.get(route);
+  if (feature) {
+    perRoute.push(`<link rel="alternate" type="text/markdown" href="${attr(route)}.md" />`);
+    if (SITE_URL) {
+      const ld = {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'TechArticle',
+            '@id': `${absolute(route)}#article`,
+            headline: feature.title,
+            description: feature.summary,
+            dateModified: feature.updatedOn,
+            mainEntityOfPage: absolute(route),
+            author: { '@id': `${SITE_URL}/#org` },
+            publisher: { '@id': `${SITE_URL}/#org` },
+            isPartOf: { '@type': 'WebSite', name: FEATURES_TITLE, url: absolute('/features') },
+          },
+          { ...faqJsonLd(plainFaq(feature.faq)), '@id': `${absolute(route)}#faq` },
         ],
       };
       perRoute.push(
@@ -567,6 +599,8 @@ const latest = (dates) => dates.reduce((a, b) => (a > b ? a : b));
 const PAGE_DATES = new Map([
   ...[...ARTICLE_BY_ROUTE].map(([route, article]) => [route, article.updatedOn]),
   ['/articles', latest(ARTICLES.map((article) => article.updatedOn))],
+  ...[...FEATURE_BY_ROUTE].map(([route, feature]) => [route, feature.updatedOn]),
+  ['/features', latest(FEATURES.map((feature) => feature.updatedOn))],
   ...[...RESEARCH_BY_ROUTE].map(([route, publication]) => [route, publication.publishedOn]),
   ['/research', latest(RESEARCH_PUBLICATIONS.map((publication) => publication.publishedOn))],
   ...COMPARE_ROUTES.map((route) => [route, COMPARISONS_CHECKED]),
@@ -650,6 +684,7 @@ const {
   articlesIndexPage,
   comparisonPage,
   docsIndexPage,
+  featuresIndexPage,
   homePage,
   llmsFull,
   llmsIndex,
@@ -709,6 +744,12 @@ const comparisonPages = [...COMPARISONS].map(([route, comparison]) => {
   return page;
 });
 
+const featurePages = [...FEATURE_BY_ROUTE].map(([route, feature]) => {
+  const page = featureMarkdown(feature, SITE_URL);
+  writeFileSync(join(DIST, `${route.slice(1)}.md`), page);
+  return page;
+});
+
 const sitePages = new Map([
   ['/', homePage(llmsIntro, LANDING_FAQ, SITE_URL)],
   [
@@ -717,6 +758,7 @@ const sitePages = new Map([
   ],
   ['/docs', docsIndexPage(SITE_URL)],
   ['/articles', articlesIndexPage(SITE_URL)],
+  ['/features', featuresIndexPage(SITE_URL)],
   ['/research', researchIndexPage(SITE_URL)],
 ]);
 for (const [route, path] of SITE_MARKDOWN) writeFileSync(join(DIST, path), sitePages.get(route));
@@ -832,11 +874,17 @@ execFileSync(
 
 writeFileSync(
   join(DIST, 'llms-full.txt'),
-  llmsFull(llmsIntro, [...markdownPages, ...researchPages, ...articlePages, ...comparisonPages])
+  llmsFull(llmsIntro, [
+    ...markdownPages,
+    ...featurePages,
+    ...researchPages,
+    ...articlePages,
+    ...comparisonPages,
+  ])
 );
 writeFileSync(join(DIST, 'llms-small.txt'), llmsSmall(llmsIntro, pagesBySlug));
 console.log(
-  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + researchPages.length + articlePages.length + comparisonPages.length + sitePages.size} Markdown pages`
+  `  wrote llms.txt, llms-full.txt, llms-small.txt and ${markdownPages.length + featurePages.length + researchPages.length + articlePages.length + comparisonPages.length + sitePages.size} Markdown pages`
 );
 
 if (productionSite && process.env.INDEXNOW_KEY) {
@@ -847,6 +895,7 @@ if (productionSite && process.env.INDEXNOW_KEY) {
     const paths = [
       '/',
       PRICING_ROUTE,
+      ...FEATURE_ROUTES,
       ...RESEARCH_ROUTES,
       ...ARTICLE_ROUTES,
       ...COMPARE_ROUTES,

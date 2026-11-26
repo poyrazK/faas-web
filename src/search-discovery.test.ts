@@ -174,19 +174,29 @@ it('includes the research index when the research registry changes', () => {
   ]);
 });
 
-it('submits changed live articles and leaves research alone', () => {
+it('submits changed live articles and features independently', () => {
   const code = `
-    const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'];
+    const paths = ['/research', '/research/first', '/articles', '/articles/one', '/articles/two', '/features', '/features/database-rollbacks'];
     process.stdout.write(JSON.stringify([
       script.changedPaths(['content/articles/one.md', 'content/articles/gone.md'], paths),
       script.changedPaths(['src/lib/articles.ts'], paths),
+      script.changedPaths(['src/lib/features.ts'], paths),
       script.changedPaths(['scripts/prerender.mjs'], paths),
     ]));
   `;
   expect(JSON.parse(runScript('submit-research-indexnow.mjs', code, fixture))).toEqual([
     ['/articles/one'],
     ['/articles', '/articles/one', '/articles/two'],
-    ['/research', '/research/first', '/articles', '/articles/one', '/articles/two'],
+    ['/features', '/features/database-rollbacks'],
+    [
+      '/research',
+      '/research/first',
+      '/articles',
+      '/articles/one',
+      '/articles/two',
+      '/features',
+      '/features/database-rollbacks',
+    ],
   ]);
 });
 
@@ -279,6 +289,8 @@ it('accepts every path the release file can submit', () => {
     '/research/one',
     '/articles',
     '/articles/one',
+    '/features',
+    '/features/database-rollbacks',
     '/vs/railway',
     '/docs',
     '/docs/rollouts',

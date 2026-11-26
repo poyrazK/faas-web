@@ -14,6 +14,7 @@ import {
   RESEARCH_TITLE,
   withRelatedResearch,
 } from './research.ts';
+import { FEATURES, FEATURES_DESCRIPTION, FEATURES_TITLE } from './features.ts';
 import type { Comparison } from './compare.ts';
 import type { FaqEntry } from './faq.ts';
 import { formatCatalogPrice, type CatalogPlan } from './plan-catalog-parser.ts';
@@ -167,6 +168,10 @@ export function llmsIndex(
         `[llms-full.txt](${siteUrl}/llms-full.txt) holds every page below, over 1 MB.`
     );
   }
+  const features = FEATURES.map(
+    (entry) => `- [${entry.title}](${siteUrl}/features/${entry.slug}.md): ${entry.summary}`
+  );
+  parts.push(`## ${FEATURES_TITLE}\n\n${features.join('\n')}`);
   const research = RESEARCH_PUBLICATIONS.map(
     (entry) => `- [${entry.title}](${siteUrl}/research/${entry.slug}.md): ${entry.summary}`
   );
@@ -210,6 +215,7 @@ const page = (parts: string[]): string => parts.join('\n\n') + '\n';
  */
 export function homePage(intro: string, faq: readonly FaqEntry[], siteUrl: string): string {
   const next = [
+    `- [${FEATURES_TITLE}](${siteUrl}/features.md): ${FEATURES_DESCRIPTION}`,
     `- [Pricing](${siteUrl}/pricing.md): plans, included compute and pricing questions`,
     `- [Documentation](${siteUrl}/docs.md): every guide, by section`,
     `- [${ARTICLES_TITLE}](${siteUrl}/articles.md): ${ARTICLES_DESCRIPTION}`,
@@ -298,6 +304,19 @@ export function articlesIndexPage(siteUrl: string): string {
         `- [${entry.title}](${siteUrl}/articles/${entry.slug}.md) · Updated ${entry.updatedOn}: ${entry.summary}`
     ).join('\n'),
     `Canonical URL: ${siteUrl}/articles`,
+  ]);
+}
+
+/** The features index as Markdown. */
+export function featuresIndexPage(siteUrl: string): string {
+  return page([
+    `# ${FEATURES_TITLE}`,
+    `> ${FEATURES_DESCRIPTION}`,
+    FEATURES.map(
+      (entry) =>
+        `- [${entry.title}](${siteUrl}/features/${entry.slug}.md) · ${entry.maturity} · ${entry.plans}: ${entry.summary}`
+    ).join('\n'),
+    `Canonical URL: ${siteUrl}/features`,
   ]);
 }
 

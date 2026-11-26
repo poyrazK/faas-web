@@ -22,6 +22,7 @@ describe('Nav', () => {
     renderNav();
     const nav = await screen.findByRole('navigation', { name: 'Primary' });
     expect(nav).toHaveTextContent('Platform');
+    expect(nav).toHaveTextContent('Features');
     expect(nav).toHaveTextContent('Pricing');
     expect(nav).toHaveTextContent('Docs');
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
