@@ -1,13 +1,13 @@
-**The main Heroku alternatives in 2026 are Render, Railway, Fly.io, Northflank,
-Google Cloud Run, DigitalOcean App Platform and Gregale.** Render is the
-closest like-for-like move: Git deploys, managed Postgres, preview
-environments and a fixed monthly price per instance. Railway suits teams that
-want several databases in one click and usage-based billing. Fly.io suits
-apps that need to run in many regions. Cloud Run is the natural pick for teams
-already on Google Cloud. Gregale fits small teams without an ops person that
-want a Heroku-style workflow (it reads your `Procfile`) plus releases that roll
-out gradually and roll back on their own, apps that stop billing when idle,
-and a microVM per app.
+**The main Heroku alternatives in 2026 are Render, Railway, Fly.io,
+Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale.** For the
+least change from Heroku, Render keeps the same shape: Git deploys, managed
+Postgres and a fixed monthly price per instance, with a $7 Starter instance in
+place of a $7 Basic dyno. Railway swaps database add-ons for one-click
+Postgres, Redis, MySQL and MongoDB, billed by usage. Fly.io trades dynos for
+Machines you place in many regions. Cloud Run is the pick for teams already on
+Google Cloud. Gregale keeps the `Procfile` workflow but drops the per-dyno
+bill: apps stop billing when idle, each in its own microVM, and releases roll
+out gradually and roll back on their own.
 
 _Gregale publishes this page. Each entry says where that platform is the
 better choice, and every price names its vendor and comes from that vendor's
@@ -43,18 +43,19 @@ own pricing page or docs, checked on November 24, 2026._
 
 ### Gregale
 
-A backend platform for small teams: APIs, services, background jobs, crons,
-workflows and MCP servers, with managed PostgreSQL and object storage. Each app
-instance runs in its own Firecracker microVM. Every production release goes to
-1% of traffic first, then 10%, 50% and 100%, and rolls back on its own if the
-new version starts returning 5xx errors. A preview environment comes with
-every pull request, on every plan.
+Keeps the Heroku workflow and changes the bill and the release. Instead of a
+dyno priced by the month, each app instance runs in its own Firecracker
+microVM and pauses about a second after its last request. Every production
+release goes to 1% of traffic, then 10%, 50% and 100%, and rolls back on its
+own if 5xx errors rise, where `heroku releases:rollback` is a command you run.
+Managed PostgreSQL, object storage, crons, workflows and MCP servers are built
+in, with a preview environment for every pull request.
 
 - **Pricing:** Gregale Free is $0 for 1 app with 256 MB and 20 GB-RAM-hours a
   month, and stops at the allowance rather than billing you. Paid plans are
   Hobby $10, Pro $30 and Scale $99 a month; Hobby covers 5 apps with 512 MB
-  each and 200 GB-RAM-hours. Compute is billed by memory and time, CPU
-  included, only while an instance runs, up to a spend cap you set.
+  each and 200 GB-RAM-hours. An idle app uses none of the allowance, and a
+  spend cap you set stops any overage.
 - **Better than Heroku when:** you want to keep the Heroku workflow without
   the per-dyno bill. Gregale reads the same `Procfile`, including its release
   command, builds Node, Python and Go from source without a Dockerfile, turns
@@ -68,12 +69,14 @@ every pull request, on every plan.
 
 ### Render
 
-Git deploys for web services, workers, cron jobs and static sites, with managed
-Postgres, preview environments and a fixed monthly price per instance. A
-Render Starter instance is $7 a month for 512 MB and 0.5 CPU, always on. Free
-web services spin down after 15 minutes without traffic and take about a
-minute to come back, and free Render Postgres databases expire after 30 days.
-A new deploy takes all traffic once it is healthy; rolling back is manual.
+The closest like-for-like move: Git deploys, managed Postgres, preview
+environments and a fixed monthly price per instance, so a $7 Basic dyno (0.5
+GB) maps to a $7 Render Starter instance (512 MB, 0.5 CPU). Render's free web
+services cost nothing, unlike $5 Eco dynos, but they spin down after 15
+minutes rather than 30 and take about a minute to wake, and a free Render
+Postgres database expires after 30 days. As on Heroku, there is no gradual
+rollout: a new deploy takes all traffic once healthy, and rolling back is
+manual.
 
 - **Better than Heroku when:** you want the closest match to Heroku's model,
   with a persistent disk option (Render charges $0.25 per GB a month) and free
@@ -81,12 +84,12 @@ A new deploy takes all traffic once it is healthy; rolling back is manual.
 
 ### Railway
 
-Usage-based hosting with one-click Postgres, Redis, MySQL and MongoDB. Railway
-Hobby is $5 a month including $5 of usage; beyond that, Railway bills by the
-second at $10 per GB of memory and $20 per vCPU a month. Free services sleep
-when idle, and Railway's Serverless setting sleeps a service after about 10
-minutes without outbound traffic. A new deployment takes over once its health
-check passes; rolling back is manual.
+Where Heroku sells databases as add-ons, Railway adds Postgres, Redis, MySQL
+or MongoDB to a project in one click. It bills by the second instead of per
+dyno: Railway Hobby is $5 a month including $5 of usage, then $10 per GB of
+memory and $20 per vCPU a month. Free services sleep when idle, and Railway's
+Serverless setting sleeps a service after about 10 minutes without outbound
+traffic. Rolling back is manual, as on Heroku.
 
 - **Better than Heroku when:** you want several kinds of database next to your
   app in one click, or volumes for files that survive restarts (Railway
@@ -94,59 +97,57 @@ check passes; rolling back is manual.
 
 ### Fly.io
 
-Runs your container as Firecracker microVMs, called Machines, in many regions
-worldwide. A Fly.io shared-cpu-1x Machine is $2.19 a month with 256 MB or $6.70
-with 1 GB, billed by the second while it runs, and Machines can stop or
-suspend when idle. Deploys are rolling by default; the canary strategy
-health-checks one new Machine and then replaces the rest.
+Replaces dynos with Firecracker microVMs, called Machines, that you place in
+many regions. Machines bill by the second while they run, from $2.19 a month
+for a shared-cpu-1x with 256 MB, and can stop or suspend when idle, where a
+Basic dyno runs all the time. Configuration lives in `fly.toml` rather than a
+`Procfile`. Deploys are rolling, or a canary that health-checks one new
+Machine before replacing the rest.
 
 - **Better than Heroku when:** your users are spread across continents, or you
-  want low-level control over each Machine. You set up more of it yourself, in
-  `fly.toml`, rather than in a `Procfile`.
+  want low-level control over each Machine.
 
 ### Northflank
 
 A container platform for services, jobs and databases that runs on
-Northflank's own cloud or in a cluster in your own cloud account. The free
-Sandbox covers 2 services, 2 jobs and 1 database, always on with no sleeping.
-Paid usage is billed by the second at $0.01667 per vCPU-hour and $0.00833 per
-GB-hour; a 0.5 vCPU, 1 GB plan is $12 a month.
+Northflank's own cloud or in a cluster in your own cloud account. Unlike
+Heroku, it has a free tier: the Sandbox covers 2 services, 2 jobs and 1
+database, always on. Paid usage is billed by the second; a 0.5 vCPU, 1 GB plan
+is $12 a month.
 
 - **Better than Heroku when:** you want the option of moving workloads into
   your own cloud account later, with the same tool.
 
 ### Google Cloud Run
 
-Google's managed platform for containers. With request-based billing, a Cloud
-Run service is billed only while it starts, shuts down or handles a request,
-rounded up to 100 ms: $0.000024 per vCPU-second, $0.0000025 per GiB-second and
-$0.40 per million requests in us-central1, after a monthly free tier. It
-scales to zero; minimum instances stay warm and are billed while idle. Traffic
-can be split between revisions by hand, and Cloud Deploy adds canary phases.
+Charges per request instead of per dyno per month, after a monthly free tier,
+and scales to zero when traffic stops. There is no add-on marketplace:
+databases, queues and networking are separate Google Cloud products that you
+connect yourself. Unlike Heroku, you can move a share of traffic to a new
+revision, by hand or in canary phases with Cloud Deploy.
 
-- **Better than Heroku when:** you already run on Google Cloud. Databases,
-  queues and networking are separate Google Cloud products that you connect
-  yourself, rather than Heroku add-ons.
+- **Better than Heroku when:** you already run on Google Cloud, or you'd
+  rather pay per request than per dyno.
 
 ### DigitalOcean App Platform
 
-DigitalOcean's platform for services, workers, jobs and static sites. Its free
-tier covers static sites only. A DigitalOcean App Platform service starts at $5
-a month for 1 shared vCPU and 512 MiB, billed at its monthly rate prorated by
-the second, and a development database is $7 a month.
+Keeps Heroku's fixed monthly price at a lower entry point: a service is $5 a
+month for 1 shared vCPU and 512 MiB, against $7 for a Basic dyno, prorated by
+the second, and a development database is $7 a month. Its free tier covers
+static sites only.
 
 - **Better than Heroku when:** you want a similar fixed-price model at a lower
   entry price, or you already use DigitalOcean Droplets or managed databases.
 
 ## How to choose
 
-- **Closest like-for-like move:** Render.
-- **Several databases in one click:** Railway.
-- **Many regions, close to users:** Fly.io or Google Cloud Run.
-- **Your own cloud account later:** Northflank.
+- **Least change from Heroku, same $7 entry price:** Render.
+- **One-click databases instead of add-ons, billed by usage:** Railway.
+- **Users on several continents:** Fly.io or Google Cloud Run.
+- **A path into your own cloud account:** Northflank.
 - **Already on Google Cloud or DigitalOcean:** Cloud Run or App Platform.
-- **The Heroku workflow with gradual releases, automatic rollback and idle
-  apps that cost nothing:** Gregale.
+- **Keep your `Procfile`, drop the per-dyno bill, and get gradual releases
+  with automatic rollback:** Gregale.
 
 ## Moving from Heroku to Gregale
 

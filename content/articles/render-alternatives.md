@@ -1,12 +1,12 @@
 **The main Render alternatives in 2026 are Railway, Fly.io, Heroku,
-Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale.** Railway
-suits teams that want several databases in one click and usage-based billing.
-Fly.io suits apps that need to run in many regions. Heroku still has the
-largest add-on marketplace. Cloud Run is the natural pick for teams already on
-Google Cloud that want to pay per request. Gregale fits small teams without an
-ops person that want paid apps, not only free ones, to stop billing when idle,
-releases that roll out gradually and roll back on their own, and a microVM per
-app.
+Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale.** Most
+teams leave Render over paid instances that bill around the clock or a free
+tier that takes a minute to wake. Railway and Cloud Run bill for usage instead
+of per instance. Fly.io Machines can stop when idle and run in many regions.
+Heroku still has the largest add-on marketplace. Gregale stops billing paid
+apps, not only free ones, about a second after they go idle and resumes them
+in milliseconds, and rolls each release out gradually with automatic rollback,
+in a microVM per app.
 
 _Gregale publishes this page. Each entry says where that platform is the
 better choice, and every price names its vendor and comes from that vendor's
@@ -44,18 +44,21 @@ own pricing page or docs, checked on November 24, 2026._
 
 ### Gregale
 
-A backend platform for small teams: APIs, services, background jobs, crons,
-workflows and MCP servers, with managed PostgreSQL and object storage. Each app
-instance runs in its own Firecracker microVM. Every production release goes to
-1% of traffic first, then 10%, 50% and 100%, and rolls back on its own if the
-new version starts returning 5xx errors. A preview environment comes with
-every pull request, on every plan.
+Runs the same kinds of workload as Render except static sites: web services,
+background workers and crons, plus workflows and MCP servers, with managed
+PostgreSQL, object storage and a preview environment for every pull request on
+every plan. The differences are idle time and releases. A Render Starter
+instance bills all month; a Gregale app, in its own Firecracker microVM,
+pauses about a second after its last request. Where a Render deploy takes all
+traffic at once, each Gregale release goes to 1%, 10%, 50% and then 100% of
+traffic and rolls back on its own if 5xx errors rise.
 
 - **Pricing:** Gregale Free is $0 for 1 app with 256 MB and 20 GB-RAM-hours a
   month, and stops at the allowance rather than billing you. Paid plans are
   Hobby $10, Pro $30 and Scale $99 a month; Hobby covers 5 apps with 512 MB
-  each and 200 GB-RAM-hours. Compute is billed by memory and time, CPU
-  included, only while an instance runs, up to a spend cap you set.
+  each and 200 GB-RAM-hours. A paid app is billed by memory and time, CPU
+  included, only while it runs, so idle hours cost nothing, up to a spend cap
+  you set.
 - **Better than Render when:** you run several small APIs or services that are
   idle much of the day. On every Gregale plan an idle app pauses about a
   second after its last request and resumes in milliseconds, instead of
@@ -69,12 +72,13 @@ every pull request, on every plan.
 
 ### Railway
 
-Usage-based hosting with one-click Postgres, Redis, MySQL and MongoDB. Railway
-Hobby is $5 a month including $5 of usage; beyond that, Railway bills by the
-second at $10 per GB of memory and $20 per vCPU a month. Free services sleep
-when idle, and Railway's Serverless setting sleeps a service after about 10
-minutes without outbound traffic. A new deployment takes over once its health
-check passes; rolling back is manual.
+Replaces Render's price per instance with usage: Railway Hobby is $5 a month
+including $5 of usage, then $10 per GB of memory and $20 per vCPU a month, by
+the second. That suits a busy service and is harder to predict than a $7
+Starter instance. Postgres, Redis, MySQL and MongoDB are one click each.
+Railway's Serverless setting sleeps a quiet service after about 10 minutes
+without outbound traffic. Like Render, a new deployment takes all traffic
+after its health check, and rolling back is manual.
 
 - **Better than Render when:** you want several kinds of database next to your
   app in one click, or you'd rather pay for usage than per instance.
@@ -82,70 +86,71 @@ check passes; rolling back is manual.
 ### Fly.io
 
 Runs your container as Firecracker microVMs, called Machines, in many regions
-worldwide. A Fly.io shared-cpu-1x Machine is $2.19 a month with 256 MB or $6.70
-with 1 GB, billed by the second while it runs, and Machines can stop or
-suspend when idle. Deploys are rolling by default; the canary strategy
-health-checks one new Machine and then replaces the rest.
+worldwide. A Machine bills by the second while it runs, $2.19 a month for a
+shared-cpu-1x with 256 MB, and can stop or suspend when idle, where a Render
+Starter instance runs and bills all month. Its canary strategy health-checks
+one new Machine before replacing the rest, a step past Render's all-at-once
+deploys. In exchange you configure more yourself, in `fly.toml`.
 
 - **Better than Render when:** your users are spread across continents, or you
-  want low-level control over each Machine, its size and its volumes. You set
-  up more of it yourself, in `fly.toml`.
+  want low-level control over each Machine, its size and its volumes.
 
 ### Heroku
 
-The original Git-push platform, with a large add-on marketplace, Heroku
-Postgres and review apps. In February 2026 Heroku moved to a sustaining
-engineering model focused on stability, security, reliability and support.
-There is no free plan: Heroku Eco dynos are $5 a month and sleep after 30
-minutes idle, and a Basic dyno is $7 a month for 0.5 GB, always on.
+The original Git-push platform, with the largest add-on marketplace, Heroku
+Postgres and review apps: the pick if you want third-party services as add-ons
+rather than wiring them up yourself. It keeps the fixed-price model with no
+free plan. Eco dynos are $5 a month and sleep after 30 minutes idle, and a
+Basic dyno is $7 a month for 0.5 GB, always on, the same price as Render
+Starter. Heroku moved to a sustaining engineering model in February 2026.
 
 - **Better than Render when:** you depend on Heroku add-ons or need Shield
   dynos for compliance.
 
 ### Northflank
 
-A container platform for services, jobs and databases that runs on
-Northflank's own cloud or in a cluster in your own cloud account. The free
-Sandbox covers 2 services, 2 jobs and 1 database, always on with no sleeping.
-Paid usage is billed by the second at $0.01667 per vCPU-hour and $0.00833 per
-GB-hour; a 0.5 vCPU, 1 GB plan is $12 a month.
+Its free Sandbox (2 services, 2 jobs and 1 database) is always on with no
+sleeping, the opposite of Render's free web services. Paid usage is billed by
+the second; a 0.5 vCPU, 1 GB plan is $12 a month, against $7 for a Render
+Starter instance with 512 MB and 0.5 CPU. Workloads run on Northflank's own
+cloud or in a cluster in your own cloud account.
 
 - **Better than Render when:** you want a free tier that never sleeps, or the
   option of moving workloads into your own cloud account later.
 
 ### Google Cloud Run
 
-Google's managed platform for containers. With request-based billing, a Cloud
-Run service is billed only while it starts, shuts down or handles a request,
-rounded up to 100 ms: $0.000024 per vCPU-second, $0.0000025 per GiB-second and
-$0.40 per million requests in us-central1, after a monthly free tier. It
-scales to zero; minimum instances stay warm and are billed while idle. Traffic
-can be split between revisions by hand, and Cloud Deploy adds canary phases.
+Bills per request rather than per instance, after a monthly free tier, and
+paid services scale to zero, not only free ones; only minimum instances you
+keep warm bill while idle. Postgres is not part of the service: databases,
+queues and networking are separate Google Cloud products. Where a Render
+deploy switches all at once, Cloud Run can send part of the traffic to a new
+revision, set by hand or in Cloud Deploy canary phases.
 
 - **Better than Render when:** you already run on Google Cloud and want
-  per-request billing. Databases, queues and networking are separate Google
-  Cloud products that you connect yourself.
+  per-request billing.
 
 ### DigitalOcean App Platform
 
-DigitalOcean's platform for services, workers, jobs and static sites. Its free
-tier covers static sites only. A DigitalOcean App Platform service starts at $5
-a month for 1 shared vCPU and 512 MiB, billed at its monthly rate prorated by
-the second, and a development database is $7 a month.
+Keeps Render's fixed monthly price per service at a lower entry point: $5 a
+month for 1 shared vCPU and 512 MiB, against $7 for Render Starter, prorated
+by the second, and a development database is $7 a month. Like Render it hosts
+static sites; its free tier covers static sites only.
 
 - **Better than Render when:** you want a lower fixed entry price, or you
   already use DigitalOcean Droplets or managed databases.
 
 ## How to choose
 
-- **Several databases in one click, usage-based billing:** Railway.
-- **Many regions, close to users:** Fly.io or Google Cloud Run.
-- **Heroku add-ons or compliance dynos:** Heroku.
+- **Usage billing instead of a price per instance:** Railway, or Cloud Run per
+  request.
+- **Users on several continents, Machines that stop when idle:** Fly.io.
+- **Third-party add-ons:** Heroku.
 - **A free tier that never sleeps, or your own cloud account later:**
   Northflank.
-- **Already on Google Cloud or DigitalOcean:** Cloud Run or App Platform.
-- **Paid apps that cost nothing while idle, gradual releases with automatic
-  rollback, and a fixed plan with a spend cap:** Gregale.
+- **A lower fixed price, or already on DigitalOcean:** App Platform.
+- **Paid apps that stop billing a second after going idle, with gradual
+  releases and automatic rollback:** Gregale.
 
 ## Moving from Render to Gregale
 
