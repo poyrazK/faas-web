@@ -567,7 +567,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform, Heroku and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Railway.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'What is the best Railway alternative?',
@@ -593,7 +593,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway, Fly.io, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Heroku.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'What is the best Heroku alternative now that Heroku is in sustaining mode?',
@@ -619,7 +619,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Railway, Fly.io, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Render.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'What is the best Render alternative?',
@@ -645,7 +645,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Render, Railway, Heroku, Northflank, Google Cloud Run, DigitalOcean App Platform and Gregale compared on free plans, prices, idle billing and releases, with where each one fits better than Fly.io.',
     publishedOn: '2026-11-24',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'What is the best Fly.io alternative?',

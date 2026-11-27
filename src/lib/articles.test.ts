@@ -136,6 +136,27 @@ describe('articles', () => {
     }
   });
 
+  it('keeps each alternatives roundup mostly its own text', () => {
+    // Near-duplicate pages end up "crawled, not indexed". A shared comparison table and
+    // sources list are fine; the same vendor write-ups on every roundup are not.
+    const shingles = (slug: string) => {
+      const words =
+        body(slug)
+          .toLowerCase()
+          .match(/[a-z0-9$.%]+/g) ?? [];
+      return new Set(words.slice(4).map((_, i) => words.slice(i, i + 5).join(' ')));
+    };
+    const sets = ROUNDUPS.map((article) => [article.slug, shingles(article.slug)] as const);
+    for (const [i, [a, first]] of sets.entries()) {
+      for (const [b, second] of sets.slice(i + 1)) {
+        let shared = 0;
+        for (const shingle of first) if (second.has(shingle)) shared += 1;
+        const jaccard = shared / (first.size + second.size - shared);
+        expect(jaccard, `${a} vs ${b}`).toBeLessThan(0.3);
+      }
+    }
+  });
+
   it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
     const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
     const previews = body('preview-environments').replace(/\s+/g, ' ');
