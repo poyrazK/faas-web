@@ -292,6 +292,7 @@ it('accepts every path the release file can submit', () => {
     '/',
     '/pricing',
     '/templates',
+    '/deploy',
     '/research',
     '/research/one',
     '/solutions',
