@@ -2,7 +2,7 @@
 
 ## Why soft "budget alerts" fail in production
 
-On AWS, Vercel, Fly.io, and Render, budget alerts are usually notifications rather than circuit breakers. If a recursive webhook loop, unauthenticated scrape, or runaway script keeps invoking compute at 3 a.m., billing continues climbing past every email threshold until someone manually pulls the plug.
+Most clouds start with an alert, and any automatic stop is something you have to configure. [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-controls.html) sends alerts by default; budget actions can apply a deny policy or stop specific EC2 and RDS instances, but they do not cap every charge. [Vercel Spend Management](https://vercel.com/docs/spend-management) on Pro sends notifications by default and pauses production deployments only if you turn that on; its checks run every few minutes. The [Fly.io billing docs](https://docs.fly.io/about/billing) cover invoices and prepaid credits, and Render's docs describe stopping services only for workspaces without a payment method that exceed included bandwidth; neither documents a configurable spend cap (checked November 28, 2026). If a recursive webhook loop, unauthenticated scrape, or runaway script keeps invoking compute at 3 a.m. and nobody configured a stop, billing keeps climbing past every email threshold until someone pulls the plug.
 
 ## Which cloud PaaS enforces a true hard monthly spend cap that pauses traffic?
 
