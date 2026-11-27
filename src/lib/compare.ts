@@ -608,8 +608,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want automatic percentage canary rollouts that roll back on 5xx errors without setting up Cloud Deploy.',
         'You want predictable monthly allowances, a hard spend cap and scoped keys for AI coding agents.',
       ],
-      migrateDoc: 'container-compatibility',
-      migrateLabel: 'Container compatibility',
+      migrateDoc: 'migrate-from-cloud-run',
+      migrateLabel: 'Migrate from Google Cloud Run',
       faq: [
         {
           question: 'Is Gregale cheaper than Google Cloud Run?',
@@ -725,8 +725,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want bundled managed PostgreSQL with point-in-time restore tied to code rollbacks.',
         'You want per-project monthly pricing without paying $20 a month for every developer or agent seat, plus automatic 5xx canary rollbacks.',
       ],
-      migrateDoc: 'deploy-nextjs',
-      migrateLabel: 'Deploy Next.js',
+      migrateDoc: 'migrate-from-vercel',
+      migrateLabel: 'Migrate from Vercel',
       faq: [
         {
           question: 'Is Gregale cheaper than Vercel?',
@@ -845,8 +845,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want idle apps to pause ~1s after requests instead of sleeping on minute-scale timeouts.',
         'You want automatic 1%→100% canary rollbacks, PR preview environments on Free, and scoped AI agent guardrails.',
       ],
-      migrateDoc: 'container-compatibility',
-      migrateLabel: 'Container compatibility',
+      migrateDoc: 'migrate-from-koyeb',
+      migrateLabel: 'Migrate from Koyeb',
       faq: [
         {
           question: 'Is Gregale cheaper than Koyeb?',
@@ -966,8 +966,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want a simpler CLI without Kubernetes concepts, plus automatic 1%→100% 5xx canary rollbacks and code+Postgres PITR rollback.',
         'You want scoped `--agent` keys, human approval links, cost previews and undo for AI coding agents.',
       ],
-      migrateDoc: 'container-compatibility',
-      migrateLabel: 'Container compatibility',
+      migrateDoc: 'migrate-from-northflank',
+      migrateLabel: 'Migrate from Northflank',
       faq: [
         {
           question: 'Is Gregale cheaper than Northflank?',
@@ -1366,8 +1366,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want bundled managed PostgreSQL with coordinated code + DB PITR rollback inside the $10 Hobby plan instead of $15/mo+ add-on clusters.',
         'You want automatic 1%→100% 5xx canary rollbacks, hard monthly spend caps and scoped AI agent guardrails.',
       ],
-      migrateDoc: 'container-compatibility',
-      migrateLabel: 'Container compatibility',
+      migrateDoc: 'migrate-from-digitalocean',
+      migrateLabel: 'Migrate from DigitalOcean App Platform',
       faq: [
         {
           question: 'Is Gregale cheaper than DigitalOcean App Platform?',
@@ -1464,8 +1464,8 @@ export function comparisons(catalog: Catalog): Comparison[] {
         'You want PR preview environments, automatic 1%→100% 5xx canary rollbacks, code + PostgreSQL PITR rollback and strict monthly spend caps.',
         'You want scoped `--agent` keys with approval links so coding agents can deploy safely to real infrastructure.',
       ],
-      migrateDoc: 'deploy-from-github',
-      migrateLabel: 'Deploy from your repository',
+      migrateDoc: 'migrate-from-replit',
+      migrateLabel: 'Migrate from Replit',
       faq: [
         {
           question: 'Is Gregale cheaper than Replit Deployments?',

@@ -501,12 +501,17 @@ describeBuilt('prerendered pages', () => {
       {
         slug: 'cloud-run-alternatives',
         vs: 'cloud-run',
-        doc: null,
+        doc: 'migrate-from-cloud-run',
         date: '2026-11-26',
       },
-      { slug: 'vercel-alternatives', vs: 'vercel', doc: null, date: '2026-11-26' },
-      { slug: 'koyeb-alternatives', vs: 'koyeb', doc: null, date: '2026-11-26' },
-      { slug: 'northflank-alternatives', vs: 'northflank', doc: null, date: '2026-11-26' },
+      { slug: 'vercel-alternatives', vs: 'vercel', doc: 'migrate-from-vercel', date: '2026-11-26' },
+      { slug: 'koyeb-alternatives', vs: 'koyeb', doc: 'migrate-from-koyeb', date: '2026-11-26' },
+      {
+        slug: 'northflank-alternatives',
+        vs: 'northflank',
+        doc: 'migrate-from-northflank',
+        date: '2026-11-26',
+      },
       { slug: 'coolify-alternatives', vs: 'coolify', doc: null, date: '2026-11-26' },
       {
         slug: 'cloudflare-workers-alternatives',
@@ -523,13 +528,13 @@ describeBuilt('prerendered pages', () => {
       {
         slug: 'digitalocean-app-platform-alternatives',
         vs: 'digitalocean',
-        doc: null,
+        doc: 'migrate-from-digitalocean',
         date: '2026-11-26',
       },
       {
         slug: 'replit-alternatives',
         vs: 'replit',
-        doc: null,
+        doc: 'migrate-from-replit',
         date: '2026-11-26',
       },
     ];
@@ -597,6 +602,27 @@ describeBuilt('prerendered pages', () => {
         `<loc>https://gregale.dev${route}</loc>`
       );
       expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
+  it('publishes all 6 new migration docs with markdown copies, sitemap and llms.txt', () => {
+    const slugs = [
+      'migrate-from-vercel',
+      'migrate-from-cloud-run',
+      'migrate-from-koyeb',
+      'migrate-from-northflank',
+      'migrate-from-digitalocean',
+      'migrate-from-replit',
+    ];
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+    for (const slug of slugs) {
+      const html = readFileSync(`dist/docs/${slug}/index.html`, 'utf8');
+      const md = readFileSync(`dist/docs/${slug}.md`, 'utf8');
+      expect(html).toContain('How ');
+      expect(md).not.toContain('https://github.com/poyrazK/faas/blob/main/content/docs/');
+      expect(sitemap).toContain(`<loc>https://gregale.dev/docs/${slug}</loc>`);
+      expect(llms).toContain(`https://gregale.dev/docs/${slug}.md`);
     }
   });
 

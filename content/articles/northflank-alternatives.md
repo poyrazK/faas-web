@@ -125,6 +125,7 @@ managed development Postgres ($7/month).
 Standard Dockerfiles and Node/Python/Go source directories deploy directly on
 Gregale with `gregale deploy`, mapping Northflank jobs and addons to Gregale
 workers, crons, and bundled managed PostgreSQL (`DATABASE_URL`). See
+[Migrate from Northflank](/docs/migrate-from-northflank),
 [Container compatibility](/docs/container-compatibility) and
 [Gregale vs Northflank](/vs/northflank).
 

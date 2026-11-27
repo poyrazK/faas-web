@@ -2292,6 +2292,18 @@ const RAILWAY_ALTERNATIVES_LINK =
   '[Railway alternatives in 2026](/articles/railway-alternatives) compares the main platforms people move to from Railway.';
 const FLY_ALTERNATIVES_LINK =
   '[Fly.io alternatives in 2026](/articles/flyio-alternatives) compares the main platforms people move to from Fly.io.';
+const VERCEL_ALTERNATIVES_LINK =
+  '[Vercel alternatives in 2026](/articles/vercel-alternatives) compares the main platforms people move to from Vercel for backends.';
+const CLOUD_RUN_ALTERNATIVES_LINK =
+  '[Google Cloud Run alternatives in 2026](/articles/cloud-run-alternatives) compares the main platforms people move to from Cloud Run.';
+const KOYEB_ALTERNATIVES_LINK =
+  '[Koyeb alternatives in 2026](/articles/koyeb-alternatives) compares the main platforms people move to from Koyeb.';
+const NORTHFLANK_ALTERNATIVES_LINK =
+  '[Northflank alternatives in 2026](/articles/northflank-alternatives) compares the main platforms people move to from Northflank.';
+const DIGITALOCEAN_ALTERNATIVES_LINK =
+  '[DigitalOcean App Platform alternatives in 2026](/articles/digitalocean-app-platform-alternatives) compares the main platforms people move to from App Platform.';
+const REPLIT_ALTERNATIVES_LINK =
+  '[Replit alternatives in 2026](/articles/replit-alternatives) compares the main platforms people move to from Replit.';
 
 const PREVIEW_LINK =
   '[Preview environments for every pull request](/articles/preview-environments) explains what a preview includes and keeps out, and compares it with other platforms.';
@@ -2418,6 +2430,12 @@ const RELATED_ARTICLES: Record<string, string> = {
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
   'migrate-from-railway': `${RAILWAY_CONFIG_LINK} ${RAILWAY_ALTERNATIVES_LINK}`,
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
+  'migrate-from-vercel': VERCEL_ALTERNATIVES_LINK,
+  'migrate-from-cloud-run': CLOUD_RUN_ALTERNATIVES_LINK,
+  'migrate-from-koyeb': KOYEB_ALTERNATIVES_LINK,
+  'migrate-from-northflank': NORTHFLANK_ALTERNATIVES_LINK,
+  'migrate-from-digitalocean': DIGITALOCEAN_ALTERNATIVES_LINK,
+  'migrate-from-replit': REPLIT_ALTERNATIVES_LINK,
   rollouts: `${MIRRORING_LINK} ${CANARY_LINK}`,
   releases: `${CANARY_LINK} ${DEPLOY_DIFF_LINK}`,
   env: DEPLOY_DIFF_LINK,

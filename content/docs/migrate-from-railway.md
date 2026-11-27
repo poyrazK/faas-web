@@ -26,10 +26,12 @@ this page maps them to Gregale's and walks through a move.
 | Railway Postgres | [Managed PostgreSQL](postgres.md), bound to the app as `DATABASE_URL` |
 | Redis, MySQL, MongoDB | No managed equivalent: keep them on Railway or another provider |
 | Volume | No persistent disk: keep state in [managed PostgreSQL](postgres.md) or [object storage](object-storage.md) |
+| WebSockets / SSE | `--websocket-enabled` on your app or [managed realtime](realtime.md) (beta) so connections stay open at $0 app idle compute |
 | PR environments | [Preview environments](preview-environments.md) |
 | Custom domains | [Custom domains](domains.md) |
 | `railway logs` | `gregale logs my-api` ([Logs](logs.md)) |
-| Rollback in the dashboard | `gregale rollback my-api --to v41` ([Safe releases](releases.md)) |
+| Rollback in the dashboard | Automatic 1% → 10% → 50% → 100% canary [rollouts](rollouts.md) with automatic 5xx rollback, plus `gregale rollback my-api --to v41 --restore-databases` ([Safe releases](releases.md#rollbacks-that-restore-the-database)) |
+| Usage limits / alerts | Hard monthly spend caps enabled on every paid plan ([Cost controls](cost-controls.md)) |
 
 ## Translate the service settings
 
@@ -101,7 +103,7 @@ egress. Then either:
 - **Move to managed PostgreSQL.** Create a database and bind it:
 
   ```bash
-  gregale add postgres --app my-api --region <region>
+  gregale add postgres --app my-api
   gregale postgres attach my-api-postgres my-api --access migration --env MIGRATION_DATABASE_URL
   ```
 

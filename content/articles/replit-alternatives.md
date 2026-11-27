@@ -121,7 +121,8 @@ gregale deploy check
 gregale deploy
 ```
 
-See [Let Claude Code deploy safely](/articles/claude-code-deploy-production-safely),
+See [Migrate from Replit](/docs/migrate-from-replit),
+[Let Claude Code deploy safely](/articles/claude-code-deploy-production-safely),
 [starter templates](/templates), [Deploy from your repository](/docs/deploy-from-github)
 and [Gregale vs Replit](/vs/replit).
 

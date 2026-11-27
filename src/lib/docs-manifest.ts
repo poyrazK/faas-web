@@ -231,6 +231,54 @@ export const DOC_SECTIONS: DocSection[] = [
         summary:
           'Translate fly.toml, secrets, process groups, volumes and Managed Postgres to Gregale, step by step.',
       },
+      {
+        slug: 'migrate-from-vercel',
+        source: 'content/docs/migrate-from-vercel.md',
+        local: true,
+        title: 'Migrate from Vercel',
+        summary:
+          'Move Next.js backends, APIs, vercel.env secrets, crons and Postgres out of serverless timeouts.',
+      },
+      {
+        slug: 'migrate-from-cloud-run',
+        source: 'content/docs/migrate-from-cloud-run.md',
+        local: true,
+        title: 'Migrate from Google Cloud Run',
+        summary:
+          'Move Artifact Registry images or source, env vars, jobs, crons and Cloud SQL off GCP to Gregale.',
+      },
+      {
+        slug: 'migrate-from-koyeb',
+        source: 'content/docs/migrate-from-koyeb.md',
+        local: true,
+        title: 'Migrate from Koyeb',
+        summary:
+          'Map Koyeb services, scaling settings, secrets, Postgres and internal meshes to Gregale.',
+      },
+      {
+        slug: 'migrate-from-northflank',
+        source: 'content/docs/migrate-from-northflank.md',
+        local: true,
+        title: 'Migrate from Northflank',
+        summary:
+          'Translate Northflank services, OCI images, Secret Groups, addons and jobs to Gregale step by step.',
+      },
+      {
+        slug: 'migrate-from-digitalocean',
+        source: 'content/docs/migrate-from-digitalocean.md',
+        local: true,
+        title: 'Migrate from DigitalOcean App Platform',
+        summary:
+          'Translate .do/app.yaml components, workers, Managed PostgreSQL and Spaces to Gregale.',
+      },
+      {
+        slug: 'migrate-from-replit',
+        source: 'content/docs/migrate-from-replit.md',
+        local: true,
+        title: 'Migrate from Replit',
+        summary:
+          'Move AI-built Repls to Git-owned repositories with Secrets, Postgres, object storage and agent keys.',
+      },
     ],
   },
   {
