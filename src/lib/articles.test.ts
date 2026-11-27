@@ -58,6 +58,9 @@ const sources = import.meta.glob<string>(
     '../../content/docs/deploy-from-github.md',
     '../../content/docs/migrate-from-railway.md',
     '../../content/docs/frameworks.md',
+    '../../content/docs/deploy-rust.md',
+    '../../content/docs/mcp-hosting.md',
+    '../../content/docs/build.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -601,6 +604,34 @@ describe('articles', () => {
           'the deploy never changes or deletes one',
         ],
       },
+      {
+        slug: 'host-rust-axum-postgres-scale-to-zero',
+        docs: ['deploy-rust', 'postgres', 'auth', 'scale-to-zero', 'build'],
+        snippets: [
+          'FROM gcr.io/distroless/cc-debian12',
+          'RUN cargo build --release --locked',
+          'sqlx::migrate!().run(&pool).await?;',
+          'gregale add postgres --app',
+          '--access migration --env MIGRATION_DATABASE_URL',
+          'cannot `CREATE`, `ALTER` or `DROP`',
+          'connection pooler in transaction mode',
+          'access: public',
+          'gregale app wake-timeline',
+          '2048 MB',
+          '15 minutes',
+        ],
+      },
+      {
+        slug: 'host-typescript-mcp-server-oauth-scale-to-zero',
+        docs: ['mcp-hosting', 'auth'],
+        snippets: [
+          'MCP hosting is available on the Hobby, Pro and Scale plans',
+          '--auth external-oauth',
+          'gregale mcp server deploy',
+          'access: public',
+          'Hobby and above',
+        ],
+      },
     ];
     for (const { slug, docs, snippets, label } of cases) {
       const article = text(slug);
@@ -644,6 +675,25 @@ describe('articles', () => {
     );
     expect(sources['../../content/docs/postgres.md']).toMatch(/^\| Hobby \| 1 \|.*\| 7 days \|/m);
     expect(rails).toContain('includes one managed PostgreSQL database');
+
+    const rust = text('host-rust-axum-postgres-scale-to-zero');
+    expect(rust).toContain(`the Free plan's ${free.ramMb} MB`);
+    expect(rust).toContain(
+      `Gregale Free: ${free.deployedApps} app with ${free.ramMb} MB and ${free.includedGbHours} GB-RAM-hours a month`
+    );
+    expect(rust).toContain(
+      `Hobby costs ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps with ${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours`
+    );
+    expect(rust).toContain('includes one managed PostgreSQL database');
+    const tsMcp = text('host-typescript-mcp-server-oauth-scale-to-zero');
+    expect(tsMcp).toContain(
+      `Hobby costs ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps with ${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours`
+    );
+    expect(doc('mcp-hosting')).toContain('300 seconds (60 on Hobby, where that is the maximum)');
+    expect(doc('mcp-hosting')).toContain('up to 900 on Scale');
+    expect(doc('mcp-hosting')).toContain('from the usual 30 seconds');
+    expect(tsMcp).toContain('Hobby allows up to 60 and Scale up to 900');
+    expect(tsMcp).toContain('It is 30 seconds for an app deployed with `gregale deploy`');
     expect(rails).toContain('includes a 7-day restore window');
 
     const postgres = sources['../../content/docs/postgres.md'];

@@ -11,6 +11,7 @@ is what every framework has in common. The guides cover each one:
 - [Django](deploy-django.md) (Python)
 - [Flask](deploy-flask.md) (Python)
 - [Go](deploy-go.md) (`net/http`, Gin)
+- [Rust](deploy-rust.md) (Axum, Actix Web; from a `Dockerfile`)
 
 Moving an existing app? See [Migrate from Heroku](migrate-from-heroku.md),
 [Migrate from Render](migrate-from-render.md),
@@ -154,7 +155,7 @@ public.
 - Set configuration and secrets with `gregale env set --app my-api KEY=value`;
   they arrive as environment variables. See [Secrets](secrets.md).
 - Add a managed database with
-  `gregale add postgres --app my-api --region <region>`. Its URL arrives as
+  `gregale add postgres --app my-api`. Its URL arrives as
   `DATABASE_URL`. See [Managed PostgreSQL](postgres.md).
 - Run migrations as a release command: `release:` in the `Procfile` or
   `release.command` in `gregale.yaml`. It runs before the new version takes

@@ -87,6 +87,8 @@ const DISCORD_SLUG = 'discord-bot-interactions-endpoint-serverless';
 const SLACK_SLUG = 'slack-bolt-http-mode-scale-to-zero';
 const RAILS_SLUG = 'deploy-rails-postgres';
 const RAILWAY_CONFIG_SLUG = 'railway-json-config-as-code-deprecated';
+const RUST_AXUM_SLUG = 'host-rust-axum-postgres-scale-to-zero';
+const TS_MCP_OAUTH_SLUG = 'host-typescript-mcp-server-oauth-scale-to-zero';
 const DIRECT_UPLOADS_SLUG = 'direct-browser-uploads-resumable-multipart-storage';
 const DELAYED_TASKS_SLUG = 'delayed-tasks-without-redis-scale-to-zero';
 const DEPLOY_DIFF_SLUG = 'preview-deploy-diff-and-environment-drift';
@@ -2274,6 +2276,76 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: RUST_AXUM_SLUG,
+    title: 'Host a Rust Axum API with PostgreSQL on scale-to-zero microVMs',
+    summary:
+      'Deploy an Axum and sqlx API from a two-stage Dockerfile, run migrations with their own credential, and pause between requests. Measured on Gregale.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Does Gregale build Rust without a Dockerfile?',
+        answer:
+          'No. Gregale builds Node, Python and Go from source. For Rust, add a Dockerfile that compiles with Cargo and copies the binary into a small runtime image such as distroless/cc. Our Axum API compiled in 69 seconds on Gregale’s builder.',
+      },
+      {
+        question: 'How much memory does a Rust API use on Gregale?',
+        answer:
+          'Our Axum and sqlx API used 8 MB while serving, from a 57 MB image. That fits the Free plan’s 256 MB, but Free has no managed PostgreSQL, so with a database it needs Hobby.',
+      },
+      {
+        question: 'Does sqlx work through Gregale’s connection pooler?',
+        answer:
+          'Yes. DATABASE_URL goes through a pooler in transaction mode, and sqlx’s prepared statements worked through it in our test with no change to the code or the connection URL.',
+      },
+      {
+        question: 'How do sqlx migrations run on Gregale?',
+        answer:
+          'The same binary runs them as the release command, for example /app/notes-api migrate, with MIGRATION_DATABASE_URL: a direct connection that can change the schema. The serving app never receives it, and if a migration fails, the previous version keeps serving.',
+      },
+      {
+        question: 'How fast does a parked Rust API wake up?',
+        answer:
+          'In our test the snapshot restore took 67 ms and the instance was running 109 ms into the wake. The first byte came at 1,181 ms, because the idle database also had to start its compute.',
+      },
+    ],
+  },
+  {
+    slug: TS_MCP_OAUTH_SLUG,
+    title: 'Host a TypeScript MCP server with OAuth 2.1 on scale-to-zero microVMs',
+    summary:
+      'Check OAuth 2.1 tokens in a remote MCP server built with the official TypeScript SDK: resource metadata, audience checks, 401 and 403. Measured on Gregale.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'What does the MCP spec require of a server that uses OAuth?',
+        answer:
+          'The MCP server is an OAuth resource server. It publishes protected resource metadata (RFC 9728), answers calls without a valid token with 401 and a WWW-Authenticate header that points to that metadata, and accepts only tokens issued for its own URL (RFC 8707). Sign-in, consent and token issuance are the authorization server’s job.',
+      },
+      {
+        question: 'Which TypeScript SDK helpers handle MCP authorization?',
+        answer:
+          'In @modelcontextprotocol/sdk 1.x, mcpAuthMetadataRouter serves the protected resource metadata and requireBearerAuth sends the 401 and 403 answers. In version 2 of the SDK they are in @modelcontextprotocol/express. You supply the token verifier, for example jose checking JWTs against your authorization server’s keys.',
+      },
+      {
+        question: 'Why does an OAuth-protected MCP server need access: public on Gregale?',
+        answer:
+          'Callers present your OAuth tokens, not Gregale API keys. On Hobby and above, an app without access: public asks every caller for a Gregale API key before the request reaches your code.',
+      },
+      {
+        question: 'How fast does a parked MCP server answer the first call?',
+        answer:
+          'In our test the snapshot restore took 65 ms, the instance was running 115 ms into the wake, and an authenticated tools/call returned its first byte at 368 ms, including fetching the authorization server’s keys.',
+      },
+      {
+        question: 'Which Gregale plan does a TypeScript MCP server need?',
+        answer:
+          'MCP hosting is available on the Hobby, Pro and Scale plans. Our server used 112 MB, well inside Hobby’s 512 MB per app.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2369,6 +2441,8 @@ const DEPLOY_GUARD_LINK = `[Block deploys of vulnerable or unsigned images with 
 const BOTS_LINK = `[Telegram bots by webhook](/articles/${TELEGRAM_SLUG}), [Discord interactions endpoints](/articles/${DISCORD_SLUG}) and [Slack Bolt apps in HTTP mode](/articles/${SLACK_SLUG}) show chat bots that answer within each platform's deadline and cost nothing between messages.`;
 const RAILS_LINK = `[Deploy Rails 8 with PostgreSQL and migrations that run before traffic](/articles/${RAILS_SLUG}) shows the four changes a generated Rails app needs, the migration credential and measured memory.`;
 const RAILWAY_CONFIG_LINK = `[railway.json is deprecated: what to do before Railway's 2027 cutoff](/articles/${RAILWAY_CONFIG_SLUG}) shows the migration to .railway/railway.ts, the steps that can go wrong, and the same settings in gregale.yaml.`;
+const RUST_AXUM_LINK = `[Host a Rust Axum API with PostgreSQL on scale-to-zero microVMs](/articles/${RUST_AXUM_SLUG}) shows the two-stage Dockerfile, sqlx migrations with their own credential and measured wake times.`;
+const TS_MCP_OAUTH_LINK = `[Host a TypeScript MCP server with OAuth 2.1](/articles/${TS_MCP_OAUTH_SLUG}) shows the protected resource metadata, audience checks and 401 and 403 answers the MCP spec asks for, tested on Gregale.`;
 const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
 const DIRECT_UPLOADS_LINK = `[Direct browser uploads and resumable multipart storage without waking your backend](/articles/${DIRECT_UPLOADS_SLUG}) covers zero-wake edge upload routes, signed PUT URLs, 24-hour multipart uploads and CORS presets.`;
 const DELAYED_TASKS_LINK = `[Schedule delayed tasks up to a year ahead without Redis or BullMQ](/articles/${DELAYED_TASKS_SLUG}) shows one-off 365-day delayed callbacks, atomic cancel semantics and plan limits.`;
@@ -2422,9 +2496,10 @@ const RELATED_ARTICLES: Record<string, string> = {
   'deploy-bun': BUN_HONO_LINK,
   'deploy-django': DJANGO_POSTGRES_LINK,
   'deploy-go': GO_API_LINK,
+  'deploy-rust': RUST_AXUM_LINK,
   'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK}`,
   'getting-started': NO_DEVOPS_LINK,
-  'mcp-hosting': `${MCP_LINK} ${PYTHON_FASTMCP_LINK}`,
+  'mcp-hosting': `${MCP_LINK} ${TS_MCP_OAUTH_LINK} ${PYTHON_FASTMCP_LINK}`,
   'preview-environments': PREVIEW_LINK,
   'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
@@ -2442,7 +2517,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
   security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
   compliance: MICROVM_LINK,
-  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${RAILS_LINK} ${MICROVM_LINK}`,
+  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${RAILS_LINK} ${RUST_AXUM_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,
 };
 
@@ -2509,6 +2584,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       UNDO_SLUG,
       MCP_OPERATIONS_SLUG,
       'mcp-server-hosting',
+      TS_MCP_OAUTH_SLUG,
       'host-python-fastmcp-server',
     ],
   },
@@ -2538,7 +2614,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'backend-foundations',
     title: 'Backend foundations, frameworks & storage',
     description:
-      'No-DevOps startup architecture, Next.js, Bun, Django, Rails, Go, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
+      'No-DevOps startup architecture, Next.js, Bun, Django, Rails, Go, Rust, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
     solutionSlug: 'backend-without-devops',
     slugs: [
       'backend-without-devops',
@@ -2547,6 +2623,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       DJANGO_POSTGRES_SLUG,
       RAILS_SLUG,
       GO_API_SLUG,
+      RUST_AXUM_SLUG,
       FASTAPI_JOBS_SLUG,
       NODE_WORKER_SLUG,
       'preview-environments',
