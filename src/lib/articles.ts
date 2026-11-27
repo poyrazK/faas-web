@@ -86,6 +86,11 @@ const TELEGRAM_SLUG = 'telegram-bot-webhook-scale-to-zero';
 const DISCORD_SLUG = 'discord-bot-interactions-endpoint-serverless';
 const SLACK_SLUG = 'slack-bolt-http-mode-scale-to-zero';
 const RAILS_SLUG = 'deploy-rails-postgres';
+const COMPOSE_SLUG = 'deploy-docker-compose-app-to-production';
+const WAKE_PAGE_SLUG = 'show-waking-up-page-during-cold-start';
+const CORS_SLUG = 'fix-cors-errors-without-changing-backend-code';
+const SECURITY_HEADERS_SLUG = 'add-security-headers-hsts-csp-without-code';
+const RATE_LIMIT_SLUG = 'rate-limit-api-per-ip-without-code';
 const RAILWAY_CONFIG_SLUG = 'railway-json-config-as-code-deprecated';
 const RUST_AXUM_SLUG = 'host-rust-axum-postgres-scale-to-zero';
 const TS_MCP_OAUTH_SLUG = 'host-typescript-mcp-server-oauth-scale-to-zero';
@@ -2449,6 +2454,166 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: COMPOSE_SLUG,
+    title: 'How to deploy a Docker Compose app to production',
+    summary:
+      'Deploy a docker-compose.yml to production as it is: each service becomes an app and postgres becomes managed PostgreSQL. Compared with Railway, Fly.io, Render.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Can I deploy a docker-compose.yml to production as it is?',
+        answer:
+          'On Gregale, yes. Run gregale deploy in the folder with compose.yaml or docker-compose.yml: it shows every service it will create and asks before creating anything. Each service with build: or a stateless image: becomes its own app, and any key Gregale can’t apply is named in the plan with the reason.',
+      },
+      {
+        question: 'What happens to the postgres and redis services in my Compose file?',
+        answer:
+          'They are not run as containers. A postgres service becomes a managed PostgreSQL database named after the project and service, such as shop-db, on Hobby and above. For redis, mysql and mongo, the plan lists each variable that needs a value from an external provider.',
+      },
+      {
+        question: 'Do Compose volumes work on Gregale?',
+        answer:
+          'No. volumes and tmpfs get a warning: there are no persistent volumes or bind mounts, and each start gets a fresh filesystem. Keep data in the managed database or in object storage.',
+      },
+      {
+        question: 'How does a migration step in my Compose file run?',
+        answer:
+          'A step that other services wait for with condition: service_completed_successfully runs as the waiting service’s release command, once before each release goes live. It is not deployed as a service of its own.',
+      },
+      {
+        question: 'Which Gregale plan does a Compose project need?',
+        answer:
+          'Each Compose service counts toward your plan’s app limit. Free supports a project with one service; two or more services need Hobby ($10 a month) or above.',
+      },
+    ],
+  },
+  {
+    slug: WAKE_PAGE_SLUG,
+    title: 'How to show a “waking up” page instead of a timeout during a cold start',
+    summary:
+      'Show visitors a waking-up page instead of a blank wait or a 502 while a scaled-to-zero app starts, with no code. How Gregale, Render, Railway and Fly compare.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How do I show a loading page while my app cold-starts?',
+        answer:
+          'On Gregale there is nothing to build. When a browser page load waits more than 1.5 seconds for a waking app, Gregale’s edge sends a “Waking up your app…” page that checks again every 750 milliseconds and loads the app as soon as it is ready.',
+      },
+      {
+        question: 'Will my API clients get an HTML page instead of JSON?',
+        answer:
+          'No. Only browser page loads, GET or HEAD requests that ask for text/html, get the page. fetch() and XHR calls, API clients, curl, webhooks and POST requests wait for the app instead.',
+      },
+      {
+        question: 'How often do visitors see the waking page?',
+        answer:
+          'Rarely. Most wakes restore a memory snapshot within a fraction of a second, well under the 1.5-second threshold. The page appears mostly when an app boots fresh, such as the first start after a deploy, and starts slowly.',
+      },
+      {
+        question: 'How do I make sure no visitor ever waits?',
+        answer:
+          'Keep an instance running on Pro or Scale with gregale app my-app --min 1. The app then never parks, and it is billed like any running instance.',
+      },
+    ],
+  },
+  {
+    slug: CORS_SLUG,
+    title: 'How to fix CORS errors without changing your backend code',
+    summary:
+      'Fix browser CORS errors with one command: the edge answers preflights and adds CORS headers, with no change to your API. Compared with Vercel, Render, Railway.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How do I fix a CORS error without changing my backend?',
+        answer:
+          'On Gregale, run gregale edge cors allow my-api https://app.example.com. Gregale’s edge then answers the browser’s preflight and adds the CORS headers to your app’s responses, so your code doesn’t change.',
+      },
+      {
+        question: 'Does a CORS preflight wake a scaled-to-zero app?',
+        answer:
+          'Not on Gregale. A matched OPTIONS preflight is answered with 204 at the edge, without waking the app, so it adds no cold start and no running time.',
+      },
+      {
+        question: 'Can I allow every origin and still send cookies?',
+        answer:
+          'No. * can’t be combined with allow_credentials, and neither can a wildcard under a public suffix such as https://*.vercel.app. List your origins, or use a wildcard under your own domain such as https://*.example.com.',
+      },
+      {
+        question: 'Which Gregale plan includes CORS rules?',
+        answer:
+          'Every plan, Free included; edge rules are in beta. CORS rules count toward the plan’s edge rules per app: 5 on Free, 25 on Hobby, 100 on Pro and 500 on Scale.',
+      },
+    ],
+  },
+  {
+    slug: SECURITY_HEADERS_SLUG,
+    title: 'How to add security headers (HSTS, CSP) without changing your code',
+    summary:
+      'Add a Content-Security-Policy, X-Frame-Options or any other security header to every response with one edge rule, on top of HSTS defaults. Compared across PaaS.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Which security headers does Gregale add by default?',
+        answer:
+          'When your app sets none of them: Strict-Transport-Security, X-Content-Type-Options: nosniff and Referrer-Policy: strict-origin-when-cross-origin. X-Frame-Options and Permissions-Policy are not added by default.',
+      },
+      {
+        question: 'How do I add a Content-Security-Policy without changing my code?',
+        answer:
+          'Create a headers edge rule: gregale edge rule create --app my-app --kind headers --match-host @app --match-path /** --headers-response-set "Content-Security-Policy:default-src \'self\'". It applies to every response on every host the app serves.',
+      },
+      {
+        question: 'Why does my header rule apply only to the home page?',
+        answer:
+          'A rule created without --match-path matches only the root path /. Use --match-path /** to cover every path.',
+      },
+      {
+        question: 'Does my app’s own header win over Gregale’s?',
+        answer:
+          'Over the defaults, yes: when your app sets one of those headers, Gregale sends your value unchanged. A headers rule that sets a header replaces it, so the rule’s value wins over your app’s.',
+      },
+    ],
+  },
+  {
+    slug: RATE_LIMIT_SLUG,
+    title: 'How to rate-limit an API per IP without writing code',
+    summary:
+      'Rate-limit an API per IP, API key or JWT subject with one edge rule; callers over the limit get 429 before your app wakes. Compared with Vercel and Cloud Run.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How do I rate-limit an API per IP without code?',
+        answer:
+          'On Gregale, create a throttle edge rule keyed by IP: gregale edge rule create --app my-api --kind throttle --match-host @app --match-path /api/** --throttle-key-by ip --throttle-requests-per-second 5 --throttle-burst 20. Callers over the limit get 429 rate_limited from the edge.',
+      },
+      {
+        question: 'Do rate-limited requests wake my app or cost money?',
+        answer:
+          'No. A refused request is answered at Gregale’s edge, so the app never wakes for it and it adds no running time.',
+      },
+      {
+        question: 'Is the rate limit per server or for the whole app?',
+        answer:
+          'For the whole app. Buckets are counted across every gateway that serves it, not per gateway.',
+      },
+      {
+        question: 'Can I limit only failed logins?',
+        answer:
+          'Yes. With count_statuses set to [401], every request is admitted while the bucket has a token, but only 401 responses use one, so failed sign-ins are limited and successful ones are not.',
+      },
+      {
+        question: 'What are the rate limit plan limits?',
+        answer:
+          'Throttle rules per app: 1 on Free, 5 on Hobby, 25 on Pro and 100 on Scale. A rule’s rate can be at most 5, 20, 100 and 500 requests a second, and its burst 20, 100, 500 and 2,000.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2546,6 +2711,11 @@ const RAILS_LINK = `[Deploy Rails 8 with PostgreSQL and migrations that run befo
 const RAILWAY_CONFIG_LINK = `[railway.json is deprecated: what to do before Railway's 2027 cutoff](/articles/${RAILWAY_CONFIG_SLUG}) shows the migration to .railway/railway.ts, the steps that can go wrong, and the same settings in gregale.yaml.`;
 const RUST_AXUM_LINK = `[Host a Rust Axum API with PostgreSQL on scale-to-zero microVMs](/articles/${RUST_AXUM_SLUG}) shows the two-stage Dockerfile, sqlx migrations with their own credential and measured wake times.`;
 const TS_MCP_OAUTH_LINK = `[Host a TypeScript MCP server with OAuth 2.1](/articles/${TS_MCP_OAUTH_SLUG}) shows the protected resource metadata, audience checks and 401 and 403 answers the MCP spec asks for, tested on Gregale.`;
+const COMPOSE_LINK = `[How to deploy a Docker Compose app to production](/articles/${COMPOSE_SLUG}) shows how each Compose key maps, how migrations run, and how other platforms handle a Compose file.`;
+const WAKE_PAGE_LINK = `[Show a “waking up” page instead of a timeout during a cold start](/articles/${WAKE_PAGE_SLUG}) explains which requests get the page and how other platforms handle the first visit.`;
+const CORS_LINK = `[Fix CORS errors without changing your backend code](/articles/${CORS_SLUG}) maps common browser errors to the fix and compares other platforms.`;
+const SECURITY_HEADERS_LINK = `[Add security headers (HSTS, CSP) without changing your code](/articles/${SECURITY_HEADERS_SLUG}) shows the defaults, a safe CSP rollout and how other platforms compare.`;
+const RATE_LIMIT_LINK = `[Rate-limit an API per IP without writing code](/articles/${RATE_LIMIT_SLUG}) shows a per-IP limit, log mode, failed-login limits and plan limits.`;
 const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
 const DIRECT_UPLOADS_LINK = `[Direct browser uploads and resumable multipart storage without waking your backend](/articles/${DIRECT_UPLOADS_SLUG}) covers zero-wake edge upload routes, signed PUT URLs, 24-hour multipart uploads and CORS presets.`;
 const DELAYED_TASKS_LINK = `[Schedule delayed tasks up to a year ahead without Redis or BullMQ](/articles/${DELAYED_TASKS_SLUG}) shows one-off 365-day delayed callbacks, atomic cancel semantics and plan limits.`;
@@ -2557,7 +2727,7 @@ const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff C
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
-  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK}`,
+  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
   'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
   cache: EDGE_CACHE_LINK,
@@ -2579,7 +2749,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'service-release-graphs': ATOMIC_RELEASES_LINK,
   'service-bindings': BINDING_VERIFICATION_LINK,
   'binding-verification-runs': BINDING_VERIFICATION_LINK,
-  'edge-rules': EDGE_RULES_TRACE_LINK,
+  'edge-rules': `${EDGE_RULES_TRACE_LINK} ${RATE_LIMIT_LINK} ${CORS_LINK} ${SECURITY_HEADERS_LINK}`,
   'edge-rule-trace': EDGE_RULES_TRACE_LINK,
   crons: `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
   'event-driven': `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
@@ -2621,9 +2791,9 @@ const RELATED_ARTICLES: Record<string, string> = {
   releases: `${CANARY_LINK} ${DEPLOY_DIFF_LINK}`,
   env: DEPLOY_DIFF_LINK,
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
-  security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
+  security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK} ${SECURITY_HEADERS_LINK}`,
   compliance: MICROVM_LINK,
-  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${RAILS_LINK} ${RUST_AXUM_LINK} ${MICROVM_LINK}`,
+  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${COMPOSE_LINK} ${RAILS_LINK} ${RUST_AXUM_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,
   auth: ACCESS_CONTROL_LINK,
 };
@@ -2744,6 +2914,13 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       COMPANIONS_SLUG,
       CONTAINER_COMPAT_SLUG,
     ],
+  },
+  {
+    id: 'how-to',
+    title: 'How-to guides',
+    description:
+      'Task-first answers with commands: deploy a Docker Compose app, fix CORS errors, add security headers, rate-limit an API per IP and show a waking-up page during a cold start.',
+    slugs: [COMPOSE_SLUG, CORS_SLUG, SECURITY_HEADERS_SLUG, RATE_LIMIT_SLUG, WAKE_PAGE_SLUG],
   },
   {
     id: 'comparisons',

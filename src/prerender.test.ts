@@ -759,6 +759,42 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes the how-to guides with schema, feeds and links from their docs pages', () => {
+    const cases = [
+      { slug: 'deploy-docker-compose-app-to-production', doc: 'container-compatibility' },
+      { slug: 'show-waking-up-page-during-cold-start', doc: 'scale-to-zero' },
+      { slug: 'fix-cors-errors-without-changing-backend-code', doc: 'edge-rules' },
+      { slug: 'add-security-headers-hsts-csp-without-code', doc: 'security' },
+      { slug: 'rate-limit-api-per-ip-without-code', doc: 'edge-rules' },
+    ];
+    const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
+    const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
+    const feed = readFileSync('dist/feed.xml', 'utf8');
+    const llms = readFileSync('dist/llms.txt', 'utf8');
+
+    expect(articlesIndex).toContain('How-to guides');
+    for (const { slug, doc } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+      expect(html).toContain(`type="text/markdown" href="${route}.md"`);
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-27' });
+      expect(faq.mainEntity.length).toBeGreaterThan(0);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(existsSync(`dist${route}.md`)).toBe(true);
+      expect(articlesIndex).toContain(`href="${route}"`);
+      expect(sitemap).toContain(`<loc>https://gregale.dev${route}</loc>`);
+      expect(feed).toContain(`<id>https://gregale.dev${route}</id>`);
+      expect(llms).toContain(`https://gregale.dev${route}.md`);
+      expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
+      expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(`https://gregale.dev${route}`);
+    }
+  });
+
   it('publishes /solutions hub and each solution page with schema, Markdown and nav links', () => {
     const hubHtml = readFileSync('dist/solutions/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');
