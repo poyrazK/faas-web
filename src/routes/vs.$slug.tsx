@@ -8,6 +8,7 @@ import { COMPARISONS_CHECKED, comparisons, type Comparison } from '@/lib/compare
 import { PLAN_CATALOG } from '@/lib/plan-catalog';
 import { START_FREE_CTA } from '@/lib/platform-claims';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 const ALL = comparisons(PLAN_CATALOG);
 const bySlug = (slug: string) => ALL.find((c) => c.slug === slug);
@@ -33,7 +34,10 @@ export const Route = createFileRoute('/vs/$slug')({
     const comparison = bySlug(params.slug);
     return pageHead(
       comparison
-        ? { title: `Gregale vs ${comparison.competitor}`, description: comparison.summary }
+        ? {
+            title: `Gregale vs ${comparison.competitor}`,
+            description: metaDescriptionFor(`/vs/${comparison.slug}`, comparison.summary),
+          }
         : { title: 'Comparison not found' }
     );
   },

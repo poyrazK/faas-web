@@ -43,6 +43,27 @@ describeBuilt('prerendered pages', () => {
     expect(graph[0].offers?.length).toBeGreaterThan(0);
   });
 
+  it('keeps every page description within a search snippet', () => {
+    // Bing Webmaster Tools reports a description outside 25–160 characters
+    // as an error on the page.
+    const decode = (text: string) =>
+      text
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+    const outside: string[] = [];
+    const files = readdirSync('dist', { recursive: true, encoding: 'utf8' });
+    for (const file of files.filter((name) => name.endsWith('index.html'))) {
+      const html = readFileSync(`dist/${file}`, 'utf8');
+      const content = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
+      if (content === undefined) continue;
+      const length = decode(content).length;
+      if (length < 25 || length > 160) outside.push(`${file}: ${length}`);
+    }
+    expect(outside).toEqual([]);
+  });
+
   it('links the DPA to the legal pages on the current origin', () => {
     const html = readFileSync('dist/docs/dpa/index.html', 'utf8');
     expect(html).toContain('href="/terms"');

@@ -5,9 +5,14 @@ import { START_FREE_CTA } from '@/lib/platform-claims';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 export const Route = createFileRoute('/features/')({
-  head: () => pageHead({ title: FEATURES_TITLE, description: FEATURES_DESCRIPTION }),
+  head: () =>
+    pageHead({
+      title: FEATURES_TITLE,
+      description: metaDescriptionFor('/features', FEATURES_DESCRIPTION),
+    }),
   component: FeaturesIndex,
 });
 

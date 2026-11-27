@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { consoleHead, pageHead, SITE_DESCRIPTION, SITE_NAME } from './seo';
+import {
+  consoleHead,
+  fitMetaDescription,
+  META_DESCRIPTION_MAX,
+  pageHead,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+} from './seo';
 import { NAV_ITEMS } from '@/components/dashboard/nav-config';
 
 const titleOf = (head: ReturnType<typeof pageHead>) =>
@@ -9,6 +16,40 @@ const titleOf = (head: ReturnType<typeof pageHead>) =>
 const metaOf = (head: ReturnType<typeof pageHead>, key: string) =>
   head.meta.find((m) => 'name' in m && m.name === key) ??
   head.meta.find((m) => 'property' in m && m.property === key);
+
+describe('fitMetaDescription', () => {
+  it('leaves a description that already fits', () => {
+    expect(fitMetaDescription('Structured logs.')).toBe('Structured logs.');
+    expect(fitMetaDescription(SITE_DESCRIPTION)).toBe(SITE_DESCRIPTION);
+  });
+
+  it('keeps the leading whole sentences that fit', () => {
+    const first =
+      'Gregale runs every app instance in its own Firecracker microVM with its own kernel.';
+    const second = 'Your existing Dockerfile works unchanged, with nothing to rewrite.';
+    const third =
+      'Snapshots park idle apps on disk and wake them with their process already running.';
+    expect(fitMetaDescription(`${first} ${second} ${third}`)).toBe(`${first} ${second}`);
+  });
+
+  it('cuts one long sentence at a word boundary', () => {
+    const long = `Compared on ${'idle billing, '.repeat(20)}and releases.`;
+    const fitted = fitMetaDescription(long);
+    expect(fitted.length).toBeLessThanOrEqual(META_DESCRIPTION_MAX);
+    expect(fitted.endsWith('…')).toBe(true);
+    const kept = fitted.slice(0, -1);
+    expect(long.startsWith(kept)).toBe(true);
+    // The cut lands between words, not inside one.
+    expect(long[kept.length]).toMatch(/[\s,]/);
+  });
+
+  it('caps the description pageHead writes', () => {
+    const head = pageHead({ title: 'Long', description: 'word '.repeat(100) });
+    expect(String(metaOf(head, 'description')?.content).length).toBeLessThanOrEqual(
+      META_DESCRIPTION_MAX
+    );
+  });
+});
 
 describe('pageHead', () => {
   it('gives the untitled (landing) case the bare brand string', () => {

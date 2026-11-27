@@ -15,6 +15,34 @@ export const SITE_TAGLINE = 'Backend cloud for APIs, Postgres & coding agents';
 export const SITE_DESCRIPTION =
   'Deploy APIs, jobs, Postgres and MCP servers in one command. Each app gets a Firecracker microVM; canary releases roll back on errors. Built for coding agents.';
 
+/**
+ * The longest `<meta name="description">` search engines show in full. Bing
+ * Webmaster Tools reports anything longer as an error.
+ */
+export const META_DESCRIPTION_MAX = 160;
+
+/**
+ * Fits a description into {@link META_DESCRIPTION_MAX}: the leading whole
+ * sentences that fit or, when those come to less than half the limit, a cut
+ * at the last word boundary with an ellipsis. Public pages with long
+ * summaries carry hand-written descriptions in `meta-descriptions.ts`; this
+ * is the net for generated text such as the API reference.
+ */
+export function fitMetaDescription(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= META_DESCRIPTION_MAX) return clean;
+  let fitted = '';
+  for (const sentence of clean.split(/(?<=[.!?])\s+(?=[A-Z0-9"'`(])/)) {
+    const next = fitted ? `${fitted} ${sentence}` : sentence;
+    if (next.length > META_DESCRIPTION_MAX) break;
+    fitted = next;
+  }
+  if (fitted.length >= META_DESCRIPTION_MAX / 2) return fitted;
+  const cut = clean.slice(0, META_DESCRIPTION_MAX - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:(–—-]+$/, '')}…`;
+}
+
 /** Brand last, so the distinguishing half survives a truncated tab. */
 function withSiteName(title?: string): string {
   return title ? `${title} · ${SITE_NAME}` : `${SITE_NAME} — ${SITE_TAGLINE}`;
@@ -36,7 +64,7 @@ function withSiteName(title?: string): string {
  */
 export function pageHead({ title, description }: { title?: string; description?: string } = {}) {
   const full = withSiteName(title);
-  const desc = description ?? SITE_DESCRIPTION;
+  const desc = fitMetaDescription(description ?? SITE_DESCRIPTION);
 
   return {
     meta: [

@@ -3,6 +3,7 @@ import { ArrowLeft } from 'iconoir-react';
 import { Markdown } from '@/components/docs/markdown';
 import { RESEARCH_PUBLICATIONS, RESEARCH_TITLE, researchDate } from '@/lib/research';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 const reports = import.meta.glob<string>('../../content/research/*.md', {
   query: '?raw',
@@ -18,7 +19,10 @@ export const Route = createFileRoute('/research/$slug')({
   },
   head: ({ loaderData }) => {
     const publication = loaderData?.publication;
-    return pageHead({ title: publication?.title, description: publication?.summary });
+    return pageHead({
+      title: publication?.title,
+      description: metaDescriptionFor(`/research/${publication?.slug}`, publication?.summary),
+    });
   },
   component: ResearchReport,
 });
