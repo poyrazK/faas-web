@@ -61,6 +61,7 @@ const sources = import.meta.glob<string>(
     '../../content/docs/deploy-rust.md',
     '../../content/docs/mcp-hosting.md',
     '../../content/docs/build.md',
+    '../../content/docs/plans.md',
     '../../content/docs/multi-service.md',
     '../../content/docs/cli-command-tree.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
@@ -869,5 +870,26 @@ describe('articles', () => {
     ]) {
       expect(wake).toContain(snippet);
     }
+  });
+
+  it('quotes the upload handler time limit as the plan catalog states it', () => {
+    const [, hobby, pro, scale] = PLAN_CATALOG.plans;
+    const minutes = (limit: string) => {
+      const match = /^(\d+)m$/.exec(limit);
+      if (!match) throw new Error(`unexpected request timeout ${limit}`);
+      return Number(match[1]);
+    };
+    const unit = (n: number) => (n === 1 ? '1 minute' : `${n} minutes`);
+    const limits =
+      `up to ${unit(minutes(hobby.maxRequestTimeout))} on Hobby, ` +
+      `${unit(minutes(pro.maxRequestTimeout))} on Pro and ${unit(minutes(scale.maxRequestTimeout))} on Scale`;
+    const page = body('run-code-on-file-upload-bucket-trigger').replace(/\s+/g, ' ');
+    expect(page).toContain(limits);
+    expect(page).toContain('30 seconds unless you raise it');
+    const faq = ARTICLES.find((a) => a.slug === 'run-code-on-file-upload-bucket-trigger')!.faq;
+    expect(faq.some((entry) => entry.answer.includes(limits))).toBe(true);
+    const plans = sources['../../content/docs/plans.md'];
+    expect(plans).toContain('`gregale app APP --request-timeout SECONDS`');
+    expect(plans).toContain('an app request within 30s');
   });
 });

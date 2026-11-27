@@ -2303,6 +2303,11 @@ export const ARTICLES: readonly Article[] = [
           'Yes, delivery is at least once. The `x-gregale-event-id` header stays the same across retries, so record it before applying side effects. Failed deliveries end in the dead-letter queue (`gregale dlq my-api`).',
       },
       {
+        question: 'How long can my upload handler run?',
+        answer:
+          'Each delivery must be answered within the app’s request timeout: 30 seconds unless you raise it with gregale app my-api --request-timeout, up to 1 minute on Hobby, 5 minutes on Pro and 15 minutes on Scale. A longer attempt counts as a timeout and is retried, so move longer processing into a job.',
+      },
+      {
         question: 'Do triggers fire for browser uploads through signed URLs?',
         answer:
           'Yes. Writes through S3 SDKs, signed URLs, upload routes and multipart uploads all fire the trigger once the write is confirmed, so the browser never has to call back to say it finished.',
