@@ -56,6 +56,8 @@ const sources = import.meta.glob<string>(
     '../../content/docs/releases.md',
     '../../content/docs/auth.md',
     '../../content/docs/deploy-from-github.md',
+    '../../content/docs/migrate-from-railway.md',
+    '../../content/docs/frameworks.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -584,6 +586,21 @@ describe('articles', () => {
           'access: public',
         ],
       },
+      {
+        slug: 'railway-json-config-as-code-deprecated',
+        docs: ['migrate-from-railway', 'frameworks', 'auth', 'postgres', 'deploy-from-github'],
+        snippets: [
+          "railway variables --kv | grep -v '^RAILWAY_' > railway.env",
+          'gregale deploy --name my-api --secrets-file railway.env',
+          'gregale deploy --dry-run',
+          '`hosting.start`',
+          '`hosting.health`',
+          '`release.command`',
+          'access: public',
+          'Hobby and above',
+          'the deploy never changes or deletes one',
+        ],
+      },
     ];
     for (const { slug, docs, snippets, label } of cases) {
       const article = text(slug);
@@ -607,6 +624,16 @@ describe('articles', () => {
         new RegExp(`${free.includedGbHours} (included )?GB-RAM-hours`)
       );
     }
+    const railwayConfig = text('railway-json-config-as-code-deprecated');
+    expect(railwayConfig).toContain(
+      `Gregale Free covers ${free.deployedApps} app with ${free.ramMb} MB and ${free.includedGbHours} GB-RAM-hours a month`
+    );
+    expect(railwayConfig).toContain(
+      `Hobby costs ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps with ${hobby.ramMb} MB each and ${hobby.includedGbHours} GB-RAM-hours`
+    );
+    expect(railwayConfig).toContain('includes one managed PostgreSQL database');
+    expect(doc('deploy-from-github')).toContain('build: dockerfile: docker/Dockerfile.prod');
+    expect(railwayConfig).toContain('`build.dockerfile` in `gregale.yaml`');
     const rails = text('deploy-rails-postgres');
     expect(rails).toContain(`Hobby plan's ${hobby.ramMb} MB`);
     expect(rails).toContain(`the Free plan's ${free.ramMb} MB is just too small`);
