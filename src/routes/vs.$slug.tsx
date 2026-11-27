@@ -3,7 +3,7 @@ import { Nav } from '@/components/landing/nav';
 import { Footer } from '@/components/landing/footer';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
-import { ANSWER_ARTICLES, alternativesArticle, comparisonArticles } from '@/lib/articles';
+import { alternativesArticle, comparisonArticles, comparisonGuides } from '@/lib/articles';
 import { COMPARISONS_CHECKED, comparisons, type Comparison } from '@/lib/compare';
 import { PLAN_CATALOG } from '@/lib/plan-catalog';
 import { START_FREE_CTA } from '@/lib/platform-claims';
@@ -106,7 +106,7 @@ function ComparisonPage() {
             How Gregale works
           </h2>
           <ul className="mt-6 space-y-4">
-            {ANSWER_ARTICLES.map((article) => (
+            {comparisonGuides(comparison).map((article) => (
               <li key={article.slug} className="max-w-3xl">
                 <Link
                   to="/articles/$slug"
@@ -121,6 +121,16 @@ function ComparisonPage() {
               </li>
             ))}
           </ul>
+          <p className="mt-6 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            More guides in{' '}
+            <Link
+              to="/articles"
+              className="font-medium text-brand underline-offset-4 hover:underline"
+            >
+              all articles
+            </Link>
+            .
+          </p>
           {roundup && (
             <p className="mt-8 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               Weighing more than two options?{' '}

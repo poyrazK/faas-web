@@ -46,6 +46,11 @@ export interface Comparison {
   /** Docs slug for moving an app over. */
   migrateDoc: string;
   migrateLabel: string;
+  /**
+   * Three to five answer articles for someone weighing this competitor; the
+   * page links these instead of every article, so each /vs page stays its own.
+   */
+  articles: string[];
   faq: FaqEntry[];
   sources: { label: string; url: string }[];
 }
@@ -180,6 +185,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-heroku',
       migrateLabel: 'Migrate from Heroku',
+      articles: [
+        'scale-to-zero-without-cold-starts',
+        'canary-deploys',
+        'rollback-code-and-database',
+        'deploy-rails-postgres',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Heroku?',
@@ -281,6 +292,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-render',
       migrateLabel: 'Migrate from Render',
+      articles: [
+        'show-waking-up-page-during-cold-start',
+        'fastapi-background-jobs-postgres',
+        'preview-environments',
+        'fix-cors-errors-without-changing-backend-code',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Render?',
@@ -379,6 +396,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-railway',
       migrateLabel: 'Migrate from Railway',
+      articles: [
+        'railway-json-config-as-code-deprecated',
+        'rate-limit-api-per-ip-without-code',
+        'hard-cloud-spend-caps',
+        'nodejs-api-and-worker',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Railway?',
@@ -490,6 +513,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-fly',
       migrateLabel: 'Migrate from Fly.io',
+      articles: [
+        'microvm-isolation',
+        'deploy-docker-compose-app-to-production',
+        'websockets-sse-scale-to-zero',
+        'chained-cold-starts-wake-services-together',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Fly.io?',
@@ -610,6 +639,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-cloud-run',
       migrateLabel: 'Migrate from Google Cloud Run',
+      articles: [
+        'deploy-docker-container-scale-to-zero-no-rewrite',
+        'static-egress-ip-scale-to-zero',
+        'synthetic-uptime-checks-scale-to-zero',
+        'zero-secret-outbound-api-relay',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Google Cloud Run?',
@@ -727,6 +762,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-vercel',
       migrateLabel: 'Migrate from Vercel',
+      articles: [
+        'host-nextjs-postgres-outside-vercel',
+        'durable-code-workflows-scale-to-zero',
+        'scale-to-zero-cron-jobs-event-triggers',
+        'add-security-headers-hsts-csp-without-code',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Vercel?',
@@ -847,6 +888,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-koyeb',
       migrateLabel: 'Migrate from Koyeb',
+      articles: [
+        'what-breaks-when-app-scales-to-zero',
+        'durable-inbound-webhooks-scale-to-zero',
+        'host-python-fastmcp-server',
+        'shadow-test-release-traffic-mirroring',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Koyeb?',
@@ -968,6 +1015,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-northflank',
       migrateLabel: 'Migrate from Northflank',
+      articles: [
+        'sidecar-companions-without-kubernetes',
+        'atomic-multi-service-releases',
+        'promote-staging-to-production-without-rebuilding',
+        'test-migration-postgres-branch-ttl',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Northflank?',
@@ -1074,6 +1127,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'container-compatibility',
       migrateLabel: 'Container compatibility',
+      articles: [
+        'backend-without-devops',
+        'password-protect-app-basic-auth-ip-allowlist',
+        'block-insecure-deploys-security-policy',
+        'debug-production-5xx-crash-snapshots-and-profile-diffs',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Coolify on a VPS?',
@@ -1166,6 +1225,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'container-compatibility',
       migrateLabel: 'Container compatibility',
+      articles: [
+        'mcp-server-hosting',
+        'host-django-postgres-migrations-rollback',
+        'delayed-tasks-without-redis-scale-to-zero',
+        'private-microservice-networking-no-vpc',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Cloudflare Workers?',
@@ -1269,6 +1334,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'container-compatibility',
       migrateLabel: 'Container compatibility',
+      articles: [
+        'run-code-on-file-upload-bucket-trigger',
+        'private-object-storage-without-s3-iam',
+        'pull-queue-workers-workload-identity',
+        'stop-bot-traffic-cloud-bill-shock',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than AWS App Runner?',
@@ -1368,6 +1439,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-digitalocean',
       migrateLabel: 'Migrate from DigitalOcean App Platform',
+      articles: [
+        'host-bun-hono-postgres-api',
+        'batch-jobs-fan-out-retry-failed-inputs',
+        'zero-restart-secret-rotation',
+        'telegram-bot-webhook-scale-to-zero',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than DigitalOcean App Platform?',
@@ -1466,6 +1543,12 @@ export function comparisons(catalog: Catalog): Comparison[] {
       ],
       migrateDoc: 'migrate-from-replit',
       migrateLabel: 'Migrate from Replit',
+      articles: [
+        'deploy-vibe-coded-app-to-production',
+        'best-cloud-for-ai-coding-agents',
+        'ai-agent-production-approval',
+        'undo-ai-agent-changes',
+      ],
       faq: [
         {
           question: 'Is Gregale cheaper than Replit Deployments?',
