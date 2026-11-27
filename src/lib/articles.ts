@@ -1263,7 +1263,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Every paid Gregale plan enforces a hard monthly overage cap from day one (Hobby $10 default, Pro $50, Scale $150), stopping compute at the ceiling with HTTP 402 instead of alerting after a runaway loop or DDoS spike racks up charges.',
     publishedOn: '2026-11-26',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Do Gregale spend caps actually stop billing or only send email alerts?',
