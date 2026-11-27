@@ -368,6 +368,51 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes the 4 untapped capability articles with schema, doc cross-links, sitemap and llms.txt', () => {
+    const cases = [
+      {
+        slug: 'direct-browser-uploads-resumable-multipart-storage',
+        docs: ['object-storage'],
+      },
+      {
+        slug: 'delayed-tasks-without-redis-scale-to-zero',
+        docs: ['crons', 'event-driven'],
+      },
+      {
+        slug: 'preview-deploy-diff-and-environment-drift',
+        docs: ['releases', 'env'],
+      },
+      {
+        slug: 'debug-production-5xx-crash-snapshots-and-profile-diffs',
+        docs: ['tracing', 'troubleshooting'],
+      },
+    ];
+    for (const { slug, docs } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const md = readFileSync(`dist${route}.md`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', datePublished: '2026-11-27' });
+      expect(faq.mainEntity.length).toBeGreaterThanOrEqual(3);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(md).toContain(`Canonical URL: https://gregale.dev${route}`);
+      expect(readFileSync('dist/articles/index.html', 'utf8')).toContain(`href="${route}"`);
+      for (const doc of docs) {
+        expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
+        expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(
+          `https://gregale.dev${route}`
+        );
+      }
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        `<loc>https://gregale.dev${route}</loc>`
+      );
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
   it('publishes the /features hub and all 8 flagship feature pages with schema and Markdown', () => {
     const slugs = [
       'database-rollbacks',
@@ -503,6 +548,51 @@ describeBuilt('prerendered pages', () => {
         expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
       }
       expect(html).toContain(`href="/vs/${vs}"`);
+      expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+        `<loc>https://gregale.dev${route}</loc>`
+      );
+      expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    }
+  });
+
+  it('publishes the 4 untapped capability articles with schema, doc cross-links, sitemap and llms.txt', () => {
+    const cases = [
+      {
+        slug: 'direct-browser-uploads-resumable-multipart-storage',
+        docs: ['object-storage'],
+      },
+      {
+        slug: 'delayed-tasks-without-redis-scale-to-zero',
+        docs: ['crons', 'event-driven'],
+      },
+      {
+        slug: 'preview-deploy-diff-and-environment-drift',
+        docs: ['releases', 'env'],
+      },
+      {
+        slug: 'debug-production-5xx-crash-snapshots-and-profile-diffs',
+        docs: ['tracing', 'troubleshooting'],
+      },
+    ];
+    for (const { slug, docs } of cases) {
+      const route = `/articles/${slug}`;
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const md = readFileSync(`dist${route}.md`, 'utf8');
+      const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+      const graph = JSON.parse(json!)['@graph'];
+      const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', datePublished: '2026-11-27' });
+      expect(faq.mainEntity.length).toBeGreaterThanOrEqual(3);
+      expect(JSON.stringify(faq)).not.toContain('`');
+      expect(md).toContain(`Canonical URL: https://gregale.dev${route}`);
+      expect(readFileSync('dist/articles/index.html', 'utf8')).toContain(`href="${route}"`);
+      for (const doc of docs) {
+        expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8')).toContain(`href="${route}"`);
+        expect(readFileSync(`dist/docs/${doc}.md`, 'utf8')).toContain(
+          `https://gregale.dev${route}`
+        );
+      }
       expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
         `<loc>https://gregale.dev${route}</loc>`
       );
