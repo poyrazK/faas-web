@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { comparisons } from './lib/compare';
 import { parsePlanCatalog } from './lib/plan-catalog-parser';
 import { SOLUTIONS } from './lib/solutions';
 
@@ -310,7 +311,7 @@ describeBuilt('prerendered pages', () => {
       expect(questions.length).toBeGreaterThan(0);
       for (const question of questions) expect(html).toContain(question.replaceAll("'", '&#x27;'));
       expect(JSON.stringify(faq)).not.toContain('`');
-      for (const page of ['articles', 'vs/railway', `docs/${doc}`]) {
+      for (const page of ['articles', `docs/${doc}`]) {
         expect(readFileSync(`dist/${page}/index.html`, 'utf8')).toContain(`href="${route}"`);
       }
       expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
@@ -629,6 +630,7 @@ describeBuilt('prerendered pages', () => {
   it('publishes each comparison page as Markdown and lists it for agents', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
     const full = readFileSync('dist/llms-full.txt', 'utf8');
+    const catalog = parsePlanCatalog(readFileSync('content/docs/plans.md', 'utf8'));
     for (const slug of [
       'heroku',
       'render',
@@ -653,6 +655,14 @@ describeBuilt('prerendered pages', () => {
         `type="text/markdown" href="${route}.md"`
       );
       expect(llms).toContain(`https://gregale.dev${route}.md`);
+      // Each page links its own handful of guides, not every article: a shared
+      // list made the /vs pages near-duplicates of each other.
+      const html = readFileSync(`dist${route}/index.html`, 'utf8');
+      const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+      const articleLinks = new Set(main.match(/href="\/articles\/[^"]+"/g));
+      expect(articleLinks.size, route).toBeLessThanOrEqual(10);
+      const guides = comparisons(catalog).find((c) => c.slug === slug)!.articles;
+      for (const guide of guides) expect(main, route).toContain(`href="/articles/${guide}"`);
     }
   });
 

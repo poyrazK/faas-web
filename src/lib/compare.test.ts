@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { COMPARISON_SLUGS, COMPARISONS_CHECKED, comparisons } from './compare';
 import { PLAN_CATALOG, formatPlanPrice } from './plan-catalog';
 import { DOC_ENTRIES } from './docs-manifest';
+import { comparisonGuides } from './articles';
 
 const ALL = comparisons(PLAN_CATALOG);
 
@@ -14,11 +15,22 @@ describe('comparison pages', () => {
     expect(COMPARISONS_CHECKED).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it('gives every comparison its own set of guides', () => {
+    const sets = ALL.map((c) => [...c.articles].sort().join(','));
+    expect(new Set(sets).size).toBe(ALL.length);
+  });
+
   for (const comparison of ALL) {
     describe(comparison.competitor, () => {
       it('cites the competitor’s own pages over https', () => {
         expect(comparison.sources.length).toBeGreaterThan(0);
         for (const source of comparison.sources) expect(source.url).toMatch(/^https:\/\//);
+      });
+
+      it('links three to five answer articles, all published', () => {
+        expect(comparison.articles.length).toBeGreaterThanOrEqual(3);
+        expect(comparison.articles.length).toBeLessThanOrEqual(5);
+        expect(comparisonGuides(comparison).map((a) => a.slug)).toEqual(comparison.articles);
       });
 
       it('says where the competitor is the better fit, not only Gregale', () => {

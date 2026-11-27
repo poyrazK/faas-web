@@ -2966,6 +2966,16 @@ export const ANSWER_ARTICLES = ARTICLES.filter(
   (article) => !article.alternativesTo && !article.comparison
 );
 
+/**
+ * The answer articles a /vs page links, in the order its comparison lists
+ * them. A slug that isn't an answer article is dropped (and fails a test).
+ */
+export function comparisonGuides(comparison: { articles: string[] }): Article[] {
+  return comparison.articles
+    .map((slug) => ANSWER_ARTICLES.find((article) => article.slug === slug))
+    .filter((article): article is Article => Boolean(article));
+}
+
 /** Head-to-head comparisons that include a vendor, by that vendor's /vs slug. */
 export function comparisonArticles(comparisonSlug: string): Article[] {
   return ARTICLES.filter((article) => article.comparison?.includes(comparisonSlug));
