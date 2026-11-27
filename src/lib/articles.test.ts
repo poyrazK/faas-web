@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ANSWER_ARTICLES,
@@ -52,6 +53,7 @@ const sources = import.meta.glob<string>(
     '../../content/docs/security.md',
     '../../content/docs/storage.md',
     '../../content/docs/scale-to-zero.md',
+    '../../content/docs/releases.md',
     '../../content/docs/auth.md',
     '../../content/docs/deploy-from-github.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
@@ -673,5 +675,46 @@ describe('articles', () => {
     expect(text('shadow-test-release-traffic-mirroring')).toContain(
       'One mirror rule per app on Pro and three on Scale'
     );
+  });
+
+  it('quotes API specs and docs limits in the 4 untapped capability articles accurately', () => {
+    const text = (slug: string) => body(slug).replace(/\s+/g, ' ');
+    const openapi = readFileSync('api/openapi.yaml', 'utf8');
+    const storageDoc = sources['../../content/docs/object-storage.md'].replace(/\s+/g, ' ');
+    const releasesDoc = sources['../../content/docs/releases.md'].replace(/\s+/g, ' ');
+
+    const uploads = text('direct-browser-uploads-resumable-multipart-storage');
+    for (const snippet of [
+      'POST /v1/apps/{app}/upload-routes',
+      'forcePathStyle: true',
+      'requestChecksumCalculation:',
+      'https://s3.gregale.dev',
+    ]) {
+      expect(storageDoc).toContain(snippet);
+      expect(uploads).toContain(snippet);
+    }
+    expect(openapi).toContain('cors_wildcard_with_credentials');
+    expect(uploads).toContain('cors_wildcard_with_credentials');
+
+    const delayed = text('delayed-tasks-without-redis-scale-to-zero');
+    expect(openapi).toContain('MaxDelayedTasksPerApp (Hobby 5, Pro 50, Scale 1_000_000)');
+    expect(delayed).toContain('`MaxDelayedTasksPerApp`');
+    expect(delayed).toContain('| Hobby | 5 |');
+    expect(delayed).toContain('| Pro | 50 |');
+    expect(delayed).toContain('| Scale | 1,000,000 |');
+
+    const deployDiff = text('preview-deploy-diff-and-environment-drift');
+    expect(openapi).toContain('/v1/apps/{slug}/diff:');
+    expect(openapi).toContain('would_create_app');
+    expect(releasesDoc).toContain('gregale release diff v42 --against v38');
+    expect(deployDiff).toContain('would_create_app');
+    expect(deployDiff).toContain('gregale release diff v42 --against v38');
+
+    const crash = text('debug-production-5xx-crash-snapshots-and-profile-diffs');
+    expect(openapi).toContain('409 `crash_capture_not_ready`');
+    expect(openapi).toContain('none within 10 minutes of the last');
+    expect(crash).toContain('409 crash_capture_not_ready');
+    expect(crash).toContain('none within `10` minutes of the last');
+    expect(crash).toContain('`cpu`, `heap`, `stacks`, `block`, or `mutex`');
   });
 });

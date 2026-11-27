@@ -86,6 +86,10 @@ const TELEGRAM_SLUG = 'telegram-bot-webhook-scale-to-zero';
 const DISCORD_SLUG = 'discord-bot-interactions-endpoint-serverless';
 const SLACK_SLUG = 'slack-bolt-http-mode-scale-to-zero';
 const RAILS_SLUG = 'deploy-rails-postgres';
+const DIRECT_UPLOADS_SLUG = 'direct-browser-uploads-resumable-multipart-storage';
+const DELAYED_TASKS_SLUG = 'delayed-tasks-without-redis-scale-to-zero';
+const DEPLOY_DIFF_SLUG = 'preview-deploy-diff-and-environment-drift';
+const CRASH_SNAPSHOTS_SLUG = 'debug-production-5xx-crash-snapshots-and-profile-diffs';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -2129,6 +2133,111 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: DIRECT_UPLOADS_SLUG,
+    title: 'Direct browser uploads and resumable multipart storage without waking your backend',
+    summary:
+      'Accept direct uploads on your domain without waking your app, issue short-lived S3 signed URLs, resume multipart uploads and set CORS presets.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Do upload routes wake my app microVM?',
+        answer:
+          'No. POST /uploads/{name} runs on Gregale’s edge gateway, checks the caller’s API key, size limit and MIME allowlist, and streams directly to your bucket without starting your app.',
+      },
+      {
+        question: 'Why does image/* still block SVG uploads?',
+        answer:
+          'Wildcard allowlists never admit active content such as SVG, HTML, XML, XSL or JavaScript. You must list an active MIME type explicitly, and public bucket mounts refuse active types with HTTP 415.',
+      },
+      {
+        question: 'How long can a resumable multipart upload stay open?',
+        answer:
+          'Unfinished multipart uploads remain resumable for 24 hours with up to 10,000 parts and 64 MiB per single request or part through s3.gregale.dev.',
+      },
+      {
+        question: 'Why do AWS SDK v3 presigned URLs need requestChecksumCalculation set?',
+        answer:
+          'Newer AWS SDKs otherwise sign an empty-body CRC32 checksum into presigned PUT URLs, causing real browser file uploads to fail checksum verification.',
+      },
+    ],
+  },
+  {
+    slug: DELAYED_TASKS_SLUG,
+    title: 'Schedule delayed tasks up to a year ahead without Redis or BullMQ',
+    summary:
+      'Schedule one-off delayed tasks up to one year ahead on scale-to-zero apps and cancel them atomically without running Redis or BullMQ.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How far ahead can Gregale schedule a delayed task?',
+        answer:
+          'Up to one year ahead via scheduled_at or delay_seconds, compared with AWS SQS’s 15-minute maximum DelaySeconds ceiling.',
+      },
+      {
+        question: 'Which plans include delayed tasks and how many can be queued?',
+        answer:
+          'Delayed execution is in beta on Hobby (5 pending delayed tasks per app), Pro (50) and Scale (1,000,000), and is not included on Free.',
+      },
+      {
+        question: 'What happens if I cancel a delayed task that already ran?',
+        answer:
+          'DELETE /v1/delayed-tasks/{id} only cancels pending tasks and is idempotent. Dispatching or finished tasks stay untouched and return their actual state.',
+      },
+    ],
+  },
+  {
+    slug: DEPLOY_DIFF_SLUG,
+    title: 'Preview deploy diffs, SBOM changes and environment drift in CI',
+    summary:
+      'Preview config changes, quota breaks and env drift before deploying, and inspect release-to-release SBOM and config diffs without plaintext secrets.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Does POST /v1/apps/{slug}/diff create any release or require MFA?',
+        answer:
+          'No. The deploy diff preview is strictly read-only, writes no deployment or audit rows, and accepts apps:read or deploy:write bearer keys without MFA.',
+      },
+      {
+        question: 'Can release diffs or env-diff expose secret values?',
+        answer:
+          'Never. Release diffs only list added, removed or changed key names, and env-diff returns {present, value_hash} per scope without plaintext.',
+      },
+      {
+        question: 'Does POST /v1/apps/{slug}/diff replace OpenAPI breaking-change checks?',
+        answer:
+          'No. App deploy diff reports quota breaks and text-level runtime or env warnings; response schema compatibility is checked via /v1/apps/{slug}/openapi/diff.',
+      },
+    ],
+  },
+  {
+    slug: CRASH_SNAPSHOTS_SLUG,
+    title: 'Capture production 5xx crash snapshots and diff CPU or heap profiles',
+    summary:
+      'Capture microVM memory automatically on a production 5xx, fork it offline to debug safely, and diff CPU or heap flamegraphs across deploys.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Will automatic 5xx crash snapshots overload a failing instance?',
+        answer:
+          'No. Gregale captures only the first 5xx per window, allowing at most one capture in flight and none within 10 minutes of the previous capture.',
+      },
+      {
+        question: 'Does forking a crash snapshot affect live production traffic?',
+        answer:
+          'No. Forking boots a separate isolated microVM restored from the captured crash memory with its own one-time access token while live traffic continues untouched.',
+      },
+      {
+        question: 'Which plans include crash snapshots vs profile capture diffs?',
+        answer:
+          'Both features are in preview: profile capture diffs unlock on Hobby, Pro and Scale, while automatic 5xx crash snapshots and crash-snapshot forks unlock on Pro and Scale.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2212,6 +2321,10 @@ const DEPLOY_GUARD_LINK = `[Block deploys of vulnerable or unsigned images with 
 const BOTS_LINK = `[Telegram bots by webhook](/articles/${TELEGRAM_SLUG}), [Discord interactions endpoints](/articles/${DISCORD_SLUG}) and [Slack Bolt apps in HTTP mode](/articles/${SLACK_SLUG}) show chat bots that answer within each platform's deadline and cost nothing between messages.`;
 const RAILS_LINK = `[Deploy Rails 8 with PostgreSQL and migrations that run before traffic](/articles/${RAILS_SLUG}) shows the four changes a generated Rails app needs, the migration credential and measured memory.`;
 const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
+const DIRECT_UPLOADS_LINK = `[Direct browser uploads and resumable multipart storage without waking your backend](/articles/${DIRECT_UPLOADS_SLUG}) covers zero-wake edge upload routes, signed PUT URLs, 24-hour multipart uploads and CORS presets.`;
+const DELAYED_TASKS_LINK = `[Schedule delayed tasks up to a year ahead without Redis or BullMQ](/articles/${DELAYED_TASKS_SLUG}) shows one-off 365-day delayed callbacks, atomic cancel semantics and plan limits.`;
+const DEPLOY_DIFF_LINK = `[Preview deploy diffs, SBOM changes and environment drift in CI](/articles/${DEPLOY_DIFF_SLUG}) covers \`gregale deploy --diff\`, \`blocking\` CI checks, release SBOM diffs and hashed \`env-diff\` matrices.`;
+const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff CPU or heap profiles](/articles/${CRASH_SNAPSHOTS_SLUG}) explains auto 5xx memory captures, isolated crash forks and differential flamegraphs.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
@@ -2227,7 +2340,8 @@ const RELATED_ARTICLES: Record<string, string> = {
   companions: COMPANIONS_LINK,
   'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
   'cost-controls': `${SPEND_CAPS_LINK} ${BOT_BILL_SHOCK_LINK}`,
-  tracing: OTEL_TRACING_LINK,
+  tracing: `${OTEL_TRACING_LINK} ${CRASH_SNAPSHOTS_LINK}`,
+  troubleshooting: CRASH_SNAPSHOTS_LINK,
   'scaling-policy': AUTOSCALE_LAG_LINK,
   'environment-promotion': ENV_PROMOTION_LINK,
   'synthetic-checks': SYNTHETIC_CHECKS_LINK,
@@ -2238,9 +2352,9 @@ const RELATED_ARTICLES: Record<string, string> = {
   'binding-verification-runs': BINDING_VERIFICATION_LINK,
   'edge-rules': EDGE_RULES_TRACE_LINK,
   'edge-rule-trace': EDGE_RULES_TRACE_LINK,
-  crons: CRONS_EVENTS_LINK,
-  'event-driven': CRONS_EVENTS_LINK,
-  'object-storage': OBJECT_STORAGE_LINK,
+  crons: `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
+  'event-driven': `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
+  'object-storage': `${OBJECT_STORAGE_LINK} ${DIRECT_UPLOADS_LINK}`,
   storage: `${STATELESS_LINK} ${OBJECT_STORAGE_LINK}`,
   'egress-denylist': EGRESS_DENYLIST_LINK,
   'stored-workflows': STORED_WORKFLOW_RECOVERY_LINK,
@@ -2268,7 +2382,8 @@ const RELATED_ARTICLES: Record<string, string> = {
   'migrate-from-railway': RAILWAY_ALTERNATIVES_LINK,
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
   rollouts: `${MIRRORING_LINK} ${CANARY_LINK}`,
-  releases: CANARY_LINK,
+  releases: `${CANARY_LINK} ${DEPLOY_DIFF_LINK}`,
+  env: DEPLOY_DIFF_LINK,
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
   security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
   compliance: MICROVM_LINK,
@@ -2287,6 +2402,8 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     slugs: [
       CANARY_SLUG,
       MIRRORING_SLUG,
+      DEPLOY_DIFF_SLUG,
+      CRASH_SNAPSHOTS_SLUG,
       DATABASE_ROLLBACK_SLUG,
       PG_BRANCH_SLUG,
       RELEASE_CONTROLS_SLUG,
@@ -2313,6 +2430,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       SLACK_SLUG,
       EDGE_CACHE_SLUG,
       CRONS_EVENTS_SLUG,
+      DELAYED_TASKS_SLUG,
       SYNTHETIC_CHECKS_SLUG,
       'stop-bot-traffic-cloud-bill-shock',
     ],
@@ -2379,6 +2497,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'preview-environments',
       'remote-dev-environment-without-docker-desktop',
       OBJECT_STORAGE_SLUG,
+      DIRECT_UPLOADS_SLUG,
       OTEL_TRACING_SLUG,
       COMPANIONS_SLUG,
       CONTAINER_COMPAT_SLUG,
