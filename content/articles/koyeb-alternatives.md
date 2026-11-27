@@ -127,7 +127,8 @@ managed development Postgres starting at $7 a month.
 Koyeb builds from Git or standard Dockerfiles and routes HTTP traffic over
 `PORT`. Those same Dockerfiles and repositories deploy on Gregale with
 `gregale deploy`, with environment variables and `DATABASE_URL` carried over.
-See [Container compatibility](/docs/container-compatibility) and
+See [Migrate from Koyeb](/docs/migrate-from-koyeb),
+[Container compatibility](/docs/container-compatibility) and
 [Gregale vs Koyeb](/vs/koyeb).
 
 In commands, from the app's repository:

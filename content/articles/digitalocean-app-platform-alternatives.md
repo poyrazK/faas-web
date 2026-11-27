@@ -124,6 +124,7 @@ your own AWS, GCP or Azure clusters.
 Standard Node, Bun, Python, Go and Dockerfile repositories running on App
 Platform deploy directly on Gregale using `gregale deploy` or `/deploy?repo=...`,
 keeping environment variables and `DATABASE_URL` intact. See
+[Migrate from DigitalOcean App Platform](/docs/migrate-from-digitalocean),
 [Container compatibility](/docs/container-compatibility),
 [Gregale vs DigitalOcean App Platform](/vs/digitalocean), and
 [starter templates](/templates).

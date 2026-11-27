@@ -129,7 +129,8 @@ to a sustaining engineering model.
 Standard Dockerfiles and HTTP servers listening on `PORT` run on Gregale without
 code rewrites. Environment variables and secrets replace Secret Manager mounts,
 and if you connect to Cloud SQL today you can move to bundled managed
-PostgreSQL (`DATABASE_URL`). See [Container compatibility](/docs/container-compatibility)
+PostgreSQL (`DATABASE_URL`). See [Migrate from Google Cloud Run](/docs/migrate-from-cloud-run),
+[Container compatibility](/docs/container-compatibility)
 and [Gregale vs Google Cloud Run](/vs/cloud-run).
 
 To run the image Cloud Run already uses:

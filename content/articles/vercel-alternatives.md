@@ -128,8 +128,8 @@ A Next.js app in standalone output mode or any Node/Python backend deploys from
 your repository via `gregale deploy`, with environment variables and managed
 PostgreSQL bound automatically. Keep static-heavy marketing assets anywhere you
 like while running your dynamic APIs, jobs and Next.js server in its own
-microVM. See [Deploy Next.js](/docs/deploy-nextjs) and
-[Gregale vs Vercel](/vs/vercel).
+microVM. See [Migrate from Vercel](/docs/migrate-from-vercel),
+[Deploy Next.js](/docs/deploy-nextjs) and [Gregale vs Vercel](/vs/vercel).
 
 In commands, from the Next.js app's repository:
 
