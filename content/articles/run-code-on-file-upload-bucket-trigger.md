@@ -78,6 +78,11 @@ async def on_upload(request: Request):
   retries, so record it before applying side effects. Failed deliveries follow
   the async retry policy and end in the app's dead-letter queue
   (`gregale dlq my-api`).
+- **Finish within the request timeout:** each delivery must be answered within
+  the app's request timeout, 30 seconds unless you raise it with
+  `gregale app my-api --request-timeout 60`, up to 1 minute on Hobby,
+  5 minutes on Pro and 15 minutes on Scale. A longer attempt counts as a
+  timeout and is retried, so move longer processing into a [job](/docs/jobs).
 - **Uploads only:** `events` defaults to every `ObjectCreated` event. Triggers
   don't fire on deletes; use a notification rule for those.
 - **Test locally:** `gregale dev` accepts the same `triggers` on
