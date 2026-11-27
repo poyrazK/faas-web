@@ -8,6 +8,7 @@ import { findSolution, SOLUTIONS_TITLE } from '@/lib/solutions';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 export const Route = createFileRoute('/solutions/$slug')({
   loader: ({ params }) => {
@@ -27,7 +28,10 @@ export const Route = createFileRoute('/solutions/$slug')({
   },
   head: ({ loaderData }) => {
     const solution = loaderData?.solution;
-    return pageHead({ title: solution?.title, description: solution?.summary });
+    return pageHead({
+      title: solution?.title,
+      description: metaDescriptionFor(`/solutions/${solution?.slug}`, solution?.summary),
+    });
   },
   component: SolutionPage,
 });

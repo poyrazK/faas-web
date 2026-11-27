@@ -6,6 +6,7 @@ import { START_FREE_CTA } from '@/lib/platform-claims';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 const bodies = import.meta.glob<string>('../../content/articles/*.md', {
   query: '?raw',
@@ -21,7 +22,10 @@ export const Route = createFileRoute('/articles/$slug')({
   },
   head: ({ loaderData }) => {
     const article = loaderData?.article;
-    return pageHead({ title: article?.title, description: article?.summary });
+    return pageHead({
+      title: article?.title,
+      description: metaDescriptionFor(`/articles/${article?.slug}`, article?.summary),
+    });
   },
   component: ArticlePage,
 });

@@ -9,6 +9,7 @@ import { templatesForFeature } from '@/lib/public-templates';
 import { Button } from '@/components/ui/button';
 import { SweepLink } from '@/components/sweep-link';
 import { pageHead } from '@/lib/seo';
+import { metaDescriptionFor } from '@/lib/meta-descriptions';
 
 export const Route = createFileRoute('/features/$slug')({
   loader: ({ params }) => {
@@ -28,7 +29,10 @@ export const Route = createFileRoute('/features/$slug')({
   },
   head: ({ loaderData }) => {
     const feature = loaderData?.feature;
-    return pageHead({ title: feature?.title, description: feature?.summary });
+    return pageHead({
+      title: feature?.title,
+      description: metaDescriptionFor(`/features/${feature?.slug}`, feature?.summary),
+    });
   },
   component: FeaturePage,
 });

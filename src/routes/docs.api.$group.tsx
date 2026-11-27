@@ -18,10 +18,20 @@ export const Route = createFileRoute('/docs/api/$group')({
   head: ({ loaderData }) =>
     pageHead({
       title: loaderData ? `${loaderData.group.title} API` : 'API reference',
-      description: loaderData?.group.description ?? 'Operations in the Gregale HTTP API.',
+      description: apiGroupDescription(loaderData?.group.description),
     }),
   component: ApiGroupPage,
 });
+
+/**
+ * Bing reports a description under 25 characters as an error, and a few
+ * group descriptions in the spec are one short phrase.
+ */
+function apiGroupDescription(description: string | undefined): string {
+  if (!description) return 'Operations in the Gregale HTTP API.';
+  if (description.length >= 50) return description;
+  return `${description.replace(/\.$/, '')}: endpoints in the Gregale HTTP API reference.`;
+}
 
 function ApiGroupPage() {
   const { group } = Route.useLoaderData();
