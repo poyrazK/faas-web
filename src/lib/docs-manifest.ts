@@ -204,6 +204,13 @@ export const DOC_SECTIONS: DocSection[] = [
         summary: 'net/http and Gin on $PORT, the Go version, PostgreSQL with pgx and migrations.',
       },
       {
+        slug: 'deploy-rust',
+        source: 'docs/deploy-rust.md',
+        title: 'Deploy a Rust app',
+        summary:
+          'Axum and Actix Web from a Dockerfile on $PORT, PostgreSQL with sqlx and migrations.',
+      },
+      {
         slug: 'migrate-from-heroku',
         source: 'docs/migrate-from-heroku.md',
         title: 'Migrate from Heroku',
