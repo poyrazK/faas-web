@@ -264,6 +264,15 @@ describe('articles', () => {
     expect(secretsText).toContain('Free 8`, `Hobby 25`, `Pro 50`, `Scale 100');
     expect(secretsDoc).toContain('com.gregale.secret-reload-signal');
     expect(secretsText).toContain('com.gregale.secret-reload-signal');
+    const postgresDoc = sources['../../content/docs/postgres.md'].replace(/\s+/g, ' ');
+    for (const phrase of [
+      '`rotation_pending`',
+      'five minutes (`--wait-timeout`)',
+      'rest-api-postgres-python',
+    ]) {
+      expect(postgresDoc).toContain(phrase);
+      expect(secretsText).toContain(phrase);
+    }
 
     const companionsDoc = sources['../../content/docs/companions.md'].replace(/\s+/g, ' ');
     const companionsText = body('sidecar-companions-without-kubernetes').replace(/\s+/g, ' ');

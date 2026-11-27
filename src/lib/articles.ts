@@ -1138,7 +1138,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Every secret mutation on Gregale invalidates memory snapshots so restored VMs never serve stale keys, `--restart` performs a draining rolling replacement, and images with `com.gregale.secret-reload-signal` hot-reload in-process with verifiable acknowledgements.',
     publishedOn: '2026-11-26',
-    updatedOn: '2026-11-26',
+    updatedOn: '2026-11-27',
     faq: [
       {
         question: 'Can a restored scale-to-zero snapshot serve an old secret after rotation?',
@@ -1154,6 +1154,12 @@ export const ARTICLES: readonly Article[] = [
         question: 'What happens if my image does not handle reload signals?',
         answer:
           'Use `gregale env rotate --restart` for a draining rolling replacement. Commands with `--wait-for-ack` intentionally fail non-zero rather than pretending a non-reloading container rotated.',
+      },
+      {
+        question:
+          'Does the old database password stop working as soon as I rotate a managed Postgres credential?',
+        answer:
+          'No. `gregale postgres bindings rotate BINDING_ID --wait` keeps the previous login valid until Gregale confirms the rolling runtime refresh, then revokes it. The binding reports `rotation_pending` while both logins work, and the `rest-api-postgres` starters adopt the new credential by swapping their connection pool in-process.',
       },
     ],
   },

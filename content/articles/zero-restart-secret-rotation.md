@@ -48,6 +48,22 @@ gregale env unset --app my-api COMPROMISED_KEY --wait-for-ack --timeout 2m
 - `secrets rotate --wait-for-ack` polls the complete roster of authorized active runtimes until every reload-enabled target acknowledges the current revision, failing fast with a non-zero exit if any target lacks reload support or reports failure.
 - `gregale env unset --wait-for-ack --timeout 2m` records a durable, value-free revocation record (queryable at `GET /v1/apps/{slug}/secret-revocations/{id}`) containing the exact target roster, status codes, and timestamps—and exits non-zero if any runtime times out or cannot live-reload.
 
+## Managed Postgres: the old login stays valid until the refresh completes
+
+Database credentials follow the same rules, with one addition: during a rotation both logins work.
+
+```bash
+gregale postgres bindings list orders
+gregale postgres bindings rotate BINDING_ID --wait
+```
+
+- Rotation creates the next database login and replaces the sealed app secret, which invalidates existing snapshots.
+- The previous login stays valid until Gregale confirms the rolling runtime refresh; then it is revoked with retry-safe cleanup. The binding reports `rotation_pending` while both logins exist, and `--wait` polls until that clears, for up to five minutes (`--wait-timeout`). An app with no live deployment or running instances has its old login queued for cleanup right away.
+- A retried rotation reuses its generation, and recovery queues the refresh even if the original request failed or the worker restarted.
+- To switch pools inside a running process, start from the `rest-api-postgres` or `rest-api-postgres-python` starter (`gregale init --template rest-api-postgres`). Both ship a `SecretReloadCoordinator` and set the SIGHUP reload label: on a new secret revision it builds a fresh pool, validates it with a real connection, publishes it, retires older pools once their last lease is released, and acknowledges the revision only after every consumer succeeds. New acquisitions fail closed during the switch; queries that already hold a connection finish.
+
+See [Managed PostgreSQL](/docs/postgres) for the binding commands.
+
 ## What to expect and when to use `--restart`
 
 - **Self-attestation vs memory inspection:** Application acknowledgements reflect trusted app self-reporting; removing a key from the projected file cannot purge credentials your app forgot to drop from heap variables.
