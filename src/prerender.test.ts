@@ -556,7 +556,7 @@ describeBuilt('prerendered pages', () => {
       { slug: 'zero-secret-outbound-api-relay', doc: 'outbound-integrations' },
       { slug: 'openapi-breaking-change-deploy-gate', doc: 'api-hosting-openapi' },
       { slug: 'durable-code-workflows-scale-to-zero', doc: 'code-workflows' },
-      { slug: 'zero-restart-secret-rotation', doc: 'secrets' },
+      { slug: 'zero-restart-secret-rotation', doc: 'secrets', modified: '2026-11-27' },
       { slug: 'private-microservice-networking-no-vpc', doc: 'internal-services' },
       { slug: 'sidecar-companions-without-kubernetes', doc: 'companions' },
       { slug: 'pull-queue-workers-workload-identity', doc: 'queue-pull-leases' },
@@ -586,7 +586,7 @@ describeBuilt('prerendered pages', () => {
     const feed = readFileSync('dist/feed.xml', 'utf8');
     const llms = readFileSync('dist/llms.txt', 'utf8');
 
-    for (const { slug, doc } of cases) {
+    for (const { slug, doc, modified } of cases) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
@@ -595,7 +595,10 @@ describeBuilt('prerendered pages', () => {
 
       expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
       expect(html).toContain(`type="text/markdown" href="${route}.md"`);
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-26' });
+      expect(graph[0]).toMatchObject({
+        '@type': 'TechArticle',
+        dateModified: modified ?? '2026-11-26',
+      });
       expect(faq.mainEntity.length).toBeGreaterThan(0);
       expect(JSON.stringify(faq)).not.toContain('`');
       expect(existsSync(`dist${route}.md`)).toBe(true);
