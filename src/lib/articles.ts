@@ -86,6 +86,7 @@ const TELEGRAM_SLUG = 'telegram-bot-webhook-scale-to-zero';
 const DISCORD_SLUG = 'discord-bot-interactions-endpoint-serverless';
 const SLACK_SLUG = 'slack-bolt-http-mode-scale-to-zero';
 const RAILS_SLUG = 'deploy-rails-postgres';
+const RAILWAY_CONFIG_SLUG = 'railway-json-config-as-code-deprecated';
 const DIRECT_UPLOADS_SLUG = 'direct-browser-uploads-resumable-multipart-storage';
 const DELAYED_TASKS_SLUG = 'delayed-tasks-without-redis-scale-to-zero';
 const DEPLOY_DIFF_SLUG = 'preview-deploy-diff-and-environment-drift';
@@ -2238,6 +2239,41 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: RAILWAY_CONFIG_SLUG,
+    title: "railway.json is deprecated: what to do before Railway's 2027 cutoff",
+    summary:
+      'Railway stops reading railway.json and railway.toml on January 1, 2027. How to move to .railway/railway.ts safely, or map the same settings to gregale.yaml.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'When does Railway stop reading railway.json?',
+        answer:
+          'On January 1, 2027, a hard cutoff that also covers railway.toml. Until then the files keep working for services that already use them, and new services cannot use them. Earlier versions of Railway’s docs gave December 1, 2026.',
+      },
+      {
+        question: 'What replaces railway.json on Railway?',
+        answer:
+          'Infrastructure as Code: one .railway/railway.ts file for the project, covering services, databases, volumes, domains and variables. The Railway CLI applies it with railway config plan and railway config apply, locally or from CI; Railway does not read it during deploys.',
+      },
+      {
+        question: 'How do I migrate railway.json to railway.ts?',
+        answer:
+          'Run railway config migrate --apply to write .railway/railway.ts, then railway config migrate cutover in each environment, then railway config plan and railway config apply. Delete railway.json only after cutover, or the next build fails because the file is missing.',
+      },
+      {
+        question: 'What happens if I do not migrate?',
+        answer:
+          'From the cutoff, deploys ignore the file, so a start command, pre-deploy migration, health check or cron schedule that lives only there is dropped on the next deploy, and the service runs with its dashboard settings.',
+      },
+      {
+        question: 'Can I move a railway.json service to Gregale instead?',
+        answer:
+          'Yes. startCommand becomes hosting.start in gregale.yaml, preDeployCommand becomes release.command, healthcheckPath becomes hosting.health and dockerfilePath becomes build.dockerfile. Add access: public for a public web service, and check the result with gregale deploy --dry-run. Gregale has no persistent volumes.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2320,6 +2356,7 @@ const BATCH_JOBS_LINK = `[Fan out a batch job, one task per input, and re-run on
 const DEPLOY_GUARD_LINK = `[Block deploys of vulnerable or unsigned images with a per-app policy](/articles/${DEPLOY_GUARD_SLUG}) explains the off, warn and enforce policies, quarantine and recovery.`;
 const BOTS_LINK = `[Telegram bots by webhook](/articles/${TELEGRAM_SLUG}), [Discord interactions endpoints](/articles/${DISCORD_SLUG}) and [Slack Bolt apps in HTTP mode](/articles/${SLACK_SLUG}) show chat bots that answer within each platform's deadline and cost nothing between messages.`;
 const RAILS_LINK = `[Deploy Rails 8 with PostgreSQL and migrations that run before traffic](/articles/${RAILS_SLUG}) shows the four changes a generated Rails app needs, the migration credential and measured memory.`;
+const RAILWAY_CONFIG_LINK = `[railway.json is deprecated: what to do before Railway's 2027 cutoff](/articles/${RAILWAY_CONFIG_SLUG}) shows the migration to .railway/railway.ts, the steps that can go wrong, and the same settings in gregale.yaml.`;
 const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
 const DIRECT_UPLOADS_LINK = `[Direct browser uploads and resumable multipart storage without waking your backend](/articles/${DIRECT_UPLOADS_SLUG}) covers zero-wake edge upload routes, signed PUT URLs, 24-hour multipart uploads and CORS presets.`;
 const DELAYED_TASKS_LINK = `[Schedule delayed tasks up to a year ahead without Redis or BullMQ](/articles/${DELAYED_TASKS_SLUG}) shows one-off 365-day delayed callbacks, atomic cancel semantics and plan limits.`;
@@ -2379,7 +2416,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'preview-environments': PREVIEW_LINK,
   'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
-  'migrate-from-railway': RAILWAY_ALTERNATIVES_LINK,
+  'migrate-from-railway': `${RAILWAY_CONFIG_LINK} ${RAILWAY_ALTERNATIVES_LINK}`,
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
   rollouts: `${MIRRORING_LINK} ${CANARY_LINK}`,
   releases: `${CANARY_LINK} ${DEPLOY_DIFF_LINK}`,
@@ -2513,6 +2550,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'heroku-alternatives',
       'render-alternatives',
       'railway-alternatives',
+      RAILWAY_CONFIG_SLUG,
       'flyio-alternatives',
       'cloud-run-alternatives',
       'vercel-alternatives',
