@@ -82,6 +82,10 @@ const PG_BRANCH_SLUG = 'test-migration-postgres-branch-ttl';
 const BATCH_JOBS_SLUG = 'batch-jobs-fan-out-retry-failed-inputs';
 const DEPLOY_GUARD_SLUG = 'block-insecure-deploys-security-policy';
 const STATELESS_SLUG = 'what-breaks-when-app-scales-to-zero';
+const TELEGRAM_SLUG = 'telegram-bot-webhook-scale-to-zero';
+const DISCORD_SLUG = 'discord-bot-interactions-endpoint-serverless';
+const SLACK_SLUG = 'slack-bolt-http-mode-scale-to-zero';
+const RAILS_SLUG = 'deploy-rails-postgres';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -2000,6 +2004,131 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: TELEGRAM_SLUG,
+    title: 'Host a Telegram bot that costs nothing while nobody uses it',
+    summary:
+      'Receive Telegram updates by webhook, not polling, check the secret header, and let the bot park between messages. On Gregale: 75 MB, first byte in 166 ms.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Why does my Telegram bot stop answering on a free host?',
+        answer:
+          'A bot that uses long polling (getUpdates) needs a process running all the time to ask Telegram for updates. When the host stops idle apps, nothing is left to ask. With a webhook, Telegram sends each update to your URL, and that request wakes the bot.',
+      },
+      {
+        question: 'How do I stop strangers from sending fake updates to my webhook?',
+        answer:
+          'Set the webhook with a secret_token. Telegram then sends it in the X-Telegram-Bot-Api-Secret-Token header of every update, and the bot answers 401 to any request without it.',
+      },
+      {
+        question: 'Can the bot reply without its bot token?',
+        answer:
+          'Yes. A webhook response can itself be a Bot API call: return JSON with a method field, such as sendMessage, and its parameters. You cannot see whether that call succeeded, so call the Bot API with the token when you need the result.',
+      },
+      {
+        question: 'How fast does the bot answer after it has been idle?',
+        answer:
+          'In our test on Gregale, the first byte of the reply left 166 ms after the update arrived for a bot parked to a snapshot. Telegram also retries an update that fails, so a slow answer delays a reply rather than losing it.',
+      },
+    ],
+  },
+  {
+    slug: DISCORD_SLUG,
+    title: 'Run a Discord bot without an always-on server',
+    summary:
+      'Give a Discord app an Interactions Endpoint URL, verify each Ed25519 signature, and answer slash commands within 3 seconds from an app that scales to zero.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Does a Discord bot need to run all the time?',
+        answer:
+          'Only if it uses the Gateway, the WebSocket that delivers messages, presence and voice events. A bot that only handles slash commands and components can use an Interactions Endpoint URL, where Discord sends each interaction as an HTTPS request.',
+      },
+      {
+        question: 'Why does Discord reject my interactions endpoint URL?',
+        answer:
+          'When you save the URL, Discord sends a PING and also checks that the endpoint verifies signatures. The endpoint must answer the PING with {"type": 1} and answer a request with a bad X-Signature-Ed25519 signature with 401.',
+      },
+      {
+        question: 'What if a command takes longer than 3 seconds?',
+        answer:
+          'Respond with type 5, which shows a loading state, then edit the reply with PATCH /webhooks/<application_id>/<interaction_token>/messages/@original. The token is valid for 15 minutes, and on Gregale the work after the response keeps running.',
+      },
+      {
+        question: 'How fast does the endpoint answer after it has been idle?',
+        answer:
+          'In our test on Gregale, the first byte of the PONG left 227 ms after the request arrived for an endpoint parked to a snapshot, far inside Discord’s 3 seconds. It used 68 MB, inside the Free plan’s 256 MB.',
+      },
+    ],
+  },
+  {
+    slug: SLACK_SLUG,
+    title: 'Run a Slack Bolt app in HTTP mode on a host that scales to zero',
+    summary:
+      'Slack wants a 2xx within 3 seconds. A Bolt app in HTTP mode on Gregale answered from a parked snapshot in 270 ms and kept working after ack().',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Should my Slack app use Socket Mode or HTTP mode?',
+        answer:
+          'Socket Mode keeps a WebSocket open, so the app has to run all the time. HTTP mode gives Slack a Request URL, Bolt’s /slack/events, and nothing has to run between requests, which lets the app scale to zero.',
+      },
+      {
+        question: 'What happens if my Slack app answers too slowly?',
+        answer:
+          'Slack retries an Events API request three times: nearly immediately, after 1 minute and after 5 minutes, with x-slack-retry-reason set to http_timeout. A slash command not acknowledged within 3,000 milliseconds shows the user an operation_timeout error.',
+      },
+      {
+        question: 'Does work after ack() keep running on Gregale?',
+        answer:
+          'Yes. The instance keeps running while the listener works after the acknowledgement, and the reply to a call your app made resumes a paused instance. On AWS Lambda, Bolt needs processBeforeResponse: true instead, which defers the acknowledgement.',
+      },
+      {
+        question: 'Does a Bolt app fit the Free plan?',
+        answer:
+          'In our test it used 89 MB, inside the Free plan’s 256 MB, and it is billed only while it handles requests: about a second after each one, with nothing in flight, Gregale pauses it.',
+      },
+    ],
+  },
+  {
+    slug: RAILS_SLUG,
+    title: 'Deploy Rails 8 with PostgreSQL and migrations that run before traffic',
+    summary:
+      'Deploy a Rails 8 app from its own Dockerfile with four small changes, run db:migrate with a separate credential, and fit it in 512 MB. Measured on Gregale.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'How much memory does a Rails 8 app need on Gregale?',
+        answer:
+          'A scaffolded Rails 8.1 app on Ruby 4.0 used 257 MB with Puma’s default 3 threads in our test. That needs the Hobby plan’s 512 MB; the Free plan’s 256 MB is too small, and Free has no managed PostgreSQL.',
+      },
+      {
+        question: 'Why does the Rails build fail with lstat /vendor?',
+        answer:
+          'Gregale leaves vendor folders out of uploads by default, and the Rails Dockerfile copies vendor/. Add a .gregaleignore at the project root with the line !vendor/ to upload it.',
+      },
+      {
+        question: 'How do Rails migrations run on Gregale?',
+        answer:
+          'Put release: ./bin/rails db:migrate in a Procfile and attach the database a second time with --access migration --env MIGRATION_DATABASE_URL. Only the release command receives that credential, and if it fails, the previous version keeps serving.',
+      },
+      {
+        question: 'Should I keep Thruster in front of Puma?',
+        answer:
+          'No. Gregale already terminates HTTPS and proxies requests to the app, so start Puma directly with hosting.start: ./bin/rails server and use Rails’ /up as the health check.',
+      },
+      {
+        question: 'Why create the app with --skip-solid?',
+        answer:
+          'With Solid Cache, Solid Queue and Solid Cable, Rails 8 gives each its own production database next to the main one. Attaching a Gregale database gives the app a single DATABASE_URL.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2080,13 +2209,15 @@ const MIRRORING_LINK = `[Test a new release on real production traffic without u
 const PG_BRANCH_LINK = `[Test a migration on a copy of production Postgres that deletes itself](/articles/${PG_BRANCH_SLUG}) shows a branch, migrate and expire workflow, plan limits, and how other platforms compare.`;
 const BATCH_JOBS_LINK = `[Fan out a batch job, one task per input, and re-run only the failures](/articles/${BATCH_JOBS_SLUG}) explains input manifests, failure rules and replays, and compares Cloud Run jobs and AWS Batch.`;
 const DEPLOY_GUARD_LINK = `[Block deploys of vulnerable or unsigned images with a per-app policy](/articles/${DEPLOY_GUARD_SLUG}) explains the off, warn and enforce policies, quarantine and recovery.`;
+const BOTS_LINK = `[Telegram bots by webhook](/articles/${TELEGRAM_SLUG}), [Discord interactions endpoints](/articles/${DISCORD_SLUG}) and [Slack Bolt apps in HTTP mode](/articles/${SLACK_SLUG}) show chat bots that answer within each platform's deadline and cost nothing between messages.`;
+const RAILS_LINK = `[Deploy Rails 8 with PostgreSQL and migrations that run before traffic](/articles/${RAILS_SLUG}) shows the four changes a generated Rails app needs, the migration credential and measured memory.`;
 const STATELESS_LINK = `[What breaks when your app scales to zero, and how to catch it](/articles/${STATELESS_SLUG}) lists what does not survive a park, what to use instead, and the checks that catch it.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
-  postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK}`,
+  postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
   'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
-  'inbound-webhooks': INBOUND_WEBHOOKS_LINK,
+  'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
   cache: EDGE_CACHE_LINK,
   'outbound-integrations': OUTBOUND_RELAY_LINK,
   'api-hosting-openapi': OPENAPI_GATE_LINK,
@@ -2141,7 +2272,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
   security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK}`,
   compliance: MICROVM_LINK,
-  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${MICROVM_LINK}`,
+  'container-compatibility': `${CONTAINER_COMPAT_LINK} ${RAILS_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,
 };
 
@@ -2169,7 +2300,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'scale-to-zero',
     title: 'Scale-to-zero, caching & cost control',
     description:
-      'Millisecond snapshot wakes, hard monthly spend caps, edge caching, managed realtime sockets, inbound webhooks, crons and uptime probes.',
+      'Millisecond snapshot wakes, hard monthly spend caps, edge caching, managed realtime sockets, inbound webhooks, chat bots, crons and uptime probes.',
     solutionSlug: 'scale-to-zero-apis',
     slugs: [
       COLD_START_SLUG,
@@ -2177,6 +2308,9 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       SPEND_CAPS_SLUG,
       REALTIME_SCALE_ZERO_SLUG,
       INBOUND_WEBHOOKS_SLUG,
+      TELEGRAM_SLUG,
+      DISCORD_SLUG,
+      SLACK_SLUG,
       EDGE_CACHE_SLUG,
       CRONS_EVENTS_SLUG,
       SYNTHETIC_CHECKS_SLUG,
@@ -2231,13 +2365,14 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'backend-foundations',
     title: 'Backend foundations, frameworks & storage',
     description:
-      'No-DevOps startup architecture, Next.js, Bun, Django, Go, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
+      'No-DevOps startup architecture, Next.js, Bun, Django, Rails, Go, FastAPI and Node.js workers, PR previews, private S3 storage, zero-code OTel tracing, sidecars and OCI containers.',
     solutionSlug: 'backend-without-devops',
     slugs: [
       'backend-without-devops',
       NEXTJS_POSTGRES_SLUG,
       BUN_HONO_SLUG,
       DJANGO_POSTGRES_SLUG,
+      RAILS_SLUG,
       GO_API_SLUG,
       FASTAPI_JOBS_SLUG,
       NODE_WORKER_SLUG,

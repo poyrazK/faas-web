@@ -52,6 +52,8 @@ const sources = import.meta.glob<string>(
     '../../content/docs/security.md',
     '../../content/docs/storage.md',
     '../../content/docs/scale-to-zero.md',
+    '../../content/docs/auth.md',
+    '../../content/docs/deploy-from-github.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -557,6 +559,29 @@ describe('articles', () => {
         ],
         label: 'generally available on every plan',
       },
+      ...[
+        'telegram-bot-webhook-scale-to-zero',
+        'discord-bot-interactions-endpoint-serverless',
+        'slack-bolt-http-mode-scale-to-zero',
+      ].map((slug) => ({ slug, docs: ['auth'], snippets: ['access: public'] })),
+      {
+        slug: 'telegram-bot-webhook-scale-to-zero',
+        docs: ['scale-to-zero'],
+        snippets: ['gregale app wake-timeline'],
+      },
+      {
+        slug: 'deploy-rails-postgres',
+        docs: ['postgres', 'deploy-from-github', 'auth'],
+        snippets: [
+          'gregale add postgres --app',
+          '--access migration --env MIGRATION_DATABASE_URL',
+          'cannot `CREATE`, `ALTER` or `DROP`',
+          'connection pooler in transaction mode',
+          '`.gregaleignore`',
+          '`vendor`',
+          'access: public',
+        ],
+      },
     ];
     for (const { slug, docs, snippets, label } of cases) {
       const article = text(slug);
@@ -568,6 +593,29 @@ describe('articles', () => {
       }
       if (label) expect(article, slug).toContain(label);
     }
+
+    const [free, hobby] = PLAN_CATALOG.plans;
+    for (const slug of [
+      'telegram-bot-webhook-scale-to-zero',
+      'discord-bot-interactions-endpoint-serverless',
+      'slack-bolt-http-mode-scale-to-zero',
+    ]) {
+      expect(text(slug), slug).toContain(`Free plan's ${free.ramMb} MB`);
+      expect(text(slug), slug).toMatch(
+        new RegExp(`${free.includedGbHours} (included )?GB-RAM-hours`)
+      );
+    }
+    const rails = text('deploy-rails-postgres');
+    expect(rails).toContain(`Hobby plan's ${hobby.ramMb} MB`);
+    expect(rails).toContain(`the Free plan's ${free.ramMb} MB is just too small`);
+    expect(rails).toContain(`Hobby costs ${formatPlanPrice(hobby.monthly)} a month`);
+    expect(rails).toContain(`${hobby.ramMb} MB per app and ${hobby.includedGbHours} GB-RAM-hours`);
+    expect(text('discord-bot-interactions-endpoint-serverless')).toContain(
+      `inside the ${hobby.includedGbHours} that the Hobby plan includes`
+    );
+    expect(sources['../../content/docs/postgres.md']).toMatch(/^\| Hobby \| 1 \|.*\| 7 days \|/m);
+    expect(rails).toContain('includes one managed PostgreSQL database');
+    expect(rails).toContain('includes a 7-day restore window');
 
     const postgres = sources['../../content/docs/postgres.md'];
     const branches = text('test-migration-postgres-branch-ttl');
