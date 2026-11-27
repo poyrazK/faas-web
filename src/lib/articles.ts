@@ -93,6 +93,9 @@ const DIRECT_UPLOADS_SLUG = 'direct-browser-uploads-resumable-multipart-storage'
 const DELAYED_TASKS_SLUG = 'delayed-tasks-without-redis-scale-to-zero';
 const DEPLOY_DIFF_SLUG = 'preview-deploy-diff-and-environment-drift';
 const CRASH_SNAPSHOTS_SLUG = 'debug-production-5xx-crash-snapshots-and-profile-diffs';
+const ACCESS_CONTROL_SLUG = 'password-protect-app-basic-auth-ip-allowlist';
+const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
+const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -2242,6 +2245,106 @@ export const ARTICLES: readonly Article[] = [
     ],
   },
   {
+    slug: ACCESS_CONTROL_SLUG,
+    title: 'Password-protect an app or limit it to your IPs, without code',
+    summary:
+      'Put HTTP basic auth, an API key or an IP allowlist in front of any app on Gregale with one command. Refused requests never reach or wake the app.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Do I need to change my app to password-protect it on Gregale?',
+        answer:
+          'No. `gregale app update my-api --public-auth basic --basic-user team --basic-pass "$PASS"` makes the edge check every request. Your code and Dockerfile stay the same.',
+      },
+      {
+        question: 'Which plans include basic auth and IP allowlists?',
+        answer:
+          'API-key access (`bearer`) is on Hobby, Pro and Scale. Basic auth and IP allowlists are on Pro and Scale. Pro apps can list 16 IP ranges and Scale apps 64.',
+      },
+      {
+        question: 'Do blocked requests cost anything?',
+        answer:
+          'No. The edge refuses them before any instance is picked or woken, so they never reach the app and add no running time.',
+      },
+      {
+        question: 'What stops someone from guessing the password?',
+        answer:
+          'After 10 wrong passwords in a minute from one network (an IPv4 /24 or IPv6 /64), that network gets 429 until the minute is over. Passwords must be 12 to 256 bytes and are stored encrypted.',
+      },
+      {
+        question: 'How do I open the app to everyone again?',
+        answer:
+          '`gregale app update my-api --public-auth open`. Each mode replaces the previous one.',
+      },
+    ],
+  },
+  {
+    slug: UPLOAD_TRIGGER_SLUG,
+    title: 'Run code when a file is uploaded, without Lambda',
+    summary:
+      'Add triggers to a bucket in gregale.yaml and every upload calls your app with an S3-style event. No Lambda, queue or IAM policy; the app sleeps between uploads.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'What does my app receive when a file is uploaded?',
+        answer:
+          'One `POST /` per matching write, as an asynchronous invocation, with the body AWS S3 events use (`Records`, `eventName`, bucket and object key). The object key is URL-encoded; decode it before use.',
+      },
+      {
+        question: 'Can an upload be delivered twice?',
+        answer:
+          'Yes, delivery is at least once. The `x-gregale-event-id` header stays the same across retries, so record it before applying side effects. Failed deliveries end in the dead-letter queue (`gregale dlq my-api`).',
+      },
+      {
+        question: 'Do triggers fire for browser uploads through signed URLs?',
+        answer:
+          'Yes. Writes through S3 SDKs, signed URLs, upload routes and multipart uploads all fire the trigger once the write is confirmed, so the browser never has to call back to say it finished.',
+      },
+      {
+        question: 'Can I react to deletes, or send uploads to a queue?',
+        answer:
+          'Triggers fire on uploads only. For deletes, queues or another app, set the bucket notification rules with `gregale bucket notifications set`.',
+      },
+      {
+        question: 'Which plans include bucket triggers?',
+        answer:
+          'Hobby, Pro and Scale. Triggers run app code, so Free answers 402. There is no charge per event; you pay for the time the app runs.',
+      },
+    ],
+  },
+  {
+    slug: WAKE_AHEAD_SLUG,
+    title: 'Stop cold starts from stacking up across services',
+    summary:
+      'When parked services call each other, each wakes in turn. Gregale wakes the services an app usually calls while the app wakes, so the waits overlap.',
+    publishedOn: '2026-11-27',
+    updatedOn: '2026-11-27',
+    faq: [
+      {
+        question: 'Is service wake-ahead on by default?',
+        answer:
+          'Yes for services in a project under the `project` service policy, the default for new project services. It is off for other apps and for pull-request previews. `gregale wake-ahead my-api off` turns it off.',
+      },
+      {
+        question: 'How does Gregale know which services to wake?',
+        answer:
+          'Until an app has woken 20 times it wakes the services listed in `depends_on`. From then on it wakes only services the app called after at least half of its wakes and found parked on at least half of those calls.',
+      },
+      {
+        question: 'Does wake-ahead cost extra?',
+        answer:
+          'A service woken ahead is billed like any running instance from the moment it wakes, and parks again after its idle timeout if nothing calls it. There is no separate fee.',
+      },
+      {
+        question: 'Can wake-ahead wake my whole system at once?',
+        answer:
+          'No. It wakes at most three services per wake, two levels deep, within your plan concurrency limit, and skips while the platform uses 60% or more of its RAM ceiling.',
+      },
+    ],
+  },
+  {
     slug: RAILWAY_CONFIG_SLUG,
     title: "railway.json is deprecated: what to do before Railway's 2027 cutoff",
     summary:
@@ -2447,6 +2550,9 @@ const STATELESS_LINK = `[What breaks when your app scales to zero, and how to ca
 const DIRECT_UPLOADS_LINK = `[Direct browser uploads and resumable multipart storage without waking your backend](/articles/${DIRECT_UPLOADS_SLUG}) covers zero-wake edge upload routes, signed PUT URLs, 24-hour multipart uploads and CORS presets.`;
 const DELAYED_TASKS_LINK = `[Schedule delayed tasks up to a year ahead without Redis or BullMQ](/articles/${DELAYED_TASKS_SLUG}) shows one-off 365-day delayed callbacks, atomic cancel semantics and plan limits.`;
 const DEPLOY_DIFF_LINK = `[Preview deploy diffs, SBOM changes and environment drift in CI](/articles/${DEPLOY_DIFF_SLUG}) covers \`gregale deploy --diff\`, \`blocking\` CI checks, release SBOM diffs and hashed \`env-diff\` matrices.`;
+const ACCESS_CONTROL_LINK = `[Password-protect an app or limit it to your IPs, without code](/articles/${ACCESS_CONTROL_SLUG}) compares built-in basic auth and IP allowlists across platforms.`;
+const UPLOAD_TRIGGER_LINK = `[Run code when a file is uploaded, without Lambda](/articles/${UPLOAD_TRIGGER_SLUG}) shows a bucket trigger, its event body and retries, and how other platforms compare.`;
+const WAKE_AHEAD_LINK = `[Stop cold starts from stacking up across services](/articles/${WAKE_AHEAD_SLUG}) explains service wake-ahead, what it learns and what it costs.`;
 const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff CPU or heap profiles](/articles/${CRASH_SNAPSHOTS_SLUG}) explains auto 5xx memory captures, isolated crash forks and differential flamegraphs.`;
 
 const RELATED_ARTICLES: Record<string, string> = {
@@ -2477,7 +2583,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'edge-rule-trace': EDGE_RULES_TRACE_LINK,
   crons: `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
   'event-driven': `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
-  'object-storage': `${OBJECT_STORAGE_LINK} ${DIRECT_UPLOADS_LINK}`,
+  'object-storage': `${OBJECT_STORAGE_LINK} ${DIRECT_UPLOADS_LINK} ${UPLOAD_TRIGGER_LINK}`,
   storage: `${STATELESS_LINK} ${OBJECT_STORAGE_LINK}`,
   'egress-denylist': EGRESS_DENYLIST_LINK,
   'stored-workflows': STORED_WORKFLOW_RECOVERY_LINK,
@@ -2497,7 +2603,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'deploy-django': DJANGO_POSTGRES_LINK,
   'deploy-go': GO_API_LINK,
   'deploy-rust': RUST_AXUM_LINK,
-  'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK}`,
+  'multi-service': `${ATOMIC_RELEASES_LINK} ${NODE_WORKER_LINK} ${WAKE_AHEAD_LINK}`,
   'getting-started': NO_DEVOPS_LINK,
   'mcp-hosting': `${MCP_LINK} ${TS_MCP_OAUTH_LINK} ${PYTHON_FASTMCP_LINK}`,
   'preview-environments': PREVIEW_LINK,
@@ -2519,6 +2625,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   compliance: MICROVM_LINK,
   'container-compatibility': `${CONTAINER_COMPAT_LINK} ${RAILS_LINK} ${RUST_AXUM_LINK} ${MICROVM_LINK}`,
   'registry-credentials': CONTAINER_COMPAT_LINK,
+  auth: ACCESS_CONTROL_LINK,
 };
 
 /** Answer articles: how Gregale works, without the vendor roundups or head-to-heads. */
@@ -2562,6 +2669,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       CRONS_EVENTS_SLUG,
       DELAYED_TASKS_SLUG,
       SYNTHETIC_CHECKS_SLUG,
+      WAKE_AHEAD_SLUG,
       'stop-bot-traffic-cloud-bill-shock',
     ],
   },
@@ -2603,6 +2711,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       EGRESS_DENYLIST_SLUG,
       OUTBOUND_RELAY_SLUG,
       EDGE_RULES_TRACE_SLUG,
+      ACCESS_CONTROL_SLUG,
       PULL_QUEUE_WORKERS_SLUG,
       AUTOSCALE_LAG_SLUG,
       CODE_WORKFLOWS_SLUG,
@@ -2630,6 +2739,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'remote-dev-environment-without-docker-desktop',
       OBJECT_STORAGE_SLUG,
       DIRECT_UPLOADS_SLUG,
+      UPLOAD_TRIGGER_SLUG,
       OTEL_TRACING_SLUG,
       COMPANIONS_SLUG,
       CONTAINER_COMPAT_SLUG,
