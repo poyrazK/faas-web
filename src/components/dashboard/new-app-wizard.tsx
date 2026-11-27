@@ -393,13 +393,36 @@ function CreateAppWizard({
   const gitSourceValid = source !== 'git' || (repoValid && refValid);
   const installId = Number(account?.github_install_id) || null;
   const scanProjectSlug = appNameFromRepo(repo) || 'app';
+  // No installation lists the repository, so there is nothing to bind; apid
+  // may still read it if it is public (ADR-20261126164847, behind the
+  // public_source_deploys flag). The scan is the probe: it reads the
+  // repository the way the deploy will. While the flag is off apid refuses it
+  // before any GitHub call, so until a read succeeds the wizard is unchanged.
+  const readsPublicly = source === 'git' && (!githubConnected || !repoAccessible);
   const scan = useSourceRefScan({
     repo: repo.trim(),
     ref: normalizedRef,
-    installId,
+    installId: readsPublicly ? null : installId,
     projectSlug: scanProjectSlug,
-    enabled: source === 'git' && githubConnected && repoValid && refValid,
+    enabled: source === 'git' && repoValid && refValid,
   });
+  // apid names the repository on a plan only when an installation read it;
+  // one of the account's other installations is not a public read, so that
+  // case keeps the installation answer.
+  const publicRead =
+    readsPublicly && repoValid && refValid && Boolean(scan.plan && !scan.plan.repo_full_name);
+  // One public read proves the account may read public repositories, so from
+  // then on a failed read is about the repository, not the account.
+  const [publicReadsFor, setPublicReadsFor] = useState<string | null>(null);
+  if (publicRead && account?.id && publicReadsFor !== account.id) setPublicReadsFor(account.id);
+  const publicReadsOn = Boolean(account?.id) && publicReadsFor === account?.id;
+  const publicReadProblem = !readsPublicly
+    ? undefined
+    : scan.error instanceof ApiError && scan.error.code === 'public_source_fetch_rate_limited'
+      ? errorMessage(scan.error)
+      : githubConnected
+        ? 'Neither your GitHub installation nor a public read can reach this repository. Check the name, or grant the installation access.'
+        : 'Without a GitHub connection Gregale reads only public repositories. Check owner/name, or connect GitHub to deploy a private one.';
   const scannedWorkloads = scan.plan?.workloads ?? [];
   const scannedService = scannedWorkloads.length === 1 ? scannedWorkloads[0] : undefined;
   // The plan reports no runtime, so the only wizard field it can answer is
@@ -458,13 +481,16 @@ function CreateAppWizard({
     source !== 'import' &&
     (source !== 'template' || picked) &&
     gitSourceValid &&
-    (source !== 'git' || (githubConnected && repoAccessible));
+    (!readsPublicly || publicRead);
+  // The repository form shows with GitHub connected, or once a public read
+  // has worked for this account; otherwise Git's way on is the connect notice.
+  const gitFormShown = source === 'git' && (githubConnected || publicReadsOn);
   // Each reason Continue cannot go on, keyed by the control that fixes it.
   // Source-level reasons focus the card the customer most likely meant.
   const sourceErrors: Partial<Record<SourceField, string>> = {
     'source-git': !source
       ? 'Choose where the code comes from to continue.'
-      : source === 'git' && !githubConnected
+      : source === 'git' && !gitFormShown
         ? 'Connect GitHub to deploy from a repository, or choose another source.'
         : undefined,
     'source-template':
@@ -472,15 +498,19 @@ function CreateAppWizard({
         ? 'Choose a starter template below, or another source.'
         : undefined,
     repository:
-      source === 'git' && githubConnected && !repoValid
+      gitFormShown && !repoValid
         ? repo.trim()
           ? 'Use owner/name, like acme/api.'
           : 'Choose a repository to deploy.'
-        : source === 'git' && githubConnected && !repoAccessible
-          ? 'Your GitHub installation cannot see this repository. Grant it access, or choose another.'
+        : gitFormShown && readsPublicly && !publicRead
+          ? scan.scanning
+            ? `Checking whether Gregale can read ${repo.trim()}…`
+            : publicReadsOn
+              ? publicReadProblem
+              : 'Your GitHub installation cannot see this repository. Grant it access, or choose another.'
           : undefined,
     ref:
-      source === 'git' && githubConnected && !refValid
+      gitFormShown && !refValid
         ? 'Use a valid branch, tag, or commit SHA of at most 200 characters.'
         : undefined,
     handler: handlerError,
@@ -579,6 +609,18 @@ function CreateAppWizard({
 
   async function submitGitSource(slug: string) {
     sourceRequested.current = false;
+    if (readsPublicly) {
+      // A public read: no installation lists the repository, so nothing is
+      // bound and the app does not redeploy on push. apid reads this commit
+      // the way the scan did (ADR-20261126164847).
+      sourceRequested.current = true;
+      return deployFromRef.mutateAsync({
+        slug,
+        repo: repo.trim(),
+        ref: normalizedRef,
+        format: 'tarball',
+      });
+    }
     const installationId = Number(account?.github_install_id);
     if (!Number.isSafeInteger(installationId) || installationId <= 0) {
       throw new Error('Connect GitHub before deploying from a repository.');
@@ -943,7 +985,7 @@ function CreateAppWizard({
     if (scan.error)
       return (
         <p className="text-[13px] leading-5 text-muted-foreground sm:col-span-2">
-          {scanUnavailableReason(scan.error)}
+          {readsPublicly && publicReadsOn ? publicReadProblem : scanUnavailableReason(scan.error)}
         </p>
       );
     if (!scan.plan) return null;
@@ -981,6 +1023,40 @@ function CreateAppWizard({
         </p>
       );
     return null;
+  }
+
+  // What a public read gives up, and how to get it back.
+  function renderPublicRead() {
+    if (!publicRead) return null;
+    return (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-brand/30 bg-brand/5 p-4"
+      >
+        <div className="min-w-0 flex-1 basis-64">
+          <p className="text-sm font-medium">Public repository</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Gregale deploys{' '}
+            <span className="break-all font-mono text-foreground">
+              {repo.trim()}@{normalizedRef}
+            </span>{' '}
+            as it is now and does not redeploy when the repository changes.
+            {githubConnected
+              ? ' For push-to-deploy, fork it or give your GitHub installation access to it.'
+              : ' For push-to-deploy, fork it and connect GitHub; connecting also deploys private repositories.'}
+          </p>
+        </div>
+        {!githubConnected && (
+          <GitHubConnectForm
+            onConnect={() => {
+              if (onboarding) rememberGitHubDeployment(gitReturn, true);
+              onConnectGitHub?.();
+            }}
+            returnTo={onConnectGitHub ? undefined : newAppPath(gitReturn)}
+          />
+        )}
+      </div>
+    );
   }
 
   function renderSources() {
@@ -1105,7 +1181,7 @@ function CreateAppWizard({
           }}
         />
         {sourceLevelError && <FieldError id={`${uid}-source-error`}>{sourceLevelError}</FieldError>}
-        {source === 'git' && !githubConnected ? (
+        {source === 'git' && !gitFormShown ? (
           <div
             role="status"
             className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-brand/30 bg-brand/5 p-4"
@@ -1193,6 +1269,7 @@ function CreateAppWizard({
               {refError && <FieldError id={`${uid}-ref-error`}>{refError}</FieldError>}
             </div>
             {renderScanHint()}
+            {renderPublicRead()}
           </>
         ) : null}
 
@@ -1223,9 +1300,7 @@ function CreateAppWizard({
             on is the connect notice, and without a pick it is the catalog. */}
         {/* Template's Continue rides in the catalog's bar beside the chosen
             starter, which stays in view; Git's sits under its panel. */}
-        {source === 'git' && githubConnected && (
-          <div className="flex justify-end">{continueButton}</div>
-        )}
+        {gitFormShown && <div className="flex justify-end">{continueButton}</div>}
       </div>
     );
   }
@@ -1575,10 +1650,7 @@ function CreateAppWizard({
           <Button
             variant="cta"
             disabled={
-              deployBlocked ||
-              !nameValid ||
-              !gitSourceValid ||
-              (source === 'git' && !githubConnected)
+              deployBlocked || !nameValid || !gitSourceValid || (readsPublicly && !publicRead)
             }
             aria-describedby={blockedReason ? `${uid}-blocked` : undefined}
             onClick={() => void createFunction()}

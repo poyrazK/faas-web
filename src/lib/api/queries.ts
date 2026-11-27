@@ -868,15 +868,24 @@ export function useProjectScan() {
 export const SOURCE_REF_SCAN_DEBOUNCE_MS = 600;
 
 /**
- * Read-only scan of a connected repository at a ref
- * (`POST /v1/projects/scan/source-ref`), for the new-app wizard's hints.
+ * How long a repository read without an installation must hold still. Each
+ * such read counts against the account's hourly public-read limit, and every
+ * prefix of a typed owner/name is itself a valid name.
+ */
+export const PUBLIC_SOURCE_REF_SCAN_DEBOUNCE_MS = 1500;
+
+/**
+ * Read-only scan of a repository at a ref
+ * (`POST /v1/projects/scan/source-ref`), for the new-app wizard.
  *
  * Debounced so typing a ref does not fan out a scan per keystroke; keyed by
  * installation, repo and ref so a pair scanned once is answered from cache
  * for the session; and the signal is handed to fetch, so a pair the user has
- * moved away from is aborted rather than left to finish. It is advisory —
- * nothing waits on it, and it never retries: a failed scan just means no
- * hint.
+ * moved away from is aborted rather than left to finish. It never retries.
+ * With an installation it is advisory: a failed scan just means no hint.
+ * Without one (`installId` null) apid may read a public repository
+ * (ADR-20261126164847), and a plan is the wizard's proof that the deploy can
+ * read it too; such a read waits longer, since each one is counted.
  */
 export function useSourceRefScan({
   repo,
@@ -891,13 +900,14 @@ export function useSourceRefScan({
   projectSlug: string;
   enabled: boolean;
 }) {
+  const debounceMs = installId ? SOURCE_REF_SCAN_DEBOUNCE_MS : PUBLIC_SOURCE_REF_SCAN_DEBOUNCE_MS;
   const wanted = enabled ? `${installId ?? ''}:${repo}@${ref}` : '';
   const [settled, setSettled] = useState(wanted);
   useEffect(() => {
     if (wanted === settled) return;
-    const timer = setTimeout(() => setSettled(wanted), SOURCE_REF_SCAN_DEBOUNCE_MS);
+    const timer = setTimeout(() => setSettled(wanted), debounceMs);
     return () => clearTimeout(timer);
-  }, [wanted, settled]);
+  }, [wanted, settled, debounceMs]);
   const ready = enabled && settled === wanted;
   const query = useQuery({
     queryKey: ['projects', 'scan', 'source-ref', installId, repo, ref],

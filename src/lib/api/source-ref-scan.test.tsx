@@ -4,7 +4,12 @@ import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { spyApi } from '@/test/api';
 import { ApiError } from './errors';
-import { useSourceRefScan, type ProjectPlan } from './queries';
+import {
+  PUBLIC_SOURCE_REF_SCAN_DEBOUNCE_MS,
+  SOURCE_REF_SCAN_DEBOUNCE_MS,
+  useSourceRefScan,
+  type ProjectPlan,
+} from './queries';
 
 const plan = (name: string): ProjectPlan => ({
   project_slug: 'demo',
@@ -51,6 +56,22 @@ it('scans once the repository and ref hold still, with the scan request body', a
   expect(post).toHaveBeenCalledTimes(1);
   expect(post).toHaveBeenCalledWith('/v1/projects/scan/source-ref', {
     body: { repo: 'acme/demo', ref: 'main', project_slug: 'demo', install_id: 42 },
+    signal: expect.any(AbortSignal),
+  });
+});
+
+it('waits longer before a read without an installation, and names none', async () => {
+  const post = spyApi('POST').mockResolvedValue({ data: plan('api'), response: new Response() });
+  const view = mount(input('', { enabled: false, installId: null }));
+  view.rerender(input('main', { installId: null }));
+  await new Promise((resolve) => setTimeout(resolve, SOURCE_REF_SCAN_DEBOUNCE_MS + 100));
+  expect(post).not.toHaveBeenCalled();
+  await waitFor(() => expect(view.result.current.plan?.workloads[0].name).toBe('api'), {
+    timeout: PUBLIC_SOURCE_REF_SCAN_DEBOUNCE_MS + 1000,
+  });
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(post).toHaveBeenCalledWith('/v1/projects/scan/source-ref', {
+    body: { repo: 'acme/demo', ref: 'main', project_slug: 'demo' },
     signal: expect.any(AbortSignal),
   });
 });

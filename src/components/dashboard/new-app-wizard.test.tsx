@@ -1306,6 +1306,138 @@ describe('NewAppWizard repository from a compatibility check', () => {
   });
 });
 
+// ADR-20261126164847: a repository no installation lists is read publicly,
+// and only once a scan without an installation has proved apid allows it.
+describe('NewAppWizard public repositories', () => {
+  type ScanInput = { repo: string; installId: number | null };
+  const refused = (code: string, detail?: string) => ({
+    plan: undefined,
+    error: new ApiError({ status: 403, code, title: 'Refused', detail }),
+    scanning: false,
+  });
+  function scansPublicly(
+    readable: (repo: string) => boolean,
+    refusal = refused('github_repo_not_accessible')
+  ) {
+    mocks.scan.mockImplementation(({ repo, installId }: ScanInput) =>
+      installId !== null
+        ? { plan: undefined, error: null, scanning: false }
+        : readable(repo)
+          ? { plan: scanPlan([{}]), error: null, scanning: false }
+          : refusal
+    );
+  }
+  function Journey({ repo }: { repo: string }) {
+    const [search, setSearch] = useState<NewAppSearch>({ source: 'git', repo });
+    return <NewAppWizard search={search} onSearchChange={setSearch} />;
+  }
+  async function deploy(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await nameApp(user, 'demo-app');
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await user.click(await screen.findByRole('button', { name: 'Deploy app' }));
+  }
+
+  it('deploys a public repository without a GitHub connection and binds nothing', async () => {
+    mocks.account.github_install_id = '';
+    scansPublicly(() => true);
+    const user = userEvent.setup();
+    render(<Journey repo="gregale-dev/node-api-worker" />);
+    expect(await screen.findByText('Public repository')).toBeInTheDocument();
+    expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
+    expect(mocks.scan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repo: 'gregale-dev/node-api-worker',
+        installId: null,
+        enabled: true,
+      })
+    );
+    await deploy(user);
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith({
+        slug: 'demo-app',
+        repo: 'gregale-dev/node-api-worker',
+        ref: 'main',
+        format: 'tarball',
+      })
+    );
+    expect(mocks.bindRepo).not.toHaveBeenCalled();
+  });
+
+  it('keeps the connect notice while apid refuses public reads', async () => {
+    mocks.account.github_install_id = '';
+    scansPublicly(() => false, refused('github_install_not_found'));
+    render(<Journey repo="gregale-dev/node-api-worker" />);
+    expect(await screen.findByText('Connect GitHub first')).toBeInTheDocument();
+    expect(screen.queryByText('Public repository')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+  });
+
+  it('deploys a public repository the installation does not list, without binding it', async () => {
+    scansPublicly((repo) => repo === 'team/hidden');
+    const user = userEvent.setup();
+    render(<Journey repo="team/hidden" />);
+    expect(await screen.findByText('Public repository')).toBeInTheDocument();
+    expect(mocks.scan).toHaveBeenLastCalledWith(
+      expect.objectContaining({ repo: 'team/hidden', installId: null })
+    );
+    await deploy(user);
+    await waitFor(() =>
+      expect(mocks.deployFromRef).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo-app', repo: 'team/hidden' })
+      )
+    );
+    expect(mocks.bindRepo).not.toHaveBeenCalled();
+  });
+
+  it('keeps the installation answer when another installation read the repository', async () => {
+    mocks.scan.mockReturnValue({
+      plan: { ...scanPlan([{}]), repo_full_name: 'team/hidden' },
+      error: null,
+      scanning: false,
+    });
+    const user = userEvent.setup();
+    render(<Journey repo="team/hidden" />);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByLabelText('Repository')).toHaveAccessibleDescription(
+      /installation cannot see this repository/
+    );
+    expect(screen.queryByText('Public repository')).not.toBeInTheDocument();
+  });
+
+  it('keeps the form after one public read and says why another fails', async () => {
+    mocks.account.github_install_id = '';
+    scansPublicly((repo) => repo === 'acme/public');
+    const user = userEvent.setup();
+    render(<Journey repo="acme/public" />);
+    await screen.findByText('Public repository');
+    const repository = screen.getByLabelText('Repository');
+    await user.clear(repository);
+    await user.type(repository, 'acme/private');
+    expect(screen.queryByText('Connect GitHub first')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(repository).toHaveAccessibleDescription(/reads only public repositories/);
+    expect(screen.queryByLabelText('App name')).not.toBeInTheDocument();
+  });
+
+  it('passes on the hourly public-read limit as apid words it', async () => {
+    mocks.account.github_install_id = '';
+    const detail = 'This account read 30 public repositories in the last hour; retry in 3600 s.';
+    scansPublicly(
+      (repo) => repo === 'acme/public',
+      refused('public_source_fetch_rate_limited', detail)
+    );
+    const user = userEvent.setup();
+    render(<Journey repo="acme/public" />);
+    await screen.findByText('Public repository');
+    const repository = screen.getByLabelText('Repository');
+    await user.clear(repository);
+    await user.type(repository, 'acme/other');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(repository).toHaveAccessibleDescription(detail);
+  });
+});
+
 it('keeps essential choices visible and preserves a language version through review', async () => {
   const user = userEvent.setup();
   render(<NewAppWizard onboarding />);
