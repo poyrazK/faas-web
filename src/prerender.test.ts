@@ -717,6 +717,17 @@ describeBuilt('prerendered pages', () => {
       { slug: 'deploy-vibe-coded-app-to-production', doc: 'agents' },
       { slug: 'host-python-fastmcp-server', doc: 'mcp-hosting' },
       { slug: 'remote-dev-environment-without-docker-desktop', doc: 'dev' },
+      { slug: 'password-protect-app-basic-auth-ip-allowlist', doc: 'auth', modified: '2026-11-27' },
+      {
+        slug: 'run-code-on-file-upload-bucket-trigger',
+        doc: 'object-storage',
+        modified: '2026-11-27',
+      },
+      {
+        slug: 'chained-cold-starts-wake-services-together',
+        doc: 'multi-service',
+        modified: '2026-11-27',
+      },
     ];
     const articlesIndex = readFileSync('dist/articles/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');

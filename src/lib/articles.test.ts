@@ -61,6 +61,8 @@ const sources = import.meta.glob<string>(
     '../../content/docs/deploy-rust.md',
     '../../content/docs/mcp-hosting.md',
     '../../content/docs/build.md',
+    '../../content/docs/multi-service.md',
+    '../../content/docs/cli-command-tree.md',
     '../../public/research/firecracker-snapshot-restore-ssd-2026-09-09/summary.json',
   ],
   { query: '?raw', import: 'default', eager: true }
@@ -793,5 +795,79 @@ describe('articles', () => {
     expect(crash).toContain('409 crash_capture_not_ready');
     expect(crash).toContain('none within `10` minutes of the last');
     expect(crash).toContain('`cpu`, `heap`, `stacks`, `block`, or `mutex`');
+  });
+  it('quotes commands, limits and plans in the capability gap articles as the docs state them', () => {
+    const text = (slug: string) => body(slug).replace(/\s+/g, ' ');
+    const doc = (name: string) => sources[`../../content/docs/${name}.md`].replace(/\s+/g, ' ');
+
+    const access = text('password-protect-app-basic-auth-ip-allowlist');
+    const auth = doc('auth');
+    for (const snippet of [
+      'gregale app update my-api --public-auth basic --basic-user team --basic-pass "$PASS"',
+      'gregale app update my-api --public-auth bearer',
+      'gregale app update my-api --public-auth open',
+      'After 10 wrong passwords in a minute from one network (an IPv4 /24 or IPv6 /64)',
+      'A `/0` range is refused.',
+      'plan_public_auth_basic_not_allowed',
+    ]) {
+      expect(auth).toContain(snippet);
+      expect(access).toContain(snippet);
+    }
+    expect(auth).toContain('Pro apps can list 16 ranges and Scale apps 64');
+    expect(access).toContain('Pro apps can list 16 ranges and Scale apps 64');
+    expect(auth).toContain(
+      '| `basic` | Requests with HTTP basic auth matching the username and password you set. | Pro, Scale |'
+    );
+    expect(auth).toContain('| `bearer` | Requests with `Authorization: Bearer KEY`');
+
+    const upload = text('run-code-on-file-upload-bucket-trigger');
+    const storage = doc('object-storage');
+    for (const snippet of [
+      'triggers:',
+      'x-gregale-event-id',
+      'gregale dlq my-api',
+      'gregale bucket notifications set my-api BUCKET_ID notifications.json',
+      'Triggers do not fire on deletes',
+      'Free answers `402`',
+      'A deploy never changes or deletes an existing bucket.',
+    ]) {
+      expect(storage).toContain(snippet);
+    }
+    for (const snippet of [
+      'triggers:',
+      'x-gregale-event-id',
+      'gregale dlq my-api',
+      'gregale bucket notifications set my-api BUCKET_ID notifications.json',
+      "Triggers don't fire on deletes",
+      'Free answers `402`',
+      'A deploy never changes or deletes an existing bucket.',
+      '| Hobby | $10 | 10 GiB | 20 GiB |',
+      '| Pro | $30 | 50 GiB | 250 GiB |',
+      '| Scale | $99 | 200 GiB | 1,000 GiB |',
+    ]) {
+      expect(upload.replace(/ +\|/g, ' |').replace(/\| +/g, '| ')).toContain(snippet);
+    }
+    expect(storage).toContain('| Hobby | 10 GiB | 20 GiB |');
+    expect(storage).toContain('| Pro | 50 GiB | 250 GiB |');
+    expect(storage).toContain('| Scale | 200 GiB | 1,000 GiB |');
+
+    const wake = text('chained-cold-starts-wake-services-together');
+    expect(doc('cli-command-tree')).toContain(
+      '| `gregale wake-ahead` | `gregale app wake-ahead` |'
+    );
+    expect(doc('multi-service')).toContain(
+      'It is on by default for services under the `project` policy'
+    );
+    for (const snippet of [
+      'gregale wake-ahead public-api on',
+      'gregale wake-ahead public-api off',
+      'PUT /v1/apps/{slug}/service-wake-ahead',
+      'Until the app has woken 20 times',
+      'At most three services per wake',
+      '60% or more of its RAM ceiling in use',
+      'service.wake_ahead',
+    ]) {
+      expect(wake).toContain(snippet);
+    }
   });
 });
