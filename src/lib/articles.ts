@@ -2506,7 +2506,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Deploy an Axum and sqlx API from a two-stage Dockerfile, run migrations with their own credential, and pause between requests. Measured on Gregale.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Does Gregale build Rust without a Dockerfile?',
@@ -2541,7 +2541,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Check OAuth 2.1 tokens in a remote MCP server built with the official TypeScript SDK: resource metadata, audience checks, 401 and 403. Measured on Gregale.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'What does the MCP spec require of a server that uses OAuth?',
@@ -2576,7 +2576,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Deploy a docker-compose.yml to production as it is: each service becomes an app and postgres becomes managed PostgreSQL. Compared with Railway, Fly.io, Render.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Can I deploy a docker-compose.yml to production as it is?',
