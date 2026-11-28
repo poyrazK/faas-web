@@ -116,6 +116,18 @@ Add `--notify-resolved` (`notify_resolved` in the API) to also receive a signed 
 
 For dashboards and SLOs, use the app metrics endpoint and correlate alert event ids with deployment ids. Never put credentials in an alert URL.
 
+## Alerts in a stage
+
+A stage (a project environment other than production) can have its own
+rules: `gregale alert create --env staging ...` and
+`gregale alert list --env staging` (`?environment=staging` in the API). A stage's rule
+watches only the requests its host served (`request_count`,
+`error_rate_pct`, `latency_p50_ms`/`p95`/`p99`, `cold_start_pct`) or its own
+`failed_invocations`, with `gt`, `gte`, `lt` or `lte` and a webhook action.
+Production's rules leave every stage's traffic out. A stage's deliveries
+carry `app_id` and `environment_id`. Stage rules are rolling out and may
+answer 501 until they are available on your deployment.
+
 ## Notification channels
 
 Channels deliver alerts to Slack, PagerDuty or email without a webhook
@@ -238,25 +250,82 @@ printf '%s\n' "$ALERT_SECRET" | gregale alert create --app my-api --name traffic
   --webhook-url https://example.com/hooks/gregale --webhook-secret-stdin
 ```
 
-The usual value is the median of the same metric, over the same window length,
-at the same time of day on each of the previous seven days. With
+The usual value is the median of the same metric over the previous seven days.
+Each historical window has the same length and ends at the same UTC time of
+day as the current window. With
 `above_baseline` the threshold is a multiplier from 1.5 to 20; with
 `below_baseline` (request count only) it is a fraction from 0.05 to 0.67.
 Supported metrics are `error_rate_pct`, `latency_p95_ms`, `latency_p99_ms`,
 `cold_start_pct`, and `request_count`.
 
-To avoid alerts on tiny numbers, a baseline rule does not fire when:
+Current windows with missing, stale, or incomplete request telemetry show as
+`degraded`. Historical windows without coverage are skipped. The rule shows
+as `unknown` if fewer than five historical windows qualify.
 
-- the window had fewer than 50 requests;
-- the value is below a sensible minimum (1% errors, 50 ms latency, 5% cold
-  starts) even if it is several times the usual value;
-- the usual value is zero;
-- fewer than five of the previous seven days had traffic, for example for a new
-  app. The rule shows as unknown until enough history exists.
+- For error rate, latency, and cold starts, each qualifying window needs at
+  least 50 eligible requests. Error rate counts 2xx, 5xx, and capacity refusals.
+  Latency counts 2xx responses. Cold starts use the total request count. A
+  current window with too few eligible requests shows as `unknown`.
+- A spike requires a positive baseline and an absolute minimum of 1% errors,
+  50 ms latency, 5% cold starts, or 50 current requests, depending on the metric.
+- A traffic drop requires a historical median of at least 50 requests. A
+  current window with confirmed zero requests can fire the rule.
+
+The rule's **Latest evaluation** explains why a check was skipped or stayed
+within the rule's limits. Skipped checks show how many requests or historical
+windows qualified when there are too few, or what went wrong with telemetry.
+For a completed check that didn't breach, the panel shows the observed value,
+the baseline, and the threshold derived from the baseline when available. It
+also explains when the metric or baseline was too small for the rule to fire.
+While the same incident is still firing, the panel shows when another
+notification becomes eligible if the breach continues. At the end of cooldown,
+it shows that the rule is awaiting its next evaluation.
+
+Use **Test on recent traffic** while creating or editing a request count,
+error rate, or p95 latency baseline rule. It checks one window each hour
+over the past seven days using the selected window length
+and the same baseline and telemetry checks as the live evaluator. The preview
+shows evaluated and skipped windows and the observed value and trigger for
+each threshold breach. Several breaches can belong to one incident. The
+preview is read-only.
+
+Choose **Observe only** on an app-scoped baseline rule to run it on live
+traffic with delivery and automated actions off. The rule page keeps the
+20 most recent observed incidents and counts when each would have been
+eligible for a notification under the rule's cooldown. A recovery closes
+the observed incident. Each new incident keeps the observed value, baseline,
+trigger, and metric window from its first breach, even after the rule is
+edited. Pausing, changing its condition, or switching modes
+ends the observation. Choose **Notify** with a configured destination to
+start live alerting. The first live breach can notify immediately and starts
+its own cooldown.
+Notifications or actions already in flight can finish after a mode change.
+Switching into **Observe only** also queues a stand-down for any open
+live incident's notification channels.
+
+**Evaluation coverage** shows how many live checks completed in the last
+24 hours, why checks were skipped, and when Gregale last checked the rule.
+The notification confirmation shows the same coverage for the saved
+condition and environment. Changing either starts a fresh summary.
+
+App-scoped baseline rules recover after one healthy check by default. Set
+**Healthy checks to recover** to **Two consecutive healthy checks** to keep
+the incident open after the first healthy check. The latest evaluation shows
+the progress.
+A breach or skipped check resets the count. This works in both modes, and a
+scheduler restart preserves the count.
+
+For an environment-scoped rule, **Notify** keeps the saved environment and
+sends to the configured channels and webhook. Switch to **Observe only** to
+change the environment of a notifying rule. Channel messages identify the
+environment. Scoped webhook fire and resolve events include
+`environment_scope`.
 
 The webhook payload adds `baseline` (the usual value), `baseline_days`, and
-`ratio` (observed divided by baseline) to the usual fields. Baseline rules are a
-preview and may not be enabled for your account.
+`ratio` (observed divided by baseline) to the usual fields. The app's delivery
+history shows the observed value, baseline, ratio, and threshold from the time
+the alert fired. Baseline rules are a preview and may not be enabled for your
+account.
 
 ## Log alerts
 
@@ -372,6 +441,49 @@ gregale alert create --app shop --name "Out of memory" \
 ```
 
 The rule needs an app and accepts every alert window and action.
+
+## Boot and job failures
+
+`boot_failures` counts the times the app's instances failed to start within
+the window. An app that crashes on start (a missing secret, a bad config, a
+failed migration) can still answer some requests between attempts, so
+`api_up` and the error rate may stay quiet while visitors wait on failed
+wakes. Boots of a canary's mirrored candidate do not count. The rule needs an
+app.
+
+`job_failures` counts the [job](jobs.md) runs in your account that finished
+`failed` or `dead_letter` within the window. Jobs belong to the account, not
+an app, so the rule counts every job whichever app you create it on.
+
+`job_failures` supports the webhook action only. `boot_failures` also takes
+`--action rollback` together with `--post-deploy-rollback-window`: it rolls
+back a release that already finished, judged only on that release's own
+boots. Its failed boots since the release went live must meet the rule, and
+it must not have started once. A failed boot counts only on a node that
+started other apps in the same window, so a broken node or a platform
+incident never rolls your release back. A release that crashes on start rolls
+back. A canary still in flight is never rolled back or demoted on this
+metric, and a release rolled back this way is not rolled back again.
+
+```bash
+gregale alert create --app shop --name "Crash on start" \
+  --metric boot_failures --comparison gte --threshold 3 --window-spec 15m \
+  --action rollback --post-deploy-rollback-window 30m --channel OPS_SLACK_ID
+```
+
+```bash
+gregale alert preset enable boot_failing --app shop --channel OPS_SLACK_ID
+gregale alert preset enable job_failures --app shop --channel OPS_SLACK_ID
+
+# Or set your own threshold:
+gregale alert create --app shop --name "Boot failures" \
+  --metric boot_failures --comparison gte --threshold 5 --window-spec 1h \
+  --channel OPS_SLACK_ID
+```
+
+The `boot_failing` preset fires at 3 failed boots in 15 minutes; the
+`job_failures` preset fires on any failed run within 60 minutes. Both wait 60
+minutes before firing again.
 
 ## AI budget alerts
 

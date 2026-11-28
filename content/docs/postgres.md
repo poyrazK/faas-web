@@ -89,12 +89,14 @@ Operators: see the [operator guide](managed-postgres.md).
 ## Create a database
 
 ```sh
-gregale postgres create orders --region eu-central-1
+gregale postgres create orders
 gregale postgres get orders
 ```
 
 The database starts in `provisioning` and moves to `ready`. Options:
 
+- `--region REGION`: optional. New databases go to the platform default
+  region; `gregale postgres capabilities` shows it.
 - `--class development|burstable|production`: the compute class your plan
   allows. The default is `development`.
 - `--postgres-major N`: the PostgreSQL major version, 15 to 18. The default is
@@ -106,14 +108,14 @@ The database starts in `provisioning` and moves to `ready`. Options:
 To create a database and attach it to an app in one step:
 
 ```sh
-gregale add postgres --app my-api --region eu-central-1
+gregale add postgres --app my-api
 gregale add postgres --database orders --app my-api --env production
 ```
 
 `add postgres` reuses a matching database when there is one. Otherwise it
 creates one named `<app>-postgres`, waits until it is ready, and binds it to
 the app as `DATABASE_URL`. `--database` attaches an existing database by name
-or ID. `--region` is needed only when a database is created.
+or ID. New databases are placed in the platform default region.
 
 ## Connect an app
 
@@ -537,6 +539,41 @@ the API say why in `hold`: `compute_ceiling`, `egress`, `inactive` (the
 account is suspended), `plan_excess` or `preview` (a PR preview database once
 the account used 80% of its compute). `usage` shows `hold` when every database
 of the account is held. A held database keeps its data.
+
+`usage` also splits the month's compute by database, with each one's starts
+and awake time over the last 30 days, so you can see which database used it.
+
+### Why is my database awake
+
+A scale-to-zero database bills compute while it is up. If it is up more than
+your traffic explains, ask what started it:
+
+```sh
+gregale postgres activity orders-db
+gregale postgres activity orders-db --since 7d
+```
+
+`activity` lists the database's compute starts with a likely cause for each,
+the time it stayed awake per cause, and what to do about the largest ones.
+The cause is the first of these that matches the start's timing:
+
+| Cause | Meaning |
+|---|---|
+| `app_wake` | `app-wake` is on and an app bound to the database woke. |
+| `cron` | A cron of a bound app fired just before. The cron's path is shown. |
+| `request` | A request woke a bound app. |
+| `app_start` | A bound app started without a request and connected at once. |
+| `running_app` | A bound app was already running, for example holding pool connections. |
+| `external` | None of these: a local client, a BI tool, a monitor, or a copied connection string. |
+
+Causes are best guesses from timing, not billing. A cron every 15 minutes
+keeps a database with a 2-minute suspend timeout up about 13% of the time
+even when the job does nothing; run it less often, or let it skip the
+database when there is nothing to do. Starts are recorded from the usage
+sweep, so the latest can lag by up to an hour, and kept 30 days. Reading
+`activity` never wakes the database. It is also in the API
+(`GET /v1/postgres/databases/{id}/activity`) and the MCP tool
+`gregale_get_postgres_activity`.
 
 ## Delete, recover and purge
 

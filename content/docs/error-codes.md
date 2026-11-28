@@ -134,6 +134,12 @@ HTTP 410 Gone · App deleted; App was deleted while wake was in flight
 
 See [Alerts](alerts.md), [Crons](crons.md).
 
+### `app_has_borrowed_bucket_bindings`
+
+HTTP 409 Conflict · Conflict
+
+Undo the split instead: gregale app scale &lt;app> --split-status, then gregale app scale &lt;app> --undo-split ID.
+
 ### `app_has_buckets`
 
 HTTP 409 Conflict · Conflict
@@ -1344,6 +1350,12 @@ See [Application companions](companions.md), [Networking](networking.md).
 
 HTTP 500 Internal Server Error or 503 Service Unavailable · Many operations send this code; the response's `title` and `detail` name the failure.
 
+### `invalid_activity_since`
+
+HTTP 422 Unprocessable Entity · Invalid activity period
+
+See [Managed PostgreSQL](postgres.md#why-is-my-database-awake).
+
 ### `invalid_autoscale_target_cpu_pct`
 
 HTTP 422 Unprocessable Entity · Invalid autoscale target CPU%
@@ -1437,6 +1449,10 @@ HTTP 400 Bad Request · Doc must be a JSON object with a top-level 'openapi' or 
 ### `invalid_pkce`
 
 HTTP 400 Bad Request · Invalid OAuth Request
+
+### `invalid_postgres_restore_receipt`
+
+HTTP 400 Bad Request · Invalid PostgreSQL restore manifest
 
 ### `invalid_public_auth_ip_allowlist`
 
@@ -2148,7 +2164,7 @@ See [Errors](errors.md).
 
 ### `outbound_provider_cooldown`
 
-Outbound provider requested a cooldown
+Outbound provider requested a cooldown; The provider is cooling down after failing calls
 
 ### `outbound_provider_cooldown_unavailable`
 
@@ -2163,6 +2179,10 @@ See [Outbound integrations](outbound-integrations.md).
 ### `outbound_qualification_not_authorized`
 
 The qualification probe cannot use this outbound integration
+
+### `outbound_rate_limited`
+
+Outbound integration rate limit reached
 
 ### `outbound_relay_not_supported`
 
@@ -2463,6 +2483,12 @@ See [Registry credentials](registry-credentials.md).
 HTTP 403 Forbidden · Plan doesn't allow private-registry credentials for jobs
 
 See [Registry credentials](registry-credentials.md).
+
+### `plan_limit_app_tasks`
+
+HTTP 429 Too Many Requests · App task limit reached
+
+See [Apps](apps.md#task-history).
 
 ### `plan_limit_apps`
 
@@ -2775,6 +2801,28 @@ See [Plans and pricing](plans.md).
 HTTP 503 Service Unavailable · Releases are paused
 
 See [Release approvals, freezes and schedules](release-controls.md).
+
+### `postgres_bypass_rls_conflict`
+
+HTTP 409 Conflict · BYPASSRLS conflicts with Data API or Auth
+
+Use a separate database for the tool that needs BYPASSRLS, or declare the role without --bypass-rls.
+
+See [Custom Postgres roles](postgres-custom-roles.md).
+
+### `postgres_bypass_rls_unavailable`
+
+HTTP 422 Unprocessable Entity · BYPASSRLS unavailable
+
+See [Custom Postgres roles](postgres-custom-roles.md).
+
+### `postgres_custom_role_default_taken`
+
+HTTP 409 Conflict · Default role already set
+
+Remove it there first (gregale postgres roles create &lt;database> &lt;role> --default-for '' on that role).
+
+See [Custom Postgres roles](postgres-custom-roles.md).
 
 ### `postgres_custom_roles_limit`
 
@@ -3182,6 +3230,10 @@ HTTP 403 Forbidden · Sign in again
 
 See [Authentication](auth.md), [Account and organization management](account.md).
 
+### `redis_cache_bound`
+
+HTTP 409 Conflict · Cache is still bound
+
 ### `registry_credential_not_found`
 
 HTTP 400 Bad Request · Registry credential not set
@@ -3452,6 +3504,22 @@ See [Progressive rollouts](rollouts.md#why-a-rollout-advanced-waits-or-stopped).
 
 HTTP 409 Conflict · Route health gate blocked
 
+### `route_split_changed`
+
+HTTP 409 Conflict · Binding changed; Suggestion changed
+
+### `route_split_in_flight`
+
+HTTP 409 Conflict · Split in flight; Undo in progress
+
+### `route_split_rule_conflict`
+
+HTTP 409 Conflict · Rule conflicts with a route split
+
+### `route_split_unsupported`
+
+HTTP 409 Conflict or 422 Unprocessable Entity · Split not supported for this app; Binding not ready; No live build
+
 ### `run_artifact_destination_limit`
 
 HTTP 413 Request Entity Too Large · Artifact exceeds destination limit
@@ -3658,9 +3726,9 @@ See [Deploy from a GitHub source ref](source-ref.md#failure-modes).
 
 ### `source_too_large`
 
-HTTP 413 Request Entity Too Large · Source too large; Entry too large
+HTTP 413 Request Entity Too Large · Source too large; Entry too large; Image too large
 
-See [Builds and framework detection](build.md#limits).
+See [Builds and framework detection](build.md#limits), [Container compatibility](container-compatibility.md).
 
 ### `stage_dependency_restore_failed`
 
@@ -3694,7 +3762,7 @@ Grype found CVEs at or above the plan's severity threshold
 
 ### `stage_snapshot_prepare_timeout`
 
-HTTP 422 Unprocessable Entity · Snapshot prime exceeded the scheduler deadline
+HTTP 422 Unprocessable Entity · Snapshot capture exceeded its budget; Snapshot prime exceeded the scheduler deadline
 
 The snapshot_prepare stage exceeded the scheduler's wall-clock ceiling
 
@@ -4149,6 +4217,10 @@ See [CLI guide](cli-setup.md).
 ### `workload_bucket_not_found`
 
 HTTP 404 Not Found · Granted bucket not found
+
+### `workload_bucket_required`
+
+HTTP 400 Bad Request · Bucket required
 
 ### `workload_credential_limit`
 
