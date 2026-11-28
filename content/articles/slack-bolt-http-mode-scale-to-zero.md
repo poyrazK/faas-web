@@ -29,6 +29,10 @@ A retried event carries `x-slack-retry-num` (1, 2 or 3) and
 
 ## The app
 
+The complete project, with tests that sign requests with a test signing
+secret, is on GitHub as
+[gregale-dev/slack-bolt-http](https://github.com/gregale-dev/slack-bolt-http).
+
 `package.json`:
 
 ```json

@@ -23,6 +23,10 @@ scale to zero.
 
 ## The endpoint
 
+The complete project, with tests that sign interactions with a key pair of
+their own and a script that registers the commands, is on GitHub as
+[gregale-dev/discord-bot-interactions](https://github.com/gregale-dev/discord-bot-interactions).
+
 `package.json`:
 
 ```json

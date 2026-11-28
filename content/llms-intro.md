@@ -48,9 +48,15 @@ Machine-readable entry points:
   [mcp-server-node](https://github.com/gregale-dev/mcp-server-node) (remote
   MCP server, live at `https://mcp-server-node.gregale.app/mcp`),
   [mcp-server-typescript-oauth](https://github.com/gregale-dev/mcp-server-typescript-oauth)
-  (TypeScript MCP server that checks OAuth 2.1 tokens) and
+  (TypeScript MCP server that checks OAuth 2.1 tokens),
   [rust-axum-postgres](https://github.com/gregale-dev/rust-axum-postgres)
-  (Rust API with Axum and sqlx on PostgreSQL).
+  (Rust API with Axum and sqlx on PostgreSQL), plus three bots that scale to
+  zero: [discord-bot-interactions](https://github.com/gregale-dev/discord-bot-interactions)
+  (Discord slash commands on an Interactions Endpoint URL),
+  [telegram-bot-webhook](https://github.com/gregale-dev/telegram-bot-webhook)
+  (Telegram bot on webhooks, FastAPI) and
+  [slack-bolt-http](https://github.com/gregale-dev/slack-bolt-http) (Slack
+  Bolt app in HTTP mode).
 
 Key facts:
 

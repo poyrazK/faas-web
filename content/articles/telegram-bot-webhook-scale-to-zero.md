@@ -25,7 +25,11 @@ a reasonable number of attempts.
 
 ## The bot
 
-A FastAPI app with two files. `requirements.txt`:
+A FastAPI app with two files. The complete project, with tests that send
+the requests Telegram would, is on GitHub as
+[gregale-dev/telegram-bot-webhook](https://github.com/gregale-dev/telegram-bot-webhook).
+
+`requirements.txt`:
 
 ```text
 fastapi==0.165.0
