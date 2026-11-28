@@ -25,6 +25,11 @@ gregale deploy --repo octo/shop --ref main --project
 Gregale reads `compose.yaml` or `docker-compose.yml`, plus
 `compose.override.yaml` as `docker compose up` applies it.
 
+To try it on a complete project first, deploy
+[gregale-dev/node-api-worker](https://github.com/gregale-dev/node-api-worker):
+an Express API, a private worker, a migration step and PostgreSQL in one
+`compose.yaml`.
+
 ## How your Compose file maps
 
 | In `compose.yaml`                                                    | On Gregale                                                                                                                                |

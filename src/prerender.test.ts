@@ -771,7 +771,11 @@ describeBuilt('prerendered pages', () => {
 
   it('publishes the how-to guides with schema, feeds and links from their docs pages', () => {
     const cases = [
-      { slug: 'deploy-docker-compose-app-to-production', doc: 'container-compatibility' },
+      {
+        slug: 'deploy-docker-compose-app-to-production',
+        doc: 'container-compatibility',
+        modified: '2026-11-28',
+      },
       { slug: 'show-waking-up-page-during-cold-start', doc: 'scale-to-zero' },
       { slug: 'fix-cors-errors-without-changing-backend-code', doc: 'edge-rules' },
       { slug: 'add-security-headers-hsts-csp-without-code', doc: 'security' },
@@ -783,7 +787,11 @@ describeBuilt('prerendered pages', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
 
     expect(articlesIndex).toContain('How-to guides');
-    for (const { slug, doc } of cases) {
+    for (const { slug, doc, modified = '2026-11-27' } of cases as {
+      slug: string;
+      doc: string;
+      modified?: string;
+    }[]) {
       const route = `/articles/${slug}`;
       const html = readFileSync(`dist${route}/index.html`, 'utf8');
       const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
@@ -792,7 +800,7 @@ describeBuilt('prerendered pages', () => {
 
       expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
       expect(html).toContain(`type="text/markdown" href="${route}.md"`);
-      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-27' });
+      expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: modified });
       expect(faq.mainEntity.length).toBeGreaterThan(0);
       expect(JSON.stringify(faq)).not.toContain('`');
       expect(existsSync(`dist${route}.md`)).toBe(true);

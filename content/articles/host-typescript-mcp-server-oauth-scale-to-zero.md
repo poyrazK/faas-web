@@ -31,6 +31,10 @@ provider supports.
 
 ## The server
 
+The complete project, with tests that run it against a stand-in
+authorization server, is on GitHub as
+[gregale-dev/mcp-server-typescript-oauth](https://github.com/gregale-dev/mcp-server-typescript-oauth).
+
 `package.json`:
 
 ```json

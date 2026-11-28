@@ -44,9 +44,11 @@ Machine-readable entry points:
   [fastapi-postgres-jobs](https://github.com/gregale-dev/fastapi-postgres-jobs)
   (FastAPI with a Postgres job queue),
   [node-api-worker](https://github.com/gregale-dev/node-api-worker) (Express
-  API and private worker, as a Compose project) and
+  API and private worker, as a Compose project),
   [mcp-server-node](https://github.com/gregale-dev/mcp-server-node) (remote
-  MCP server, live at `https://mcp-server-node.gregale.app/mcp`).
+  MCP server, live at `https://mcp-server-node.gregale.app/mcp`) and
+  [mcp-server-typescript-oauth](https://github.com/gregale-dev/mcp-server-typescript-oauth)
+  (TypeScript MCP server that checks OAuth 2.1 tokens).
 
 Key facts:
 
