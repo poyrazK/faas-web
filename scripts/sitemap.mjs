@@ -10,18 +10,54 @@ function git(args) {
   }).trim();
 }
 
+/**
+ * Where a production build fetches the full history from. Vercel's checkout
+ * has no usable `origin` for this: every production build logged the fallback
+ * below, so guides edited more than ten commits ago lost their dates. The
+ * public repository URL from Vercel's system environment comes first.
+ */
+export function historySources(env = process.env) {
+  const sources = [];
+  if (
+    env.VERCEL_GIT_PROVIDER === 'github' &&
+    env.VERCEL_GIT_REPO_OWNER &&
+    env.VERCEL_GIT_REPO_SLUG
+  ) {
+    sources.push(`https://github.com/${env.VERCEL_GIT_REPO_OWNER}/${env.VERCEL_GIT_REPO_SLUG}.git`);
+  }
+  sources.push('origin');
+  return sources;
+}
+
+function lastLine(error) {
+  const text = String(error?.stderr || error?.message || error).trim();
+  return text.split('\n').pop();
+}
+
+/** Deepens a shallow checkout to the whole history of main, or says why not. */
+function fetchFullHistory() {
+  const failures = [];
+  for (const source of historySources()) {
+    try {
+      git(['fetch', '--unshallow', '--no-tags', '--filter=blob:none', source, 'main']);
+      return;
+    } catch (error) {
+      failures.push(`${source}: ${lastLine(error)}`);
+    }
+  }
+  console.warn(
+    `  sitemap: full Git history unavailable; using locally verifiable dates (${failures.join('; ')})`
+  );
+}
+
 export function docsLastModified() {
   const dates = new Map();
   try {
     const shallowFile = git(['rev-parse', '--git-path', 'shallow']);
     if (process.env.VERCEL_ENV === 'production' && existsSync(shallowFile)) {
       // Vercel clones ten levels. Fetch the remaining history for stable dates
-      // across production deploys, with a fallback if the remote is unavailable.
-      try {
-        git(['fetch', '--unshallow', '--no-tags', '--filter=blob:none', 'origin', 'main']);
-      } catch {
-        console.warn('  sitemap: full Git history unavailable; using locally verifiable dates');
-      }
+      // across production deploys, with a fallback if no source is reachable.
+      fetchFullHistory();
     }
     const shallowCommits = new Set(
       existsSync(shallowFile) ? readFileSync(shallowFile, 'utf8').trim().split('\n') : []
