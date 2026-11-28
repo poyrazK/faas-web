@@ -863,6 +863,30 @@ describeBuilt('prerendered pages', () => {
     expect(readFileSync('dist/docs/plans/index.html', 'utf8')).toContain(`href="${route}"`);
   });
 
+  it('publishes the managed Postgres pricing comparison and links it from each vendor page and the Postgres doc', () => {
+    const route = '/articles/managed-postgres-pricing-compared';
+    const html = readFileSync(`dist${route}/index.html`, 'utf8');
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+    expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-28' });
+    expect(faq.mainEntity.length).toBe(3);
+    expect(existsSync(`dist${route}.md`)).toBe(true);
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>`
+    );
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    for (const vendor of ['render', 'railway', 'fly', 'heroku', 'digitalocean']) {
+      expect(readFileSync(`dist/vs/${vendor}/index.html`, 'utf8'), vendor).toContain(
+        `href="${route}"`
+      );
+    }
+    expect(readFileSync('dist/docs/postgres/index.html', 'utf8')).toContain(`href="${route}"`);
+  });
+
   it('publishes /solutions hub and each solution page with schema, Markdown and nav links', () => {
     const hubHtml = readFileSync('dist/solutions/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');

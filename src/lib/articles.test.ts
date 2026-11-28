@@ -212,6 +212,43 @@ describe('articles', () => {
     );
   });
 
+  it('states Gregale managed Postgres in the Postgres pricing comparison as the plans doc does', () => {
+    // If the Hobby database allowance or Postgres overage rates change, this page goes stale.
+    const [, hobby, pro, scale] = PLAN_CATALOG.plans;
+    const text = body('managed-postgres-pricing-compared').replace(/\s+/g, ' ');
+    const plans = readFileSync('content/docs/plans.md', 'utf8');
+    const postgres = readFileSync('content/docs/postgres.md', 'utf8');
+    const row = (name: string) =>
+      new RegExp(
+        `\\| \\*\\*${name}\\*\\* \\| (\\d+) \\| ([\\d.]+) GiB \\| (\\d+) CU-hours \\| ([\\d.]+) GiB \\|`
+      ).exec(plans)!;
+    const [, hDbs, hPool, hCu, hHistory] = row(hobby.name);
+    const [, pDbs, pPool, pCu] = row(pro.name);
+    const [, sDbs, sPool, sCu] = row(scale.name);
+    expect(hDbs).toBe('1');
+    expect(text).toContain(
+      `Gregale Hobby: ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps, with one managed database, ${hPool} GiB of pooled storage, ${hCu} CU-hours of compute a month, ${hHistory} GiB of restore history and a 7-day restore window.`
+    );
+    expect(text).toContain(
+      `Pro has ${pDbs} databases, ${pPool} GiB and ${pCu} CU-hours; Scale has ${sDbs}, ${sPool} GiB and ${sCu}.`
+    );
+    // Workload A: 90 awake hours at the development class's smallest size.
+    expect(text).toContain(`is ${90 * 0.25} of Hobby's ${hCu} CU-hours`);
+    expect(text).toContain(`about ${Number(hCu) / 0.25} hours a month at its smallest size`);
+    expect(plans).toContain(
+      'compute past the allowance costs $0.2331 per CU-hour, storage past the pool $0.50 per GiB-month'
+    );
+    expect(text).toContain(
+      'compute past the allowance costs $0.2331 per CU-hour and storage past the pool $0.50 per GiB-month'
+    );
+    expect(postgres).toContain('by default after 2 minutes');
+    expect(postgres).toContain('from 1 minute to 1 hour');
+    expect(postgres).toContain('Always-on compute is not part of these plans.');
+    expect(readFileSync('content/docs/agents.md', 'utf8').replace(/\s+/g, ' ')).toContain(
+      '0.25 compute units for development'
+    );
+  });
+
   it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
     const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
     const previews = body('preview-environments').replace(/\s+/g, ' ');

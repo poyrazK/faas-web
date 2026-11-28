@@ -103,6 +103,7 @@ const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
 const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
 const S2Z_PRICING_SLUG = 'scale-to-zero-pricing-compared';
 const FREE_TIERS_SLUG = 'free-backend-hosting-tiers-compared';
+const PG_PRICING_SLUG = 'managed-postgres-pricing-compared';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -612,6 +613,33 @@ export const ARTICLES: readonly Article[] = [
         question: 'Which free tier keeps a bot or worker running all the time?',
         answer:
           "Oracle Cloud's Always Free VMs and Fly.io's Free plan, where a 256 MB Machine running all month is $2.19 of the $5. Render Free, Koyeb's Free Instance and Railway Free put idle apps to sleep. A Discord, Telegram or Slack bot can instead receive events over HTTPS, which works on tiers that sleep between requests.",
+      },
+    ],
+  },
+  {
+    slug: PG_PRICING_SLUG,
+    comparison: ['render', 'railway', 'fly', 'heroku', 'digitalocean'],
+    title:
+      'Managed Postgres pricing in 2026: Neon vs Supabase vs Render vs Railway vs Fly.io vs Heroku vs DigitalOcean',
+    summary:
+      'What a small managed Postgres database costs on Neon, Supabase, Render, Railway, Fly.io, Heroku, DigitalOcean and Gregale, idle or always on, worked out.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'What is the cheapest managed Postgres?',
+        answer:
+          'For a database that can sleep, Neon Free: $0 with 100 CU-hours of compute and 1 GB of storage per project, scaling to zero after 5 idle minutes. For a database that must stay on, Fly.io Managed Postgres Developer is $4 a month with 256 MB and storage included up to 5 GB, Heroku Essential-0 is $5 a month with 1 GB of storage, and Render Basic-256mb is $6 a month plus $0.30 per GB of storage.',
+      },
+      {
+        question: 'Which managed Postgres scales to zero?',
+        answer:
+          'Neon scales compute to zero after 5 idle minutes on every plan, Railway puts a database to sleep after 5 to 10 minutes without outbound traffic on its Free plan, and Gregale suspends a database after 2 idle minutes by default. Supabase, Render, Fly.io, Heroku and DigitalOcean bill a running instance all month.',
+      },
+      {
+        question: 'Which low-cost Postgres plans include point-in-time recovery?',
+        answer:
+          'DigitalOcean restores to any point in the previous 7 days from $15.15 a month. Render keeps 3 days on a Hobby workspace and 7 on paid workspace plans, Neon Launch up to 7 days with history billed at $0.20 per GB-month, Gregale Hobby 7 days with 1 GiB of history included, and Railway about 4 weeks once you turn it on. Heroku Essential has no rollback, and Supabase sells it as an add-on from $100 a month.',
       },
     ],
   },
@@ -2789,9 +2817,11 @@ const S2Z_PRICING_LINK = `[Scale-to-zero pricing in 2026](/articles/${S2Z_PRICIN
 
 const FREE_TIERS_LINK = `[Free backend hosting in 2026](/articles/${FREE_TIERS_SLUG}) compares the free tiers of Cloud Run, Lambda, Cloudflare Workers, Oracle Cloud, Render, Railway, Fly.io and Koyeb with Gregale Free.`;
 
+const PG_PRICING_LINK = `[Managed Postgres pricing in 2026](/articles/${PG_PRICING_SLUG}) compares what a small database costs on Neon, Supabase, Render, Railway, Fly.io, Heroku and DigitalOcean, idle or always on.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
   plans: `${S2Z_PRICING_LINK} ${FREE_TIERS_LINK}`,
-  postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
+  postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK} ${PG_PRICING_LINK}`,
   'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
   'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
@@ -2996,6 +3026,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'render-vs-railway-vs-flyio',
       S2Z_PRICING_SLUG,
       FREE_TIERS_SLUG,
+      PG_PRICING_SLUG,
       'heroku-alternatives',
       'render-alternatives',
       'railway-alternatives',
