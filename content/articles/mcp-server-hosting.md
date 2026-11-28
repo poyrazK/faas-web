@@ -37,8 +37,13 @@ Each starter comes with sample tools, a resource and a prompt, so it works
 before you change anything. The Node starter is on GitHub as
 [gregale-dev/mcp-server-node](https://github.com/gregale-dev/mcp-server-node)
 and runs as-is at `https://mcp-server-node.gregale.app/mcp`: add that URL to
-a client to try it first. `doctor` checks discovery, origin rejection,
-protocol compatibility and streaming, locally or against the live URL.
+a client to try it first. The Python and Go starters are
+[gregale-dev/mcp-server-python](https://github.com/gregale-dev/mcp-server-python) and
+[gregale-dev/mcp-server-go](https://github.com/gregale-dev/mcp-server-go), and
+[gregale-dev/mcp-server-typescript-oauth](https://github.com/gregale-dev/mcp-server-typescript-oauth)
+is a TypeScript server that checks OAuth 2.1 tokens itself. `doctor` checks
+discovery, origin rejection, protocol compatibility and streaming, locally or
+against the live URL.
 
 The deploy builds your source and starts the new version with no traffic.
 Gregale then initializes it, pings it and lists its catalog, and promotes it

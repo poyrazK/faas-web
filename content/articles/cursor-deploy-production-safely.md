@@ -25,6 +25,9 @@ MCP server (in preview) cleanly with one command:
 gregale mcp connect --client cursor
 ```
 
+The [Gregale plugin for Cursor](https://github.com/gregale-dev/gregale-cursor-plugin) bundles the same
+MCP server with a deploy skill and a diagnose skill.
+
 ## Guardrails enforced in Gregale's API
 
 | Risk                                   | What Gregale enforces                                                                                                                       |
