@@ -49,6 +49,10 @@ gregale edge rule review --app my-api                    # log-mode rules that l
 When the logged requests look like abuse and not your own users, switch the
 rule to `enforce`.
 
+[gregale-dev/edge-waf-rate-limit-starter](https://github.com/gregale-dev/edge-waf-rate-limit-starter)
+is a sample API with rate-limit, WAF, bot-challenge and cache rules, and trace
+scenarios to test them before you enforce them.
+
 ## Limit by something other than IP
 
 | `--throttle-key-by` | One bucket per                                   |

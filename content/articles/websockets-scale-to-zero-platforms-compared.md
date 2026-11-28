@@ -114,7 +114,8 @@ Managed realtime is not on Gregale Free. An app can also serve WebSockets
 itself with `gregale app <slug> --websocket-enabled`, and then it stays running,
 and billed, while any connection is open. See
 [Hold WebSocket and SSE connections while your backend scales to zero](/articles/websockets-sse-scale-to-zero)
-for the setup.
+for the setup. A runnable chat and notifications example is
+[gregale-dev/scale-to-zero-websockets](https://github.com/gregale-dev/scale-to-zero-websockets).
 
 ## Sources
 

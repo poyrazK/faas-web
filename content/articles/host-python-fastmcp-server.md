@@ -17,6 +17,10 @@ cd my-python-mcp
 gregale deploy --name my-python-mcp
 ```
 
+The same starter is on GitHub as
+[gregale-dev/mcp-server-python](https://github.com/gregale-dev/mcp-server-python): the standard
+library plus PyJWT, with external OAuth and per-tool scopes.
+
 Configure `auth.tool_scopes` in `gregale-mcp.json` to authorize every exposed FastMCP/Python tool explicitly:
 
 ```json

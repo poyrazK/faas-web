@@ -67,4 +67,5 @@ platform, so they apply to every request the agent's key makes.
 
 - [Deploy with Claude Code](/docs/claude-code) (also: Codex, Cursor, Gemini CLI)
 - [Use Gregale from coding agents](/docs/agents)
+- [Gregale plugin for Claude Code](https://github.com/gregale-dev/gregale-claude-code-plugin): the MCP server plus deploy and diagnose skills
 - [Canary deploys with automatic rollback](/articles/canary-deploys)

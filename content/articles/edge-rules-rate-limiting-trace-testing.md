@@ -41,6 +41,9 @@ gregale edge rule trace --config trace.json
 
 Trace scenarios (`version: 1`, up to `2 MiB` config and `1 MiB` `body` or `body_base64`) support repeated headers, simulated `client_ip` / `country`, and `--project` / `--environment` scopes without sending customer payloads to external logs or mutating production state. Whenever an outcome depends on live runtime state—such as a token bucket counter, cached response, or live JWKS fetch—the trace explicitly stops as `incomplete` instead of guessing.
 
+[gregale-dev/edge-waf-rate-limit-starter](https://github.com/gregale-dev/edge-waf-rate-limit-starter)
+includes trace scenarios for its WAF, bot-challenge and rate-limit rules.
+
 ## Tradeoffs and boundaries
 
 Edge rules apply to public hosts and automatically inherit `@app` security rules onto PR previews, whereas internal service-to-service traffic (`*.internal`), scheduled crons, queues, and direct invocations skip public edge rules (so internal auth remains your app's responsibility). Features such as `jwt`, `ip`, `cache`, and `challenge` require Hobby or higher, `waf` requires Pro+, and `retry`/`circuit_breaker`/`async` rules are gated per account.

@@ -26,6 +26,10 @@ gregale edge rule trace my-api --file ./edge-trace.json
 gregale billing spend-cap
 ```
 
+To try every layer on a sample API, deploy
+[gregale-dev/edge-waf-rate-limit-starter](https://github.com/gregale-dev/edge-waf-rate-limit-starter),
+which comes with the rules and replayable trace scenarios.
+
 ## Sources
 
 - [Security & WAF](/docs/security)
