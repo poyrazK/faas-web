@@ -9,7 +9,7 @@ import { FloorGlow } from './floor-glow';
 import { FooterStatusLink } from './footer-status';
 
 // The directory uses landing anchors, public routes, and published docs.
-interface FooterLink {
+export interface FooterLink {
   label: string;
   href: string;
   /** Leaves the site. Gets an icon and the usual rel hardening. */
@@ -38,6 +38,31 @@ interface FooterLink {
   doc?: true | string;
 }
 
+/** Every /vs page. The docs footer lists them too. */
+export const COMPARE_LINKS: FooterLink[] = [
+  { label: 'Gregale vs Heroku', href: '/vs/heroku', compare: 'heroku' },
+  { label: 'Gregale vs Render', href: '/vs/render', compare: 'render' },
+  { label: 'Gregale vs Railway', href: '/vs/railway', compare: 'railway' },
+  { label: 'Gregale vs Fly.io', href: '/vs/fly', compare: 'fly' },
+  { label: 'Gregale vs Cloud Run', href: '/vs/cloud-run', compare: 'cloud-run' },
+  { label: 'Gregale vs Vercel', href: '/vs/vercel', compare: 'vercel' },
+  { label: 'Gregale vs Koyeb', href: '/vs/koyeb', compare: 'koyeb' },
+  { label: 'Gregale vs Northflank', href: '/vs/northflank', compare: 'northflank' },
+  { label: 'Gregale vs Coolify', href: '/vs/coolify', compare: 'coolify' },
+  {
+    label: 'Gregale vs Cloudflare Workers',
+    href: '/vs/cloudflare-workers',
+    compare: 'cloudflare-workers',
+  },
+  { label: 'Gregale vs AWS App Runner', href: '/vs/aws', compare: 'aws' },
+  {
+    label: 'Gregale vs DigitalOcean',
+    href: '/vs/digitalocean',
+    compare: 'digitalocean',
+  },
+  { label: 'Gregale vs Replit', href: '/vs/replit', compare: 'replit' },
+];
+
 const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Product',
@@ -52,32 +77,7 @@ const LINK_GROUPS: { title: string; links: FooterLink[] }[] = [
       { label: 'Talk to a founder', href: '/contact', publicRoute: '/contact' },
     ],
   },
-  {
-    title: 'Compare',
-    links: [
-      { label: 'Gregale vs Heroku', href: '/vs/heroku', compare: 'heroku' },
-      { label: 'Gregale vs Render', href: '/vs/render', compare: 'render' },
-      { label: 'Gregale vs Railway', href: '/vs/railway', compare: 'railway' },
-      { label: 'Gregale vs Fly.io', href: '/vs/fly', compare: 'fly' },
-      { label: 'Gregale vs Cloud Run', href: '/vs/cloud-run', compare: 'cloud-run' },
-      { label: 'Gregale vs Vercel', href: '/vs/vercel', compare: 'vercel' },
-      { label: 'Gregale vs Koyeb', href: '/vs/koyeb', compare: 'koyeb' },
-      { label: 'Gregale vs Northflank', href: '/vs/northflank', compare: 'northflank' },
-      { label: 'Gregale vs Coolify', href: '/vs/coolify', compare: 'coolify' },
-      {
-        label: 'Gregale vs Cloudflare Workers',
-        href: '/vs/cloudflare-workers',
-        compare: 'cloudflare-workers',
-      },
-      { label: 'Gregale vs AWS App Runner', href: '/vs/aws', compare: 'aws' },
-      {
-        label: 'Gregale vs DigitalOcean',
-        href: '/vs/digitalocean',
-        compare: 'digitalocean',
-      },
-      { label: 'Gregale vs Replit', href: '/vs/replit', compare: 'replit' },
-    ],
-  },
+  { title: 'Compare', links: COMPARE_LINKS },
   {
     title: 'Runtimes',
     links: [
@@ -188,7 +188,7 @@ const LINK_CLASS =
  * document, `security.txt`) are plain `<a>`, because the router does not own
  * those paths and would 404 them.
  */
-function FooterAnchor({ link }: { link: FooterLink }) {
+export function FooterAnchor({ link }: { link: FooterLink }) {
   const icon = link.external && (
     <ArrowUpRight className="h-3 w-3 -translate-x-0.5 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
   );

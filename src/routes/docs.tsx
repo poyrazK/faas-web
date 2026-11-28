@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
+import { DocsFooter } from '@/components/docs/docs-footer';
 import { DocsSearch } from '@/components/docs/docs-search';
 import { DocsMobileNav, DocsSidebar } from '@/components/docs/doc-nav';
 import { pageHead } from '@/lib/seo';
@@ -44,6 +45,7 @@ function DocsLayout() {
             </main>
           </div>
         </div>
+        <DocsFooter />
       </div>
     </MotionConfig>
   );

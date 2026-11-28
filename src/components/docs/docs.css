@@ -459,8 +459,34 @@
 .docs-mobile-nav {
   display: none;
 }
+.docs-footer {
+  border-top: 1px solid var(--border);
+}
+.docs-footer-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  gap: 40px;
+  max-width: 1440px;
+  margin: auto;
+  padding: 48px 32px 64px;
+}
+.docs-footer h2 {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--foreground);
+}
+.docs-footer ul {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.docs-footer nav[aria-label='Compare'] ul {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  column-gap: 24px;
+}
 .docs-header :is(a, button):focus-visible,
-.docs-shell :is(a, button, summary):focus-visible {
+.docs-shell :is(a, button, summary):focus-visible,
+.docs-footer a:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 4px;
   border-radius: 3px;
@@ -477,6 +503,12 @@
   }
 }
 @media (max-width: 1023px) {
+  .docs-footer-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .docs-footer nav[aria-label='Compare'] {
+    grid-column: 1 / -1;
+  }
   .docs-sidebar {
     display: none;
   }
@@ -508,6 +540,11 @@
   }
 }
 @media (max-width: 699px) {
+  .docs-footer-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    padding: 40px 18px 56px;
+  }
   .docs-header-inner {
     flex-wrap: wrap;
     gap: 14px;
