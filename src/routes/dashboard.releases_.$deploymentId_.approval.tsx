@@ -61,7 +61,12 @@ function ApprovalBody({
   return (
     <>
       <Panel title={status.data ? `${status.data.app} ${release}` : release}>
-        <ReleaseApproval deploymentId={deploymentId} release={release} intent={intent} />
+        <ReleaseApproval
+          deploymentId={deploymentId}
+          release={release}
+          intent={intent}
+          includeSandboxChecks
+        />
       </Panel>
       {/* What the release changes, the same comparison the notification summarises. */}
       {deployment.data && (

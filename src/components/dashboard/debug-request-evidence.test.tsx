@@ -83,6 +83,12 @@ beforeEach(() => {
 });
 
 describe('DebugRequestEvidence', () => {
+  it('offers a sandbox scenario from an individual request with a serving release', () => {
+    render(<DebugRequestEvidence slug="api" reqId="req1" onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Create sandbox scenario' })).toBeInTheDocument();
+    expect(screen.getByText('Replay offered for req1')).toBeInTheDocument();
+  });
+
   it('places spans by their recorded start and end times when the API kept them', () => {
     const result = useDebugRequestEvidence();
     result.data.spans = [

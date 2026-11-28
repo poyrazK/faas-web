@@ -16230,6 +16230,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/apps/{slug}/debug/requests/{req_id}/sandbox-scenario-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Public request ID or internal telemetry row UUID. */
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Draft an API sandbox scenario from a retained request.
+         * @description Read-only endpoint for the serving release, method, and any matching declared route. Supply synthetic inputs and the desired expected status before saving.
+         */
+        get: operations["getDebugAPISandboxScenarioDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{slug}/debug/regressions": {
         parameters: {
             query?: never;
@@ -21393,6 +21418,101 @@ export interface paths {
          */
         get: operations["getDeploymentProfileCanaryGate"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/approvals/sandbox-suite-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held candidate deployment UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** List recent regression suite runs for a release. */
+        get: operations["listAPISandboxSuiteRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/approvals/sandbox-suite-runs/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held candidate deployment UUID. */
+                id: string;
+                /** @description Client-generated run UUID. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        /** Read one suite run and its scenario results. */
+        get: operations["getAPISandboxSuiteRun"];
+        /**
+         * Queue the app's regression suite for a held build and live baseline.
+         * @description Pins the deployment artifacts and current library scenario revisions. Each scenario runs in a fresh pair of sandboxes. Reuse the run UUID and the same inputs to retry.
+         */
+        put: operations["createAPISandboxSuiteRun"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/approvals/sandbox-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List sandbox checks for a release approval.
+         * @description Lists prior checks and the current availability, serving baseline, and saved scenario. Inspect each check verdict for stale evidence.
+         */
+        get: operations["listSandboxApprovalChecks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deployments/{id}/approvals/sandbox-checks/{check}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                check: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a sandbox approval check.
+         * @description Use the top-level verdict. It becomes stale if the candidate artifact, production baseline, or baseline scenario changes. The nested comparison preserves historical run receipts.
+         */
+        get: operations["getSandboxApprovalCheck"];
+        /**
+         * Compare the held build with the current serving release in two sandboxes.
+         * @description Uses the live baseline and scenario revision returned by the list endpoint. The production release must still be waiting before its release command. Reuse the check UUID and original inputs to retry.
+         */
+        put: operations["createSandboxApprovalCheck"];
         post?: never;
         delete?: never;
         options?: never;
@@ -29394,6 +29514,537 @@ export interface paths {
          *     Response content and path queries are ephemeral. Responses are not cached.
          */
         post: operations["checkDeploymentResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List recent sandbox release comparisons and previous eligible baselines.
+         * @description The candidate comes from the deployment path. Baselines are retained releases of the same application, most recent first.
+         */
+        get: operations["listAPISandboxComparisons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-comparisons/{comparison}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                comparison: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the current comparison verdict and its two run receipts.
+         * @description Poll until verdict is passed, regression, or inconclusive. Both receipts use the same saved scenario revision.
+         */
+        get: operations["getAPISandboxComparison"];
+        /**
+         * Run the same saved sandbox scenario on two retained releases.
+         * @description The candidate comes from the deployment path. Choose a different retained baseline from the same application and use a current app library or candidate scenario revision. Reuse the comparison UUID with the same inputs to retry.
+         */
+        put: operations["createAPISandboxComparison"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        /** List the 25 most recent scenario runs for a release. */
+        get: operations["listAPISandboxRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-runs/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        /** Read progress or the report for a scenario run. */
+        get: operations["getAPISandboxRun"];
+        /**
+         * Start a scenario run in a fresh copy of the selected release.
+         * @description Repeat with the same run UUID, scenario revision, and mode to recover the existing run. A partner run waits for the partner's ordered HTTP requests, then runs the final GET with its JSON assertions.
+         */
+        put: operations["createAPISandboxRun"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-runs/{run}/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-time invitation for a partner scenario run.
+         * @description An unused link can be replaced. The recipient can redeem it once the pinned sandbox is ready.
+         */
+        post: operations["issueAPISandboxRunInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-runs/{run}/report-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a read-only token for a finished scenario run report.
+         * @description A new link replaces the previous link for this run. The token expires after 24 hours.
+         */
+        post: operations["shareAPISandboxRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-runs/{run}/receiver-invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the receiver setup status.
+         * @description Read readiness for this release without returning any credentials.
+         */
+        get: operations["getAPISandboxReceiverInvite"];
+        put?: never;
+        /**
+         * Invite a partner to verify a webhook receiver.
+         * @description Reserves a one-time invite for a new run ID and an outbound scenario revision. No sandbox is provisioned until the owner starts the run.
+         */
+        post: operations["createAPISandboxReceiverInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandbox-runs/{run}/receiver-invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the endpoint ownership proof.
+         * @description Use the one-time receiver invite as the bearer token. Configure the exact HTTPS callback URL to return the proof as the GET response body.
+         */
+        get: operations["getAPISandboxReceiverProof"];
+        put?: never;
+        /**
+         * Verify the partner receiver and redeem the invitation.
+         * @description Use the one-time invite as the bearer token. The platform makes a redirect-free HTTPS GET to the submitted URL. Successful verification consumes the invite and returns the run-scoped signing secret and outcome token once.
+         */
+        post: operations["verifyAPISandboxReceiver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandbox-runs/{run}/receiver-ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the partner is ready to receive the callback.
+         * @description Use the outcome token as the bearer token after installing the run signing secret in the test receiver.
+         */
+        post: operations["readyAPISandboxReceiver"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandbox-runs/{run}/receiver-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit the processor outcome for the retried delivery.
+         * @description Use the outcome token as the bearer token. Submit the count of committed business effects for the stable delivery ID after the second attempt. A 409 can indicate the retry has yet to be recorded or the outcome window has closed. A repeat of the same accepted outcome is idempotent while the token is active.
+         */
+        post: operations["recordAPISandboxReceiverOutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandbox-runs/{run}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        /** Read a finished run using its report token. */
+        get: operations["readSharedAPISandboxRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/api-sandbox-suite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** Read the app's saved API regression suite. */
+        get: operations["getAPISandboxSuite"];
+        /**
+         * Save the app's API regression suite.
+         * @description Choose up to five scenarios from this app's library. Their order controls the run order. An empty list clears the selection.
+         */
+        put: operations["putAPISandboxSuite"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/api-sandbox-scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        /** List reusable sandbox scenarios for this app. */
+        get: operations["listAPISandboxLibraryScenarios"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/api-sandbox-scenarios/{scenario}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable, app-scoped scenario UUID. */
+                scenario: string;
+            };
+            cookie?: never;
+        };
+        /** Read a reusable sandbox scenario and its private provenance. */
+        get: operations["getAPISandboxLibraryScenario"];
+        /**
+         * Save a reusable sandbox scenario.
+         * @description Use a new UUID and an empty expected_revision to create, or the existing UUID and current revision to edit. A Debugger source request can be supplied when creating. Names are unique within the app.
+         */
+        put: operations["putAPISandboxLibraryScenario"];
+        post?: never;
+        /** Remove a scenario from the app's library. */
+        delete: operations["deleteAPISandboxLibraryScenario"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandbox-scenario": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        /** Read the saved API sandbox scenario for a release. */
+        get: operations["getReleaseAPISandboxScenario"];
+        /**
+         * Save the API sandbox scenario for a release.
+         * @description Changes the scenario used for future copies. Existing sandboxes keep their original scenario.
+         */
+        put: operations["putReleaseAPISandboxScenario"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List shareable API sandboxes for a release.
+         * @description Returns owner-visible receipts without invitation credentials.
+         */
+        get: operations["listReleaseAPISandboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandboxes/{sandbox}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Queue or retrieve an API sandbox.
+         * @description Starts background provisioning of the selected artifact and an isolated PostgreSQL database. Reuse the sandbox UUID to get the existing sandbox after an interrupted response.
+         */
+        put: operations["ensureReleaseAPISandbox"];
+        post?: never;
+        /**
+         * End an API sandbox.
+         * @description Revokes sandbox access and removes its workload and fixtures.
+         */
+        delete: operations["endReleaseAPISandbox"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandboxes/{sandbox}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue an API sandbox invitation.
+         * @description Returns a sandbox-only consumer credential after public verification of the pinned release. The key expires with the sandbox.
+         */
+        post: operations["createReleaseAPISandboxInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandboxes/{sandbox}/partner/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-time invite for a private partner copy.
+         * @description The owner can issue a link during provisioning. A new link invalidates any unredeemed link for the copy.
+         */
+        post: operations["issueReleaseAPISandboxPartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{slug}/deployments/{deployment}/api-sandboxes/{sandbox}/partner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke this partner copy's invite and redeemed key. */
+        delete: operations["revokeReleaseAPISandboxPartner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandboxes/{sandbox}/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a one-time partner invite for a sandbox key.
+         * @description Supply the invite token in the Authorization bearer header. The key and recipient guide are returned once after sandbox verification.
+         */
+        post: operations["redeemAPISandboxPartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-sandboxes/{sandbox}/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an API sandbox invitation.
+         * @description Authenticates with the invitation credential and returns the exact sandbox URL and matching OpenAPI URL.
+         */
+        get: operations["getAPISandboxInvite"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -43169,6 +43820,452 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        APISandboxJSONAssertion: {
+            /** @description JSON Pointer into the response. An empty string selects the response root. */
+            pointer: string;
+            /** @description Expected JSON scalar value, including null. */
+            equals: string | number | boolean | null;
+        };
+        APISandboxReceiverInviteRequest: {
+            /** Format: uuid */
+            scenario_revision: string;
+        };
+        APISandboxReceiverInvite: {
+            /** Format: uuid */
+            run_id: string;
+            /** Format: uuid */
+            scenario_revision: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {string} */
+            status: "pending" | "verified" | "ready" | "expired";
+            /** @description Returned once when creating the invite. */
+            token?: string;
+        };
+        APISandboxReceiverProof: {
+            proof: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        APISandboxReceiverURL: {
+            /**
+             * Format: uri
+             * @description Exact public HTTPS endpoint on port 443.
+             */
+            url: string;
+        };
+        APISandboxReceiverCredentials: {
+            signing_secret: string;
+            outcome_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        APISandboxReceiverOutcome: {
+            /** Format: uuid */
+            delivery_id: string;
+            /** @description Number of committed business effects reported by the partner. */
+            applied_count: number;
+        };
+        APISandboxApprovalCheck: {
+            comparison: components["schemas"]["APISandboxComparisonReport"];
+            /**
+             * @description Current verdict for release review.
+             * @enum {string}
+             */
+            verdict: "running" | "passed" | "regression" | "inconclusive" | "stale";
+            /** @enum {string} */
+            stale_reason?: "candidate_artifact_changed" | "live_baseline_changed" | "baseline_scenario_changed";
+        };
+        APISandboxSuite: {
+            /** Format: uuid */
+            revision: string;
+            /** @description Automatically queue an advisory suite when an eligible build reaches approval. */
+            run_before_approval?: boolean;
+            scenario_ids: string[];
+        };
+        APISandboxSuiteResponse: {
+            suite: components["schemas"]["APISandboxSuite"] | null;
+        };
+        APISandboxSuiteSaveRequest: {
+            /** @description Use the current suite revision or the empty string to create the suite. */
+            expected_revision: string;
+            /** @description Enable or disable automatic advisory suites. An omitted value keeps the existing setting and an empty scenario list disables it. */
+            run_before_approval?: boolean;
+            scenario_ids: string[];
+        };
+        APISandboxSuiteRunRequest: {
+            /** Format: uuid */
+            suite_revision: string;
+            /** Format: uuid */
+            baseline_deployment_id: string;
+        };
+        APISandboxSuiteRunSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            suite_revision: string;
+            /** Format: uuid */
+            baseline_deployment_id: string;
+            /** Format: uuid */
+            candidate_deployment_id: string;
+            scenario_count: number;
+            completed_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** @description This run started automatically at release approval. */
+            automatic?: boolean;
+            /** @description The next comparison is waiting for available sandbox capacity. */
+            waiting_for_capacity?: boolean;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        APISandboxSuiteRunsResponse: {
+            /**
+             * @description Latest automatic launch status for this candidate when the app has requested an automatic run.
+             * @enum {string}
+             */
+            automatic_status?: "queued" | "waiting_for_capacity" | "waiting_for_baseline" | "waiting_for_scenarios" | "unavailable" | "started" | "approval_ended" | "disabled";
+            release_gate?: components["schemas"]["APISandboxReleaseGate"];
+            runs: components["schemas"]["APISandboxSuiteRunSummary"][];
+        };
+        APISandboxReleaseGate: {
+            /**
+             * @description Current requirement status or the recorded decision after command admission.
+             * @enum {string}
+             */
+            status: "waiting" | "failed" | "stale" | "no_suite" | "unavailable" | "passed" | "admitted";
+            /**
+             * Format: uuid
+             * @description The evaluated suite run or the run accepted at admission.
+             */
+            suite_run_id?: string;
+        };
+        APISandboxSuiteScenarioResult: {
+            /** Format: uuid */
+            scenario_id: string;
+            scenario_name: string;
+            /** Format: uuid */
+            scenario_revision: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "passed" | "regression" | "inconclusive" | "not_run";
+            comparison?: components["schemas"]["APISandboxComparisonReport"];
+        };
+        APISandboxSuiteRunReport: components["schemas"]["APISandboxSuiteRunSummary"] & {
+            /** @enum {string} */
+            verdict: "running" | "passed" | "regression" | "inconclusive" | "stale";
+            /** @enum {string} */
+            stale_reason?: "candidate_artifact_changed" | "live_baseline_changed" | "suite_changed" | "suite_scenario_changed";
+            /** @enum {string} */
+            failure_code?: "timed_out" | "approval_inputs_changed" | "entitlement_changed";
+            scenarios: components["schemas"]["APISandboxSuiteScenarioResult"][];
+        };
+        APISandboxApprovalChecksResponse: {
+            /** @enum {string} */
+            availability: "ready" | "not_waiting" | "unsupported" | "no_baseline" | "no_scenario";
+            /** Format: uuid */
+            baseline_deployment_id?: string;
+            /** Format: uuid */
+            scenario_revision?: string;
+            scenario_name?: string;
+            library_scenarios?: components["schemas"]["APISandboxLibraryScenarioSummary"][];
+            checks: components["schemas"]["APISandboxApprovalCheck"][];
+        };
+        APISandboxComparisonRequest: {
+            /** Format: uuid */
+            baseline_deployment_id: string;
+            /** Format: uuid */
+            scenario_revision: string;
+        };
+        APISandboxComparisonBaseline: {
+            /** Format: uuid */
+            deployment_id: string;
+            commit_sha?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        APISandboxComparisonReport: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            baseline_deployment_id: string;
+            /** Format: uuid */
+            candidate_deployment_id: string;
+            /** Format: uuid */
+            scenario_revision: string;
+            scenario_name: string;
+            /** @enum {string} */
+            verdict: "running" | "passed" | "regression" | "inconclusive";
+            /** @enum {string} */
+            reason?: "candidate_check_failed" | "baseline_check_failed" | "baseline_unavailable" | "candidate_unavailable";
+            /** @enum {string} */
+            failure_side?: "baseline" | "candidate";
+            failure_code?: string;
+            first_failing_step?: components["schemas"]["APISandboxRunStep"];
+            baseline: components["schemas"]["APISandboxRunReport"];
+            candidate: components["schemas"]["APISandboxRunReport"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        APISandboxComparisonsResponse: {
+            comparisons: components["schemas"]["APISandboxComparisonReport"][];
+            baselines: components["schemas"]["APISandboxComparisonBaseline"][];
+        };
+        APISandboxRunRequest: {
+            /** Format: uuid */
+            scenario_revision: string;
+            /**
+             * @default automated
+             * @enum {string}
+             */
+            mode?: "automated" | "partner";
+            /** @description Use the receiver registered for this outbound run. */
+            partner_webhook?: boolean;
+        };
+        APISandboxRunStep: {
+            index: number;
+            title: string;
+            method: string;
+            /** @description Saved request path without its query string. */
+            path?: string;
+            partner_request?: boolean;
+            /** @description Gregale intentionally ignored the first successful HTTP response. */
+            acknowledgement_dropped?: boolean;
+            /** @description Business effects reported by the partner. */
+            partner_applied_count?: number;
+            /** @enum {string} */
+            kind?: "stripe_webhook" | "webhook_duplicate" | "webhook_processing" | "outbound_job" | "outbound_webhook_queued" | "outbound_webhook_attempt" | "outbound_webhook_payload" | "partner_webhook_outcome";
+            event_type?: string;
+            /** Format: uuid */
+            invocation_id?: string;
+            /** @enum {string} */
+            invocation_state?: "pending" | "dispatching" | "completed" | "failed" | "cancelled" | "superseded" | "expired" | "dead_letter";
+            delivery_attempts?: number;
+            /** Format: uuid */
+            delivery_id?: string;
+            attempt_number?: number;
+            /** Format: date-time */
+            observed_at?: string;
+            expected_status?: number;
+            http_status?: number;
+            duration_ms: number;
+            request_id?: string;
+            failure_code?: string;
+            failed_assertion?: number;
+            failed_pointer?: string;
+        };
+        APISandboxRunReport: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            source_deployment_id: string;
+            /** Format: uuid */
+            sandbox_deployment_id?: string;
+            /** Format: uuid */
+            scenario_revision: string;
+            scenario_name: string;
+            /** @enum {string} */
+            mode: "automated" | "partner";
+            partner_step_count?: number;
+            partner_webhook?: boolean;
+            /** Format: date-time */
+            partner_outcome_until?: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "awaiting_partner" | "awaiting_partner_outcome" | "checking_state" | "passed" | "failed" | "interrupted";
+            steps: components["schemas"]["APISandboxRunStep"][];
+            failure_code?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+        };
+        APISandboxRunsResponse: {
+            runs: components["schemas"]["APISandboxRunReport"][];
+            receiver_invites?: components["schemas"]["APISandboxReceiverInvite"][];
+        };
+        APISandboxRunShareResponse: {
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        APISandboxExampleRequest: {
+            title: string;
+            /** @enum {string} */
+            method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+            /** @description Same-host path and optional query. */
+            path: string;
+            /** @description Optional JSON value for a request body. Limit of 2 KiB. */
+            body?: unknown;
+            expected_status: number;
+            assertions?: components["schemas"]["APISandboxJSONAssertion"][];
+        };
+        APISandboxScenarioGuide: {
+            name: string;
+            /** @description Synthetic IDs shown to invite recipients. */
+            seeded_ids?: {
+                [key: string]: string;
+            };
+            requests: components["schemas"]["APISandboxExampleRequest"][];
+        };
+        /** @description Owner-only synthetic Stripe event fixture for an automated run. */
+        APISandboxStripeWebhook: {
+            /** @description Sandbox app route without a query or fragment. */
+            delivery_path: string;
+            /** @example invoice.paid */
+            event_type: string;
+            /** @description Fixture for Stripe data.object, up to 8 KiB as JSON. */
+            data_object: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Check a managed async job completion callback to a sandbox-owned receiver. */
+        APISandboxOutboundWebhook: {
+            /** @description Return HTTP 503 on the first verified delivery and HTTP 204 on the retry. */
+            retry_once?: boolean;
+            /** @description Assertions on the job result carried by the callback. */
+            assertions?: components["schemas"]["APISandboxJSONAssertion"][];
+        };
+        APISandboxScenarioInput: components["schemas"]["APISandboxScenarioGuide"] & {
+            /** @description Synthetic fixture data of up to 8 KiB. Passed to the sandbox release as GREGALE_API_SANDBOX_SEED. */
+            seed: {
+                [key: string]: unknown;
+            };
+            stripe_webhook?: components["schemas"]["APISandboxStripeWebhook"];
+            outbound_webhook?: components["schemas"]["APISandboxOutboundWebhook"];
+        };
+        APISandboxScenarioSaveRequest: components["schemas"]["APISandboxScenarioInput"] & {
+            /** @description Private retained request provenance from a draft for this release. */
+            source_request_id?: string;
+            /** @description Required with source_request_id. Use the draft revision, or the empty string if the release had no scenario. A changed revision returns 409. */
+            expected_revision?: string;
+        };
+        APISandboxLibraryScenarioSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            revision: string;
+        };
+        APISandboxLibraryScenario: {
+            /** Format: uuid */
+            id: string;
+            scenario: components["schemas"]["APISandboxScenario"];
+            /**
+             * Format: uuid
+             * @description Private Debugger provenance of this scenario.
+             */
+            source_request_id?: string;
+        };
+        APISandboxScenarioLibraryResponse: {
+            scenarios: components["schemas"]["APISandboxLibraryScenarioSummary"][];
+        };
+        APISandboxLibraryScenarioSaveRequest: components["schemas"]["APISandboxScenarioInput"] & {
+            /** @description Current revision for an edit, or the empty string for a new scenario. */
+            expected_revision: string;
+            /** @description Private retained request identifier from a Debugger draft for this app. Accepted on creation. */
+            source_request_id?: string;
+        };
+        APISandboxScenarioDraft: {
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: uuid */
+            source_request_id: string;
+            /** @description Current scenario revision or an empty string when the release has no saved scenario. */
+            expected_revision: string;
+            /** @enum {string} */
+            method: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+            /** @description The matching declared route or stored OpenAPI path, when available. Replace placeholders with synthetic values before saving. */
+            route_template?: string;
+        };
+        APISandboxScenario: components["schemas"]["APISandboxScenarioInput"] & {
+            /** Format: uuid */
+            revision: string;
+        };
+        APISandboxScenarioReceipt: components["schemas"]["APISandboxScenarioGuide"] & {
+            /** Format: uuid */
+            revision: string;
+        };
+        APISandboxScenarioResponse: {
+            scenario: components["schemas"]["APISandboxScenario"] | null;
+            /**
+             * Format: uuid
+             * @description Private Debugger provenance, present when the saved scenario originated from a retained request.
+             */
+            source_request_id?: string;
+        };
+        /** @description Owner-only partner progress. */
+        APISandboxPartnerResponse: {
+            label: string;
+            /** Format: date-time */
+            invited_at?: string;
+            /** Format: date-time */
+            redeemed_at?: string;
+            /** Format: date-time */
+            revoked_at?: string;
+            /** Format: date-time */
+            first_success_at?: string;
+        };
+        APISandboxPartnerInviteResponse: {
+            partner: components["schemas"]["APISandboxPartnerResponse"];
+            /** @description One-time invite token exchanged through the sandbox redemption endpoint. */
+            token: string;
+        };
+        APISandboxCreateRequest: {
+            /** @description Optional absolute path on the sandbox host to check with GET. Use the same value when retrying with this sandbox UUID. */
+            smoke_path?: string;
+            /**
+             * Format: uuid
+             * @description Copy the selected app library or release scenario revision into the sandbox. Reuse this value when retrying the same sandbox UUID.
+             */
+            scenario_revision?: string;
+            /** @description Optional recipient label. Requires scenario_revision and creates a private copy. Raw partner progress is available to the owner. */
+            partner_label?: string;
+        };
+        APISandboxVerification: {
+            /** Format: uuid */
+            deployment_id: string;
+            /** Format: date-time */
+            checked_at: string;
+            openapi_status: number;
+            smoke_status?: number;
+        };
+        APISandboxFailure: {
+            code: string;
+            detail: string;
+            http_status?: number;
+        };
+        APISandboxResponse: {
+            /** @description The leading requests executed by the partner before the platform checks final state. */
+            partner_step_count?: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            source_deployment_id: string;
+            /** Format: uuid */
+            deployment_id?: string;
+            /** @enum {string} */
+            status: "preparing_database" | "running_migrations" | "starting_release" | "verifying_api" | "live" | "failed" | "tearing_down" | "ended";
+            /** Format: uri */
+            url: string;
+            /** Format: uri */
+            openapi_url: string;
+            /** Format: date-time */
+            expires_at: string;
+            smoke_path?: string;
+            failure?: components["schemas"]["APISandboxFailure"];
+            verification?: components["schemas"]["APISandboxVerification"];
+            scenario?: components["schemas"]["APISandboxScenarioReceipt"];
+            partner?: components["schemas"]["APISandboxPartnerResponse"];
+        };
+        APISandboxListResponse: {
+            sandboxes: components["schemas"]["APISandboxResponse"][];
+        };
+        APISandboxInviteResponse: {
+            sandbox: components["schemas"]["APISandboxResponse"];
+            /** @description Sandbox-only bearer credential. */
+            token: string;
+        };
         /** @description Optional identifiers supplied by the customer; no automatic log, secret or source-code collection. */
         SupportContext: {
             /** Format: uuid */
@@ -82796,6 +83893,8 @@ export interface components {
             approvers: "admin" | "developer";
             /** @description Whether the deployer's own approval counts. */
             allow_self_approval: boolean;
+            /** @description Require current passing sandbox evidence before a production release command that waits for approval. */
+            require_passing_sandbox_suite?: boolean;
             /** @description Notification channels told when a release waits, is approved or rejected, or times out. */
             notify_channels: string[];
             updated_by: string;
@@ -82818,6 +83917,8 @@ export interface components {
             approvers?: "admin" | "developer";
             /** @description Default false; always true for an app outside an organization. */
             allow_self_approval?: boolean;
+            /** @description Opt in to the sandbox suite requirement. Omit to keep the current setting. */
+            require_passing_sandbox_suite?: boolean;
             /** @description Names of Slack or email notification channels; at least one is needed, so the approvers learn a release waits, and PagerDuty channels are refused. Slack messages link to the approval page. */
             notify_channels?: string[];
         };
@@ -82999,6 +84100,10 @@ export interface components {
         };
         /** @description A release's approval state. */
         ReleaseApprovalStatus: {
+            /** @description The release approval applies before its release command. */
+            before_release_command?: boolean;
+            /** @description The release requires current passing sandbox evidence in addition to human approval. */
+            require_passing_sandbox_suite?: boolean;
             /** Format: uuid */
             deployment_id: string;
             app: string;
@@ -134458,6 +135563,51 @@ export interface operations {
             503: components["responses"]["DebuggerRegressionUnavailable"];
         };
     };
+    getDebugAPISandboxScenarioDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Public request ID or internal telemetry row UUID. */
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Starting metadata for a private scenario draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxScenarioDraft"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            /** @description The caller may not access the source app. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Request evidence or scenario storage is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listAppDebugRegressions: {
         parameters: {
             query?: {
@@ -143380,6 +144530,209 @@ export interface operations {
             404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["CapacityUnavailable"];
+        };
+    };
+    listAPISandboxSuiteRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held candidate deployment UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent runs and their progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteRunsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAPISandboxSuiteRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held candidate deployment UUID. */
+                id: string;
+                /** @description Client-generated run UUID. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scenario results and current verdict. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteRunReport"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAPISandboxSuiteRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held candidate deployment UUID. */
+                id: string;
+                /** @description Client-generated run UUID. */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxSuiteRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing run for this UUID. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteRunReport"];
+                };
+            };
+            /** @description Suite run queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteRunReport"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSandboxApprovalChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox approval evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxApprovalChecksResponse"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSandboxApprovalCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                check: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox approval evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxApprovalCheck"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createSandboxApprovalCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                check: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxComparisonRequest"];
+            };
+        };
+        responses: {
+            /** @description The same check already exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxApprovalCheck"];
+                };
+            };
+            /** @description The check was queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxApprovalCheck"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getReleaseApproval: {
@@ -157147,6 +158500,1640 @@ export interface operations {
             429: components["responses"]["TooManyRequests"];
             /** @description The selected deployment could not be reached or evidence was unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAPISandboxComparisons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparison data. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxComparisonsResponse"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxComparison: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                comparison: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparison data. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxComparisonReport"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createAPISandboxComparison: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                comparison: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxComparisonRequest"];
+            };
+        };
+        responses: {
+            /** @description An identical comparison request already exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxComparisonReport"];
+                };
+            };
+            /** @description Comparison is queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxComparisonReport"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAPISandboxRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scenario runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunsResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or run unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario runs are unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scenario run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunReport"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or run unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario runs are unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createAPISandboxRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing scenario run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunReport"];
+                };
+            };
+            /** @description Queued for sandbox setup. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunReport"];
+                };
+            };
+            /** @description Invalid run request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or run unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The scenario changed, the run ID is in use, or the release is ineligible. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario runs are unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    issueAPISandboxRunInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Partner invitation token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxPartnerInviteResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or run unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The run is not accepting invitations or an invite was already redeemed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Sandbox has ended. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario runs are unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    shareAPISandboxRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shareable report token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunShareResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or run unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The scenario run is still in progress. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario runs are unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxReceiverInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Receiver setup status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxReceiverInvite"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createAPISandboxReceiverInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxReceiverInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Setup status and one-time token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxReceiverInvite"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxReceiverProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ownership proof. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxReceiverProof"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    verifyAPISandboxReceiver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxReceiverURL"];
+            };
+        };
+        responses: {
+            /** @description Run-scoped receiver credentials. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxReceiverCredentials"];
+                };
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readyAPISandboxReceiver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The owner can start the run. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    recordAPISandboxReceiverOutcome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxReceiverOutcome"];
+            };
+        };
+        responses: {
+            /** @description The outcome was recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be completed. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    readSharedAPISandboxRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redacted scenario run report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxRunReport"];
+                };
+            };
+            /** @description The report link is invalid or expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many invalid requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved suite configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    putAPISandboxSuite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxSuiteSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated suite configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxSuiteResponse"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAPISandboxLibraryScenarios: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Names and current revisions of app library scenarios. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxScenarioLibraryResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Scenario library unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAPISandboxLibraryScenario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable, app-scoped scenario UUID. */
+                scenario: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current scenario definition. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxLibraryScenario"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Scenario library unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putAPISandboxLibraryScenario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable, app-scoped scenario UUID. */
+                scenario: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxLibraryScenarioSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved scenario and its current revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxLibraryScenario"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Scenario library unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteAPISandboxLibraryScenario: {
+        parameters: {
+            query: {
+                expected_revision: string;
+            };
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                /** @description Stable, app-scoped scenario UUID. */
+                scenario: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scenario removed. Existing sandbox runs retain their pinned definition. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["PaymentRequired"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description Scenario library unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getReleaseAPISandboxScenario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved scenario or null when the release has none. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxScenarioResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putReleaseAPISandboxScenario: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APISandboxScenarioSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved scenario and its revision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxScenarioResponse"];
+                };
+            };
+            /** @description Invalid scenario definition. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not access this release. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The release is ineligible for API sandboxes or the scenario revision changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Scenario storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listReleaseAPISandboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API sandbox receipts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxListResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller or plan does not allow this action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The release or sandbox is ineligible. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provisioning or storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    ensureReleaseAPISandbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["APISandboxCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Existing sandbox provisioning receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxResponse"];
+                };
+            };
+            /** @description Sandbox provisioning accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller or plan does not allow this action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The release or sandbox is ineligible. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Sandbox lease has ended. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provisioning or storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    endReleaseAPISandbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller or plan does not allow this action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The release or sandbox is ineligible. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provisioning or storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createReleaseAPISandboxInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox invitation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxInviteResponse"];
+                };
+            };
+            /** @description Invalid request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller or plan does not allow this action. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Release or sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The release or sandbox is ineligible. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Provisioning or storage unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    issueReleaseAPISandboxPartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One-time invite credential. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxPartnerInviteResponse"];
+                };
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not manage this sandbox. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Partner sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Revoke redeemed access before replacing the invite. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The sandbox lease has ended. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Partner access could not be updated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeReleaseAPISandboxPartner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description App slug. Lowercase letters, digits, hyphens; must start and end with alnum. */
+                slug: components["parameters"]["Slug"];
+                deployment: string;
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Partner access revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The caller may not manage this sandbox. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Partner sandbox unavailable. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Partner access could not be updated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    redeemAPISandboxPartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redeemed sandbox key and scenario guide. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxInviteResponse"];
+                };
+            };
+            /** @description The invite is expired, invalid, revoked, or redeemed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The current plan does not allow consumer keys. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The sandbox has not passed readiness checks or key quota was reached. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many invalid redemption attempts. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The invitation could not be redeemed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAPISandboxInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sandbox: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandbox access and release receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APISandboxResponse"];
+                };
+            };
+            /** @description Invitation unavailable. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

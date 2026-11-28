@@ -94,4 +94,5 @@
 /dashboard/workflows/:workflowId    /index.html   200
 /dashboard/workflows/new    /index.html   200
 /invite/:token    /index.html   200
+/api-sandbox/:sandboxId    /index.html   200
 /onboarding    /index.html   200

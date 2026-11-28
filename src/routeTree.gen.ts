@@ -25,6 +25,7 @@ import { Route as SolutionsRouteImport } from './routes/solutions'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as WillItRunRouteImport } from './routes/will-it-run'
+import { Route as ApiSandboxSandboxIdRouteImport } from './routes/api-sandbox.$sandboxId'
 import { Route as ArticlesIndexRouteImport } from './routes/articles.index'
 import { Route as ArticlesSlugRouteImport } from './routes/articles.$slug'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
@@ -190,6 +191,11 @@ const TemplatesRoute = TemplatesRouteImport.update({
 const WillItRunRoute = WillItRunRouteImport.update({
   id: '/will-it-run',
   path: '/will-it-run',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSandboxSandboxIdRoute = ApiSandboxSandboxIdRouteImport.update({
+  id: '/api-sandbox/$sandboxId',
+  path: '/api-sandbox/$sandboxId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ArticlesIndexRoute = ArticlesIndexRouteImport.update({
@@ -647,6 +653,7 @@ export interface FileRoutesByFullPath {
   '/status': typeof StatusRouteWithChildren
   '/templates': typeof TemplatesRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
+  '/api-sandbox/$sandboxId': typeof ApiSandboxSandboxIdRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
@@ -743,6 +750,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/signup': typeof SignupRoute
   '/will-it-run': typeof WillItRunRoute
+  '/api-sandbox/$sandboxId': typeof ApiSandboxSandboxIdRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
@@ -847,6 +855,7 @@ export interface FileRoutesById {
   '/status': typeof StatusRouteWithChildren
   '/templates': typeof TemplatesRouteWithChildren
   '/will-it-run': typeof WillItRunRoute
+  '/api-sandbox/$sandboxId': typeof ApiSandboxSandboxIdRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/alerts': typeof DashboardAlertsRoute
@@ -953,6 +962,7 @@ export interface FileRouteTypes {
     | '/status'
     | '/templates'
     | '/will-it-run'
+    | '/api-sandbox/$sandboxId'
     | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
@@ -1049,6 +1059,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/signup'
     | '/will-it-run'
+    | '/api-sandbox/$sandboxId'
     | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
@@ -1152,6 +1163,7 @@ export interface FileRouteTypes {
     | '/status'
     | '/templates'
     | '/will-it-run'
+    | '/api-sandbox/$sandboxId'
     | '/articles/$slug'
     | '/dashboard/account'
     | '/dashboard/alerts'
@@ -1257,6 +1269,7 @@ export interface RootRouteChildren {
   StatusRoute: typeof StatusRouteWithChildren
   TemplatesRoute: typeof TemplatesRouteWithChildren
   WillItRunRoute: typeof WillItRunRoute
+  ApiSandboxSandboxIdRoute: typeof ApiSandboxSandboxIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
   VsSlugRoute: typeof VsSlugRoute
 }
@@ -1373,6 +1386,13 @@ declare module '@tanstack/react-router' {
       path: '/will-it-run'
       fullPath: '/will-it-run'
       preLoaderRoute: typeof WillItRunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-sandbox/$sandboxId': {
+      id: '/api-sandbox/$sandboxId'
+      path: '/api-sandbox/$sandboxId'
+      fullPath: '/api-sandbox/$sandboxId'
+      preLoaderRoute: typeof ApiSandboxSandboxIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/articles/': {
@@ -2262,6 +2282,7 @@ const rootRouteChildren: RootRouteChildren = {
   StatusRoute: StatusRouteWithChildren,
   TemplatesRoute: TemplatesRouteWithChildren,
   WillItRunRoute: WillItRunRoute,
+  ApiSandboxSandboxIdRoute: ApiSandboxSandboxIdRoute,
   InviteTokenRoute: InviteTokenRoute,
   VsSlugRoute: VsSlugRoute,
 }

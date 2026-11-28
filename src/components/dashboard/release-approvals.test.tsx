@@ -203,6 +203,23 @@ describe('ReleaseApprovals (policy)', () => {
     );
   });
 
+  it('saves the passing suite requirement with the release approval policy', async () => {
+    render(<ReleaseApprovals slug="shop" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Require approval' }));
+    const sheet = within(screen.getByRole('dialog'));
+    await userEvent.click(sheet.getByLabelText(/releases/));
+    await userEvent.click(sheet.getByRole('checkbox', { name: 'Require a passing sandbox suite' }));
+    await userEvent.click(sheet.getByRole('button', { name: 'Require approvals' }));
+    expect(m.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining('current passing sandbox suite'),
+      })
+    );
+    expect(m.save).toHaveBeenCalledWith(
+      expect.objectContaining({ require_passing_sandbox_suite: true })
+    );
+  });
+
   it('opens Advanced when one of its fields is refused', async () => {
     render(<ReleaseApprovals slug="shop" />);
     await userEvent.click(screen.getByRole('button', { name: 'Require approval' }));

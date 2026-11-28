@@ -16,9 +16,18 @@ export const Route = createFileRoute('/dashboard/apps/$appSlug_/releases/$deploy
 });
 
 function ReleasePageRoute() {
+  const { sandbox, sandboxScenario } = Route.useSearch();
   const { appSlug, deploymentId } = useParams({ strict: false }) as {
     appSlug: string;
     deploymentId: string;
   };
-  return <ReleasePage key={deploymentId} appSlug={appSlug} deploymentId={deploymentId} />;
+  return (
+    <ReleasePage
+      key={deploymentId}
+      appSlug={appSlug}
+      deploymentId={deploymentId}
+      openAPISandboxes={sandbox || !!sandboxScenario}
+      initialSandboxScenario={sandboxScenario}
+    />
+  );
 }
