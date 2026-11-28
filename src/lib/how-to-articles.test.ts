@@ -46,6 +46,9 @@ const RATE_LIMIT = 'rate-limit-api-per-ip-without-code';
 const NOT_SCALING = 'why-app-not-scaling-to-zero';
 const DOMAIN_PENDING = 'custom-domain-stuck-pending-dns-ssl';
 const ENV_UNDO = 'undo-bad-environment-variable-change';
+const BILL_DRIVER = 'find-which-app-endpoint-drives-cloud-bill';
+const ONE_OFF = 'run-one-off-command-in-production';
+const CI_DEPLOY = 'deploy-from-github-actions-without-api-key';
 const HOW_TO = [
   COMPOSE,
   WAKE_PAGE,
@@ -55,6 +58,9 @@ const HOW_TO = [
   NOT_SCALING,
   DOMAIN_PENDING,
   ENV_UNDO,
+  BILL_DRIVER,
+  ONE_OFF,
+  CI_DEPLOY,
 ];
 
 describe('how-to guides', () => {

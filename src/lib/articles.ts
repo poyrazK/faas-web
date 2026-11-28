@@ -101,6 +101,9 @@ const CRASH_SNAPSHOTS_SLUG = 'debug-production-5xx-crash-snapshots-and-profile-d
 const NOT_SCALING_SLUG = 'why-app-not-scaling-to-zero';
 const DOMAIN_PENDING_SLUG = 'custom-domain-stuck-pending-dns-ssl';
 const ENV_UNDO_SLUG = 'undo-bad-environment-variable-change';
+const BILL_DRIVER_SLUG = 'find-which-app-endpoint-drives-cloud-bill';
+const ONE_OFF_SLUG = 'run-one-off-command-in-production';
+const CI_DEPLOY_SLUG = 'deploy-from-github-actions-without-api-key';
 const ACCESS_CONTROL_SLUG = 'password-protect-app-basic-auth-ip-allowlist';
 const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
 const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
@@ -2823,6 +2826,96 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: ONE_OFF_SLUG,
+    title: 'How to run a one-off command in production (a heroku run alternative)',
+    summary:
+      'Run migrations and scripts against production in a fresh VM of the live deployment, with its env and secrets, exit codes and timeouts. Compared with heroku run.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'What is the Gregale equivalent of heroku run?',
+        answer:
+          'gregale app exec my-api -- <command>. It runs the command in a fresh VM built from the app’s live deployment, with its files, environment variables, secrets and bindings, streams the output back and exits with the command’s exit code.',
+      },
+      {
+        question: 'Does a one-off command affect my running app?',
+        answer:
+          'It runs in its own VM, which never serves traffic and is destroyed when the command ends, so a command that crashes takes no serving instance with it.',
+      },
+      {
+        question: 'How long can a one-off command run?',
+        answer:
+          'An hour by default. Set --timeout-seconds to stop it sooner; a command stopped by its timeout exits with 124.',
+      },
+      {
+        question: 'Is a one-off command billed?',
+        answer:
+          'Yes, like a running instance: per second at the app’s memory, from the moment the command starts until it ends, under the app it belongs to.',
+      },
+    ],
+  },
+  {
+    slug: CI_DEPLOY_SLUG,
+    title: 'Deploy from GitHub Actions without storing an API key',
+    summary:
+      'Deploy from GitHub Actions with GitHub’s OIDC token instead of a stored secret, or from other CI with a deploy token bound to one app. Compared with Fly.io.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'How do I deploy to Gregale from GitHub Actions without a secret?',
+        answer:
+          'Run gregale deploy --github to print a workflow, or gregale github setup my-api --repo acme/my-api to write it. The workflow uses id-token: write and trades GitHub’s OIDC token for a short-lived Gregale credential, so the repository stores no Gregale key.',
+      },
+      {
+        question: 'How do I deploy from GitLab or another CI?',
+        answer:
+          'Mint a deploy token for the app with gregale app deploy-token create --app my-api --label gitlab, store it as GREGALE_TOKEN in the CI secret store, and run gregale deploy --name my-api --wait.',
+      },
+      {
+        question: 'What can a Gregale deploy token do?',
+        answer:
+          'Deploy its one app and apply the settings the deploy carries. It can’t see other apps, delete or rename its app, add log drains, mint credentials or read crash data. It expires after 90 days by default.',
+      },
+      {
+        question: 'Can I deploy only after my tests pass?',
+        answer:
+          'Yes. gregale github setup my-api --repo acme/my-api --wait-for CI deploys a push once your CI workflow passes for that commit; a failed run, a pull request run or a run from a fork deploys nothing.',
+      },
+    ],
+  },
+  {
+    slug: BILL_DRIVER_SLUG,
+    title: 'Which app or endpoint is driving my cloud bill? How to find it',
+    summary:
+      'Rank apps by cost, split one by deployment and find the route behind its memory peaks with three commands, then size it down. Compared with Railway and Vercel.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'How do I see which app costs the most on Gregale?',
+        answer:
+          'Run gregale billing costs. It ranks every app and job by usage this month; add --month 2026-10 for an earlier month. gregale app costs my-api then splits one app by deployment, with compute and egress.',
+      },
+      {
+        question: 'How do I find which endpoint uses the most memory?',
+        answer:
+          'Run gregale metric resources my-api. It lists each route with the share of memory and CPU peaks it was running for. A route with a high peak share that runs in few minutes is the one sizing the app.',
+      },
+      {
+        question: 'How do I lower an app’s compute cost?',
+        answer:
+          'Compute is billed for the app’s memory while it runs, so give it the memory it uses with gregale app update my-api --ram 384, move a heavy route to a job, and let the app pause or park when idle.',
+      },
+      {
+        question: 'Why does app costs show USD 0.00?',
+        answer:
+          'Usage within your plan’s included GB-RAM-hours shows as USD 0.00, with the usage in GB-hours beside it. Cost reports cover compute and app egress; subscription fees, tax and credits are on your invoices.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2936,6 +3029,9 @@ const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff C
 const NOT_SCALING_LINK = `[Why isn't my app scaling to zero?](/articles/${NOT_SCALING_SLUG}) maps each reason the debugger reports to its fix, with what kept a test app running.`;
 const DOMAIN_PENDING_LINK = `[Custom domain stuck on pending DNS or SSL](/articles/${DOMAIN_PENDING_SLUG}) maps each domain doctor check to the record to fix and compares other platforms.`;
 const ENV_UNDO_LINK = `[How to undo a bad environment variable change](/articles/${ENV_UNDO_SLUG}) shows the config guard restoring a breaking change, env history, and what env rollback can't restore.`;
+const BILL_DRIVER_LINK = `[Which app or endpoint is driving my cloud bill?](/articles/${BILL_DRIVER_SLUG}) shows how to rank apps by cost, split one by deployment and find the route behind memory peaks.`;
+const ONE_OFF_LINK = `[Run a one-off command in production](/articles/${ONE_OFF_SLUG}) shows migrations and scripts in a fresh VM of the live deployment, exit codes and timeouts, compared with heroku run.`;
+const CI_DEPLOY_LINK = `[Deploy from GitHub Actions without storing an API key](/articles/${CI_DEPLOY_SLUG}) shows the OIDC workflow, per-app deploy tokens for other CI, and what a token can't do.`;
 
 const S2Z_PRICING_LINK = `[Scale-to-zero pricing in 2026](/articles/${S2Z_PRICING_SLUG}) compares when Fly.io, Cloud Run, Railway, Koyeb, Render and Gregale stop billing an idle app, with three monthly bills worked out.`;
 
@@ -2960,7 +3056,10 @@ const RELATED_ARTICLES: Record<string, string> = {
   'internal-services': INTERNAL_SERVICES_LINK,
   companions: COMPANIONS_LINK,
   'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
-  'cost-controls': `${SPEND_CAPS_LINK} ${BOT_BILL_SHOCK_LINK}`,
+  'cost-controls': `${BILL_DRIVER_LINK} ${SPEND_CAPS_LINK} ${BOT_BILL_SHOCK_LINK}`,
+  billing: BILL_DRIVER_LINK,
+  apps: ONE_OFF_LINK,
+  'deploy-from-github': CI_DEPLOY_LINK,
   tracing: `${OTEL_TRACING_LINK} ${CRASH_SNAPSHOTS_LINK}`,
   troubleshooting: `${NOT_SCALING_LINK} ${DOMAIN_PENDING_LINK} ${ENV_UNDO_LINK} ${CRASH_SNAPSHOTS_LINK}`,
   'scaling-policy': AUTOSCALE_LAG_LINK,
@@ -2973,7 +3072,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'binding-verification-runs': BINDING_VERIFICATION_LINK,
   'edge-rules': `${EDGE_RULES_TRACE_LINK} ${RATE_LIMIT_LINK} ${CORS_LINK} ${SECURITY_HEADERS_LINK}`,
   'edge-rule-trace': EDGE_RULES_TRACE_LINK,
-  crons: `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
+  crons: `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK} ${ONE_OFF_LINK}`,
   'event-driven': `${CRONS_EVENTS_LINK} ${DELAYED_TASKS_LINK}`,
   'object-storage': `${OBJECT_STORAGE_LINK} ${DIRECT_UPLOADS_LINK} ${UPLOAD_TRIGGER_LINK}`,
   storage: `${STATELESS_LINK} ${OBJECT_STORAGE_LINK}`,
@@ -2999,7 +3098,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'getting-started': NO_DEVOPS_LINK,
   'mcp-hosting': `${MCP_LINK} ${TS_MCP_OAUTH_LINK} ${PYTHON_FASTMCP_LINK}`,
   'preview-environments': PREVIEW_LINK,
-  'migrate-from-heroku': HEROKU_ALTERNATIVES_LINK,
+  'migrate-from-heroku': `${HEROKU_ALTERNATIVES_LINK} ${ONE_OFF_LINK}`,
   'migrate-from-render': RENDER_ALTERNATIVES_LINK,
   'migrate-from-railway': `${RAILWAY_CONFIG_LINK} ${RAILWAY_ALTERNATIVES_LINK}`,
   'migrate-from-fly': FLY_ALTERNATIVES_LINK,
@@ -3141,7 +3240,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'how-to',
     title: 'How-to guides',
     description:
-      'Task-first answers with commands: deploy a Docker Compose app, fix CORS errors, add security headers, rate-limit an API per IP, show a waking-up page during a cold start, find why an app isn’t scaling to zero, fix a custom domain stuck on pending and undo a bad environment variable change.',
+      'Task-first answers with commands: deploy a Docker Compose app, fix CORS errors, add security headers, rate-limit an API per IP, show a waking-up page during a cold start, find why an app isn’t scaling to zero, fix a custom domain stuck on pending, undo a bad environment variable change, find what drives the bill, run one-off production commands and deploy from CI without a stored key.',
     slugs: [
       COMPOSE_SLUG,
       CORS_SLUG,
@@ -3151,6 +3250,9 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       NOT_SCALING_SLUG,
       DOMAIN_PENDING_SLUG,
       ENV_UNDO_SLUG,
+      BILL_DRIVER_SLUG,
+      ONE_OFF_SLUG,
+      CI_DEPLOY_SLUG,
     ],
   },
   {
