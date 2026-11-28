@@ -69,3 +69,5 @@ Individual realtime nodes allow up to 512 open connections from one client IP ad
 - **Teams needing GA history and presence immediately:** Retained 24-hour message history, resumable cursors, presence, and channel rules are in per-account Preview on Gregale. If you need those features in production before Preview is enabled on your account, managed services such as Pusher or Ably cover them today.
 
 See [Managed realtime](/docs/realtime), [How scaling to zero works](/docs/scale-to-zero), [Scale to zero without slow cold starts](/articles/scale-to-zero-without-cold-starts), and [Gregale pricing](/pricing) for the full configuration and limits.
+
+For how Cloudflare Durable Objects, Amazon API Gateway, Cloud Run, Fly.io, Vercel and Railway handle open connections, see [WebSockets on scale-to-zero platforms in 2026](/articles/websockets-scale-to-zero-platforms-compared).

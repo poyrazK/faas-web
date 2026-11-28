@@ -249,6 +249,28 @@ describe('articles', () => {
     );
   });
 
+  it('quotes Gregale realtime limits in the WebSockets comparison exactly as the realtime doc does', () => {
+    // If realtime limits or the Hobby plan change, this page goes stale.
+    const [, hobby] = PLAN_CATALOG.plans;
+    const page = body('websockets-scale-to-zero-platforms-compared');
+    const text = page.replace(/\s+/g, ' ');
+    const doc = readFileSync('content/docs/realtime.md', 'utf8');
+    const rows = (source: string) =>
+      [
+        ...source.matchAll(/^\| (Hobby|Pro|Scale) +\| +([\d,]+ \/ [\d,]+) +\| +([\d,]+) +\|$/gm),
+      ].map((m) => `${m[1]} ${m[2]} ${m[3]}`);
+    expect(rows(page)).toEqual(rows(doc));
+    expect(rows(page)).toHaveLength(3);
+    const hobbyConnections = rows(doc)[0].split(' ').pop();
+    expect(text).toContain(
+      `uses 1 of the ${hobbyConnections} that Gregale Hobby (${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps) allows per account`
+    );
+    expect(text).toContain(`Hobby: ${hobbyConnections} concurrent connections per account`);
+    const flat = doc.replace(/\s+/g, ' ');
+    expect(flat).toContain('A message is at most 1 MiB.');
+    expect(flat).toContain('Beta features are on for every paid plan');
+  });
+
   it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
     const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
     const previews = body('preview-environments').replace(/\s+/g, ' ');

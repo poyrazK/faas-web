@@ -104,6 +104,7 @@ const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
 const S2Z_PRICING_SLUG = 'scale-to-zero-pricing-compared';
 const FREE_TIERS_SLUG = 'free-backend-hosting-tiers-compared';
 const PG_PRICING_SLUG = 'managed-postgres-pricing-compared';
+const WS_PLATFORMS_SLUG = 'websockets-scale-to-zero-platforms-compared';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -640,6 +641,33 @@ export const ARTICLES: readonly Article[] = [
         question: 'Which low-cost Postgres plans include point-in-time recovery?',
         answer:
           'DigitalOcean restores to any point in the previous 7 days from $15.15 a month. Render keeps 3 days on a Hobby workspace and 7 on paid workspace plans, Neon Launch up to 7 days with history billed at $0.20 per GB-month, Gregale Hobby 7 days with 1 GiB of history included, and Railway about 4 weeks once you turn it on. Heroku Essential has no rollback, and Supabase sells it as an add-on from $100 a month.',
+      },
+    ],
+  },
+  {
+    slug: WS_PLATFORMS_SLUG,
+    comparison: ['cloudflare-workers', 'aws', 'cloud-run', 'fly', 'vercel'],
+    title:
+      'WebSockets on scale-to-zero platforms in 2026: Durable Objects vs API Gateway vs Cloud Run vs Fly.io vs Vercel',
+    summary:
+      'What an open WebSocket or SSE connection costs on Cloudflare, API Gateway, Cloud Run, Fly.io, Vercel, Railway and Gregale, and which ones let the app sleep.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'Does an open WebSocket stop an app from scaling to zero?',
+        answer:
+          "On most platforms, yes. Cloud Run treats an instance with any open WebSocket as active and bills it, Fly.io stops the last Machine only when it has no traffic, Railway sleeps only after 5 to 10 minutes without outbound traffic, and Vercel bills an instance's memory until its connections close. Cloudflare Durable Objects with the Hibernation API, Amazon API Gateway WebSocket APIs and Gregale managed realtime hold the connection outside your running code, so the code can sleep.",
+      },
+      {
+        question: 'How long can a WebSocket stay open on serverless platforms?',
+        answer:
+          "Cloud Run closes it at the request timeout: 5 minutes by default, up to 60. Amazon API Gateway allows 2 hours per connection and closes one after 10 idle minutes. Vercel Functions close it at the function's maximum duration: 300 seconds on Hobby and up to 800 on Pro, or 1,800 in the extended beta. Clients on all three need reconnect logic.",
+      },
+      {
+        question: 'What does an idle WebSocket cost on Cloudflare Durable Objects?',
+        answer:
+          'With the WebSocket Hibernation API, almost nothing. An object that can hibernate is not billed for duration, protocol pings are answered without waking it, connecting is one request, and incoming messages are billed as requests at a 20:1 ratio. Accepting the socket with accept() instead bills duration for the whole time it is connected.',
       },
     ],
   },
@@ -2819,11 +2847,13 @@ const FREE_TIERS_LINK = `[Free backend hosting in 2026](/articles/${FREE_TIERS_S
 
 const PG_PRICING_LINK = `[Managed Postgres pricing in 2026](/articles/${PG_PRICING_SLUG}) compares what a small database costs on Neon, Supabase, Render, Railway, Fly.io, Heroku and DigitalOcean, idle or always on.`;
 
+const WS_PLATFORMS_LINK = `[WebSockets on scale-to-zero platforms in 2026](/articles/${WS_PLATFORMS_SLUG}) compares what an open WebSocket or SSE connection costs on Cloudflare Durable Objects, API Gateway, Cloud Run, Fly.io, Vercel and Railway.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
   plans: `${S2Z_PRICING_LINK} ${FREE_TIERS_LINK}`,
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK} ${PG_PRICING_LINK}`,
   'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
-  realtime: REALTIME_SCALE_ZERO_LINK,
+  realtime: `${REALTIME_SCALE_ZERO_LINK} ${WS_PLATFORMS_LINK}`,
   'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
   cache: EDGE_CACHE_LINK,
   'outbound-integrations': OUTBOUND_RELAY_LINK,
@@ -3027,6 +3057,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       S2Z_PRICING_SLUG,
       FREE_TIERS_SLUG,
       PG_PRICING_SLUG,
+      WS_PLATFORMS_SLUG,
       'heroku-alternatives',
       'render-alternatives',
       'railway-alternatives',
