@@ -805,6 +805,32 @@ describeBuilt('prerendered pages', () => {
     }
   });
 
+  it('publishes the scale-to-zero pricing comparison and links it from each vendor page and doc', () => {
+    const route = '/articles/scale-to-zero-pricing-compared';
+    const html = readFileSync(`dist${route}/index.html`, 'utf8');
+    const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
+    const graph = JSON.parse(json!)['@graph'];
+    const faq = graph.find((node: { '@type': string }) => node['@type'] === 'FAQPage');
+
+    expect(html).toContain(`rel="canonical" href="https://gregale.dev${route}"`);
+    expect(graph[0]).toMatchObject({ '@type': 'TechArticle', dateModified: '2026-11-28' });
+    expect(faq.mainEntity.length).toBe(3);
+    expect(existsSync(`dist${route}.md`)).toBe(true);
+    expect(readFileSync('dist/sitemap.xml', 'utf8')).toContain(
+      `<loc>https://gregale.dev${route}</loc>`
+    );
+    expect(readFileSync('dist/feed.xml', 'utf8')).toContain(`<id>https://gregale.dev${route}</id>`);
+    expect(readFileSync('dist/llms.txt', 'utf8')).toContain(`https://gregale.dev${route}.md`);
+    for (const vendor of ['fly', 'cloud-run', 'railway', 'koyeb', 'render']) {
+      expect(readFileSync(`dist/vs/${vendor}/index.html`, 'utf8'), vendor).toContain(
+        `href="${route}"`
+      );
+    }
+    for (const doc of ['scale-to-zero', 'plans']) {
+      expect(readFileSync(`dist/docs/${doc}/index.html`, 'utf8'), doc).toContain(`href="${route}"`);
+    }
+  });
+
   it('publishes /solutions hub and each solution page with schema, Markdown and nav links', () => {
     const hubHtml = readFileSync('dist/solutions/index.html', 'utf8');
     const sitemap = readFileSync('dist/sitemap.xml', 'utf8');

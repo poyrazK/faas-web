@@ -101,6 +101,7 @@ const CRASH_SNAPSHOTS_SLUG = 'debug-production-5xx-crash-snapshots-and-profile-d
 const ACCESS_CONTROL_SLUG = 'password-protect-app-basic-auth-ip-allowlist';
 const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
 const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
+const S2Z_PRICING_SLUG = 'scale-to-zero-pricing-compared';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -557,6 +558,32 @@ export const ARTICLES: readonly Article[] = [
         question: 'Do Render, Railway and Fly.io roll back a bad release automatically?',
         answer:
           'Not when errors rise after a release goes live. Render and Railway send all traffic to a new version once its health check passes and leave rolling back to you. Fly.io replaces Machines one at a time, and its canary strategy health-checks one new Machine first.',
+      },
+    ],
+  },
+  {
+    slug: S2Z_PRICING_SLUG,
+    comparison: ['fly', 'cloud-run', 'railway', 'koyeb', 'render'],
+    title: 'Scale-to-zero pricing in 2026: Fly.io vs Cloud Run vs Railway vs Koyeb vs Render',
+    summary:
+      'When Fly.io, Cloud Run, Railway, Koyeb, Render and Gregale stop billing an idle app, what they charge while it sleeps, and three monthly bills worked out.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'Which platform is cheapest for an app that scales to zero?',
+        answer:
+          'For one small API with light traffic, Google Cloud Run usually costs nothing: request-based billing charges only while a request is in flight, and each month 180,000 vCPU-seconds, 360,000 GiB-seconds and 2 million requests are free. A Fly.io Machine or Koyeb nano Instance that never sleeps costs $2 to $3 a month. For several services with steady light traffic, Gregale Hobby covers 5 apps for $10 a month and includes a managed Postgres database.',
+      },
+      {
+        question: 'Why does my scale-to-zero app never stop billing?',
+        answer:
+          'Because it is never quiet for long enough. Fly.io stops a Machine after several idle minutes, Railway sleeps a service 5 to 10 minutes after its last outbound traffic, Koyeb scales Standard Instances to zero after 5 minutes and Render Free spins down after 15. A webhook, poller or uptime check every minute keeps the app running and billed all month. Gregale pauses an app about a second after each request instead, and paused seconds are not billed.',
+      },
+      {
+        question: 'What do I pay while my app is asleep?',
+        answer:
+          "On Fly.io, $0.15 per GB a month for a stopped Machine's root filesystem, plus any volume in full. On Cloud Run, nothing unless you keep minimum instances, which bill at an idle rate. Railway, Koyeb, Render Free and Gregale charge no compute while an app sleeps.",
       },
     ],
   },
@@ -2730,9 +2757,12 @@ const UPLOAD_TRIGGER_LINK = `[Run code when a file is uploaded, without Lambda](
 const WAKE_AHEAD_LINK = `[Stop cold starts from stacking up across services](/articles/${WAKE_AHEAD_SLUG}) explains service wake-ahead, what it learns and what it costs.`;
 const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff CPU or heap profiles](/articles/${CRASH_SNAPSHOTS_SLUG}) explains auto 5xx memory captures, isolated crash forks and differential flamegraphs.`;
 
+const S2Z_PRICING_LINK = `[Scale-to-zero pricing in 2026](/articles/${S2Z_PRICING_SLUG}) compares when Fly.io, Cloud Run, Railway, Koyeb, Render and Gregale stop billing an idle app, with three monthly bills worked out.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
+  plans: S2Z_PRICING_LINK,
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
-  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK}`,
+  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
   'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
   cache: EDGE_CACHE_LINK,
@@ -2934,6 +2964,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
       'Side-by-side pricing, idle billing, isolation and rollback comparisons against Heroku, Render, Railway, Fly.io, Cloud Run, Vercel, Koyeb, Northflank, Coolify, Cloudflare Workers, AWS App Runner, DigitalOcean App Platform and Replit.',
     slugs: [
       'render-vs-railway-vs-flyio',
+      S2Z_PRICING_SLUG,
       'heroku-alternatives',
       'render-alternatives',
       'railway-alternatives',

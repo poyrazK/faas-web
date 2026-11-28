@@ -157,6 +157,37 @@ describe('articles', () => {
     }
   });
 
+  it('works out the Gregale bills in the scale-to-zero pricing comparison from the plan catalog', () => {
+    // If a plan's memory or allowance changes, these worked examples go stale.
+    const [free, hobby] = PLAN_CATALOG.plans;
+    const text = body('scale-to-zero-pricing-compared').replace(/\s+/g, ' ');
+    const gbHours = (hours: number, ramMb: number) => (hours * (ramMb + 8)) / 1024;
+    // Workload A: one request a minute for 30 days, 1.75 billed seconds each.
+    const trickle = (30 * 1440 * 1.75) / 3600;
+    expect(text).toContain(`${trickle} hours in the month`);
+    expect(text).toContain(
+      `${gbHours(trickle, free.ramMb).toFixed(2)} of Gregale Free's ${free.includedGbHours} GB-RAM-hours`
+    );
+    // Workload B: busy for 3 hours a day, so 90 billed hours.
+    const busyFree = gbHours(90, free.ramMb);
+    expect(busyFree).toBeGreaterThan(free.includedGbHours);
+    expect(text).toContain(`${busyFree.toFixed(1)} GB-RAM-hours on Free`);
+    expect(text).toContain(`about day ${Math.round((30 * free.includedGbHours) / busyFree)}`);
+    expect(text).toContain(
+      `using ${gbHours(90, hobby.ramMb).toFixed(1)} of its ${hobby.includedGbHours}`
+    );
+    // Workload C: five apps like A.
+    expect(text).toContain(
+      `${(5 * gbHours(trickle, hobby.ramMb)).toFixed(1)} of its ${hobby.includedGbHours}`
+    );
+    expect(text).toContain(
+      `Gregale Hobby: ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps`
+    );
+    expect(text).toContain(
+      `Gregale Free is ${formatPlanPrice(free.monthly)} for 1 app with ${free.ramMb} MB and ${free.includedGbHours} GB-RAM-hours a month`
+    );
+  });
+
   it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
     const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
     const previews = body('preview-environments').replace(/\s+/g, ' ');
