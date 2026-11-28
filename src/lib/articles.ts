@@ -2142,7 +2142,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Receive Telegram updates by webhook, not polling, check the secret header, and let the bot park between messages. On Gregale: 75 MB, first byte in 166 ms.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Why does my Telegram bot stop answering on a free host?',
@@ -2172,7 +2172,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Give a Discord app an Interactions Endpoint URL, verify each Ed25519 signature, and answer slash commands within 3 seconds from an app that scales to zero.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Does a Discord bot need to run all the time?',
@@ -2202,7 +2202,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Slack wants a 2xx within 3 seconds. A Bolt app in HTTP mode on Gregale answered from a parked snapshot in 270 ms and kept working after ack().',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Should my Slack app use Socket Mode or HTTP mode?',
