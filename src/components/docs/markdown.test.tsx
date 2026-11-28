@@ -57,3 +57,16 @@ it('keeps inline code unhighlighted', async () => {
   expect(code).toHaveClass('rounded');
   expect(code.querySelector('[class*="hljs-"]')).toBeNull();
 });
+
+it('preserves right alignment for numeric table columns', async () => {
+  const source = '| Price and limits | Free |\n| --- | ---: |\n| Monthly price | $0 |';
+  render(withRouter(<Markdown source={source} />));
+
+  expect(await screen.findByRole('columnheader', { name: 'Free' })).toHaveStyle({
+    textAlign: 'right',
+  });
+  expect(screen.getByRole('cell', { name: '$0' })).toHaveStyle({ textAlign: 'right' });
+  expect(screen.getByRole('cell', { name: 'Monthly price' })).not.toHaveStyle({
+    textAlign: 'right',
+  });
+});

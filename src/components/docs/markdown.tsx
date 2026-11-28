@@ -179,19 +179,27 @@ const COMPONENTS: Components = {
   // genuinely needs to scroll rather than wrap.
   table: ({ children }) => (
     <div className="mt-6 overflow-x-auto rounded-xl border border-border">
-      <table className="w-full border-collapse text-sm">{children}</table>
+      <table className="w-full border-collapse text-[13px] [overflow-wrap:normal] sm:text-sm">
+        {children}
+      </table>
     </div>
   ),
   thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-  // Mono uppercase headers — the same label voice the console's tables and
-  // the site's eyebrows use, which is right for what these tables are: data.
-  th: ({ children }) => (
-    <th className="label-mono border-b border-border px-4 py-2.5 text-left text-muted-foreground">
+  tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
+  th: ({ children, style }) => (
+    <th
+      scope="col"
+      style={style}
+      className="border-b border-border px-1.5 py-2.5 text-left font-semibold text-foreground sm:px-4"
+    >
       {children}
     </th>
   ),
-  td: ({ children }) => (
-    <td className="border-b border-border px-4 py-2.5 align-top text-muted-foreground last:border-0">
+  td: ({ children, style }) => (
+    <td
+      style={style}
+      className="px-1.5 py-2.5 align-top text-muted-foreground tabular-nums sm:px-4"
+    >
       {children}
     </td>
   ),
