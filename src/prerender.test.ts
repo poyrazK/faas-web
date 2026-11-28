@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { comparisons } from './lib/compare';
@@ -1486,5 +1487,19 @@ describeBuilt('structured data', () => {
     const llms = readFileSync('dist/llms.txt', 'utf8');
     expect(llms).toContain('https://gregale.dev/docs/deploy-button.md');
     expect(llms).toContain('https://gregale.dev/deploy?repo=');
+  });
+});
+
+describe.skipIf(!built)('social preview image', () => {
+  it('versions the image URL by its content, so crawlers fetch a new card', () => {
+    const html = readFileSync('dist/index.html', 'utf8');
+    const version = createHash('sha256')
+      .update(readFileSync('public/og.png'))
+      .digest('hex')
+      .slice(0, 10);
+    for (const tag of ['property="og:image"', 'name="twitter:image"'])
+      expect(html).toMatch(
+        new RegExp(`<meta ${tag} content="https://[^"]+/og\\.png\\?v=${version}" />`)
+      );
   });
 });

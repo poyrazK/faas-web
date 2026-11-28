@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { atomFeed } from './feed.mjs';
@@ -164,6 +165,17 @@ const productionSite =
 
 /** Social preview card, if one has been added to `public/`. */
 const OG_IMAGE = 'og.png';
+/**
+ * X, Slack, LinkedIn and the rest cache a card by its image URL, some for
+ * days. Versioning the URL by the PNG's content makes every crawler fetch a
+ * new card the moment it changes, and keeps the same URL while it doesn't.
+ */
+const OG_IMAGE_URL = existsSync(join('public', OG_IMAGE))
+  ? `${OG_IMAGE}?v=${createHash('sha256')
+      .update(readFileSync(join('public', OG_IMAGE)))
+      .digest('hex')
+      .slice(0, 10)}`
+  : null;
 
 // `SITE_URL` has its trailing slash stripped and every route starts with one,
 // so the home page canonicalises to `https://host/` rather than the bare host.
@@ -227,8 +239,8 @@ for (const route of ROUTES) {
   if (SITE_URL && !incidentShell && route !== NOT_FOUND_ROUTE) {
     perRoute.push(`<link rel="canonical" href="${attr(absolute(route))}" />`);
     perRoute.push(`<meta property="og:url" content="${attr(absolute(route))}" />`);
-    if (existsSync(join('public', OG_IMAGE))) {
-      const image = SITE_URL + '/' + OG_IMAGE;
+    if (OG_IMAGE_URL) {
+      const image = SITE_URL + '/' + OG_IMAGE_URL;
       perRoute.push(`<meta property="og:image" content="${attr(image)}" />`);
       perRoute.push('<meta property="og:image:width" content="1200" />');
       perRoute.push('<meta property="og:image:height" content="630" />');
