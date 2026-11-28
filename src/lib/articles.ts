@@ -102,6 +102,7 @@ const ACCESS_CONTROL_SLUG = 'password-protect-app-basic-auth-ip-allowlist';
 const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
 const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
 const S2Z_PRICING_SLUG = 'scale-to-zero-pricing-compared';
+const FREE_TIERS_SLUG = 'free-backend-hosting-tiers-compared';
 
 export const ARTICLES: readonly Article[] = [
   {
@@ -584,6 +585,33 @@ export const ARTICLES: readonly Article[] = [
         question: 'What do I pay while my app is asleep?',
         answer:
           "On Fly.io, $0.15 per GB a month for a stopped Machine's root filesystem, plus any volume in full. On Cloud Run, nothing unless you keep minimum instances, which bill at an idle rate. Railway, Koyeb, Render Free and Gregale charge no compute while an app sleeps.",
+      },
+    ],
+  },
+  {
+    slug: FREE_TIERS_SLUG,
+    comparison: ['cloud-run', 'aws', 'cloudflare-workers', 'render', 'railway', 'fly', 'koyeb'],
+    title:
+      'Free backend hosting in 2026: Cloud Run vs Lambda vs Workers vs Oracle vs Render vs Railway vs Fly.io',
+    summary:
+      'Free tiers of Cloud Run, Lambda, Workers, Oracle Cloud, Render, Railway, Fly.io, Koyeb and Gregale: what each covers, when it sleeps and what happens past it.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'What is the best free tier for hosting a backend?',
+        answer:
+          'It depends on whether the app can sleep. For an API with light traffic, Google Cloud Run (180,000 vCPU-seconds, 360,000 GiB-seconds and 2 million requests a month) and AWS Lambda (1 million requests and 400,000 GB-seconds) rarely leave their free allowances, but they bill usage past them. Cloudflare Workers, Railway Free, Render Free and Gregale Free stop at their limit instead. For a process that must stay running, Oracle Cloud Always Free gives you small always-on VMs.',
+      },
+      {
+        question: 'Which free backend hosting needs no credit card?',
+        answer:
+          'Railway Free, Render Free, Neon Free and Gregale Free need no card. Fly.io gives $1 for 7 days without one and $5 of usage a month once a card is added. Google Cloud needs a credit card or other payment method to sign up, even for its free tier.',
+      },
+      {
+        question: 'Which free tier keeps a bot or worker running all the time?',
+        answer:
+          "Oracle Cloud's Always Free VMs and Fly.io's Free plan, where a 256 MB Machine running all month is $2.19 of the $5. Render Free, Koyeb's Free Instance and Railway Free put idle apps to sleep. A Discord, Telegram or Slack bot can instead receive events over HTTPS, which works on tiers that sleep between requests.",
       },
     ],
   },
@@ -2759,8 +2787,10 @@ const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff C
 
 const S2Z_PRICING_LINK = `[Scale-to-zero pricing in 2026](/articles/${S2Z_PRICING_SLUG}) compares when Fly.io, Cloud Run, Railway, Koyeb, Render and Gregale stop billing an idle app, with three monthly bills worked out.`;
 
+const FREE_TIERS_LINK = `[Free backend hosting in 2026](/articles/${FREE_TIERS_SLUG}) compares the free tiers of Cloud Run, Lambda, Cloudflare Workers, Oracle Cloud, Render, Railway, Fly.io and Koyeb with Gregale Free.`;
+
 const RELATED_ARTICLES: Record<string, string> = {
-  plans: S2Z_PRICING_LINK,
+  plans: `${S2Z_PRICING_LINK} ${FREE_TIERS_LINK}`,
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK}`,
   'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
   realtime: REALTIME_SCALE_ZERO_LINK,
@@ -2965,6 +2995,7 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     slugs: [
       'render-vs-railway-vs-flyio',
       S2Z_PRICING_SLUG,
+      FREE_TIERS_SLUG,
       'heroku-alternatives',
       'render-alternatives',
       'railway-alternatives',

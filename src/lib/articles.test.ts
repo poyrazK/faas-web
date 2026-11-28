@@ -188,6 +188,30 @@ describe('articles', () => {
     );
   });
 
+  it('states Gregale Free in the free backend hosting comparison as the plan catalog does', () => {
+    // If Free's memory, allowance or limits change, this page goes stale.
+    const [free, hobby] = PLAN_CATALOG.plans;
+    const text = body('free-backend-hosting-tiers-compared').replace(/\s+/g, ' ');
+    const billedHours = (free.includedGbHours * 1024) / (free.ramMb + 8);
+    // 1.75 billed seconds for each isolated request, rounded to the nearest 10,000.
+    const requests = Math.round((billedHours * 3600) / 1.75 / 10_000) * 10_000;
+    expect(text).toContain(
+      `At ${free.ramMb + 8} MB, Gregale Free's ${free.includedGbHours} GB-RAM-hours are about ${billedHours.toFixed(1)} billed hours, or about ${requests.toLocaleString('en-US')} well-spaced requests`
+    );
+    expect(text).toContain(
+      `| 1 app with ${free.ramMb} MB and ${free.includedGbHours} GB-RAM-hours, ${free.appEgressGib} GiB of egress |`
+    );
+    expect(free.deployedApps).toBe(1);
+    expect(free.previewEnvironments).toBe(1);
+    expect(free.maxRequestTimeout).toBe('30s');
+    expect(text).toContain(
+      `Gregale Free is ${formatPlanPrice(free.monthly)} for 1 app with ${free.ramMb} MB and ${free.includedGbHours} GB-RAM-hours a month, plus ${free.appEgressGib} GiB of egress, 1 GiB of object storage, one preview environment and a request timeout of up to 30 seconds.`
+    );
+    expect(text).toContain(
+      `Gregale Hobby: ${formatPlanPrice(hobby.monthly)} a month for ${hobby.deployedApps} apps, with one managed database`
+    );
+  });
+
   it('quotes plan limits in the answer pages exactly as the plan catalog states them', () => {
     const [free, hobby, pro, scale] = PLAN_CATALOG.plans;
     const previews = body('preview-environments').replace(/\s+/g, ' ');
