@@ -1,0 +1,129 @@
+.release-demo-stage {
+  background:
+    radial-gradient(ellipse at 12% 106%, #e0bd84 0%, #9b6247 31%, transparent 65%),
+    radial-gradient(ellipse at 0% 28%, #704234 0%, transparent 58%),
+    linear-gradient(150deg, #30201c, #171415 80%);
+  box-shadow: inset 0 0 0 1px rgb(255 244 217 / 0.12);
+}
+
+.release-demo-console {
+  color-scheme: dark;
+  --background: #101012;
+  --foreground: #eeedea;
+  --card: #161619;
+  --muted: #232327;
+  --muted-foreground: #b4b3b8;
+  --accent: #29292f;
+  --accent-foreground: var(--foreground);
+  --border: #323238;
+  --primary: #8de3cb;
+  --primary-foreground: #072e27;
+  --brand: #8de3cb;
+  --ring: var(--brand);
+  box-shadow:
+    0 20px 55px -25px rgb(0 0 0 / 0.8),
+    inset 0 1px rgb(255 255 255 / 0.04);
+}
+
+.release-demo-tab {
+  display: flex;
+  flex-direction: column;
+}
+
+.release-demo-chrome {
+  background: #121215;
+}
+
+.release-demo-toolbar,
+.release-demo-tab-title {
+  background: #222227;
+}
+
+.release-demo-tab-title {
+  min-height: 2rem;
+}
+
+.release-demo-window-dots > span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #70575c;
+}
+
+.release-demo-window-dots > span:nth-child(2) {
+  background: #77684f;
+}
+
+.release-demo-window-dots > span:nth-child(3) {
+  background: #506b60;
+}
+
+.release-demo-order-icon {
+  background: linear-gradient(145deg, rgb(141 227 203 / 0.14), rgb(141 227 203 / 0.03));
+}
+
+.release-demo-expired {
+  border-color: #59353c;
+  background: #271b20;
+  color: #f6bdc0;
+}
+
+.release-demo-tracking {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.release-demo-tracking li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.release-demo-tracking li::before {
+  display: block;
+  height: 0.1875rem;
+  margin-bottom: 0.375rem;
+  border-radius: 1rem;
+  background: var(--border);
+  content: '';
+}
+
+.release-demo-tracking [data-progress='complete']::before {
+  background: color-mix(in srgb, var(--brand) 45%, var(--border));
+}
+
+.release-demo-tracking [data-progress='current'] {
+  color: var(--brand);
+}
+
+.release-demo-tracking [data-progress='current']::before {
+  background: var(--brand);
+}
+
+.release-demo-diff-line {
+  display: grid;
+  grid-template-columns: 0.75rem minmax(0, 1fr);
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.release-demo-removed {
+  background: #342024;
+  color: #f6bdc0;
+}
+
+.release-demo-added {
+  background: #102924;
+  color: #a9ecd9;
+}
+
+@media (min-width: 40rem) {
+  .release-demo-diff-line {
+    gap: 0.75rem;
+    padding-inline: 1rem;
+  }
+}

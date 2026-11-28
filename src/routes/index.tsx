@@ -8,6 +8,7 @@ import { Hero } from '@/components/landing/hero';
 import { HowItWorks } from '@/components/landing/how-it-works';
 import { Process } from '@/components/landing/process';
 import { FeatureExplorer } from '@/components/landing/feature-explorer';
+import { ReleasePinningDemo } from '@/components/landing/release-pinning-demo';
 import { PracticalQuestions } from '@/components/landing/practical-questions';
 import { Pricing } from '@/components/landing/pricing';
 import { Footer } from '@/components/landing/footer';
@@ -39,6 +40,7 @@ function LandingPage() {
           <HowItWorks />
           <Process />
           <FeatureExplorer />
+          <ReleasePinningDemo />
           <PracticalQuestions />
           <Pricing />
         </main>
