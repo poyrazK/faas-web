@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle,
   Clock,
@@ -16,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { Timestamp } from '@/components/ui/timestamp';
 import { useToast } from '@/components/ui/toast';
 import {
+  updateAlertRuleOnce,
   useAlertRule,
   useAppSLOs,
   useAppSyntheticChecks,
@@ -24,9 +26,19 @@ import {
 } from '@/lib/api/alert-rules';
 import { ApiError } from '@/lib/api/errors';
 import { useNotificationChannels } from '@/lib/api/notification-channels';
-import { useDeleteAlert, useRotateAlertSecret, useUpdateAlert } from '@/lib/api/queries';
+import { keys, useDeleteAlert, useRotateAlertSecret, useUpdateAlert } from '@/lib/api/queries';
+import { absoluteTime, parseTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { AlertAnomalyPreview } from './alert-anomaly-preview';
+import {
+  AlertObservationCoverage,
+  AlertObservationHistory,
+  AlertRecoveryChecks,
+  AlertRuleMode,
+  describeObservationCoverage,
+} from './alert-observation';
 import { AlertDeliveries } from './alert-deliveries';
+import { alertWindowLabel, formatAnomalyValue } from './alert-language';
 import {
   COMPARISON_SYMBOL,
   baselineRange,
@@ -39,7 +51,7 @@ import {
   type AlertComparison,
   type AlertWindow,
 } from './alert-metrics';
-import { useCapabilityCheck } from './alert-rule-form';
+import { isHttpsUrl, useCapabilityCheck } from './alert-rule-form';
 import { ChannelPicker, channelKindLabel } from './notification-channels';
 import { InlinePhase, Panel, queryPhase } from './primitives';
 import { RotateSecretDialog } from './rotate-secret-dialog';
@@ -51,12 +63,77 @@ const STATE: Record<string, { label: string; color: string; icon: typeof CheckCi
   unknown: { label: 'Unknown', color: 'var(--muted-foreground)', icon: Clock },
 };
 
+function describeAnomalyEvaluation(
+  evaluation: NonNullable<AlertRule['anomaly_evaluation']>,
+  rule: AlertRule
+): ReactNode {
+  switch (evaluation.reason) {
+    case 'insufficient_traffic':
+      if (evaluation.required_count === undefined)
+        return 'Too few eligible requests for this window.';
+      return `${evaluation.count} of ${evaluation.required_count} eligible requests in the last ${alertWindowLabel(rule.window_spec)}.`;
+    case 'insufficient_history':
+      if (evaluation.required_count === undefined) return 'Too few historical windows qualified.';
+      if (evaluation.baseline_days !== undefined)
+        return `${evaluation.baseline_days} of ${evaluation.required_count} required baseline days qualified.`;
+      return `${evaluation.count} of ${evaluation.required_count} required historical windows qualified.`;
+    case 'telemetry_missing_or_stale':
+      return 'Request data is missing or stale for this window.';
+    case 'telemetry_unavailable':
+      return 'Gregale couldn’t read request data for this evaluation.';
+    case 'threshold_not_reached':
+      return 'The observed value hasn’t reached the baseline threshold.';
+    case 'minimum_impact_not_reached': {
+      const subject = rule.comparison === 'below_baseline' ? 'The baseline' : 'The observed value';
+      const minimum = evaluation.minimum_value;
+      return minimum === undefined
+        ? `${subject} is below the required minimum.`
+        : `${subject} is below the required minimum of ${formatAnomalyValue(rule.metric, minimum)}.`;
+    }
+    case 'zero_baseline':
+      return 'This rule needs a positive baseline to detect a relative increase.';
+    case 'observed_breach':
+      return 'The rule’s threshold was breached while observing.';
+    case 'recovery_confirmation_pending':
+      return `${evaluation.count} of ${evaluation.required_count ?? 2} healthy checks. The incident is still open.`;
+    case 'recovery_confirmed':
+      return 'Two consecutive healthy checks confirmed recovery.';
+    case 'notification_cooldown':
+      return (
+        <AnomalyCooldownMessage
+          key={evaluation.next_notification_eligible_at}
+          eligibleAt={evaluation.next_notification_eligible_at}
+        />
+      );
+  }
+}
+
+function AnomalyCooldownMessage({ eligibleAt }: { eligibleAt: string | undefined }) {
+  const deadline = parseTime(eligibleAt);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (deadline === undefined || now >= deadline) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, deadline - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [deadline, now]);
+
+  if (deadline === undefined) return 'Still firing. Repeat notifications are in cooldown.';
+  if (now >= deadline) return 'Still firing at the last check. Awaiting next evaluation.';
+  return (
+    <>
+      Still firing. Another notification is eligible from{' '}
+      <Timestamp value={deadline} mode="absolute" /> if the breach continues.
+    </>
+  );
+}
+
 /**
  * A rule's evaluation state in colour, icon and word. degraded means the
  * metric's own source is unavailable; unknown means too few samples
  * (AlertRuleResponse.state).
  */
-export function AlertState({ state }: { state: string }) {
+export function AlertState({ state, observeOnly }: { state: string; observeOnly?: boolean }) {
+  if (observeOnly) return <span className="text-xs text-muted-foreground">Observe only</span>;
   const s = STATE[state] ?? STATE.unknown;
   const Icon = s.icon;
   return (
@@ -240,7 +317,7 @@ function RuleDetail({
       <div className="flex flex-col gap-6">
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="State">
-            <AlertState state={rule.state} />
+            <AlertState state={rule.state} observeOnly={rule.observe_only} />
           </Fact>
           <Fact label="Metric">
             {metricLabel(rule.metric)}{' '}
@@ -266,14 +343,24 @@ function RuleDetail({
             )}
           </Fact>
           <Fact label="Cooldown">{rule.cooldown_minutes} min</Fact>
+          {isBaseline(rule.comparison) && (
+            <Fact label="Recovery">
+              {rule.recovery_confirmation_checks === 2
+                ? 'Two consecutive healthy checks'
+                : 'One healthy check'}
+            </Fact>
+          )}
           <Fact label="Action">{ACTION[rule.action] ?? rule.action}</Fact>
           <Fact label="Scope">{accountWide ? 'Every app on the account' : 'This app'}</Fact>
+          {rule.environment_scope && <Fact label="Environment">{rule.environment_scope}</Fact>}
           <Fact label="Last fired">
             <Timestamp value={rule.last_fired_at} />
           </Fact>
-          <Fact label="Last evaluated">
-            <Timestamp value={rule.last_evaluated_at} />
-          </Fact>
+          {!rule.anomaly_evaluation && (
+            <Fact label="Last evaluated">
+              <Timestamp value={rule.last_evaluated_at} />
+            </Fact>
+          )}
           <Fact label="Updated">
             <Timestamp value={rule.updated_at} />
           </Fact>
@@ -282,8 +369,51 @@ function RuleDetail({
           </Fact>
         </dl>
 
-        <section aria-label="Delivers to" className="flex flex-col gap-2">
-          <h3 className="label-mono text-muted-foreground">Delivers to</h3>
+        {rule.anomaly_evaluation && (
+          <section aria-label="Latest evaluation" className="flex flex-col gap-2">
+            <h3 className="label-mono text-muted-foreground">Latest evaluation</h3>
+            <p className="text-sm">{describeAnomalyEvaluation(rule.anomaly_evaluation, rule)}</p>
+            {rule.anomaly_evaluation.baseline_days !== undefined &&
+              rule.anomaly_evaluation.reason !== 'insufficient_history' && (
+                <p className="text-xs text-muted-foreground">
+                  {rule.anomaly_evaluation.baseline_days}{' '}
+                  {rule.anomaly_evaluation.baseline_days === 1 ? 'day' : 'days'} qualified for the
+                  baseline.
+                </p>
+              )}
+            {rule.anomaly_evaluation.observed !== undefined && (
+              <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Fact label="Observed">
+                  {formatAnomalyValue(rule.metric, rule.anomaly_evaluation.observed)}
+                </Fact>
+                {rule.anomaly_evaluation.baseline !== undefined && (
+                  <Fact label="Baseline">
+                    {formatAnomalyValue(rule.metric, rule.anomaly_evaluation.baseline)}
+                  </Fact>
+                )}
+                {rule.anomaly_evaluation.trigger_value !== undefined && (
+                  <Fact label="Baseline threshold">
+                    {formatAnomalyValue(rule.metric, rule.anomaly_evaluation.trigger_value)}{' '}
+                    {rule.comparison === 'below_baseline' ? 'or lower' : 'or higher'}
+                  </Fact>
+                )}
+              </dl>
+            )}
+            <span className="text-xs text-muted-foreground">
+              <Timestamp value={rule.anomaly_evaluation.evaluated_at} />
+            </span>
+          </section>
+        )}
+
+        <AlertObservationCoverage rule={rule} />
+        <AlertObservationHistory rule={rule} />
+        <section
+          aria-label={rule.observe_only ? 'Delivery destinations' : 'Delivers to'}
+          className="flex flex-col gap-2"
+        >
+          <h3 className="label-mono text-muted-foreground">
+            {rule.observe_only ? 'Delivery destinations' : 'Delivers to'}
+          </h3>
           <ul className="flex flex-col gap-1.5 text-sm">
             {ruleChannels.map((id) => {
               const channel = channelById.get(id);
@@ -366,10 +496,13 @@ function EditRule({
   onDone: () => void;
 }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const isOn = useCapabilityCheck();
-  const update = useUpdateAlert(slug);
+  const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
   const spec = metricSpec(rule.metric);
-  const comparisons = comparisonsFor(rule.metric, isOn('anomaly-alerts'));
+  const baselines = Boolean(rule.app_id) && isOn('anomaly-alerts');
+  const comparisons = comparisonsFor(rule.metric, baselines);
   // A baseline rule keeps its comparison listed even after the flag goes off:
   // apid keeps evaluating it and only refuses changing it.
   if (!comparisons.includes(rule.comparison)) comparisons.push(rule.comparison);
@@ -377,6 +510,13 @@ function EditRule({
   const [name, setName] = useState(rule.name);
   const [comparison, setComparison] = useState<AlertComparison>(rule.comparison);
   const [threshold, setThreshold] = useState(String(rule.threshold));
+  const [observeOnly, setObserveOnly] = useState(Boolean(rule.observe_only));
+  const [recoveryConfirmationChecks, setRecoveryConfirmationChecks] = useState<1 | 2>(
+    rule.recovery_confirmation_checks === 2 ? 2 : 1
+  );
+  const [environmentScope, setEnvironmentScope] = useState(rule.environment_scope ?? '');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [window, setWindow] = useState<AlertWindow>(rule.window_spec);
   const [cooldown, setCooldown] = useState(String(rule.cooldown_minutes));
   const [channelIds, setChannelIds] = useState<string[]>(rule.channel_ids ?? []);
@@ -386,8 +526,19 @@ function EditRule({
   const parsedThreshold = Number(threshold);
   const parsedCooldown = Number(cooldown);
   const range = baselineRange(comparison);
+  const newWebhook = webhookUrl.trim();
+  const scopeChanged = environmentScope !== (rule.environment_scope ?? '');
+  const promotingEnvironment = Boolean(rule.observe_only && !observeOnly && environmentScope);
   const errors = {
     name: name.trim() ? undefined : 'Enter a name.',
+    mode:
+      scopeChanged && !rule.observe_only && !observeOnly
+        ? 'Switch to Observe only to change the environment.'
+        : (observeOnly || environmentScope) && !isBaseline(comparison)
+          ? observeOnly
+            ? 'Choose a baseline comparison for Observe only.'
+            : 'Choose a baseline comparison for this environment.'
+          : undefined,
     threshold:
       threshold === '' || !Number.isFinite(parsedThreshold)
         ? 'Enter a numeric threshold.'
@@ -399,34 +550,99 @@ function EditRule({
         ? undefined
         : 'Enter whole minutes from 5 to 1440.',
     channels:
-      !hasWebhook && channelIds.length === 0
+      !observeOnly && !hasWebhook && !newWebhook && channelIds.length === 0
         ? 'A rule without a webhook needs at least one channel.'
+        : undefined,
+    webhookUrl:
+      newWebhook && !isHttpsUrl(newWebhook) ? 'Enter a complete HTTPS webhook URL.' : undefined,
+    webhookSecret:
+      newWebhook && (webhookSecret.length < 1 || webhookSecret.length > 256)
+        ? 'Enter a webhook secret of no more than 256 characters.'
         : undefined,
   };
   const shown = (k: keyof typeof errors) => (attempted ? errors[k] : undefined);
 
-  const save = () => {
+  const save = async () => {
     setAttempted(true);
-    if (Object.values(errors).some(Boolean) || update.isPending) return;
+    if (Object.values(errors).some(Boolean) || saving) return;
     const body: UpdateAlertRule = {};
     if (name.trim() !== rule.name) body.name = name.trim();
     if (comparison !== rule.comparison) body.comparison = comparison;
+    const recoveryChecks = isBaseline(comparison) ? recoveryConfirmationChecks : 1;
+    if (recoveryChecks !== (rule.recovery_confirmation_checks ?? 1))
+      body.recovery_confirmation_checks = recoveryChecks;
     if (parsedThreshold !== rule.threshold) body.threshold = parsedThreshold;
     if (window !== rule.window_spec) body.window_spec = window;
+    if (observeOnly !== Boolean(rule.observe_only)) body.observe_only = observeOnly;
+    if (scopeChanged || promotingEnvironment) body.environment_scope = environmentScope;
+    const clearAction = promotingEnvironment && rule.action !== 'webhook';
+    if (clearAction) {
+      body.action = 'webhook';
+      if (rule.post_deploy_rollback_window_seconds) body.post_deploy_rollback_window_seconds = 0;
+    }
+    if (newWebhook) {
+      body.webhook_url = newWebhook;
+      body.webhook_secret = webhookSecret;
+    }
     if (parsedCooldown !== rule.cooldown_minutes) body.cooldown_minutes = parsedCooldown;
     const before = rule.channel_ids ?? [];
     if (channelIds.length !== before.length || channelIds.some((id) => !before.includes(id)))
       body.channel_ids = channelIds;
-    if (hasWebhook && notifyResolved !== Boolean(rule.notify_resolved))
+    if ((hasWebhook || newWebhook) && notifyResolved !== Boolean(rule.notify_resolved))
       body.notify_resolved = notifyResolved;
     if (Object.keys(body).length === 0) return onDone();
-    void update
-      .mutateAsync({ id: rule.id, ...body })
-      .then(() => {
-        toast({ kind: 'success', title: 'Rule updated' });
-        onDone();
-      })
-      .catch((err: unknown) => toast({ kind: 'error', title: 'Could not update', error: err }));
+    setSaving(true);
+    try {
+      if (rule.observe_only && !observeOnly) {
+        const sameSettings =
+          !scopeChanged &&
+          rule.window_spec === window &&
+          rule.comparison === comparison &&
+          rule.threshold === parsedThreshold &&
+          rule.cooldown_minutes === parsedCooldown &&
+          (rule.recovery_confirmation_checks ?? 1) === recoveryChecks;
+        let coverage = 'Live coverage is unavailable for these edited settings.';
+        if (sameSettings) {
+          const current = rule.observation_coverage;
+          const lastCheck = parseTime(current ? current.last_checked_at : rule.last_evaluated_at);
+          const check =
+            lastCheck === undefined
+              ? 'No check recorded for this condition and environment.'
+              : `Last check at ${absoluteTime(lastCheck)}.`;
+          const days = rule.anomaly_evaluation?.baseline_days;
+          const baseline =
+            days === undefined
+              ? 'Baseline coverage is unavailable.'
+              : `${days} ${days === 1 ? 'day' : 'days'} qualified for the baseline.`;
+          coverage = `${check} ${baseline} ${describeObservationCoverage(current)}`;
+        }
+        const action = clearAction
+          ? ` The action will change from “${ACTION[rule.action] ?? rule.action}” to “Notify only”.`
+          : '';
+        const rollback =
+          body.post_deploy_rollback_window_seconds === 0
+            ? ' The rollback window will also be cleared.'
+            : '';
+        if (
+          !(await confirm({
+            title: environmentScope
+              ? `Enable notifications for ${environmentScope}?`
+              : 'Enable notifications?',
+            description: `${coverage}${action}${rollback}`,
+            confirmLabel: 'Enable notifications',
+          }))
+        )
+          return;
+      }
+      await updateAlertRuleOnce(slug, rule.id, body);
+      await qc.invalidateQueries({ queryKey: keys.appAlerts(slug) });
+      toast({ kind: 'success', title: 'Rule updated' });
+      onDone();
+    } catch (err) {
+      toast({ kind: 'error', title: 'Could not update', error: err });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -436,7 +652,7 @@ function EditRule({
       className="grid grid-cols-1 gap-4 well rounded-xl bg-muted/40 p-4 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={(e) => {
         e.preventDefault();
-        save();
+        void save();
       }}
     >
       <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -513,11 +729,82 @@ function EditRule({
         />
         {shown('cooldown') && <FieldError id="edit-cooldown-error">{shown('cooldown')}</FieldError>}
       </label>
+      {baselines &&
+        (rule.metric === 'request_count' ||
+          rule.metric === 'error_rate_pct' ||
+          rule.metric === 'latency_p95_ms') &&
+        isBaseline(comparison) &&
+        !errors.threshold && (
+          <div className="sm:col-span-2 lg:col-span-4">
+            <AlertAnomalyPreview
+              slug={slug}
+              query={{
+                comparison,
+                threshold: parsedThreshold,
+                window_spec: window,
+                ...(rule.metric === 'request_count' ? {} : { metric: rule.metric }),
+              }}
+              cooldownMinutes={errors.cooldown ? undefined : parsedCooldown}
+              recoveryConfirmationChecks={recoveryConfirmationChecks}
+              ruleEnvironment={environmentScope}
+              onUseEnvironment={(scope) => {
+                setEnvironmentScope(scope);
+                setObserveOnly(true);
+              }}
+            />
+          </div>
+        )}
       <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-4">
+        {(isBaseline(comparison) || observeOnly) && (
+          <AlertRuleMode
+            observeOnly={observeOnly}
+            onChange={setObserveOnly}
+            environmentScope={environmentScope}
+            onClearEnvironment={() => setEnvironmentScope('')}
+            error={shown('mode')}
+          />
+        )}
+        {isBaseline(comparison) && (
+          <AlertRecoveryChecks
+            value={recoveryConfirmationChecks}
+            onChange={setRecoveryConfirmationChecks}
+          />
+        )}
         <ChannelPicker value={channelIds} onChange={setChannelIds} idPrefix="edit-channel" />
         {shown('channels') && <FieldError id="edit-channels-error">{shown('channels')}</FieldError>}
       </div>
-      {hasWebhook && (
+      {rule.observe_only && !hasWebhook && (
+        <>
+          <label className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-sm font-medium">Webhook URL (optional)</span>
+            <input
+              value={webhookUrl}
+              onChange={(event) => setWebhookUrl(event.target.value)}
+              className={FIELD}
+              {...fieldErrorProps(shown('webhookUrl'), 'edit-webhook-url-error')}
+            />
+            {shown('webhookUrl') && (
+              <FieldError id="edit-webhook-url-error">{shown('webhookUrl')}</FieldError>
+            )}
+          </label>
+          {newWebhook && (
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-sm font-medium">Webhook secret</span>
+              <input
+                type="password"
+                value={webhookSecret}
+                onChange={(event) => setWebhookSecret(event.target.value)}
+                className={FIELD}
+                {...fieldErrorProps(shown('webhookSecret'), 'edit-webhook-secret-error')}
+              />
+              {shown('webhookSecret') && (
+                <FieldError id="edit-webhook-secret-error">{shown('webhookSecret')}</FieldError>
+              )}
+            </label>
+          )}
+        </>
+      )}
+      {(hasWebhook || newWebhook) && (
         <label className="flex items-center gap-2 text-xs text-muted-foreground sm:col-span-2">
           <input
             type="checkbox"
@@ -529,7 +816,7 @@ function EditRule({
         </label>
       )}
       <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
-        <Button type="submit" size="sm" busy={update.isPending}>
+        <Button type="submit" size="sm" busy={saving}>
           Save changes
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>

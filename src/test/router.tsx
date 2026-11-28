@@ -29,6 +29,7 @@ export function withRouter(ui: ReactNode) {
       leaf('/dashboard/triggers/$triggerId'),
       leaf('/dashboard/plans'),
       leaf('/dashboard/crons'),
+      leaf('/dashboard/releases'),
       leaf('/dashboard/apps/new'),
     ]),
     history: createMemoryHistory({ initialEntries: ['/'] }),

@@ -42,6 +42,51 @@ describe('AlertDeliveries', () => {
     expect(screen.getByText(/12.5/)).toBeInTheDocument();
   });
 
+  it('shows the observed value, baseline, and comparison recorded for a fire', () => {
+    useAlertDeliveries.mockReturnValue(
+      result([
+        delivery({
+          observed_value: 4.2,
+          anomaly: {
+            metric: 'error_rate_pct',
+            comparison: 'above_baseline',
+            threshold: 3,
+            window: '15m',
+            baseline: 1.1,
+            baseline_days: 6,
+            ratio: 3.818182,
+          },
+        }),
+      ])
+    );
+    render(<AlertDeliveries slug="api" ruleId="r1" />);
+    const evidence = screen.getByText(/error rate 4\.2% vs\. 1\.1% usual over 15 minutes/i);
+    expect(evidence).toHaveTextContent('3.818× usual, with a trigger at 3× or higher');
+    expect(evidence).toHaveTextContent('6 historical windows qualified');
+  });
+
+  it('shows a confirmed drop to zero and the lower bound comparison', () => {
+    useAlertDeliveries.mockReturnValue(
+      result([
+        delivery({
+          observed_value: 0,
+          anomaly: {
+            metric: 'request_count',
+            comparison: 'below_baseline',
+            threshold: 0.3,
+            window: '5m',
+            baseline: 200,
+            baseline_days: 7,
+            ratio: 0,
+          },
+        }),
+      ])
+    );
+    render(<AlertDeliveries slug="api" ruleId="r1" />);
+    const evidence = screen.getByText(/requests 0 vs\. 200 usual over 5 minutes/i);
+    expect(evidence).toHaveTextContent('0× usual, with a trigger at 0.3× or lower');
+  });
+
   it('shows why a delivery failed', () => {
     useAlertDeliveries.mockReturnValue(
       result([

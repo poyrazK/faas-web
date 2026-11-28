@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from './client';
 import { keys, retryPolicy } from './queries';
-import type { components } from './schema';
+import type { components, operations } from './schema';
 
 /**
  * Alert rule reads and writes beyond the list hooks in queries.ts: one rule's
@@ -13,6 +13,7 @@ export type CreateAlertRule = components['schemas']['CreateAlertRuleRequest'];
 export type UpdateAlertRule = components['schemas']['UpdateAlertRuleRequest'];
 export type SLO = components['schemas']['SLOResponse'];
 export type SyntheticCheck = components['schemas']['SyntheticCheckResponse'];
+export type AlertAnomalyPreviewQuery = operations['previewAlertAnomaly']['parameters']['query'];
 
 /** One rule as the {slug} app sees it (faas handlers_alerts.go:337-373). */
 export function useAlertRule(slug: string, id: string) {
@@ -22,6 +23,21 @@ export function useAlertRule(slug: string, id: string) {
       unwrap(api.GET('/v1/apps/{slug}/alerts/{id}', { params: { path: { slug, id } }, signal })),
     enabled: Boolean(slug && id),
     retry: retryPolicy,
+  });
+}
+
+export function useAlertAnomalyPreview(slug: string, query: AlertAnomalyPreviewQuery) {
+  return useQuery({
+    queryKey: [...keys.appAlerts(slug), 'anomaly-preview', query],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/v1/apps/{slug}/alerts/anomaly-preview', {
+          params: { path: { slug }, query },
+          signal,
+        })
+      ),
+    enabled: false,
+    retry: false,
   });
 }
 
