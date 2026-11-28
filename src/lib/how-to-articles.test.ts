@@ -43,7 +43,19 @@ const WAKE_PAGE = 'show-waking-up-page-during-cold-start';
 const CORS = 'fix-cors-errors-without-changing-backend-code';
 const HEADERS = 'add-security-headers-hsts-csp-without-code';
 const RATE_LIMIT = 'rate-limit-api-per-ip-without-code';
-const HOW_TO = [COMPOSE, WAKE_PAGE, CORS, HEADERS, RATE_LIMIT];
+const NOT_SCALING = 'why-app-not-scaling-to-zero';
+const DOMAIN_PENDING = 'custom-domain-stuck-pending-dns-ssl';
+const ENV_UNDO = 'undo-bad-environment-variable-change';
+const HOW_TO = [
+  COMPOSE,
+  WAKE_PAGE,
+  CORS,
+  HEADERS,
+  RATE_LIMIT,
+  NOT_SCALING,
+  DOMAIN_PENDING,
+  ENV_UNDO,
+];
 
 describe('how-to guides', () => {
   it('groups the how-to guides under their own topic', () => {

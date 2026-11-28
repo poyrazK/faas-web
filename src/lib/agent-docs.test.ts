@@ -88,6 +88,8 @@ describe('markdownPage', () => {
         `# ${entry.title}`,
         `> ${entry.summary}`,
         'Attach [a domain](https://gregale.dev/docs/deploy-from-github.md).',
+        '## Related articles',
+        '[Custom domain stuck on pending DNS or SSL](https://gregale.dev/articles/custom-domain-stuck-pending-dns-ssl) maps each domain doctor check to the record to fix and compares other platforms.',
         'Source: https://gregale.dev/docs/custom-domains',
       ].join('\n\n') + '\n'
     );

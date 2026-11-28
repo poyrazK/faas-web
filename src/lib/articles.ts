@@ -98,6 +98,9 @@ const DIRECT_UPLOADS_SLUG = 'direct-browser-uploads-resumable-multipart-storage'
 const DELAYED_TASKS_SLUG = 'delayed-tasks-without-redis-scale-to-zero';
 const DEPLOY_DIFF_SLUG = 'preview-deploy-diff-and-environment-drift';
 const CRASH_SNAPSHOTS_SLUG = 'debug-production-5xx-crash-snapshots-and-profile-diffs';
+const NOT_SCALING_SLUG = 'why-app-not-scaling-to-zero';
+const DOMAIN_PENDING_SLUG = 'custom-domain-stuck-pending-dns-ssl';
+const ENV_UNDO_SLUG = 'undo-bad-environment-variable-change';
 const ACCESS_CONTROL_SLUG = 'password-protect-app-basic-auth-ip-allowlist';
 const UPLOAD_TRIGGER_SLUG = 'run-code-on-file-upload-bucket-trigger';
 const WAKE_AHEAD_SLUG = 'chained-cold-starts-wake-services-together';
@@ -2730,6 +2733,96 @@ export const ARTICLES: readonly Article[] = [
       },
     ],
   },
+  {
+    slug: NOT_SCALING_SLUG,
+    title: 'Why isn’t my app scaling to zero? How to find what keeps it running',
+    summary:
+      'Find what keeps an app from scaling to zero with one command: requests, open connections, minimums or background work. Compared with Cloud Run, Fly.io, Railway.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'How do I find out why my app is not scaling to zero?',
+        answer:
+          'On Gregale, run gregale debug running my-api. It names what stopped the scheduler from parking the app, such as request_activity, open_connection, min_instances or tail_tasks, and shows a history of its checks.',
+      },
+      {
+        question: 'How long does an idle app stay running on Gregale?',
+        answer:
+          'Until its idle timeout passes with no requests: by default 1 minute on Free and Hobby, 5 on Pro and 10 on Scale. Set anything from 10 seconds up to twice the default with gregale app update my-api --idle 30.',
+      },
+      {
+        question: 'Do idle database connections keep my app running?',
+        answer:
+          'Not in our test. Idle outbound connections the app held, and a connection it wrote to every 3 seconds, did not stop the instance from freezing about 20 seconds after the last request with a 10-second idle timeout.',
+      },
+      {
+        question: 'Am I billed while an instance waits for its idle timeout?',
+        answer:
+          'Not while it is paused. About a second after its last request an idle instance is paused in memory, and at the idle timeout it is frozen; paused and frozen seconds are not billed. Minimum instances are billed while they run.',
+      },
+    ],
+  },
+  {
+    slug: DOMAIN_PENDING_SLUG,
+    title: 'Custom domain stuck on pending DNS or SSL: how to find the missing record',
+    summary:
+      'Find why a custom domain is stuck on pending: one command checks DNS, ownership and the certificate and prints the record to fix. Compared with Vercel, Fly.io.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'Why is my custom domain stuck on pending?',
+        answer:
+          'Usually a missing record: the _faas-verify TXT record that proves you own it, or the CNAME that points it at Gregale. gregale domain doctor api.example.com runs five checks and prints the exact record to add or remove.',
+      },
+      {
+        question: 'Why won’t my SSL certificate issue?',
+        answer:
+          'Gregale issues the certificate only after it sees the TXT record and the name points at Gregale. A proxied (orange-cloud) Cloudflare record or CAA records that don’t allow letsencrypt.org also stop it.',
+      },
+      {
+        question: 'How long does custom domain verification take?',
+        answer:
+          'Gregale checks a pending domain automatically, and gregale domain verify checks at once, at most every fifteen seconds. Once ownership and routing check out, the certificate is issued on the first HTTPS connection, usually within a minute.',
+      },
+      {
+        question: 'Which Gregale plans include custom domains?',
+        answer:
+          'Every plan, Free included, with certificates at no extra cost. Wildcard domains are on Pro and Scale. The domain doctor is in preview on every plan.',
+      },
+    ],
+  },
+  {
+    slug: ENV_UNDO_SLUG,
+    title: 'How to undo a bad environment variable change',
+    summary:
+      'Undo a bad environment variable change: a config guard restores the old values when the app starts failing, and env history lists every change.',
+    publishedOn: '2026-11-28',
+    updatedOn: '2026-11-28',
+    faq: [
+      {
+        question: 'How do I undo a bad environment variable change?',
+        answer:
+          'On Gregale, a config guard does it when the change makes the app fail: it restores the previous values and restarts the app. For a change that doesn’t cause errors, find the old value with gregale env history my-api and set it again with gregale env set.',
+      },
+      {
+        question: 'When does the config guard roll back a change?',
+        answer:
+          'When the new config causes at least 5 server errors that are at least half of its requests, judged for 10 minutes from the first request served with it. In our test it restored the previous config 23 seconds after a breaking change.',
+      },
+      {
+        question: 'Can gregale env rollback restore a secret?',
+        answer:
+          'No. Config revisions never hold secret values, and values set with gregale env set or env push are sealed secrets. env rollback restores plain variables and lists each secret that differs, with both versions, so you can set it again.',
+      },
+      {
+        question: 'Do I need to redeploy after changing an environment variable?',
+        answer:
+          'No. Pass --restart to env push to apply the values now; otherwise they apply on the next cold wake. Changes invalidate the app’s snapshots, so an old value can’t come back through a restore.',
+      },
+    ],
+  },
 ];
 
 /** FAQ answers as plain text, for structured data: no Markdown code spans. */
@@ -2840,6 +2933,9 @@ const ACCESS_CONTROL_LINK = `[Password-protect an app or limit it to your IPs, w
 const UPLOAD_TRIGGER_LINK = `[Run code when a file is uploaded, without Lambda](/articles/${UPLOAD_TRIGGER_SLUG}) shows a bucket trigger, its event body and retries, and how other platforms compare.`;
 const WAKE_AHEAD_LINK = `[Stop cold starts from stacking up across services](/articles/${WAKE_AHEAD_SLUG}) explains service wake-ahead, what it learns and what it costs.`;
 const CRASH_SNAPSHOTS_LINK = `[Capture production 5xx crash snapshots and diff CPU or heap profiles](/articles/${CRASH_SNAPSHOTS_SLUG}) explains auto 5xx memory captures, isolated crash forks and differential flamegraphs.`;
+const NOT_SCALING_LINK = `[Why isn't my app scaling to zero?](/articles/${NOT_SCALING_SLUG}) maps each reason the debugger reports to its fix, with what kept a test app running.`;
+const DOMAIN_PENDING_LINK = `[Custom domain stuck on pending DNS or SSL](/articles/${DOMAIN_PENDING_SLUG}) maps each domain doctor check to the record to fix and compares other platforms.`;
+const ENV_UNDO_LINK = `[How to undo a bad environment variable change](/articles/${ENV_UNDO_SLUG}) shows the config guard restoring a breaking change, env history, and what env rollback can't restore.`;
 
 const S2Z_PRICING_LINK = `[Scale-to-zero pricing in 2026](/articles/${S2Z_PRICING_SLUG}) compares when Fly.io, Cloud Run, Railway, Koyeb, Render and Gregale stop billing an idle app, with three monthly bills worked out.`;
 
@@ -2852,7 +2948,8 @@ const WS_PLATFORMS_LINK = `[WebSockets on scale-to-zero platforms in 2026](/arti
 const RELATED_ARTICLES: Record<string, string> = {
   plans: `${S2Z_PRICING_LINK} ${FREE_TIERS_LINK}`,
   postgres: `${PG_BRANCH_LINK} ${DATABASE_ROLLBACK_LINK} ${RAILS_LINK} ${PG_PRICING_LINK}`,
-  'scale-to-zero': `${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
+  'scale-to-zero': `${NOT_SCALING_LINK} ${COLD_START_LINK} ${STATELESS_LINK} ${WAKE_PAGE_LINK} ${S2Z_PRICING_LINK}`,
+  'custom-domains': DOMAIN_PENDING_LINK,
   realtime: `${REALTIME_SCALE_ZERO_LINK} ${WS_PLATFORMS_LINK}`,
   'inbound-webhooks': `${INBOUND_WEBHOOKS_LINK} ${BOTS_LINK}`,
   cache: EDGE_CACHE_LINK,
@@ -2865,7 +2962,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'queue-pull-leases': PULL_QUEUE_WORKERS_LINK,
   'cost-controls': `${SPEND_CAPS_LINK} ${BOT_BILL_SHOCK_LINK}`,
   tracing: `${OTEL_TRACING_LINK} ${CRASH_SNAPSHOTS_LINK}`,
-  troubleshooting: CRASH_SNAPSHOTS_LINK,
+  troubleshooting: `${NOT_SCALING_LINK} ${DOMAIN_PENDING_LINK} ${ENV_UNDO_LINK} ${CRASH_SNAPSHOTS_LINK}`,
   'scaling-policy': AUTOSCALE_LAG_LINK,
   'environment-promotion': ENV_PROMOTION_LINK,
   'synthetic-checks': SYNTHETIC_CHECKS_LINK,
@@ -2914,7 +3011,7 @@ const RELATED_ARTICLES: Record<string, string> = {
   'migrate-from-replit': REPLIT_ALTERNATIVES_LINK,
   rollouts: `${MIRRORING_LINK} ${CANARY_LINK}`,
   releases: `${CANARY_LINK} ${DEPLOY_DIFF_LINK}`,
-  env: DEPLOY_DIFF_LINK,
+  env: `${ENV_UNDO_LINK} ${DEPLOY_DIFF_LINK}`,
   'release-controls': `${RELEASE_CONTROLS_LINK} ${CANARY_LINK}`,
   security: `${DEPLOY_GUARD_LINK} ${MICROVM_LINK} ${BOT_BILL_SHOCK_LINK} ${SECURITY_HEADERS_LINK}`,
   compliance: MICROVM_LINK,
@@ -3044,8 +3141,17 @@ export const ARTICLE_TOPICS: readonly ArticleTopic[] = [
     id: 'how-to',
     title: 'How-to guides',
     description:
-      'Task-first answers with commands: deploy a Docker Compose app, fix CORS errors, add security headers, rate-limit an API per IP and show a waking-up page during a cold start.',
-    slugs: [COMPOSE_SLUG, CORS_SLUG, SECURITY_HEADERS_SLUG, RATE_LIMIT_SLUG, WAKE_PAGE_SLUG],
+      'Task-first answers with commands: deploy a Docker Compose app, fix CORS errors, add security headers, rate-limit an API per IP, show a waking-up page during a cold start, find why an app isn’t scaling to zero, fix a custom domain stuck on pending and undo a bad environment variable change.',
+    slugs: [
+      COMPOSE_SLUG,
+      CORS_SLUG,
+      SECURITY_HEADERS_SLUG,
+      RATE_LIMIT_SLUG,
+      WAKE_PAGE_SLUG,
+      NOT_SCALING_SLUG,
+      DOMAIN_PENDING_SLUG,
+      ENV_UNDO_SLUG,
+    ],
   },
   {
     id: 'comparisons',
