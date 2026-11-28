@@ -2506,7 +2506,7 @@ export const ARTICLES: readonly Article[] = [
     summary:
       'Deploy an Axum and sqlx API from a two-stage Dockerfile, run migrations with their own credential, and pause between requests. Measured on Gregale.',
     publishedOn: '2026-11-27',
-    updatedOn: '2026-11-27',
+    updatedOn: '2026-11-28',
     faq: [
       {
         question: 'Does Gregale build Rust without a Dockerfile?',

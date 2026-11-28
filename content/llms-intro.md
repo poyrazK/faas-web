@@ -46,9 +46,11 @@ Machine-readable entry points:
   [node-api-worker](https://github.com/gregale-dev/node-api-worker) (Express
   API and private worker, as a Compose project),
   [mcp-server-node](https://github.com/gregale-dev/mcp-server-node) (remote
-  MCP server, live at `https://mcp-server-node.gregale.app/mcp`) and
+  MCP server, live at `https://mcp-server-node.gregale.app/mcp`),
   [mcp-server-typescript-oauth](https://github.com/gregale-dev/mcp-server-typescript-oauth)
-  (TypeScript MCP server that checks OAuth 2.1 tokens).
+  (TypeScript MCP server that checks OAuth 2.1 tokens) and
+  [rust-axum-postgres](https://github.com/gregale-dev/rust-axum-postgres)
+  (Rust API with Axum and sqlx on PostgreSQL).
 
 Key facts:
 

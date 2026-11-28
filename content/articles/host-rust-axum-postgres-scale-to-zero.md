@@ -8,7 +8,10 @@ database needs Hobby.
 
 ## The app
 
-An Axum 0.8 API with one table, `notes`, using sqlx 0.8 for PostgreSQL.
+An Axum 0.8 API with one table, `notes`, using sqlx 0.8 for PostgreSQL. The
+complete project is on GitHub as
+[gregale-dev/rust-axum-postgres](https://github.com/gregale-dev/rust-axum-postgres).
+
 `Cargo.toml`:
 
 ```toml
@@ -182,6 +185,10 @@ The two credentials do different things:
 
 The release command runs before the new version takes traffic. If a
 migration fails, the deploy stops and the previous version keeps serving.
+
+The example repository declares the database in its `gregale.yaml` instead,
+under `databases:` with `create:`, so a single `gregale deploy` creates the
+database, binds both credentials and deploys.
 
 ## What we measured
 
