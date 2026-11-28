@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { comparisons } from './lib/compare';
+import { COMPARISON_SLUGS, comparisons } from './lib/compare';
 import { parsePlanCatalog } from './lib/plan-catalog-parser';
 import { SOLUTIONS } from './lib/solutions';
 
@@ -1315,6 +1315,40 @@ describeBuilt('prerendered pages', () => {
         expect(readFileSync(file, 'utf8')).toContain('content="noindex, follow"');
       }
     });
+  });
+
+  it('links every docs page to pricing, features, solutions, each /vs page and the pricing comparisons', () => {
+    // The docs are the most crawled pages; these links are how crawlers reach
+    // the product and comparison pages from them.
+    const articles = [
+      '/articles/scale-to-zero-pricing-compared',
+      '/articles/free-backend-hosting-tiers-compared',
+      '/articles/managed-postgres-pricing-compared',
+      '/articles/websockets-scale-to-zero-platforms-compared',
+      '/articles/render-vs-railway-vs-flyio',
+    ];
+    const targets = [
+      '/pricing',
+      '/features',
+      '/solutions',
+      ...COMPARISON_SLUGS.map((slug) => `/vs/${slug}`),
+      ...articles,
+    ];
+    for (const route of [...COMPARISON_SLUGS.map((slug) => `/vs/${slug}`), ...articles]) {
+      expect(existsSync(`dist${route}/index.html`), route).toBe(true);
+    }
+    const pages = readdirSync('dist/docs', { recursive: true, encoding: 'utf8' }).filter((name) =>
+      name.endsWith('index.html')
+    );
+    expect(pages).toContain('api/index.html');
+    expect(pages.length).toBeGreaterThan(100);
+    const missing = pages.flatMap((page) => {
+      const html = readFileSync(`dist/docs/${page}`, 'utf8');
+      return targets
+        .filter((route) => !html.includes(`href="${route}"`))
+        .map((route) => `${page} ${route}`);
+    });
+    expect(missing).toEqual([]);
   });
 
   it('publishes and links JSON pricing derived from the published plan table', () => {
